@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 use crate::media::MediaAsset;
@@ -14,7 +16,7 @@ pub enum Recency {
 
 /// A single edit project: its imported media, its timeline, and display metadata for the
 /// Início screen's project list. This is the root of everything a user works on.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     pub id: u64,
     pub name: String,
@@ -24,4 +26,9 @@ pub struct Project {
     pub summary: String,
     pub media_library: Vec<MediaAsset>,
     pub timeline: Timeline,
+    /// Where this project was last saved to/loaded from, if anywhere. Not serialized — the
+    /// file *contains* this data, it doesn't need to know its own path, and a copied/renamed
+    /// project file shouldn't carry a stale path forward.
+    #[serde(skip)]
+    pub file_path: Option<PathBuf>,
 }

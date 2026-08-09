@@ -10,7 +10,7 @@ pub enum TrackKind {
 
 /// One placed instance of a `MediaAsset` on the timeline. `source_in_secs`/`source_out_secs`
 /// mark the trimmed range within the source asset; `start_secs` is its position on the track.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClipInstance {
     pub id: u64,
     pub asset_id: u64,
@@ -29,7 +29,7 @@ impl ClipInstance {
 
 /// One row of the timeline (e.g. `V1`, `A1`, `A2` in the mockup), holding an ordered list of
 /// clips. Tracks don't overlap-check their own clips — that's an editing-time concern.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Track {
     pub id: u64,
     pub name: String,
@@ -38,7 +38,7 @@ pub struct Track {
 }
 
 /// A project's full set of tracks plus the current playhead position.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Timeline {
     pub tracks: Vec<Track>,
     pub playhead_secs: f64,

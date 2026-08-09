@@ -14,9 +14,11 @@ pub struct LoudnessMetrics {
     pub loudness_range_lu: f32,
 }
 
-/// A source file imported into the project's media library. Populated today with mock
-/// values; Fase 1 replaces the mock constructor with a real `ffprobe` + loudnorm wrapper.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A source file imported into the project's media library. Built either from
+/// [`crate::sample`]'s mock data or, for real imports, from [`crate::probe::probe_media`]
+/// (via [`crate::probe::ProbedMedia::into_media_asset`]) plus a [`crate::loudness::measure_loudness`]
+/// pass for the `loudness` field.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MediaAsset {
     pub id: u64,
     pub file_name: String,

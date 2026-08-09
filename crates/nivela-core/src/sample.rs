@@ -177,6 +177,7 @@ pub fn sample_projects() -> Vec<Project> {
             summary: "Cortes dos boss fights, um vídeo por chefe.".to_string(),
             media_library: cuphead_media_library(),
             timeline: cuphead_timeline(),
+            file_path: None,
         },
         Project {
             id: 2,
@@ -199,6 +200,7 @@ pub fn sample_projects() -> Vec<Project> {
                 tracks: vec![],
                 playhead_secs: 0.0,
             },
+            file_path: None,
         },
         Project {
             id: 3,
@@ -210,6 +212,7 @@ pub fn sample_projects() -> Vec<Project> {
                 tracks: vec![],
                 playhead_secs: 0.0,
             },
+            file_path: None,
         },
     ]
 }
