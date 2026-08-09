@@ -71,6 +71,8 @@ impl ProbedMedia {
             sample_rate_khz: self.sample_rate_khz,
             // LUFS/true-peak/LRA come from a separate loudnorm pass — see `crate::loudness`.
             loudness: None,
+            // Generated on demand — see `crate::proxy::ensure_proxy`.
+            proxy_path: None,
         }
     }
 }

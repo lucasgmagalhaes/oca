@@ -42,6 +42,7 @@ fn duration_label_delegates_to_format_timecode() {
         fps: Some(60.0),
         sample_rate_khz: None,
         loudness: None,
+        proxy_path: None,
     };
     assert_eq!(asset.duration_label(), "02:14");
 }

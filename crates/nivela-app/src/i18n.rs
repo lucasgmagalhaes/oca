@@ -99,6 +99,9 @@ text_catalog! {
     PropResolution: pt_br = "Resolução", en = "Resolution";
     PropFps: pt_br = "FPS", en = "FPS";
     PropLoudness: pt_br = "Loudness", en = "Loudness";
+    PropProxy: pt_br = "Proxy de edição", en = "Editing proxy";
+    ProxyPresent: pt_br = "540p pronto", en = "540p ready";
+    ProxyAbsent: pt_br = "usando original", en = "using original";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";
@@ -109,6 +112,7 @@ text_catalog! {
     LibraryTitle: pt_br = "Biblioteca de mídia", en = "Media library";
     ImportFiles: pt_br = "⭱ Importar arquivos", en = "⭱ Import files";
     LibraryEmpty: pt_br = "Nenhum arquivo importado neste projeto ainda.", en = "No files imported into this project yet.";
+    ProxyReady: pt_br = "Proxy 540p", en = "540p proxy";
 
     QueueTitle: pt_br = "Fila de exportação", en = "Export queue";
     AddExport: pt_br = "＋ Adicionar exportação", en = "＋ Add export";

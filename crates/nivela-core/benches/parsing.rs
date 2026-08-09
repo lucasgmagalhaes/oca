@@ -85,6 +85,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 true_peak_dbtp: -1.5,
                 loudness_range_lu: 7.0,
             }),
+            proxy_path: None,
         })
         .collect();
 

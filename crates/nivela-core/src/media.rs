@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +35,11 @@ pub struct MediaAsset {
     /// `None` for video assets without a separate sample rate to show.
     pub sample_rate_khz: Option<f32>,
     pub loudness: Option<LoudnessMetrics>,
+    /// Path to this asset's lightweight editing proxy (see [`crate::proxy`]), if one has been
+    /// generated. Not serialized — it's a derived cache artifact, regenerated on demand (e.g.
+    /// after the proxy cache is cleared, or the project is opened on another machine).
+    #[serde(skip)]
+    pub proxy_path: Option<PathBuf>,
 }
 
 impl MediaAsset {

@@ -235,6 +235,15 @@ fn properties_panel(app: &NivelaApp, ui: &mut egui::Ui, width: f32, height: f32)
                         &format!("{:.1} LUFS", l.integrated_lufs),
                     );
                 }
+                prop_row(
+                    ui,
+                    Text::PropProxy.tr(locale),
+                    if asset.proxy_path.is_some() {
+                        Text::ProxyPresent.tr(locale)
+                    } else {
+                        Text::ProxyAbsent.tr(locale)
+                    },
+                );
 
                 ui.add_space(10.0);
                 ui.separator();

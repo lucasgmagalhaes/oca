@@ -33,6 +33,7 @@ fn asset(
             true_peak_dbtp: -3.0,
             loudness_range_lu: 8.0,
         }),
+        proxy_path: None,
     }
 }
 

@@ -1,5 +1,8 @@
+use std::path::PathBuf;
+
 use eframe::egui::{self, RichText};
 use nivela_core::media::MediaKind;
+use nivela_core::project::Project;
 
 use crate::app::NivelaApp;
 use crate::i18n::Text;
@@ -79,6 +82,9 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                                             &format!("{:.1} LUFS", l.integrated_lufs),
                                         );
                                     }
+                                    if asset.proxy_path.is_some() {
+                                        widgets::tag_accent(ui, Text::ProxyReady.tr(locale));
+                                    }
                                 });
                                 ui.label(
                                     RichText::new(asset.duration_label())
@@ -102,13 +108,18 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
     });
 }
 
-/// Probes and measures each path with `nivela_core::probe`/`nivela_core::loudness` and adds
-/// the resulting assets to the active project's media library. Runs synchronously on the UI
-/// thread (each file briefly blocks on an `ffprobe`/`ffmpeg` subprocess) — fine for a handful
-/// of files from a picker dialog; a real "import a folder of hour-long recordings" flow would
-/// want this on a background thread instead. A file that fails to probe is skipped (logged to
-/// stderr) rather than aborting the whole import.
-fn import_files(app: &mut NivelaApp, paths: &[std::path::PathBuf]) {
+/// Probes and measures each path with `nivela_core::probe`/`nivela_core::loudness`, generates
+/// a scrubbing-friendly proxy for video clips (see `nivela_core::proxy` — the same trick
+/// CapCut/Premiere use so the timeline isn't decoding full 4K/60fps source every frame), and
+/// adds the resulting assets to the active project's media library.
+///
+/// Runs synchronously on the UI thread (each file blocks on `ffprobe`/`ffmpeg` subprocesses,
+/// and the proxy transcode is the slowest of the three) — fine for a handful of files from a
+/// picker dialog; a real "import a folder of hour-long recordings" flow would want this on a
+/// background thread instead. A file that fails to probe is skipped (logged to stderr) rather
+/// than aborting the whole import; a proxy that fails to generate just leaves that asset
+/// without one — the original file is still fully editable, just not as light to scrub.
+fn import_files(app: &mut NivelaApp, paths: &[PathBuf]) {
     let mut next_id = app
         .active_project()
         .media_library
@@ -116,6 +127,7 @@ fn import_files(app: &mut NivelaApp, paths: &[std::path::PathBuf]) {
         .map(|a| a.id)
         .max()
         .unwrap_or(0);
+    let proxy_dir = proxy_cache_dir(app.active_project());
 
     for path in paths {
         let probed = match nivela_core::probe_media(path) {
@@ -138,6 +150,30 @@ fn import_files(app: &mut NivelaApp, paths: &[std::path::PathBuf]) {
             Err(e) => eprintln!("failed to measure loudness for {}: {e}", path.display()),
         }
 
+        if asset.kind == MediaKind::Video {
+            match nivela_core::ensure_proxy(path, &proxy_dir) {
+                Ok(proxy_path) => asset.proxy_path = Some(proxy_path),
+                Err(e) => eprintln!("failed to generate proxy for {}: {e}", path.display()),
+            }
+        }
+
         app.active_project_mut().media_library.push(asset);
+    }
+}
+
+/// Where imported clips' editing proxies are cached: a hidden sibling folder next to the
+/// project file (`myproject.json` -> `.myproject_proxies/`), or a temp folder for a project
+/// that hasn't been saved yet (proxies there won't survive a reboot, but neither would
+/// anything else about an unsaved project).
+fn proxy_cache_dir(project: &Project) -> PathBuf {
+    match &project.file_path {
+        Some(path) => {
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("project");
+            path.with_file_name(format!(".{stem}_proxies"))
+        }
+        None => std::env::temp_dir().join("nivela_unsaved_proxies"),
     }
 }

@@ -44,6 +44,7 @@ graph LR
     "nivela_app::screens::library" -.-> "nivela_app::screens::widgets"
     "nivela_app::screens::library" -.-> "nivela_app::theme"
     "nivela_app::screens::library" -.-> "nivela_core::media"
+    "nivela_app::screens::library" -.-> "nivela_core::project"
     "nivela_app::screens::nav_rail" -.-> "nivela_app::app"
     "nivela_app::screens::nav_rail" -.-> "nivela_app::i18n"
     "nivela_app::screens::nav_rail" -.-> "nivela_app::theme"
@@ -63,6 +64,7 @@ graph LR
     "nivela_core" --> "nivela_core::persistence"
     "nivela_core" --> "nivela_core::probe"
     "nivela_core" --> "nivela_core::project"
+    "nivela_core" --> "nivela_core::proxy"
     "nivela_core" --> "nivela_core::sample"
     "nivela_core" --> "nivela_core::timeline"
     "nivela_core::loudness" -.-> "nivela_core::media"
@@ -242,6 +244,19 @@ _No public items._
 
 - **enum** `Recency` — How long ago a project was last edited. Locale-neutral by design — the UI layer is
 - **struct** `Project` — A single edit project: its imported media, its timeline, and display metadata for the
+
+### `nivela_core::proxy::tests`
+*nivela-core/proxy/tests.rs*
+
+_No public items._
+
+### `nivela_core::proxy`
+*nivela-core/proxy.rs*
+
+- **const** `PROXY_HEIGHT` — Proxies are downscaled to this height (width follows the source's aspect ratio) — matches
+- **enum** `ProxyError`
+- **fn** `proxy_path_for` — The proxy file's path for `source` inside `proxy_dir`, without checking whether it exists
+- **fn** `ensure_proxy` — Returns the proxy for `source`, generating it into `proxy_dir` with `ffmpeg` first if it
 
 ### `nivela_core::sample`
 *nivela-core/sample.rs*
