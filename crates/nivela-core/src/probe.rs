@@ -5,7 +5,7 @@
 //! unit-testable without an `ffprobe` binary on the machine running the tests (see the fixtures
 //! in the `tests` module below).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::Deserialize;
@@ -58,10 +58,11 @@ impl ProbedMedia {
     /// Turns this probe result into a full [`MediaAsset`] ready for a project's media
     /// library. `loudness` starts `None` — call [`crate::measure_loudness`] separately and
     /// set it once that pass completes.
-    pub fn into_media_asset(self, id: u64, file_name: String) -> MediaAsset {
+    pub fn into_media_asset(self, id: u64, file_name: String, source_path: PathBuf) -> MediaAsset {
         MediaAsset {
             id,
             file_name,
+            source_path,
             kind: self.kind,
             duration_secs: self.duration_secs,
             codec: self.codec,

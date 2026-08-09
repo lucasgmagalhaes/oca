@@ -143,7 +143,7 @@ fn import_files(app: &mut NivelaApp, paths: &[PathBuf]) {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let mut asset = probed.into_media_asset(next_id, file_name);
+        let mut asset = probed.into_media_asset(next_id, file_name, path.clone());
 
         match nivela_core::measure_loudness(path) {
             Ok(metrics) => asset.loudness = Some(metrics),

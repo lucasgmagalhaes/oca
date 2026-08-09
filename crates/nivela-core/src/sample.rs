@@ -1,6 +1,8 @@
 //! Mock data mirroring the HTML mockup (`ui.html` / `Editor de Video - Mockups.dc.html`).
 //! Fase 1 replaces this with `ffprobe` probing and a loaded/saved project JSON file.
 
+use std::path::PathBuf;
+
 use crate::export::{ExportJob, ExportJobStatus};
 use crate::media::{LoudnessMetrics, MediaAsset, MediaKind};
 use crate::project::{Project, Recency};
@@ -21,6 +23,9 @@ fn asset(
     MediaAsset {
         id,
         file_name: file_name.to_string(),
+        // Mock data has no real file backing it — mirrors the fake output_path strings on
+        // the sample export jobs below.
+        source_path: PathBuf::from(format!("/media/{file_name}")),
         kind,
         duration_secs,
         codec: codec.to_string(),
@@ -219,12 +224,15 @@ pub fn sample_projects() -> Vec<Project> {
 }
 
 /// The export queue's job list, covering every [`ExportJobStatus`] so the Fila screen has an
-/// example of each state (rendering, queued, paused, done, failed) to render.
+/// example of each state (rendering, queued, paused, done, failed) to render. `source_path` is
+/// left empty — like `output_path`, these don't correspond to real files on disk, they're
+/// display-only demo data (a real job's dispatcher would find no source and fail immediately).
 pub fn sample_export_jobs() -> Vec<ExportJob> {
     vec![
         ExportJob {
             id: 1,
             title: "Cuphead — Boss 01: Robô do Rei Dado".to_string(),
+            source_path: PathBuf::new(),
             target_lufs: -14.0,
             bitrate_mbps: 42.0,
             output_path: "/export/cuphead/boss01.mp4".to_string(),
@@ -233,6 +241,7 @@ pub fn sample_export_jobs() -> Vec<ExportJob> {
         ExportJob {
             id: 2,
             title: "Cuphead — Boss 02: Goopy Le Grande".to_string(),
+            source_path: PathBuf::new(),
             target_lufs: -14.0,
             bitrate_mbps: 38.0,
             output_path: "/export/cuphead/boss02.mp4".to_string(),
@@ -241,6 +250,7 @@ pub fn sample_export_jobs() -> Vec<ExportJob> {
         ExportJob {
             id: 3,
             title: "Cuphead — Boss 03: Ribby e Croaks".to_string(),
+            source_path: PathBuf::new(),
             target_lufs: -14.0,
             bitrate_mbps: 42.0,
             output_path: "/export/cuphead/boss03.mp4".to_string(),
@@ -249,6 +259,7 @@ pub fn sample_export_jobs() -> Vec<ExportJob> {
         ExportJob {
             id: 4,
             title: "Cuphead — Boss 00: Intro".to_string(),
+            source_path: PathBuf::new(),
             target_lufs: -14.0,
             bitrate_mbps: 30.0,
             output_path: "/export/cuphead/boss00.mp4".to_string(),
@@ -257,6 +268,7 @@ pub fn sample_export_jobs() -> Vec<ExportJob> {
         ExportJob {
             id: 5,
             title: "Minecraft Long Play — Sessão 14".to_string(),
+            source_path: PathBuf::new(),
             target_lufs: -14.0,
             bitrate_mbps: 60.0,
             output_path: "/export/minecraft/ep14.mp4".to_string(),
@@ -265,6 +277,7 @@ pub fn sample_export_jobs() -> Vec<ExportJob> {
         ExportJob {
             id: 6,
             title: "Shorts da semana — Corte 04".to_string(),
+            source_path: PathBuf::new(),
             target_lufs: -14.0,
             bitrate_mbps: 20.0,
             output_path: "/export/shorts/".to_string(),

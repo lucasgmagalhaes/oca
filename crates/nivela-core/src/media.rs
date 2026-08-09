@@ -24,6 +24,10 @@ pub struct LoudnessMetrics {
 pub struct MediaAsset {
     pub id: u64,
     pub file_name: String,
+    /// Where the source file actually lives on disk — unlike `proxy_path`, this **is**
+    /// serialized: it's the one piece of data a reopened project needs to find its media
+    /// again, not a regenerable cache artifact.
+    pub source_path: PathBuf,
     pub kind: MediaKind,
     pub duration_secs: f64,
     pub codec: String,

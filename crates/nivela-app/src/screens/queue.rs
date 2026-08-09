@@ -1,14 +1,15 @@
 use eframe::egui::{self, RichText};
 use nivela_core::export::ExportJobStatus;
 
-use crate::app::NivelaApp;
+use crate::app::{NivelaApp, LUFS_PROFILES};
 use crate::i18n::{self, Text};
 use crate::screens::widgets;
 use crate::theme;
 
-/// Renders the Fila screen: the export queue's job list (with reorder/pause/cancel/retry
-/// controls) and the concurrent-worker count. The list is all local UI state for now — Fase
-/// 4 wires it up to a real background render worker over a `tokio::mpsc` channel.
+/// Renders the Fila screen: the export queue's job list (reorder for queued jobs, cancel for
+/// anything in flight, retry for failures) and the concurrent-worker count. Jobs are rendered
+/// for real on background threads dispatched by [`crate::app::NivelaApp`] each frame — see
+/// its `pump_export_queue`.
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
     let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {
@@ -20,7 +21,31 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                     .strong(),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button(Text::AddExport.tr(locale)).clicked() {}
+                let selected_asset = app.selected_asset().cloned();
+                let add_button = egui::Button::new(Text::AddExport.tr(locale));
+                let response = ui
+                    .add_enabled(selected_asset.is_some(), add_button)
+                    .on_disabled_hover_text(Text::AddExportNeedsClip.tr(locale));
+                if response.clicked() {
+                    if let Some(asset) = selected_asset {
+                        let (_, target_lufs) = LUFS_PROFILES[app.prefs.lufs_profile];
+                        let default_name =
+                            format!("{}_export.mp4", asset.file_name.trim_end_matches(".mp4"));
+                        if let Some(output) = rfd::FileDialog::new()
+                            .add_filter("MP4", &["mp4"])
+                            .set_file_name(default_name)
+                            .save_file()
+                        {
+                            app.queue_export(
+                                asset.file_name.clone(),
+                                asset.source_path.clone(),
+                                target_lufs,
+                                asset.source_bitrate_mbps,
+                                output.display().to_string(),
+                            );
+                        }
+                    }
+                }
                 ui.add_space(10.0);
                 ui.label(
                     RichText::new(Text::ConcurrentWorkers.tr(locale))
@@ -58,7 +83,9 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
 
         let mut move_up: Option<usize> = None;
         let mut move_down: Option<usize> = None;
-        let mut remove: Option<usize> = None;
+        let mut cancel: Option<u64> = None;
+        let mut retry: Option<u64> = None;
+        let mut resume: Option<u64> = None;
 
         let len = app.export_jobs.len();
         for i in 0..len {
@@ -104,18 +131,17 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                     ui.with_layout(
                         egui::Layout::right_to_left(egui::Align::Center),
                         |ui| match &job.status {
+                            // ffmpeg has no notion of pausing an in-flight render (see
+                            // nivela_core::render's module docs), so a rendering job only
+                            // offers Cancel — there's no Pause button to promise something
+                            // this queue can't actually do.
                             ExportJobStatus::Rendering { .. } => {
-                                if ui
-                                    .button("⏸")
-                                    .on_hover_text(Text::Pause.tr(locale))
-                                    .clicked()
-                                {}
                                 if ui
                                     .button("✕")
                                     .on_hover_text(Text::CancelJob.tr(locale))
                                     .clicked()
                                 {
-                                    remove = Some(i);
+                                    cancel = Some(job.id);
                                 }
                             }
                             ExportJobStatus::Queued => {
@@ -124,7 +150,7 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                                     .on_hover_text(Text::RemoveJob.tr(locale))
                                     .clicked()
                                 {
-                                    remove = Some(i);
+                                    cancel = Some(job.id);
                                 }
                                 if ui.button("▼").clicked() {
                                     move_down = Some(i);
@@ -139,23 +165,29 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                                     .on_hover_text(Text::RemoveJob.tr(locale))
                                     .clicked()
                                 {
-                                    remove = Some(i);
+                                    cancel = Some(job.id);
                                 }
                                 if ui
                                     .button("▶")
                                     .on_hover_text(Text::Resume.tr(locale))
                                     .clicked()
-                                {}
+                                {
+                                    resume = Some(job.id);
+                                }
                             }
                             ExportJobStatus::Done => {
                                 if ui
                                     .button("📂")
                                     .on_hover_text(Text::OpenFolder.tr(locale))
                                     .clicked()
-                                {}
+                                {
+                                    open_containing_folder(&job.output_path);
+                                }
                             }
                             ExportJobStatus::Failed { .. } => {
-                                if ui.button(Text::RetryExport.tr(locale)).clicked() {}
+                                if ui.button(Text::RetryExport.tr(locale)).clicked() {
+                                    retry = Some(job.id);
+                                }
                             }
                         },
                     );
@@ -174,8 +206,28 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                 app.export_jobs.swap(i, i + 1);
             }
         }
-        if let Some(i) = remove {
-            app.export_jobs.remove(i);
+        if let Some(id) = cancel {
+            app.cancel_export_job(id);
+        }
+        if let Some(id) = resume {
+            if let Some(job) = app.export_jobs.iter_mut().find(|j| j.id == id) {
+                job.status = ExportJobStatus::Queued;
+            }
+        }
+        if let Some(id) = retry {
+            if let Some(job) = app.export_jobs.iter_mut().find(|j| j.id == id) {
+                job.status = ExportJobStatus::Queued;
+            }
         }
     });
 }
+
+#[cfg(target_os = "windows")]
+fn open_containing_folder(output_path: &str) {
+    let path = std::path::Path::new(output_path);
+    let folder = path.parent().unwrap_or(path);
+    let _ = std::process::Command::new("explorer").arg(folder).spawn();
+}
+
+#[cfg(not(target_os = "windows"))]
+fn open_containing_folder(_output_path: &str) {}

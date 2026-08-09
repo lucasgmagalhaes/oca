@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use nivela_core::media::{format_timecode, MediaAsset, MediaKind};
 
 #[test]
@@ -34,6 +36,7 @@ fn duration_label_delegates_to_format_timecode() {
     let asset = MediaAsset {
         id: 1,
         file_name: "clip.mp4".to_string(),
+        source_path: PathBuf::from("/videos/clip.mp4"),
         kind: MediaKind::Video,
         duration_secs: 134.0,
         codec: "H.264".to_string(),

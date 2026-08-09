@@ -5,6 +5,7 @@
 //! test suite (`cargo test`) is the correctness half.
 
 use std::hint::black_box;
+use std::path::PathBuf;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
@@ -73,6 +74,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
         .map(|i| MediaAsset {
             id: i as u64,
             file_name: format!("clip_{i:04}.mp4"),
+            source_path: PathBuf::from(format!("/media/clip_{i:04}.mp4")),
             kind: MediaKind::Video,
             duration_secs: 30.0,
             codec: "h264".to_string(),

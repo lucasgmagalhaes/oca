@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use nivela_core::media::MediaKind;
 use nivela_core::probe::{parse_probe_json, ProbeError};
 
@@ -101,9 +103,17 @@ fn rejects_malformed_json() {
 #[test]
 fn into_media_asset_carries_the_probed_fields_through() {
     let media = parse_probe_json(VIDEO_FIXTURE).unwrap();
-    let asset = media.into_media_asset(7, "boss03_ribby_croaks.mp4".to_string());
+    let asset = media.into_media_asset(
+        7,
+        "boss03_ribby_croaks.mp4".to_string(),
+        PathBuf::from("/videos/boss03_ribby_croaks.mp4"),
+    );
     assert_eq!(asset.id, 7);
     assert_eq!(asset.file_name, "boss03_ribby_croaks.mp4");
+    assert_eq!(
+        asset.source_path,
+        PathBuf::from("/videos/boss03_ribby_croaks.mp4")
+    );
     assert_eq!(asset.codec, "h264");
     assert!(asset.loudness.is_none());
 }

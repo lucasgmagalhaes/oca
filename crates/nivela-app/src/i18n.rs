@@ -116,6 +116,7 @@ text_catalog! {
 
     QueueTitle: pt_br = "Fila de exportação", en = "Export queue";
     AddExport: pt_br = "＋ Adicionar exportação", en = "＋ Add export";
+    AddExportNeedsClip: pt_br = "Selecione um clipe na Mídia ou no Editor primeiro", en = "Select a clip in Mídia or the Editor first";
     ConcurrentWorkers: pt_br = "Workers simultâneos", en = "Concurrent workers";
     QueueSubtitle: pt_br = "A edição continua responsiva enquanto os jobs renderizam em segundo plano. A fila persiste entre sessões.", en = "Editing stays responsive while jobs render in the background. The queue persists across sessions.";
     QueueTechNote: pt_br = "Nota técnica: cada job é um snapshot (bitrate/perfil/destino) tirado no momento em que entra na fila — mudanças no projeto ativo depois disso não afetam o job. Render roda em worker separado da UI (tokio::mpsc); 1 worker por padrão, configurável em Preferências.", en = "Technical note: each job is a snapshot (bitrate/profile/destination) taken the moment it enters the queue — later changes to the active project don't affect the job. Rendering runs in a worker separate from the UI (tokio::mpsc); 1 worker by default, configurable in Preferences.";
@@ -124,7 +125,6 @@ text_catalog! {
     StatusPaused: pt_br = "Pausado", en = "Paused";
     StatusDone: pt_br = "Concluído", en = "Done";
     StatusFailed: pt_br = "Falhou", en = "Failed";
-    Pause: pt_br = "Pausar", en = "Pause";
     CancelJob: pt_br = "Cancelar", en = "Cancel";
     RemoveJob: pt_br = "Remover", en = "Remove";
     Resume: pt_br = "Retomar", en = "Resume";

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 /// A queued render's lifecycle. `Rendering`/`Paused` carry a snapshot progress percentage;
@@ -17,6 +19,8 @@ pub enum ExportJobStatus {
 pub struct ExportJob {
     pub id: u64,
     pub title: String,
+    /// The file this job renders from — see [`crate::render::render_export`].
+    pub source_path: PathBuf,
     pub target_lufs: f32,
     pub bitrate_mbps: f32,
     pub output_path: String,

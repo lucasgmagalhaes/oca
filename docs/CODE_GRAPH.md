@@ -65,6 +65,7 @@ graph LR
     "nivela_core" --> "nivela_core::probe"
     "nivela_core" --> "nivela_core::project"
     "nivela_core" --> "nivela_core::proxy"
+    "nivela_core" --> "nivela_core::render"
     "nivela_core" --> "nivela_core::sample"
     "nivela_core" --> "nivela_core::timeline"
     "nivela_core::loudness" -.-> "nivela_core::media"
@@ -95,6 +96,8 @@ graph LR
 - **fn** `open_project` — Switches the active project to `index` and navigates to the Editor screen — this is
 - **fn** `add_and_open_project` — Appends `project` to the project list and opens it — used for both "Novo projeto"
 - **fn** `create_new_project` — Builds an empty project with a fresh id and opens it — what "Novo projeto" does.
+- **fn** `queue_export` — Appends a new `Queued` job — what "Adicionar exportação" does. Picked up by
+- **fn** `cancel_export_job` — Stops a job: kills its `ffmpeg` process if it's actively rendering, or just removes it
 
 ### `nivela_app::i18n::tests`
 *nivela-app/i18n/tests.rs*
@@ -160,7 +163,7 @@ _No public items._
 ### `nivela_app::screens::queue`
 *nivela-app/screens/queue.rs*
 
-- **fn** `show` — Renders the Fila screen: the export queue's job list (with reorder/pause/cancel/retry
+- **fn** `show` — Renders the Fila screen: the export queue's job list (reorder for queued jobs, cancel for
 
 ### `nivela_app::screens::widgets`
 *nivela-app/screens/widgets.rs*
@@ -257,6 +260,14 @@ _No public items._
 - **enum** `ProxyError`
 - **fn** `proxy_path_for` — The proxy file's path for `source` inside `proxy_dir`, without checking whether it exists
 - **fn** `ensure_proxy` — Returns the proxy for `source`, generating it into `proxy_dir` with `ffmpeg` first if it
+
+### `nivela_core::render`
+*nivela-core/render.rs*
+
+- **enum** `RenderError`
+- **enum** `RenderOutcome` — How a render ended: all the way through, or stopped early because `cancel` was set.
+- **fn** `render_export` — Renders `source` to `output`, applying single-pass loudnorm normalization to
+- **fn** `parse_progress_line` — Parses one line of `ffmpeg -progress pipe:1` output, returning a 0-100 percentage once it
 
 ### `nivela_core::sample`
 *nivela-core/sample.rs*
