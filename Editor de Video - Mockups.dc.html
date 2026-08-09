@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/nocturne-d8dcab77-61bb-4c14-8925-113953f3abbd/styles.css">
+<script src="_ds/nocturne-d8dcab77-61bb-4c14-8925-113953f3abbd/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
+<style>
+html,body{margin:0;height:100%;background:var(--color-bg);overflow:hidden}
+a{color:var(--color-accent)}
+a:hover{color:var(--color-accent-2)}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:var(--color-neutral-800);border-radius:4px}
+.railbtn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 4px;border-radius:var(--radius-md);cursor:pointer;color:var(--color-neutral-500);font-size:9px;letter-spacing:.02em}
+.railbtn:hover{background:color-mix(in srgb, var(--color-text) 6%, transparent);color:var(--color-text)}
+.railbtn.active{color:var(--color-accent);background:color-mix(in srgb, var(--color-accent) 14%, transparent)}
+.toolbtn{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:var(--radius-md);cursor:pointer;font-size:12.5px;color:var(--color-neutral-300);border:1px solid transparent}
+.toolbtn:hover{background:color-mix(in srgb, var(--color-text) 6%, transparent)}
+.thumb{border-radius:var(--radius-sm);background:linear-gradient(135deg,var(--color-neutral-800),var(--color-neutral-900));display:flex;align-items:center;justify-content:center;color:var(--color-neutral-600);position:relative;flex:none;overflow:hidden}
+.waveclip{background:var(--color-accent-800);border-radius:var(--radius-sm);position:relative;overflow:hidden;flex:none}
+.waveclip::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,var(--color-accent-400) 0 2px,transparent 2px 5px);opacity:.55;mask-image:linear-gradient(to bottom,transparent 0,black 30%,black 70%,transparent 100%)}
+.vidclip{background:var(--color-neutral-700);border-radius:var(--radius-sm);position:relative;overflow:hidden;flex:none;display:flex;gap:1px}
+.vidclip span{flex:1;background:linear-gradient(160deg,var(--color-neutral-600),var(--color-neutral-800))}
+</style>
+</helmet>
+
+<div style="height:100vh;display:flex;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:14px">
+
+  <div style="width:60px;flex:none;background:var(--color-surface);border-right:1px solid var(--color-divider);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:4px">
+    <div style="width:30px;height:30px;border-radius:8px;background:var(--color-accent-800);color:var(--color-accent-200);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;margin-bottom:14px">P</div>
+    <div class="railbtn {{ homeActive }}" onClick="{{ goHome }}"><i class="ph ph-house" style="font-size:20px"></i>Início</div>
+    <div class="railbtn {{ editorActive }}" onClick="{{ goEditor }}"><i class="ph ph-scissors" style="font-size:20px"></i>Editor</div>
+    <div class="railbtn {{ libraryActive }}" onClick="{{ goLibrary }}"><i class="ph ph-folder-open" style="font-size:20px"></i>Mídia</div>
+    <div class="railbtn {{ queueActive }}" onClick="{{ goQueue }}"><i class="ph ph-stack" style="font-size:20px"></i>Fila</div>
+    <div style="flex:1"></div>
+    <div class="railbtn {{ prefsActive }}" onClick="{{ goPrefs }}"><i class="ph ph-gear-six" style="font-size:20px"></i>Ajustes</div>
+  </div>
+
+  <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+
+    <div style="height:46px;flex:none;display:flex;align-items:center;padding:0 18px;border-bottom:1px solid var(--color-divider);gap:8px">
+      <span style="font-size:13px;color:var(--color-neutral-500)">PacoPaçoca Editor</span>
+      <i class="ph ph-caret-right" style="font-size:11px;color:var(--color-neutral-700)"></i>
+      <span style="font-size:13px;font-weight:500">{{ screenTitle }}</span>
+      <sc-if value="{{ isEditor }}"><span style="display:flex;align-items:center;gap:6px;margin-left:2px"><i class="ph ph-caret-right" style="font-size:11px;color:var(--color-neutral-700)"></i><span style="font-size:13px;color:var(--color-neutral-400)">{{ projectName }}</span><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent-500)" title="Alterações não salvas"></span></span></sc-if>
+    </div>
+
+    <!-- ================= HOME ================= -->
+    <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+    <div style="flex:1;overflow:auto;padding:32px 40px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px">
+        <div>
+          <h1 style="font-size:24px;margin:0 0 4px">Projetos recentes</h1>
+          <p style="margin:0;color:var(--color-neutral-500);font-size:13px">Continue de onde parou ou comece um projeto novo.</p>
+        </div>
+        <button type="button" class="btn btn-primary"><i class="ph ph-plus"></i>Novo projeto</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">
+        <div class="card elev-sm" style="cursor:pointer" onClick="{{ goEditor }}">
+          <div class="thumb" style="height:120px;margin:-12px -12px 0"><i class="ph ph-play-circle" style="font-size:32px"></i></div>
+          <div class="card-kicker">14 clipes · V1/A1/A2</div>
+          <div class="card-title">Cuphead — 50 Chefes</div>
+          <p class="card-body">Cortes dos boss fights, um vídeo por chefe.</p>
+          <div class="card-meta"><i class="ph ph-clock"></i>Editado há 2 horas</div>
+        </div>
+        <div class="card elev-sm" style="cursor:pointer" onClick="{{ goEditor }}">
+          <div class="thumb" style="height:120px;margin:-12px -12px 0"><i class="ph ph-play-circle" style="font-size:32px"></i></div>
+          <div class="card-kicker">1 clipe longo · V1/A1/A2</div>
+          <div class="card-title">Minecraft Long Play — Sessão 14</div>
+          <p class="card-body">Gravação de 3h20 pra cortar em partes.</p>
+          <div class="card-meta"><i class="ph ph-clock"></i>Editado ontem</div>
+        </div>
+        <div class="card elev-sm" style="cursor:pointer" onClick="{{ goEditor }}">
+          <div class="thumb" style="height:120px;margin:-12px -12px 0"><i class="ph ph-play-circle" style="font-size:32px"></i></div>
+          <div class="card-kicker">6 clipes · V1/A1</div>
+          <div class="card-title">Shorts da semana</div>
+          <p class="card-body">Cortes verticais pra Shorts/Reels.</p>
+          <div class="card-meta"><i class="ph ph-clock"></i>Editado há 3 dias</div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ================= EDITOR ================= -->
+    <sc-if value="{{ isEditor }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;flex-direction:column;min-height:0">
+
+      <div style="flex:none;display:flex;align-items:center;gap:4px;padding:8px 16px;border-bottom:1px solid var(--color-divider)">
+        <div class="toolbtn" style="border-color:{{ toolSelectBorder }};color:{{ toolSelectColor }}" onClick="{{ setToolSelect }}"><i class="ph ph-cursor"></i>Selecionar</div>
+        <div class="toolbtn" style="border-color:{{ toolCutBorder }};color:{{ toolCutColor }}" onClick="{{ setToolCut }}"><i class="ph ph-scissors"></i>Cortar / Split</div>
+        <div class="toolbtn" style="border-color:{{ toolTrimBorder }};color:{{ toolTrimColor }}" onClick="{{ setToolTrim }}"><i class="ph ph-arrows-horizontal"></i>Aparar</div>
+        <div style="width:1px;height:20px;background:var(--color-divider);margin:0 6px"></div>
+        <div class="toolbtn"><i class="ph ph-arrow-counter-clockwise"></i></div>
+        <div class="toolbtn"><i class="ph ph-arrow-clockwise"></i></div>
+        <div style="flex:1"></div>
+        <button type="button" class="btn btn-secondary" onClick="{{ goQueue }}"><i class="ph ph-download-simple"></i>Exportar</button>
+      </div>
+
+      <div style="flex:1 1 auto;display:flex;min-height:0">
+        <div style="width:220px;flex:none;border-right:1px solid var(--color-divider);padding:14px;overflow:auto">
+          <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:10px">Biblioteca de mídia</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;gap:8px;align-items:center;padding:6px;border-radius:var(--radius-sm);background:color-mix(in srgb, var(--color-accent) 10%, transparent)">
+              <div class="thumb" style="width:44px;height:28px"><i class="ph ph-play" style="font-size:13px"></i></div>
+              <div style="min-width:0"><div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">boss03_ribby_croaks.mp4</div><div style="font-size:10px;color:var(--color-neutral-500)">02:14 · 1080p60</div></div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;padding:6px;border-radius:var(--radius-sm)">
+              <div class="thumb" style="width:44px;height:28px"><i class="ph ph-play" style="font-size:13px"></i></div>
+              <div style="min-width:0"><div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">boss04_captain_brineybeard.mp4</div><div style="font-size:10px;color:var(--color-neutral-500)">03:02 · 1080p60</div></div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;padding:6px;border-radius:var(--radius-sm)">
+              <div class="thumb" style="width:44px;height:28px"><i class="ph ph-waveform" style="font-size:13px"></i></div>
+              <div style="min-width:0"><div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">commentary_mic.wav</div><div style="font-size:10px;color:var(--color-neutral-500)">02:14 · 48kHz</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;background:#000;position:relative">
+            <div style="width:min(70%,640px);aspect-ratio:16/9;background:linear-gradient(160deg,#1c1e2c,#000);border-radius:6px;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-md)">
+              <i class="ph-fill ph-play-circle" style="font-size:56px;color:color-mix(in srgb, var(--color-text) 40%, transparent)"></i>
+            </div>
+          </div>
+          <div style="flex:none;display:flex;align-items:center;gap:10px;padding:8px 16px;border-top:1px solid var(--color-divider)">
+            <i class="ph ph-skip-back"></i>
+            <i class="ph-fill ph-play-circle" style="font-size:22px;color:var(--color-accent)"></i>
+            <i class="ph ph-skip-forward"></i>
+            <span style="font-size:12px;color:var(--color-neutral-400);font-variant-numeric:tabular-nums">00:42:10 / 02:14:00</span>
+          </div>
+        </div>
+
+        <div style="width:240px;flex:none;border-left:1px solid var(--color-divider);padding:14px;overflow:auto">
+          <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:10px">Clipe selecionado</div>
+          <div style="font-size:13px;margin-bottom:12px">boss03_ribby_croaks.mp4</div>
+          <div style="display:flex;flex-direction:column;gap:7px;font-size:12px">
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--color-neutral-500)">Codec</span><span>H.264</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--color-neutral-500)">Bitrate fonte</span><span>42 Mbps</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--color-neutral-500)">Resolução</span><span>1920×1080</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--color-neutral-500)">FPS</span><span>60</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--color-neutral-500)">Loudness</span><span>-19.4 LUFS</span></div>
+          </div>
+          <div class="hr"></div>
+          <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:8px">Ao exportar</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="tag tag-accent">Normalizar → -14 LUFS</span>
+            <span class="tag tag-outline">Bitrate = fonte (42 Mbps)</span>
+          </div>
+          <p style="font-size:11px;color:var(--color-neutral-600);margin:8px 0 0">loudnorm 2-pass + true peak limiter, aplicado automático no export — sem ajuste manual por clipe.</p>
+        </div>
+      </div>
+
+      <div style="flex:none;height:190px;border-top:1px solid var(--color-divider);display:flex;flex-direction:column;background:var(--color-surface)">
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 12px;font-size:11px;color:var(--color-neutral-500)">
+          <i class="ph ph-magnifying-glass-plus"></i>Timeline
+          <div style="flex:1"></div>
+          <span>00:00</span><span>00:30</span><span>01:00</span><span>01:30</span><span>02:00</span>
+        </div>
+        <div style="flex:1;position:relative;overflow:auto">
+          <div style="position:absolute;top:0;bottom:0;left:340px;width:2px;background:var(--color-accent);z-index:2"><div style="position:absolute;top:-2px;left:-4px;width:10px;height:10px;background:var(--color-accent);clip-path:polygon(0 0,100% 0,50% 100%)"></div></div>
+          <div style="display:flex;align-items:center;gap:0;height:44px;border-bottom:1px solid var(--color-divider)">
+            <div style="width:70px;flex:none;padding:0 10px;font-size:11px;color:var(--color-neutral-400);display:flex;align-items:center;gap:5px"><i class="ph ph-video-camera"></i>V1</div>
+            <div style="flex:1;display:flex;gap:2px;padding:6px 4px">
+              <div class="vidclip" style="width:180px;height:32px"><span></span><span></span><span></span><span></span><span></span></div>
+              <div class="vidclip" style="width:260px;height:32px"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+              <div class="vidclip" style="width:140px;height:32px"><span></span><span></span><span></span></div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:0;height:40px;border-bottom:1px solid var(--color-divider)">
+            <div style="width:70px;flex:none;padding:0 10px;font-size:11px;color:var(--color-neutral-400);display:flex;align-items:center;gap:5px"><i class="ph ph-speaker-high"></i>A1</div>
+            <div style="flex:1;display:flex;gap:2px;padding:5px 4px">
+              <div class="waveclip" style="width:180px;height:28px"></div>
+              <div class="waveclip" style="width:260px;height:28px"></div>
+              <div class="waveclip" style="width:140px;height:28px"></div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:0;height:40px">
+            <div style="width:70px;flex:none;padding:0 10px;font-size:11px;color:var(--color-neutral-400);display:flex;align-items:center;gap:5px"><i class="ph ph-microphone"></i>A2</div>
+            <div style="flex:1;display:flex;gap:2px;padding:5px 4px">
+              <div class="waveclip" style="width:580px;height:28px;background:var(--color-accent-2-800)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ================= LIBRARY ================= -->
+    <sc-if value="{{ isLibrary }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;overflow:auto;padding:28px 36px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <h1 style="font-size:20px;margin:0">Biblioteca de mídia</h1>
+        <button type="button" class="btn btn-primary"><i class="ph ph-upload-simple"></i>Importar arquivos</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px">
+        <div class="card" style="padding:8px">
+          <div class="thumb" style="height:100px;position:relative"><i class="ph ph-play" style="font-size:20px"></i><span style="position:absolute;bottom:5px;right:6px;font-size:10px;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:4px">02:14</span></div>
+          <div style="font-size:12.5px;padding:6px 2px 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">boss03_ribby_croaks.mp4</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;padding:2px">
+            <span class="tag tag-neutral">H.264</span><span class="tag tag-neutral">42 Mbps</span><span class="tag tag-outline">-19.4 LUFS</span>
+          </div>
+        </div>
+        <div class="card" style="padding:8px">
+          <div class="thumb" style="height:100px;position:relative"><i class="ph ph-play" style="font-size:20px"></i><span style="position:absolute;bottom:5px;right:6px;font-size:10px;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:4px">03:02</span></div>
+          <div style="font-size:12.5px;padding:6px 2px 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">boss04_captain_brineybeard.mp4</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;padding:2px">
+            <span class="tag tag-neutral">H.264</span><span class="tag tag-neutral">38 Mbps</span><span class="tag tag-outline">-17.8 LUFS</span>
+          </div>
+        </div>
+        <div class="card" style="padding:8px">
+          <div class="thumb" style="height:100px;position:relative"><i class="ph ph-play" style="font-size:20px"></i><span style="position:absolute;bottom:5px;right:6px;font-size:10px;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:4px">05:41</span></div>
+          <div style="font-size:12.5px;padding:6px 2px 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">boss05_wally_warbles.mp4</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;padding:2px">
+            <span class="tag tag-neutral">H.264</span><span class="tag tag-neutral">45 Mbps</span><span class="tag tag-outline">-20.1 LUFS</span>
+          </div>
+        </div>
+        <div class="card" style="padding:8px">
+          <div class="thumb" style="height:100px;position:relative"><i class="ph ph-play" style="font-size:20px"></i><span style="position:absolute;bottom:5px;right:6px;font-size:10px;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:4px">3:20:00</span></div>
+          <div style="font-size:12.5px;padding:6px 2px 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">minecraft_ep14_raw.mp4</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;padding:2px">
+            <span class="tag tag-neutral">HEVC</span><span class="tag tag-neutral">60 Mbps</span><span class="tag tag-outline">-15.2 LUFS</span>
+          </div>
+        </div>
+        <div class="card" style="padding:8px">
+          <div class="thumb" style="height:100px;position:relative"><i class="ph ph-waveform" style="font-size:20px"></i><span style="position:absolute;bottom:5px;right:6px;font-size:10px;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:4px">02:14</span></div>
+          <div style="font-size:12.5px;padding:6px 2px 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">commentary_mic.wav</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;padding:2px">
+            <span class="tag tag-neutral">PCM</span><span class="tag tag-neutral">48kHz</span><span class="tag tag-outline">-24.0 LUFS</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ================= QUEUE ================= -->
+    <sc-if value="{{ isQueue }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;overflow:auto;padding:28px 36px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <h1 style="font-size:20px;margin:0">Fila de exportação</h1>
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-neutral-500)">Workers simultâneos
+            <div class="seg">
+              <label class="seg-opt"><input type="radio" name="workers" checked />1</label>
+              <label class="seg-opt"><input type="radio" name="workers" />2</label>
+              <label class="seg-opt"><input type="radio" name="workers" />4</label>
+            </div>
+          </div>
+          <button type="button" class="btn btn-primary"><i class="ph ph-plus"></i>Adicionar exportação</button>
+        </div>
+      </div>
+      <p style="margin:0 0 20px;font-size:12.5px;color:var(--color-neutral-500)">A edição continua responsiva enquanto os jobs renderizam em segundo plano. A fila persiste entre sessões.</p>
+      <div style="display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:var(--radius-md);background:color-mix(in srgb, var(--color-accent) 8%, transparent);margin-bottom:16px;font-size:11.5px;color:var(--color-neutral-400)">
+        <i class="ph ph-code" style="color:var(--color-accent);flex:none;margin-top:1px"></i>
+        <span>Nota técnica: cada job é um snapshot (bitrate/perfil/destino) tirado no momento em que entra na fila — mudanças no projeto ativo depois disso não afetam o job. Render roda em worker separado da UI (tokio::mpsc); 1 worker por padrão, configurável em Preferências.</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+
+        <div class="card" style="flex-direction:row;align-items:center;gap:14px;padding:12px 14px">
+          <i class="ph ph-dots-six-vertical" style="color:var(--color-neutral-600)"></i>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span class="tag tag-accent">Renderizando</span><span style="font-size:13px">Cuphead — Boss 01: Robô do Rei Dado</span></div>
+            <div style="height:5px;border-radius:3px;background:var(--color-neutral-800);overflow:hidden"><div style="height:100%;background:var(--color-accent);width:{{ progressWidth }}"></div></div>
+            <div style="font-size:11px;color:var(--color-neutral-500);margin-top:4px">-14 LUFS · 42 Mbps · /export/cuphead/boss01.mp4 · {{ progressLabel }}</div>
+          </div>
+          <i class="ph ph-pause" title="Pausar" style="cursor:pointer"></i>
+          <i class="ph ph-x" title="Cancelar" style="cursor:pointer"></i>
+        </div>
+
+        <div class="card" style="flex-direction:row;align-items:center;gap:14px;padding:12px 14px">
+          <i class="ph ph-dots-six-vertical" style="color:var(--color-neutral-600)"></i>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px"><span class="tag tag-outline">Na fila</span><span style="font-size:13px">Cuphead — Boss 02: Goopy Le Grande</span></div>
+            <div style="font-size:11px;color:var(--color-neutral-500)">-14 LUFS · 38 Mbps · /export/cuphead/boss02.mp4</div>
+          </div>
+          <i class="ph ph-caret-up" style="cursor:pointer"></i>
+          <i class="ph ph-caret-down" style="cursor:pointer"></i>
+          <i class="ph ph-x" title="Remover" style="cursor:pointer"></i>
+        </div>
+
+        <div class="card" style="flex-direction:row;align-items:center;gap:14px;padding:12px 14px">
+          <i class="ph ph-dots-six-vertical" style="color:var(--color-neutral-600)"></i>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px"><span class="tag tag-outline">Na fila</span><span style="font-size:13px">Cuphead — Boss 03: Ribby e Croaks</span></div>
+            <div style="font-size:11px;color:var(--color-neutral-500)">-14 LUFS · 42 Mbps · /export/cuphead/boss03.mp4</div>
+          </div>
+          <i class="ph ph-caret-up" style="cursor:pointer"></i>
+          <i class="ph ph-caret-down" style="cursor:pointer"></i>
+          <i class="ph ph-x" title="Remover" style="cursor:pointer"></i>
+        </div>
+
+        <div class="card" style="flex-direction:row;align-items:center;gap:14px;padding:12px 14px;opacity:.8">
+          <i class="ph ph-dots-six-vertical" style="color:var(--color-neutral-700)"></i>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px"><span class="tag tag-neutral">Pausado</span><span style="font-size:13px">Cuphead — Boss 00: Intro</span></div>
+            <div style="font-size:11px;color:var(--color-neutral-500)">-14 LUFS · 30 Mbps · /export/cuphead/boss00.mp4</div>
+          </div>
+          <i class="ph ph-play" title="Retomar" style="cursor:pointer"></i>
+          <i class="ph ph-x" title="Remover" style="cursor:pointer"></i>
+        </div>
+
+        <div class="card" style="flex-direction:row;align-items:center;gap:14px;padding:12px 14px">
+          <div style="width:16px"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px"><span class="tag tag-accent-2">Concluído</span><span style="font-size:13px">Minecraft Long Play — Sessão 14</span></div>
+            <div style="font-size:11px;color:var(--color-neutral-500)">-14 LUFS · 60 Mbps · /export/minecraft/ep14.mp4</div>
+          </div>
+          <i class="ph ph-folder-open" title="Abrir pasta" style="cursor:pointer"></i>
+        </div>
+
+        <div class="card" style="flex-direction:row;align-items:center;gap:14px;padding:12px 14px;box-shadow:0 0 0 1px var(--color-neutral-700)">
+          <div style="width:16px"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px"><span class="tag" style="background:var(--color-neutral-800);color:#e79f9f">Falhou</span><span style="font-size:13px">Shorts da semana — Corte 04</span></div>
+            <div style="font-size:11px;color:var(--color-neutral-500)">Erro: espaço em disco insuficiente em /export/shorts/</div>
+          </div>
+          <button type="button" class="btn btn-secondary" style="font-size:12px;padding:5px 10px"><i class="ph ph-arrow-clockwise"></i>Tentar novamente</button>
+        </div>
+
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ================= PREFS ================= -->
+    <sc-if value="{{ isPrefs }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;overflow:auto;padding:28px 36px;max-width:640px">
+      <h1 style="font-size:20px;margin:0 0 20px">Preferências</h1>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-kicker">Áudio</div>
+        <div class="field" style="margin-top:6px"><label>Perfil de normalização padrão</label>
+          <div class="seg">
+            <label class="seg-opt"><input type="radio" name="lufs" checked />-14 LUFS · YouTube</label>
+            <label class="seg-opt"><input type="radio" name="lufs" />-16 LUFS · Podcast</label>
+            <label class="seg-opt"><input type="radio" name="lufs" />-23 LUFS · Broadcast</label>
+          </div>
+        </div>
+        <label class="radio" style="margin-top:6px"><input type="radio" checked /><span class="dot"></span>Limitador de true peak ativado (-1.0 dBTP)</label>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-kicker">Exportação</div>
+        <div class="field" style="margin-top:6px"><label>Workers de exportação em segundo plano</label>
+          <div class="seg">
+            <label class="seg-opt"><input type="radio" name="wk" checked />1</label>
+            <label class="seg-opt"><input type="radio" name="wk" />2</label>
+            <label class="seg-opt"><input type="radio" name="wk" />4</label>
+            <label class="seg-opt"><input type="radio" name="wk" />8</label>
+          </div>
+        </div>
+        <div class="field"><label>Pasta de saída padrão</label>
+          <div style="display:flex;gap:8px"><input class="input" value="C:\Videos\PacoPaçoca\Export" style="flex:1" /><button type="button" class="btn btn-secondary">Procurar</button></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-kicker">Projeto</div>
+        <div class="field" style="margin-top:6px"><label>Intervalo de autosave</label>
+          <div class="seg">
+            <label class="seg-opt"><input type="radio" name="auto" />1 min</label>
+            <label class="seg-opt"><input type="radio" name="auto" checked />5 min</label>
+            <label class="seg-opt"><input type="radio" name="auto" />10 min</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-kicker">Atalhos de teclado</div>
+        <table class="table" style="margin-top:6px">
+          <thead><tr><th>Ação</th><th>Atalho</th></tr></thead>
+          <tbody>
+            <tr><td>Dividir clipe (split)</td><td class="text-muted">S</td></tr>
+            <tr><td>Cortar</td><td class="text-muted">X</td></tr>
+            <tr><td>Play / Pause</td><td class="text-muted">Espaço</td></tr>
+            <tr><td>Marcar entrada / saída</td><td class="text-muted">I / O</td></tr>
+            <tr><td>Enviar para fila de exportação</td><td class="text-muted">Ctrl+E</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    </sc-if>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { screen: 'home', progress: 62, tool: 'select' };
+
+  componentDidMount() {
+    this._t = setInterval(() => {
+      this.setState(s => ({ progress: s.progress < 95 ? s.progress + 1 : s.progress }));
+    }, 900);
+  }
+  componentWillUnmount() { clearInterval(this._t); }
+
+  renderVals() {
+    const s = this.state.screen;
+    const titles = { home: 'Início', editor: 'Editor', library: 'Biblioteca de mídia', queue: 'Fila de exportação', prefs: 'Preferências' };
+    const accent = 'var(--color-accent)';
+    const dim = 'var(--color-neutral-400)';
+    return {
+      isHome: s === 'home', isEditor: s === 'editor', isLibrary: s === 'library', isQueue: s === 'queue', isPrefs: s === 'prefs',
+      homeActive: s === 'home' ? 'active' : '', editorActive: s === 'editor' ? 'active' : '',
+      libraryActive: s === 'library' ? 'active' : '', queueActive: s === 'queue' ? 'active' : '', prefsActive: s === 'prefs' ? 'active' : '',
+      screenTitle: titles[s], projectName: 'Cuphead — 50 Chefes',
+      goHome: () => this.setState({ screen: 'home' }),
+      goEditor: () => this.setState({ screen: 'editor' }),
+      goLibrary: () => this.setState({ screen: 'library' }),
+      goQueue: () => this.setState({ screen: 'queue' }),
+      goPrefs: () => this.setState({ screen: 'prefs' }),
+      setToolSelect: () => this.setState({ tool: 'select' }),
+      setToolCut: () => this.setState({ tool: 'cut' }),
+      setToolTrim: () => this.setState({ tool: 'trim' }),
+      toolSelectBorder: this.state.tool === 'select' ? accent : 'transparent',
+      toolSelectColor: this.state.tool === 'select' ? accent : dim,
+      toolCutBorder: this.state.tool === 'cut' ? accent : 'transparent',
+      toolCutColor: this.state.tool === 'cut' ? accent : dim,
+      toolTrimBorder: this.state.tool === 'trim' ? accent : 'transparent',
+      toolTrimColor: this.state.tool === 'trim' ? accent : dim,
+      progressWidth: this.state.progress + '%',
+      progressLabel: this.state.progress + '%',
+    };
+  }
+}
+
+</script>
+</body>
+</html>

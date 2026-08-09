@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Gameplay Audio Watcher</title>
+<style>
+  :root {
+    --bg: #12161c;
+    --surface: #1a2029;
+    --surface-2: #212836;
+    --border: #2b3340;
+    --text-primary: #eef1f4;
+    --text-secondary: #a9b2bd;
+    --text-muted: #6c7683;
+    --accent: #2ea39e;
+    --accent-tint: #2ea39e22;
+    --before: #e0574f;
+    --before-tint: #e0574f22;
+    --warn: #e0a83d;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --surface-2: #eef1f4;
+      --border: #d7dce2;
+      --text-primary: #171b21;
+      --text-secondary: #4b5563;
+      --text-muted: #7b8492;
+      --accent: #00968c;
+      --accent-tint: #00968c1a;
+      --before: #c73f38;
+      --before-tint: #c73f381a;
+      --warn: #b6790c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.5;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; }
+
+  .page { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  header.top {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding-bottom: 22px; border-bottom: 1px solid var(--border); margin-bottom: 26px; gap: 20px;
+  }
+  header.top .eyebrow {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px;
+  }
+  header.top h1 { font-size: 24px; font-weight: 800; margin: 0 0 6px; letter-spacing: -0.01em; }
+  header.top .paths { font-size: 12.5px; color: var(--text-muted); }
+  header.top .paths .mono { color: var(--text-secondary); }
+  header.top .paths .arrow { color: var(--text-muted); margin: 0 6px; }
+
+  .counts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  .count-chip {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11px; font-weight: 700;
+    padding: 5px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-secondary); white-space: nowrap;
+  }
+  .count-chip.active { color: var(--accent); border-color: var(--accent); background: var(--accent-tint); }
+
+  .empty {
+    padding: 60px 20px; text-align: center; color: var(--text-muted); font-size: 14px;
+    border: 1px dashed var(--border); border-radius: 10px;
+  }
+
+  .pipeline { display: flex; flex-direction: column; gap: 10px; }
+
+  .row {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; transition: border-color 0.15s ease;
+  }
+  .row.status-error { border-color: color-mix(in srgb, var(--before) 40%, var(--border)); }
+  .row.status-processing { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+
+  .row-head {
+    display: grid; grid-template-columns: 18px 1fr auto 22px; align-items: center; gap: 14px;
+    padding: 14px 16px; cursor: pointer; user-select: none;
+  }
+  .row-head:hover { background: var(--surface-2); }
+
+  .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--text-muted); }
+  .status-waiting .dot { background: var(--text-muted); }
+  .status-processing .dot { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+  .status-done .dot { background: var(--accent); }
+  .status-error .dot { background: var(--before); }
+  @media (prefers-reduced-motion: reduce) { .status-processing .dot { animation: none; } }
+  @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 var(--accent-tint); } 50% { opacity: 0.55; box-shadow: 0 0 0 5px transparent; } }
+
+  .row-main { min-width: 0; }
+  .row-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .steps { display: flex; align-items: center; gap: 4px; margin-top: 8px; }
+  .step {
+    height: 3px; flex: 1; border-radius: 2px; background: var(--surface-2); position: relative;
+  }
+  .step.filled { background: var(--accent); }
+  .step.current { background: var(--accent); animation: shimmer 1.2s ease-in-out infinite; }
+  .step.failed { background: var(--before); }
+  @media (prefers-reduced-motion: reduce) { .step.current { animation: none; } }
+  @keyframes shimmer { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+  .step-labels {
+    display: flex; justify-content: space-between; margin-top: 5px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 9px;
+    letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-muted);
+  }
+  .step-labels span { flex: 1; text-align: center; }
+  .step-labels span:first-child { text-align: left; }
+  .step-labels span:last-child { text-align: right; }
+
+  .row-status { text-align: right; white-space: nowrap; }
+  .badge {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11px; font-weight: 700;
+    padding: 3px 9px; border-radius: 999px; display: inline-block;
+  }
+  .badge.waiting { color: var(--text-muted); background: var(--surface-2); }
+  .badge.processing { color: var(--accent); background: var(--accent-tint); }
+  .badge.done { color: var(--accent); background: var(--accent-tint); }
+  .badge.error { color: var(--before); background: var(--before-tint); }
+  .pct { display: block; margin-top: 5px; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11px; color: var(--text-secondary); }
+
+  .chevron { color: var(--text-muted); transition: transform 0.15s ease; font-size: 12px; text-align: center; }
+  .row.open .chevron { transform: rotate(90deg); }
+
+  .row-body { max-height: 0; overflow: hidden; transition: max-height 0.2s ease; border-top: 1px solid transparent; }
+  .row.open .row-body { max-height: 600px; border-top-color: var(--border); }
+  .row-body-inner { padding: 18px 18px 20px; }
+
+  .placeholder { font-size: 13px; color: var(--text-muted); }
+  .error-msg {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; color: var(--before);
+    background: var(--before-tint); border-radius: 6px; padding: 10px 12px; white-space: pre-wrap; word-break: break-word;
+  }
+
+  .metric { margin-bottom: 16px; }
+  .metric:last-child { margin-bottom: 0; }
+  .metric-title { font-size: 12.5px; font-weight: 700; margin-bottom: 8px; color: var(--text-secondary); }
+  .meter-row { display: grid; grid-template-columns: 52px 1fr 68px; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .meter-row:last-child { margin-bottom: 0; }
+  .meter-tag { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 10px; text-transform: uppercase; color: var(--text-muted); }
+  .meter-track { position: relative; height: 11px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+  .meter-fill { position: absolute; top: 0; left: 0; bottom: 0; border-radius: 4px; }
+  .meter-fill.before { background: var(--before); }
+  .meter-fill.after { background: var(--accent); }
+  .meter-val { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11.5px; font-weight: 700; text-align: right; }
+  .meter-val.before { color: var(--before); }
+  .meter-val.after { color: var(--accent); }
+
+  .lufs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .lufs-box { background: var(--surface-2); border-radius: 6px; padding: 10px 12px; }
+  .lufs-box .k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 5px; }
+  .lufs-box .v { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 13px; }
+  .lufs-box .v .before { color: var(--before); }
+  .lufs-box .v .after { color: var(--accent); font-weight: 700; }
+  .lufs-box .v .sep { color: var(--text-muted); margin: 0 4px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Live Pipeline</p>
+      <h1>Gameplay Audio Watcher</h1>
+      <div class="paths">
+        <span class="mono" id="watchPath">—</span>
+        <span class="arrow">→</span>
+        <span class="mono" id="outputPath">—</span>
+      </div>
+    </div>
+    <div class="counts" id="counts"></div>
+  </header>
+
+  <div id="pipeline" class="pipeline">
+    <div class="empty">Aguardando arquivos novos na pasta monitorada…</div>
+  </div>
+</div>
+
+<script>
+const STAGES = [
+  { key: "detected",      label: "Detectado" },
+  { key: "stabilizing",   label: "Estabilizando" },
+  { key: "analyzing-in",  label: "Analisando" },
+  { key: "processing",    label: "Processando" },
+  { key: "analyzing-out", label: "Analisando" },
+  { key: "done",          label: "Concluido" }
+];
+
+const openRows = new Set();
+
+function stageIndex(status) {
+  if (status === "error") return -1;
+  const i = STAGES.findIndex(s => s.key === status);
+  return i === -1 ? 0 : i;
+}
+
+function fmt(n, digits) {
+  if (n === null || n === undefined || Number.isNaN(n)) return "—";
+  return Number(n).toFixed(digits === undefined ? 1 : digits);
+}
+
+function peakBar(before, after) {
+  const max = 0;
+  const min = Math.min(before, after, -6) - 2;
+  const pct = v => Math.max(0, Math.min(100, ((v - min) / (max - min)) * 100));
+  return `
+    <div class="metric">
+      <div class="metric-title">Pico maximo (dBTP) — menor risco de estourar quanto mais perto de −6</div>
+      <div class="meter-row">
+        <div class="meter-tag">Antes</div>
+        <div class="meter-track"><div class="meter-fill before" style="width:${pct(before)}%"></div></div>
+        <div class="meter-val before">${fmt(before,2)}</div>
+      </div>
+      <div class="meter-row">
+        <div class="meter-tag">Depois</div>
+        <div class="meter-track"><div class="meter-fill after" style="width:${pct(after)}%"></div></div>
+        <div class="meter-val after">${fmt(after,2)}</div>
+      </div>
+    </div>`;
+}
+
+function lraBar(before, after) {
+  const max = Math.max(before, after, 6) * 1.15;
+  const pct = v => Math.max(0, Math.min(100, (v / max) * 100));
+  return `
+    <div class="metric">
+      <div class="metric-title">Consistencia de volume — faixa de loudness (LU, menor = mais estavel)</div>
+      <div class="meter-row">
+        <div class="meter-tag">Antes</div>
+        <div class="meter-track"><div class="meter-fill before" style="width:${pct(before)}%"></div></div>
+        <div class="meter-val before">${fmt(before,1)}</div>
+      </div>
+      <div class="meter-row">
+        <div class="meter-tag">Depois</div>
+        <div class="meter-track"><div class="meter-fill after" style="width:${pct(after)}%"></div></div>
+        <div class="meter-val after">${fmt(after,1)}</div>
+      </div>
+    </div>`;
+}
+
+function lufsGrid(m) {
+  return `
+    <div class="metric">
+      <div class="metric-title">Loudness integrada (LUFS)</div>
+      <div class="lufs-box" style="max-width:220px">
+        <div class="k">Antes → Depois</div>
+        <div class="v"><span class="before">${fmt(m.before.Lufs,2)}</span><span class="sep">→</span><span class="after">${fmt(m.after.Lufs,2)}</span></div>
+      </div>
+    </div>`;
+}
+
+function renderBody(file) {
+  if (file.Status === "error") {
+    return `<div class="error-msg">${(file.Error || "Erro desconhecido ao processar o arquivo.").replace(/</g,"&lt;")}</div>`;
+  }
+  const m = file.Metrics;
+  if (!m || !m.before) {
+    return `<div class="placeholder">Metricas aparecem aqui assim que a analise do arquivo original terminar.</div>`;
+  }
+  if (!m.after) {
+    return `<div class="placeholder">Original analisado. Aguardando o processamento terminar para medir o resultado.</div>`;
+  }
+  return peakBar(m.before.TruePeak, m.after.TruePeak) + lraBar(m.before.Lra, m.after.Lra) + lufsGrid(m);
+}
+
+function renderRow(file) {
+  const idx = stageIndex(file.Status);
+  const isError = file.Status === "error";
+  const isOpen = openRows.has(file.Path);
+
+  const stepsHtml = STAGES.map((s, i) => {
+    let cls = "step";
+    if (isError && i === Math.max(idx, 0)) cls += " failed";
+    else if (i < idx || file.Status === "done") cls += " filled";
+    else if (i === idx && file.Status === "processing") cls += " current";
+    else if (i <= idx) cls += " filled";
+    return `<div class="${cls}"></div>`;
+  }).join("");
+
+  const badgeText = { waiting: "Aguardando", detected: "Detectado", stabilizing: "Estabilizando",
+    "analyzing-in": "Analisando", processing: "Processando", "analyzing-out": "Analisando", done: "Concluido", error: "Erro" };
+  const badgeClass = file.Status === "done" ? "done" : file.Status === "error" ? "error"
+    : file.Status === "processing" ? "processing" : "waiting";
+
+  const pctHtml = file.Status === "processing" ? `<span class="pct">${file.Percent || 0}%</span>` : "";
+
+  return `
+    <div class="row status-${file.Status} ${isOpen ? "open" : ""}" data-path="${encodeURIComponent(file.Path)}">
+      <div class="row-head" onclick="toggleRow('${encodeURIComponent(file.Path)}')">
+        <div class="dot"></div>
+        <div class="row-main">
+          <div class="row-name mono">${file.Name}</div>
+          <div class="steps">${stepsHtml}</div>
+          <div class="step-labels"><span>${STAGES[0].label}</span><span></span><span></span><span></span><span></span><span>${STAGES[5].label}</span></div>
+        </div>
+        <div class="row-status">
+          <span class="badge ${badgeClass}">${badgeText[file.Status] || file.Status}</span>
+          ${pctHtml}
+        </div>
+        <div class="chevron">&#9656;</div>
+      </div>
+      <div class="row-body"><div class="row-body-inner">${renderBody(file)}</div></div>
+    </div>`;
+}
+
+function toggleRow(encodedPath) {
+  const path = decodeURIComponent(encodedPath);
+  if (openRows.has(path)) openRows.delete(path); else openRows.add(path);
+  render(lastData);
+}
+window.toggleRow = toggleRow;
+
+let lastData = null;
+
+function render(data) {
+  if (!data) return;
+  lastData = data;
+  document.getElementById("watchPath").textContent = data.WatchPath || "—";
+  document.getElementById("outputPath").textContent = data.OutputPath || "—";
+
+  const files = data.Files || [];
+  const counts = { processing: 0, waiting: 0, done: 0, error: 0 };
+  files.forEach(f => {
+    if (f.Status === "processing" || f.Status === "analyzing-in" || f.Status === "analyzing-out") counts.processing++;
+    else if (f.Status === "done") counts.done++;
+    else if (f.Status === "error") counts.error++;
+    else counts.waiting++;
+  });
+
+  document.getElementById("counts").innerHTML = `
+    <span class="count-chip ${counts.processing ? "active" : ""}">${counts.processing} processando</span>
+    <span class="count-chip">${counts.waiting} na fila</span>
+    <span class="count-chip">${counts.done} concluidos</span>
+    ${counts.error ? `<span class="count-chip" style="color:var(--before);border-color:var(--before);background:var(--before-tint)">${counts.error} com erro</span>` : ""}
+  `;
+
+  const container = document.getElementById("pipeline");
+  if (files.length === 0) {
+    container.innerHTML = `<div class="empty">Aguardando arquivos novos na pasta monitorada…</div>`;
+    return;
+  }
+  container.innerHTML = files.map(renderRow).join("");
+}
+
+async function refresh() {
+  try {
+    const res = await fetch("/api/status", { cache: "no-store" });
+    const data = await res.json();
+    render(data);
+  } catch (e) {
+    // server not reachable yet / transient — keep last known state
+  }
+}
+
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>
