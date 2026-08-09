@@ -1,0 +1,13 @@
+[package]
+name = "nivela-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nivela-core = { path = "../nivela-core" }
+# wgpu backend pulls in a broken windows-rs version graph (duplicate `windows_core` versions)
+# in the current wgpu-hal 30.0.0 release on the dx12 path — glow (OpenGL) sidesteps it and is
+# plenty for this 2D immediate-mode shell. Revisit when GStreamer needs a shared GPU texture.
+eframe = { version = "0.36", default-features = false, features = ["glow", "default_fonts", "accesskit"] }
+egui = "0.36"
