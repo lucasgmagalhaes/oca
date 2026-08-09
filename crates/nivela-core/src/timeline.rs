@@ -61,7 +61,13 @@ mod tests {
     use super::*;
 
     fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> ClipInstance {
-        ClipInstance { id, asset_id: 1, start_secs, source_in_secs, source_out_secs }
+        ClipInstance {
+            id,
+            asset_id: 1,
+            start_secs,
+            source_in_secs,
+            source_out_secs,
+        }
     }
 
     #[test]
@@ -71,7 +77,10 @@ mod tests {
 
     #[test]
     fn empty_timeline_has_zero_duration() {
-        let timeline = Timeline { tracks: vec![], playhead_secs: 0.0 };
+        let timeline = Timeline {
+            tracks: vec![],
+            playhead_secs: 0.0,
+        };
         assert_eq!(timeline.duration_secs(), 0.0);
     }
 

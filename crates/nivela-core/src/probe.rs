@@ -156,7 +156,11 @@ pub fn parse_probe_json(json: &str) -> Result<ProbedMedia, ProbeError> {
         .unwrap_or(0.0);
 
     Ok(ProbedMedia {
-        kind: if video.is_some() { MediaKind::Video } else { MediaKind::Audio },
+        kind: if video.is_some() {
+            MediaKind::Video
+        } else {
+            MediaKind::Audio
+        },
         duration_secs,
         codec: stream.codec_name.clone(),
         bitrate_mbps,
@@ -274,13 +278,20 @@ mod tests {
 
     #[test]
     fn rejects_output_with_no_usable_stream() {
-        let json = r#"{"streams": [{"codec_type": "subtitle", "codec_name": "mov_text"}], "format": {}}"#;
-        assert!(matches!(parse_probe_json(json), Err(ProbeError::NoMediaStream)));
+        let json =
+            r#"{"streams": [{"codec_type": "subtitle", "codec_name": "mov_text"}], "format": {}}"#;
+        assert!(matches!(
+            parse_probe_json(json),
+            Err(ProbeError::NoMediaStream)
+        ));
     }
 
     #[test]
     fn rejects_malformed_json() {
-        assert!(matches!(parse_probe_json("not json"), Err(ProbeError::Json(_))));
+        assert!(matches!(
+            parse_probe_json("not json"),
+            Err(ProbeError::Json(_))
+        ));
     }
 
     #[test]

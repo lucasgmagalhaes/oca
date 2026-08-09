@@ -12,7 +12,11 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(20.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new(Text::LibraryTitle.tr(locale)).size(20.0).strong());
+            ui.label(
+                RichText::new(Text::LibraryTitle.tr(locale))
+                    .size(20.0)
+                    .strong(),
+            );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let _ = ui.button(Text::ImportFiles.tr(locale));
             });
@@ -46,20 +50,30 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                                                 MediaKind::Video => "▶",
                                                 MediaKind::Audio => "♪",
                                             };
-                                            ui.label(RichText::new(icon).size(22.0).color(theme::TEXT_MUTED));
+                                            ui.label(
+                                                RichText::new(icon)
+                                                    .size(22.0)
+                                                    .color(theme::TEXT_MUTED),
+                                            );
                                         });
                                     });
                                 ui.label(RichText::new(&asset.file_name).size(12.5));
                                 ui.horizontal_wrapped(|ui| {
                                     widgets::tag_outline(ui, &asset.codec);
                                     if asset.source_bitrate_mbps > 0.0 {
-                                        widgets::tag_outline(ui, &format!("{:.0} Mbps", asset.source_bitrate_mbps));
+                                        widgets::tag_outline(
+                                            ui,
+                                            &format!("{:.0} Mbps", asset.source_bitrate_mbps),
+                                        );
                                     }
                                     if let Some(khz) = asset.sample_rate_khz {
                                         widgets::tag_outline(ui, &format!("{khz:.0}kHz"));
                                     }
                                     if let Some(l) = &asset.loudness {
-                                        widgets::tag_outline(ui, &format!("{:.1} LUFS", l.integrated_lufs));
+                                        widgets::tag_outline(
+                                            ui,
+                                            &format!("{:.1} LUFS", l.integrated_lufs),
+                                        );
                                     }
                                 });
                                 ui.label(
@@ -79,10 +93,7 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
 
         if app.active_project().media_library.is_empty() {
             ui.add_space(20.0);
-            ui.label(
-                RichText::new(Text::LibraryEmpty.tr(locale))
-                    .color(theme::TEXT_MUTED),
-            );
+            ui.label(RichText::new(Text::LibraryEmpty.tr(locale)).color(theme::TEXT_MUTED));
         }
     });
 }

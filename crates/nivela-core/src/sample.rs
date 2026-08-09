@@ -99,9 +99,27 @@ fn cuphead_timeline() -> Timeline {
                 name: "V1".to_string(),
                 kind: TrackKind::Video,
                 clips: vec![
-                    ClipInstance { id: 1, asset_id: 1, start_secs: 0.0, source_in_secs: 0.0, source_out_secs: 30.0 },
-                    ClipInstance { id: 2, asset_id: 2, start_secs: 30.0, source_in_secs: 0.0, source_out_secs: 44.0 },
-                    ClipInstance { id: 3, asset_id: 3, start_secs: 74.0, source_in_secs: 0.0, source_out_secs: 24.0 },
+                    ClipInstance {
+                        id: 1,
+                        asset_id: 1,
+                        start_secs: 0.0,
+                        source_in_secs: 0.0,
+                        source_out_secs: 30.0,
+                    },
+                    ClipInstance {
+                        id: 2,
+                        asset_id: 2,
+                        start_secs: 30.0,
+                        source_in_secs: 0.0,
+                        source_out_secs: 44.0,
+                    },
+                    ClipInstance {
+                        id: 3,
+                        asset_id: 3,
+                        start_secs: 74.0,
+                        source_in_secs: 0.0,
+                        source_out_secs: 24.0,
+                    },
                 ],
             },
             Track {
@@ -109,16 +127,40 @@ fn cuphead_timeline() -> Timeline {
                 name: "A1".to_string(),
                 kind: TrackKind::Audio,
                 clips: vec![
-                    ClipInstance { id: 4, asset_id: 1, start_secs: 0.0, source_in_secs: 0.0, source_out_secs: 30.0 },
-                    ClipInstance { id: 5, asset_id: 2, start_secs: 30.0, source_in_secs: 0.0, source_out_secs: 44.0 },
-                    ClipInstance { id: 6, asset_id: 3, start_secs: 74.0, source_in_secs: 0.0, source_out_secs: 24.0 },
+                    ClipInstance {
+                        id: 4,
+                        asset_id: 1,
+                        start_secs: 0.0,
+                        source_in_secs: 0.0,
+                        source_out_secs: 30.0,
+                    },
+                    ClipInstance {
+                        id: 5,
+                        asset_id: 2,
+                        start_secs: 30.0,
+                        source_in_secs: 0.0,
+                        source_out_secs: 44.0,
+                    },
+                    ClipInstance {
+                        id: 6,
+                        asset_id: 3,
+                        start_secs: 74.0,
+                        source_in_secs: 0.0,
+                        source_out_secs: 24.0,
+                    },
                 ],
             },
             Track {
                 id: 3,
                 name: "A2".to_string(),
                 kind: TrackKind::Audio,
-                clips: vec![ClipInstance { id: 7, asset_id: 4, start_secs: 0.0, source_in_secs: 0.0, source_out_secs: 98.0 }],
+                clips: vec![ClipInstance {
+                    id: 7,
+                    asset_id: 4,
+                    start_secs: 0.0,
+                    source_in_secs: 0.0,
+                    source_out_secs: 98.0,
+                }],
             },
         ],
     }
@@ -153,7 +195,10 @@ pub fn sample_projects() -> Vec<Project> {
                 None,
                 -15.2,
             )],
-            timeline: Timeline { tracks: vec![], playhead_secs: 0.0 },
+            timeline: Timeline {
+                tracks: vec![],
+                playhead_secs: 0.0,
+            },
         },
         Project {
             id: 3,
@@ -161,7 +206,10 @@ pub fn sample_projects() -> Vec<Project> {
             last_edited: Recency::DaysAgo(3),
             summary: "Cortes verticais pra Shorts/Reels.".to_string(),
             media_library: vec![],
-            timeline: Timeline { tracks: vec![], playhead_secs: 0.0 },
+            timeline: Timeline {
+                tracks: vec![],
+                playhead_secs: 0.0,
+            },
         },
     ]
 }
@@ -216,7 +264,9 @@ pub fn sample_export_jobs() -> Vec<ExportJob> {
             target_lufs: -14.0,
             bitrate_mbps: 20.0,
             output_path: "/export/shorts/".to_string(),
-            status: ExportJobStatus::Failed { message: "espaço em disco insuficiente em /export/shorts/".to_string() },
+            status: ExportJobStatus::Failed {
+                message: "espaço em disco insuficiente em /export/shorts/".to_string(),
+            },
         },
     ]
 }

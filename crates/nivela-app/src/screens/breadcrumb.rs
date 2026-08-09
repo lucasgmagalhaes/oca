@@ -17,9 +17,17 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
         )
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
-                ui.label(RichText::new(Text::AppName.tr(app.locale)).size(13.0).color(theme::TEXT_MUTED));
+                ui.label(
+                    RichText::new(Text::AppName.tr(app.locale))
+                        .size(13.0)
+                        .color(theme::TEXT_MUTED),
+                );
                 ui.label(RichText::new("›").color(theme::TEXT_MUTED));
-                ui.label(RichText::new(i18n::screen_title(app.locale, app.screen)).size(13.0).strong());
+                ui.label(
+                    RichText::new(i18n::screen_title(app.locale, app.screen))
+                        .size(13.0)
+                        .strong(),
+                );
 
                 if app.screen == Screen::Editor {
                     ui.label(RichText::new("›").color(theme::TEXT_MUTED));

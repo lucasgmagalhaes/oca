@@ -12,7 +12,11 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
         ui.add_space(24.0);
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
-                ui.label(RichText::new(Text::HomeTitle.tr(app.locale)).size(22.0).strong());
+                ui.label(
+                    RichText::new(Text::HomeTitle.tr(app.locale))
+                        .size(22.0)
+                        .strong(),
+                );
                 ui.label(
                     RichText::new(Text::HomeSubtitle.tr(app.locale))
                         .size(13.0)
@@ -41,8 +45,12 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                     let name = project.name.clone();
                     let summary = project.summary.clone();
                     let meta = crate::i18n::recency_label(app.locale, project.last_edited);
-                    let track_names: Vec<String> =
-                        project.timeline.tracks.iter().map(|t| t.name.clone()).collect();
+                    let track_names: Vec<String> = project
+                        .timeline
+                        .tracks
+                        .iter()
+                        .map(|t| t.name.clone())
+                        .collect();
                     let kicker = crate::i18n::track_summary(
                         app.locale,
                         project.media_library.len(),
@@ -59,15 +67,25 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                                     ui.set_min_width(ui.available_width());
                                     ui.set_min_height(90.0);
                                     ui.centered_and_justified(|ui| {
-                                        ui.label(RichText::new("▶").size(26.0).color(theme::TEXT_MUTED));
+                                        ui.label(
+                                            RichText::new("▶").size(26.0).color(theme::TEXT_MUTED),
+                                        );
                                     });
                                 });
                             ui.add_space(10.0);
                             ui.label(RichText::new(kicker).size(11.0).color(theme::TEXT_MUTED));
                             ui.label(RichText::new(name).strong());
-                            ui.label(RichText::new(summary).size(12.5).color(theme::TEXT_SECONDARY));
+                            ui.label(
+                                RichText::new(summary)
+                                    .size(12.5)
+                                    .color(theme::TEXT_SECONDARY),
+                            );
                             ui.add_space(6.0);
-                            ui.label(RichText::new(format!("🕐 {meta}")).size(11.0).color(theme::TEXT_MUTED));
+                            ui.label(
+                                RichText::new(format!("🕐 {meta}"))
+                                    .size(11.0)
+                                    .color(theme::TEXT_MUTED),
+                            );
                         });
                     });
 

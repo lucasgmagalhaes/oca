@@ -57,7 +57,11 @@ fn cmd_graph() {
     crate_dirs.sort();
 
     for crate_dir in &crate_dirs {
-        let crate_name = crate_dir.file_name().unwrap().to_string_lossy().replace('-', "_");
+        let crate_name = crate_dir
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .replace('-', "_");
         let src_dir = crate_dir.join("src");
         if !src_dir.is_dir() {
             continue;
@@ -133,7 +137,9 @@ fn workspace_root() -> PathBuf {
 }
 
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.is_dir() {
@@ -237,21 +243,33 @@ fn extract_name(line: &str) -> String {
 
 /// Coarse `mod`/`use` scan: returns `(kind, target_module_path)` pairs. `kind` is currently
 /// unused by the caller beyond documenting intent, kept for readability at call sites.
-fn extract_edges(source: &str, crate_name: &str, current_module: &str) -> Vec<(&'static str, String)> {
+fn extract_edges(
+    source: &str,
+    crate_name: &str,
+    current_module: &str,
+) -> Vec<(&'static str, String)> {
     let mut edges = Vec::new();
 
     for raw_line in source.lines() {
         let line = raw_line.trim_start();
 
-        if let Some(rest) = line.strip_prefix("pub mod ").or_else(|| line.strip_prefix("mod ")) {
-            let name: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+        if let Some(rest) = line
+            .strip_prefix("pub mod ")
+            .or_else(|| line.strip_prefix("mod "))
+        {
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
             if !name.is_empty() {
                 edges.push(("declares", format!("{current_module}::{name}")));
             }
             continue;
         }
 
-        let Some(rest) = line.strip_prefix("use ") else { continue };
+        let Some(rest) = line.strip_prefix("use ") else {
+            continue;
+        };
         let path = rest.trim_end_matches(';').trim();
         let path = path.split_once("::{").map(|(base, _)| base).unwrap_or(path);
         let path = path.strip_suffix("::*").unwrap_or(path);
@@ -259,11 +277,17 @@ fn extract_edges(source: &str, crate_name: &str, current_module: &str) -> Vec<(&
         let resolved = if let Some(rest) = path.strip_prefix("crate::") {
             resolve_relative(crate_name, rest)
         } else if let Some(rest) = path.strip_prefix("super::") {
-            let parent = current_module.rsplit_once("::").map(|(p, _)| p).unwrap_or(crate_name);
+            let parent = current_module
+                .rsplit_once("::")
+                .map(|(p, _)| p)
+                .unwrap_or(crate_name);
             resolve_relative(parent, rest)
         } else if let Some(rest) = path.strip_prefix("self::") {
             resolve_relative(current_module, rest)
-        } else if path.starts_with(crate_name) || path.starts_with("nivela_core") || path.starts_with("nivela_app") {
+        } else if path.starts_with(crate_name)
+            || path.starts_with("nivela_core")
+            || path.starts_with("nivela_app")
+        {
             resolve_import_target(path)
         } else {
             continue; // std/external crate — not interesting for this workspace graph.
@@ -285,7 +309,9 @@ fn extract_edges(source: &str, crate_name: &str, current_module: &str) -> Vec<(&
 /// resolves to `nivela_core::media`, while `nivela_core::media` stays as-is.
 fn resolve_import_target(path: &str) -> String {
     match path.rsplit_once("::") {
-        Some((head, tail)) if tail.starts_with(|c: char| c.is_ascii_uppercase()) => head.to_string(),
+        Some((head, tail)) if tail.starts_with(|c: char| c.is_ascii_uppercase()) => {
+            head.to_string()
+        }
         _ => path.to_string(),
     }
 }
@@ -378,12 +404,18 @@ mod tests {
 
     #[test]
     fn module_path_for_lib_root_is_the_crate_name() {
-        assert_eq!(module_path_for("nivela_core", Path::new("lib.rs")), "nivela_core");
+        assert_eq!(
+            module_path_for("nivela_core", Path::new("lib.rs")),
+            "nivela_core"
+        );
     }
 
     #[test]
     fn module_path_for_a_plain_file_appends_its_stem() {
-        assert_eq!(module_path_for("nivela_core", Path::new("probe.rs")), "nivela_core::probe");
+        assert_eq!(
+            module_path_for("nivela_core", Path::new("probe.rs")),
+            "nivela_core::probe"
+        );
     }
 
     #[test]
@@ -438,7 +470,11 @@ mod tests {
 
     #[test]
     fn resolves_crate_relative_use_edges() {
-        let edges = extract_edges("use crate::media::MediaAsset;\n", "nivela_core", "nivela_core::probe");
+        let edges = extract_edges(
+            "use crate::media::MediaAsset;\n",
+            "nivela_core",
+            "nivela_core::probe",
+        );
         assert!(edges.contains(&("uses", "nivela_core::media".to_string())));
     }
 
@@ -446,13 +482,21 @@ mod tests {
     fn resolves_super_relative_use_edges() {
         // `widgets` is a sibling module (lowercase), so it's kept as the target rather than
         // treated as an item to drop.
-        let edges = extract_edges("use super::widgets;\n", "nivela_app", "nivela_app::screens::home");
+        let edges = extract_edges(
+            "use super::widgets;\n",
+            "nivela_app",
+            "nivela_app::screens::home",
+        );
         assert!(edges.contains(&("uses", "nivela_app::screens::widgets".to_string())));
     }
 
     #[test]
     fn resolves_super_relative_use_edges_for_an_item() {
-        let edges = extract_edges("use super::NivelaApp;\n", "nivela_app", "nivela_app::screens::home");
+        let edges = extract_edges(
+            "use super::NivelaApp;\n",
+            "nivela_app",
+            "nivela_app::screens::home",
+        );
         assert!(edges.contains(&("uses", "nivela_app::screens".to_string())));
     }
 
@@ -464,8 +508,14 @@ mod tests {
 
     #[test]
     fn resolve_import_target_drops_a_trailing_item_but_keeps_a_trailing_module() {
-        assert_eq!(resolve_import_target("nivela_core::media::MediaAsset"), "nivela_core::media");
-        assert_eq!(resolve_import_target("nivela_core::media"), "nivela_core::media");
+        assert_eq!(
+            resolve_import_target("nivela_core::media::MediaAsset"),
+            "nivela_core::media"
+        );
+        assert_eq!(
+            resolve_import_target("nivela_core::media"),
+            "nivela_core::media"
+        );
         assert_eq!(resolve_import_target("nivela_core"), "nivela_core");
     }
 }

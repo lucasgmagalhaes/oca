@@ -44,7 +44,11 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
 
 fn rail_button(ui: &mut egui::Ui, app: &mut NivelaApp, screen: Screen, icon: &str, label: &str) {
     let active = app.screen == screen;
-    let color = if active { theme::ACCENT } else { theme::TEXT_MUTED };
+    let color = if active {
+        theme::ACCENT
+    } else {
+        theme::TEXT_MUTED
+    };
 
     let (rect, response) = ui.allocate_exact_size(egui::vec2(52.0, 46.0), egui::Sense::click());
     if ui.is_rect_visible(rect) {

@@ -122,11 +122,7 @@ impl NivelaApp {
     /// what a project card click on the Início screen does.
     pub fn open_project(&mut self, index: usize) {
         self.active_project = index;
-        self.selected_asset_id = self
-            .active_project()
-            .media_library
-            .first()
-            .map(|a| a.id);
+        self.selected_asset_id = self.active_project().media_library.first().map(|a| a.id);
         self.screen = Screen::Editor;
     }
 

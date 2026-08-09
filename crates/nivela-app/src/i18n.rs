@@ -211,7 +211,9 @@ pub fn job_status_label(locale: Locale, status: &ExportJobStatus) -> &'static st
 /// normal job, or `"Erro: <message>"`/`"Error: <message>"` for a failed one.
 pub fn job_detail_line(locale: Locale, job: &ExportJob) -> String {
     match &job.status {
-        ExportJobStatus::Failed { message } => format!("{}: {message}", Text::ErrorPrefix.tr(locale)),
+        ExportJobStatus::Failed { message } => {
+            format!("{}: {message}", Text::ErrorPrefix.tr(locale))
+        }
         _ => format!(
             "-{:.0} LUFS · {:.0} Mbps · {}",
             -job.target_lufs, job.bitrate_mbps, job.output_path
@@ -227,7 +229,10 @@ mod tests {
     fn every_text_variant_is_non_empty_in_every_locale() {
         for &text in Text::ALL {
             for &locale in &Locale::ALL {
-                assert!(!text.tr(locale).is_empty(), "{text:?} is empty for {locale:?}");
+                assert!(
+                    !text.tr(locale).is_empty(),
+                    "{text:?} is empty for {locale:?}"
+                );
             }
         }
     }
@@ -240,23 +245,50 @@ mod tests {
 
     #[test]
     fn recency_uses_singular_for_exactly_one_unit() {
-        assert_eq!(recency_label(Locale::PtBr, Recency::HoursAgo(1)), "Editado há 1 hora");
-        assert_eq!(recency_label(Locale::En, Recency::HoursAgo(1)), "Edited 1 hour ago");
-        assert_eq!(recency_label(Locale::PtBr, Recency::DaysAgo(1)), "Editado há 1 dia");
-        assert_eq!(recency_label(Locale::En, Recency::DaysAgo(1)), "Edited 1 day ago");
+        assert_eq!(
+            recency_label(Locale::PtBr, Recency::HoursAgo(1)),
+            "Editado há 1 hora"
+        );
+        assert_eq!(
+            recency_label(Locale::En, Recency::HoursAgo(1)),
+            "Edited 1 hour ago"
+        );
+        assert_eq!(
+            recency_label(Locale::PtBr, Recency::DaysAgo(1)),
+            "Editado há 1 dia"
+        );
+        assert_eq!(
+            recency_label(Locale::En, Recency::DaysAgo(1)),
+            "Edited 1 day ago"
+        );
     }
 
     #[test]
     fn recency_uses_plural_beyond_one_unit() {
-        assert_eq!(recency_label(Locale::PtBr, Recency::HoursAgo(2)), "Editado há 2 horas");
-        assert_eq!(recency_label(Locale::En, Recency::HoursAgo(5)), "Edited 5 hours ago");
-        assert_eq!(recency_label(Locale::PtBr, Recency::DaysAgo(3)), "Editado há 3 dias");
+        assert_eq!(
+            recency_label(Locale::PtBr, Recency::HoursAgo(2)),
+            "Editado há 2 horas"
+        );
+        assert_eq!(
+            recency_label(Locale::En, Recency::HoursAgo(5)),
+            "Edited 5 hours ago"
+        );
+        assert_eq!(
+            recency_label(Locale::PtBr, Recency::DaysAgo(3)),
+            "Editado há 3 dias"
+        );
     }
 
     #[test]
     fn recency_yesterday_has_a_fixed_label() {
-        assert_eq!(recency_label(Locale::PtBr, Recency::Yesterday), "Editado ontem");
-        assert_eq!(recency_label(Locale::En, Recency::Yesterday), "Edited yesterday");
+        assert_eq!(
+            recency_label(Locale::PtBr, Recency::Yesterday),
+            "Editado ontem"
+        );
+        assert_eq!(
+            recency_label(Locale::En, Recency::Yesterday),
+            "Edited yesterday"
+        );
     }
 
     #[test]
@@ -269,7 +301,10 @@ mod tests {
     #[test]
     fn track_summary_uses_plural_clips_otherwise() {
         let tracks = vec!["V1".to_string(), "A1".to_string(), "A2".to_string()];
-        assert_eq!(track_summary(Locale::PtBr, 4, &tracks), "4 clipes · V1/A1/A2");
+        assert_eq!(
+            track_summary(Locale::PtBr, 4, &tracks),
+            "4 clipes · V1/A1/A2"
+        );
         assert_eq!(track_summary(Locale::En, 0, &tracks), "0 clips · V1/A1/A2");
     }
 
@@ -286,12 +321,29 @@ mod tests {
 
     #[test]
     fn job_status_label_covers_every_status() {
-        assert_eq!(job_status_label(Locale::PtBr, &ExportJobStatus::Queued), "Na fila");
-        assert_eq!(job_status_label(Locale::PtBr, &ExportJobStatus::Rendering { percent: 10 }), "Renderizando");
-        assert_eq!(job_status_label(Locale::PtBr, &ExportJobStatus::Paused { percent: 10 }), "Pausado");
-        assert_eq!(job_status_label(Locale::PtBr, &ExportJobStatus::Done), "Concluído");
         assert_eq!(
-            job_status_label(Locale::PtBr, &ExportJobStatus::Failed { message: "x".to_string() }),
+            job_status_label(Locale::PtBr, &ExportJobStatus::Queued),
+            "Na fila"
+        );
+        assert_eq!(
+            job_status_label(Locale::PtBr, &ExportJobStatus::Rendering { percent: 10 }),
+            "Renderizando"
+        );
+        assert_eq!(
+            job_status_label(Locale::PtBr, &ExportJobStatus::Paused { percent: 10 }),
+            "Pausado"
+        );
+        assert_eq!(
+            job_status_label(Locale::PtBr, &ExportJobStatus::Done),
+            "Concluído"
+        );
+        assert_eq!(
+            job_status_label(
+                Locale::PtBr,
+                &ExportJobStatus::Failed {
+                    message: "x".to_string()
+                }
+            ),
             "Falhou"
         );
     }
@@ -304,7 +356,9 @@ mod tests {
 
     #[test]
     fn job_detail_line_shows_translated_error_prefix_on_failure() {
-        let failed = job(ExportJobStatus::Failed { message: "disk full".to_string() });
+        let failed = job(ExportJobStatus::Failed {
+            message: "disk full".to_string(),
+        });
         assert_eq!(job_detail_line(Locale::PtBr, &failed), "Erro: disk full");
         assert_eq!(job_detail_line(Locale::En, &failed), "Error: disk full");
     }
