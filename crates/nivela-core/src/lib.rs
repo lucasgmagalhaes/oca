@@ -1,10 +1,24 @@
+//! `nivela-core` — the UI-agnostic engine crate for NivelaEditor.
+//!
+//! Holds the project/timeline/media data model (see [`project`], [`timeline`], [`media`],
+//! [`export`]), the `ffprobe`/`ffmpeg` wrappers that populate that model from real files
+//! ([`probe`], [`loudness`]), and mock data for exercising the UI before those wrappers are
+//! wired into it end-to-end ([`sample`]).
+//!
+//! Nothing in this crate depends on `egui` or any GUI toolkit — `nivela-app` is the only
+//! consumer, and it owns all presentation/formatting concerns (see its `i18n` module).
+
 pub mod export;
+pub mod loudness;
 pub mod media;
+pub mod probe;
 pub mod project;
 pub mod sample;
 pub mod timeline;
 
 pub use export::{ExportJob, ExportJobStatus};
+pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
+pub use probe::{probe_media, ProbeError, ProbedMedia};
 pub use project::{Project, Recency};
 pub use timeline::{ClipInstance, Timeline, Track, TrackKind};
