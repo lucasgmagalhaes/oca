@@ -96,7 +96,7 @@ graph LR
 - **const** `ALL`
 - **fn** `native_name` — The language's own name, as it should appear in its own language switcher entry.
 - **enum** `Text`
-- **const** `ALL`
+- **const** `ALL` — Every variant, for exhaustive checks like "no string is empty in any locale".
 - **fn** `tr`
 - **fn** `screen_title`
 - **fn** `nav_label`
@@ -180,8 +180,8 @@ _No public items._
 ### `nivela_core::export`
 *nivela-core/export.rs*
 
-- **enum** `ExportJobStatus`
-- **struct** `ExportJob`
+- **enum** `ExportJobStatus` — A queued render's lifecycle. `Rendering`/`Paused` carry a snapshot progress percentage;
+- **struct** `ExportJob` — One export job. Configuration fields are a snapshot taken when the job entered the
 
 ### `nivela_core`
 *nivela-core/lib.rs*
@@ -199,8 +199,8 @@ _No public items._
 *nivela-core/media.rs*
 
 - **enum** `MediaKind`
-- **struct** `LoudnessMetrics`
-- **struct** `MediaAsset`
+- **struct** `LoudnessMetrics` — Result of a `loudnorm`-style analysis pass on a clip, before or after processing.
+- **struct** `MediaAsset` — A source file imported into the project's media library. Populated today with mock
 - **fn** `duration_label`
 - **fn** `format_timecode` — Formats seconds as `H:MM:SS` (or `MM:SS` under an hour), matching the mockup's timecodes.
 
@@ -208,7 +208,7 @@ _No public items._
 *nivela-core/probe.rs*
 
 - **enum** `ProbeError`
-- **struct** `ProbedMedia`
+- **struct** `ProbedMedia` — The fields of a probed file relevant to the editor, already shaped like what
 - **fn** `into_media_asset`
 - **fn** `probe_media` — Runs `ffprobe` against `path` and returns its parsed metadata.
 - **fn** `parse_probe_json` — Parses raw `ffprobe -show_format -show_streams -print_format json` stdout.
@@ -216,7 +216,7 @@ _No public items._
 ### `nivela_core::project`
 *nivela-core/project.rs*
 
-- **enum** `Recency`
+- **enum** `Recency` — How long ago a project was last edited. Locale-neutral by design — the UI layer is
 - **struct** `Project`
 
 ### `nivela_core::sample`
@@ -230,7 +230,7 @@ _No public items._
 *nivela-core/timeline.rs*
 
 - **enum** `TrackKind`
-- **struct** `ClipInstance`
+- **struct** `ClipInstance` — One placed instance of a `MediaAsset` on the timeline. `source_in_secs`/`source_out_secs`
 - **fn** `duration_secs`
 - **struct** `Track`
 - **struct** `Timeline`

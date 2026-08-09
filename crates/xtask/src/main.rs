@@ -194,13 +194,17 @@ fn extract_items(source: &str) -> Vec<Item> {
             continue;
         }
 
-        // Walk upward over contiguous `///` doc lines directly above this item.
+        // Walk upward over contiguous `///` doc lines directly above this item, skipping
+        // past any `#[derive(...)]`/`#[cfg(...)]`-style attribute lines in between (an item
+        // documented as `/// ...` then `#[derive(Debug)]` then `pub struct Foo` is normal).
         let mut doc_lines = Vec::new();
         let mut j = i;
         while j > 0 {
             let prev = lines[j - 1].trim_start();
             if let Some(text) = prev.strip_prefix("///") {
                 doc_lines.push(text.trim().to_string());
+                j -= 1;
+            } else if prev.starts_with("#[") {
                 j -= 1;
             } else {
                 break;
@@ -416,6 +420,14 @@ mod tests {
         assert_eq!(items[0].kind, "struct");
         assert_eq!(items[0].name, "Point");
         assert_eq!(items[0].doc, None);
+    }
+
+    #[test]
+    fn doc_comment_survives_a_derive_attribute_in_between() {
+        let src = "/// A 2D point.\n#[derive(Debug, Clone)]\npub struct Point { x: f32, y: f32 }\n";
+        let items = extract_items(src);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].doc.as_deref(), Some("A 2D point."));
     }
 
     #[test]
