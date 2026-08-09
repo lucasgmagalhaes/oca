@@ -18,6 +18,14 @@ docs/
                  after adding/removing modules or public items — don't hand-edit it.
 ```
 
+`nivela-core`'s tests live in `crates/nivela-core/tests/` (one file per module, e.g.
+`tests/probe.rs`) as real integration tests against its public API, plus `crates/nivela-core/
+benches/` for criterion benchmarks (`make bench`). A handful of tests that exercise a private
+helper (not reachable from `tests/`, by design — see the Rust Book's chapter on test
+organization) stay as `src/<module>/tests.rs` unit tests instead. `nivela-app` and `xtask` are
+bin-only crates (no `[lib]` target), so they have no public API for a `tests/` directory to
+link against — their tests are `src/<module>/tests.rs` unit tests throughout.
+
 `nivela-app` is the only consumer of `nivela-core`; nothing in `nivela-core` knows about
 `egui`. All display text lives in `nivela-app::i18n` (pt-BR and English today) — `nivela-core`
 only stores locale-neutral data (e.g. `Recency` instead of a pre-formatted "2 hours ago"
@@ -44,6 +52,7 @@ make build     # debug build, whole workspace
 make release   # optimized build (target/release/nivela-app)
 make run       # run the GUI app (debug)
 make test      # run every crate's test suite
+make bench     # run the criterion benchmarks (nivela-core parsing/serialization)
 make fmt       # cargo fmt --all
 make lint      # cargo clippy --workspace --all-targets
 make graph     # regenerate docs/CODE_GRAPH.md

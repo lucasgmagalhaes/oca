@@ -5,7 +5,7 @@
 # is a thin wrapper around a single cargo/rustup command, so running that command directly
 # works too if you'd rather skip make entirely.
 
-.PHONY: build release run debug test test-core test-app test-xtask fmt fmt-check lint graph docs check clean
+.PHONY: build release run debug test test-core test-app test-xtask bench fmt fmt-check lint graph docs check clean
 
 # Debug build of the whole workspace (nivela-core, nivela-app, xtask).
 build:
@@ -39,6 +39,12 @@ test-app:
 
 test-xtask:
 	cargo test -p xtask
+
+# Runs the criterion benchmarks (parsing ffprobe/loudnorm output, project (de)serialization,
+# timeline duration math) and writes an HTML report to target/criterion/report/index.html.
+# Compare successive runs to catch performance regressions as the engine grows.
+bench:
+	cargo bench -p nivela-core
 
 fmt:
 	cargo fmt --all
