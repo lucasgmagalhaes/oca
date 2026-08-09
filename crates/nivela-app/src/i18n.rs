@@ -30,6 +30,7 @@ macro_rules! text_catalog {
 
         impl Text {
             /// Every variant, for exhaustive checks like "no string is empty in any locale".
+            #[cfg(test)]
             pub const ALL: &'static [Text] = &[ $( Text::$variant, )* ];
 
             pub fn tr(self, locale: Locale) -> &'static str {
