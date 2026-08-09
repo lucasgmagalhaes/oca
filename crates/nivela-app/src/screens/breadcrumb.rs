@@ -1,6 +1,7 @@
 use eframe::egui::{self, RichText};
 
 use crate::app::{NivelaApp, Screen};
+use crate::i18n::{self, Text};
 use crate::theme;
 
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
@@ -14,9 +15,9 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
         )
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
-                ui.label(RichText::new("NivelaEditor").size(13.0).color(theme::TEXT_MUTED));
+                ui.label(RichText::new(Text::AppName.tr(app.locale)).size(13.0).color(theme::TEXT_MUTED));
                 ui.label(RichText::new("›").color(theme::TEXT_MUTED));
-                ui.label(RichText::new(app.screen.title()).size(13.0).strong());
+                ui.label(RichText::new(i18n::screen_title(app.locale, app.screen)).size(13.0).strong());
 
                 if app.screen == Screen::Editor {
                     ui.label(RichText::new("›").color(theme::TEXT_MUTED));
@@ -33,7 +34,7 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                             ui.allocate_exact_size(egui::vec2(6.0, 6.0), egui::Sense::hover());
                         })
                         .response
-                        .on_hover_text("Alterações não salvas");
+                        .on_hover_text(Text::UnsavedChanges.tr(app.locale));
                 }
             });
         });

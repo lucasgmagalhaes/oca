@@ -2,18 +2,20 @@ use eframe::egui::{self, RichText};
 use nivela_core::export::ExportJobStatus;
 
 use crate::app::NivelaApp;
+use crate::i18n::{self, Text};
 use crate::screens::widgets;
 use crate::theme;
 
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
+    let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(20.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Fila de exportação").size(20.0).strong());
+            ui.label(RichText::new(Text::QueueTitle.tr(locale)).size(20.0).strong());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("＋ Adicionar exportação").clicked() {}
+                if ui.button(Text::AddExport.tr(locale)).clicked() {}
                 ui.add_space(10.0);
-                ui.label(RichText::new("Workers simultâneos").size(12.0).color(theme::TEXT_MUTED));
+                ui.label(RichText::new(Text::ConcurrentWorkers.tr(locale)).size(12.0).color(theme::TEXT_MUTED));
                 for w in [4u8, 2, 1] {
                     let selected = app.queue_workers == w;
                     if ui.selectable_label(selected, format!("{w}")).clicked() {
@@ -24,7 +26,7 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
         });
         ui.add_space(4.0);
         ui.label(
-            RichText::new("A edição continua responsiva enquanto os jobs renderizam em segundo plano. A fila persiste entre sessões.")
+            RichText::new(Text::QueueSubtitle.tr(locale))
                 .size(12.5)
                 .color(theme::TEXT_SECONDARY),
         );
@@ -36,13 +38,9 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
             .inner_margin(egui::Margin::same(10))
             .show(ui, |ui| {
                 ui.label(
-                    RichText::new(
-                        "Nota técnica: cada job é um snapshot (bitrate/perfil/destino) tirado no momento em que entra na fila — \
-                         mudanças no projeto ativo depois disso não afetam o job. Render roda em worker separado da UI (tokio::mpsc); \
-                         1 worker por padrão, configurável em Preferências.",
-                    )
-                    .size(11.0)
-                    .color(theme::TEXT_SECONDARY),
+                    RichText::new(Text::QueueTechNote.tr(locale))
+                        .size(11.0)
+                        .color(theme::TEXT_SECONDARY),
                 );
             });
         ui.add_space(16.0);
@@ -60,12 +58,13 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width() - 90.0);
                         ui.horizontal(|ui| {
+                            let status_label = i18n::job_status_label(locale, &job.status);
                             match &job.status {
-                                ExportJobStatus::Rendering { .. } => widgets::tag_accent(ui, "Renderizando"),
-                                ExportJobStatus::Queued => widgets::tag_outline(ui, "Na fila"),
-                                ExportJobStatus::Paused { .. } => widgets::tag_outline(ui, "Pausado"),
-                                ExportJobStatus::Done => widgets::tag_accent(ui, "Concluído"),
-                                ExportJobStatus::Failed { .. } => widgets::tag_error(ui, "Falhou"),
+                                ExportJobStatus::Rendering { .. } => widgets::tag_accent(ui, status_label),
+                                ExportJobStatus::Queued => widgets::tag_outline(ui, status_label),
+                                ExportJobStatus::Paused { .. } => widgets::tag_outline(ui, status_label),
+                                ExportJobStatus::Done => widgets::tag_accent(ui, status_label),
+                                ExportJobStatus::Failed { .. } => widgets::tag_error(ui, status_label),
                             }
                             ui.label(RichText::new(&job.title).size(13.0));
                         });
@@ -74,7 +73,7 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                             ui.add(egui::ProgressBar::new(*percent as f32 / 100.0).desired_height(5.0));
                         }
                         ui.label(
-                            RichText::new(job.detail_line())
+                            RichText::new(i18n::job_detail_line(locale, job))
                                 .size(11.0)
                                 .color(theme::TEXT_MUTED)
                                 .monospace(),
@@ -84,13 +83,13 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         match &job.status {
                             ExportJobStatus::Rendering { .. } => {
-                                if ui.button("⏸").on_hover_text("Pausar").clicked() {}
-                                if ui.button("✕").on_hover_text("Cancelar").clicked() {
+                                if ui.button("⏸").on_hover_text(Text::Pause.tr(locale)).clicked() {}
+                                if ui.button("✕").on_hover_text(Text::CancelJob.tr(locale)).clicked() {
                                     remove = Some(i);
                                 }
                             }
                             ExportJobStatus::Queued => {
-                                if ui.button("✕").on_hover_text("Remover").clicked() {
+                                if ui.button("✕").on_hover_text(Text::RemoveJob.tr(locale)).clicked() {
                                     remove = Some(i);
                                 }
                                 if ui.button("▼").clicked() {
@@ -101,16 +100,16 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                                 }
                             }
                             ExportJobStatus::Paused { .. } => {
-                                if ui.button("✕").on_hover_text("Remover").clicked() {
+                                if ui.button("✕").on_hover_text(Text::RemoveJob.tr(locale)).clicked() {
                                     remove = Some(i);
                                 }
-                                if ui.button("▶").on_hover_text("Retomar").clicked() {}
+                                if ui.button("▶").on_hover_text(Text::Resume.tr(locale)).clicked() {}
                             }
                             ExportJobStatus::Done => {
-                                if ui.button("📂").on_hover_text("Abrir pasta").clicked() {}
+                                if ui.button("📂").on_hover_text(Text::OpenFolder.tr(locale)).clicked() {}
                             }
                             ExportJobStatus::Failed { .. } => {
-                                if ui.button("↻ Tentar novamente").clicked() {}
+                                if ui.button(Text::RetryExport.tr(locale)).clicked() {}
                             }
                         }
                     });

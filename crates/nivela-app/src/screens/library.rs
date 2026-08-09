@@ -2,16 +2,18 @@ use eframe::egui::{self, RichText};
 use nivela_core::media::MediaKind;
 
 use crate::app::NivelaApp;
+use crate::i18n::Text;
 use crate::screens::widgets;
 use crate::theme;
 
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
+    let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(20.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Biblioteca de mídia").size(20.0).strong());
+            ui.label(RichText::new(Text::LibraryTitle.tr(locale)).size(20.0).strong());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let _ = ui.button("⭱ Importar arquivos");
+                let _ = ui.button(Text::ImportFiles.tr(locale));
             });
         });
         ui.add_space(16.0);
@@ -77,7 +79,7 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
         if app.active_project().media_library.is_empty() {
             ui.add_space(20.0);
             ui.label(
-                RichText::new("Nenhum arquivo importado neste projeto ainda.")
+                RichText::new(Text::LibraryEmpty.tr(locale))
                     .color(theme::TEXT_MUTED),
             );
         }

@@ -1,6 +1,7 @@
 use eframe::egui::{self, RichText};
 
 use crate::app::NivelaApp;
+use crate::i18n::Text;
 use crate::screens::widgets;
 use crate::theme;
 
@@ -9,15 +10,15 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
         ui.add_space(24.0);
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
-                ui.label(RichText::new("Projetos recentes").size(22.0).strong());
+                ui.label(RichText::new(Text::HomeTitle.tr(app.locale)).size(22.0).strong());
                 ui.label(
-                    RichText::new("Continue de onde parou ou comece um projeto novo.")
+                    RichText::new(Text::HomeSubtitle.tr(app.locale))
                         .size(13.0)
                         .color(theme::TEXT_SECONDARY),
                 );
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("＋ Novo projeto").clicked() {
+                if ui.button(Text::NewProject.tr(app.locale)).clicked() {
                     // Fase 1: cria um Project vazio e abre no Editor.
                 }
             });
@@ -37,8 +38,14 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                     let project = &app.projects[i];
                     let name = project.name.clone();
                     let summary = project.summary.clone();
-                    let meta = project.last_edited_label.clone();
-                    let kicker = project.track_summary();
+                    let meta = crate::i18n::recency_label(app.locale, project.last_edited);
+                    let track_names: Vec<String> =
+                        project.timeline.tracks.iter().map(|t| t.name.clone()).collect();
+                    let kicker = crate::i18n::track_summary(
+                        app.locale,
+                        project.media_library.len(),
+                        &track_names,
+                    );
 
                     let resp = widgets::card_frame().show(ui, |ui| {
                         ui.set_width(card_width - 28.0);

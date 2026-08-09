@@ -1,14 +1,15 @@
 use eframe::egui::{self, Color32, RichText};
 
 use crate::app::{NivelaApp, Screen};
+use crate::i18n;
 use crate::theme;
 
-const ITEMS: [(Screen, &str, &str); 5] = [
-    (Screen::Home, "⌂", "Início"),
-    (Screen::Editor, "✂", "Editor"),
-    (Screen::Library, "▤", "Mídia"),
-    (Screen::Queue, "≡", "Fila"),
-    (Screen::Prefs, "⚙", "Ajustes"),
+const ITEMS: [(Screen, &str); 5] = [
+    (Screen::Home, "⌂"),
+    (Screen::Editor, "✂"),
+    (Screen::Library, "▤"),
+    (Screen::Queue, "≡"),
+    (Screen::Prefs, "⚙"),
 ];
 
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
@@ -32,7 +33,8 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                     });
                 ui.add_space(14.0);
 
-                for (screen, icon, label) in ITEMS {
+                for (screen, icon) in ITEMS {
+                    let label = i18n::nav_label(app.locale, screen);
                     rail_button(ui, app, screen, icon, label);
                 }
             });

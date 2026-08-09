@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 use nivela_core::{sample, ExportJob, ExportJobStatus, MediaAsset, Project};
 
+use crate::i18n::Locale;
 use crate::screens;
 use crate::theme;
 
@@ -13,18 +14,6 @@ pub enum Screen {
     Library,
     Queue,
     Prefs,
-}
-
-impl Screen {
-    pub fn title(&self) -> &'static str {
-        match self {
-            Screen::Home => "Início",
-            Screen::Editor => "Editor",
-            Screen::Library => "Mídia",
-            Screen::Queue => "Fila de exportação",
-            Screen::Prefs => "Ajustes",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +52,7 @@ pub const LUFS_PROFILES: [(&str, f32); 3] = [
 pub struct NivelaApp {
     pub screen: Screen,
     pub tool: EditorTool,
+    pub locale: Locale,
     pub projects: Vec<Project>,
     pub active_project: usize,
     pub selected_asset_id: Option<u64>,
@@ -83,6 +73,7 @@ impl NivelaApp {
         Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
+            locale: Locale::PtBr,
             projects,
             active_project: 0,
             selected_asset_id,

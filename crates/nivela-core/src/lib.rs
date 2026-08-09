@@ -6,5 +6,5 @@ pub mod timeline;
 
 pub use export::{ExportJob, ExportJobStatus};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
-pub use project::Project;
+pub use project::{Project, Recency};
 pub use timeline::{ClipInstance, Timeline, Track, TrackKind};

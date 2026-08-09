@@ -3,7 +3,7 @@
 
 use crate::export::{ExportJob, ExportJobStatus};
 use crate::media::{LoudnessMetrics, MediaAsset, MediaKind};
-use crate::project::Project;
+use crate::project::{Project, Recency};
 use crate::timeline::{ClipInstance, Timeline, Track, TrackKind};
 
 fn asset(
@@ -128,7 +128,7 @@ pub fn sample_projects() -> Vec<Project> {
         Project {
             id: 1,
             name: "Cuphead — 50 Chefes".to_string(),
-            last_edited_label: "Editado há 2 horas".to_string(),
+            last_edited: Recency::HoursAgo(2),
             summary: "Cortes dos boss fights, um vídeo por chefe.".to_string(),
             media_library: cuphead_media_library(),
             timeline: cuphead_timeline(),
@@ -136,7 +136,7 @@ pub fn sample_projects() -> Vec<Project> {
         Project {
             id: 2,
             name: "Minecraft Long Play — Sessão 14".to_string(),
-            last_edited_label: "Editado ontem".to_string(),
+            last_edited: Recency::Yesterday,
             summary: "Gravação de 3h20 pra cortar em partes.".to_string(),
             media_library: vec![asset(
                 5,
@@ -155,7 +155,7 @@ pub fn sample_projects() -> Vec<Project> {
         Project {
             id: 3,
             name: "Shorts da semana".to_string(),
-            last_edited_label: "Editado há 3 dias".to_string(),
+            last_edited: Recency::DaysAgo(3),
             summary: "Cortes verticais pra Shorts/Reels.".to_string(),
             media_library: vec![],
             timeline: Timeline { tracks: vec![], playhead_secs: 0.0 },

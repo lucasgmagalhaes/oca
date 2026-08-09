@@ -22,25 +22,3 @@ pub struct ExportJob {
     pub output_path: String,
     pub status: ExportJobStatus,
 }
-
-impl ExportJob {
-    pub fn status_label(&self) -> &'static str {
-        match &self.status {
-            ExportJobStatus::Queued => "Na fila",
-            ExportJobStatus::Rendering { .. } => "Renderizando",
-            ExportJobStatus::Paused { .. } => "Pausado",
-            ExportJobStatus::Done => "Concluído",
-            ExportJobStatus::Failed { .. } => "Falhou",
-        }
-    }
-
-    pub fn detail_line(&self) -> String {
-        match &self.status {
-            ExportJobStatus::Failed { message } => format!("Erro: {message}"),
-            _ => format!(
-                "-{:.0} LUFS · {:.0} Mbps · {}",
-                -self.target_lufs, self.bitrate_mbps, self.output_path
-            ),
-        }
-    }
-}
