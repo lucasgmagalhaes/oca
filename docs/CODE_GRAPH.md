@@ -67,7 +67,6 @@ graph LR
     "nivela_core" --> "nivela_core::timeline"
     "nivela_core::loudness" -.-> "nivela_core::media"
     "nivela_core::persistence" -.-> "nivela_core::project"
-    "nivela_core::persistence::tests" -.-> "nivela_core::sample"
     "nivela_core::probe" -.-> "nivela_core::media"
     "nivela_core::project" -.-> "nivela_core::media"
     "nivela_core::project" -.-> "nivela_core::timeline"
@@ -211,11 +210,6 @@ _No public items._
 - **fn** `measure_loudness` — Runs a single-pass `loudnorm` measurement against `path` and returns the result.
 - **fn** `parse_loudnorm_stderr` — Extracts and parses the `loudnorm` JSON report ffmpeg prints to stderr, ignoring the log
 
-### `nivela_core::media::tests`
-*nivela-core/media/tests.rs*
-
-_No public items._
-
 ### `nivela_core::media`
 *nivela-core/media.rs*
 
@@ -225,11 +219,6 @@ _No public items._
 - **fn** `duration_label` — This asset's duration as a display-ready timecode (e.g. `"02:14"`).
 - **fn** `format_timecode` — Formats seconds as `H:MM:SS` (or `MM:SS` under an hour), matching the mockup's timecodes.
 
-### `nivela_core::persistence::tests`
-*nivela-core/persistence/tests.rs*
-
-_No public items._
-
 ### `nivela_core::persistence`
 *nivela-core/persistence.rs*
 
@@ -238,11 +227,6 @@ _No public items._
 - **fn** `from_json` — Parses a project previously produced by [`to_json`] (or hand-edited — it's plain JSON).
 - **fn** `save_project_to_file` — Writes `project` to `path` as JSON, overwriting any existing file.
 - **fn** `load_project_from_file` — Reads and parses a project from `path`. The returned [`Project::file_path`] is `None` —
-
-### `nivela_core::probe::tests`
-*nivela-core/probe/tests.rs*
-
-_No public items._
 
 ### `nivela_core::probe`
 *nivela-core/probe.rs*
@@ -259,22 +243,12 @@ _No public items._
 - **enum** `Recency` — How long ago a project was last edited. Locale-neutral by design — the UI layer is
 - **struct** `Project` — A single edit project: its imported media, its timeline, and display metadata for the
 
-### `nivela_core::sample::tests`
-*nivela-core/sample/tests.rs*
-
-_No public items._
-
 ### `nivela_core::sample`
 *nivela-core/sample.rs*
 
 - **fn** `cuphead_media_library` — The media library for the "Cuphead — 50 Chefes" sample project.
 - **fn** `sample_projects` — The Início screen's project list: one project per demo scenario (a multi-clip cut
 - **fn** `sample_export_jobs` — The export queue's job list, covering every [`ExportJobStatus`] so the Fila screen has an
-
-### `nivela_core::timeline::tests`
-*nivela-core/timeline/tests.rs*
-
-_No public items._
 
 ### `nivela_core::timeline`
 *nivela-core/timeline.rs*

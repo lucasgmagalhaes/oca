@@ -1,4 +1,4 @@
-use super::*;
+use nivela_core::timeline::{ClipInstance, Timeline, Track, TrackKind};
 
 fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> ClipInstance {
     ClipInstance {

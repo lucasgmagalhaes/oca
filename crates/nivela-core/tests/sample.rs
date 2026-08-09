@@ -1,5 +1,6 @@
-use super::*;
 use std::collections::HashSet;
+
+use nivela_core::sample::{sample_export_jobs, sample_projects};
 
 #[test]
 fn sample_projects_is_non_empty() {

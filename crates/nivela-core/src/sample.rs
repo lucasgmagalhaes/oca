@@ -273,6 +273,3 @@ pub fn sample_export_jobs() -> Vec<ExportJob> {
         },
     ]
 }
-
-#[cfg(test)]
-mod tests;

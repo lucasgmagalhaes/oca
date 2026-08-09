@@ -55,6 +55,3 @@ impl Timeline {
             .fold(0.0, f64::max)
     }
 }
-
-#[cfg(test)]
-mod tests;

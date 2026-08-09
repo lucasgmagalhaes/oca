@@ -48,6 +48,3 @@ pub fn load_project_from_file(path: &Path) -> Result<Project, PersistError> {
     let json = fs::read_to_string(path).map_err(PersistError::Io)?;
     from_json(&json).map_err(PersistError::Json)
 }
-
-#[cfg(test)]
-mod tests;

@@ -192,6 +192,3 @@ fn parse_frame_rate(raw: &str) -> Option<f32> {
         Some(num / den)
     }
 }
-
-#[cfg(test)]
-mod tests;

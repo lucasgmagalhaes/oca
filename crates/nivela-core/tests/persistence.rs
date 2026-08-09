@@ -1,5 +1,9 @@
-use super::*;
-use crate::sample::sample_projects;
+use std::fs;
+
+use nivela_core::persistence::{
+    from_json, load_project_from_file, save_project_to_file, to_json, PersistError,
+};
+use nivela_core::sample::sample_projects;
 
 #[test]
 fn round_trips_a_project_through_json() {
