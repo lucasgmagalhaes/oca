@@ -79,31 +79,31 @@ graph LR
 ### `nivela_app::app`
 *nivela-app/app.rs*
 
-- **enum** `Screen`
-- **enum** `EditorTool`
-- **struct** `PrefsState`
-- **const** `LUFS_PROFILES`
-- **struct** `NivelaApp`
-- **fn** `new`
-- **fn** `active_project`
-- **fn** `selected_asset`
-- **fn** `open_project`
+- **enum** `Screen` — Which of the app's five top-level views is currently showing. Drives both the central
+- **enum** `EditorTool` — The editor toolbar's active tool (Selecionar / Cortar / Aparar). Currently just tracked
+- **struct** `PrefsState` — User-configurable settings shown on the Ajustes screen. Not persisted yet (Fase 5 adds a
+- **const** `LUFS_PROFILES` — Loudness normalization presets offered in Preferences and shown on the Editor's "Ao
+- **struct** `NivelaApp` — The whole application's state: which screen is showing, the loaded projects, the export
+- **fn** `new` — Builds the initial app state: applies the theme, loads the mock projects/export
+- **fn** `active_project` — The project currently open in the Editor/Mídia screens.
+- **fn** `selected_asset` — The asset backing the Editor's "Clipe selecionado" panel, if any is selected.
+- **fn** `open_project` — Switches the active project to `index` and navigates to the Editor screen — this is
 
 ### `nivela_app::i18n`
 *nivela-app/i18n.rs*
 
-- **enum** `Locale`
-- **const** `ALL`
+- **enum** `Locale` — A language the UI can be displayed in. Stored on [`crate::app::NivelaApp`] and switched
+- **const** `ALL` — Every supported locale, for populating the language switcher.
 - **fn** `native_name` — The language's own name, as it should appear in its own language switcher entry.
-- **enum** `Text`
+- **enum** `Text` — A translatable UI string. One variant per string used anywhere in the app — call
 - **const** `ALL` — Every variant, for exhaustive checks like "no string is empty in any locale".
-- **fn** `tr`
-- **fn** `screen_title`
-- **fn** `nav_label`
+- **fn** `tr` — Looks up this string's text in `locale`.
+- **fn** `screen_title` — The breadcrumb's title for `screen` (e.g. `Screen::Queue` -> "Fila de exportação" — longer
+- **fn** `nav_label` — The nav rail's short label for `screen` (e.g. `Screen::Queue` -> "Fila").
 - **fn** `recency_label` — Formats a project's "last edited" recency (e.g. "Edited 2 hours ago").
 - **fn** `track_summary` — Formats a project's clip/track kicker (e.g. "4 clips · V1/A1/A2").
-- **fn** `job_status_label`
-- **fn** `job_detail_line`
+- **fn** `job_status_label` — The export queue's status pill text for `status` (e.g. "Renderizando", "Falhou").
+- **fn** `job_detail_line` — The export queue's secondary line for `job` — `"-14 LUFS · 42 Mbps · /export/…"` for a
 
 ### `nivela_app`
 *nivela-app/main.rs*
@@ -113,22 +113,22 @@ _No public items._
 ### `nivela_app::screens::breadcrumb`
 *nivela-app/screens/breadcrumb.rs*
 
-- **fn** `show`
+- **fn** `show` — Renders the top breadcrumb bar: app name, current screen title, and (in the Editor) the
 
 ### `nivela_app::screens::editor`
 *nivela-app/screens/editor.rs*
 
-- **fn** `show`
+- **fn** `show` — Renders the Editor screen: toolbar, then a three-column row (media library / preview /
 
 ### `nivela_app::screens::home`
 *nivela-app/screens/home.rs*
 
-- **fn** `show`
+- **fn** `show` — Renders the Início screen: a grid of recent-project cards. Clicking a card opens that
 
 ### `nivela_app::screens::library`
 *nivela-app/screens/library.rs*
 
-- **fn** `show`
+- **fn** `show` — Renders the Mídia screen: a grid of every asset in the active project's media library.
 
 ### `nivela_app::screens`
 *nivela-app/screens/mod.rs*
@@ -138,27 +138,27 @@ _No public items._
 ### `nivela_app::screens::nav_rail`
 *nivela-app/screens/nav_rail.rs*
 
-- **fn** `show`
+- **fn** `show` — Renders the left icon rail and handles screen-switching clicks.
 
 ### `nivela_app::screens::prefs`
 *nivela-app/screens/prefs.rs*
 
-- **fn** `show`
+- **fn** `show` — Renders the Ajustes screen: language switcher, audio/export/project settings, and the
 
 ### `nivela_app::screens::queue`
 *nivela-app/screens/queue.rs*
 
-- **fn** `show`
+- **fn** `show` — Renders the Fila screen: the export queue's job list (with reorder/pause/cancel/retry
 
 ### `nivela_app::screens::widgets`
 *nivela-app/screens/widgets.rs*
 
-- **fn** `section_label`
-- **fn** `tag`
-- **fn** `tag_accent`
-- **fn** `tag_outline`
-- **fn** `tag_error`
-- **fn** `card_frame`
+- **fn** `section_label` — An uppercase, muted section header (e.g. "BIBLIOTECA DE MÍDIA").
+- **fn** `tag` — A pill-shaped chip in an arbitrary foreground/background color pair. Prefer
+- **fn** `tag_accent` — A tag in the teal accent color — used for positive/active states (e.g. "Renderizando").
+- **fn** `tag_outline` — A tag in a neutral outline color — used for passive states (e.g. "Na fila").
+- **fn** `tag_error` — A tag in the error color — used for failure states (e.g. "Falhou").
+- **fn** `card_frame` — The standard bordered/rounded card background used for project cards, media cards, and
 
 ### `nivela_app::theme`
 *nivela-app/theme.rs*
@@ -201,7 +201,7 @@ _No public items._
 - **enum** `MediaKind`
 - **struct** `LoudnessMetrics` — Result of a `loudnorm`-style analysis pass on a clip, before or after processing.
 - **struct** `MediaAsset` — A source file imported into the project's media library. Populated today with mock
-- **fn** `duration_label`
+- **fn** `duration_label` — This asset's duration as a display-ready timecode (e.g. `"02:14"`).
 - **fn** `format_timecode` — Formats seconds as `H:MM:SS` (or `MM:SS` under an hour), matching the mockup's timecodes.
 
 ### `nivela_core::probe`
@@ -209,7 +209,7 @@ _No public items._
 
 - **enum** `ProbeError`
 - **struct** `ProbedMedia` — The fields of a probed file relevant to the editor, already shaped like what
-- **fn** `into_media_asset`
+- **fn** `into_media_asset` — Turns this probe result into a full [`MediaAsset`] ready for a project's media
 - **fn** `probe_media` — Runs `ffprobe` against `path` and returns its parsed metadata.
 - **fn** `parse_probe_json` — Parses raw `ffprobe -show_format -show_streams -print_format json` stdout.
 
@@ -217,24 +217,24 @@ _No public items._
 *nivela-core/project.rs*
 
 - **enum** `Recency` — How long ago a project was last edited. Locale-neutral by design — the UI layer is
-- **struct** `Project`
+- **struct** `Project` — A single edit project: its imported media, its timeline, and display metadata for the
 
 ### `nivela_core::sample`
 *nivela-core/sample.rs*
 
-- **fn** `cuphead_media_library`
-- **fn** `sample_projects`
-- **fn** `sample_export_jobs`
+- **fn** `cuphead_media_library` — The media library for the "Cuphead — 50 Chefes" sample project.
+- **fn** `sample_projects` — The Início screen's project list: one project per demo scenario (a multi-clip cut
+- **fn** `sample_export_jobs` — The export queue's job list, covering every [`ExportJobStatus`] so the Fila screen has an
 
 ### `nivela_core::timeline`
 *nivela-core/timeline.rs*
 
-- **enum** `TrackKind`
+- **enum** `TrackKind` — What a [`Track`] carries. Determines how the timeline widget renders its clips
 - **struct** `ClipInstance` — One placed instance of a `MediaAsset` on the timeline. `source_in_secs`/`source_out_secs`
-- **fn** `duration_secs`
-- **struct** `Track`
-- **struct** `Timeline`
-- **fn** `duration_secs`
+- **fn** `duration_secs` — How long this instance plays for, i.e. its trimmed length — not the source asset's
+- **struct** `Track` — One row of the timeline (e.g. `V1`, `A1`, `A2` in the mockup), holding an ordered list of
+- **struct** `Timeline` — A project's full set of tracks plus the current playhead position.
+- **fn** `duration_secs` — The position, in seconds, where the last clip on any track ends — i.e. how long the
 
 ### `xtask`
 *xtask/main.rs*

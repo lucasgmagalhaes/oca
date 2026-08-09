@@ -1,8 +1,19 @@
+//! All translatable UI text lives here, not in the screen modules — `nivela-core` stays
+//! locale-neutral (see e.g. [`nivela_core::project::Recency`]) and this module is the only
+//! place that turns its raw data into display strings.
+//!
+//! [`Text`] is the static-string catalog (nav labels, section headers, button text — see the
+//! `text_catalog!` invocation below for the full list); the functions below it
+//! ([`recency_label`], [`track_summary`], [`job_status_label`], [`job_detail_line`]) handle
+//! the handful of strings that need pluralization or interpolation instead of a flat lookup.
+
 use nivela_core::export::{ExportJob, ExportJobStatus};
 use nivela_core::project::Recency;
 
 use crate::app::Screen;
 
+/// A language the UI can be displayed in. Stored on [`crate::app::NivelaApp`] and switched
+/// at runtime from the Ajustes screen — nothing here requires a restart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Locale {
     PtBr,
@@ -10,6 +21,7 @@ pub enum Locale {
 }
 
 impl Locale {
+    /// Every supported locale, for populating the language switcher.
     pub const ALL: [Locale; 2] = [Locale::PtBr, Locale::En];
 
     /// The language's own name, as it should appear in its own language switcher entry.
@@ -21,8 +33,14 @@ impl Locale {
     }
 }
 
+/// Defines the [`Text`] enum from a `Variant: pt_br = "...", en = "...";` list — one variant
+/// per translatable UI string, with [`Text::tr`] doing the lookup. Keeps the two locales'
+/// strings pinned next to each other so adding a string can't accidentally ship with only
+/// one language filled in.
 macro_rules! text_catalog {
     ($( $variant:ident : pt_br = $pt:expr, en = $en:expr ; )*) => {
+        /// A translatable UI string. One variant per string used anywhere in the app — call
+        /// [`Text::tr`] with the current [`Locale`] to get the display text.
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum Text {
             $( $variant, )*
@@ -33,6 +51,7 @@ macro_rules! text_catalog {
             #[cfg(test)]
             pub const ALL: &'static [Text] = &[ $( Text::$variant, )* ];
 
+            /// Looks up this string's text in `locale`.
             pub fn tr(self, locale: Locale) -> &'static str {
                 match locale {
                     Locale::PtBr => match self { $( Text::$variant => $pt, )* },
@@ -128,6 +147,8 @@ text_catalog! {
     KeySpace: pt_br = "Espaço", en = "Space";
 }
 
+/// The breadcrumb's title for `screen` (e.g. `Screen::Queue` -> "Fila de exportação" — longer
+/// than its [`nav_label`], which is space-constrained in the rail).
 pub fn screen_title(locale: Locale, screen: Screen) -> &'static str {
     match screen {
         Screen::Home => Text::ScreenTitleHome.tr(locale),
@@ -138,6 +159,7 @@ pub fn screen_title(locale: Locale, screen: Screen) -> &'static str {
     }
 }
 
+/// The nav rail's short label for `screen` (e.g. `Screen::Queue` -> "Fila").
 pub fn nav_label(locale: Locale, screen: Screen) -> &'static str {
     match screen {
         Screen::Home => Text::NavHome.tr(locale),
@@ -174,6 +196,7 @@ pub fn track_summary(locale: Locale, clip_count: usize, track_names: &[String]) 
     format!("{clip_count} {unit} · {}", track_names.join("/"))
 }
 
+/// The export queue's status pill text for `status` (e.g. "Renderizando", "Falhou").
 pub fn job_status_label(locale: Locale, status: &ExportJobStatus) -> &'static str {
     match status {
         ExportJobStatus::Queued => Text::StatusQueued.tr(locale),
@@ -184,6 +207,8 @@ pub fn job_status_label(locale: Locale, status: &ExportJobStatus) -> &'static st
     }
 }
 
+/// The export queue's secondary line for `job` — `"-14 LUFS · 42 Mbps · /export/…"` for a
+/// normal job, or `"Erro: <message>"`/`"Error: <message>"` for a failed one.
 pub fn job_detail_line(locale: Locale, job: &ExportJob) -> String {
     match &job.status {
         ExportJobStatus::Failed { message } => format!("{}: {message}", Text::ErrorPrefix.tr(locale)),

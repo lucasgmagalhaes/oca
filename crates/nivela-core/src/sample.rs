@@ -36,6 +36,7 @@ fn asset(
     }
 }
 
+/// The media library for the "Cuphead — 50 Chefes" sample project.
 pub fn cuphead_media_library() -> Vec<MediaAsset> {
     vec![
         asset(
@@ -123,6 +124,8 @@ fn cuphead_timeline() -> Timeline {
     }
 }
 
+/// The Início screen's project list: one project per demo scenario (a multi-clip cut
+/// project, a single long recording, and an empty one) so the UI has something to render.
 pub fn sample_projects() -> Vec<Project> {
     vec![
         Project {
@@ -163,6 +166,8 @@ pub fn sample_projects() -> Vec<Project> {
     ]
 }
 
+/// The export queue's job list, covering every [`ExportJobStatus`] so the Fila screen has an
+/// example of each state (rendering, queued, paused, done, failed) to render.
 pub fn sample_export_jobs() -> Vec<ExportJob> {
     vec![
         ExportJob {

@@ -4,6 +4,8 @@ use crate::app::{NivelaApp, Screen};
 use crate::i18n::{self, Text};
 use crate::theme;
 
+/// Renders the top breadcrumb bar: app name, current screen title, and (in the Editor) the
+/// active project's name with an "unsaved changes" dot.
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
     egui::Panel::top("breadcrumb")
         .exact_size(46.0)

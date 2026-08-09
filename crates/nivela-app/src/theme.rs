@@ -1,3 +1,7 @@
+//! The dark/teal color palette (matching `ui.html` / the design comp) and the egui `Visuals`
+//! it's applied through. Screens reference these constants directly rather than going
+//! through egui's default palette, so the whole app reads as one consistent theme.
+
 use egui::{Color32, CornerRadius, Stroke, Visuals};
 
 pub const BG: Color32 = Color32::from_rgb(0x12, 0x16, 0x1c);

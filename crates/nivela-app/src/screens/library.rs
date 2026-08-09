@@ -6,6 +6,7 @@ use crate::i18n::Text;
 use crate::screens::widgets;
 use crate::theme;
 
+/// Renders the Mídia screen: a grid of every asset in the active project's media library.
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
     let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {

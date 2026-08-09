@@ -34,6 +34,7 @@ pub struct MediaAsset {
 }
 
 impl MediaAsset {
+    /// This asset's duration as a display-ready timecode (e.g. `"02:14"`).
     pub fn duration_label(&self) -> String {
         format_timecode(self.duration_secs)
     }

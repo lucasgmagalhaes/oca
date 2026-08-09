@@ -5,6 +5,8 @@ use crate::i18n::Text;
 use crate::screens::widgets;
 use crate::theme;
 
+/// Renders the Início screen: a grid of recent-project cards. Clicking a card opens that
+/// project in the Editor via [`crate::app::NivelaApp::open_project`].
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(24.0);

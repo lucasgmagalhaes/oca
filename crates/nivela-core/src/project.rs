@@ -12,11 +12,15 @@ pub enum Recency {
     DaysAgo(u32),
 }
 
+/// A single edit project: its imported media, its timeline, and display metadata for the
+/// Início screen's project list. This is the root of everything a user works on.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     pub id: u64,
     pub name: String,
     pub last_edited: Recency,
+    /// Short user-facing description shown on the project card (e.g. "Cortes dos boss
+    /// fights, um vídeo por chefe.") — free text, not a translatable UI label.
     pub summary: String,
     pub media_library: Vec<MediaAsset>,
     pub timeline: Timeline,

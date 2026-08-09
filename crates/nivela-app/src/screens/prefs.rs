@@ -5,6 +5,9 @@ use crate::i18n::{Locale, Text};
 use crate::screens::widgets;
 use crate::theme;
 
+/// Renders the Ajustes screen: language switcher, audio/export/project settings, and the
+/// keyboard shortcut reference table. Settings write straight into `app.prefs`/`app.locale`
+/// and aren't persisted yet — see [`crate::app::PrefsState`].
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
     let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {

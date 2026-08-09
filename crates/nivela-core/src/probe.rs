@@ -55,6 +55,9 @@ pub struct ProbedMedia {
 }
 
 impl ProbedMedia {
+    /// Turns this probe result into a full [`MediaAsset`] ready for a project's media
+    /// library. `loudness` starts `None` — call [`crate::measure_loudness`] separately and
+    /// set it once that pass completes.
     pub fn into_media_asset(self, id: u64, file_name: String) -> MediaAsset {
         MediaAsset {
             id,

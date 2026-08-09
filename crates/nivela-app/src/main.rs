@@ -1,3 +1,9 @@
+//! `nivela-app` — the native GUI shell for NivelaEditor, built on `eframe`/`egui` with the
+//! `glow` (OpenGL) backend. Owns everything UI-specific: screens ([`screens`]), the dark/teal
+//! theme ([`theme`]), translated display text ([`i18n`]), and the top-level app state
+//! ([`app::NivelaApp`]). The actual project/media/timeline data model and `ffprobe`/`ffmpeg`
+//! wrappers live in the UI-agnostic `nivela-core` crate this depends on.
+
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;

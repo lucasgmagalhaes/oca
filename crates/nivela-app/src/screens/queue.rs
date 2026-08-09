@@ -6,6 +6,9 @@ use crate::i18n::{self, Text};
 use crate::screens::widgets;
 use crate::theme;
 
+/// Renders the Fila screen: the export queue's job list (with reorder/pause/cancel/retry
+/// controls) and the concurrent-worker count. The list is all local UI state for now — Fase
+/// 4 wires it up to a real background render worker over a `tokio::mpsc` channel.
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
     let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {

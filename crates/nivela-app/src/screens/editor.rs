@@ -6,6 +6,17 @@ use crate::i18n::Text;
 use crate::screens::widgets;
 use crate::theme;
 
+/// Renders the Editor screen: toolbar, then a three-column row (media library / preview /
+/// clip properties), then the timeline strip.
+///
+/// Every column and the timeline are wrapped in `ui.vertical(...)` (and the columns also in
+/// `ui.allocate_ui(...)`) rather than just calling `ui.set_width()`/`ui.set_height()` inside
+/// their `Frame` — this egui version doesn't default a `Frame`'s or `ScrollArea`'s child `Ui`
+/// to a vertical top-down layout, it inherits whatever direction the enclosing `Ui` is in
+/// (horizontal, here), and `set_width` alone only affects how much space is reported back to
+/// the parent afterwards, not what the child actually paints. Skipping either wrapper
+/// reintroduces the overlapping-text/full-width-panel bugs fixed in this screen — see the
+/// "Add i18n" commit for the concrete symptoms.
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
     ui.vertical(|ui| {
         toolbar(app, ui);

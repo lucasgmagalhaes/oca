@@ -12,6 +12,7 @@ const ITEMS: [(Screen, &str); 5] = [
     (Screen::Prefs, "⚙"),
 ];
 
+/// Renders the left icon rail and handles screen-switching clicks.
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
     egui::Panel::left("nav_rail")
         .resizable(false)
