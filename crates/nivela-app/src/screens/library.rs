@@ -18,7 +18,11 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
                     .strong(),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let _ = ui.button(Text::ImportFiles.tr(locale));
+                if ui.button(Text::ImportFiles.tr(locale)).clicked() {
+                    if let Some(paths) = rfd::FileDialog::new().pick_files() {
+                        import_files(app, &paths);
+                    }
+                }
             });
         });
         ui.add_space(16.0);
@@ -96,4 +100,44 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
             ui.label(RichText::new(Text::LibraryEmpty.tr(locale)).color(theme::TEXT_MUTED));
         }
     });
+}
+
+/// Probes and measures each path with `nivela_core::probe`/`nivela_core::loudness` and adds
+/// the resulting assets to the active project's media library. Runs synchronously on the UI
+/// thread (each file briefly blocks on an `ffprobe`/`ffmpeg` subprocess) — fine for a handful
+/// of files from a picker dialog; a real "import a folder of hour-long recordings" flow would
+/// want this on a background thread instead. A file that fails to probe is skipped (logged to
+/// stderr) rather than aborting the whole import.
+fn import_files(app: &mut NivelaApp, paths: &[std::path::PathBuf]) {
+    let mut next_id = app
+        .active_project()
+        .media_library
+        .iter()
+        .map(|a| a.id)
+        .max()
+        .unwrap_or(0);
+
+    for path in paths {
+        let probed = match nivela_core::probe_media(path) {
+            Ok(probed) => probed,
+            Err(e) => {
+                eprintln!("failed to probe {}: {e}", path.display());
+                continue;
+            }
+        };
+
+        next_id += 1;
+        let file_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let mut asset = probed.into_media_asset(next_id, file_name);
+
+        match nivela_core::measure_loudness(path) {
+            Ok(metrics) => asset.loudness = Some(metrics),
+            Err(e) => eprintln!("failed to measure loudness for {}: {e}", path.display()),
+        }
+
+        app.active_project_mut().media_library.push(asset);
+    }
 }

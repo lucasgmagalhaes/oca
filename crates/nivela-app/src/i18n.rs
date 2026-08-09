@@ -81,6 +81,9 @@ text_catalog! {
     HomeTitle: pt_br = "Projetos recentes", en = "Recent projects";
     HomeSubtitle: pt_br = "Continue de onde parou ou comece um projeto novo.", en = "Continue where you left off or start a new project.";
     NewProject: pt_br = "＋ Novo projeto", en = "＋ New project";
+    OpenProject: pt_br = "Abrir projeto…", en = "Open project…";
+    UntitledProject: pt_br = "Projeto sem título", en = "Untitled project";
+    Save: pt_br = "💾 Salvar", en = "💾 Save";
     ClipsUnit: pt_br = "clipes", en = "clips";
     ClipUnitSingular: pt_br = "clipe", en = "clip";
 

@@ -60,11 +60,14 @@ graph LR
     "nivela_core" --> "nivela_core::export"
     "nivela_core" --> "nivela_core::loudness"
     "nivela_core" --> "nivela_core::media"
+    "nivela_core" --> "nivela_core::persistence"
     "nivela_core" --> "nivela_core::probe"
     "nivela_core" --> "nivela_core::project"
     "nivela_core" --> "nivela_core::sample"
     "nivela_core" --> "nivela_core::timeline"
     "nivela_core::loudness" -.-> "nivela_core::media"
+    "nivela_core::persistence" -.-> "nivela_core::project"
+    "nivela_core::persistence" -.-> "nivela_core::sample"
     "nivela_core::probe" -.-> "nivela_core::media"
     "nivela_core::project" -.-> "nivela_core::media"
     "nivela_core::project" -.-> "nivela_core::timeline"
@@ -86,8 +89,11 @@ graph LR
 - **struct** `NivelaApp` — The whole application's state: which screen is showing, the loaded projects, the export
 - **fn** `new` — Builds the initial app state: applies the theme, loads the mock projects/export
 - **fn** `active_project` — The project currently open in the Editor/Mídia screens.
+- **fn** `active_project_mut` — Mutable access to the project currently open in the Editor/Mídia screens — for
 - **fn** `selected_asset` — The asset backing the Editor's "Clipe selecionado" panel, if any is selected.
 - **fn** `open_project` — Switches the active project to `index` and navigates to the Editor screen — this is
+- **fn** `add_and_open_project` — Appends `project` to the project list and opens it — used for both "Novo projeto"
+- **fn** `create_new_project` — Builds an empty project with a fresh id and opens it — what "Novo projeto" does.
 
 ### `nivela_app::i18n`
 *nivela-app/i18n.rs*
@@ -200,9 +206,18 @@ _No public items._
 
 - **enum** `MediaKind`
 - **struct** `LoudnessMetrics` — Result of a `loudnorm`-style analysis pass on a clip, before or after processing.
-- **struct** `MediaAsset` — A source file imported into the project's media library. Populated today with mock
+- **struct** `MediaAsset` — A source file imported into the project's media library. Built either from
 - **fn** `duration_label` — This asset's duration as a display-ready timecode (e.g. `"02:14"`).
 - **fn** `format_timecode` — Formats seconds as `H:MM:SS` (or `MM:SS` under an hour), matching the mockup's timecodes.
+
+### `nivela_core::persistence`
+*nivela-core/persistence.rs*
+
+- **enum** `PersistError`
+- **fn** `to_json` — Serializes `project` to pretty-printed JSON.
+- **fn** `from_json` — Parses a project previously produced by [`to_json`] (or hand-edited — it's plain JSON).
+- **fn** `save_project_to_file` — Writes `project` to `path` as JSON, overwriting any existing file.
+- **fn** `load_project_from_file` — Reads and parses a project from `path`. The returned [`Project::file_path`] is `None` —
 
 ### `nivela_core::probe`
 *nivela-core/probe.rs*

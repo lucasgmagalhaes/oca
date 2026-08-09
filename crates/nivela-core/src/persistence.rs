@@ -101,6 +101,9 @@ mod tests {
     #[test]
     fn load_project_from_file_errors_on_a_missing_file() {
         let path = std::env::temp_dir().join("nivela_persist_test_does_not_exist.json");
-        assert!(matches!(load_project_from_file(&path), Err(PersistError::Io(_))));
+        assert!(matches!(
+            load_project_from_file(&path),
+            Err(PersistError::Io(_))
+        ));
     }
 }

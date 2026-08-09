@@ -18,6 +18,11 @@ use crate::theme;
 /// reintroduces the overlapping-text/full-width-panel bugs fixed in this screen — see the
 /// "Add i18n" commit for the concrete symptoms.
 pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
+    let ctrl_s_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S));
+    if ctrl_s_pressed {
+        save_active_project(app);
+    }
+
     ui.vertical(|ui| {
         toolbar(app, ui);
         ui.add_space(4.0);
@@ -74,8 +79,33 @@ fn toolbar(app: &mut NivelaApp, ui: &mut egui::Ui) {
             if ui.button(Text::Export.tr(locale)).clicked() {
                 app.screen = crate::app::Screen::Queue;
             }
+            if ui
+                .button(Text::Save.tr(locale))
+                .on_hover_text("Ctrl+S")
+                .clicked()
+            {
+                save_active_project(app);
+            }
         });
     });
+}
+
+/// Saves the active project to its remembered [`nivela_core::Project::file_path`], or prompts
+/// for a destination (and remembers it for next time) if it doesn't have one yet.
+fn save_active_project(app: &mut NivelaApp) {
+    let path = match app.active_project().file_path.clone() {
+        Some(path) => Some(path),
+        None => rfd::FileDialog::new()
+            .add_filter("JSON", &["json"])
+            .set_file_name(format!("{}.json", app.active_project().name))
+            .save_file(),
+    };
+    let Some(path) = path else { return };
+
+    match nivela_core::save_project_to_file(app.active_project(), &path) {
+        Ok(()) => app.active_project_mut().file_path = Some(path),
+        Err(e) => eprintln!("failed to save project: {e}"),
+    }
 }
 
 fn tool_button(app: &mut NivelaApp, ui: &mut egui::Ui, tool: EditorTool, icon: &str, label: &str) {

@@ -25,7 +25,21 @@ pub fn show(app: &mut NivelaApp, ui: &mut egui::Ui) {
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button(Text::NewProject.tr(app.locale)).clicked() {
-                    // Fase 1: cria um Project vazio e abre no Editor.
+                    app.create_new_project(Text::UntitledProject.tr(app.locale).to_string());
+                }
+                if ui.button(Text::OpenProject.tr(app.locale)).clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("JSON", &["json"])
+                        .pick_file()
+                    {
+                        match nivela_core::load_project_from_file(&path) {
+                            Ok(mut project) => {
+                                project.file_path = Some(path);
+                                app.add_and_open_project(project);
+                            }
+                            Err(e) => eprintln!("failed to open project: {e}"),
+                        }
+                    }
                 }
             });
         });

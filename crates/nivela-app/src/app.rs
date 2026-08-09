@@ -109,6 +109,12 @@ impl NivelaApp {
         &self.projects[self.active_project]
     }
 
+    /// Mutable access to the project currently open in the Editor/Mídia screens — for
+    /// imports, edits, and anything else that changes the active project in place.
+    pub fn active_project_mut(&mut self) -> &mut Project {
+        &mut self.projects[self.active_project]
+    }
+
     /// The asset backing the Editor's "Clipe selecionado" panel, if any is selected.
     pub fn selected_asset(&self) -> Option<&MediaAsset> {
         let id = self.selected_asset_id?;
@@ -124,6 +130,30 @@ impl NivelaApp {
         self.active_project = index;
         self.selected_asset_id = self.active_project().media_library.first().map(|a| a.id);
         self.screen = Screen::Editor;
+    }
+
+    /// Appends `project` to the project list and opens it — used for both "Novo projeto"
+    /// (an empty project) and "Abrir projeto" (one just loaded from disk).
+    pub fn add_and_open_project(&mut self, project: Project) {
+        self.projects.push(project);
+        self.open_project(self.projects.len() - 1);
+    }
+
+    /// Builds an empty project with a fresh id and opens it — what "Novo projeto" does.
+    pub fn create_new_project(&mut self, name: String) {
+        let id = self.projects.iter().map(|p| p.id).max().unwrap_or(0) + 1;
+        self.add_and_open_project(Project {
+            id,
+            name,
+            last_edited: nivela_core::Recency::HoursAgo(0),
+            summary: String::new(),
+            media_library: Vec::new(),
+            timeline: nivela_core::Timeline {
+                tracks: Vec::new(),
+                playhead_secs: 0.0,
+            },
+            file_path: None,
+        });
     }
 
     /// Mirrors the mockup's `setInterval` progress bump on the rendering job, purely for
