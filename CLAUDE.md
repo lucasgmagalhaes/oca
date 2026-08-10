@@ -22,9 +22,12 @@ app.rs::OcaApp::{select_asset,reload_preview,pump_preview_frame}` +
 `ui/src/screens/editor.rs::preview_panel`): clicking an asset in the media library opens it,
 decoded frames are uploaded to an egui texture every frame, and play/pause/seek (including a
 click-to-seek position slider) drive the pipeline — playback of the selected clip only, not
-yet full multi-clip timeline playback. The timeline (`editor.rs::timeline_panel`) draws clips
-at their real `start_secs` position, has a click/drag ruler that moves the playhead, and
-supports real editing with no ripple (a cut/delete/move just leaves or closes a gap at the
+yet full multi-clip timeline playback. Double-clicking an asset in the Editor's media library
+panel adds it to the timeline (`OcaApp::add_asset_to_timeline`) — appended, untrimmed, onto
+the first track of matching kind (auto-creating `"V1"`/`"A1"` if none exists yet); this is the
+only way a clip gets onto the timeline today, no drag-and-drop from the library. The timeline
+(`editor.rs::timeline_panel`) draws clips at their real `start_secs` position, has a
+click/drag ruler that moves the playhead, and supports real editing with no ripple (a cut/delete/move just leaves or closes a gap at the
 point of the edit, nothing downstream shifts) and no overlap checking (`avcore::timeline::
 Track`'s long-standing documented policy): clip select (`OcaApp::selected_clip_id`, separate
 from `selected_asset_id` which drives the preview panel), `Ctrl+B`/toolbar split-at-playhead
