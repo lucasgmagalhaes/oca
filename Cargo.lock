@@ -1680,6 +1680,7 @@ name = "nivela-core"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "oca-avbridge",
  "serde",
  "serde_json",
 ]
