@@ -150,4 +150,44 @@ impl Timeline {
             .map(|c| c.start_secs + c.duration_secs())
             .fold(0.0, f64::max)
     }
+
+    /// Moves the clip with `clip_id` onto `target_track_id` at `new_start_secs`, removing it
+    /// from wherever it currently lives (which may itself be `target_track_id`, for a same-
+    /// track reposition — [`Track::move_clip`] is the cheaper path for that specific case, but
+    /// this stays correct for it too). No-op (`false`) if the clip or target track don't
+    /// exist, `new_start_secs` is negative, or the target track's `kind` doesn't match the
+    /// clip's current track's — a video clip can't land on an audio track and vice versa.
+    pub fn move_clip_to_track(
+        &mut self,
+        clip_id: u64,
+        target_track_id: u64,
+        new_start_secs: f64,
+    ) -> bool {
+        if new_start_secs < 0.0 {
+            return false;
+        }
+        let Some(source_index) = self
+            .tracks
+            .iter()
+            .position(|t| t.clips.iter().any(|c| c.id == clip_id))
+        else {
+            return false;
+        };
+        let Some(target_index) = self.tracks.iter().position(|t| t.id == target_track_id) else {
+            return false;
+        };
+        if self.tracks[source_index].kind != self.tracks[target_index].kind {
+            return false;
+        }
+
+        let clip_index = self.tracks[source_index]
+            .clips
+            .iter()
+            .position(|c| c.id == clip_id)
+            .expect("source_index was found by locating a track containing this clip_id");
+        let mut clip = self.tracks[source_index].clips.remove(clip_index);
+        clip.start_secs = new_start_secs;
+        self.tracks[target_index].clips.push(clip);
+        true
+    }
 }

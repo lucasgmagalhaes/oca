@@ -429,15 +429,27 @@ impl OcaApp {
     }
 
     /// Repositions `clip_id` to `new_start_secs` on its own track — what dragging a timeline
-    /// clip's body (not one of its edges) does. Moving a clip to a different track isn't
-    /// supported yet, only repositioning it in time. A no-op if the clip isn't found or
-    /// `new_start_secs` is negative.
+    /// clip's body does when it's dropped back on the same track it started on. A no-op if
+    /// the clip isn't found or `new_start_secs` is negative.
     pub fn move_clip(&mut self, clip_id: u64, new_start_secs: f64) {
         for track in &mut self.active_project_mut().timeline.tracks {
             if track.move_clip(clip_id, new_start_secs) {
                 return;
             }
         }
+    }
+
+    /// Moves `clip_id` onto `target_track_id` at `new_start_secs` — what dragging a timeline
+    /// clip's body onto a *different* track does, once the editor has confirmed the drop
+    /// target's row is a same-kind track. A no-op if the clip or target track aren't found,
+    /// the kinds don't match, or `new_start_secs` is negative — see
+    /// [`avcore::timeline::Timeline::move_clip_to_track`] for the exact rules.
+    pub fn move_clip_to_track(&mut self, clip_id: u64, target_track_id: u64, new_start_secs: f64) {
+        self.active_project_mut().timeline.move_clip_to_track(
+            clip_id,
+            target_track_id,
+            new_start_secs,
+        );
     }
 
     /// Probes, measures loudness, and (for video) generates an editing proxy for each of

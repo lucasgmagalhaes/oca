@@ -207,6 +207,100 @@ fn move_clip_is_a_no_op_for_a_negative_position() {
     assert_eq!(track.clips[0], clip(1, 0.0, 0.0, 10.0));
 }
 
+fn timeline_with(tracks: Vec<Track>) -> Timeline {
+    Timeline {
+        tracks,
+        playhead_secs: 0.0,
+    }
+}
+
+#[test]
+fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
+    let mut timeline = timeline_with(vec![
+        Track {
+            id: 1,
+            name: "V1".to_string(),
+            kind: TrackKind::Video,
+            clips: vec![clip(1, 0.0, 0.0, 10.0)],
+        },
+        Track {
+            id: 2,
+            name: "V2".to_string(),
+            kind: TrackKind::Video,
+            clips: vec![],
+        },
+    ]);
+
+    let moved = timeline.move_clip_to_track(1, 2, 5.0);
+
+    assert!(moved);
+    assert!(timeline.tracks[0].clips.is_empty());
+    assert_eq!(timeline.tracks[1].clips, vec![clip(1, 5.0, 0.0, 10.0)]);
+}
+
+#[test]
+fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
+    let mut timeline = timeline_with(vec![
+        Track {
+            id: 1,
+            name: "V1".to_string(),
+            kind: TrackKind::Video,
+            clips: vec![clip(1, 0.0, 0.0, 10.0)],
+        },
+        Track {
+            id: 2,
+            name: "A1".to_string(),
+            kind: TrackKind::Audio,
+            clips: vec![],
+        },
+    ]);
+
+    let moved = timeline.move_clip_to_track(1, 2, 5.0);
+
+    assert!(!moved);
+    assert_eq!(timeline.tracks[0].clips, vec![clip(1, 0.0, 0.0, 10.0)]);
+    assert!(timeline.tracks[1].clips.is_empty());
+}
+
+#[test]
+fn move_clip_to_track_is_a_no_op_for_an_unknown_target_track() {
+    let mut timeline = timeline_with(vec![Track {
+        id: 1,
+        name: "V1".to_string(),
+        kind: TrackKind::Video,
+        clips: vec![clip(1, 0.0, 0.0, 10.0)],
+    }]);
+
+    let moved = timeline.move_clip_to_track(1, 99, 5.0);
+
+    assert!(!moved);
+    assert_eq!(timeline.tracks[0].clips, vec![clip(1, 0.0, 0.0, 10.0)]);
+}
+
+#[test]
+fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
+    let mut timeline = timeline_with(vec![
+        Track {
+            id: 1,
+            name: "V1".to_string(),
+            kind: TrackKind::Video,
+            clips: vec![clip(1, 0.0, 0.0, 10.0)],
+        },
+        Track {
+            id: 2,
+            name: "V2".to_string(),
+            kind: TrackKind::Video,
+            clips: vec![],
+        },
+    ]);
+
+    let moved = timeline.move_clip_to_track(1, 2, -5.0);
+
+    assert!(!moved);
+    assert_eq!(timeline.tracks[0].clips, vec![clip(1, 0.0, 0.0, 10.0)]);
+    assert!(timeline.tracks[1].clips.is_empty());
+}
+
 #[test]
 fn move_clip_is_a_no_op_for_an_unknown_clip_id() {
     let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0)]);

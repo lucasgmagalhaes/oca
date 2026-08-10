@@ -383,7 +383,8 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
 
         let mut clicked_clip_id = None;
         let mut trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
-        let mut move_requests: Vec<(u64, f64)> = Vec::new();
+        let mut clip_drags: Vec<ClipDrag> = Vec::new();
+        let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for track in &app.active_project().timeline.tracks {
                 ui.horizontal(|ui| {
@@ -399,6 +400,7 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                         egui::vec2(ui.available_width(), 26.0),
                         egui::Sense::hover(),
                     );
+                    track_rows.push((track.id, track.kind, track_rect));
                     let painter = ui.painter();
                     for clip in &track.clips {
                         let x = track_rect.left() + clip.start_secs as f32 * PX_PER_SEC;
@@ -457,8 +459,14 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                         if body_response.dragged() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                             let delta_secs = (body_response.drag_delta().x / PX_PER_SEC) as f64;
-                            if delta_secs != 0.0 {
-                                move_requests.push((clip.id, clip.start_secs + delta_secs));
+                            if let Some(pointer) = body_response.interact_pointer_pos() {
+                                clip_drags.push(ClipDrag {
+                                    clip_id: clip.id,
+                                    source_track_id: track.id,
+                                    kind: track.kind,
+                                    new_start_secs: clip.start_secs + delta_secs,
+                                    pointer_y: pointer.y,
+                                });
                             }
                         }
                         if let Some(pos) = left_response.interact_pointer_pos() {
@@ -506,10 +514,36 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                 TrimEdge::End(secs) => app.trim_clip_end(clip_id, secs),
             }
         }
-        for (clip_id, new_start_secs) in move_requests {
-            app.move_clip(clip_id, new_start_secs);
+        for drag in clip_drags {
+            // Whichever track row's Y-range the pointer is currently over, if its kind
+            // matches the dragged clip's own track — a video clip can't be dropped onto an
+            // audio row or vice versa. Falls back to a same-track reposition if the pointer
+            // isn't over any matching row (including its own, the common case).
+            let target_track_id = track_rows
+                .iter()
+                .find(|(_, kind, rect)| {
+                    *kind == drag.kind && rect.y_range().contains(drag.pointer_y)
+                })
+                .map(|(id, _, _)| *id);
+            match target_track_id {
+                Some(track_id) if track_id != drag.source_track_id => {
+                    app.move_clip_to_track(drag.clip_id, track_id, drag.new_start_secs);
+                }
+                _ => app.move_clip(drag.clip_id, drag.new_start_secs),
+            }
         }
     });
+}
+
+/// A clip body drag in progress: which clip, where it started from, and where the pointer
+/// currently is — resolved into a same-track reposition or a cross-track move once every
+/// track's row rect has been computed (see the loop in `timeline_panel`).
+struct ClipDrag {
+    clip_id: u64,
+    source_track_id: u64,
+    kind: avcore::timeline::TrackKind,
+    new_start_secs: f64,
+    pointer_y: f32,
 }
 
 /// Which edge of a timeline clip a drag targets — see the trim handling in `timeline_panel`.

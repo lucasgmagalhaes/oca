@@ -582,6 +582,46 @@ fn move_clip_ignores_a_negative_position() {
 }
 
 #[test]
+fn move_clip_to_track_relocates_a_clip_to_a_same_kind_track() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![
+                test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]),
+                test_track(2, TrackKind::Video, Vec::new()),
+            ],
+        )],
+        Vec::new(),
+    );
+
+    app.move_clip_to_track(1, 2, 5.0);
+
+    assert!(app.active_project().timeline.tracks[0].clips.is_empty());
+    let moved = &app.active_project().timeline.tracks[1].clips[0];
+    assert_eq!(moved.id, 1);
+    assert_eq!(moved.start_secs, 5.0);
+}
+
+#[test]
+fn move_clip_to_track_ignores_a_mismatched_kind() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![
+                test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]),
+                test_track(2, TrackKind::Audio, Vec::new()),
+            ],
+        )],
+        Vec::new(),
+    );
+
+    app.move_clip_to_track(1, 2, 5.0);
+
+    assert_eq!(app.active_project().timeline.tracks[0].clips.len(), 1);
+    assert!(app.active_project().timeline.tracks[1].clips.is_empty());
+}
+
+#[test]
 fn delete_selected_clip_removes_it_from_its_track_and_clears_the_selection() {
     let mut app = test_app(
         vec![test_project_with_tracks(
