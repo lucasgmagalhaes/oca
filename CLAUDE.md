@@ -17,9 +17,10 @@ wired end-to-end from the UI (`home.rs` open dialog, `editor.rs` save). Probing
 ffprobe/ffmpeg on PATH required for either. `loudness` and `proxy` still spawn `ffmpeg` as a
 subprocess and are next in line to move to the same FFI bridge (see Fase 1 in the plan doc). A
 minimal GStreamer preview pipeline (`nivela_core::preview::Preview`) exists — open/play/pause/
-seek/query, `fakesink` for both audio and video (no frame extraction/display yet, not wired
-into the Editor screen). Not yet implemented: extracting decoded frames into an egui texture,
-real timeline editing (cut/split/trim), and the background export queue worker. Check the plan
+seek/query, and `current_frame()` pulls the latest decoded frame as packed RGBA (`fakesink`
+still for audio). Not yet wired into the Editor screen — no egui texture upload, no UI
+scrubbing. Not yet implemented: that UI wiring, real timeline editing (cut/split/trim), and the
+background export queue worker. Check the plan
 doc for which phase a task belongs to before assuming a feature is live.
 
 ## Commands
@@ -86,8 +87,8 @@ and `nivela-app` is its only consumer.
 - **`nivela-core`** — project/timeline/media data model plus the media wrappers that populate
   it (`probe` and `render` via `oca-avbridge` FFI; `loudness`, `proxy` still via `ffmpeg`
   subprocess), a `playbin`-based GStreamer playback pipeline (`preview`: open/play/pause/seek/
-  query, `fakesink` for both audio and video until frame extraction is built), JSON save/load
-  (`persistence`), and mock sample data (`sample`) used to exercise the UI before real files
+  query, `current_frame()` pulls packed RGBA via an appsink), JSON save/load (`persistence`),
+  and mock sample data (`sample`) used to exercise the UI before real files
   are wired in. Locale-neutral by design: it stores data like `Recency` (an enum), never
   pre-formatted display strings — formatting is `nivela-app`'s job.
 - **`nivela-app`** — the eframe/egui GUI (glow/OpenGL backend): `app.rs` holds all top-level
