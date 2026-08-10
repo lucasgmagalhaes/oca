@@ -10,12 +10,13 @@ phase breakdown this workspace is being built against (a near-duplicate lives at
 
 ```
 crates/
-  oca-avbridge/  C bridge (FFI) over libavformat/libavcodec/libavfilter/libavutil — probing,
-                 export rendering (video copy, audio loudnorm+limiter+AAC), and loudness-only
-                 measurement. Needs FFMPEG_DIR set to build (see Prerequisites).
+  oca-avbridge/  C bridge (FFI) over libavformat/libavcodec/libavfilter/libswscale/libavutil —
+                 probing, export rendering (video copy, audio loudnorm+limiter+AAC),
+                 loudness-only measurement, and proxy generation (downscale + libopenh264).
+                 Needs FFMPEG_DIR set to build (see Prerequisites).
   nivela-core/   UI-agnostic engine: project/timeline/media data model, media wrappers
-                 (probe/render/loudness via oca-avbridge FFI; proxy via ffmpeg subprocess for
-                 now), a minimal GStreamer preview pipeline (open/play/pause/seek, pulls RGBA
+                 (probe/render/loudness/proxy — all via oca-avbridge FFI, no subprocess left),
+                 a minimal GStreamer preview pipeline (open/play/pause/seek, pulls RGBA
                  frames — not yet wired into the Editor screen), mock sample data. No egui
                  dependency.
   nivela-app/    Native GUI (eframe/egui, glow backend): the five screens, theme, i18n.
@@ -50,9 +51,6 @@ string).
   (e.g. a [BtbN shared build](https://github.com/BtbN/FFmpeg-Builds)) — required to build at
   all, `oca-avbridge` links against it. At runtime, the FFmpeg DLLs (`FFMPEG_DIR/bin`) need to
   be next to the built binary or on `PATH`.
-- **`ffmpeg`** on `PATH`, needed for `nivela_core::proxy` (not yet moved to `oca-avbridge`).
-  The app runs fine without it — it just falls back to the bundled mock data
-  (`nivela_core::sample`) instead of a loaded project.
 - **GStreamer** dev build (MSVC or mingw, matching your Rust target) with `pkg-config` —
   required to build at all, `nivela-core` depends on the `gstreamer` crate. Set
   `PKG_CONFIG_PATH` to `<gstreamer_root>/lib/pkgconfig` and put `<gstreamer_root>/bin` on
@@ -84,11 +82,10 @@ target is a one-liner.
 ## Status
 
 The GUI shell (all five screens, navigable) and JSON project save/load are wired end-to-end
-from the UI. Probing, export rendering, and loudness measurement all go through
-`oca-avbridge`'s FFI (no subprocess); `proxy` still spawns `ffmpeg`. A minimal GStreamer
-preview pipeline exists
-(open/play/pause/seek/query, pulls decoded video frames as packed RGBA) but isn't wired into
-the Editor screen yet — no egui texture upload, no UI scrubbing. Not yet implemented: that UI
-wiring, real timeline editing
-(cut/split/trim), and the background export queue (`tokio::mpsc` worker). See the execution
-plan for the phase these land in.
+from the UI. Probing, export rendering, loudness measurement, and proxy generation all go
+through `oca-avbridge`'s FFI — no subprocess left anywhere in the media pipeline. A minimal
+GStreamer preview pipeline exists (open/play/pause/seek/query, pulls decoded video frames as
+packed RGBA) but isn't wired into the Editor screen yet — no egui texture upload, no UI
+scrubbing. Not yet implemented: that UI wiring, real timeline editing (cut/split/trim), and the
+background export queue (`tokio::mpsc` worker). See the execution plan for the phase these land
+in.

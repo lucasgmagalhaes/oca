@@ -12,11 +12,11 @@ not yet reconciled, treat `features/request.md` as canonical).
 
 Current status: the GUI shell (all five screens, navigable) and JSON project save/load are
 wired end-to-end from the UI (`home.rs` open dialog, `editor.rs` save). Probing
-(`nivela_core::probe`), export rendering (`nivela_core::render`), and loudness measurement
-(`nivela_core::loudness`) all go through `oca-avbridge`, a native FFI bridge over
-libavformat/libavcodec/libavfilter — no subprocess, no ffprobe/ffmpeg on PATH required for any
-of them. `proxy` still spawns `ffmpeg` as a subprocess and is next in line to move to the same
-FFI bridge (see Fase 1 in the plan doc). A
+(`nivela_core::probe`), export rendering (`nivela_core::render`), loudness measurement
+(`nivela_core::loudness`), and proxy generation (`nivela_core::proxy`) all go through
+`oca-avbridge`, a native FFI bridge over libavformat/libavcodec/libavfilter/libswscale — no
+subprocess, no ffprobe/ffmpeg on PATH required for any of them (proxy uses `libopenh264` — BSD
+— since this LGPL FFmpeg build has no `libx264`/GPL). A
 minimal GStreamer preview pipeline (`nivela_core::preview::Preview`) exists — open/play/pause/
 seek/query, and `current_frame()` pulls the latest decoded frame as packed RGBA (`fakesink`
 still for audio). Not yet wired into the Editor screen — no egui texture upload, no UI
@@ -31,12 +31,11 @@ Visual Studio Build Tools with the "Desktop development with C++" workload) and 
 (`x86_64-pc-windows-gnu` + a MinGW-w64 toolchain e.g. WinLibs, `bin` dir on `PATH`) work — this
 workspace currently defaults to MSVC, but nothing in it requires MSVC specifically.
 
-`oca-avbridge` links against libavformat/libavcodec/libavfilter/libavutil and needs `FFMPEG_DIR`
-set to an FFmpeg dev build with `include/` and `lib/` subdirectories (e.g. a BtbN shared build,
-with `avfilter` among the linked libs) to compile at all — the workspace won't build without
-it. At runtime the FFmpeg DLLs (`FFMPEG_DIR/bin`) need to be next to the built binary or on
-`PATH`. `proxy` still spawns `ffmpeg` as a subprocess (not yet moved to `oca-avbridge`) — the
-app falls back to mock data for it without `ffmpeg` on `PATH`.
+`oca-avbridge` links against libavformat/libavcodec/libavfilter/libswscale/libavutil and needs
+`FFMPEG_DIR` set to an FFmpeg dev build with `include/` and `lib/` subdirectories (e.g. a BtbN
+shared build, with `avfilter`/`swscale`/`libopenh264` among the linked libs/enabled encoders)
+to compile at all — the workspace won't build without it. At runtime the FFmpeg DLLs
+(`FFMPEG_DIR/bin`) need to be next to the built binary or on `PATH`.
 
 `nivela-core` also depends on the `gstreamer` crate (`preview` module, see Architecture below),
 needing `pkg-config` plus GStreamer's dev build (MSVC or mingw,
@@ -84,14 +83,16 @@ and `nivela-app` is its only consumer.
   `build.rs` locates FFmpeg via `FFMPEG_DIR` (see Commands above). Exposes probing
   (`oca_avbridge_probe`), export rendering (`oca_avbridge_encode_export`: video
   passthrough-copied, audio decoded → loudnorm+limiter filter graph → AAC re-encoded, with
-  progress callback and cooperative cancellation), and loudness-only measurement
+  progress callback and cooperative cancellation), loudness-only measurement
   (`oca_avbridge_measure_loudness`, same decode→loudnorm shape without the encoder — its
   report has no queryable struct API, only `av_log` output during filter-graph teardown, so
   this installs a process-global log callback for the call's duration; **not thread-safe**,
-  documented on the function).
+  documented on the function), and proxy generation (`oca_avbridge_generate_proxy`: video
+  decoded → libswscale downscale (aspect-preserving) → `libopenh264` re-encode, audio decoded
+  → format-matched → AAC re-encode).
 - **`nivela-core`** — project/timeline/media data model plus the media wrappers that populate
-  it (`probe`, `render`, and `loudness` via `oca-avbridge` FFI; `proxy` still via `ffmpeg`
-  subprocess), a `playbin`-based GStreamer playback pipeline (`preview`: open/play/pause/seek/
+  it (`probe`, `render`, `loudness`, and `proxy` — all via `oca-avbridge` FFI, no subprocess
+  left in any of them), a `playbin`-based GStreamer playback pipeline (`preview`: open/play/pause/seek/
   query, `current_frame()` pulls packed RGBA via an appsink), JSON save/load (`persistence`),
   and mock sample data (`sample`) used to exercise the UI before real files
   are wired in. Locale-neutral by design: it stores data like `Recency` (an enum), never
