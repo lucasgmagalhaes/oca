@@ -52,7 +52,7 @@ fn main() {
     // contain) and let bare-name search find it unambiguously.
     let is_msvc = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR set by cargo"));
-    for name in ["avfilter", "avformat", "avcodec", "avutil"] {
+    for name in ["avfilter", "avformat", "avcodec", "swscale", "avutil"] {
         let (src_name, unique_name) = if is_msvc {
             (format!("{name}.lib"), format!("oca_avbridge_ffmpeg_{name}.lib"))
         } else {

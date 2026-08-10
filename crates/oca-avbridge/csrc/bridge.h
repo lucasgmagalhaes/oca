@@ -132,4 +132,38 @@ typedef enum {
 OcaLoudnessStatus oca_avbridge_measure_loudness(const char *in_path, char *out_json,
                                                  size_t out_json_len);
 
+typedef enum {
+    OCA_PROXY_OK = 0,
+    OCA_PROXY_ERR_OPEN_INPUT = 1,
+    OCA_PROXY_ERR_STREAM_INFO = 2,
+    /* The input has no video stream to make a proxy of. */
+    OCA_PROXY_ERR_NO_VIDEO_STREAM = 3,
+    OCA_PROXY_ERR_ALLOC_OUTPUT = 4,
+    OCA_PROXY_ERR_NEW_STREAM = 5,
+    OCA_PROXY_ERR_OPEN_OUTPUT = 6,
+    OCA_PROXY_ERR_WRITE_HEADER = 7,
+    OCA_PROXY_ERR_WRITE_FRAME = 8,
+    /* Couldn't find/open the video or audio decoder. */
+    OCA_PROXY_ERR_DECODER = 9,
+    /* Couldn't find/open the libopenh264 video encoder or the AAC audio encoder. */
+    OCA_PROXY_ERR_ENCODER = 10,
+    /* Couldn't build the video scaler (libswscale). */
+    OCA_PROXY_ERR_SCALER = 11,
+    /* Couldn't build the (filterless, format-conversion-only) audio graph. */
+    OCA_PROXY_ERR_FILTER_GRAPH = 12,
+    /* A decode/scale/encode call failed mid-stream (not at setup). */
+    OCA_PROXY_ERR_PIPELINE = 13,
+} OcaProxyStatus;
+
+/* Generates a downscaled editing proxy of in_path's video (height = target_height, width
+   computed to preserve source aspect ratio and rounded to the nearest even number, matching
+   ffmpeg's `scale=-2:<height>`) via libopenh264 (BSD-licensed — not libx264/GPL, which this
+   LGPL FFmpeg build doesn't have). Any audio stream is re-encoded to AAC 128kbps unchanged
+   otherwise (decode -> format-match the encoder -> encode, no filtering). Equivalent to:
+   ffmpeg -i in_path -vf scale=-2:<target_height> -c:v libopenh264 -c:a aac -b:a 128k out_path
+   Fails with OCA_PROXY_ERR_NO_VIDEO_STREAM if in_path has no video stream. Audio is optional —
+   a video-only input produces a video-only proxy, no error. */
+OcaProxyStatus oca_avbridge_generate_proxy(const char *in_path, const char *out_path,
+                                            int target_height);
+
 #endif
