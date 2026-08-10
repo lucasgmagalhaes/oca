@@ -41,6 +41,11 @@ unsafe extern "C" {
         out_json: *mut c_char,
         out_json_len: usize,
     ) -> c_int;
+    fn oca_avbridge_generate_proxy(
+        in_path: *const c_char,
+        out_path: *const c_char,
+        target_height: c_int,
+    ) -> c_int;
 }
 
 /// Trampoline handed to the C side as `progress_cb`; `user_data` is a `*mut F` for whatever
@@ -436,4 +441,96 @@ pub fn measure_loudness_json(path: &Path) -> Result<String, LoudnessError> {
     json.to_str()
         .map(str::to_owned)
         .map_err(LoudnessError::InvalidUtf8)
+}
+
+/// What [`generate_proxy`] failed on.
+#[derive(Debug)]
+pub enum ProxyError {
+    /// `in_path`/`out_path` contains a NUL byte and can't be handed to the C API.
+    InvalidPath(NulError),
+    OpenInput,
+    StreamInfo,
+    /// `in_path` has no video stream to make a proxy of.
+    NoVideoStream,
+    AllocOutput,
+    NewStream,
+    OpenOutput,
+    WriteHeader,
+    WriteFrame,
+    /// Couldn't find/open the video or audio decoder.
+    Decoder,
+    /// Couldn't find/open the `libopenh264` video encoder or the AAC audio encoder.
+    Encoder,
+    /// Couldn't build the video scaler.
+    Scaler,
+    /// Couldn't build the (filterless, format-conversion-only) audio graph.
+    FilterGraph,
+    /// A decode/scale/encode call failed mid-stream (not at setup).
+    Pipeline,
+    /// The C side returned a status code this crate doesn't know about.
+    Unknown(c_int),
+}
+
+impl std::fmt::Display for ProxyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProxyError::InvalidPath(e) => write!(f, "path is not a valid C string: {e}"),
+            ProxyError::OpenInput => write!(f, "failed to open input"),
+            ProxyError::StreamInfo => write!(f, "failed to read stream info"),
+            ProxyError::NoVideoStream => write!(f, "input has no video stream"),
+            ProxyError::AllocOutput => write!(f, "failed to allocate output context"),
+            ProxyError::NewStream => write!(f, "failed to create an output stream"),
+            ProxyError::OpenOutput => write!(f, "failed to open output for writing"),
+            ProxyError::WriteHeader => write!(f, "failed to write output header"),
+            ProxyError::WriteFrame => write!(f, "failed to write a frame"),
+            ProxyError::Decoder => write!(f, "failed to open a decoder"),
+            ProxyError::Encoder => write!(f, "failed to open an encoder"),
+            ProxyError::Scaler => write!(f, "failed to build the video scaler"),
+            ProxyError::FilterGraph => write!(f, "failed to build the audio format-match graph"),
+            ProxyError::Pipeline => write!(f, "decode/scale/encode pipeline failed mid-stream"),
+            ProxyError::Unknown(code) => write!(f, "unknown proxy status code: {code}"),
+        }
+    }
+}
+
+impl std::error::Error for ProxyError {}
+
+/// Generates a downscaled editing proxy of `in_path`'s video (height = `target_height`, width
+/// computed to preserve the source's aspect ratio) via `libopenh264` (BSD-licensed — this
+/// LGPL FFmpeg build has no `libx264`/GPL). Any audio stream is re-encoded to AAC 128kbps
+/// unchanged otherwise. Fails with [`ProxyError::NoVideoStream`] if `in_path` has no video
+/// stream; a video-only source produces a video-only proxy, no error.
+pub fn generate_proxy(
+    in_path: &Path,
+    out_path: &Path,
+    target_height: u32,
+) -> Result<(), ProxyError> {
+    let c_in = CString::new(in_path.to_string_lossy().as_bytes()).map_err(ProxyError::InvalidPath)?;
+    let c_out =
+        CString::new(out_path.to_string_lossy().as_bytes()).map_err(ProxyError::InvalidPath)?;
+
+    // SAFETY: c_in/c_out are valid NUL-terminated C strings for the duration of this call.
+    // `bridge.c` frees the decoder/encoder/scaler/filter-graph contexts, output I/O, and
+    // output context on every exit path.
+    let status = unsafe {
+        oca_avbridge_generate_proxy(c_in.as_ptr(), c_out.as_ptr(), target_height as c_int)
+    };
+
+    match status {
+        0 => Ok(()),
+        1 => Err(ProxyError::OpenInput),
+        2 => Err(ProxyError::StreamInfo),
+        3 => Err(ProxyError::NoVideoStream),
+        4 => Err(ProxyError::AllocOutput),
+        5 => Err(ProxyError::NewStream),
+        6 => Err(ProxyError::OpenOutput),
+        7 => Err(ProxyError::WriteHeader),
+        8 => Err(ProxyError::WriteFrame),
+        9 => Err(ProxyError::Decoder),
+        10 => Err(ProxyError::Encoder),
+        11 => Err(ProxyError::Scaler),
+        12 => Err(ProxyError::FilterGraph),
+        13 => Err(ProxyError::Pipeline),
+        other => Err(ProxyError::Unknown(other)),
+    }
 }
