@@ -26,6 +26,7 @@ struct RawProbeInfo {
 unsafe extern "C" {
     fn oca_avbridge_version() -> u32;
     fn oca_avbridge_probe(path: *const c_char, out: *mut RawProbeInfo) -> c_int;
+    fn oca_avbridge_remux_copy(in_path: *const c_char, out_path: *const c_char) -> c_int;
 }
 
 /// libavformat's packed version number (same encoding as `LIBAVFORMAT_VERSION_INT` /
@@ -145,4 +146,70 @@ pub fn probe(path: &Path) -> Result<ProbeInfo, ProbeError> {
         sample_rate_hz: (kind == StreamKind::Audio && raw.sample_rate_hz > 0)
             .then_some(raw.sample_rate_hz as u32),
     })
+}
+
+/// What [`remux_copy`] failed on.
+#[derive(Debug)]
+pub enum RemuxError {
+    /// `in_path`/`out_path` contains a NUL byte and can't be handed to the C API.
+    InvalidPath(NulError),
+    /// Couldn't open `in_path`.
+    OpenInput,
+    /// Couldn't read `in_path`'s streams.
+    StreamInfo,
+    /// Couldn't guess an output format for `out_path` (unrecognized extension).
+    AllocOutput,
+    /// Couldn't create an output stream matching one of the input's streams.
+    NewStream,
+    /// Couldn't open `out_path` for writing.
+    OpenOutput,
+    /// Failed writing the output container's header.
+    WriteHeader,
+    /// Failed partway through writing packets — `out_path` may be a truncated/invalid file.
+    WriteFrame,
+    /// The C side returned a status code this crate doesn't know about.
+    Unknown(c_int),
+}
+
+impl std::fmt::Display for RemuxError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RemuxError::InvalidPath(e) => write!(f, "path is not a valid C string: {e}"),
+            RemuxError::OpenInput => write!(f, "failed to open input"),
+            RemuxError::StreamInfo => write!(f, "failed to read stream info"),
+            RemuxError::AllocOutput => write!(f, "failed to allocate output context"),
+            RemuxError::NewStream => write!(f, "failed to create an output stream"),
+            RemuxError::OpenOutput => write!(f, "failed to open output for writing"),
+            RemuxError::WriteHeader => write!(f, "failed to write output header"),
+            RemuxError::WriteFrame => write!(f, "failed to write a frame"),
+            RemuxError::Unknown(code) => write!(f, "unknown remux status code: {code}"),
+        }
+    }
+}
+
+impl std::error::Error for RemuxError {}
+
+/// Demuxes `in_path` and remuxes every video/audio stream to `out_path` unchanged — no decode,
+/// no encode, no filtering. Equivalent to `ffmpeg -i in_path -c copy out_path`.
+pub fn remux_copy(in_path: &Path, out_path: &Path) -> Result<(), RemuxError> {
+    let c_in = CString::new(in_path.to_string_lossy().as_bytes()).map_err(RemuxError::InvalidPath)?;
+    let c_out =
+        CString::new(out_path.to_string_lossy().as_bytes()).map_err(RemuxError::InvalidPath)?;
+
+    // SAFETY: c_in/c_out are valid NUL-terminated C strings for the duration of this call.
+    // `bridge.c` closes the input context, output I/O, and frees the output context on every
+    // exit path.
+    let status = unsafe { oca_avbridge_remux_copy(c_in.as_ptr(), c_out.as_ptr()) };
+
+    match status {
+        0 => Ok(()),
+        1 => Err(RemuxError::OpenInput),
+        2 => Err(RemuxError::StreamInfo),
+        3 => Err(RemuxError::AllocOutput),
+        4 => Err(RemuxError::NewStream),
+        5 => Err(RemuxError::OpenOutput),
+        6 => Err(RemuxError::WriteHeader),
+        7 => Err(RemuxError::WriteFrame),
+        other => Err(RemuxError::Unknown(other)),
+    }
 }

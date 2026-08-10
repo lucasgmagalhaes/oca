@@ -38,4 +38,26 @@ typedef struct {
    Picks the first video stream if there is one, otherwise the first audio stream. */
 OcaProbeStatus oca_avbridge_probe(const char *path, OcaProbeInfo *out);
 
+typedef enum {
+    OCA_REMUX_OK = 0,
+    /* avformat_open_input() failed on in_path. */
+    OCA_REMUX_ERR_OPEN_INPUT = 1,
+    /* avformat_find_stream_info() failed. */
+    OCA_REMUX_ERR_STREAM_INFO = 2,
+    /* Couldn't allocate/guess an output format for out_path. */
+    OCA_REMUX_ERR_ALLOC_OUTPUT = 3,
+    /* Failed to create an output stream matching one of the input's streams. */
+    OCA_REMUX_ERR_NEW_STREAM = 4,
+    /* avio_open() failed on out_path (e.g. unwritable directory). */
+    OCA_REMUX_ERR_OPEN_OUTPUT = 5,
+    /* avformat_write_header() failed. */
+    OCA_REMUX_ERR_WRITE_HEADER = 6,
+    /* av_interleaved_write_frame() failed partway through. */
+    OCA_REMUX_ERR_WRITE_FRAME = 7,
+} OcaRemuxStatus;
+
+/* Demuxes `in_path` and remuxes every stream to `out_path` unchanged — no decode, no encode,
+   no filtering. Equivalent to `ffmpeg -i in_path -c copy out_path`. */
+OcaRemuxStatus oca_avbridge_remux_copy(const char *in_path, const char *out_path);
+
 #endif
