@@ -37,6 +37,7 @@ fn main() {
         .compile("oca_avbridge_c");
 
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    println!("cargo:rustc-link-lib=dylib=avfilter");
     println!("cargo:rustc-link-lib=dylib=avformat");
     println!("cargo:rustc-link-lib=dylib=avcodec");
     println!("cargo:rustc-link-lib=dylib=avutil");

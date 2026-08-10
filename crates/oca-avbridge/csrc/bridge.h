@@ -60,4 +60,34 @@ typedef enum {
    no filtering. Equivalent to `ffmpeg -i in_path -c copy out_path`. */
 OcaRemuxStatus oca_avbridge_remux_copy(const char *in_path, const char *out_path);
 
+typedef enum {
+    OCA_ENCODE_OK = 0,
+    OCA_ENCODE_ERR_OPEN_INPUT = 1,
+    OCA_ENCODE_ERR_STREAM_INFO = 2,
+    OCA_ENCODE_ERR_ALLOC_OUTPUT = 3,
+    OCA_ENCODE_ERR_NEW_STREAM = 4,
+    OCA_ENCODE_ERR_OPEN_OUTPUT = 5,
+    OCA_ENCODE_ERR_WRITE_HEADER = 6,
+    OCA_ENCODE_ERR_WRITE_FRAME = 7,
+    /* The input has no audio stream to normalize. */
+    OCA_ENCODE_ERR_NO_AUDIO_STREAM = 8,
+    /* Couldn't find/open the audio decoder. */
+    OCA_ENCODE_ERR_DECODER = 9,
+    /* Couldn't build the loudnorm/limiter filter graph. */
+    OCA_ENCODE_ERR_FILTER_GRAPH = 10,
+    /* Couldn't find/open the AAC encoder. */
+    OCA_ENCODE_ERR_ENCODER = 11,
+    /* A decode/filter/encode call failed mid-stream (not at setup). */
+    OCA_ENCODE_ERR_PIPELINE = 12,
+} OcaEncodeStatus;
+
+/* Renders `in_path` to `out_path`: video passthrough-copied, audio decoded, normalized
+   (loudnorm to target_lufs + a true-peak safety limiter) and re-encoded to AAC 192kbps.
+   Equivalent to:
+   ffmpeg -i in_path -af "loudnorm=I=<target_lufs>:TP=-1.0:LRA=11,alimiter=limit=0.95:attack=5:release=50"
+          -c:v copy -c:a aac -b:a 192k out_path
+   Fails with OCA_ENCODE_ERR_NO_AUDIO_STREAM if `in_path` has no audio stream. */
+OcaEncodeStatus oca_avbridge_encode_export(const char *in_path, const char *out_path,
+                                            float target_lufs);
+
 #endif

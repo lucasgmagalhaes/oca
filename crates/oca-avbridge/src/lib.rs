@@ -27,6 +27,11 @@ unsafe extern "C" {
     fn oca_avbridge_version() -> u32;
     fn oca_avbridge_probe(path: *const c_char, out: *mut RawProbeInfo) -> c_int;
     fn oca_avbridge_remux_copy(in_path: *const c_char, out_path: *const c_char) -> c_int;
+    fn oca_avbridge_encode_export(
+        in_path: *const c_char,
+        out_path: *const c_char,
+        target_lufs: f32,
+    ) -> c_int;
 }
 
 /// libavformat's packed version number (same encoding as `LIBAVFORMAT_VERSION_INT` /
@@ -211,5 +216,88 @@ pub fn remux_copy(in_path: &Path, out_path: &Path) -> Result<(), RemuxError> {
         6 => Err(RemuxError::WriteHeader),
         7 => Err(RemuxError::WriteFrame),
         other => Err(RemuxError::Unknown(other)),
+    }
+}
+
+/// What [`encode_export`] failed on.
+#[derive(Debug)]
+pub enum EncodeError {
+    /// `in_path`/`out_path` contains a NUL byte and can't be handed to the C API.
+    InvalidPath(NulError),
+    OpenInput,
+    StreamInfo,
+    AllocOutput,
+    NewStream,
+    OpenOutput,
+    WriteHeader,
+    WriteFrame,
+    /// `in_path` has no audio stream to normalize.
+    NoAudioStream,
+    /// Couldn't find/open the audio decoder.
+    Decoder,
+    /// Couldn't build the loudnorm/limiter filter graph.
+    FilterGraph,
+    /// Couldn't find/open the AAC encoder.
+    Encoder,
+    /// A decode/filter/encode call failed mid-stream (not at setup).
+    Pipeline,
+    /// The C side returned a status code this crate doesn't know about.
+    Unknown(c_int),
+}
+
+impl std::fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EncodeError::InvalidPath(e) => write!(f, "path is not a valid C string: {e}"),
+            EncodeError::OpenInput => write!(f, "failed to open input"),
+            EncodeError::StreamInfo => write!(f, "failed to read stream info"),
+            EncodeError::AllocOutput => write!(f, "failed to allocate output context"),
+            EncodeError::NewStream => write!(f, "failed to create an output stream"),
+            EncodeError::OpenOutput => write!(f, "failed to open output for writing"),
+            EncodeError::WriteHeader => write!(f, "failed to write output header"),
+            EncodeError::WriteFrame => write!(f, "failed to write a frame"),
+            EncodeError::NoAudioStream => write!(f, "input has no audio stream"),
+            EncodeError::Decoder => write!(f, "failed to open the audio decoder"),
+            EncodeError::FilterGraph => write!(f, "failed to build the audio filter graph"),
+            EncodeError::Encoder => write!(f, "failed to open the AAC encoder"),
+            EncodeError::Pipeline => write!(f, "decode/filter/encode pipeline failed mid-stream"),
+            EncodeError::Unknown(code) => write!(f, "unknown encode status code: {code}"),
+        }
+    }
+}
+
+impl std::error::Error for EncodeError {}
+
+/// Renders `in_path` to `out_path`: video passthrough-copied, audio decoded, normalized
+/// (`loudnorm` to `target_lufs` + a true-peak safety limiter) and re-encoded to AAC 192kbps.
+/// Fails with [`EncodeError::NoAudioStream`] if `in_path` has no audio stream.
+///
+/// No progress reporting or cancellation yet — the whole file renders in this one blocking
+/// call (see impl-004c in `features/fase1/task_breakdown.md`).
+pub fn encode_export(in_path: &Path, out_path: &Path, target_lufs: f32) -> Result<(), EncodeError> {
+    let c_in = CString::new(in_path.to_string_lossy().as_bytes()).map_err(EncodeError::InvalidPath)?;
+    let c_out =
+        CString::new(out_path.to_string_lossy().as_bytes()).map_err(EncodeError::InvalidPath)?;
+
+    // SAFETY: c_in/c_out are valid NUL-terminated C strings for the duration of this call.
+    // `bridge.c` frees the decoder/encoder/filter-graph contexts, output I/O, and output
+    // context on every exit path.
+    let status = unsafe { oca_avbridge_encode_export(c_in.as_ptr(), c_out.as_ptr(), target_lufs) };
+
+    match status {
+        0 => Ok(()),
+        1 => Err(EncodeError::OpenInput),
+        2 => Err(EncodeError::StreamInfo),
+        3 => Err(EncodeError::AllocOutput),
+        4 => Err(EncodeError::NewStream),
+        5 => Err(EncodeError::OpenOutput),
+        6 => Err(EncodeError::WriteHeader),
+        7 => Err(EncodeError::WriteFrame),
+        8 => Err(EncodeError::NoAudioStream),
+        9 => Err(EncodeError::Decoder),
+        10 => Err(EncodeError::FilterGraph),
+        11 => Err(EncodeError::Encoder),
+        12 => Err(EncodeError::Pipeline),
+        other => Err(EncodeError::Unknown(other)),
     }
 }
