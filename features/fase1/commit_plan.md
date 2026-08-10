@@ -25,6 +25,18 @@ own design pass: which pixel format, texture upload cadence tied to the UI's rep
 GStreamer's own clock, how scrubbing interacts with a `Paused` pipeline's preroll). Not sized
 or broken down yet.
 
+17    | impl-006    | feat          | preview    | pull decoded video frames as packed RGBA (appsink) | done (7c70487)
+18    | test-004    | test          | preview    | cover current_frame against real fixtures           | done (42baed6)
+19    | docs-004    | docs          | preview    | document current_frame RGBA extraction              | done (2ad500d)
+
+**impl-006 scope note:** `current_frame()` pulls RGBA on demand into an owned `Vec<u8>` —
+proven with a real fixture (dimensions, byte count, and pixel content verified by dumping a
+frame to PNG: real SMPTE color bars). **Still not wired into nivela-app** — no egui texture,
+no Editor screen integration, no UI scrubbing. That's its own task, touches a different crate,
+needs its own design pass (repaint cadence, how play() during Playing state should drive
+continuous texture updates vs. this pull-on-demand model, thread-safety if polling happens off
+the UI thread).
+
 ### chore-002 — root cause found and fixed (2026-08-10)
 
 **Symptom:** adding `gstreamer` as a dependency to `nivela-core` — not even calling any of its
