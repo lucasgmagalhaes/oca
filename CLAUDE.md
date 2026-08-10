@@ -15,10 +15,12 @@ wired end-to-end from the UI (`home.rs` open dialog, `editor.rs` save). Probing
 (`nivela_core::probe`) and export rendering (`nivela_core::render`) both go through
 `oca-avbridge`, a native FFI bridge over libavformat/libavcodec/libavfilter — no subprocess, no
 ffprobe/ffmpeg on PATH required for either. `loudness` and `proxy` still spawn `ffmpeg` as a
-subprocess and are next in line to move to the same FFI bridge (see Fase 1 in the plan doc).
-Not yet implemented: the GStreamer/MLT decode-and-preview pipeline, real timeline editing
-(cut/split/trim), and the background export queue worker. Check the plan doc for which phase a
-task belongs to before assuming a feature is live.
+subprocess and are next in line to move to the same FFI bridge (see Fase 1 in the plan doc). A
+minimal GStreamer preview pipeline (`nivela_core::preview::Preview`) exists — open/play/pause/
+seek/query, `fakesink` for both audio and video (no frame extraction/display yet, not wired
+into the Editor screen). Not yet implemented: extracting decoded frames into an egui texture,
+real timeline editing (cut/split/trim), and the background export queue worker. Check the plan
+doc for which phase a task belongs to before assuming a feature is live.
 
 ## Commands
 
@@ -34,8 +36,8 @@ it. At runtime the FFmpeg DLLs (`FFMPEG_DIR/bin`) need to be next to the built b
 `PATH`. `loudness`/`proxy` still spawn `ffmpeg` as a subprocess (not yet moved to
 `oca-avbridge`) — the app falls back to mock data for those without `ffmpeg` on `PATH`.
 
-`nivela-core` also depends on the `gstreamer` crate (prep for the preview pipeline — not built
-yet, see Architecture below), needing `pkg-config` plus GStreamer's dev build (MSVC or mingw,
+`nivela-core` also depends on the `gstreamer` crate (`preview` module, see Architecture below),
+needing `pkg-config` plus GStreamer's dev build (MSVC or mingw,
 matching whichever Rust target you're using) discoverable via
 `PKG_CONFIG_PATH=<gstreamer_root>/lib/pkgconfig`, with `<gstreamer_root>/bin` on `PATH` too
 (build-time lookup and runtime DLL resolution both need it).
@@ -83,9 +85,11 @@ and `nivela-app` is its only consumer.
   progress callback and cooperative cancellation).
 - **`nivela-core`** — project/timeline/media data model plus the media wrappers that populate
   it (`probe` and `render` via `oca-avbridge` FFI; `loudness`, `proxy` still via `ffmpeg`
-  subprocess), JSON save/load (`persistence`), and mock sample data (`sample`) used to exercise
-  the UI before real files are wired in. Locale-neutral by design: it stores data like
-  `Recency` (an enum), never pre-formatted display strings — formatting is `nivela-app`'s job.
+  subprocess), a `playbin`-based GStreamer playback pipeline (`preview`: open/play/pause/seek/
+  query, `fakesink` for both audio and video until frame extraction is built), JSON save/load
+  (`persistence`), and mock sample data (`sample`) used to exercise the UI before real files
+  are wired in. Locale-neutral by design: it stores data like `Recency` (an enum), never
+  pre-formatted display strings — formatting is `nivela-app`'s job.
 - **`nivela-app`** — the eframe/egui GUI (glow/OpenGL backend): `app.rs` holds all top-level
   state (`NivelaApp`, which screen is active, loaded projects, export jobs) and mutation methods
   (`open_project`, `queue_export`, etc.); `screens/` has one module per of the five screens
@@ -106,14 +110,12 @@ instead. `nivela-app` is a bin-only crate (no `[lib]`), so all its tests are
 `src/<module>/tests.rs` unit tests. `oca-avbridge` has a `[lib]` target, so its FFI tests live
 in `crates/oca-avbridge/tests/` against small checked-in media fixtures.
 
-`nivela-core` depends on the `gstreamer` crate (dependency + link verified working alongside
-`oca-avbridge`, see Commands above), but no preview pipeline is built on it yet.
-
-Planned architecture (not yet implemented, see the plan doc for phases): decode/preview via
-GStreamer or MLT running independent of the UI thread, and a background export queue where
-rendering runs on a worker communicating over `tokio::mpsc` so the editing UI never blocks on an
-in-progress export — each queued job snapshots its render config at enqueue time, so later edits
-to the active project don't affect jobs already in the queue.
+Planned architecture (not yet implemented, see the plan doc for phases): extracting `preview`'s
+decoded frames into an egui texture and wiring that into the Editor screen's playhead, and a
+background export queue where rendering runs on a worker communicating over `tokio::mpsc` so
+the editing UI never blocks on an in-progress export — each queued job snapshots its render
+config at enqueue time, so later edits to the active project don't affect jobs already in the
+queue.
 
 ## Approach
 
