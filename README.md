@@ -10,10 +10,11 @@ phase breakdown this workspace is being built against (a near-duplicate lives at
 
 ```
 crates/
-  oca-avbridge/  C bridge (FFI) over libavformat/libavcodec/libavutil — probing today, encode
-                 later. Needs FFMPEG_DIR set to build (see Prerequisites).
+  oca-avbridge/  C bridge (FFI) over libavformat/libavcodec/libavfilter/libavutil — probing and
+                 export rendering (video copy, audio loudnorm+limiter+AAC). Needs FFMPEG_DIR
+                 set to build (see Prerequisites).
   nivela-core/   UI-agnostic engine: project/timeline/media data model, media wrappers
-                 (probe via oca-avbridge FFI; loudness/proxy/render via ffmpeg subprocess for
+                 (probe/render via oca-avbridge FFI; loudness/proxy via ffmpeg subprocess for
                  now), mock sample data. No egui dependency.
   nivela-app/    Native GUI (eframe/egui, glow backend): the five screens, theme, i18n.
 docs/
@@ -47,8 +48,8 @@ string).
   (e.g. a [BtbN shared build](https://github.com/BtbN/FFmpeg-Builds)) — required to build at
   all, `oca-avbridge` links against it. At runtime, the FFmpeg DLLs (`FFMPEG_DIR/bin`) need to
   be next to the built binary or on `PATH`.
-- **`ffmpeg`** on `PATH`, needed for `nivela_core::loudness` (not yet moved to `oca-avbridge`).
-  The app runs fine without it — it just falls back to the bundled mock data
+- **`ffmpeg`** on `PATH`, needed for `nivela_core::loudness`/`proxy` (not yet moved to
+  `oca-avbridge`). The app runs fine without it — it just falls back to the bundled mock data
   (`nivela_core::sample`) instead of a loaded project.
 - **GNU Make** to use the `Makefile` — on Windows without `make` on `PATH`, MinGW-w64
   distributions typically bundle it as `mingw32-make` instead; run that or call the
@@ -74,8 +75,7 @@ target is a one-liner.
 ## Status
 
 The GUI shell (all five screens, navigable) and JSON project save/load are wired end-to-end
-from the UI. Probing goes through `oca-avbridge`'s FFI (no subprocess); `loudness`, `proxy`,
-and `render` still spawn `ffmpeg`. Not yet implemented: the rest of the FFI bridge (encode),
-the GStreamer/MLT decode-and-preview pipeline, real timeline editing (cut/split/trim), and the
-background export queue (`tokio::mpsc` worker). See the execution plan for the phase these
-land in.
+from the UI. Probing and export rendering go through `oca-avbridge`'s FFI (no subprocess);
+`loudness` and `proxy` still spawn `ffmpeg`. Not yet implemented: the GStreamer/MLT
+decode-and-preview pipeline, real timeline editing (cut/split/trim), and the background export
+queue (`tokio::mpsc` worker). See the execution plan for the phase these land in.

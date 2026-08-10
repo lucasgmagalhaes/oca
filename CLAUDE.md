@@ -12,12 +12,13 @@ not yet reconciled, treat `features/request.md` as canonical).
 
 Current status: the GUI shell (all five screens, navigable) and JSON project save/load are
 wired end-to-end from the UI (`home.rs` open dialog, `editor.rs` save). Probing
-(`nivela_core::probe`) goes through `oca-avbridge`, a native FFI bridge over
-libavformat/libavcodec — no subprocess, no ffprobe on PATH required. `loudness`, `proxy`, and
-`render` still spawn `ffmpeg` as a subprocess and are next in line to move to the same FFI
-bridge (see Fase 1 in the plan doc). Not yet implemented: the GStreamer/MLT decode-and-preview
-pipeline, real timeline editing (cut/split/trim), and the background export queue worker. Check
-the plan doc for which phase a task belongs to before assuming a feature is live.
+(`nivela_core::probe`) and export rendering (`nivela_core::render`) both go through
+`oca-avbridge`, a native FFI bridge over libavformat/libavcodec/libavfilter — no subprocess, no
+ffprobe/ffmpeg on PATH required for either. `loudness` and `proxy` still spawn `ffmpeg` as a
+subprocess and are next in line to move to the same FFI bridge (see Fase 1 in the plan doc).
+Not yet implemented: the GStreamer/MLT decode-and-preview pipeline, real timeline editing
+(cut/split/trim), and the background export queue worker. Check the plan doc for which phase a
+task belongs to before assuming a feature is live.
 
 ## Commands
 
@@ -25,12 +26,12 @@ Requires Rust (stable) via rustup. On Windows without MSVC Build Tools installed
 target instead: `rustup target add x86_64-pc-windows-gnu && rustup default
 stable-x86_64-pc-windows-gnu`, with a MinGW-w64 toolchain (e.g. WinLibs) `bin` dir on `PATH`.
 
-`oca-avbridge` links against libavformat/libavcodec/libavutil and needs `FFMPEG_DIR` set to an
-FFmpeg dev build with `include/` and `lib/` subdirectories (e.g. a BtbN shared build) to compile
-at all — the workspace won't build without it. At runtime the FFmpeg DLLs (`FFMPEG_DIR/bin`)
-need to be next to the built binary or on `PATH`. `loudness`/`proxy`/`render` still spawn
-`ffmpeg` as a subprocess (not yet moved to `oca-avbridge`) — the app falls back to mock data
-for those without `ffmpeg` on `PATH`.
+`oca-avbridge` links against libavformat/libavcodec/libavfilter/libavutil and needs `FFMPEG_DIR`
+set to an FFmpeg dev build with `include/` and `lib/` subdirectories (e.g. a BtbN shared build,
+with `avfilter` among the linked libs) to compile at all — the workspace won't build without
+it. At runtime the FFmpeg DLLs (`FFMPEG_DIR/bin`) need to be next to the built binary or on
+`PATH`. `loudness`/`proxy` still spawn `ffmpeg` as a subprocess (not yet moved to
+`oca-avbridge`) — the app falls back to mock data for those without `ffmpeg` on `PATH`.
 
 ```bash
 make build     # debug build, whole workspace
@@ -56,13 +57,15 @@ Three-crate split, enforced by dependency direction: `oca-avbridge` has no depen
 the workspace besides `nivela-core`; `nivela-core` is UI-agnostic (no `egui` dependency at all)
 and `nivela-app` is its only consumer.
 
-- **`oca-avbridge`** — thin C bridge (`csrc/bridge.c`) over libavformat/libavcodec/libavutil,
-  called from Rust via FFI (`src/lib.rs`). Written for this project, not an auto-generated
-  binding of the full FFmpeg API — keeps the C surface small and auditable. `build.rs` locates
-  FFmpeg via `FFMPEG_DIR` (see Commands above). Currently exposes probing only
-  (`oca_avbridge_probe`); encode is still on the `render.rs` subprocess path.
+- **`oca-avbridge`** — thin C bridge (`csrc/bridge.c`) over libavformat/libavcodec/libavfilter/
+  libavutil, called from Rust via FFI (`src/lib.rs`). Written for this project, not an
+  auto-generated binding of the full FFmpeg API — keeps the C surface small and auditable.
+  `build.rs` locates FFmpeg via `FFMPEG_DIR` (see Commands above). Exposes probing
+  (`oca_avbridge_probe`) and export rendering (`oca_avbridge_encode_export`: video
+  passthrough-copied, audio decoded → loudnorm+limiter filter graph → AAC re-encoded, with
+  progress callback and cooperative cancellation).
 - **`nivela-core`** — project/timeline/media data model plus the media wrappers that populate
-  it (`probe` via `oca-avbridge` FFI; `loudness`, `proxy`, `render` still via `ffmpeg`
+  it (`probe` and `render` via `oca-avbridge` FFI; `loudness`, `proxy` still via `ffmpeg`
   subprocess), JSON save/load (`persistence`), and mock sample data (`sample`) used to exercise
   the UI before real files are wired in. Locale-neutral by design: it stores data like
   `Recency` (an enum), never pre-formatted display strings — formatting is `nivela-app`'s job.
@@ -72,6 +75,7 @@ and `nivela-app` is its only consumer.
   (home, library, editor, queue, prefs) plus shared `widgets`; `theme.rs` is the dark/teal
   palette; **all UI strings live in `i18n.rs`** (pt-BR and English) — never hardcode display
   text in a screen module, add a `Text` variant instead.
+
 `docs/CODE_GRAPH.md` (module dependency graph + public-API index) used to be regenerated by an
 `xtask` crate (`cargo run -p xtask -- graph` / `make graph`); that crate was dropped and the
 Makefile/docs referencing it are stale (`make graph`, `make test-xtask` — not fixed as part of
