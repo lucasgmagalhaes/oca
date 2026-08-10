@@ -3,7 +3,7 @@
 //! then delegate to whichever [`Screen`] is currently active (see [`crate::screens`]).
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -82,6 +82,14 @@ enum RenderEvent {
     Cancelled { job_id: u64 },
 }
 
+/// A message from a background import worker thread (see [`OcaApp::spawn_import`]) back to
+/// the UI thread. `project_id` (rather than an index into `projects`) is what the result gets
+/// applied to, since the active project can change while a slow import is still running.
+enum ImportEvent {
+    AssetReady { project_id: u64, asset: MediaAsset },
+    Failed { path: PathBuf, message: String },
+}
+
 /// The whole application's state: which screen is showing, the loaded projects, the export
 /// queue, and user preferences. `eframe` owns one instance of this for the app's lifetime
 /// and calls [`OcaApp::ui`](eframe::App::ui) on it every frame.
@@ -113,6 +121,13 @@ pub struct OcaApp {
     /// its own, so the Editor's play/pause button and [`OcaApp::pump_export_queue`]'s repaint
     /// cadence both rely on this instead.
     pub preview_playing: bool,
+    import_tx: UnboundedSender<ImportEvent>,
+    import_rx: UnboundedReceiver<ImportEvent>,
+    /// How many files a call to [`OcaApp::spawn_import`] is still probing/measuring/
+    /// generating a proxy for, in the background. The Mídia screen shows a busy note while
+    /// this is nonzero so a large import (which used to freeze the whole app) reads as "still
+    /// working" instead of "did nothing".
+    pub pending_imports: usize,
 }
 
 impl OcaApp {
@@ -126,6 +141,7 @@ impl OcaApp {
             .and_then(|p| p.media_library.first())
             .map(|a| a.id);
         let (render_tx, render_rx) = mpsc::unbounded_channel();
+        let (import_tx, import_rx) = mpsc::unbounded_channel();
         let mut app = Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
@@ -142,6 +158,9 @@ impl OcaApp {
             preview: None,
             preview_texture: None,
             preview_playing: false,
+            import_tx,
+            import_rx,
+            pending_imports: 0,
         };
         app.reload_preview();
         app
@@ -335,6 +354,57 @@ impl OcaApp {
         }
     }
 
+    /// Probes, measures loudness, and (for video) generates an editing proxy for each of
+    /// `paths` on a background thread — what "Importar arquivos" does. These are synchronous
+    /// FFI calls that can take minutes for a large source file (a multi-GB capture), and used
+    /// to run directly on the UI thread, freezing the whole app for that long. Results are
+    /// applied to the target project's media library as they arrive
+    /// ([`OcaApp::pump_import_queue`]), keyed by project id rather than the active project
+    /// index, which could change before a slow import finishes.
+    pub fn spawn_import(&mut self, paths: Vec<PathBuf>) {
+        let project_id = self.active_project().id;
+        let proxy_dir = avcore::proxy::cache_dir_for_project(self.active_project());
+        let tx = self.import_tx.clone();
+        self.pending_imports += paths.len();
+
+        std::thread::spawn(move || {
+            for path in paths {
+                let _ = tx.send(import_one(&path, project_id, &proxy_dir));
+            }
+        });
+    }
+
+    /// Applies finished imports to their target project's media library. Called once per
+    /// frame from [`eframe::App::ui`], same as [`OcaApp::pump_export_queue`].
+    fn pump_import_queue(&mut self) {
+        while let Ok(event) = self.import_rx.try_recv() {
+            self.pending_imports = self.pending_imports.saturating_sub(1);
+            match event {
+                ImportEvent::AssetReady {
+                    project_id,
+                    mut asset,
+                } => {
+                    let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id)
+                    else {
+                        continue;
+                    };
+                    let next_id = project
+                        .media_library
+                        .iter()
+                        .map(|a| a.id)
+                        .max()
+                        .unwrap_or(0)
+                        + 1;
+                    asset.id = next_id;
+                    project.media_library.push(asset);
+                }
+                ImportEvent::Failed { path, message } => {
+                    eprintln!("failed to import {}: {message}", path.display());
+                }
+            }
+        }
+    }
+
     /// Appends a new `Queued` job — what "Adicionar exportação" does. Picked up by
     /// [`OcaApp::pump_export_queue`] once a worker slot ([`OcaApp::queue_workers`])
     /// frees up.
@@ -451,9 +521,47 @@ impl OcaApp {
     }
 }
 
+/// Runs on [`OcaApp::spawn_import`]'s background thread — probes `path`, measures its
+/// loudness, and (for video) generates an editing proxy, returning whichever
+/// [`ImportEvent`] the result maps to. A file that fails to probe is reported as
+/// [`ImportEvent::Failed`] rather than aborting the rest of the batch; a proxy or loudness
+/// measurement that fails just leaves that one field unset — the asset is still fully usable,
+/// just not as light to scrub or already loudness-tagged.
+fn import_one(path: &Path, project_id: u64, proxy_dir: &Path) -> ImportEvent {
+    let probed = match avcore::probe_media(path) {
+        Ok(probed) => probed,
+        Err(e) => {
+            return ImportEvent::Failed {
+                path: path.to_path_buf(),
+                message: e.to_string(),
+            };
+        }
+    };
+
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut asset = probed.into_media_asset(0, file_name, path.to_path_buf());
+
+    match avcore::measure_loudness(path) {
+        Ok(metrics) => asset.loudness = Some(metrics),
+        Err(e) => eprintln!("failed to measure loudness for {}: {e}", path.display()),
+    }
+    if asset.kind == avcore::MediaKind::Video {
+        match avcore::ensure_proxy(path, proxy_dir) {
+            Ok(proxy_path) => asset.proxy_path = Some(proxy_path),
+            Err(e) => eprintln!("failed to generate proxy for {}: {e}", path.display()),
+        }
+    }
+
+    ImportEvent::AssetReady { project_id, asset }
+}
+
 impl eframe::App for OcaApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.pump_export_queue();
+        self.pump_import_queue();
         self.pump_preview_frame(ui.ctx());
         if self.preview_playing {
             // Smooth video needs every-frame repaints; the 200ms throttle below would show

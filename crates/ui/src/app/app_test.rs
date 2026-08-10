@@ -74,6 +74,7 @@ fn test_job(id: u64, status: ExportJobStatus) -> ExportJob {
 
 fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
     let (render_tx, render_rx) = mpsc::unbounded_channel();
+    let (import_tx, import_rx) = mpsc::unbounded_channel();
     OcaApp {
         screen: Screen::Home,
         tool: EditorTool::Select,
@@ -90,6 +91,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         preview: None,
         preview_texture: None,
         preview_playing: false,
+        import_tx,
+        import_rx,
+        pending_imports: 0,
     }
 }
 
@@ -450,4 +454,87 @@ fn split_at_playhead_is_a_no_op_when_nothing_covers_the_playhead() {
     app.split_at_playhead();
 
     assert_eq!(app.active_project().timeline.tracks[0].clips.len(), 1);
+}
+
+#[test]
+fn pump_import_queue_adds_the_asset_to_its_target_project_with_a_fresh_id() {
+    let mut app = test_app(
+        vec![
+            test_project(1, vec![test_asset(5)]),
+            test_project(2, Vec::new()),
+        ],
+        Vec::new(),
+    );
+    app.pending_imports = 1;
+    let mut ready_asset = test_asset(0);
+    ready_asset.file_name = "clip.mp4".to_string();
+    app.import_tx
+        .send(ImportEvent::AssetReady {
+            project_id: 1,
+            asset: ready_asset,
+        })
+        .unwrap();
+
+    app.pump_import_queue();
+
+    let project = app.projects.iter().find(|p| p.id == 1).unwrap();
+    assert_eq!(project.media_library.len(), 2);
+    let imported = project
+        .media_library
+        .iter()
+        .find(|a| a.file_name == "clip.mp4")
+        .unwrap();
+    assert_eq!(imported.id, 6);
+    assert_eq!(app.pending_imports, 0);
+}
+
+#[test]
+fn pump_import_queue_targets_the_project_by_id_not_the_active_index() {
+    let mut app = test_app(
+        vec![test_project(1, Vec::new()), test_project(2, Vec::new())],
+        Vec::new(),
+    );
+    app.active_project = 1; // Simulates the user switching projects mid-import.
+    app.import_tx
+        .send(ImportEvent::AssetReady {
+            project_id: 1,
+            asset: test_asset(0),
+        })
+        .unwrap();
+
+    app.pump_import_queue();
+
+    assert_eq!(
+        app.projects
+            .iter()
+            .find(|p| p.id == 1)
+            .unwrap()
+            .media_library
+            .len(),
+        1
+    );
+    assert!(app
+        .projects
+        .iter()
+        .find(|p| p.id == 2)
+        .unwrap()
+        .media_library
+        .is_empty());
+}
+
+#[test]
+fn pump_import_queue_drops_a_failed_import_without_panicking() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.pending_imports = 1;
+    app.import_tx
+        .send(ImportEvent::Failed {
+            path: PathBuf::from("missing.mp4"),
+            message: "not found".to_string(),
+        })
+        .unwrap();
+
+    app.pump_import_queue();
+
+    assert_eq!(app.pending_imports, 0);
+    assert!(app.active_project().media_library.is_empty());
 }

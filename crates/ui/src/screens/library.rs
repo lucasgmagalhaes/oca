@@ -1,7 +1,4 @@
-use std::path::PathBuf;
-
 use avcore::media::MediaKind;
-use avcore::project::Project;
 use eframe::egui::{self, RichText};
 
 use crate::app::OcaApp;
@@ -23,8 +20,15 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button(Text::ImportFiles.tr(locale)).clicked() {
                     if let Some(paths) = rfd::FileDialog::new().pick_files() {
-                        import_files(app, &paths);
+                        app.spawn_import(paths);
                     }
+                }
+                if app.pending_imports > 0 {
+                    ui.label(
+                        RichText::new(Text::Importing.tr(locale))
+                            .size(12.0)
+                            .color(theme::TEXT_MUTED),
+                    );
                 }
             });
         });
@@ -106,74 +110,4 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
             ui.label(RichText::new(Text::LibraryEmpty.tr(locale)).color(theme::TEXT_MUTED));
         }
     });
-}
-
-/// Probes and measures each path with `avcore::probe`/`avcore::loudness`, generates
-/// a scrubbing-friendly proxy for video clips (see `avcore::proxy` — the same trick
-/// CapCut/Premiere use so the timeline isn't decoding full 4K/60fps source every frame), and
-/// adds the resulting assets to the active project's media library.
-///
-/// Runs synchronously on the UI thread (each file blocks on `ffprobe`/`ffmpeg` subprocesses,
-/// and the proxy transcode is the slowest of the three) — fine for a handful of files from a
-/// picker dialog; a real "import a folder of hour-long recordings" flow would want this on a
-/// background thread instead. A file that fails to probe is skipped (logged to stderr) rather
-/// than aborting the whole import; a proxy that fails to generate just leaves that asset
-/// without one — the original file is still fully editable, just not as light to scrub.
-fn import_files(app: &mut OcaApp, paths: &[PathBuf]) {
-    let mut next_id = app
-        .active_project()
-        .media_library
-        .iter()
-        .map(|a| a.id)
-        .max()
-        .unwrap_or(0);
-    let proxy_dir = proxy_cache_dir(app.active_project());
-
-    for path in paths {
-        let probed = match avcore::probe_media(path) {
-            Ok(probed) => probed,
-            Err(e) => {
-                eprintln!("failed to probe {}: {e}", path.display());
-                continue;
-            }
-        };
-
-        next_id += 1;
-        let file_name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let mut asset = probed.into_media_asset(next_id, file_name, path.clone());
-
-        match avcore::measure_loudness(path) {
-            Ok(metrics) => asset.loudness = Some(metrics),
-            Err(e) => eprintln!("failed to measure loudness for {}: {e}", path.display()),
-        }
-
-        if asset.kind == MediaKind::Video {
-            match avcore::ensure_proxy(path, &proxy_dir) {
-                Ok(proxy_path) => asset.proxy_path = Some(proxy_path),
-                Err(e) => eprintln!("failed to generate proxy for {}: {e}", path.display()),
-            }
-        }
-
-        app.active_project_mut().media_library.push(asset);
-    }
-}
-
-/// Where imported clips' editing proxies are cached: a hidden sibling folder next to the
-/// project file (`myproject.json` -> `.myproject_proxies/`), or a temp folder for a project
-/// that hasn't been saved yet (proxies there won't survive a reboot, but neither would
-/// anything else about an unsaved project).
-fn proxy_cache_dir(project: &Project) -> PathBuf {
-    match &project.file_path {
-        Some(path) => {
-            let stem = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("project");
-            path.with_file_name(format!(".{stem}_proxies"))
-        }
-        None => std::env::temp_dir().join("oca_unsaved_proxies"),
-    }
 }

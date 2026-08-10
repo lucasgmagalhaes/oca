@@ -11,6 +11,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::project::Project;
+
 /// Proxies are downscaled to this height (width follows the source's aspect ratio) — matches
 /// the resolution most NLEs default proxies to: enough detail to judge framing and cuts,
 /// cheap enough to decode in real time while scrubbing.
@@ -34,6 +36,23 @@ impl std::fmt::Display for ProxyError {
 }
 
 impl std::error::Error for ProxyError {}
+
+/// Where a project's imported clips' editing proxies are cached: a hidden sibling folder next
+/// to the project file (`myproject.json` -> `.myproject_proxies/`), or a temp folder for a
+/// project that hasn't been saved yet (proxies there won't survive a reboot, but neither would
+/// anything else about an unsaved project).
+pub fn cache_dir_for_project(project: &Project) -> PathBuf {
+    match &project.file_path {
+        Some(path) => {
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("project");
+            path.with_file_name(format!(".{stem}_proxies"))
+        }
+        None => std::env::temp_dir().join("oca_unsaved_proxies"),
+    }
+}
 
 /// The proxy file's path for `source` inside `proxy_dir`, without checking whether it exists
 /// yet. Pure so it's usable both to look up an existing proxy and to test the naming scheme.

@@ -112,6 +112,7 @@ text_catalog! {
 
     LibraryTitle: pt_br = "Biblioteca de mídia", en = "Media library";
     ImportFiles: pt_br = "⭱ Importar arquivos", en = "⭱ Import files";
+    Importing: pt_br = "Importando arquivos…", en = "Importing files…";
     LibraryEmpty: pt_br = "Nenhum arquivo importado neste projeto ainda.", en = "No files imported into this project yet.";
     ProxyReady: pt_br = "Proxy 540p", en = "540p proxy";
 
