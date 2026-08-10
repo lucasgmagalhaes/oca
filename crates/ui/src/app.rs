@@ -133,6 +133,10 @@ pub struct OcaApp {
     /// the preview panel; this is a placed [`avcore::timeline::ClipInstance`]). `Delete`
     /// removes whichever clip this points at.
     pub selected_clip_id: Option<u64>,
+    /// Horizontal scale of the timeline strip and its ruler, in pixels per second. Adjusted by
+    /// `Ctrl` + scroll over the timeline (per `request.md`'s Fase 3 spec) — more zoom for
+    /// frame-accurate edits, less to see the whole project at once.
+    pub timeline_px_per_sec: f32,
 }
 
 impl OcaApp {
@@ -167,6 +171,7 @@ impl OcaApp {
             import_rx,
             pending_imports: 0,
             selected_clip_id: None,
+            timeline_px_per_sec: 4.0,
         };
         app.reload_preview();
         app

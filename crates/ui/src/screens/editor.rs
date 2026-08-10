@@ -348,14 +348,27 @@ fn prop_row(ui: &mut egui::Ui, label: &str, value: &str) {
     });
 }
 
-/// Horizontal scale of the timeline strip and its ruler — seconds to pixels. No zoom control
-/// yet (Fase 3), so this is a fixed constant rather than per-project state.
-const PX_PER_SEC: f32 = 4.0;
+/// Bounds for `OcaApp::timeline_px_per_sec` — tight enough to stay readable, loose enough to
+/// go from several-projects-wide overview down to frame-accurate editing.
+const MIN_PX_PER_SEC: f32 = 0.5;
+const MAX_PX_PER_SEC: f32 = 60.0;
 const TRACK_LABEL_WIDTH: f32 = 50.0;
 
 fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
     widgets::card_frame().show(ui, |ui| {
         ui.set_height(height - 20.0);
+
+        // Ctrl+scroll zooms the timeline in/out (request.md's Fase 3 spec). egui's
+        // `zoom_delta()` already separates ctrl-held scroll from plain scroll at the input
+        // level (`Modifiers::COMMAND`, which is Ctrl outside macOS) — plain scroll still
+        // reaches the ScrollArea below as normal, no manual event-consuming needed.
+        let zoom_delta = ui.input(|i| i.zoom_delta());
+        if zoom_delta != 1.0 && ui.rect_contains_pointer(ui.max_rect()) {
+            app.timeline_px_per_sec =
+                (app.timeline_px_per_sec * zoom_delta).clamp(MIN_PX_PER_SEC, MAX_PX_PER_SEC);
+        }
+        let px_per_sec = app.timeline_px_per_sec;
+
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(Text::Timeline.tr(app.locale))
@@ -375,10 +388,16 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
             );
             ui.painter().rect_filled(rect, 0, theme::SURFACE_2);
             if let Some(pos) = response.interact_pointer_pos() {
-                let secs = ((pos.x - rect.left()) / PX_PER_SEC).max(0.0) as f64;
+                let secs = ((pos.x - rect.left()) / px_per_sec).max(0.0) as f64;
                 app.active_project_mut().timeline.playhead_secs = secs;
             }
-            draw_playhead(ui, rect, app.active_project().timeline.playhead_secs, 2.0);
+            draw_playhead(
+                ui,
+                rect,
+                app.active_project().timeline.playhead_secs,
+                px_per_sec,
+                2.0,
+            );
         });
 
         let mut clicked_clip_id = None;
@@ -403,8 +422,8 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                     track_rows.push((track.id, track.kind, track_rect));
                     let painter = ui.painter();
                     for clip in &track.clips {
-                        let x = track_rect.left() + clip.start_secs as f32 * PX_PER_SEC;
-                        let w = (clip.duration_secs() as f32 * PX_PER_SEC).max(3.0);
+                        let x = track_rect.left() + clip.start_secs as f32 * px_per_sec;
+                        let w = (clip.duration_secs() as f32 * px_per_sec).max(3.0);
                         let clip_rect = egui::Rect::from_min_size(
                             egui::pos2(x, track_rect.top()),
                             egui::vec2(w, track_rect.height()),
@@ -458,7 +477,7 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                         }
                         if body_response.dragged() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                            let delta_secs = (body_response.drag_delta().x / PX_PER_SEC) as f64;
+                            let delta_secs = (body_response.drag_delta().x / px_per_sec) as f64;
                             if let Some(pointer) = body_response.interact_pointer_pos() {
                                 clip_drags.push(ClipDrag {
                                     clip_id: clip.id,
@@ -470,11 +489,11 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                             }
                         }
                         if let Some(pos) = left_response.interact_pointer_pos() {
-                            let secs = ((pos.x - track_rect.left()) / PX_PER_SEC).max(0.0) as f64;
+                            let secs = ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
                             trim_requests.push((clip.id, TrimEdge::Start(secs)));
                         }
                         if let Some(pos) = right_response.interact_pointer_pos() {
-                            let secs = ((pos.x - track_rect.left()) / PX_PER_SEC).max(0.0) as f64;
+                            let secs = ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
                             trim_requests.push((clip.id, TrimEdge::End(secs)));
                         }
 
@@ -492,6 +511,7 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                         ui,
                         track_rect,
                         app.active_project().timeline.playhead_secs,
+                        px_per_sec,
                         1.0,
                     );
                 });
@@ -555,8 +575,14 @@ enum TrimEdge {
 /// Draws the playhead as a vertical line inside `rect`, if it falls within `rect`'s horizontal
 /// span — used both on the ruler strip and on every track row so it reads as one continuous
 /// line down the timeline despite each row being drawn separately.
-fn draw_playhead(ui: &egui::Ui, rect: egui::Rect, playhead_secs: f64, stroke_width: f32) {
-    let x = rect.left() + playhead_secs as f32 * PX_PER_SEC;
+fn draw_playhead(
+    ui: &egui::Ui,
+    rect: egui::Rect,
+    playhead_secs: f64,
+    px_per_sec: f32,
+    stroke_width: f32,
+) {
+    let x = rect.left() + playhead_secs as f32 * px_per_sec;
     if x >= rect.left() && x <= rect.right() {
         ui.painter().vline(
             x,

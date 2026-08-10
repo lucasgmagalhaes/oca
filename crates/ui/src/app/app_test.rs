@@ -95,6 +95,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         import_rx,
         pending_imports: 0,
         selected_clip_id: None,
+        timeline_px_per_sec: 4.0,
     }
 }
 
