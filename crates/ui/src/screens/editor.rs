@@ -344,7 +344,12 @@ fn prop_row(ui: &mut egui::Ui, label: &str, value: &str) {
     });
 }
 
-fn timeline_panel(app: &OcaApp, ui: &mut egui::Ui, height: f32) {
+/// Horizontal scale of the timeline strip and its ruler — seconds to pixels. No zoom control
+/// yet (Fase 3), so this is a fixed constant rather than per-project state.
+const PX_PER_SEC: f32 = 4.0;
+const TRACK_LABEL_WIDTH: f32 = 50.0;
+
+fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
     widgets::card_frame().show(ui, |ui| {
         ui.set_height(height - 20.0);
         ui.horizontal(|ui| {
@@ -355,19 +360,46 @@ fn timeline_panel(app: &OcaApp, ui: &mut egui::Ui, height: f32) {
             );
         });
         ui.separator();
+
+        // Ruler: click or drag to move the playhead. Kept as its own thin strip rather than
+        // reusing a track row so scrubbing doesn't depend on there being any tracks yet.
+        ui.horizontal(|ui| {
+            ui.add_space(TRACK_LABEL_WIDTH);
+            let (rect, response) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), 14.0),
+                egui::Sense::click_and_drag(),
+            );
+            ui.painter().rect_filled(rect, 0, theme::SURFACE_2);
+            if let Some(pos) = response.interact_pointer_pos() {
+                let secs = ((pos.x - rect.left()) / PX_PER_SEC).max(0.0) as f64;
+                app.active_project_mut().timeline.playhead_secs = secs;
+            }
+            draw_playhead(ui, rect, app.active_project().timeline.playhead_secs, 2.0);
+        });
+
         egui::ScrollArea::vertical().show(ui, |ui| {
             for track in &app.active_project().timeline.tracks {
                 ui.horizontal(|ui| {
                     ui.add_sized(
-                        [50.0, 28.0],
+                        [TRACK_LABEL_WIDTH, 28.0],
                         egui::Label::new(
                             RichText::new(&track.name)
                                 .size(11.0)
                                 .color(theme::TEXT_SECONDARY),
                         ),
                     );
+                    let (track_rect, _resp) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), 26.0),
+                        egui::Sense::hover(),
+                    );
+                    let painter = ui.painter();
                     for clip in &track.clips {
-                        let w = (clip.duration_secs() as f32 * 4.0).max(24.0);
+                        let x = track_rect.left() + clip.start_secs as f32 * PX_PER_SEC;
+                        let w = (clip.duration_secs() as f32 * PX_PER_SEC).max(3.0);
+                        let clip_rect = egui::Rect::from_min_size(
+                            egui::pos2(x, track_rect.top()),
+                            egui::vec2(w, track_rect.height()),
+                        );
                         let color = match (track.kind, track.name.as_str()) {
                             (avcore::timeline::TrackKind::Video, _) => theme::SURFACE_2,
                             (avcore::timeline::TrackKind::Audio, "A2") => {
@@ -377,11 +409,14 @@ fn timeline_panel(app: &OcaApp, ui: &mut egui::Ui, height: f32) {
                                 theme::ACCENT.gamma_multiply(0.5)
                             }
                         };
-                        let (rect, _resp) =
-                            ui.allocate_exact_size(egui::vec2(w, 26.0), egui::Sense::click());
-                        ui.painter()
-                            .rect_filled(rect, egui::CornerRadius::same(4), color);
+                        painter.rect_filled(clip_rect, egui::CornerRadius::same(4), color);
                     }
+                    draw_playhead(
+                        ui,
+                        track_rect,
+                        app.active_project().timeline.playhead_secs,
+                        1.0,
+                    );
                 });
                 ui.add_space(4.0);
             }
@@ -394,4 +429,18 @@ fn timeline_panel(app: &OcaApp, ui: &mut egui::Ui, height: f32) {
             }
         });
     });
+}
+
+/// Draws the playhead as a vertical line inside `rect`, if it falls within `rect`'s horizontal
+/// span — used both on the ruler strip and on every track row so it reads as one continuous
+/// line down the timeline despite each row being drawn separately.
+fn draw_playhead(ui: &egui::Ui, rect: egui::Rect, playhead_secs: f64, stroke_width: f32) {
+    let x = rect.left() + playhead_secs as f32 * PX_PER_SEC;
+    if x >= rect.left() && x <= rect.right() {
+        ui.painter().vline(
+            x,
+            rect.y_range(),
+            egui::Stroke::new(stroke_width, theme::ACCENT),
+        );
+    }
 }
