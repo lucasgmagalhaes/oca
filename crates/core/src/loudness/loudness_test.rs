@@ -1,7 +1,7 @@
 use super::*;
 
 // `extract_first_json_object` is a private helper, so unlike the rest of this module's tests
-// (see `core/tests/loudness.rs` for those — they only exercise the public API), this
+// (see `core/tests/loudness_test.rs` for those — they only exercise the public API), this
 // one has to stay a unit test: an integration test in `tests/` can't see non-`pub` items.
 #[test]
 fn extract_first_json_object_ignores_unbalanced_braces_before_it() {

@@ -48,7 +48,7 @@ fn current_frame_returns_correctly_sized_rgba() {
         .current_frame()
         .expect("a frame should be available right after preroll");
 
-    // video.mp4 is a 320x240 fixture (see tests/probe.rs / oca-avbridge's fixture generation).
+    // video.mp4 is a 320x240 fixture (see tests/probe_test.rs / avbridge's fixture generation).
     assert_eq!(frame.width, 320);
     assert_eq!(frame.height, 240);
     assert_eq!(frame.rgba.len(), 320 * 240 * 4);

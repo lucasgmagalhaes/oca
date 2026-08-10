@@ -314,3 +314,7 @@ impl eframe::App for OcaApp {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "app/app_test.rs"]
+mod tests;

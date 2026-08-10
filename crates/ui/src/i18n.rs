@@ -229,4 +229,5 @@ pub fn job_detail_line(locale: Locale, job: &ExportJob) -> String {
 }
 
 #[cfg(test)]
+#[path = "i18n/i18n_test.rs"]
 mod tests;

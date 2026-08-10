@@ -77,4 +77,5 @@ fn is_up_to_date(source: &Path, proxy_path: &Path) -> bool {
 }
 
 #[cfg(test)]
+#[path = "proxy/proxy_test.rs"]
 mod tests;

@@ -90,4 +90,5 @@ fn extract_first_json_object(text: &str) -> Option<&str> {
 }
 
 #[cfg(test)]
+#[path = "loudness/loudness_test.rs"]
 mod tests;

@@ -67,9 +67,9 @@ make check     # cargo check --workspace --all-targets (fast compile-only loop)
 No `make` on PATH → run the underlying `cargo`/`rustup` command directly; every Makefile target
 is a one-liner (see [`Makefile`](Makefile)).
 
-Single test: `cargo test -p core --test probe measure_loudness` (integration tests, one
-file per module under `crates/core/tests/`) or `cargo test -p ui i18n::tests` for
-the `src/<module>/tests.rs` unit tests in `ui`.
+Single test: `cargo test -p core --test probe_test measure_loudness` (integration tests, one
+`<module>_test.rs` file per module under `crates/core/tests/`) or `cargo test -p ui i18n::tests`
+for the `src/<module>/<module>_test.rs` unit tests in `ui`.
 
 ## Architecture
 
@@ -110,12 +110,14 @@ Makefile/docs referencing it are stale (`make graph`, `make test-xtask` — not 
 this pass). Use `graphify` instead — see the `## graphify` section below.
 
 Test placement follows what's reachable: `core` has a `[lib]` target, so its tests are
-real integration tests in `crates/core/tests/` (one file per module) exercising only the
-public API, plus `crates/core/benches/` for criterion benchmarks. A handful of tests that
-need a private helper unreachable from `tests/` stay as `src/<module>/tests.rs` unit tests
-instead. `ui` is a bin-only crate (no `[lib]`), so all its tests are
-`src/<module>/tests.rs` unit tests. `avbridge` has a `[lib]` target, so its FFI tests live
-in `crates/avbridge/tests/` against small checked-in media fixtures.
+real integration tests in `crates/core/tests/` (one `<module>_test.rs` file per module)
+exercising only the public API, plus `crates/core/benches/` for criterion benchmarks. A
+handful of tests that need a private helper unreachable from `tests/` stay as
+`src/<module>/<module>_test.rs` unit tests instead (wired in via `#[path = "..."] mod
+tests;`, since the module is still named `tests`). `ui` is a bin-only crate (no `[lib]`), so
+all its tests are `src/<module>/<module>_test.rs` unit tests. `avbridge` has a `[lib]`
+target, so its FFI tests live in `crates/avbridge/tests/` (also `<module>_test.rs`) against
+small checked-in media fixtures.
 
 Planned architecture (not yet implemented, see the plan doc for phases): extracting `preview`'s
 decoded frames into an egui texture and wiring that into the Editor screen's playhead, and a

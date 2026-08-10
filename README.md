@@ -26,7 +26,7 @@ docs/
 ```
 
 `core`'s tests live in `crates/core/tests/` (one file per module, e.g.
-`tests/probe.rs`) as real integration tests against its public API, plus `crates/core/
+`tests/probe_test.rs`) as real integration tests against its public API, plus `crates/core/
 benches/` for criterion benchmarks (`make bench`). A handful of tests that exercise a private
 helper (not reachable from `tests/`, by design — see the Rust Book's chapter on test
 organization) stay as `src/<module>/tests.rs` unit tests instead. `ui` is a bin-only

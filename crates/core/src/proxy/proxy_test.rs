@@ -4,7 +4,7 @@ use std::time::Duration;
 use super::*;
 
 // `is_up_to_date` is a private helper, so unlike the rest of this module's tests (see
-// `core/tests/proxy.rs` for those — they only exercise the public API), these have to
+// `core/tests/proxy_test.rs` for those — they only exercise the public API), these have to
 // stay unit tests: an integration test in `tests/` can't see non-`pub` items.
 
 #[test]
