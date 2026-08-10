@@ -22,6 +22,10 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
     if ctrl_s_pressed {
         save_active_project(app);
     }
+    let ctrl_b_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::B));
+    if ctrl_b_pressed {
+        app.split_at_playhead();
+    }
 
     ui.vertical(|ui| {
         toolbar(app, ui);
@@ -70,7 +74,13 @@ fn toolbar(app: &mut OcaApp, ui: &mut egui::Ui) {
             "↖",
             Text::ToolSelect.tr(locale),
         );
-        tool_button(app, ui, EditorTool::Cut, "✂", Text::ToolCut.tr(locale));
+        if ui
+            .button(format!("✂ {}", Text::ToolCut.tr(locale)))
+            .on_hover_text("Ctrl+B")
+            .clicked()
+        {
+            app.split_at_playhead();
+        }
         tool_button(app, ui, EditorTool::Trim, "⇔", Text::ToolTrim.tr(locale));
         ui.separator();
         let _ = ui.button("↺");

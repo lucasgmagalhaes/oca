@@ -1,4 +1,5 @@
 use super::*;
+use avcore::timeline::{ClipInstance, Track, TrackKind};
 use avcore::{MediaAsset, MediaKind, Recency, Timeline};
 use eframe::egui;
 
@@ -14,6 +15,31 @@ fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
             playhead_secs: 0.0,
         },
         file_path: None,
+    }
+}
+
+fn test_project_with_tracks(id: u64, tracks: Vec<Track>) -> Project {
+    let mut project = test_project(id, Vec::new());
+    project.timeline.tracks = tracks;
+    project
+}
+
+fn test_track(id: u64, kind: TrackKind, clips: Vec<ClipInstance>) -> Track {
+    Track {
+        id,
+        name: format!("Track {id}"),
+        kind,
+        clips,
+    }
+}
+
+fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> ClipInstance {
+    ClipInstance {
+        id,
+        asset_id: 1,
+        start_secs,
+        source_in_secs,
+        source_out_secs,
     }
 }
 
@@ -358,4 +384,70 @@ fn seek_preview_is_a_no_op_without_a_live_pipeline() {
     let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 
     app.seek_preview(5.0);
+}
+
+#[test]
+fn split_at_playhead_splits_the_covering_clip_on_every_track_that_has_one() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![
+                test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 20.0)]),
+                test_track(2, TrackKind::Audio, vec![test_clip(2, 0.0, 0.0, 20.0)]),
+            ],
+        )],
+        Vec::new(),
+    );
+    app.active_project_mut().timeline.playhead_secs = 10.0;
+
+    app.split_at_playhead();
+
+    let tracks = &app.active_project().timeline.tracks;
+    assert_eq!(tracks[0].clips.len(), 2);
+    assert_eq!(tracks[1].clips.len(), 2);
+    assert_eq!(tracks[0].clips[1].start_secs, 10.0);
+    assert_eq!(tracks[1].clips[1].start_secs, 10.0);
+    // Each track's new half got its own fresh id — no collision between them.
+    assert_ne!(tracks[0].clips[1].id, tracks[1].clips[1].id);
+}
+
+#[test]
+fn split_at_playhead_only_splits_tracks_the_playhead_actually_covers() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![
+                test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 20.0)]),
+                test_track(2, TrackKind::Audio, vec![test_clip(2, 0.0, 0.0, 5.0)]),
+            ],
+        )],
+        Vec::new(),
+    );
+    app.active_project_mut().timeline.playhead_secs = 10.0;
+
+    app.split_at_playhead();
+
+    let tracks = &app.active_project().timeline.tracks;
+    assert_eq!(tracks[0].clips.len(), 2);
+    assert_eq!(tracks[1].clips.len(), 1);
+}
+
+#[test]
+fn split_at_playhead_is_a_no_op_when_nothing_covers_the_playhead() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.active_project_mut().timeline.playhead_secs = 50.0;
+
+    app.split_at_playhead();
+
+    assert_eq!(app.active_project().timeline.tracks[0].clips.len(), 1);
 }

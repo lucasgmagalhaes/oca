@@ -27,12 +27,13 @@ pub enum Screen {
     Prefs,
 }
 
-/// The editor toolbar's active tool (Selecionar / Cortar / Aparar). Currently just tracked
-/// for the toolbar's highlight state — Fase 3 wires it up to actual timeline interactions.
+/// The editor toolbar's active tool (Selecionar / Aparar). Currently just tracked for the
+/// toolbar's highlight state — Fase 3 wires it up to actual timeline interactions. Splitting
+/// ("Cortar") isn't a persistent mode like these two — it's a one-shot action, performed
+/// directly by [`OcaApp::split_at_playhead`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorTool {
     Select,
-    Cut,
     Trim,
 }
 
@@ -308,6 +309,30 @@ impl OcaApp {
             },
             file_path: None,
         });
+    }
+
+    /// Splits whichever clip covers the timeline playhead, on every track that has one there,
+    /// into two — what `Ctrl+B` and the toolbar's "Cortar / Split" button do. Cutting every
+    /// track at once (rather than just a clicked clip) keeps V1/A1/A2 in sync, which is the
+    /// point of a gameplay edit. A no-op on any track where nothing covers the playhead.
+    pub fn split_at_playhead(&mut self) {
+        let at_secs = self.active_project().timeline.playhead_secs;
+        let mut next_clip_id = self
+            .active_project()
+            .timeline
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .map(|c| c.id)
+            .max()
+            .unwrap_or(0)
+            + 1;
+
+        for track in &mut self.active_project_mut().timeline.tracks {
+            if track.split_clip_at(at_secs, next_clip_id) {
+                next_clip_id += 1;
+            }
+        }
     }
 
     /// Appends a new `Queued` job — what "Adicionar exportação" does. Picked up by

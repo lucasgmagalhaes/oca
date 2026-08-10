@@ -25,6 +25,13 @@ impl ClipInstance {
     pub fn duration_secs(&self) -> f64 {
         self.source_out_secs - self.source_in_secs
     }
+
+    /// True if `at_secs` (timeline-relative) falls strictly inside this clip's placed range.
+    /// Boundary-exact positions return `false` — splitting exactly on an edge would just
+    /// produce a zero-length half.
+    pub fn contains(&self, at_secs: f64) -> bool {
+        at_secs > self.start_secs && at_secs < self.start_secs + self.duration_secs()
+    }
 }
 
 /// One row of the timeline (e.g. `V1`, `A1`, `A2` in the mockup), holding an ordered list of
@@ -35,6 +42,32 @@ pub struct Track {
     pub name: String,
     pub kind: TrackKind,
     pub clips: Vec<ClipInstance>,
+}
+
+impl Track {
+    /// Splits the clip covering `at_secs` (timeline-relative) into two: the original keeps
+    /// `id` and has its `source_out_secs` trimmed to the split point; a new clip starting at
+    /// `at_secs`, with `new_clip_id` and the rest of the original's source range, is inserted
+    /// right after it. No-op (`false`) if no clip on this track covers `at_secs`.
+    pub fn split_clip_at(&mut self, at_secs: f64, new_clip_id: u64) -> bool {
+        let Some(index) = self.clips.iter().position(|c| c.contains(at_secs)) else {
+            return false;
+        };
+
+        let clip = &mut self.clips[index];
+        let split_source_secs = clip.source_in_secs + (at_secs - clip.start_secs);
+        let second_half = ClipInstance {
+            id: new_clip_id,
+            asset_id: clip.asset_id,
+            start_secs: at_secs,
+            source_in_secs: split_source_secs,
+            source_out_secs: clip.source_out_secs,
+        };
+        clip.source_out_secs = split_source_secs;
+
+        self.clips.insert(index + 1, second_half);
+        true
+    }
 }
 
 /// A project's full set of tracks plus the current playhead position.
