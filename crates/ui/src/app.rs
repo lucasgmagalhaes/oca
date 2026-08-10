@@ -128,6 +128,11 @@ pub struct OcaApp {
     /// this is nonzero so a large import (which used to freeze the whole app) reads as "still
     /// working" instead of "did nothing".
     pub pending_imports: usize,
+    /// The timeline clip currently highlighted in the Editor's timeline strip, if any — a
+    /// separate concept from `selected_asset_id` (that's the media-library selection driving
+    /// the preview panel; this is a placed [`avcore::timeline::ClipInstance`]). `Delete`
+    /// removes whichever clip this points at.
+    pub selected_clip_id: Option<u64>,
 }
 
 impl OcaApp {
@@ -161,6 +166,7 @@ impl OcaApp {
             import_tx,
             import_rx,
             pending_imports: 0,
+            selected_clip_id: None,
         };
         app.reload_preview();
         app
@@ -352,6 +358,20 @@ impl OcaApp {
                 next_clip_id += 1;
             }
         }
+    }
+
+    /// Removes `selected_clip_id` from whichever track has it and clears the selection — what
+    /// pressing `Delete` on the timeline does. Leaves a gap rather than rippling later clips
+    /// left, matching `split_at_playhead`'s equally simple non-ripple editing model. A no-op
+    /// if nothing is selected.
+    pub fn delete_selected_clip(&mut self) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        for track in &mut self.active_project_mut().timeline.tracks {
+            track.clips.retain(|c| c.id != clip_id);
+        }
+        self.selected_clip_id = None;
     }
 
     /// Probes, measures loudness, and (for video) generates an editing proxy for each of

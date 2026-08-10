@@ -94,6 +94,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         import_tx,
         import_rx,
         pending_imports: 0,
+        selected_clip_id: None,
     }
 }
 
@@ -452,6 +453,48 @@ fn split_at_playhead_is_a_no_op_when_nothing_covers_the_playhead() {
     app.active_project_mut().timeline.playhead_secs = 50.0;
 
     app.split_at_playhead();
+
+    assert_eq!(app.active_project().timeline.tracks[0].clips.len(), 1);
+}
+
+#[test]
+fn delete_selected_clip_removes_it_from_its_track_and_clears_the_selection() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.delete_selected_clip();
+
+    let clips = &app.active_project().timeline.tracks[0].clips;
+    assert_eq!(clips.len(), 1);
+    assert_eq!(clips[0].id, 2);
+    assert_eq!(app.selected_clip_id, None);
+}
+
+#[test]
+fn delete_selected_clip_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.delete_selected_clip();
 
     assert_eq!(app.active_project().timeline.tracks[0].clips.len(), 1);
 }

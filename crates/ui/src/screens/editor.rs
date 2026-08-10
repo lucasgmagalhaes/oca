@@ -26,6 +26,10 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
     if ctrl_b_pressed {
         app.split_at_playhead();
     }
+    let delete_pressed = ui.input(|i| i.key_pressed(egui::Key::Delete));
+    if delete_pressed {
+        app.delete_selected_clip();
+    }
 
     ui.vertical(|ui| {
         toolbar(app, ui);
@@ -377,6 +381,7 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
             draw_playhead(ui, rect, app.active_project().timeline.playhead_secs, 2.0);
         });
 
+        let mut clicked_clip_id = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
             for track in &app.active_project().timeline.tracks {
                 ui.horizontal(|ui| {
@@ -409,7 +414,23 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                 theme::ACCENT.gamma_multiply(0.5)
                             }
                         };
+                        let response = ui.interact(
+                            clip_rect,
+                            ui.id().with(("timeline_clip", clip.id)),
+                            egui::Sense::click(),
+                        );
+                        if response.clicked() {
+                            clicked_clip_id = Some(clip.id);
+                        }
                         painter.rect_filled(clip_rect, egui::CornerRadius::same(4), color);
+                        if app.selected_clip_id == Some(clip.id) {
+                            painter.rect_stroke(
+                                clip_rect,
+                                egui::CornerRadius::same(4),
+                                egui::Stroke::new(2.0, theme::ACCENT),
+                                egui::StrokeKind::Inside,
+                            );
+                        }
                     }
                     draw_playhead(
                         ui,
@@ -428,6 +449,9 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                 );
             }
         });
+        if let Some(id) = clicked_clip_id {
+            app.selected_clip_id = Some(id);
+        }
     });
 }
 
