@@ -4,15 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-NivelaEditor — a native Rust video editor (`egui`/`eframe`) for cutting gameplay footage for
-the PacoPaçoca YouTube channel. Its two headline features are automatic loudness normalization
-and export-that-matches-the-source-bitrate. Full phased execution plan:
-[`plano-editor-pacopacoca_1.md`](plano-editor-pacopacoca_1.md).
+oca (formerly NivelaEditor) — a native Rust video editor (`egui`/`eframe`) for cutting gameplay
+footage for the PacoPaçoca YouTube channel. Its two headline features are automatic loudness
+normalization and export-that-matches-the-source-bitrate. Full phased execution plan:
+[`features/request.md`](features/request.md) (a near-duplicate lives at `docs/plano.md` —
+not yet reconciled, treat `features/request.md` as canonical).
 
-Current status: the GUI shell (all five screens, navigable, running on mock data from
-`nivela_core::sample`) and the `ffprobe`/`ffmpeg` wrappers (`probe`, `loudness`, `proxy`,
-`render`) are implemented and unit-tested, but **not yet wired together**. Not yet implemented:
-loading/saving a project as JSON end-to-end from the UI, the GStreamer/MLT decode-and-preview
+Current status: the GUI shell (all five screens, navigable) and JSON project save/load are
+wired end-to-end from the UI (`home.rs` open dialog, `editor.rs` save). Probing
+(`nivela_core::probe`) goes through `oca-avbridge`, a native FFI bridge over
+libavformat/libavcodec — no subprocess, no ffprobe on PATH required. `loudness`, `proxy`, and
+`render` still spawn `ffmpeg` as a subprocess and are next in line to move to the same FFI
+bridge (see Fase 1 in the plan doc). Not yet implemented: the GStreamer/MLT decode-and-preview
 pipeline, real timeline editing (cut/split/trim), and the background export queue worker. Check
 the plan doc for which phase a task belongs to before assuming a feature is live.
 
@@ -21,8 +24,13 @@ the plan doc for which phase a task belongs to before assuming a feature is live
 Requires Rust (stable) via rustup. On Windows without MSVC Build Tools installed, use the GNU
 target instead: `rustup target add x86_64-pc-windows-gnu && rustup default
 stable-x86_64-pc-windows-gnu`, with a MinGW-w64 toolchain (e.g. WinLibs) `bin` dir on `PATH`.
-`ffprobe`/`ffmpeg` on `PATH` are only needed to probe/measure real media files — the app falls
-back to mock data without them.
+
+`oca-avbridge` links against libavformat/libavcodec/libavutil and needs `FFMPEG_DIR` set to an
+FFmpeg dev build with `include/` and `lib/` subdirectories (e.g. a BtbN shared build) to compile
+at all — the workspace won't build without it. At runtime the FFmpeg DLLs (`FFMPEG_DIR/bin`)
+need to be next to the built binary or on `PATH`. `loudness`/`proxy`/`render` still spawn
+`ffmpeg` as a subprocess (not yet moved to `oca-avbridge`) — the app falls back to mock data
+for those without `ffmpeg` on `PATH`.
 
 ```bash
 make build     # debug build, whole workspace
@@ -32,7 +40,6 @@ make test-core # cargo test -p nivela-core only
 make bench     # criterion benchmarks (nivela-core parsing/serialization) -> target/criterion/report/index.html
 make fmt       # cargo fmt --all
 make lint      # cargo clippy --workspace --all-targets
-make graph     # regenerate docs/CODE_GRAPH.md — run after adding/removing modules or public items
 make check     # cargo check --workspace --all-targets (fast compile-only loop)
 ```
 
@@ -41,35 +48,42 @@ is a one-liner (see [`Makefile`](Makefile)).
 
 Single test: `cargo test -p nivela-core --test probe measure_loudness` (integration tests, one
 file per module under `crates/nivela-core/tests/`) or `cargo test -p nivela-app i18n::tests` for
-the `src/<module>/tests.rs` unit tests in `nivela-app`/`xtask`.
+the `src/<module>/tests.rs` unit tests in `nivela-app`.
 
 ## Architecture
 
-Two-crate split, enforced by dependency direction: `nivela-core` is UI-agnostic (no `egui`
-dependency at all) and `nivela-app` is its only consumer.
+Three-crate split, enforced by dependency direction: `oca-avbridge` has no dependents within
+the workspace besides `nivela-core`; `nivela-core` is UI-agnostic (no `egui` dependency at all)
+and `nivela-app` is its only consumer.
 
-- **`nivela-core`** — project/timeline/media data model plus the `ffprobe`/`ffmpeg` wrappers
-  that populate it (`probe`, `loudness`, `proxy`, `render`), JSON save/load (`persistence`), and
-  mock sample data (`sample`) used to exercise the UI before real files are wired in. Locale-
-  neutral by design: it stores data like `Recency` (an enum), never pre-formatted display
-  strings — formatting is `nivela-app`'s job.
+- **`oca-avbridge`** — thin C bridge (`csrc/bridge.c`) over libavformat/libavcodec/libavutil,
+  called from Rust via FFI (`src/lib.rs`). Written for this project, not an auto-generated
+  binding of the full FFmpeg API — keeps the C surface small and auditable. `build.rs` locates
+  FFmpeg via `FFMPEG_DIR` (see Commands above). Currently exposes probing only
+  (`oca_avbridge_probe`); encode is still on the `render.rs` subprocess path.
+- **`nivela-core`** — project/timeline/media data model plus the media wrappers that populate
+  it (`probe` via `oca-avbridge` FFI; `loudness`, `proxy`, `render` still via `ffmpeg`
+  subprocess), JSON save/load (`persistence`), and mock sample data (`sample`) used to exercise
+  the UI before real files are wired in. Locale-neutral by design: it stores data like
+  `Recency` (an enum), never pre-formatted display strings — formatting is `nivela-app`'s job.
 - **`nivela-app`** — the eframe/egui GUI (glow/OpenGL backend): `app.rs` holds all top-level
   state (`NivelaApp`, which screen is active, loaded projects, export jobs) and mutation methods
   (`open_project`, `queue_export`, etc.); `screens/` has one module per of the five screens
   (home, library, editor, queue, prefs) plus shared `widgets`; `theme.rs` is the dark/teal
   palette; **all UI strings live in `i18n.rs`** (pt-BR and English) — never hardcode display
   text in a screen module, add a `Text` variant instead.
-- **`xtask`** — `cargo run -p xtask -- graph` regenerates [`docs/CODE_GRAPH.md`](docs/CODE_GRAPH.md),
-  an auto-generated module dependency graph + public-API index. It's the fastest way to get
-  oriented in this codebase without reading every file — check it before a broad exploration.
-  Regenerate it (`make graph`) after adding/removing modules or public items; don't hand-edit it.
+`docs/CODE_GRAPH.md` (module dependency graph + public-API index) used to be regenerated by an
+`xtask` crate (`cargo run -p xtask -- graph` / `make graph`); that crate was dropped and the
+Makefile/docs referencing it are stale (`make graph`, `make test-xtask` — not fixed as part of
+this pass). Use `graphify` instead — see the `## graphify` section below.
 
 Test placement follows what's reachable: `nivela-core` has a `[lib]` target, so its tests are
 real integration tests in `crates/nivela-core/tests/` (one file per module) exercising only the
 public API, plus `crates/nivela-core/benches/` for criterion benchmarks. A handful of tests that
 need a private helper unreachable from `tests/` stay as `src/<module>/tests.rs` unit tests
-instead. `nivela-app` and `xtask` are bin-only crates (no `[lib]`), so all their tests are
-`src/<module>/tests.rs` unit tests.
+instead. `nivela-app` is a bin-only crate (no `[lib]`), so all its tests are
+`src/<module>/tests.rs` unit tests. `oca-avbridge` has a `[lib]` target, so its FFI tests live
+in `crates/oca-avbridge/tests/` against small checked-in media fixtures.
 
 Planned architecture (not yet implemented, see the plan doc for phases): decode/preview via
 GStreamer or MLT running independent of the UI thread, and a background export queue where
