@@ -1,4 +1,12 @@
-use nivela_core::loudness::{parse_loudnorm_stderr, LoudnessError};
+use std::path::{Path, PathBuf};
+
+use nivela_core::loudness::{measure_loudness, parse_loudnorm_stderr, LoudnessError};
+
+fn fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
+}
 
 const FFMPEG_STDERR_FIXTURE: &str = r#"
 ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers
@@ -40,4 +48,20 @@ fn errors_when_there_is_no_json_block() {
 fn errors_when_the_json_block_is_not_a_loudnorm_report() {
     let result = parse_loudnorm_stderr("preamble\n{\"unrelated\": true}\ntrailer");
     assert!(matches!(result, Err(LoudnessError::Json(_))));
+}
+
+#[test]
+fn measures_a_real_file_via_the_ffi_bridge() {
+    // video.mp4's audio track is a synthesized 1000Hz sine tone (see
+    // oca-avbridge/tests/fixtures) — quiet relative to full scale, so a real, deeply negative
+    // LUFS reading here (not the 0.0 fallback parse_loudnorm_stderr uses for unparseable
+    // fields) is itself evidence the FFI round-trip worked, not just that it didn't error.
+    let metrics = measure_loudness(&fixture("video.mp4")).unwrap();
+    assert!(metrics.integrated_lufs < -10.0);
+    assert!(metrics.integrated_lufs > -60.0);
+}
+
+#[test]
+fn errors_on_a_missing_file() {
+    assert!(measure_loudness(&fixture("does_not_exist.mp4")).is_err());
 }
