@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multiagent Architecture — Feature Pipeline</title>
+    <style>
+      :root {
+        --bg: #0e0f11;
+        --surface: #161820;
+        --border: #252830;
+        --border2: #2e3240;
+        --text: #cdd0db;
+        --muted: #606478;
+        --accent-m: #7c6af7; /* Manager — violeta */
+        --accent-s: #3ec9a7; /* Specialists — verde-água */
+        --accent-r: #f0804e; /* Reviewer — âmbar */
+        --accent-g: #4ea8f0; /* Git/commit — azul */
+        --mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+        --sans: "Inter", system-ui, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 14px;
+        line-height: 1.6;
+        padding: 48px 24px 80px;
+      }
+
+      /* ── header ── */
+      header {
+        max-width: 900px;
+        margin: 0 auto 56px;
+      }
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 12px;
+      }
+      h1 {
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #eceef4;
+        margin-bottom: 8px;
+      }
+      .subtitle {
+        color: var(--muted);
+        font-size: 15px;
+      }
+      .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-family: var(--mono);
+        font-size: 11px;
+        margin-top: 16px;
+        margin-right: 6px;
+      }
+      .tag-m {
+        background: rgba(124, 106, 247, 0.15);
+        color: var(--accent-m);
+        border: 1px solid rgba(124, 106, 247, 0.3);
+      }
+      .tag-s {
+        background: rgba(62, 201, 167, 0.12);
+        color: var(--accent-s);
+        border: 1px solid rgba(62, 201, 167, 0.25);
+      }
+      .tag-r {
+        background: rgba(240, 128, 78, 0.12);
+        color: var(--accent-r);
+        border: 1px solid rgba(240, 128, 78, 0.25);
+      }
+      .tag-g {
+        background: rgba(78, 168, 240, 0.12);
+        color: var(--accent-g);
+        border: 1px solid rgba(78, 168, 240, 0.25);
+      }
+
+      /* ── section titles ── */
+      .section-label {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 8px;
+        margin-bottom: 24px;
+      }
+
+      /* ── flow diagram ── */
+      .flow-wrap {
+        max-width: 900px;
+        margin: 0 auto 56px;
+      }
+
+      .flow {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+
+      .flow-phase {
+        display: grid;
+        grid-template-columns: 180px 1fr;
+        gap: 0 24px;
+        position: relative;
+      }
+
+      .phase-label {
+        display: flex;
+        align-items: flex-start;
+        padding-top: 20px;
+        gap: 10px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted);
+        text-align: right;
+        justify-content: flex-end;
+        flex-direction: column;
+        align-items: flex-end;
+        line-height: 1.3;
+      }
+
+      .phase-num {
+        font-size: 32px;
+        font-weight: 800;
+        line-height: 1;
+        opacity: 0.08;
+        color: #fff;
+        font-family: var(--mono);
+        position: absolute;
+        left: 0;
+        top: 12px;
+      }
+
+      .connector-line {
+        width: 2px;
+        background: var(--border2);
+        position: absolute;
+        left: 180px;
+        top: 0;
+        bottom: 0;
+        z-index: 0;
+      }
+
+      .phase-node {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface);
+        padding: 20px 24px;
+        margin-bottom: 4px;
+        position: relative;
+        transition: border-color 0.2s;
+      }
+      .phase-node:hover {
+        border-color: var(--border2);
+      }
+
+      /* connector dot */
+      .phase-node::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        position: absolute;
+        left: -29px;
+        top: 24px;
+        z-index: 2;
+      }
+
+      .node-m .phase-node::before {
+        background: var(--accent-m);
+        box-shadow: 0 0 8px var(--accent-m);
+      }
+      .node-s .phase-node::before {
+        background: var(--accent-s);
+        box-shadow: 0 0 8px var(--accent-s);
+      }
+      .node-r .phase-node::before {
+        background: var(--accent-r);
+        box-shadow: 0 0 8px var(--accent-r);
+      }
+      .node-g .phase-node::before {
+        background: var(--accent-g);
+        box-shadow: 0 0 8px var(--accent-g);
+      }
+
+      .node-m .phase-node {
+        border-left: 3px solid var(--accent-m);
+      }
+      .node-s .phase-node {
+        border-left: 3px solid var(--accent-s);
+      }
+      .node-r .phase-node {
+        border-left: 3px solid var(--accent-r);
+      }
+      .node-g .phase-node {
+        border-left: 3px solid var(--accent-g);
+      }
+
+      .node-title {
+        font-weight: 600;
+        font-size: 14px;
+        color: #eceef4;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .role-badge {
+        font-family: var(--mono);
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 3px;
+        font-weight: 500;
+      }
+      .badge-m {
+        background: rgba(124, 106, 247, 0.2);
+        color: var(--accent-m);
+      }
+      .badge-s {
+        background: rgba(62, 201, 167, 0.15);
+        color: var(--accent-s);
+      }
+      .badge-r {
+        background: rgba(240, 128, 78, 0.15);
+        color: var(--accent-r);
+      }
+      .badge-g {
+        background: rgba(78, 168, 240, 0.15);
+        color: var(--accent-g);
+      }
+
+      .node-desc {
+        color: var(--muted);
+        font-size: 13px;
+        margin-bottom: 12px;
+      }
+
+      .artifacts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .artifact {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border2);
+        border-radius: 4px;
+        padding: 3px 8px;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      /* specialists row */
+      .specialists-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 4px;
+      }
+      .specialist-card {
+        background: rgba(62, 201, 167, 0.05);
+        border: 1px solid rgba(62, 201, 167, 0.18);
+        border-radius: 8px;
+        padding: 14px 16px;
+      }
+      .sc-title {
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--accent-s);
+        margin-bottom: 4px;
+        font-family: var(--mono);
+      }
+      .sc-desc {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .sc-tools {
+        margin-top: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      .sc-tool {
+        font-size: 10px;
+        font-family: var(--mono);
+        background: rgba(255, 255, 255, 0.04);
+        padding: 2px 6px;
+        border-radius: 3px;
+        color: var(--muted);
+        border: 1px solid var(--border2);
+      }
+
+      /* ── decision gates ── */
+      .gate {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        background: rgba(240, 128, 78, 0.06);
+        border: 1px dashed rgba(240, 128, 78, 0.3);
+        border-radius: 6px;
+        font-size: 12px;
+        font-family: var(--mono);
+        color: var(--accent-r);
+        margin: 6px 0;
+      }
+      .gate-icon {
+        font-size: 16px;
+      }
+
+      /* ── CLAUDE.md section ── */
+      .claude-section {
+        max-width: 900px;
+        margin: 0 auto 56px;
+      }
+
+      .code-block {
+        background: #0a0b0d;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px 24px;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.7;
+        overflow-x: auto;
+        position: relative;
+      }
+      .code-header {
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .code-header::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--border2);
+        display: inline-block;
+      }
+      .cm {
+        color: var(--muted);
+      } /* comment */
+      .ck {
+        color: var(--accent-m);
+      } /* keyword / heading */
+      .cs {
+        color: var(--accent-s);
+      } /* string / value */
+      .cr {
+        color: var(--accent-r);
+      } /* warning / gate */
+      .cg {
+        color: var(--accent-g);
+      } /* git / info */
+
+      /* ── decision matrix ── */
+      .matrix-section {
+        max-width: 900px;
+        margin: 0 auto 56px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th {
+        text-align: left;
+        font-family: var(--mono);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--border);
+      }
+      td {
+        padding: 12px 14px;
+        font-size: 13px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      tr:last-child td {
+        border-bottom: none;
+      }
+      tr:hover td {
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .td-role {
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .td-m {
+        color: var(--accent-m);
+      }
+      .td-s {
+        color: var(--accent-s);
+      }
+      .td-r {
+        color: var(--accent-r);
+      }
+      .td-g {
+        color: var(--accent-g);
+      }
+
+      /* ── footer note ── */
+      .note {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 16px 20px;
+        background: rgba(124, 106, 247, 0.06);
+        border: 1px solid rgba(124, 106, 247, 0.2);
+        border-radius: 8px;
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .note strong {
+        color: var(--accent-m);
+      }
+
+      /* vertical line between phases */
+      .flow-phase {
+        position: relative;
+      }
+      .vline {
+        position: absolute;
+        left: 175px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: linear-gradient(to bottom, var(--border2), var(--border));
+        z-index: 0;
+      }
+      .flow-phase > * {
+        position: relative;
+        z-index: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- HEADER -->
+    <header>
+      <div class="eyebrow">Claude Code · Multiagent Pattern</div>
+      <h1>Manager → Specialists → Reviewer</h1>
+      <p class="subtitle">
+        Pipeline hierárquico para quebra, implementação e revisão de features em
+        projetos Rust/C
+      </p>
+      <div>
+        <span class="tag tag-m">Manager</span>
+        <span class="tag tag-s">Specialists</span>
+        <span class="tag tag-r">Reviewer</span>
+        <span class="tag tag-g">Git commit</span>
+      </div>
+    </header>
+
+    <!-- FLOW -->
+    <div class="flow-wrap">
+      <div class="section-label">Fluxo de execução</div>
+      <div class="flow">
+        <!-- PHASE 1: Manager -->
+        <div class="flow-phase">
+          <div class="vline"></div>
+          <div class="phase-label">
+            <span class="phase-num">1</span>
+            FASE 1<br />BREAKDOWN
+          </div>
+          <div class="node-m">
+            <div class="phase-node">
+              <div class="node-title">
+                Manager Agent
+                <span class="role-badge badge-m">MANAGER</span>
+              </div>
+              <div class="node-desc">
+                Recebe o plano de feature em linguagem natural. Decompõe em
+                subtarefas atômicas com escopo de
+                <strong style="color: #eceef4">1 commit cada</strong> — máximo
+                ~150 linhas de diff por tarefa. Se uma subtarefa exceder isso, o
+                Manager a divide novamente antes de delegar. Cada task mapeia
+                1:1 para um commit futuro.
+              </div>
+              <div class="artifacts">
+                <span class="artifact">task_breakdown.md</span>
+                <span class="artifact">commit_plan.md</span>
+                <span class="artifact">dependency_graph</span>
+                <span class="artifact">execution_order</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- GATE 1 -->
+        <div class="flow-phase">
+          <div class="vline"></div>
+          <div class="phase-label"></div>
+          <div>
+            <div class="gate">
+              <span class="gate-icon">◇</span>
+              Breakdown aprovado? Cada task ≤ 150 linhas de diff estimado →
+              Specialists. Task maior → Manager re-divide
+            </div>
+          </div>
+        </div>
+
+        <!-- PHASE 2: Specialists -->
+        <div class="flow-phase">
+          <div class="vline"></div>
+          <div class="phase-label">FASE 2<br />IMPLEMENT</div>
+          <div class="node-s">
+            <div class="phase-node">
+              <div class="node-title">
+                Specialist Agents
+                <span class="role-badge badge-s">SPECIALISTS</span>
+              </div>
+              <div class="node-desc">
+                Cada specialist recebe uma subtarefa + contexto isolado.
+                Executa, testa localmente e produz um patch. Podem rodar em
+                paralelo (worktrees separadas) quando não há dependência entre
+                si.
+              </div>
+              <div class="specialists-row">
+                <div class="specialist-card">
+                  <div class="sc-title">impl-specialist</div>
+                  <div class="sc-desc">
+                    Escreve o código Rust/C. Foca em corretude, segurança de
+                    memória, sem preocupação com style.
+                  </div>
+                  <div class="sc-tools">
+                    <span class="sc-tool">Read/Edit files</span>
+                    <span class="sc-tool">cargo build</span>
+                    <span class="sc-tool">make / cmake</span>
+                  </div>
+                </div>
+                <div class="specialist-card">
+                  <div class="sc-title">test-specialist</div>
+                  <div class="sc-desc">
+                    Escreve testes unitários e de integração. Valida edge cases,
+                    fuzz targets se aplicável.
+                  </div>
+                  <div class="sc-tools">
+                    <span class="sc-tool">cargo test</span>
+                    <span class="sc-tool">criterion</span>
+                    <span class="sc-tool">valgrind</span>
+                  </div>
+                </div>
+                <div class="specialist-card">
+                  <div class="sc-title">docs-specialist</div>
+                  <div class="sc-desc">
+                    Atualiza rustdoc, comentários C, CHANGELOG e docs relevantes
+                    ao diff.
+                  </div>
+                  <div class="sc-tools">
+                    <span class="sc-tool">cargo doc</span>
+                    <span class="sc-tool">Read/Edit md</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- GATE 2 -->
+        <div class="flow-phase">
+          <div class="vline"></div>
+          <div class="phase-label"></div>
+          <div>
+            <div class="gate">
+              <span class="gate-icon">◇</span>
+              Todos os patches compilam + testes passam? → Reviewer. Senão →
+              volta ao specialist específico
+            </div>
+          </div>
+        </div>
+
+        <!-- PHASE 3: Reviewer -->
+        <div class="flow-phase">
+          <div class="vline"></div>
+          <div class="phase-label">FASE 3<br />REVIEW</div>
+          <div class="node-r">
+            <div class="phase-node">
+              <div class="node-title">
+                Reviewer Agent
+                <span class="role-badge badge-r">REVIEWER</span>
+              </div>
+              <div class="node-desc">
+                Analisa o conjunto de patches com visão holística. Verifica
+                coerência entre módulos, segurança de memória (Rust unsafe,
+                ponteiros C), performance, conformidade com padrões do projeto e
+                itens do plano original.
+              </div>
+              <div class="artifacts">
+                <span class="artifact">review_report.md</span>
+                <span class="artifact">issues[ ]</span>
+                <span class="artifact">approved | request_changes</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- GATE 3 -->
+        <div class="flow-phase">
+          <div class="vline"></div>
+          <div class="phase-label"></div>
+          <div>
+            <div class="gate">
+              <span class="gate-icon">◇</span>
+              Reviewer aprova E diff de cada task ≤ 200 linhas? → Git Agent
+              commita 1:1. Diff grande → Manager re-divide. Issues críticos →
+              Manager. Issues menores → Specialist
+            </div>
+          </div>
+        </div>
+
+        <!-- PHASE 4: Git -->
+        <div class="flow-phase">
+          <div class="vline"></div>
+          <div class="phase-label">FASE 4<br />COMMIT</div>
+          <div class="node-g">
+            <div class="phase-node">
+              <div class="node-title">
+                Git Commit Agent
+                <span class="role-badge badge-g">GIT</span>
+              </div>
+              <div class="node-desc">
+                Um commit por task_id, na ordem do <code>commit_plan.md</code>.
+                Proibido squash entre tasks distintas. Cada commit: tipo
+                semântico + scope + descrição de 1 linha + corpo com o
+                <em>porquê</em>. Se o diff de um task_id ultrapassar 200 linhas,
+                aborta e devolve ao Manager para re-dividir — nunca commita
+                chunk grande.
+              </div>
+              <div class="artifacts">
+                <span class="artifact">N commits (1 por task)</span>
+                <span class="artifact">max ~200 linhas/commit</span>
+                <span class="artifact">CHANGELOG entry</span>
+                <span class="artifact">PR draft (opcional)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLAUDE.md -->
+    <div class="claude-section">
+      <div class="section-label">CLAUDE.md — configuração por agente</div>
+      <div class="code-block">
+        <div class="code-header">agents/manager/CLAUDE.md</div>
+        <pre><span class="ck"># Manager Agent</span>
+
+<span class="cm">## Papel</span>
+Você é o orquestrador. Recebe um plano de feature e o transforma em
+subtarefas atômicas. <span class="cr">Cada task = 1 commit futuro.</span> Dimensione para
+que o diff estimado caiba em ~100–150 linhas. Se uma task naturalmente
+geraria mais do que isso, divida-a antes de delegar.
+
+<span class="cm">## Output obrigatório</span>
+<span class="cs">task_breakdown.md
+  - task_id        (ex: feat-001, test-001, docs-001)
+  - title          (imperativo: "Add retry logic to connection pool")
+  - specialist_type
+  - files_to_touch (lista explícita)
+  - estimated_diff_lines  ← obrigatório; se > 150, re-divida
+  - acceptance_criteria
+  - execution_order (paralelo | sequencial com dep: task_id)
+  - context_snapshot
+
+commit_plan.md   ← ordem final de commits para o Git Agent
+  - lista ordenada de task_ids com tipo semântico e scope</span>
+
+<span class="cr">## Regra de granularidade (HARD RULE)</span>
+<span class="cr">- estimated_diff_lines > 150 → proibido delegar. Divida a task.
+- Uma task não pode tocar em mais de 3 arquivos de lógica distintos.
+- Refactors e features novas em commits separados, sempre.
+- Nunca agrupe "misc fixes" numa task só. Cada fix = task própria.
+- Nunca implemente código. Apenas planeje e delegue.
+- Se o escopo for ambíguo, liste as ambiguidades e pare. Não assuma.</span>
+
+<span class="cm">## Stack do projeto</span>
+<span class="cs">- Rust (edição 2021), C99/C11
+- cargo build / cargo test / make
+- unsafe Rust requer justificativa explícita na tarefa</span></pre>
+      </div>
+
+      <br />
+      <div class="code-block">
+        <div class="code-header">agents/impl-specialist/CLAUDE.md</div>
+        <pre><span class="ck"># Impl Specialist</span>
+
+<span class="cm">## Papel</span>
+Você implementa UMA subtarefa por vez. Leia task_breakdown.md,
+execute somente a task atribuída, compile e rode os testes afetados.
+
+<span class="cm">## Workflow obrigatório</span>
+<span class="cs">1. Leia o acceptance_criteria da task
+2. Implemente somente os arquivos listados em files_to_touch
+3. cargo build --all-features (sem warnings novos)
+4. cargo test (testes afetados pelo diff)
+5. Produza patch em patches/{task_id}.patch</span>
+
+<span class="cr">## Restrições</span>
+<span class="cr">- Não toque em arquivos fora de files_to_touch sem avisar o Manager
+- Unsafe Rust: comente SAFETY: justificativa linha a linha
+- C: sem malloc sem verificação de retorno, sem buffer sem tamanho</span></pre>
+      </div>
+
+      <br />
+      <div class="code-block">
+        <div class="code-header">agents/git-agent/CLAUDE.md</div>
+        <pre><span class="ck"># Git Agent</span>
+
+<span class="cm">## Papel</span>
+Você executa commits. Nunca decide o que commitar — isso já está
+definido em commit_plan.md pelo Manager e aprovado pelo Reviewer.
+
+<span class="cm">## Workflow obrigatório (por task_id, na ordem do commit_plan.md)</span>
+<span class="cg">1. git diff --stat patches/{task_id}.patch
+   → Se linhas_alteradas > 200: ABORTE. Reporte size_violation ao Manager.
+   → Se linhas_alteradas ≤ 200: prossiga.
+
+2. git apply patches/{task_id}.patch
+
+3. git add (somente arquivos listados em files_to_touch da task)
+   → git add -p se necessário para isolar hunks
+
+4. git commit -m "&lt;type&gt;(&lt;scope&gt;): &lt;descrição imperativa em inglês&gt;"
+              -m ""
+              -m "Why: &lt;motivo da mudança em 1-2 frases&gt;"
+              -m "Task: {task_id}"
+
+5. Repita para o próximo task_id na ordem do commit_plan.md</span>
+
+<span class="cm">## Tipos semânticos aceitos</span>
+<span class="cs">feat   · fix   · test   · docs   · refactor
+perf   · chore · build  · ci</span>
+
+<span class="cr">## HARD RULES — nunca viole</span>
+<span class="cr">- PROIBIDO: git commit com mais de 200 linhas alteradas
+- PROIBIDO: squash de tasks distintas num único commit
+- PROIBIDO: git add . (sempre liste arquivos explicitamente)
+- PROIBIDO: commitar arquivos fora de files_to_touch da task
+- PROIBIDO: alterar mensagem de commit definida em commit_plan.md
+- Se um patch não aplicar limpo: pare, reporte ao Manager</span>
+
+<span class="cm">## Validação final</span>
+<span class="cg">Após todos os commits:
+- git log --oneline (lista para o Manager confirmar cobertura)
+- Gera CHANGELOG entry agrupando os commits por feature</span></pre>
+      </div>
+
+      <br />
+      <div class="code-block">
+        <div class="code-header">agents/reviewer/CLAUDE.md</div>
+        <pre><span class="ck"># Reviewer Agent</span>
+
+<span class="cm">## Papel</span>
+Você revisa o conjunto completo de patches contra o plano original.
+Sua aprovação é necessária para prosseguir ao commit.
+
+<span class="cm">## Checklist de revisão (report em review_report.md)</span>
+<span class="cs">[ ] Todos os acceptance_criteria cobertos?
+[ ] Sem regressões em testes existentes?
+[ ] Rust: clippy --deny warnings limpo?
+[ ] C: sem UB óbvio, ponteiros, tamanhos verificados?
+[ ] Docs atualizadas para API pública modificada?</span>
+<span class="cr">[ ] Diff de cada task_id ≤ 200 linhas? (git diff --stat)
+[ ] Nenhum patch mistura refactor + feature nova?
+[ ] Nenhum patch toca em > 3 arquivos de lógica distintos?</span>
+<span class="cs">[ ] commit_plan.md está ordenado e sem task_ids faltando?</span>
+
+<span class="cm">## Output</span>
+<span class="cg">status: approved | request_changes | split_required
+issues: [{task_id, severity: critical|minor|size_violation, description, suggestion}]</span>
+
+<span class="cr">## Restrições</span>
+<span class="cr">- Nunca aprove com issues críticos abertos
+- size_violation → devolve ao Manager para re-dividir (não ao specialist)
+- Issues menores: registre mas não bloqueie</span></pre>
+      </div>
+    </div>
+
+    <!-- DECISION MATRIX -->
+    <div class="matrix-section">
+      <div class="section-label">Tabela de responsabilidades</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Agente</th>
+            <th>Input</th>
+            <th>Output</th>
+            <th>Ferramentas Claude Code</th>
+            <th>Pode re-delegar?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="td-role td-m">Manager</span></td>
+            <td>Plano de feature (md/texto)</td>
+            <td>task_breakdown.md + commit_plan.md</td>
+            <td>Read, Write (somente .md)</td>
+            <td>— (re-divide tasks se size_violation)</td>
+          </tr>
+          <tr>
+            <td><span class="td-role td-s">impl-specialist</span></td>
+            <td>task_breakdown.md + task_id</td>
+            <td>patches/{id}.patch</td>
+            <td>Read, Edit, Bash (cargo, make)</td>
+            <td>→ Manager (escopo ampliado)</td>
+          </tr>
+          <tr>
+            <td><span class="td-role td-s">test-specialist</span></td>
+            <td>task_breakdown.md + patch</td>
+            <td>test files + resultado cargo test</td>
+            <td>Read, Edit, Bash (cargo test, valgrind)</td>
+            <td>→ impl-specialist (bug encontrado)</td>
+          </tr>
+          <tr>
+            <td><span class="td-role td-s">docs-specialist</span></td>
+            <td>Diff final + task_breakdown</td>
+            <td>docs atualizados, CHANGELOG</td>
+            <td>Read, Edit (somente .md, .rs docs, .h)</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td><span class="td-role td-r">Reviewer</span></td>
+            <td>Todos os patches + breakdown</td>
+            <td>review_report.md</td>
+            <td>Read, Bash (clippy, cargo test)</td>
+            <td>→ Manager (crítico) / Specialist (menor)</td>
+          </tr>
+          <tr>
+            <td><span class="td-role td-g">Git Agent</span></td>
+            <td>commit_plan.md + patches aprovados</td>
+            <td>N commits atômicos (1/task, ≤200 linhas), CHANGELOG</td>
+            <td>Bash (git diff, git apply, git commit), Read</td>
+            <td>→ Manager (size_violation no patch)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- NOTE -->
+    <div class="note">
+      <strong>Por que ≤ 200 linhas por commit?</strong><br />
+      O limite é enforçado em três camadas: o Manager estima antes de delegar
+      (~150 linhas), o Reviewer mede o diff real antes de aprovar, e o Git Agent
+      aborta se o patch ultrapassar 200 linhas — nunca chegando ao
+      <code>git commit</code>. Isso garante que cada commit seja revisável em
+      minutos, fácil de reverter com <code>git revert</code> sem efeitos
+      colaterais, e que o histórico do projeto conte a história da feature em
+      passos legíveis. Em Rust/C especialmente, commits pequenos tornam bisect
+      muito mais eficiente quando bugs aparecem. <br /><br />
+      <strong>Worktrees separadas para specialists:</strong><br />
+      Com <code>git worktree add</code> por task_id, cada specialist opera numa
+      branch isolada. O Git Agent aplica os patches na ordem do
+      <code>commit_plan.md</code> — sem conflitos cegos e com a ordem de commits
+      controlada pelo Manager desde o início.
+    </div>
+  </body>
+</html>
