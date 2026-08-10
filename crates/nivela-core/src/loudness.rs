@@ -1,12 +1,12 @@
 //! Measures perceptual loudness (LUFS), true peak and loudness range via a single-pass
-//! `ffmpeg` `loudnorm` filter run, mirroring the technique in `Watch-Gameplay.ps1`'s
-//! `Get-AudioAnalysis` — that script measures the same way today, just from PowerShell.
+//! `loudnorm` filter run through `oca-avbridge`'s FFI — no subprocess.
 //!
-//! Like [`crate::probe`], the binary invocation ([`measure_loudness`]) is a thin wrapper
-//! around a pure, unit-testable parser ([`parse_loudnorm_stderr`]).
+//! Like [`crate::probe`], the FFI call ([`measure_loudness`]) is a thin wrapper around a pure,
+//! unit-testable parser ([`parse_loudnorm_stderr`]) — the parser is unchanged from when it
+//! read a subprocess's stderr: `loudnorm` still only exposes its final report via `av_log`
+//! (captured on the C side, see `oca-avbridge/csrc/bridge.c`), so the text shape is identical.
 
 use std::path::Path;
-use std::process::Command;
 
 use serde::Deserialize;
 
@@ -14,10 +14,10 @@ use crate::media::LoudnessMetrics;
 
 #[derive(Debug)]
 pub enum LoudnessError {
-    /// Couldn't spawn the `ffmpeg` process.
-    Spawn(std::io::Error),
-    /// `ffmpeg`'s stderr didn't contain a `loudnorm` JSON report — usually means the input
-    /// had no audio stream, or `ffmpeg` failed before the filter ran.
+    /// `oca-avbridge` failed before or during the decode/filter pipeline.
+    Bridge(oca_avbridge::LoudnessError),
+    /// The captured report didn't contain a `{...}` JSON block — usually means the input had
+    /// no audio stream, or the pipeline failed before the filter ran.
     NoReportFound,
     /// Found a `{...}` block but it wasn't a valid `loudnorm` report.
     Json(serde_json::Error),
@@ -26,9 +26,9 @@ pub enum LoudnessError {
 impl std::fmt::Display for LoudnessError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LoudnessError::Spawn(e) => write!(f, "failed to run ffmpeg: {e}"),
+            LoudnessError::Bridge(e) => write!(f, "failed to measure loudness: {e}"),
             LoudnessError::NoReportFound => {
-                write!(f, "no loudnorm report found in ffmpeg output")
+                write!(f, "no loudnorm report found in the captured output")
             }
             LoudnessError::Json(e) => write!(f, "failed to parse loudnorm report: {e}"),
         }
@@ -40,21 +40,12 @@ impl std::error::Error for LoudnessError {}
 /// Runs a single-pass `loudnorm` measurement against `path` and returns the result.
 ///
 /// This is analysis only — nothing is written or re-encoded. The default targets
-/// (`I=-16:TP=-1.5:LRA=11`) match `Watch-Gameplay.ps1`; the two-pass normalization described
-/// in Fase 2 of the execution plan (measure, then apply a target like -14 LUFS for YouTube)
-/// builds on top of this measurement.
+/// (`I=-16:TP=-1.5:LRA=11`) match `Watch-Gameplay.ps1`'s original technique; the two-pass
+/// normalization described in Fase 2 of the execution plan (measure, then apply a target like
+/// -14 LUFS for YouTube) builds on top of this measurement.
 pub fn measure_loudness(path: &Path) -> Result<LoudnessMetrics, LoudnessError> {
-    let output = Command::new("ffmpeg")
-        .args(["-y", "-nostdin", "-hide_banner", "-loglevel", "info"])
-        .arg("-i")
-        .arg(path)
-        .args(["-af", "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json"])
-        .args(["-f", "null", "-"])
-        .output()
-        .map_err(LoudnessError::Spawn)?;
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    parse_loudnorm_stderr(&stderr)
+    let report = oca_avbridge::measure_loudness_json(path).map_err(LoudnessError::Bridge)?;
+    parse_loudnorm_stderr(&report)
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,8 +55,8 @@ struct LoudnormReport {
     input_lra: String,
 }
 
-/// Extracts and parses the `loudnorm` JSON report ffmpeg prints to stderr, ignoring the log
-/// lines before and after it.
+/// Extracts and parses the `loudnorm` JSON report from captured `av_log` text, ignoring the
+/// log lines before and after it.
 pub fn parse_loudnorm_stderr(stderr: &str) -> Result<LoudnessMetrics, LoudnessError> {
     let json_block = extract_first_json_object(stderr).ok_or(LoudnessError::NoReportFound)?;
     let report: LoudnormReport = serde_json::from_str(json_block).map_err(LoudnessError::Json)?;
@@ -78,7 +69,7 @@ pub fn parse_loudnorm_stderr(stderr: &str) -> Result<LoudnessMetrics, LoudnessEr
 }
 
 /// Finds the first balanced `{...}` substring, scanning byte-by-byte and tracking brace
-/// depth so it isn't confused by any earlier unbalanced braces in ffmpeg's log preamble.
+/// depth so it isn't confused by any earlier unbalanced braces in the log preamble.
 fn extract_first_json_object(text: &str) -> Option<&str> {
     let start = text.find('{')?;
     let mut depth = 0i32;
