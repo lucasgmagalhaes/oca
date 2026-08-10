@@ -116,7 +116,8 @@ pub struct ProbeInfo {
 /// Picks the first video stream if there is one, otherwise the first audio stream — matching
 /// the ffprobe-based version this replaces.
 pub fn probe(path: &Path) -> Result<ProbeInfo, ProbeError> {
-    let c_path = CString::new(path.to_string_lossy().as_bytes()).map_err(ProbeError::InvalidPath)?;
+    let c_path =
+        CString::new(path.to_string_lossy().as_bytes()).map_err(ProbeError::InvalidPath)?;
     let mut raw = RawProbeInfo {
         has_video: 0,
         duration_secs: 0.0,
@@ -211,7 +212,8 @@ impl std::error::Error for RemuxError {}
 /// Demuxes `in_path` and remuxes every video/audio stream to `out_path` unchanged — no decode,
 /// no encode, no filtering. Equivalent to `ffmpeg -i in_path -c copy out_path`.
 pub fn remux_copy(in_path: &Path, out_path: &Path) -> Result<(), RemuxError> {
-    let c_in = CString::new(in_path.to_string_lossy().as_bytes()).map_err(RemuxError::InvalidPath)?;
+    let c_in =
+        CString::new(in_path.to_string_lossy().as_bytes()).map_err(RemuxError::InvalidPath)?;
     let c_out =
         CString::new(out_path.to_string_lossy().as_bytes()).map_err(RemuxError::InvalidPath)?;
 
@@ -305,7 +307,8 @@ pub fn encode_export<F: FnMut(f64)>(
     cancel: &AtomicBool,
     mut on_progress: F,
 ) -> Result<EncodeOutcome, EncodeError> {
-    let c_in = CString::new(in_path.to_string_lossy().as_bytes()).map_err(EncodeError::InvalidPath)?;
+    let c_in =
+        CString::new(in_path.to_string_lossy().as_bytes()).map_err(EncodeError::InvalidPath)?;
     let c_out =
         CString::new(out_path.to_string_lossy().as_bytes()).map_err(EncodeError::InvalidPath)?;
 

@@ -5,7 +5,9 @@ use nivela_core::render::{render_export, RenderOutcome};
 use nivela_core::{measure_loudness, probe_media};
 
 fn fixture(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
 }
 
 #[test]
@@ -43,12 +45,19 @@ fn cancelling_mid_render_reports_cancelled() {
     let cancel = AtomicBool::new(false);
     let mut calls = 0;
 
-    let outcome = render_export(&source, &output, -14.0, duration_secs, &cancel, |_percent| {
-        calls += 1;
-        if calls >= 3 {
-            cancel.store(true, Ordering::Relaxed);
-        }
-    })
+    let outcome = render_export(
+        &source,
+        &output,
+        -14.0,
+        duration_secs,
+        &cancel,
+        |_percent| {
+            calls += 1;
+            if calls >= 3 {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        },
+    )
     .unwrap();
 
     assert_eq!(outcome, RenderOutcome::Cancelled);

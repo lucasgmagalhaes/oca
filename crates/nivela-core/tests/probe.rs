@@ -4,7 +4,9 @@ use nivela_core::media::MediaKind;
 use nivela_core::probe::{probe_media, ProbeError};
 
 fn fixture(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
 }
 
 #[test]

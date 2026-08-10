@@ -4,7 +4,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use oca_avbridge::{encode_export, probe, EncodeError, EncodeOutcome, StreamKind};
 
 fn fixture(name: &str) -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
 }
 
 #[test]
@@ -56,8 +58,8 @@ fn fails_on_missing_input() {
     let out = std::env::temp_dir().join("oca_avbridge_test_encode_missing.mp4");
     let cancel = AtomicBool::new(false);
 
-    let err = encode_export(&fixture("does_not_exist.mp4"), &out, -14.0, &cancel, |_| {})
-        .unwrap_err();
+    let err =
+        encode_export(&fixture("does_not_exist.mp4"), &out, -14.0, &cancel, |_| {}).unwrap_err();
 
     assert!(matches!(err, EncodeError::OpenInput));
 }
