@@ -1,0 +1,28 @@
+[package]
+name = "core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Rust code imports this crate as `avcore`, not the bare package name `core` — a dependency
+# literally named `core` shadows the sysroot `core` crate (verified: `use core::mem::...`
+# resolves to this crate instead of libcore, breaking basically everything that needs it).
+# The package (and this directory) stay named `core` for `cargo -p core`/Cargo.toml
+# readability; only the Rust-side import name is different. See CLAUDE.md.
+[lib]
+name = "avcore"
+
+[dependencies]
+gstreamer = "0.25.3"
+gstreamer-app = "0.25.2"
+gstreamer-video = "0.25.3"
+avbridge = { path = "../avbridge" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.151"
+
+[dev-dependencies]
+criterion = "0.8.2"
+
+[[bench]]
+name = "parsing"
+harness = false

@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/nivela-core",
-    "crates/nivela-app",
-    "crates/oca-avbridge",
+    "crates/core",
+    "crates/ui",
+    "crates/avbridge",
 ]
 
 [workspace.package]

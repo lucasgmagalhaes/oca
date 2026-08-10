@@ -25,7 +25,7 @@
 By the letter of the granularity rules this should be `split_required`. It technically
 *could* be split by function (filter-graph setup / encode-write helpers / main pipeline
 function / Rust wrapper each compile independently as C additions, verified the build.rs
-link line isn't needed until something actually links against `oca-avbridge`). But the code
+link line isn't needed until something actually links against `avbridge`). But the code
 was written, debugged, and functionally verified as one coherent unit in one sitting — the
 decode→filter→encode pipeline genuinely doesn't have a meaningful "half-working" intermediate
 state to review in isolation; splitting the *commit* now, after the fact, would move lines
@@ -33,8 +33,8 @@ between commits without reducing what a reviewer actually has to understand at o
 this as an explicit, acknowledged exception rather than pretending compliance via cosmetic
 chunking.
 
-**If a human is reviewing this PR: give `crates/oca-avbridge/csrc/bridge.c`'s
-`oca_avbridge_encode_export` and its two helpers (`encode_write_packet`,
+**If a human is reviewing this PR: give `crates/avbridge/csrc/bridge.c`'s
+`avbridge_encode_export` and its two helpers (`encode_write_packet`,
 `filter_encode_write_frame`) close attention.** This is hand-written FFmpeg C (decode/filter
 graph/encode lifecycle, PTS rescaling, cleanup-on-every-exit-path) — the highest-risk code
 landed in this pipeline so far.

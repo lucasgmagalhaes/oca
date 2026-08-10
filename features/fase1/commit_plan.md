@@ -2,7 +2,7 @@
 
 order | task_id     | semantic_type | scope      | description                                              | status
 ------|-------------|---------------|------------|-----------------------------------------------------------|--------
-1     | chore-001   | chore         | avbridge   | scaffold oca-avbridge C bridge crate                       | done (1c34a99)
+1     | chore-001   | chore         | avbridge   | scaffold avbridge C bridge crate                       | done (1c34a99)
 2     | impl-002a   | feat          | avbridge   | probe FFI, C side (bridge.c/bridge.h)                       | done (fa6f75d)
 3     | impl-002b   | feat          | avbridge   | probe FFI, Rust wrapper (safe API + error type)             | done (0898fc5)
 4     | impl-003    | refactor      | probe      | swap probe.rs from ffprobe subprocess to FFI                | done (38e9432)
@@ -31,7 +31,7 @@ or broken down yet.
 
 **impl-006 scope note:** `current_frame()` pulls RGBA on demand into an owned `Vec<u8>` —
 proven with a real fixture (dimensions, byte count, and pixel content verified by dumping a
-frame to PNG: real SMPTE color bars). **Still not wired into nivela-app** — no egui texture,
+frame to PNG: real SMPTE color bars). **Still not wired into ui** — no egui texture,
 no Editor screen integration, no UI scrubbing. That's its own task, touches a different crate,
 needs its own design pass (repaint cadence, how play() during Playing state should drive
 continuous texture updates vs. this pull-on-demand model, thread-safety if polling happens off
@@ -39,7 +39,7 @@ the UI thread).
 
 ### chore-002 — root cause found and fixed (2026-08-10)
 
-**Symptom:** adding `gstreamer` as a dependency to `nivela-core` — not even calling any of its
+**Symptom:** adding `gstreamer` as a dependency to `core` — not even calling any of its
 code from `probe.rs` — broke `oca_avbridge::probe()` at runtime: `avformat_open_input` started
 returning `Open` on every call, 5/6 probe tests failing. 100% reproducible by toggling only the
 dependency, everything else identical.
@@ -52,14 +52,14 @@ to the MSVC target, same symptom persisted — see below for why we're on MSVC n
 generically-named import libs (`avformat.lib`, `libavformat.dll.a`, etc.) for a different, older
 FFmpeg version (`avformat-61.dll`) than the one under `FFMPEG_DIR` (`avformat-62.dll`) —
 confirmed via `comm -12` on sorted `lib/` listings, real overlap this time. When both crates'
-`-L` search paths are on the same link line, `oca-avbridge`'s bare `-lavformat` can resolve to
+`-L` search paths are on the same link line, `avbridge`'s bare `-lavformat` can resolve to
 GStreamer's bundled (incompatible) copy instead — compiles fine, corrupts behavior at runtime.
 Confirmed on **both** MSVC and GNU/mingw toolchains once isolated to this cause, which is why
 the earlier "GCC runtime variant" theory was wrong: it's a filename collision, not an ABI
 mismatch between toolchains.
 
-**Fix:** `crates/oca-avbridge/build.rs` now copies its FFmpeg import libs into its own
-`OUT_DIR` under unique names (`oca_avbridge_ffmpeg_avformat`, etc.) before linking, so
+**Fix:** `crates/avbridge/build.rs` now copies its FFmpeg import libs into its own
+`OUT_DIR` under unique names (`avbridge_ffmpeg_avformat`, etc.) before linking, so
 bare-name search can't accidentally match GStreamer's bundled copy regardless of `-L` order.
 (`cargo:rustc-link-arg` with a full path was tried first — doesn't work, that directive doesn't
 propagate from a library crate's build script to a downstream binary's link step, only
