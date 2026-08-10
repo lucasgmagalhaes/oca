@@ -108,6 +108,7 @@ text_catalog! {
     ExportAutoNote: pt_br = "loudnorm 2-pass + true peak limiter, aplicado automático no export — sem ajuste manual por clipe.", en = "loudnorm 2-pass + true peak limiter, applied automatically on export — no per-clip manual adjustment.";
     Timeline: pt_br = "🔍 Timeline", en = "🔍 Timeline";
     TimelineEmpty: pt_br = "Este projeto ainda não tem clipes na timeline.", en = "This project doesn't have any clips on the timeline yet.";
+    PreviewUnavailable: pt_br = "Pré-visualização indisponível", en = "Preview unavailable";
 
     LibraryTitle: pt_br = "Biblioteca de mídia", en = "Media library";
     ImportFiles: pt_br = "⭱ Importar arquivos", en = "⭱ Import files";

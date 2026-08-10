@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use eframe::egui;
 use avcore::{sample, ExportJob, ExportJobStatus, MediaAsset, Project, RenderOutcome};
+use eframe::egui;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::i18n::Locale;
@@ -100,6 +100,18 @@ pub struct OcaApp {
     /// A job id present here is the source of truth for "how many workers are busy right
     /// now" — [`OcaApp::pump_export_queue`] uses its length against `queue_workers`.
     active_renders: HashMap<u64, Arc<AtomicBool>>,
+    /// The GStreamer pipeline for `selected_asset_id`, if it could be opened (`None` both
+    /// before any selection and when `Preview::open` failed, e.g. the sample-data assets'
+    /// placeholder paths — see [`OcaApp::select_asset`]).
+    preview: Option<avcore::preview::Preview>,
+    /// Uploaded from the latest [`avcore::preview::Preview::current_frame`] each frame the
+    /// Editor screen is shown; `None` until the first frame decodes. Reset on every
+    /// [`OcaApp::select_asset`] call so a stale frame from the previous clip never lingers.
+    pub preview_texture: Option<egui::TextureHandle>,
+    /// Whether the preview pipeline is in `Playing` state. `Preview` has no state getter of
+    /// its own, so the Editor's play/pause button and [`OcaApp::pump_export_queue`]'s repaint
+    /// cadence both rely on this instead.
+    pub preview_playing: bool,
 }
 
 impl OcaApp {
@@ -113,7 +125,7 @@ impl OcaApp {
             .and_then(|p| p.media_library.first())
             .map(|a| a.id);
         let (render_tx, render_rx) = mpsc::unbounded_channel();
-        Self {
+        let mut app = Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
             locale: Locale::PtBr,
@@ -126,7 +138,12 @@ impl OcaApp {
             render_tx,
             render_rx,
             active_renders: HashMap::new(),
-        }
+            preview: None,
+            preview_texture: None,
+            preview_playing: false,
+        };
+        app.reload_preview();
+        app
     }
 
     /// The project currently open in the Editor/Mídia screens.
@@ -153,8 +170,120 @@ impl OcaApp {
     /// what a project card click on the Início screen does.
     pub fn open_project(&mut self, index: usize) {
         self.active_project = index;
-        self.selected_asset_id = self.active_project().media_library.first().map(|a| a.id);
+        let asset_id = self.active_project().media_library.first().map(|a| a.id);
+        self.select_asset(asset_id);
         self.screen = Screen::Editor;
+    }
+
+    /// Selects `id` as the Editor's active clip and (re)opens the preview pipeline for it —
+    /// what clicking an asset in the media library panel does, and what [`OcaApp::open_project`]
+    /// uses to select the newly-opened project's first asset. `None` clears the selection
+    /// (empty media library).
+    pub fn select_asset(&mut self, id: Option<u64>) {
+        self.selected_asset_id = id;
+        self.reload_preview();
+    }
+
+    /// Tears down the current preview pipeline (if any) and, if `selected_asset_id` points at
+    /// an asset, opens a new one for it — from the editing proxy if one exists (lighter to
+    /// decode), otherwise the original source file. Left as `None` without an error dialog if
+    /// `Preview::open` fails (e.g. the sample-data projects' placeholder paths, which don't
+    /// exist on disk) — the Editor screen shows a muted "preview unavailable" label instead.
+    fn reload_preview(&mut self) {
+        self.preview = None;
+        self.preview_texture = None;
+        self.preview_playing = false;
+
+        let Some(asset) = self.selected_asset() else {
+            return;
+        };
+        let path = asset
+            .proxy_path
+            .clone()
+            .unwrap_or_else(|| asset.source_path.clone());
+        // Sample-data projects (see avcore::sample) point at placeholder paths that don't
+        // exist on disk. Checking first avoids spinning up a whole GStreamer pipeline just to
+        // watch it fail to open a file that was never there.
+        if !path.exists() {
+            return;
+        }
+
+        match avcore::preview::Preview::open(&path) {
+            Ok(preview) => self.preview = Some(preview),
+            Err(e) => eprintln!("failed to open preview for {}: {e}", path.display()),
+        }
+    }
+
+    /// Toggles play/pause on the current preview pipeline. A no-op if nothing is selected or
+    /// the pipeline failed to open.
+    pub fn toggle_preview_playback(&mut self) {
+        let Some(preview) = &self.preview else {
+            return;
+        };
+        let result = if self.preview_playing {
+            preview.pause()
+        } else {
+            preview.play()
+        };
+        match result {
+            Ok(()) => self.preview_playing = !self.preview_playing,
+            Err(e) => eprintln!("failed to toggle preview playback: {e}"),
+        }
+    }
+
+    /// Seeks the current preview pipeline to `position_secs`. A no-op if nothing is selected
+    /// or the pipeline failed to open.
+    pub fn seek_preview(&mut self, position_secs: f64) {
+        let Some(preview) = &self.preview else {
+            return;
+        };
+        if let Err(e) = preview.seek(position_secs) {
+            eprintln!("failed to seek preview: {e}");
+        }
+    }
+
+    /// Whether the currently selected asset has a live preview pipeline — `false` both before
+    /// any selection and when [`OcaApp::reload_preview`] couldn't open one.
+    pub fn preview_available(&self) -> bool {
+        self.preview.is_some()
+    }
+
+    pub fn preview_duration_secs(&self) -> Option<f64> {
+        self.preview.as_ref().and_then(|p| p.duration_secs())
+    }
+
+    pub fn preview_position_secs(&self) -> Option<f64> {
+        self.preview.as_ref().and_then(|p| p.position_secs())
+    }
+
+    /// Pulls the latest decoded video frame (if any) into `preview_texture`, and — while
+    /// playing — mirrors the pipeline's position into the active project's timeline playhead
+    /// so the Editor's timecode label stays in sync. Called once per frame from
+    /// [`eframe::App::ui`], before the screens draw.
+    fn pump_preview_frame(&mut self, ctx: &egui::Context) {
+        let Some(preview) = &self.preview else {
+            return;
+        };
+
+        if let Some(frame) = preview.current_frame() {
+            let image = egui::ColorImage::from_rgba_unmultiplied(
+                [frame.width as usize, frame.height as usize],
+                &frame.rgba,
+            );
+            match &mut self.preview_texture {
+                Some(texture) => texture.set(image, egui::TextureOptions::LINEAR),
+                None => {
+                    self.preview_texture =
+                        Some(ctx.load_texture("preview", image, egui::TextureOptions::LINEAR));
+                }
+            }
+        }
+
+        if self.preview_playing {
+            if let Some(position) = preview.position_secs() {
+                self.active_project_mut().timeline.playhead_secs = position;
+            }
+        }
     }
 
     /// Appends `project` to the project list and opens it — used for both "Novo projeto"
@@ -300,7 +429,14 @@ impl OcaApp {
 impl eframe::App for OcaApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.pump_export_queue();
-        ui.ctx().request_repaint_after(Duration::from_millis(200));
+        self.pump_preview_frame(ui.ctx());
+        if self.preview_playing {
+            // Smooth video needs every-frame repaints; the 200ms throttle below would show
+            // it as a slideshow.
+            ui.ctx().request_repaint();
+        } else {
+            ui.ctx().request_repaint_after(Duration::from_millis(200));
+        }
 
         screens::nav_rail::show(self, ui);
         screens::breadcrumb::show(self, ui);

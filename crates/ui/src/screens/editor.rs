@@ -1,5 +1,5 @@
-use eframe::egui::{self, RichText};
 use avcore::media::format_timecode;
+use eframe::egui::{self, RichText};
 
 use crate::app::{EditorTool, OcaApp};
 use crate::i18n::Text;
@@ -120,7 +120,9 @@ fn tool_button(app: &mut OcaApp, ui: &mut egui::Ui, tool: EditorTool, icon: &str
     }
 }
 
-fn media_library_panel(app: &OcaApp, ui: &mut egui::Ui, width: f32, height: f32) {
+fn media_library_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32) {
+    let mut clicked_id = None;
+
     egui::Frame::new()
         .inner_margin(egui::Margin::same(12))
         .show(ui, |ui| {
@@ -136,7 +138,7 @@ fn media_library_panel(app: &OcaApp, ui: &mut egui::Ui, width: f32, height: f32)
                         } else {
                             theme::SURFACE
                         };
-                        egui::Frame::new()
+                        let response = egui::Frame::new()
                             .fill(bg)
                             .corner_radius(6)
                             .inner_margin(egui::Margin::same(6))
@@ -159,15 +161,25 @@ fn media_library_panel(app: &OcaApp, ui: &mut egui::Ui, width: f32, height: f32)
                                         .color(theme::TEXT_MUTED),
                                     );
                                 });
-                            });
+                            })
+                            .response
+                            .interact(egui::Sense::click());
+                        if response.clicked() {
+                            clicked_id = Some(asset.id);
+                        }
                         ui.add_space(6.0);
                     }
                 });
             });
         });
+
+    if let Some(id) = clicked_id {
+        app.select_asset(Some(id));
+    }
 }
 
-fn preview_panel(app: &OcaApp, ui: &mut egui::Ui, height: f32) {
+fn preview_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
+    let locale = app.locale;
     ui.vertical(|ui| {
         ui.set_height(height);
         egui::Frame::new()
@@ -175,14 +187,46 @@ fn preview_panel(app: &OcaApp, ui: &mut egui::Ui, height: f32) {
             .show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.set_min_height(height - 40.0);
-                ui.centered_and_justified(|ui| {
-                    ui.label(RichText::new("▶").size(48.0).color(theme::TEXT_MUTED));
+                ui.centered_and_justified(|ui| match &app.preview_texture {
+                    Some(texture) => {
+                        let tex_size = texture.size_vec2();
+                        let aspect = tex_size.x / tex_size.y;
+                        let mut size = ui.available_size();
+                        if size.x / size.y > aspect {
+                            size.x = size.y * aspect;
+                        } else {
+                            size.y = size.x / aspect;
+                        }
+                        ui.add(egui::Image::new(texture).fit_to_exact_size(size));
+                    }
+                    None if app.selected_asset_id.is_some() && !app.preview_available() => {
+                        ui.label(
+                            RichText::new(Text::PreviewUnavailable.tr(locale))
+                                .size(13.0)
+                                .color(theme::TEXT_MUTED),
+                        );
+                    }
+                    None => {
+                        ui.label(RichText::new("▶").size(48.0).color(theme::TEXT_MUTED));
+                    }
                 });
             });
         ui.horizontal(|ui| {
-            let _ = ui.small_button("⏮");
-            ui.label(RichText::new("▶").color(theme::ACCENT));
-            let _ = ui.small_button("⏭");
+            if ui.small_button("⏮").clicked() {
+                app.seek_preview(0.0);
+            }
+            let play_icon = if app.preview_playing { "⏸" } else { "▶" };
+            if ui
+                .button(RichText::new(play_icon).color(theme::ACCENT))
+                .clicked()
+            {
+                app.toggle_preview_playback();
+            }
+            if ui.small_button("⏭").clicked() {
+                if let Some(duration) = app.preview_duration_secs() {
+                    app.seek_preview(duration);
+                }
+            }
             let timeline = &app.active_project().timeline;
             ui.label(
                 RichText::new(format!(
@@ -195,6 +239,13 @@ fn preview_panel(app: &OcaApp, ui: &mut egui::Ui, height: f32) {
                 .monospace(),
             );
         });
+        if let Some(duration) = app.preview_duration_secs().filter(|d| *d > 0.0) {
+            let mut position = app.preview_position_secs().unwrap_or(0.0);
+            let slider = ui.add(egui::Slider::new(&mut position, 0.0..=duration).show_value(false));
+            if slider.changed() {
+                app.seek_preview(position);
+            }
+        }
     });
 }
 

@@ -72,7 +72,9 @@ impl Preview {
         // Fixed RGBA caps: whatever the source's actual pixel format is (planar YUV, etc.),
         // playbin inserts the conversion elements needed to match this — callers of
         // current_frame() never need to handle more than one, simple, packed format.
-        let video_caps = gst::Caps::builder("video/x-raw").field("format", "RGBA").build();
+        let video_caps = gst::Caps::builder("video/x-raw")
+            .field("format", "RGBA")
+            .build();
         let video_sink = gst_app::AppSink::builder()
             .caps(&video_caps)
             .sync(false)
@@ -98,7 +100,10 @@ impl Preview {
         let (result, _current, _pending) = pipeline.state(gst::ClockTime::from_seconds(5));
         result.map_err(PreviewError::StateChange)?;
 
-        Ok(Self { pipeline, video_sink })
+        Ok(Self {
+            pipeline,
+            video_sink,
+        })
     }
 
     pub fn play(&self) -> Result<(), PreviewError> {
@@ -142,15 +147,19 @@ impl Preview {
     }
 
     /// The most recent video frame the pipeline has decoded, as packed RGBA. `None` if
-    /// nothing has arrived yet (e.g. called before the first preroll completes) or the file
-    /// has no video stream.
+    /// nothing has arrived yet (e.g. called before the first preroll completes), the file
+    /// has no video stream, or (while [`Self::play`]ing) no new sample has been decoded since
+    /// the last call.
     ///
     /// Tries the prerolled frame first (what's available right after [`Self::open`] or a
     /// [`Self::seek`] while paused), then falls back to the latest live sample (what arrives
     /// during [`Self::play`]) — covers both without the caller needing to know which state
-    /// produced the frame.
+    /// produced the frame. Non-blocking (zero timeout on both pulls) so callers can poll this
+    /// once per UI frame without risking a multi-frame stall waiting for a sample that isn't
+    /// ready yet — safe since a decoded-but-not-yet-fetched frame just gets picked up on the
+    /// next call instead.
     pub fn current_frame(&self) -> Option<VideoFrame> {
-        let timeout = gst::ClockTime::from_mseconds(100);
+        let timeout = gst::ClockTime::ZERO;
         let sample = self
             .video_sink
             .try_pull_preroll(timeout)

@@ -16,13 +16,20 @@ wired end-to-end from the UI (`home.rs` open dialog, `editor.rs` save). Probing
 (`avcore::loudness`), and proxy generation (`avcore::proxy`) all go through
 `avbridge`, a native FFI bridge over libavformat/libavcodec/libavfilter/libswscale — no
 subprocess, no ffprobe/ffmpeg on PATH required for any of them (proxy uses `libopenh264` — BSD
-— since this LGPL FFmpeg build has no `libx264`/GPL). A
-minimal GStreamer preview pipeline (`avcore::preview::Preview`) exists — open/play/pause/
-seek/query, and `current_frame()` pulls the latest decoded frame as packed RGBA (`fakesink`
-still for audio). Not yet wired into the Editor screen — no egui texture upload, no UI
-scrubbing. Not yet implemented: that UI wiring, real timeline editing (cut/split/trim), and the
-background export queue worker. Check the plan
-doc for which phase a task belongs to before assuming a feature is live.
+— since this LGPL FFmpeg build has no `libx264`/GPL). The GStreamer preview pipeline
+(`avcore::preview::Preview`) is wired into the Editor screen's preview panel (`ui/src/
+app.rs::OcaApp::{select_asset,reload_preview,pump_preview_frame}` +
+`ui/src/screens/editor.rs::preview_panel`): clicking an asset in the media library opens it,
+decoded frames are uploaded to an egui texture every frame, and play/pause/seek (including a
+click-to-seek position slider) drive the pipeline — playback of the selected clip only, not
+yet full multi-clip timeline playback (the timeline itself is still static placeholder rects,
+no real cut/split/trim). A background export queue worker already runs (`OcaApp::
+pump_export_queue` dispatches `avcore::render_export` on a spawned thread, progress/done/
+failed/cancelled reported back over `tokio::mpsc`) — the queue panel doesn't yet support
+reordering/pausing jobs or persisting the queue across sessions. Not yet implemented: real
+timeline editing (cut/split/trim), the custom timeline widget (thumbnails/waveform), and queue
+reorder/pause/persistence. Check the plan doc for which phase a task belongs to before
+assuming a feature is live.
 
 ## Commands
 

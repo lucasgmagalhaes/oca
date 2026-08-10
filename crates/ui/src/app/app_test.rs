@@ -1,5 +1,6 @@
 use super::*;
 use avcore::{MediaAsset, MediaKind, Recency, Timeline};
+use eframe::egui;
 
 fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
     Project {
@@ -60,6 +61,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         render_tx,
         render_rx,
         active_renders: HashMap::new(),
+        preview: None,
+        preview_texture: None,
+        preview_playing: false,
     }
 }
 
@@ -193,7 +197,8 @@ fn pump_export_queue_applies_a_progress_event_to_the_matching_job() {
         vec![test_project(1, Vec::new())],
         vec![test_job(1, ExportJobStatus::Rendering { percent: 0 })],
     );
-    app.active_renders.insert(1, Arc::new(AtomicBool::new(false)));
+    app.active_renders
+        .insert(1, Arc::new(AtomicBool::new(false)));
     app.render_tx
         .send(RenderEvent::Progress {
             job_id: 1,
@@ -215,7 +220,8 @@ fn pump_export_queue_marks_a_job_done_and_frees_its_render_slot() {
         vec![test_project(1, Vec::new())],
         vec![test_job(1, ExportJobStatus::Rendering { percent: 90 })],
     );
-    app.active_renders.insert(1, Arc::new(AtomicBool::new(false)));
+    app.active_renders
+        .insert(1, Arc::new(AtomicBool::new(false)));
     app.render_tx.send(RenderEvent::Done { job_id: 1 }).unwrap();
 
     app.pump_export_queue();
@@ -230,7 +236,8 @@ fn pump_export_queue_records_a_failure_message() {
         vec![test_project(1, Vec::new())],
         vec![test_job(1, ExportJobStatus::Rendering { percent: 10 })],
     );
-    app.active_renders.insert(1, Arc::new(AtomicBool::new(false)));
+    app.active_renders
+        .insert(1, Arc::new(AtomicBool::new(false)));
     app.render_tx
         .send(RenderEvent::Failed {
             job_id: 1,
@@ -255,7 +262,8 @@ fn pump_export_queue_removes_a_cancelled_job_entirely() {
         vec![test_project(1, Vec::new())],
         vec![test_job(1, ExportJobStatus::Rendering { percent: 10 })],
     );
-    app.active_renders.insert(1, Arc::new(AtomicBool::new(false)));
+    app.active_renders
+        .insert(1, Arc::new(AtomicBool::new(false)));
     app.render_tx
         .send(RenderEvent::Cancelled { job_id: 1 })
         .unwrap();
@@ -275,8 +283,79 @@ fn selected_asset_is_none_when_no_asset_id_is_selected() {
 
 #[test]
 fn selected_asset_finds_the_asset_in_the_active_project() {
-    let mut app = test_app(vec![test_project(1, vec![test_asset(1), test_asset(2)])], Vec::new());
+    let mut app = test_app(
+        vec![test_project(1, vec![test_asset(1), test_asset(2)])],
+        Vec::new(),
+    );
     app.selected_asset_id = Some(2);
 
     assert_eq!(app.selected_asset().unwrap().id, 2);
+}
+
+#[test]
+fn select_asset_updates_the_selection() {
+    let mut app = test_app(
+        vec![test_project(1, vec![test_asset(1), test_asset(2)])],
+        Vec::new(),
+    );
+
+    app.select_asset(Some(2));
+
+    assert_eq!(app.selected_asset_id, Some(2));
+}
+
+#[test]
+fn select_asset_with_none_clears_the_selection() {
+    let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
+    app.selected_asset_id = Some(1);
+
+    app.select_asset(None);
+
+    assert_eq!(app.selected_asset_id, None);
+}
+
+#[test]
+fn select_asset_resets_playback_state_and_the_uploaded_texture() {
+    let mut app = test_app(
+        vec![test_project(1, vec![test_asset(1), test_asset(2)])],
+        Vec::new(),
+    );
+    app.selected_asset_id = Some(1);
+    app.preview_playing = true;
+    let ctx = egui::Context::default();
+    let image = egui::ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
+    app.preview_texture = Some(ctx.load_texture("test", image, egui::TextureOptions::default()));
+
+    app.select_asset(Some(2));
+
+    assert!(!app.preview_playing);
+    assert!(app.preview_texture.is_none());
+}
+
+// test_asset()'s source_path is a relative, nonexistent file, so `reload_preview` always
+// bails out before actually touching GStreamer here (see the `path.exists()` guard in
+// app.rs) — these exercise the no-pipeline branches of the preview API, not real playback.
+#[test]
+fn preview_accessors_are_none_without_a_live_pipeline() {
+    let app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
+
+    assert!(!app.preview_available());
+    assert_eq!(app.preview_duration_secs(), None);
+    assert_eq!(app.preview_position_secs(), None);
+}
+
+#[test]
+fn toggle_preview_playback_is_a_no_op_without_a_live_pipeline() {
+    let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
+
+    app.toggle_preview_playback();
+
+    assert!(!app.preview_playing);
+}
+
+#[test]
+fn seek_preview_is_a_no_op_without_a_live_pipeline() {
+    let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
+
+    app.seek_preview(5.0);
 }
