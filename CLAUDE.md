@@ -22,9 +22,10 @@ task belongs to before assuming a feature is live.
 
 ## Commands
 
-Requires Rust (stable) via rustup. On Windows without MSVC Build Tools installed, use the GNU
-target instead: `rustup target add x86_64-pc-windows-gnu && rustup default
-stable-x86_64-pc-windows-gnu`, with a MinGW-w64 toolchain (e.g. WinLibs) `bin` dir on `PATH`.
+Requires Rust (stable) via rustup. Both the MSVC target (`stable-x86_64-pc-windows-msvc`, needs
+Visual Studio Build Tools with the "Desktop development with C++" workload) and the GNU target
+(`x86_64-pc-windows-gnu` + a MinGW-w64 toolchain e.g. WinLibs, `bin` dir on `PATH`) work — this
+workspace currently defaults to MSVC, but nothing in it requires MSVC specifically.
 
 `oca-avbridge` links against libavformat/libavcodec/libavfilter/libavutil and needs `FFMPEG_DIR`
 set to an FFmpeg dev build with `include/` and `lib/` subdirectories (e.g. a BtbN shared build,
@@ -32,6 +33,22 @@ with `avfilter` among the linked libs) to compile at all — the workspace won't
 it. At runtime the FFmpeg DLLs (`FFMPEG_DIR/bin`) need to be next to the built binary or on
 `PATH`. `loudness`/`proxy` still spawn `ffmpeg` as a subprocess (not yet moved to
 `oca-avbridge`) — the app falls back to mock data for those without `ffmpeg` on `PATH`.
+
+`nivela-core` also depends on the `gstreamer` crate (prep for the preview pipeline — not built
+yet, see Architecture below), needing `pkg-config` plus GStreamer's dev build (MSVC or mingw,
+matching whichever Rust target you're using) discoverable via
+`PKG_CONFIG_PATH=<gstreamer_root>/lib/pkgconfig`, with `<gstreamer_root>/bin` on `PATH` too
+(build-time lookup and runtime DLL resolution both need it).
+
+**Do not remove `oca-avbridge/build.rs`'s import-lib-renaming step.** GStreamer's SDK bundles
+its own FFmpeg build (`gst-libav`) whose import libs share filenames with (but are a different,
+incompatible version from) the ones under `FFMPEG_DIR` — confirmed on both MSVC and GNU/mingw,
+and confirmed to be a filename collision, not a toolchain-ABI issue (ruled out by testing both).
+Left as bare `-l<name>` + `-L<path>`, a bare-name search can silently resolve to GStreamer's
+bundled copy instead, compiling fine but corrupting `oca-avbridge`'s FFmpeg calls at runtime
+(`avformat_open_input` starts failing on every call, no error at build time). `build.rs` copies
+its FFmpeg import libs into its own `OUT_DIR` under unique names before linking specifically to
+make that impossible — full diagnosis in `features/fase1/commit_plan.md` (chore-002).
 
 ```bash
 make build     # debug build, whole workspace
@@ -88,6 +105,9 @@ need a private helper unreachable from `tests/` stay as `src/<module>/tests.rs` 
 instead. `nivela-app` is a bin-only crate (no `[lib]`), so all its tests are
 `src/<module>/tests.rs` unit tests. `oca-avbridge` has a `[lib]` target, so its FFI tests live
 in `crates/oca-avbridge/tests/` against small checked-in media fixtures.
+
+`nivela-core` depends on the `gstreamer` crate (dependency + link verified working alongside
+`oca-avbridge`, see Commands above), but no preview pipeline is built on it yet.
 
 Planned architecture (not yet implemented, see the plan doc for phases): decode/preview via
 GStreamer or MLT running independent of the UI thread, and a background export queue where

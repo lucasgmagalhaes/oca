@@ -51,6 +51,13 @@ string).
 - **`ffmpeg`** on `PATH`, needed for `nivela_core::loudness`/`proxy` (not yet moved to
   `oca-avbridge`). The app runs fine without it — it just falls back to the bundled mock data
   (`nivela_core::sample`) instead of a loaded project.
+- **GStreamer** dev build (MSVC or mingw, matching your Rust target) with `pkg-config` —
+  required to build at all, `nivela-core` depends on the `gstreamer` crate. Set
+  `PKG_CONFIG_PATH` to `<gstreamer_root>/lib/pkgconfig` and put `<gstreamer_root>/bin` on
+  `PATH`. **Do not** delete/bypass `oca-avbridge/build.rs`'s import-lib-renaming step — without
+  it, GStreamer's bundled FFmpeg build (`gst-libav`) silently wins the linker's bare-name
+  search over the intended `FFMPEG_DIR` one (same filenames, different/incompatible version),
+  breaking `oca-avbridge` at runtime with no build-time error.
 - **GNU Make** to use the `Makefile` — on Windows without `make` on `PATH`, MinGW-w64
   distributions typically bundle it as `mingw32-make` instead; run that or call the
   underlying `cargo`/`rustup` commands directly (see the Makefile for what each target runs).
