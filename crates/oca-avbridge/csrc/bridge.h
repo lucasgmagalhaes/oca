@@ -1,6 +1,7 @@
 #ifndef OCA_AVBRIDGE_BRIDGE_H
 #define OCA_AVBRIDGE_BRIDGE_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 /* Returns libavformat's packed version number (same encoding as avformat_version()). */
@@ -101,5 +102,34 @@ typedef void (*OcaProgressCallback)(void *user_data, double seconds_processed);
 OcaEncodeStatus oca_avbridge_encode_export(const char *in_path, const char *out_path,
                                             float target_lufs, OcaProgressCallback progress_cb,
                                             void *progress_user_data, const uint8_t *cancel);
+
+typedef enum {
+    OCA_LOUDNESS_OK = 0,
+    OCA_LOUDNESS_ERR_OPEN_INPUT = 1,
+    OCA_LOUDNESS_ERR_STREAM_INFO = 2,
+    OCA_LOUDNESS_ERR_NO_AUDIO_STREAM = 3,
+    OCA_LOUDNESS_ERR_DECODER = 4,
+    OCA_LOUDNESS_ERR_FILTER_GRAPH = 5,
+    /* A decode/filter call failed mid-stream (not at setup). */
+    OCA_LOUDNESS_ERR_PIPELINE = 6,
+    /* The pipeline ran to completion but no loudnorm JSON report was captured. */
+    OCA_LOUDNESS_ERR_NO_REPORT = 7,
+} OcaLoudnessStatus;
+
+/* Measures integrated loudness / true peak / loudness range via a single-pass `loudnorm`
+   analysis (I=-16:TP=-1.5:LRA=11 — matches ffmpeg's
+   `-af loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json -f null -`). Nothing is written or
+   re-encoded — analysis only.
+
+   On success, writes the raw JSON report (NUL-terminated, truncated to fit if longer than
+   out_json_len - 1 bytes) into `out_json` for the caller to parse. The loudnorm filter has no
+   queryable struct API for its final stats — it only prints them via av_log() when it
+   processes EOF — so this is the only way to get them out of libavfilter directly.
+
+   NOT thread-safe: installs a process-global libavutil log callback for the call's duration
+   (reset to av_log_default_callback before returning) — do not call this from multiple
+   threads concurrently. */
+OcaLoudnessStatus oca_avbridge_measure_loudness(const char *in_path, char *out_json,
+                                                 size_t out_json_len);
 
 #endif
