@@ -34,8 +34,9 @@ the right edge) the source asset's own length (`ClipInstance::trim_start`/`trim_
 `OcaApp::trim_clip_start`/`trim_clip_end`), and drag-move a clip's body — same-track
 reposition or onto a different same-`TrackKind` track, resolved by which row's Y-range the
 drag lands on (`Timeline::move_clip_to_track`/`Track::move_clip` +
-`OcaApp::move_clip`/`move_clip_to_track`). Still missing: the custom thumbnail/waveform
-timeline widget and zoom (both plan-doc Fase 3 items). Importing files
+`OcaApp::move_clip`/`move_clip_to_track`). `Ctrl` + scroll zooms the timeline
+(`OcaApp::timeline_px_per_sec`, via egui's built-in `zoom_delta()`). Still missing: the custom
+thumbnail/waveform timeline widget (the remaining plan-doc Fase 3 item). Importing files
 (`library.rs`/`OcaApp::spawn_import`) now probes/measures/generates proxies on a background
 thread instead of blocking the UI — large source files used to freeze the app. A background
 export queue worker already runs (`OcaApp::pump_export_queue` dispatches
