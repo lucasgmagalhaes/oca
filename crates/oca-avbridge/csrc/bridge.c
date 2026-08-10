@@ -12,6 +12,7 @@
 #include <libavutil/channel_layout.h>
 #include <libavutil/log.h>
 #include <libavutil/opt.h>
+#include <libswscale/swscale.h>
 
 uint32_t oca_avbridge_version(void) { return avformat_version(); }
 
@@ -196,15 +197,15 @@ static void free_audio_filter_chain(AudioFilterChain *chain) {
     chain->buffersink_ctx = NULL;
 }
 
-/* Builds `loudnorm=I=<target>:TP=-1.0:LRA=11,alimiter=...` between an abuffer source shaped
-   like dec_ctx's decoded audio and an abuffersink constrained to a format `encoder` accepts
-   (so the graph auto-inserts any needed aformat/aresample conversion, per FFmpeg's own
-   transcode_aac.c example) — without this, avcodec_open2() on the AAC encoder can reject
-   whatever raw format the filter chain happens to produce. */
+/* Builds `filter_descr` (e.g. "loudnorm=...,alimiter=..." or just "anull" for a passthrough
+   format-conversion-only chain) between an abuffer source shaped like dec_ctx's decoded audio
+   and an abuffersink constrained to a format `encoder` accepts (so the graph auto-inserts any
+   needed aformat/aresample conversion, per FFmpeg's own transcode_aac.c example) — without
+   this, avcodec_open2() on the encoder can reject whatever raw format the filter chain
+   happens to produce. */
 static int init_audio_filter_chain(AVCodecContext *dec_ctx, const AVCodec *encoder,
-                                    float target_lufs, AudioFilterChain *chain) {
+                                    const char *filter_descr, AudioFilterChain *chain) {
     char args[512];
-    char filter_descr[256];
     char chlayout_str[64];
     const AVFilter *buffersrc = avfilter_get_by_name("abuffer");
     const AVFilter *buffersink = avfilter_get_by_name("abuffersink");
@@ -300,10 +301,6 @@ static int init_audio_filter_chain(AVCodecContext *dec_ctx, const AVCodec *encod
     inputs->filter_ctx = chain->buffersink_ctx;
     inputs->pad_idx = 0;
     inputs->next = NULL;
-
-    snprintf(filter_descr, sizeof(filter_descr),
-             "loudnorm=I=%.1f:TP=-1.0:LRA=11,alimiter=limit=0.95:attack=5:release=50",
-             (double)target_lufs);
 
     ret = avfilter_graph_parse_ptr(chain->graph, filter_descr, &inputs, &outputs, NULL);
     if (ret < 0) goto end;
@@ -436,9 +433,15 @@ OcaEncodeStatus oca_avbridge_encode_export(const char *in_path, const char *out_
         goto cleanup;
     }
 
-    if (init_audio_filter_chain(dec_ctx, encoder, target_lufs, &chain) < 0) {
-        status = OCA_ENCODE_ERR_FILTER_GRAPH;
-        goto cleanup;
+    {
+        char filter_descr[256];
+        snprintf(filter_descr, sizeof(filter_descr),
+                 "loudnorm=I=%.1f:TP=-1.0:LRA=11,alimiter=limit=0.95:attack=5:release=50",
+                 (double)target_lufs);
+        if (init_audio_filter_chain(dec_ctx, encoder, filter_descr, &chain) < 0) {
+            status = OCA_ENCODE_ERR_FILTER_GRAPH;
+            goto cleanup;
+        }
     }
 
     enc_ctx = avcodec_alloc_context3(encoder);
@@ -865,6 +868,364 @@ cleanup:
     av_frame_free(&dec_frame);
     av_frame_free(&filt_frame);
     av_packet_free(&pkt);
+    avformat_close_input(&in_ctx);
+    return status;
+}
+
+/* Scales one decoded frame into `scaled_frame` (already sized/formatted for the encoder,
+   allocated once by the caller) and stamps a sequential pts — proxies don't need to preserve
+   the source's original timestamps, just monotonically increasing ones for the encoder/muxer. */
+static int scale_video_frame(struct SwsContext *sws_ctx, AVFrame *src_frame,
+                              AVFrame *scaled_frame, int64_t *next_pts) {
+    int ret = av_frame_make_writable(scaled_frame);
+    if (ret < 0) return ret;
+
+    ret = sws_scale_frame(sws_ctx, scaled_frame, src_frame);
+    if (ret < 0) return ret;
+
+    scaled_frame->pts = (*next_pts)++;
+    return 0;
+}
+
+OcaProxyStatus oca_avbridge_generate_proxy(const char *in_path, const char *out_path,
+                                            int target_height) {
+    AVFormatContext *in_ctx = NULL;
+    AVFormatContext *out_ctx = NULL;
+    AVCodecContext *vdec_ctx = NULL;
+    AVCodecContext *venc_ctx = NULL;
+    AVCodecContext *adec_ctx = NULL;
+    AVCodecContext *aenc_ctx = NULL;
+    struct SwsContext *sws_ctx = NULL;
+    AudioFilterChain achain = {0};
+    AVPacket *pkt = NULL;
+    AVFrame *dec_frame = NULL;
+    AVFrame *scaled_frame = NULL;
+    AVFrame *filt_frame = NULL;
+    AVPacket *enc_pkt = NULL;
+    OcaProxyStatus status = OCA_PROXY_OK;
+    int video_in_index = -1;
+    int audio_in_index = -1;
+    int video_out_index = -1;
+    int audio_out_index = -1;
+    int64_t next_video_pts = 0;
+
+    if (avformat_open_input(&in_ctx, in_path, NULL, NULL) < 0) {
+        return OCA_PROXY_ERR_OPEN_INPUT;
+    }
+    if (avformat_find_stream_info(in_ctx, NULL) < 0) {
+        avformat_close_input(&in_ctx);
+        return OCA_PROXY_ERR_STREAM_INFO;
+    }
+
+    for (unsigned int i = 0; i < in_ctx->nb_streams; i++) {
+        enum AVMediaType type = in_ctx->streams[i]->codecpar->codec_type;
+        if (video_in_index < 0 && type == AVMEDIA_TYPE_VIDEO) {
+            video_in_index = (int)i;
+        } else if (audio_in_index < 0 && type == AVMEDIA_TYPE_AUDIO) {
+            audio_in_index = (int)i;
+        }
+    }
+    if (video_in_index < 0) {
+        avformat_close_input(&in_ctx);
+        return OCA_PROXY_ERR_NO_VIDEO_STREAM;
+    }
+
+    avformat_alloc_output_context2(&out_ctx, NULL, NULL, out_path);
+    if (!out_ctx) {
+        status = OCA_PROXY_ERR_ALLOC_OUTPUT;
+        goto cleanup;
+    }
+
+    /* Video decoder. */
+    {
+        AVCodecParameters *vpar = in_ctx->streams[video_in_index]->codecpar;
+        const AVCodec *decoder = avcodec_find_decoder(vpar->codec_id);
+        if (!decoder) {
+            status = OCA_PROXY_ERR_DECODER;
+            goto cleanup;
+        }
+        vdec_ctx = avcodec_alloc_context3(decoder);
+        if (!vdec_ctx || avcodec_parameters_to_context(vdec_ctx, vpar) < 0) {
+            status = OCA_PROXY_ERR_DECODER;
+            goto cleanup;
+        }
+        vdec_ctx->pkt_timebase = in_ctx->streams[video_in_index]->time_base;
+        if (avcodec_open2(vdec_ctx, decoder, NULL) < 0) {
+            status = OCA_PROXY_ERR_DECODER;
+            goto cleanup;
+        }
+    }
+
+    /* Video encoder (libopenh264 — BSD-licensed, available in this LGPL FFmpeg build; not
+       libx264/GPL) + scaler, dimensions keeping the source's aspect ratio with height fixed
+       at target_height, rounded to the nearest even number (odd dimensions are invalid for
+       yuv420p — chroma planes are subsampled 2x in both directions). */
+    {
+        const AVCodec *venc = avcodec_find_encoder_by_name("libopenh264");
+        if (!venc) {
+            status = OCA_PROXY_ERR_ENCODER;
+            goto cleanup;
+        }
+
+        int src_w = vdec_ctx->width;
+        int src_h = vdec_ctx->height;
+        int dst_h = target_height > 0 ? target_height : src_h;
+        int dst_w = (int)((int64_t)src_w * dst_h / src_h);
+        dst_w += dst_w % 2;
+        dst_h += dst_h % 2;
+
+        venc_ctx = avcodec_alloc_context3(venc);
+        if (!venc_ctx) {
+            status = OCA_PROXY_ERR_ENCODER;
+            goto cleanup;
+        }
+        venc_ctx->width = dst_w;
+        venc_ctx->height = dst_h;
+        venc_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+        AVRational frame_rate = in_ctx->streams[video_in_index]->avg_frame_rate;
+        if (frame_rate.num <= 0 || frame_rate.den <= 0) {
+            frame_rate = (AVRational){30, 1};
+        }
+        venc_ctx->time_base = av_inv_q(frame_rate);
+        venc_ctx->framerate = frame_rate;
+        venc_ctx->gop_size = (frame_rate.num / frame_rate.den) * 2; /* ~2s keyframe interval */
+        venc_ctx->max_b_frames = 0; /* libopenh264 doesn't support B-frames */
+        /* Proxy target: small and fast to decode while scrubbing, not archival quality.
+           libopenh264 has no CRF-equivalent (unlike libx264, which this build doesn't have —
+           see the doc comment on this function) — bitrate is the only practical rate-control
+           knob, sized off the (already downscaled) pixel count so both a 540p and a 360p
+           proxy land in a reasonable range rather than one fixed number over- or
+           under-shooting depending on target_height. */
+        venc_ctx->bit_rate = (int64_t)dst_w * dst_h * 2;
+        if (out_ctx->oformat->flags & AVFMT_GLOBALHEADER) {
+            venc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+        }
+        if (avcodec_open2(venc_ctx, venc, NULL) < 0) {
+            status = OCA_PROXY_ERR_ENCODER;
+            goto cleanup;
+        }
+
+        sws_ctx = sws_getContext(src_w, src_h, vdec_ctx->pix_fmt, dst_w, dst_h,
+                                  AV_PIX_FMT_YUV420P, SWS_BILINEAR, NULL, NULL, NULL);
+        if (!sws_ctx) {
+            status = OCA_PROXY_ERR_SCALER;
+            goto cleanup;
+        }
+
+        AVStream *out_stream = avformat_new_stream(out_ctx, NULL);
+        if (!out_stream || avcodec_parameters_from_context(out_stream->codecpar, venc_ctx) < 0) {
+            status = OCA_PROXY_ERR_NEW_STREAM;
+            goto cleanup;
+        }
+        out_stream->time_base = venc_ctx->time_base;
+        video_out_index = out_stream->index;
+    }
+
+    /* Audio decoder + encoder + filterless (format-conversion-only) graph, only if the
+       source has an audio stream — a video-only source produces a video-only proxy. */
+    if (audio_in_index >= 0) {
+        AVCodecParameters *apar = in_ctx->streams[audio_in_index]->codecpar;
+        const AVCodec *adecoder = avcodec_find_decoder(apar->codec_id);
+        if (!adecoder) {
+            status = OCA_PROXY_ERR_DECODER;
+            goto cleanup;
+        }
+        adec_ctx = avcodec_alloc_context3(adecoder);
+        if (!adec_ctx || avcodec_parameters_to_context(adec_ctx, apar) < 0) {
+            status = OCA_PROXY_ERR_DECODER;
+            goto cleanup;
+        }
+        adec_ctx->pkt_timebase = in_ctx->streams[audio_in_index]->time_base;
+        if (avcodec_open2(adec_ctx, adecoder, NULL) < 0) {
+            status = OCA_PROXY_ERR_DECODER;
+            goto cleanup;
+        }
+
+        const AVCodec *aenc = avcodec_find_encoder(AV_CODEC_ID_AAC);
+        if (!aenc) {
+            status = OCA_PROXY_ERR_ENCODER;
+            goto cleanup;
+        }
+
+        /* "anull": no actual filtering, just reuses init_audio_filter_chain's
+           encoder-format-negotiation (sample_formats/samplerates constraint on the sink) so
+           avcodec_open2() on the AAC encoder doesn't reject whatever raw format decoding
+           happens to produce — see that function's doc comment. */
+        if (init_audio_filter_chain(adec_ctx, aenc, "anull", &achain) < 0) {
+            status = OCA_PROXY_ERR_FILTER_GRAPH;
+            goto cleanup;
+        }
+
+        aenc_ctx = avcodec_alloc_context3(aenc);
+        if (!aenc_ctx) {
+            status = OCA_PROXY_ERR_ENCODER;
+            goto cleanup;
+        }
+        aenc_ctx->sample_rate = av_buffersink_get_sample_rate(achain.buffersink_ctx);
+        av_buffersink_get_ch_layout(achain.buffersink_ctx, &aenc_ctx->ch_layout);
+        aenc_ctx->sample_fmt = (enum AVSampleFormat)av_buffersink_get_format(achain.buffersink_ctx);
+        aenc_ctx->bit_rate = 128000;
+        aenc_ctx->time_base = av_buffersink_get_time_base(achain.buffersink_ctx);
+        if (out_ctx->oformat->flags & AVFMT_GLOBALHEADER) {
+            aenc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+        }
+        if (avcodec_open2(aenc_ctx, aenc, NULL) < 0) {
+            status = OCA_PROXY_ERR_ENCODER;
+            goto cleanup;
+        }
+        if (aenc_ctx->frame_size > 0) {
+            av_buffersink_set_frame_size(achain.buffersink_ctx, (unsigned)aenc_ctx->frame_size);
+        }
+
+        AVStream *out_stream = avformat_new_stream(out_ctx, NULL);
+        if (!out_stream || avcodec_parameters_from_context(out_stream->codecpar, aenc_ctx) < 0) {
+            status = OCA_PROXY_ERR_NEW_STREAM;
+            goto cleanup;
+        }
+        out_stream->time_base = aenc_ctx->time_base;
+        audio_out_index = out_stream->index;
+    }
+
+    if (!(out_ctx->oformat->flags & AVFMT_NOFILE)) {
+        if (avio_open(&out_ctx->pb, out_path, AVIO_FLAG_WRITE) < 0) {
+            status = OCA_PROXY_ERR_OPEN_OUTPUT;
+            goto cleanup_output_io;
+        }
+    }
+    if (avformat_write_header(out_ctx, NULL) < 0) {
+        status = OCA_PROXY_ERR_WRITE_HEADER;
+        goto cleanup_output_io;
+    }
+
+    pkt = av_packet_alloc();
+    dec_frame = av_frame_alloc();
+    scaled_frame = av_frame_alloc();
+    filt_frame = av_frame_alloc();
+    enc_pkt = av_packet_alloc();
+    if (!pkt || !dec_frame || !scaled_frame || !filt_frame || !enc_pkt) {
+        status = OCA_PROXY_ERR_PIPELINE;
+        goto cleanup_output_io;
+    }
+    scaled_frame->format = venc_ctx->pix_fmt;
+    scaled_frame->width = venc_ctx->width;
+    scaled_frame->height = venc_ctx->height;
+    if (av_frame_get_buffer(scaled_frame, 0) < 0) {
+        status = OCA_PROXY_ERR_PIPELINE;
+        goto cleanup_output_io;
+    }
+
+    while (av_read_frame(in_ctx, pkt) >= 0) {
+        if (pkt->stream_index == video_in_index) {
+            AVStream *out_stream = out_ctx->streams[video_out_index];
+            int ret = avcodec_send_packet(vdec_ctx, pkt);
+            av_packet_unref(pkt);
+            if (ret < 0) {
+                status = OCA_PROXY_ERR_PIPELINE;
+                goto cleanup_output_io;
+            }
+            while (1) {
+                ret = avcodec_receive_frame(vdec_ctx, dec_frame);
+                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+                if (ret < 0) {
+                    status = OCA_PROXY_ERR_PIPELINE;
+                    goto cleanup_output_io;
+                }
+                if (scale_video_frame(sws_ctx, dec_frame, scaled_frame, &next_video_pts) < 0 ||
+                    encode_write_packet(out_ctx, venc_ctx, out_stream, scaled_frame, enc_pkt) <
+                        0) {
+                    status = OCA_PROXY_ERR_PIPELINE;
+                    goto cleanup_output_io;
+                }
+                av_frame_unref(dec_frame);
+            }
+        } else if (pkt->stream_index == audio_in_index) {
+            AVStream *out_stream = out_ctx->streams[audio_out_index];
+            int ret = avcodec_send_packet(adec_ctx, pkt);
+            av_packet_unref(pkt);
+            if (ret < 0) {
+                status = OCA_PROXY_ERR_PIPELINE;
+                goto cleanup_output_io;
+            }
+            while (1) {
+                ret = avcodec_receive_frame(adec_ctx, dec_frame);
+                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+                if (ret < 0) {
+                    status = OCA_PROXY_ERR_PIPELINE;
+                    goto cleanup_output_io;
+                }
+                if (filter_encode_write_frame(out_ctx, &achain, aenc_ctx, out_stream, dec_frame,
+                                               filt_frame, enc_pkt) < 0) {
+                    status = OCA_PROXY_ERR_PIPELINE;
+                    goto cleanup_output_io;
+                }
+            }
+        } else {
+            av_packet_unref(pkt);
+        }
+    }
+
+    /* Flush video: decoder -> scale+encode remaining buffered frames -> encoder. */
+    {
+        AVStream *out_stream = out_ctx->streams[video_out_index];
+        avcodec_send_packet(vdec_ctx, NULL);
+        while (avcodec_receive_frame(vdec_ctx, dec_frame) >= 0) {
+            if (scale_video_frame(sws_ctx, dec_frame, scaled_frame, &next_video_pts) < 0 ||
+                encode_write_packet(out_ctx, venc_ctx, out_stream, scaled_frame, enc_pkt) < 0) {
+                status = OCA_PROXY_ERR_PIPELINE;
+                goto cleanup_output_io;
+            }
+            av_frame_unref(dec_frame);
+        }
+        if (encode_write_packet(out_ctx, venc_ctx, out_stream, NULL, enc_pkt) < 0) {
+            status = OCA_PROXY_ERR_PIPELINE;
+            goto cleanup_output_io;
+        }
+    }
+
+    /* Flush audio, if present: decoder -> filter -> encoder. */
+    if (audio_in_index >= 0) {
+        AVStream *out_stream = out_ctx->streams[audio_out_index];
+        avcodec_send_packet(adec_ctx, NULL);
+        while (avcodec_receive_frame(adec_ctx, dec_frame) >= 0) {
+            if (filter_encode_write_frame(out_ctx, &achain, aenc_ctx, out_stream, dec_frame,
+                                           filt_frame, enc_pkt) < 0) {
+                status = OCA_PROXY_ERR_PIPELINE;
+                goto cleanup_output_io;
+            }
+        }
+        if (filter_encode_write_frame(out_ctx, &achain, aenc_ctx, out_stream, NULL, filt_frame,
+                                       enc_pkt) < 0 ||
+            encode_write_packet(out_ctx, aenc_ctx, out_stream, NULL, enc_pkt) < 0) {
+            status = OCA_PROXY_ERR_PIPELINE;
+            goto cleanup_output_io;
+        }
+    }
+
+    if (status == OCA_PROXY_OK) {
+        av_write_trailer(out_ctx);
+    }
+
+cleanup_output_io:
+    av_packet_free(&pkt);
+    av_packet_free(&enc_pkt);
+    av_frame_free(&dec_frame);
+    av_frame_free(&scaled_frame);
+    av_frame_free(&filt_frame);
+    if (out_ctx && !(out_ctx->oformat->flags & AVFMT_NOFILE)) {
+        avio_closep(&out_ctx->pb);
+    }
+cleanup:
+    if (sws_ctx) {
+        sws_freeContext(sws_ctx);
+    }
+    free_audio_filter_chain(&achain);
+    avcodec_free_context(&vdec_ctx);
+    avcodec_free_context(&venc_ctx);
+    avcodec_free_context(&adec_ctx);
+    avcodec_free_context(&aenc_ctx);
+    if (out_ctx) {
+        avformat_free_context(out_ctx);
+    }
     avformat_close_input(&in_ctx);
     return status;
 }
