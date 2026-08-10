@@ -76,3 +76,14 @@ GStreamer or MLT running independent of the UI thread, and a background export q
 rendering runs on a worker communicating over `tokio::mpsc` so the editing UI never blocks on an
 in-progress export — each queued job snapshots its render config at enqueue time, so later edits
 to the active project don't affect jobs already in the queue.
+
+## Approach
+
+- Read existing files before writing. Don't re-read unless changed.
+- Thorough in reasoning, concise in output.
+- Skip files over 100KB unless required.
+- No sycophantic openers or closing fluff.
+- No emojis or em-dashes.
+- Do not guess APIs, versions, flags, commit SHAs, or package names. Verify by reading code or docs before asserting.
+- Write all code and commit messages in English.
+- Commit using Conventional Commits format (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, etc.), always in English.
