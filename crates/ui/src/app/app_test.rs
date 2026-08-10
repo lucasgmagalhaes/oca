@@ -458,6 +458,86 @@ fn split_at_playhead_is_a_no_op_when_nothing_covers_the_playhead() {
 }
 
 #[test]
+fn trim_clip_start_moves_the_left_edge_and_keeps_the_end_fixed() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 10.0, 5.0, 30.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.trim_clip_start(1, 15.0);
+
+    let clip = &app.active_project().timeline.tracks[0].clips[0];
+    assert_eq!(clip.start_secs, 15.0);
+    assert_eq!(clip.source_in_secs, 10.0);
+    assert_eq!(clip.source_out_secs, 30.0);
+}
+
+#[test]
+fn trim_clip_start_ignores_an_unknown_clip_id() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 10.0, 5.0, 30.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.trim_clip_start(99, 15.0);
+
+    assert_eq!(
+        app.active_project().timeline.tracks[0].clips[0].start_secs,
+        10.0
+    );
+}
+
+#[test]
+fn trim_clip_end_moves_the_right_edge_and_keeps_the_start_fixed() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline.tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 8.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.trim_clip_end(1, 5.0);
+
+    let clip = &app.active_project().timeline.tracks[0].clips[0];
+    assert_eq!(clip.start_secs, 0.0);
+    assert_eq!(clip.source_out_secs, 5.0);
+}
+
+#[test]
+fn trim_clip_end_is_bounded_by_the_source_assets_own_duration() {
+    // test_asset's duration_secs is a fixed 10.0.
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline.tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 8.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.trim_clip_end(1, 50.0);
+
+    assert_eq!(
+        app.active_project().timeline.tracks[0].clips[0].source_out_secs,
+        8.0
+    );
+}
+
+#[test]
 fn delete_selected_clip_removes_it_from_its_track_and_clears_the_selection() {
     let mut app = test_app(
         vec![test_project_with_tracks(

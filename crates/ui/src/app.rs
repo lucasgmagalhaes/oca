@@ -374,6 +374,60 @@ impl OcaApp {
         self.selected_clip_id = None;
     }
 
+    /// Minimum clip duration a drag-trim is allowed to shrink a clip to — small enough to feel
+    /// unrestrictive, large enough that a clip can't accidentally get dragged down to
+    /// (near-)zero length.
+    const MIN_TRIM_DURATION_SECS: f64 = 0.1;
+
+    /// Drags `clip_id`'s left edge to `new_start_secs` — what dragging the left handle on a
+    /// timeline clip does. A no-op if the clip isn't found or the drag would violate
+    /// [`avcore::timeline::ClipInstance::trim_start`]'s bounds (start/source-in going
+    /// negative, or shrinking past [`OcaApp::MIN_TRIM_DURATION_SECS`]).
+    pub fn trim_clip_start(&mut self, clip_id: u64, new_start_secs: f64) {
+        for track in &mut self.active_project_mut().timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.trim_start(new_start_secs.max(0.0), Self::MIN_TRIM_DURATION_SECS);
+                return;
+            }
+        }
+    }
+
+    /// Drags `clip_id`'s right edge to `new_end_secs` — what dragging the right handle on a
+    /// timeline clip does. Bounded above by the clip's source asset's own duration (looked up
+    /// via the clip's `asset_id`), so a trim can't ask the source media for footage past its
+    /// actual end; skipped if the asset can't be found (best effort rather than blocking the
+    /// drag entirely).
+    pub fn trim_clip_end(&mut self, clip_id: u64, new_end_secs: f64) {
+        let asset_id = self
+            .active_project()
+            .timeline
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .find(|c| c.id == clip_id)
+            .map(|c| c.asset_id);
+        let Some(asset_id) = asset_id else {
+            return;
+        };
+        let max_source_out_secs = self
+            .active_project()
+            .media_library
+            .iter()
+            .find(|a| a.id == asset_id)
+            .map(|a| a.duration_secs);
+
+        for track in &mut self.active_project_mut().timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.trim_end(
+                    new_end_secs,
+                    Self::MIN_TRIM_DURATION_SECS,
+                    max_source_out_secs,
+                );
+                return;
+            }
+        }
+    }
+
     /// Probes, measures loudness, and (for video) generates an editing proxy for each of
     /// `paths` on a background thread — what "Importar arquivos" does. These are synchronous
     /// FFI calls that can take minutes for a large source file (a multi-GB capture), and used

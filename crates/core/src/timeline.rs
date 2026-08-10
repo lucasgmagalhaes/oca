@@ -32,6 +32,48 @@ impl ClipInstance {
     pub fn contains(&self, at_secs: f64) -> bool {
         at_secs > self.start_secs && at_secs < self.start_secs + self.duration_secs()
     }
+
+    /// Drags the clip's left edge to `new_start_secs`, keeping its end point
+    /// (`source_out_secs`) fixed — `source_in_secs` shifts by the same delta as `start_secs`,
+    /// since trimming the start plays a later point in the source. No-op (`false`) if that
+    /// would put `new_start_secs` or the resulting `source_in_secs` below zero, or shrink the
+    /// clip below `min_duration_secs`.
+    pub fn trim_start(&mut self, new_start_secs: f64, min_duration_secs: f64) -> bool {
+        let delta = new_start_secs - self.start_secs;
+        let new_source_in_secs = self.source_in_secs + delta;
+        let new_duration_secs = self.source_out_secs - new_source_in_secs;
+        if new_start_secs < 0.0 || new_source_in_secs < 0.0 || new_duration_secs < min_duration_secs
+        {
+            return false;
+        }
+        self.start_secs = new_start_secs;
+        self.source_in_secs = new_source_in_secs;
+        true
+    }
+
+    /// Drags the clip's right edge to `new_end_secs` (timeline-relative), keeping `start_secs`
+    /// and `source_in_secs` fixed. No-op (`false`) if that would shrink the clip below
+    /// `min_duration_secs`, or (when `max_source_out_secs` is known — the source asset's own
+    /// duration) push `source_out_secs` past the end of the actual source media.
+    pub fn trim_end(
+        &mut self,
+        new_end_secs: f64,
+        min_duration_secs: f64,
+        max_source_out_secs: Option<f64>,
+    ) -> bool {
+        let new_duration_secs = new_end_secs - self.start_secs;
+        let new_source_out_secs = self.source_in_secs + new_duration_secs;
+        if new_duration_secs < min_duration_secs {
+            return false;
+        }
+        if let Some(max) = max_source_out_secs {
+            if new_source_out_secs > max {
+                return false;
+            }
+        }
+        self.source_out_secs = new_source_out_secs;
+        true
+    }
 }
 
 /// One row of the timeline (e.g. `V1`, `A1`, `A2` in the mockup), holding an ordered list of
@@ -67,6 +109,11 @@ impl Track {
 
         self.clips.insert(index + 1, second_half);
         true
+    }
+
+    /// Mutable access to the clip with this id, if it's on this track.
+    pub fn clip_mut(&mut self, clip_id: u64) -> Option<&mut ClipInstance> {
+        self.clips.iter_mut().find(|c| c.id == clip_id)
     }
 }
 

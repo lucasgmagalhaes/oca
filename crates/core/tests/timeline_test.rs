@@ -106,3 +106,83 @@ fn split_clip_at_is_a_no_op_exactly_on_a_clip_boundary() {
         vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 0.0, 20.0)]
     );
 }
+
+#[test]
+fn trim_start_shifts_start_and_source_in_by_the_same_delta() {
+    let mut c = clip(1, 10.0, 5.0, 30.0);
+
+    let trimmed = c.trim_start(15.0, 1.0);
+
+    assert!(trimmed);
+    assert_eq!(c, clip(1, 15.0, 10.0, 30.0));
+}
+
+#[test]
+fn trim_start_is_a_no_op_when_it_would_go_negative() {
+    let mut c = clip(1, 10.0, 5.0, 30.0);
+
+    // Would push start_secs to -1.0.
+    let trimmed = c.trim_start(-1.0, 1.0);
+
+    assert!(!trimmed);
+    assert_eq!(c, clip(1, 10.0, 5.0, 30.0));
+}
+
+#[test]
+fn trim_start_is_a_no_op_when_it_would_shrink_below_the_minimum_duration() {
+    let mut c = clip(1, 10.0, 5.0, 30.0);
+
+    // delta = 24.5 -> source_in becomes 29.5 -> duration becomes 0.5, under the 1.0 minimum.
+    let trimmed = c.trim_start(34.5, 1.0);
+
+    assert!(!trimmed);
+    assert_eq!(c, clip(1, 10.0, 5.0, 30.0));
+}
+
+#[test]
+fn trim_end_extends_source_out_and_leaves_start_untouched() {
+    let mut c = clip(1, 10.0, 5.0, 30.0);
+
+    let trimmed = c.trim_end(25.0, 1.0, None);
+
+    assert!(trimmed);
+    // start=10, source_in=5, new duration = 25-10 = 15, so source_out = 5+15 = 20.
+    assert_eq!(c, clip(1, 10.0, 5.0, 20.0));
+}
+
+#[test]
+fn trim_end_is_a_no_op_past_the_source_medias_own_duration() {
+    let mut c = clip(1, 10.0, 5.0, 30.0);
+
+    // Would need source_out_secs = 35.0, past the 32.0 source duration.
+    let trimmed = c.trim_end(40.0, 1.0, Some(32.0));
+
+    assert!(!trimmed);
+    assert_eq!(c, clip(1, 10.0, 5.0, 30.0));
+}
+
+#[test]
+fn trim_end_is_a_no_op_when_it_would_shrink_below_the_minimum_duration() {
+    let mut c = clip(1, 10.0, 5.0, 30.0);
+
+    let trimmed = c.trim_end(10.5, 1.0, None);
+
+    assert!(!trimmed);
+    assert_eq!(c, clip(1, 10.0, 5.0, 30.0));
+}
+
+#[test]
+fn clip_mut_finds_a_clip_by_id() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 0.0, 20.0)]);
+
+    let found = track.clip_mut(2).unwrap();
+
+    assert_eq!(found.start_secs, 10.0);
+}
+
+#[test]
+fn clip_mut_returns_none_for_an_unknown_id() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0)]);
+
+    assert!(track.clip_mut(99).is_none());
+}

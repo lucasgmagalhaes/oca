@@ -382,6 +382,7 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         });
 
         let mut clicked_clip_id = None;
+        let mut trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for track in &app.active_project().timeline.tracks {
                 ui.horizontal(|ui| {
@@ -414,14 +415,53 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                 theme::ACCENT.gamma_multiply(0.5)
                             }
                         };
-                        let response = ui.interact(
+
+                        // Narrow strips at each edge, on top of the body's click zone, so a
+                        // drag started right at the edge trims instead of just selecting.
+                        let edge_w = (w / 3.0).clamp(2.0, 6.0);
+                        let left_edge_rect = egui::Rect::from_min_size(
+                            clip_rect.min,
+                            egui::vec2(edge_w, clip_rect.height()),
+                        );
+                        let right_edge_rect = egui::Rect::from_min_size(
+                            egui::pos2(clip_rect.right() - edge_w, clip_rect.top()),
+                            egui::vec2(edge_w, clip_rect.height()),
+                        );
+
+                        let body_response = ui.interact(
                             clip_rect,
                             ui.id().with(("timeline_clip", clip.id)),
                             egui::Sense::click(),
                         );
-                        if response.clicked() {
+                        let left_response = ui.interact(
+                            left_edge_rect,
+                            ui.id().with(("timeline_clip_trim_start", clip.id)),
+                            egui::Sense::drag(),
+                        );
+                        let right_response = ui.interact(
+                            right_edge_rect,
+                            ui.id().with(("timeline_clip_trim_end", clip.id)),
+                            egui::Sense::drag(),
+                        );
+                        if left_response.hovered()
+                            || left_response.dragged()
+                            || right_response.hovered()
+                            || right_response.dragged()
+                        {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                        }
+                        if body_response.clicked() {
                             clicked_clip_id = Some(clip.id);
                         }
+                        if let Some(pos) = left_response.interact_pointer_pos() {
+                            let secs = ((pos.x - track_rect.left()) / PX_PER_SEC).max(0.0) as f64;
+                            trim_requests.push((clip.id, TrimEdge::Start(secs)));
+                        }
+                        if let Some(pos) = right_response.interact_pointer_pos() {
+                            let secs = ((pos.x - track_rect.left()) / PX_PER_SEC).max(0.0) as f64;
+                            trim_requests.push((clip.id, TrimEdge::End(secs)));
+                        }
+
                         painter.rect_filled(clip_rect, egui::CornerRadius::same(4), color);
                         if app.selected_clip_id == Some(clip.id) {
                             painter.rect_stroke(
@@ -452,7 +492,19 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         if let Some(id) = clicked_clip_id {
             app.selected_clip_id = Some(id);
         }
+        for (clip_id, edge) in trim_requests {
+            match edge {
+                TrimEdge::Start(secs) => app.trim_clip_start(clip_id, secs),
+                TrimEdge::End(secs) => app.trim_clip_end(clip_id, secs),
+            }
+        }
     });
+}
+
+/// Which edge of a timeline clip a drag targets — see the trim handling in `timeline_panel`.
+enum TrimEdge {
+    Start(f64),
+    End(f64),
 }
 
 /// Draws the playhead as a vertical line inside `rect`, if it falls within `rect`'s horizontal
