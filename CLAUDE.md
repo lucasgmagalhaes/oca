@@ -23,19 +23,19 @@ app.rs::OcaApp::{select_asset,reload_preview,pump_preview_frame}` +
 decoded frames are uploaded to an egui texture every frame, and play/pause/seek (including a
 click-to-seek position slider) drive the pipeline — playback of the selected clip only, not
 yet full multi-clip timeline playback. The timeline (`editor.rs::timeline_panel`) draws clips
-at their real `start_secs` position (not just packed left-to-right), has a click/drag ruler
-that moves the playhead, and clips are clickable/selectable (highlighted with an accent
-stroke, tracked as `OcaApp::selected_clip_id` — a separate concept from `selected_asset_id`,
-which drives the preview panel instead). `Ctrl+B` (and the toolbar's "Cortar / Split" button)
-splits whichever clip covers the playhead on every track that has one there
-(`avcore::timeline::Track::split_clip_at` + `OcaApp::split_at_playhead`); `Delete` removes the
-selected clip (`OcaApp::delete_selected_clip`). Neither ripples later clips — deleting or
-splitting just leaves/produces a gap-free edit at the cut point, nothing shifts. A clip's
-edges can be drag-trimmed (`avcore::timeline::ClipInstance::trim_start`/`trim_end` +
-`OcaApp::trim_clip_start`/`trim_clip_end`), bounded by a minimum duration and (on the right
-edge) the source asset's own length. A clip's body can also be dragged to reposition it in time
-on its own track (`avcore::timeline::Track::move_clip` + `OcaApp::move_clip`, no overlap
-checking) — moving a clip onto a *different* track isn't wired up yet. Importing files
+at their real `start_secs` position, has a click/drag ruler that moves the playhead, and
+supports real editing with no ripple (a cut/delete/move just leaves or closes a gap at the
+point of the edit, nothing downstream shifts) and no overlap checking (`avcore::timeline::
+Track`'s long-standing documented policy): clip select (`OcaApp::selected_clip_id`, separate
+from `selected_asset_id` which drives the preview panel), `Ctrl+B`/toolbar split-at-playhead
+across every track (`Track::split_clip_at` + `OcaApp::split_at_playhead`), `Delete`
+(`OcaApp::delete_selected_clip`), drag-trim either edge bounded by a minimum duration and (on
+the right edge) the source asset's own length (`ClipInstance::trim_start`/`trim_end` +
+`OcaApp::trim_clip_start`/`trim_clip_end`), and drag-move a clip's body — same-track
+reposition or onto a different same-`TrackKind` track, resolved by which row's Y-range the
+drag lands on (`Timeline::move_clip_to_track`/`Track::move_clip` +
+`OcaApp::move_clip`/`move_clip_to_track`). Still missing: the custom thumbnail/waveform
+timeline widget and zoom (both plan-doc Fase 3 items). Importing files
 (`library.rs`/`OcaApp::spawn_import`) now probes/measures/generates proxies on a background
 thread instead of blocking the UI — large source files used to freeze the app. A background
 export queue worker already runs (`OcaApp::pump_export_queue` dispatches
