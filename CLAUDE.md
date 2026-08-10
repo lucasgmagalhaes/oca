@@ -22,14 +22,19 @@ app.rs::OcaApp::{select_asset,reload_preview,pump_preview_frame}` +
 `ui/src/screens/editor.rs::preview_panel`): clicking an asset in the media library opens it,
 decoded frames are uploaded to an egui texture every frame, and play/pause/seek (including a
 click-to-seek position slider) drive the pipeline — playback of the selected clip only, not
-yet full multi-clip timeline playback (the timeline itself is still static placeholder rects,
-no real cut/split/trim). A background export queue worker already runs (`OcaApp::
+yet full multi-clip timeline playback. The timeline itself (`editor.rs::timeline_panel`) still
+just draws static clip rects with no click/drag interaction, but `Ctrl+B` (and the toolbar's
+"Cortar / Split" button) now really splits whichever clip covers the playhead, on every track
+that has one there (`avcore::timeline::Track::split_clip_at` +
+`OcaApp::split_at_playhead`) — trim (drag a clip's edge) and drag-between-tracks are still
+unimplemented, and there's no way yet to move the playhead other than live playback of the
+selected asset. A background export queue worker already runs (`OcaApp::
 pump_export_queue` dispatches `avcore::render_export` on a spawned thread, progress/done/
 failed/cancelled reported back over `tokio::mpsc`) — the queue panel doesn't yet support
-reordering/pausing jobs or persisting the queue across sessions. Not yet implemented: real
-timeline editing (cut/split/trim), the custom timeline widget (thumbnails/waveform), and queue
-reorder/pause/persistence. Check the plan doc for which phase a task belongs to before
-assuming a feature is live.
+reordering/pausing jobs or persisting the queue across sessions. Not yet implemented: clip
+selection/highlighting and drag-based trim on the timeline, the custom timeline widget
+(thumbnails/waveform), and queue reorder/pause/persistence. Check the plan doc for which phase
+a task belongs to before assuming a feature is live.
 
 ## Commands
 
