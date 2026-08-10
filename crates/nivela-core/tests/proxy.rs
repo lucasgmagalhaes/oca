@@ -1,8 +1,14 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use nivela_core::proxy::{ensure_proxy, proxy_path_for};
+
+fn fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
+}
 
 #[test]
 fn proxy_path_uses_the_source_stem_with_a_proxy_suffix() {
@@ -34,4 +40,35 @@ fn ensure_proxy_skips_ffmpeg_when_the_proxy_is_already_up_to_date() {
     let _ = fs::remove_dir(&dir);
 
     assert_eq!(result.unwrap(), proxy_path);
+}
+
+#[test]
+fn generates_a_real_downscaled_proxy() {
+    let dir = std::env::temp_dir().join("nivela_proxy_test_real_generate");
+    let _ = fs::remove_dir_all(&dir);
+    let source = fixture("video.mp4");
+
+    let proxy_path = ensure_proxy(&source, &dir).unwrap();
+    let info = nivela_core::probe_media(&proxy_path).unwrap();
+
+    // video.mp4 is 320x240 (see oca-avbridge's fixture generation); PROXY_HEIGHT is 540, but
+    // proxying never upscales past the source — scale=-2:540 on a 240-tall source still asks
+    // for 540, so the FFI path (no upscale guard either, matching the original ffmpeg command)
+    // does scale it up. Assert what the pipeline actually guarantees: correct aspect ratio and
+    // an even width, not a specific number a future PROXY_HEIGHT change would silently break.
+    assert_eq!(info.resolution.unwrap().1, nivela_core::proxy::PROXY_HEIGHT);
+    let width = info.resolution.unwrap().0;
+    assert_eq!(width % 2, 0);
+    assert!((width as f64 / nivela_core::proxy::PROXY_HEIGHT as f64 - 320.0 / 240.0).abs() < 0.02);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn errors_on_a_missing_source() {
+    let dir = std::env::temp_dir().join("nivela_proxy_test_missing_source");
+    let _ = fs::remove_dir_all(&dir);
+    let result = ensure_proxy(&fixture("does_not_exist.mp4"), &dir);
+    let _ = fs::remove_dir_all(&dir);
+    assert!(result.is_err());
 }
