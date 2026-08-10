@@ -26,28 +26,29 @@ yet full multi-clip timeline playback. Double-clicking an asset in the Editor's 
 panel adds it to the timeline (`OcaApp::add_asset_to_timeline`) — appended, untrimmed, onto
 the first track of matching kind (auto-creating `"V1"`/`"A1"` if none exists yet); this is the
 only way a clip gets onto the timeline today, no drag-and-drop from the library. The timeline
-(`editor.rs::timeline_panel`) draws clips at their real `start_secs` position, has a
-click/drag ruler that moves the playhead, and supports real editing with no ripple (a cut/delete/move just leaves or closes a gap at the
-point of the edit, nothing downstream shifts) and no overlap checking (`avcore::timeline::
-Track`'s long-standing documented policy): clip select (`OcaApp::selected_clip_id`, separate
-from `selected_asset_id` which drives the preview panel), `Ctrl+B`/toolbar split-at-playhead
-across every track (`Track::split_clip_at` + `OcaApp::split_at_playhead`), `Delete`
-(`OcaApp::delete_selected_clip`), drag-trim either edge bounded by a minimum duration and (on
-the right edge) the source asset's own length (`ClipInstance::trim_start`/`trim_end` +
-`OcaApp::trim_clip_start`/`trim_clip_end`), and drag-move a clip's body — same-track
-reposition or onto a different same-`TrackKind` track, resolved by which row's Y-range the
-drag lands on (`Timeline::move_clip_to_track`/`Track::move_clip` +
-`OcaApp::move_clip`/`move_clip_to_track`). `Ctrl` + scroll zooms the timeline
-(`OcaApp::timeline_px_per_sec`, via egui's built-in `zoom_delta()`). Still missing: the custom
-thumbnail/waveform timeline widget (the remaining plan-doc Fase 3 item). Importing files
-(`library.rs`/`OcaApp::spawn_import`) now probes/measures/generates proxies on a background
-thread instead of blocking the UI — large source files used to freeze the app. A background
-export queue worker already runs (`OcaApp::pump_export_queue` dispatches
-`avcore::render_export` on a spawned thread, progress/done/failed/cancelled reported back over
-`tokio::mpsc`) — the queue panel doesn't yet support reordering/pausing jobs or persisting the
-queue across sessions. Not yet implemented: drag-based trim/move on the timeline, the custom
-timeline widget (thumbnails/waveform), and queue reorder/pause/persistence. Check the plan doc
-for which phase a task belongs to before assuming a feature is live.
+(`editor.rs::timeline_panel`) draws clips at their real `start_secs` position, video clips
+show a tiled poster-frame thumbnail once one's been generated on a background thread
+(`OcaApp::request_thumbnail`/`extract_thumbnail`, reusing `avcore::preview::Preview` — one
+frame per clip, tiled to read like a filmstrip, not per-position frames yet; audio waveforms
+aren't done), has a click/drag ruler that moves the playhead, and `Ctrl` + scroll zooms it
+(`OcaApp::timeline_px_per_sec`). Real editing, with no ripple (a cut/delete/move just leaves
+or closes a gap at the point of the edit, nothing downstream shifts) and no overlap checking
+(`avcore::timeline::Track`'s long-standing documented policy): clip select
+(`OcaApp::selected_clip_id`, separate from `selected_asset_id` which drives the preview
+panel), `Ctrl+B`/toolbar split-at-playhead across every track (`Track::split_clip_at` +
+`OcaApp::split_at_playhead`), `Delete` (`OcaApp::delete_selected_clip`), drag-trim either edge
+bounded by a minimum duration and (right edge) the source asset's own length
+(`ClipInstance::trim_start`/`trim_end`), and drag-move a clip's body — same-track reposition
+or onto a different same-`TrackKind` track, resolved by which row's Y-range the drag lands on
+(`Timeline::move_clip_to_track`/`Track::move_clip`). Still missing: distinct per-position
+timeline thumbnails, audio waveforms, and drag-and-drop import-to-timeline (double-click only,
+for now). Importing files (`library.rs`/`OcaApp::spawn_import`) now probes/measures/generates
+proxies on a background thread instead of blocking the UI — large source files used to freeze
+the app. A background export queue worker already runs (`OcaApp::pump_export_queue`
+dispatches `avcore::render_export` on a spawned thread, progress/done/failed/cancelled
+reported back over `tokio::mpsc`) — the queue panel doesn't yet support reordering/pausing
+jobs or persisting the queue across sessions. Check the plan doc for which phase a task
+belongs to before assuming a feature is live.
 
 ## Commands
 
