@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use eframe::egui::{self, RichText};
 use avcore::media::MediaKind;
 use avcore::project::Project;
+use eframe::egui::{self, RichText};
 
 use crate::app::OcaApp;
 use crate::i18n::Text;

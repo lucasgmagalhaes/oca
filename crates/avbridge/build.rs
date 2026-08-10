@@ -56,7 +56,10 @@ fn main() {
         let (src_name, unique_name) = if is_msvc {
             (format!("{name}.lib"), format!("avbridge_ffmpeg_{name}.lib"))
         } else {
-            (format!("lib{name}.dll.a"), format!("libavbridge_ffmpeg_{name}.dll.a"))
+            (
+                format!("lib{name}.dll.a"),
+                format!("libavbridge_ffmpeg_{name}.dll.a"),
+            )
         };
         let src_path = lib_dir.join(&src_name);
         if !src_path.is_file() {
