@@ -361,7 +361,8 @@ static int filter_encode_write_frame(AVFormatContext *out_ctx, AudioFilterChain 
 }
 
 OcaEncodeStatus oca_avbridge_encode_export(const char *in_path, const char *out_path,
-                                            float target_lufs) {
+                                            float target_lufs, OcaProgressCallback progress_cb,
+                                            void *progress_user_data, const uint8_t *cancel) {
     AVFormatContext *in_ctx = NULL;
     AVFormatContext *out_ctx = NULL;
     AVCodecContext *dec_ctx = NULL;
@@ -525,6 +526,16 @@ OcaEncodeStatus oca_avbridge_encode_export(const char *in_path, const char *out_
         if (mapped < 0) {
             av_packet_unref(pkt);
             continue;
+        }
+
+        if (cancel && *cancel) {
+            av_packet_unref(pkt);
+            status = OCA_ENCODE_CANCELLED;
+            break;
+        }
+        if (progress_cb && pkt->pts != AV_NOPTS_VALUE) {
+            progress_cb(progress_user_data,
+                        pkt->pts * av_q2d(in_ctx->streams[pkt->stream_index]->time_base));
         }
 
         if (pkt->stream_index == audio_in_index) {

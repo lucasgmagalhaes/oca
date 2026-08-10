@@ -6,9 +6,10 @@
 //! FFmpeg binding — so it stays small and auditable. See [`build.rs`](../build.rs) for how the
 //! FFmpeg dev libs (`FFMPEG_DIR`) are located and linked.
 
-use std::ffi::{CStr, CString, NulError};
+use std::ffi::{c_void, CStr, CString, NulError};
 use std::os::raw::{c_char, c_int, c_longlong};
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 #[repr(C)]
 struct RawProbeInfo {
@@ -31,7 +32,20 @@ unsafe extern "C" {
         in_path: *const c_char,
         out_path: *const c_char,
         target_lufs: f32,
+        progress_cb: Option<unsafe extern "C" fn(user_data: *mut c_void, seconds: f64)>,
+        progress_user_data: *mut c_void,
+        cancel: *const u8,
     ) -> c_int;
+}
+
+/// Trampoline handed to the C side as `progress_cb`; `user_data` is a `*mut F` for whatever
+/// closure [`encode_export`] was called with.
+unsafe extern "C" fn progress_trampoline<F: FnMut(f64)>(user_data: *mut c_void, seconds: f64) {
+    // SAFETY: `user_data` was set to `&mut on_progress` for the duration of the single
+    // `oca_avbridge_encode_export` call this trampoline is only ever invoked from, and the
+    // pointee outlives that call (it's a stack local in `encode_export`, held for the call).
+    let closure = unsafe { &mut *(user_data as *mut F) };
+    closure(seconds);
 }
 
 /// libavformat's packed version number (same encoding as `LIBAVFORMAT_VERSION_INT` /
@@ -268,24 +282,52 @@ impl std::fmt::Display for EncodeError {
 
 impl std::error::Error for EncodeError {}
 
+/// How [`encode_export`] ended: all the way through, or stopped early because `cancel` was
+/// set. Mirrors `nivela_core::render::RenderOutcome`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EncodeOutcome {
+    Completed,
+    Cancelled,
+}
+
 /// Renders `in_path` to `out_path`: video passthrough-copied, audio decoded, normalized
 /// (`loudnorm` to `target_lufs` + a true-peak safety limiter) and re-encoded to AAC 192kbps.
 /// Fails with [`EncodeError::NoAudioStream`] if `in_path` has no audio stream.
 ///
-/// No progress reporting or cancellation yet — the whole file renders in this one blocking
-/// call (see impl-004c in `features/fase1/task_breakdown.md`).
-pub fn encode_export(in_path: &Path, out_path: &Path, target_lufs: f32) -> Result<(), EncodeError> {
+/// Calls `on_progress(seconds_processed)` as packets are read, and checks `cancel` between
+/// them — if another thread sets it, encoding stops (without writing a trailer, so `out_path`
+/// is left truncated/invalid) and this returns `Ok(EncodeOutcome::Cancelled)` rather than
+/// treating the cancellation as a failure.
+pub fn encode_export<F: FnMut(f64)>(
+    in_path: &Path,
+    out_path: &Path,
+    target_lufs: f32,
+    cancel: &AtomicBool,
+    mut on_progress: F,
+) -> Result<EncodeOutcome, EncodeError> {
     let c_in = CString::new(in_path.to_string_lossy().as_bytes()).map_err(EncodeError::InvalidPath)?;
     let c_out =
         CString::new(out_path.to_string_lossy().as_bytes()).map_err(EncodeError::InvalidPath)?;
 
     // SAFETY: c_in/c_out are valid NUL-terminated C strings for the duration of this call.
     // `bridge.c` frees the decoder/encoder/filter-graph contexts, output I/O, and output
-    // context on every exit path.
-    let status = unsafe { oca_avbridge_encode_export(c_in.as_ptr(), c_out.as_ptr(), target_lufs) };
+    // context on every exit path. `progress_trampoline::<F>` matches `on_progress`'s captured
+    // type F, and `&mut on_progress` outlives the call (it's this function's own stack frame).
+    // `cancel.as_ptr()` is documented to have the same size/alignment/bit-validity as `bool`
+    // (0/1), which the C side reads as `uint8_t`.
+    let status = unsafe {
+        oca_avbridge_encode_export(
+            c_in.as_ptr(),
+            c_out.as_ptr(),
+            target_lufs,
+            Some(progress_trampoline::<F>),
+            &mut on_progress as *mut _ as *mut c_void,
+            cancel.as_ptr() as *const u8,
+        )
+    };
 
     match status {
-        0 => Ok(()),
+        0 => Ok(EncodeOutcome::Completed),
         1 => Err(EncodeError::OpenInput),
         2 => Err(EncodeError::StreamInfo),
         3 => Err(EncodeError::AllocOutput),
@@ -298,6 +340,7 @@ pub fn encode_export(in_path: &Path, out_path: &Path, target_lufs: f32) -> Resul
         10 => Err(EncodeError::FilterGraph),
         11 => Err(EncodeError::Encoder),
         12 => Err(EncodeError::Pipeline),
+        13 => Ok(EncodeOutcome::Cancelled),
         other => Err(EncodeError::Unknown(other)),
     }
 }

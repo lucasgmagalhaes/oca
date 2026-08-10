@@ -79,15 +79,27 @@ typedef enum {
     OCA_ENCODE_ERR_ENCODER = 11,
     /* A decode/filter/encode call failed mid-stream (not at setup). */
     OCA_ENCODE_ERR_PIPELINE = 12,
+    /* *cancel became nonzero mid-render — out_path is a truncated/invalid file, not written
+       past the header. Not a failure: matches render.rs's RenderOutcome::Cancelled. */
+    OCA_ENCODE_CANCELLED = 13,
 } OcaEncodeStatus;
+
+/* Called periodically during the read/decode loop with the input packet's position, in
+   seconds, that's just been processed. Never called with a value past the file's duration. */
+typedef void (*OcaProgressCallback)(void *user_data, double seconds_processed);
 
 /* Renders `in_path` to `out_path`: video passthrough-copied, audio decoded, normalized
    (loudnorm to target_lufs + a true-peak safety limiter) and re-encoded to AAC 192kbps.
    Equivalent to:
    ffmpeg -i in_path -af "loudnorm=I=<target_lufs>:TP=-1.0:LRA=11,alimiter=limit=0.95:attack=5:release=50"
           -c:v copy -c:a aac -b:a 192k out_path
-   Fails with OCA_ENCODE_ERR_NO_AUDIO_STREAM if `in_path` has no audio stream. */
+   Fails with OCA_ENCODE_ERR_NO_AUDIO_STREAM if `in_path` has no audio stream.
+
+   progress_cb/progress_user_data may both be NULL to skip progress reporting.
+   cancel may be NULL to disable cancellation; otherwise checked between packets — once
+   `*cancel` is nonzero, stops and returns OCA_ENCODE_CANCELLED without writing a trailer. */
 OcaEncodeStatus oca_avbridge_encode_export(const char *in_path, const char *out_path,
-                                            float target_lufs);
+                                            float target_lufs, OcaProgressCallback progress_cb,
+                                            void *progress_user_data, const uint8_t *cancel);
 
 #endif
