@@ -341,6 +341,66 @@ impl OcaApp {
         });
     }
 
+    /// Appends `asset_id` to the timeline as a new, untrimmed clip — what double-clicking an
+    /// asset in the media library panel does. Lands on the first track whose kind matches the
+    /// asset (video onto video, audio onto audio), auto-creating one (`"V1"`/`"A1"`) if none
+    /// exists yet, right after whatever's already there
+    /// ([`avcore::timeline::Track::duration_secs`] — `0.0` for an empty/new track). A no-op if
+    /// `asset_id` isn't in the active project's media library.
+    pub fn add_asset_to_timeline(&mut self, asset_id: u64) {
+        let Some(asset) = self
+            .active_project()
+            .media_library
+            .iter()
+            .find(|a| a.id == asset_id)
+        else {
+            return;
+        };
+        let kind = match asset.kind {
+            avcore::MediaKind::Video => avcore::timeline::TrackKind::Video,
+            avcore::MediaKind::Audio => avcore::timeline::TrackKind::Audio,
+        };
+        let duration_secs = asset.duration_secs;
+
+        let timeline = &mut self.active_project_mut().timeline;
+        let track_index = match timeline.tracks.iter().position(|t| t.kind == kind) {
+            Some(index) => index,
+            None => {
+                let track_id = timeline.tracks.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+                let name = match kind {
+                    avcore::timeline::TrackKind::Video => "V1",
+                    avcore::timeline::TrackKind::Audio => "A1",
+                };
+                timeline.tracks.push(avcore::timeline::Track {
+                    id: track_id,
+                    name: name.to_string(),
+                    kind,
+                    clips: Vec::new(),
+                });
+                timeline.tracks.len() - 1
+            }
+        };
+
+        let clip_id = timeline
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .map(|c| c.id)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let start_secs = timeline.tracks[track_index].duration_secs();
+        timeline.tracks[track_index]
+            .clips
+            .push(avcore::timeline::ClipInstance {
+                id: clip_id,
+                asset_id,
+                start_secs,
+                source_in_secs: 0.0,
+                source_out_secs: duration_secs,
+            });
+    }
+
     /// Splits whichever clip covers the timeline playhead, on every track that has one there,
     /// into two — what `Ctrl+B` and the toolbar's "Cortar / Split" button do. Cutting every
     /// track at once (rather than just a clicked clip) keeps V1/A1/A2 in sync, which is the

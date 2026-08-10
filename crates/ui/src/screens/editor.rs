@@ -136,6 +136,7 @@ fn tool_button(app: &mut OcaApp, ui: &mut egui::Ui, tool: EditorTool, icon: &str
 
 fn media_library_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32) {
     let mut clicked_id = None;
+    let mut add_to_timeline_id = None;
 
     egui::Frame::new()
         .inner_margin(egui::Margin::same(12))
@@ -181,6 +182,9 @@ fn media_library_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: 
                         if response.clicked() {
                             clicked_id = Some(asset.id);
                         }
+                        if response.double_clicked() {
+                            add_to_timeline_id = Some(asset.id);
+                        }
                         ui.add_space(6.0);
                     }
                 });
@@ -189,6 +193,9 @@ fn media_library_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: 
 
     if let Some(id) = clicked_id {
         app.select_asset(Some(id));
+    }
+    if let Some(id) = add_to_timeline_id {
+        app.add_asset_to_timeline(id);
     }
 }
 

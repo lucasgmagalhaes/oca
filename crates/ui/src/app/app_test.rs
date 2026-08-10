@@ -60,6 +60,13 @@ fn test_asset(id: u64) -> MediaAsset {
     }
 }
 
+fn test_asset_with_kind(id: u64, kind: MediaKind) -> MediaAsset {
+    MediaAsset {
+        kind,
+        ..test_asset(id)
+    }
+}
+
 fn test_job(id: u64, status: ExportJobStatus) -> ExportJob {
     ExportJob {
         id,
@@ -158,6 +165,69 @@ fn create_new_project_starts_at_one_when_no_projects_exist() {
     app.create_new_project("First".to_string());
 
     assert_eq!(app.active_project().id, 1);
+}
+
+#[test]
+fn add_asset_to_timeline_creates_a_track_and_appends_a_clip_when_none_exists() {
+    let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
+
+    app.add_asset_to_timeline(1);
+
+    let tracks = &app.active_project().timeline.tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].name, "V1");
+    assert_eq!(tracks[0].kind, TrackKind::Video);
+    assert_eq!(tracks[0].clips.len(), 1);
+    let clip = &tracks[0].clips[0];
+    assert_eq!(clip.asset_id, 1);
+    assert_eq!(clip.start_secs, 0.0);
+    assert_eq!(clip.source_in_secs, 0.0);
+    assert_eq!(clip.source_out_secs, 10.0); // test_asset's fixed duration_secs.
+}
+
+#[test]
+fn add_asset_to_timeline_creates_an_audio_track_for_an_audio_asset() {
+    let mut app = test_app(
+        vec![test_project(
+            1,
+            vec![test_asset_with_kind(1, MediaKind::Audio)],
+        )],
+        Vec::new(),
+    );
+
+    app.add_asset_to_timeline(1);
+
+    let tracks = &app.active_project().timeline.tracks;
+    assert_eq!(tracks[0].name, "A1");
+    assert_eq!(tracks[0].kind, TrackKind::Audio);
+}
+
+#[test]
+fn add_asset_to_timeline_appends_after_whatever_is_already_on_the_matching_track() {
+    let mut project = test_project(1, vec![test_asset(2)]);
+    project.timeline.tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 20.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.add_asset_to_timeline(2);
+
+    let tracks = &app.active_project().timeline.tracks;
+    assert_eq!(tracks.len(), 1); // Reused the existing Video track, no second one created.
+    assert_eq!(tracks[0].clips.len(), 2);
+    assert_eq!(tracks[0].clips[1].start_secs, 20.0);
+    assert_eq!(tracks[0].clips[1].asset_id, 2);
+}
+
+#[test]
+fn add_asset_to_timeline_is_a_no_op_for_an_unknown_asset_id() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.add_asset_to_timeline(99);
+
+    assert!(app.active_project().timeline.tracks.is_empty());
 }
 
 #[test]

@@ -58,6 +58,26 @@ fn track_with(clips: Vec<ClipInstance>) -> Track {
 }
 
 #[test]
+fn track_duration_is_zero_for_an_empty_track() {
+    assert_eq!(track_with(Vec::new()).duration_secs(), 0.0);
+}
+
+#[test]
+fn track_duration_is_the_single_clips_end() {
+    assert_eq!(
+        track_with(vec![clip(1, 5.0, 0.0, 20.0)]).duration_secs(),
+        25.0
+    );
+}
+
+#[test]
+fn track_duration_is_the_furthest_clip_end_on_this_track_only() {
+    let track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 50.0, 0.0, 5.0)]);
+    // Second clip ends at 50 + 5 = 55, which is furthest even though it's shorter.
+    assert_eq!(track.duration_secs(), 55.0);
+}
+
+#[test]
 fn split_clip_at_divides_the_covering_clip_into_two() {
     let mut track = track_with(vec![clip(1, 10.0, 0.0, 20.0)]);
 

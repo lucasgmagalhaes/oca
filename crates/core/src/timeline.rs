@@ -131,6 +131,15 @@ impl Track {
         clip.start_secs = new_start_secs;
         true
     }
+
+    /// The position, in seconds, where this track's last clip ends. `0.0` for an empty track —
+    /// the natural "append here" position for a clip added to this track.
+    pub fn duration_secs(&self) -> f64 {
+        self.clips
+            .iter()
+            .map(|c| c.start_secs + c.duration_secs())
+            .fold(0.0, f64::max)
+    }
 }
 
 /// A project's full set of tracks plus the current playhead position.
@@ -146,8 +155,7 @@ impl Timeline {
     pub fn duration_secs(&self) -> f64 {
         self.tracks
             .iter()
-            .flat_map(|t| t.clips.iter())
-            .map(|c| c.start_secs + c.duration_secs())
+            .map(Track::duration_secs)
             .fold(0.0, f64::max)
     }
 
