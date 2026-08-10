@@ -30,8 +30,11 @@ which drives the preview panel instead). `Ctrl+B` (and the toolbar's "Cortar / S
 splits whichever clip covers the playhead on every track that has one there
 (`avcore::timeline::Track::split_clip_at` + `OcaApp::split_at_playhead`); `Delete` removes the
 selected clip (`OcaApp::delete_selected_clip`). Neither ripples later clips — deleting or
-splitting just leaves/produces a gap-free edit at the cut point, nothing shifts. Drag-to-trim a
-clip's edge and drag-between-tracks are still unimplemented. Importing files
+splitting just leaves/produces a gap-free edit at the cut point, nothing shifts. A clip's
+edges can be drag-trimmed (`avcore::timeline::ClipInstance::trim_start`/`trim_end` +
+`OcaApp::trim_clip_start`/`trim_clip_end`), bounded by a minimum duration and (on the right
+edge) the source asset's own length. Whole-clip drag-move and drag-between-tracks are still
+unimplemented. Importing files
 (`library.rs`/`OcaApp::spawn_import`) now probes/measures/generates proxies on a background
 thread instead of blocking the UI — large source files used to freeze the app. A background
 export queue worker already runs (`OcaApp::pump_export_queue` dispatches
