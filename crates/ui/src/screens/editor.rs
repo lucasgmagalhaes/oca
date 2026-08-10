@@ -383,6 +383,7 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
 
         let mut clicked_clip_id = None;
         let mut trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
+        let mut move_requests: Vec<(u64, f64)> = Vec::new();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for track in &app.active_project().timeline.tracks {
                 ui.horizontal(|ui| {
@@ -431,7 +432,7 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                         let body_response = ui.interact(
                             clip_rect,
                             ui.id().with(("timeline_clip", clip.id)),
-                            egui::Sense::click(),
+                            egui::Sense::click_and_drag(),
                         );
                         let left_response = ui.interact(
                             left_edge_rect,
@@ -452,6 +453,13 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                         }
                         if body_response.clicked() {
                             clicked_clip_id = Some(clip.id);
+                        }
+                        if body_response.dragged() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                            let delta_secs = (body_response.drag_delta().x / PX_PER_SEC) as f64;
+                            if delta_secs != 0.0 {
+                                move_requests.push((clip.id, clip.start_secs + delta_secs));
+                            }
                         }
                         if let Some(pos) = left_response.interact_pointer_pos() {
                             let secs = ((pos.x - track_rect.left()) / PX_PER_SEC).max(0.0) as f64;
@@ -497,6 +505,9 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                 TrimEdge::Start(secs) => app.trim_clip_start(clip_id, secs),
                 TrimEdge::End(secs) => app.trim_clip_end(clip_id, secs),
             }
+        }
+        for (clip_id, new_start_secs) in move_requests {
+            app.move_clip(clip_id, new_start_secs);
         }
     });
 }

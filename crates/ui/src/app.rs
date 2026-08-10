@@ -428,6 +428,18 @@ impl OcaApp {
         }
     }
 
+    /// Repositions `clip_id` to `new_start_secs` on its own track — what dragging a timeline
+    /// clip's body (not one of its edges) does. Moving a clip to a different track isn't
+    /// supported yet, only repositioning it in time. A no-op if the clip isn't found or
+    /// `new_start_secs` is negative.
+    pub fn move_clip(&mut self, clip_id: u64, new_start_secs: f64) {
+        for track in &mut self.active_project_mut().timeline.tracks {
+            if track.move_clip(clip_id, new_start_secs) {
+                return;
+            }
+        }
+    }
+
     /// Probes, measures loudness, and (for video) generates an editing proxy for each of
     /// `paths` on a background thread — what "Importar arquivos" does. These are synchronous
     /// FFI calls that can take minutes for a large source file (a multi-GB capture), and used

@@ -186,3 +186,33 @@ fn clip_mut_returns_none_for_an_unknown_id() {
 
     assert!(track.clip_mut(99).is_none());
 }
+
+#[test]
+fn move_clip_repositions_start_secs_and_leaves_the_source_range_untouched() {
+    let mut track = track_with(vec![clip(1, 0.0, 5.0, 15.0)]);
+
+    let moved = track.move_clip(1, 40.0);
+
+    assert!(moved);
+    assert_eq!(track.clips[0], clip(1, 40.0, 5.0, 15.0));
+}
+
+#[test]
+fn move_clip_is_a_no_op_for_a_negative_position() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0)]);
+
+    let moved = track.move_clip(1, -5.0);
+
+    assert!(!moved);
+    assert_eq!(track.clips[0], clip(1, 0.0, 0.0, 10.0));
+}
+
+#[test]
+fn move_clip_is_a_no_op_for_an_unknown_clip_id() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0)]);
+
+    let moved = track.move_clip(99, 5.0);
+
+    assert!(!moved);
+    assert_eq!(track.clips[0], clip(1, 0.0, 0.0, 10.0));
+}

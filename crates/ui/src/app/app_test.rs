@@ -538,6 +538,50 @@ fn trim_clip_end_is_bounded_by_the_source_assets_own_duration() {
 }
 
 #[test]
+fn move_clip_repositions_it_on_its_own_track() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 5.0, 15.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.move_clip(1, 40.0);
+
+    let clip = &app.active_project().timeline.tracks[0].clips[0];
+    assert_eq!(clip.start_secs, 40.0);
+    assert_eq!(clip.source_in_secs, 5.0);
+    assert_eq!(clip.source_out_secs, 15.0);
+}
+
+#[test]
+fn move_clip_ignores_a_negative_position() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 10.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.move_clip(1, -5.0);
+
+    assert_eq!(
+        app.active_project().timeline.tracks[0].clips[0].start_secs,
+        10.0
+    );
+}
+
+#[test]
 fn delete_selected_clip_removes_it_from_its_track_and_clears_the_selection() {
     let mut app = test_app(
         vec![test_project_with_tracks(

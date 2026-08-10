@@ -115,6 +115,22 @@ impl Track {
     pub fn clip_mut(&mut self, clip_id: u64) -> Option<&mut ClipInstance> {
         self.clips.iter_mut().find(|c| c.id == clip_id)
     }
+
+    /// Repositions the clip with `clip_id` to `new_start_secs` on this same track — what
+    /// dragging a clip's body (not one of its edges) does. Doesn't check for overlap with
+    /// neighboring clips (matches this struct's existing no-overlap-checking policy, see
+    /// above) — dragging one clip onto another just lets them overlap for now. No-op
+    /// (`false`) if the clip isn't on this track or `new_start_secs` is negative.
+    pub fn move_clip(&mut self, clip_id: u64, new_start_secs: f64) -> bool {
+        if new_start_secs < 0.0 {
+            return false;
+        }
+        let Some(clip) = self.clip_mut(clip_id) else {
+            return false;
+        };
+        clip.start_secs = new_start_secs;
+        true
+    }
 }
 
 /// A project's full set of tracks plus the current playhead position.
