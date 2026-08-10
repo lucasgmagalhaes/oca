@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache FFmpeg dev build
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg-dev
+          key: ffmpeg-btbn-win64-gpl-shared-master-latest
+
+      - name: Download FFmpeg dev build (BtbN)
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl-shared.zip" -OutFile ffmpeg.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg-extracted
+          $inner = Get-ChildItem ffmpeg-extracted | Select-Object -First 1
+          Move-Item $inner.FullName ffmpeg-dev
+
+      - name: Export FFMPEG_DIR and PATH
+        shell: pwsh
+        run: |
+          $ffmpegDir = (Resolve-Path "ffmpeg-dev").Path
+          echo "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
+          echo "$ffmpegDir\bin" >> $env:GITHUB_PATH
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
+
+      - name: Build
+        run: cargo build --workspace
+
+      - name: Test
+        run: cargo test --workspace
