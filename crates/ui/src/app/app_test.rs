@@ -82,6 +82,7 @@ fn test_job(id: u64, status: ExportJobStatus) -> ExportJob {
 fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
     let (render_tx, render_rx) = mpsc::unbounded_channel();
     let (import_tx, import_rx) = mpsc::unbounded_channel();
+    let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
     OcaApp {
         screen: Screen::Home,
         tool: EditorTool::Select,
@@ -103,6 +104,10 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         pending_imports: 0,
         selected_clip_id: None,
         timeline_px_per_sec: 4.0,
+        thumbnail_tx,
+        thumbnail_rx,
+        thumbnail_textures: HashMap::new(),
+        requested_thumbnails: HashSet::new(),
     }
 }
 
@@ -228,6 +233,28 @@ fn add_asset_to_timeline_is_a_no_op_for_an_unknown_asset_id() {
     app.add_asset_to_timeline(99);
 
     assert!(app.active_project().timeline.tracks.is_empty());
+}
+
+#[test]
+fn request_thumbnail_marks_the_clip_requested_and_does_not_duplicate_on_a_second_call() {
+    let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
+
+    app.request_thumbnail(1, 1, 0.0);
+    assert!(app.requested_thumbnails.contains(&1));
+
+    app.request_thumbnail(1, 1, 0.0);
+    assert_eq!(app.requested_thumbnails.len(), 1);
+}
+
+#[test]
+fn request_thumbnail_still_marks_requested_for_an_unknown_asset_id() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.request_thumbnail(1, 99, 0.0);
+
+    // Marked requested even though the asset lookup failed, so this clip isn't retried every
+    // frame — it just never gets a texture.
+    assert!(app.requested_thumbnails.contains(&1));
 }
 
 #[test]

@@ -411,6 +411,7 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         let mut trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
         let mut clip_drags: Vec<ClipDrag> = Vec::new();
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
+        let mut thumbnail_requests: Vec<(u64, u64, f64)> = Vec::new();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for track in &app.active_project().timeline.tracks {
                 ui.horizontal(|ui| {
@@ -504,7 +505,26 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                             trim_requests.push((clip.id, TrimEdge::End(secs)));
                         }
 
-                        painter.rect_filled(clip_rect, egui::CornerRadius::same(4), color);
+                        let thumbnail = if track.kind == avcore::timeline::TrackKind::Video {
+                            app.thumbnail_textures.get(&clip.id)
+                        } else {
+                            None
+                        };
+                        match thumbnail {
+                            Some(texture) => {
+                                draw_tiled_thumbnail(painter, clip_rect, texture);
+                            }
+                            None => {
+                                painter.rect_filled(clip_rect, egui::CornerRadius::same(4), color);
+                                if track.kind == avcore::timeline::TrackKind::Video {
+                                    thumbnail_requests.push((
+                                        clip.id,
+                                        clip.asset_id,
+                                        clip.source_in_secs,
+                                    ));
+                                }
+                            }
+                        }
                         if app.selected_clip_id == Some(clip.id) {
                             painter.rect_stroke(
                                 clip_rect,
@@ -559,7 +579,38 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                 _ => app.move_clip(drag.clip_id, drag.new_start_secs),
             }
         }
+        for (clip_id, asset_id, source_in_secs) in thumbnail_requests {
+            app.request_thumbnail(clip_id, asset_id, source_in_secs);
+        }
     });
+}
+
+/// Tiles `texture` across `clip_rect` at its own aspect ratio (scaled to the clip's height) —
+/// reads like a filmstrip even though every tile shows the same poster frame, and the tile
+/// count grows with the clip's on-screen width, so it gets denser as the timeline zooms in.
+/// The last tile is width-clamped so it can't bleed into the next clip.
+fn draw_tiled_thumbnail(
+    painter: &egui::Painter,
+    clip_rect: egui::Rect,
+    texture: &egui::TextureHandle,
+) {
+    let tex_size = texture.size_vec2();
+    let tile_height = clip_rect.height();
+    let tile_width = (tile_height * tex_size.x / tex_size.y).max(1.0);
+
+    let mut x = clip_rect.left();
+    while x < clip_rect.right() {
+        let w = tile_width.min(clip_rect.right() - x);
+        let tile_rect =
+            egui::Rect::from_min_size(egui::pos2(x, clip_rect.top()), egui::vec2(w, tile_height));
+        painter.image(
+            texture.id(),
+            tile_rect,
+            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+            egui::Color32::WHITE,
+        );
+        x += tile_width;
+    }
 }
 
 /// A clip body drag in progress: which clip, where it started from, and where the pointer

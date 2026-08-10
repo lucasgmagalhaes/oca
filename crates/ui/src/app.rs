@@ -2,11 +2,11 @@
 //! drives one frame: pump the background export queue, draw the nav rail and breadcrumb,
 //! then delegate to whichever [`Screen`] is currently active (see [`crate::screens`]).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use avcore::{sample, ExportJob, ExportJobStatus, MediaAsset, Project, RenderOutcome};
 use eframe::egui;
@@ -90,6 +90,17 @@ enum ImportEvent {
     Failed { path: PathBuf, message: String },
 }
 
+/// A poster frame extracted on a background thread (see [`OcaApp::request_thumbnail`]),
+/// ready to upload as an egui texture. No failure variant — a clip whose thumbnail couldn't
+/// be extracted just never gets one; [`OcaApp::requested_thumbnails`] already stops it from
+/// being retried every frame.
+struct ThumbnailReady {
+    clip_id: u64,
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+}
+
 /// The whole application's state: which screen is showing, the loaded projects, the export
 /// queue, and user preferences. `eframe` owns one instance of this for the app's lifetime
 /// and calls [`OcaApp::ui`](eframe::App::ui) on it every frame.
@@ -137,6 +148,16 @@ pub struct OcaApp {
     /// `Ctrl` + scroll over the timeline (per `request.md`'s Fase 3 spec) — more zoom for
     /// frame-accurate edits, less to see the whole project at once.
     pub timeline_px_per_sec: f32,
+    thumbnail_tx: UnboundedSender<ThumbnailReady>,
+    thumbnail_rx: UnboundedReceiver<ThumbnailReady>,
+    /// Poster-frame textures for video clips on the timeline, keyed by clip id. Generated once
+    /// per clip id (see [`OcaApp::requested_thumbnails`]) — trimming a clip afterward doesn't
+    /// regenerate it, a known simplification, not a bug.
+    pub thumbnail_textures: HashMap<u64, egui::TextureHandle>,
+    /// Clip ids a thumbnail has already been requested for, successfully or not — stops
+    /// [`OcaApp::request_thumbnail`] from spawning a new extraction thread every frame for a
+    /// clip that's still pending, or that already failed once.
+    requested_thumbnails: HashSet<u64>,
 }
 
 impl OcaApp {
@@ -151,6 +172,7 @@ impl OcaApp {
             .map(|a| a.id);
         let (render_tx, render_rx) = mpsc::unbounded_channel();
         let (import_tx, import_rx) = mpsc::unbounded_channel();
+        let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
         let mut app = Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
@@ -172,6 +194,10 @@ impl OcaApp {
             pending_imports: 0,
             selected_clip_id: None,
             timeline_px_per_sec: 4.0,
+            thumbnail_tx,
+            thumbnail_rx,
+            thumbnail_textures: HashMap::new(),
+            requested_thumbnails: HashSet::new(),
         };
         app.reload_preview();
         app
@@ -568,6 +594,61 @@ impl OcaApp {
         }
     }
 
+    /// Requests a poster-frame thumbnail for a timeline clip — what `timeline_panel` calls for
+    /// every video clip that doesn't have one cached yet. A no-op if `clip_id` was already
+    /// requested (successfully or not; see [`OcaApp::requested_thumbnails`]). Extraction (open
+    /// the asset's proxy-or-source file, seek to `source_in_secs`, grab a frame, downscale)
+    /// runs on a background thread — the same reasoning as [`OcaApp::spawn_import`]: this is
+    /// FFI/decode work that must not run on the UI thread.
+    pub fn request_thumbnail(&mut self, clip_id: u64, asset_id: u64, source_in_secs: f64) {
+        if self.requested_thumbnails.contains(&clip_id) {
+            return;
+        }
+        self.requested_thumbnails.insert(clip_id);
+
+        let Some(asset) = self
+            .active_project()
+            .media_library
+            .iter()
+            .find(|a| a.id == asset_id)
+        else {
+            return;
+        };
+        let path = asset
+            .proxy_path
+            .clone()
+            .unwrap_or_else(|| asset.source_path.clone());
+
+        let tx = self.thumbnail_tx.clone();
+        std::thread::spawn(move || {
+            if let Some((width, height, rgba)) = extract_thumbnail(&path, source_in_secs) {
+                let _ = tx.send(ThumbnailReady {
+                    clip_id,
+                    width,
+                    height,
+                    rgba,
+                });
+            }
+        });
+    }
+
+    /// Uploads finished thumbnail extractions as egui textures. Called once per frame from
+    /// [`eframe::App::ui`], same as [`OcaApp::pump_import_queue`].
+    fn pump_thumbnail_queue(&mut self, ctx: &egui::Context) {
+        while let Ok(ready) = self.thumbnail_rx.try_recv() {
+            let image = egui::ColorImage::from_rgba_unmultiplied(
+                [ready.width as usize, ready.height as usize],
+                &ready.rgba,
+            );
+            let texture = ctx.load_texture(
+                format!("thumb-{}", ready.clip_id),
+                image,
+                egui::TextureOptions::LINEAR,
+            );
+            self.thumbnail_textures.insert(ready.clip_id, texture);
+        }
+    }
+
     /// Appends a new `Queued` job — what "Adicionar exportação" does. Picked up by
     /// [`OcaApp::pump_export_queue`] once a worker slot ([`OcaApp::queue_workers`])
     /// frees up.
@@ -721,10 +802,63 @@ fn import_one(path: &Path, project_id: u64, proxy_dir: &Path) -> ImportEvent {
     ImportEvent::AssetReady { project_id, asset }
 }
 
+/// Longest side, in pixels, a generated thumbnail is downscaled to — tiny on purpose, these
+/// are drawn small and tiled, not viewed full-size.
+const THUMBNAIL_MAX_DIM: u32 = 96;
+
+/// Runs on [`OcaApp::request_thumbnail`]'s background thread — opens `path`, seeks to
+/// `at_secs`, and grabs the first frame that decodes, downscaled. `None` if the file doesn't
+/// exist, fails to open, or no frame arrives within the poll deadline.
+fn extract_thumbnail(path: &Path, at_secs: f64) -> Option<(u32, u32, Vec<u8>)> {
+    if !path.exists() {
+        return None;
+    }
+    let preview = avcore::preview::Preview::open(path).ok()?;
+    let _ = preview.seek(at_secs.max(0.0));
+
+    // current_frame() is non-blocking (see reload_preview's doc comment on the same choice) —
+    // a frame isn't necessarily ready the instant seek() returns, so poll briefly for one.
+    let deadline = Instant::now() + Duration::from_millis(800);
+    let frame = loop {
+        if let Some(frame) = preview.current_frame() {
+            break frame;
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+
+    Some(downscale_rgba(&frame, THUMBNAIL_MAX_DIM))
+}
+
+/// Nearest-neighbor downscale of a decoded frame's RGBA buffer so its longest side is at most
+/// `max_dim`. Keeps the uploaded texture tiny regardless of the source's actual resolution —
+/// fine for something drawn at thumbnail size, and avoids nearest-neighbor's usual aliasing
+/// mattering at that scale.
+fn downscale_rgba(frame: &avcore::preview::VideoFrame, max_dim: u32) -> (u32, u32, Vec<u8>) {
+    let scale = (max_dim as f32 / frame.width.max(frame.height) as f32).min(1.0);
+    let new_width = ((frame.width as f32 * scale) as u32).max(1);
+    let new_height = ((frame.height as f32 * scale) as u32).max(1);
+
+    let mut rgba = vec![0u8; (new_width * new_height * 4) as usize];
+    for y in 0..new_height {
+        let src_y = (y * frame.height / new_height).min(frame.height - 1);
+        for x in 0..new_width {
+            let src_x = (x * frame.width / new_width).min(frame.width - 1);
+            let src = ((src_y * frame.width + src_x) * 4) as usize;
+            let dst = ((y * new_width + x) * 4) as usize;
+            rgba[dst..dst + 4].copy_from_slice(&frame.rgba[src..src + 4]);
+        }
+    }
+    (new_width, new_height, rgba)
+}
+
 impl eframe::App for OcaApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.pump_export_queue();
         self.pump_import_queue();
+        self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());
         if self.preview_playing {
             // Smooth video needs every-frame repaints; the 200ms throttle below would show
