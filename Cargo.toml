@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/nivela-core",
     "crates/nivela-app",
-    "crates/xtask",
+    "crates/oca-avbridge",
 ]
 
 [workspace.package]

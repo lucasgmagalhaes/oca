@@ -1,0 +1,8 @@
+[package]
+name = "oca-avbridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[build-dependencies]
+cc = "1"
