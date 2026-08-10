@@ -1,4 +1,4 @@
-//! Tracks performance of the engine's actual hot paths: parsing `ffprobe`/`ffmpeg` output and
+//! Tracks performance of the engine's actual hot paths: parsing `loudnorm` filter stderr and
 //! (de)serializing a project. Run with `cargo bench -p core` (or `make bench`) and
 //! compare against a previous run's `target/criterion/` report to catch regressions as the
 //! engine grows — this is the "acompanhar o desempenho da aplicação" half of the ask; the
@@ -11,38 +11,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 use avcore::loudness::parse_loudnorm_stderr;
 use avcore::persistence::{from_json, to_json};
-use avcore::probe::parse_probe_json;
 use avcore::timeline::{ClipInstance, Timeline, Track, TrackKind};
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency};
-
-const PROBE_JSON_FIXTURE: &str = r#"{
-    "streams": [
-        {
-            "index": 0,
-            "codec_name": "h264",
-            "codec_type": "video",
-            "width": 1920,
-            "height": 1080,
-            "r_frame_rate": "60000/1001",
-            "bit_rate": "42000000",
-            "duration": "134.234000"
-        },
-        {
-            "index": 1,
-            "codec_name": "aac",
-            "codec_type": "audio",
-            "sample_rate": "48000",
-            "channels": 2,
-            "bit_rate": "192000",
-            "duration": "134.234000"
-        }
-    ],
-    "format": {
-        "filename": "boss03_ribby_croaks.mp4",
-        "duration": "134.234000",
-        "bit_rate": "42021000"
-    }
-}"#;
 
 const LOUDNORM_STDERR_FIXTURE: &str = r#"
 ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers
@@ -124,12 +94,6 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
     }
 }
 
-fn bench_parse_probe_json(c: &mut Criterion) {
-    c.bench_function("probe::parse_probe_json", |b| {
-        b.iter(|| parse_probe_json(black_box(PROBE_JSON_FIXTURE)).unwrap())
-    });
-}
-
 fn bench_parse_loudnorm_stderr(c: &mut Criterion) {
     c.bench_function("loudness::parse_loudnorm_stderr", |b| {
         b.iter(|| parse_loudnorm_stderr(black_box(LOUDNORM_STDERR_FIXTURE)).unwrap())
@@ -169,7 +133,6 @@ fn bench_timeline_duration(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    bench_parse_probe_json,
     bench_parse_loudnorm_stderr,
     bench_project_json_round_trip,
     bench_timeline_duration,
