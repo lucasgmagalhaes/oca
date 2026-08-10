@@ -33,8 +33,9 @@ selected clip (`OcaApp::delete_selected_clip`). Neither ripples later clips — 
 splitting just leaves/produces a gap-free edit at the cut point, nothing shifts. A clip's
 edges can be drag-trimmed (`avcore::timeline::ClipInstance::trim_start`/`trim_end` +
 `OcaApp::trim_clip_start`/`trim_clip_end`), bounded by a minimum duration and (on the right
-edge) the source asset's own length. Whole-clip drag-move and drag-between-tracks are still
-unimplemented. Importing files
+edge) the source asset's own length. A clip's body can also be dragged to reposition it in time
+on its own track (`avcore::timeline::Track::move_clip` + `OcaApp::move_clip`, no overlap
+checking) — moving a clip onto a *different* track isn't wired up yet. Importing files
 (`library.rs`/`OcaApp::spawn_import`) now probes/measures/generates proxies on a background
 thread instead of blocking the UI — large source files used to freeze the app. A background
 export queue worker already runs (`OcaApp::pump_export_queue` dispatches
