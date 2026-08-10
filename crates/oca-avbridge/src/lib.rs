@@ -36,6 +36,11 @@ unsafe extern "C" {
         progress_user_data: *mut c_void,
         cancel: *const u8,
     ) -> c_int;
+    fn oca_avbridge_measure_loudness(
+        in_path: *const c_char,
+        out_json: *mut c_char,
+        out_json_len: usize,
+    ) -> c_int;
 }
 
 /// Trampoline handed to the C side as `progress_cb`; `user_data` is a `*mut F` for whatever
@@ -346,4 +351,89 @@ pub fn encode_export<F: FnMut(f64)>(
         13 => Ok(EncodeOutcome::Cancelled),
         other => Err(EncodeError::Unknown(other)),
     }
+}
+
+/// What [`measure_loudness_json`] failed on.
+#[derive(Debug)]
+pub enum LoudnessError {
+    /// `path` contains a NUL byte and can't be handed to the C API.
+    InvalidPath(NulError),
+    OpenInput,
+    StreamInfo,
+    /// `path` has no audio stream to measure.
+    NoAudioStream,
+    /// Couldn't find/open the audio decoder.
+    Decoder,
+    /// Couldn't build the loudnorm filter graph.
+    FilterGraph,
+    /// A decode/filter call failed mid-stream (not at setup).
+    Pipeline,
+    /// The pipeline ran to completion but no loudnorm JSON report was captured.
+    NoReport,
+    /// The captured report wasn't valid UTF-8 (shouldn't happen — loudnorm's JSON output is
+    /// ASCII — but the buffer is truncated if it doesn't fit, which could in principle split
+    /// a multi-byte sequence).
+    InvalidUtf8(std::str::Utf8Error),
+    /// The C side returned a status code this crate doesn't know about.
+    Unknown(c_int),
+}
+
+impl std::fmt::Display for LoudnessError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoudnessError::InvalidPath(e) => write!(f, "path is not a valid C string: {e}"),
+            LoudnessError::OpenInput => write!(f, "failed to open input"),
+            LoudnessError::StreamInfo => write!(f, "failed to read stream info"),
+            LoudnessError::NoAudioStream => write!(f, "input has no audio stream"),
+            LoudnessError::Decoder => write!(f, "failed to open the audio decoder"),
+            LoudnessError::FilterGraph => write!(f, "failed to build the loudnorm filter graph"),
+            LoudnessError::Pipeline => write!(f, "decode/filter pipeline failed mid-stream"),
+            LoudnessError::NoReport => write!(f, "no loudnorm report was captured"),
+            LoudnessError::InvalidUtf8(e) => write!(f, "loudnorm report wasn't valid UTF-8: {e}"),
+            LoudnessError::Unknown(code) => write!(f, "unknown loudness status code: {code}"),
+        }
+    }
+}
+
+impl std::error::Error for LoudnessError {}
+
+/// Measures integrated loudness / true peak / loudness range via a single-pass `loudnorm`
+/// analysis (`I=-16:TP=-1.5:LRA=11`). Returns the raw JSON report text — parsing it is the
+/// caller's job (e.g. `nivela_core::loudness::parse_loudnorm_stderr`, which works on this
+/// text unchanged since it never cared whether the text came from a subprocess or here).
+///
+/// Not thread-safe — see the `// SAFETY:` note below and the doc comment on the C side.
+/// Callers must serialize calls to this function (across the whole process, not just per
+/// `Path`) with each other and with nothing else that installs an `av_log` callback.
+pub fn measure_loudness_json(path: &Path) -> Result<String, LoudnessError> {
+    let c_path =
+        CString::new(path.to_string_lossy().as_bytes()).map_err(LoudnessError::InvalidPath)?;
+
+    let mut buf = vec![0u8; 4096];
+
+    // SAFETY: c_path is a valid NUL-terminated C string for the duration of this call. `buf`
+    // is a valid, writable buffer of `buf.len()` bytes; the C side never writes past that
+    // length and always NUL-terminates within it on success. `bridge.c` closes the decoder
+    // and filter graph contexts on every exit path.
+    let status = unsafe {
+        oca_avbridge_measure_loudness(c_path.as_ptr(), buf.as_mut_ptr() as *mut c_char, buf.len())
+    };
+
+    match status {
+        0 => {}
+        1 => return Err(LoudnessError::OpenInput),
+        2 => return Err(LoudnessError::StreamInfo),
+        3 => return Err(LoudnessError::NoAudioStream),
+        4 => return Err(LoudnessError::Decoder),
+        5 => return Err(LoudnessError::FilterGraph),
+        6 => return Err(LoudnessError::Pipeline),
+        7 => return Err(LoudnessError::NoReport),
+        other => return Err(LoudnessError::Unknown(other)),
+    }
+
+    // SAFETY: on success the C side NUL-terminates the report within `buf`.
+    let json = unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) };
+    json.to_str()
+        .map(str::to_owned)
+        .map_err(LoudnessError::InvalidUtf8)
 }
