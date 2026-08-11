@@ -54,7 +54,12 @@ panel), `Ctrl+B`/toolbar split-at-playhead across every track (`Track::split_cli
 bounded by a minimum duration and (right edge) the source asset's own length
 (`ClipInstance::trim_start`/`trim_end`), and drag-move a clip's body — same-track reposition
 or onto a different same-`TrackKind` track, resolved by which row's Y-range the drag lands on
-(`Timeline::move_clip_to_track`/`Track::move_clip`). Importing files (`library.rs`/`OcaApp::spawn_import`)
+(`Timeline::move_clip_to_track`/`Track::move_clip`). The Editor screen's three columns (media
+library / preview / properties) and the timeline strip are all resizable by dragging the
+divider between them (`editor.rs::resizable_divider`/`resizable_divider_horizontal`,
+`OcaApp::lib_panel_width`/`props_panel_width`/`timeline_height`) — sizes clamp to the window's
+current size every frame but aren't persisted across restarts yet, short of `request.md`'s
+"layout salvo por projeto ou por usuário". Importing files (`library.rs`/`OcaApp::spawn_import`)
 runs each file on its own background thread instead of blocking the UI — large source files
 used to freeze the app. Each file becomes usable in the media library as soon as its (cheap,
 metadata-only) probe returns; loudness measurement, proxy generation, and waveform computation,
