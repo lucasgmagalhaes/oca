@@ -29,14 +29,17 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   panel drag values gated to video clips) is the same shape again — a "⛶" badge on the timeline
   block, no preview/export effect yet. Copy formatting (`Ctrl+Shift+C`/`Ctrl+Shift+V`,
   `OcaApp::copy_selected_clip_formatting`/`paste_selected_clip_formatting`) copies gain/freeze/
-  speed/crop/mask/flip between blocks without duplicating the clip. Layer masks
+  speed/crop/mask/flip/color-filter between blocks without duplicating the clip. Layer masks
   (`ClipInstance::mask_shape`: none/circle/rounded-rect, `mask_corner_radius` for the latter) are
   the same shape too — a shape picker plus corner-radius slider in the properties panel, a "●"/
   "▢" badge on the timeline block. Horizontal flip (`ClipInstance::flipped_h`, video-only
   checkbox) rounds out the timeline block's badge corners (freeze top-left, speed top-right,
-  crop bottom-right, mask bottom-left, flip "⇄" top-center) — same preview/export gap as the
-  rest. Check `features/request.md` for what's still unbuilt before assuming a feature is live —
-  when in doubt, `graphify query`.
+  crop bottom-right, mask bottom-left, flip "⇄" top-center). Color filter
+  (`ClipInstance::color_filter`: none/black-and-white/sepia, a bounded subset of the eventual
+  "Filtros de cor e LUTs" library) is shown as a translucent tint over the timeline block instead
+  of a badge, since the corners are taken. Same preview/export gap as the rest for all of these.
+  Check `features/request.md` for what's still unbuilt before assuming a feature is live — when
+  in doubt, `graphify query`.
 
 ## Commands
 
