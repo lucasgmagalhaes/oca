@@ -5,7 +5,8 @@ use avcore::MediaAsset;
 use eframe::egui::{self, RichText};
 
 use crate::app::{
-    EditorTool, OcaApp, CROP_MIN_SIZE, GAIN_DB_RANGE, SPEED_FACTOR_RANGE, THUMBNAIL_BUCKET_SECS,
+    EditorTool, OcaApp, CROP_MIN_SIZE, GAIN_DB_RANGE, MASK_CORNER_RADIUS_RANGE, SPEED_FACTOR_RANGE,
+    THUMBNAIL_BUCKET_SECS,
 };
 use crate::i18n::Text;
 use crate::screens::widgets;
@@ -560,6 +561,8 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                     let mut speed_factor = clip.speed_factor;
                     let (mut crop_x, mut crop_y, mut crop_w, mut crop_h) =
                         (clip.crop_x, clip.crop_y, clip.crop_w, clip.crop_h);
+                    let mut mask_shape = clip.mask_shape;
+                    let mut mask_corner_radius = clip.mask_corner_radius;
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -671,10 +674,60 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                                 .size(10.5)
                                 .color(theme::TEXT_MUTED),
                         );
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        widgets::section_label(ui, Text::PropMask.tr(locale));
+                        let mut mask_changed = false;
+                        egui::ComboBox::from_id_salt("mask_shape")
+                            .selected_text(mask_shape_label(mask_shape, locale))
+                            .show_ui(ui, |ui| {
+                                for shape in [
+                                    avcore::timeline::MaskShape::None,
+                                    avcore::timeline::MaskShape::Circle,
+                                    avcore::timeline::MaskShape::RoundedRect,
+                                ] {
+                                    mask_changed |= ui
+                                        .selectable_value(
+                                            &mut mask_shape,
+                                            shape,
+                                            mask_shape_label(shape, locale),
+                                        )
+                                        .changed();
+                                }
+                            });
+                        if mask_shape == avcore::timeline::MaskShape::RoundedRect {
+                            let radius_slider = ui.add(
+                                egui::Slider::new(
+                                    &mut mask_corner_radius,
+                                    MASK_CORNER_RADIUS_RANGE,
+                                )
+                                .text(Text::MaskCornerRadius.tr(locale)),
+                            );
+                            mask_changed |= radius_slider.changed();
+                        }
+                        if mask_changed {
+                            app.set_selected_clip_mask(mask_shape, mask_corner_radius);
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(Text::MaskExportNote.tr(locale))
+                                .size(10.5)
+                                .color(theme::TEXT_MUTED),
+                        );
                     }
                 }
             });
         });
+}
+
+fn mask_shape_label(shape: avcore::timeline::MaskShape, locale: crate::i18n::Locale) -> String {
+    match shape {
+        avcore::timeline::MaskShape::None => Text::MaskNone.tr(locale).to_string(),
+        avcore::timeline::MaskShape::Circle => Text::MaskCircle.tr(locale).to_string(),
+        avcore::timeline::MaskShape::RoundedRect => Text::MaskRoundedRect.tr(locale).to_string(),
+    }
 }
 
 fn prop_row(ui: &mut egui::Ui, label: &str, value: &str) {
@@ -974,6 +1027,20 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                 clip_rect.right_bottom() + egui::vec2(-3.0, -2.0),
                                 egui::Align2::RIGHT_BOTTOM,
                                 "⛶",
+                                egui::FontId::proportional(11.0),
+                                theme::TEXT_PRIMARY,
+                            );
+                        }
+                        if clip.is_masked() {
+                            let glyph = match clip.mask_shape {
+                                avcore::timeline::MaskShape::Circle => "●",
+                                avcore::timeline::MaskShape::RoundedRect => "▢",
+                                avcore::timeline::MaskShape::None => "",
+                            };
+                            painter.text(
+                                clip_rect.left_bottom() + egui::vec2(3.0, -2.0),
+                                egui::Align2::LEFT_BOTTOM,
+                                glyph,
                                 egui::FontId::proportional(11.0),
                                 theme::TEXT_PRIMARY,
                             );

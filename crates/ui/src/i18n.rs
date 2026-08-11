@@ -111,6 +111,12 @@ text_catalog! {
     PropCrop: pt_br = "Recorte (x, y, largura, altura)", en = "Crop (x, y, width, height)";
     CropReset: pt_br = "Redefinir recorte", en = "Reset crop";
     CropExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda mostram o quadro inteiro.", en = "only shows a badge on the block for now — preview and export still show the full frame.";
+    PropMask: pt_br = "Máscara", en = "Mask";
+    MaskNone: pt_br = "Nenhuma", en = "None";
+    MaskCircle: pt_br = "Círculo", en = "Circle";
+    MaskRoundedRect: pt_br = "Retângulo arredondado", en = "Rounded rectangle";
+    MaskCornerRadius: pt_br = "Raio do canto", en = "Corner radius";
+    MaskExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda mostram o quadro inteiro.", en = "only shows a badge on the block for now — preview and export still show the full frame.";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";
