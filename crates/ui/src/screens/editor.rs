@@ -5,8 +5,9 @@ use avcore::MediaAsset;
 use eframe::egui::{self, RichText};
 
 use crate::app::{
-    EditorTool, OcaApp, CROP_MIN_SIZE, GAIN_DB_RANGE, MASK_CORNER_RADIUS_RANGE, SPEED_FACTOR_RANGE,
-    THUMBNAIL_BUCKET_SECS, VIGNETTE_INTENSITY_RANGE,
+    EditorTool, OcaApp, BRIGHTNESS_RANGE, CONTRAST_RANGE, CROP_MIN_SIZE, GAIN_DB_RANGE,
+    MASK_CORNER_RADIUS_RANGE, SATURATION_RANGE, SPEED_FACTOR_RANGE, THUMBNAIL_BUCKET_SECS,
+    VIGNETTE_INTENSITY_RANGE,
 };
 use crate::i18n::Text;
 use crate::screens::widgets;
@@ -566,6 +567,8 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                     let mut flipped_h = clip.flipped_h;
                     let mut color_filter = clip.color_filter;
                     let mut vignette_intensity = clip.vignette_intensity;
+                    let (mut brightness, mut contrast, mut saturation) =
+                        (clip.brightness, clip.contrast, clip.saturation);
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -780,6 +783,39 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(Text::VignetteExportNote.tr(locale))
+                                .size(10.5)
+                                .color(theme::TEXT_MUTED),
+                        );
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        widgets::section_label(ui, Text::PropColorAdjust.tr(locale));
+                        let mut color_adjust_changed = false;
+                        color_adjust_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut brightness, BRIGHTNESS_RANGE)
+                                    .text(Text::PropBrightness.tr(locale)),
+                            )
+                            .changed();
+                        color_adjust_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut contrast, CONTRAST_RANGE)
+                                    .text(Text::PropContrast.tr(locale)),
+                            )
+                            .changed();
+                        color_adjust_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut saturation, SATURATION_RANGE)
+                                    .text(Text::PropSaturation.tr(locale)),
+                            )
+                            .changed();
+                        if color_adjust_changed {
+                            app.set_selected_clip_color_adjust(brightness, contrast, saturation);
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(Text::ColorAdjustExportNote.tr(locale))
                                 .size(10.5)
                                 .color(theme::TEXT_MUTED),
                         );

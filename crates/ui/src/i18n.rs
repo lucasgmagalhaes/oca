@@ -126,6 +126,11 @@ text_catalog! {
     ColorFilterExportNote: pt_br = "mostra só uma prévia tintada no bloco por enquanto — preview e export ainda mostram as cores originais.", en = "only shows a tinted preview on the block for now — preview and export still show the original colors.";
     PropVignette: pt_br = "Vinheta", en = "Vignette";
     VignetteExportNote: pt_br = "mostra só uma borda escurecida no bloco por enquanto — preview e export ainda não aplicam a vinheta.", en = "only shows a darkened border on the block for now — preview and export don't apply the vignette yet.";
+    PropColorAdjust: pt_br = "Cor", en = "Color";
+    PropBrightness: pt_br = "Brilho", en = "Brightness";
+    PropContrast: pt_br = "Contraste", en = "Contrast";
+    PropSaturation: pt_br = "Saturação", en = "Saturation";
+    ColorAdjustExportNote: pt_br = "ainda não tem efeito visível em lugar nenhum — preview e export ignoram esses valores por enquanto.", en = "has no visible effect anywhere yet — preview and export ignore these values for now.";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";

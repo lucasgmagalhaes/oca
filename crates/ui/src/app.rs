@@ -91,6 +91,18 @@ pub const MASK_CORNER_RADIUS_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 /// [`avcore::timeline::ClipInstance::vignette_intensity`]).
 pub const VIGNETTE_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 
+/// Slider bounds for the properties panel's brightness control (Fase 4's "Efeitos visuais",
+/// [`avcore::timeline::ClipInstance::brightness`]).
+pub const BRIGHTNESS_RANGE: std::ops::RangeInclusive<f32> = -1.0..=1.0;
+
+/// Slider bounds for the properties panel's contrast control (Fase 4's "Efeitos visuais",
+/// [`avcore::timeline::ClipInstance::contrast`]).
+pub const CONTRAST_RANGE: std::ops::RangeInclusive<f32> = 0.0..=2.0;
+
+/// Slider bounds for the properties panel's saturation control (Fase 4's "Efeitos visuais",
+/// [`avcore::timeline::ClipInstance::saturation`]).
+pub const SATURATION_RANGE: std::ops::RangeInclusive<f32> = 0.0..=2.0;
+
 /// A message from a background render worker thread (see [`OcaApp::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
@@ -163,6 +175,9 @@ struct ClipFormatting {
     flipped_h: bool,
     color_filter: avcore::timeline::ColorFilter,
     vignette_intensity: f32,
+    brightness: f32,
+    contrast: f32,
+    saturation: f32,
 }
 
 /// The whole application's state: which screen is showing, the loaded projects, the export
@@ -609,6 +624,9 @@ impl OcaApp {
                 flipped_h: false,
                 color_filter: avcore::timeline::ColorFilter::None,
                 vignette_intensity: 0.0,
+                brightness: 0.0,
+                contrast: 1.0,
+                saturation: 1.0,
             });
     }
 
@@ -654,6 +672,9 @@ impl OcaApp {
                 flipped_h: false,
                 color_filter: avcore::timeline::ColorFilter::None,
                 vignette_intensity: 0.0,
+                brightness: 0.0,
+                contrast: 1.0,
+                saturation: 1.0,
             });
     }
 
@@ -876,6 +897,34 @@ impl OcaApp {
         }
     }
 
+    /// Sets `selected_clip_id`'s brightness/contrast/saturation
+    /// ([`avcore::timeline::ClipInstance::brightness`]/`contrast`/`saturation`), each
+    /// independently clamped to its own range ([`BRIGHTNESS_RANGE`]/[`CONTRAST_RANGE`]/
+    /// [`SATURATION_RANGE`]) — what dragging the properties panel's color-adjustment sliders
+    /// does. A no-op if nothing is selected.
+    pub fn set_selected_clip_color_adjust(
+        &mut self,
+        brightness: f32,
+        contrast: f32,
+        saturation: f32,
+    ) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let brightness = brightness.clamp(*BRIGHTNESS_RANGE.start(), *BRIGHTNESS_RANGE.end());
+        let contrast = contrast.clamp(*CONTRAST_RANGE.start(), *CONTRAST_RANGE.end());
+        let saturation = saturation.clamp(*SATURATION_RANGE.start(), *SATURATION_RANGE.end());
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.brightness = brightness;
+                clip.contrast = contrast;
+                clip.saturation = saturation;
+                break;
+            }
+        }
+    }
+
     /// Whether formatting is waiting in the clipboard for
     /// [`OcaApp::paste_selected_clip_formatting`] — lets the timeline context menu grey out
     /// "Colar formatação" otherwise.
@@ -883,9 +932,9 @@ impl OcaApp {
         self.formatting_clipboard.is_some()
     }
 
-    /// Copies `selected_clip_id`'s gain/freeze/speed/crop/mask/flip/color-filter/vignette
-    /// settings to [`OcaApp::formatting_clipboard`] — what `Ctrl+Shift+C`/the context menu's
-    /// "Copiar formatação" do. A no-op if nothing is selected.
+    /// Copies `selected_clip_id`'s gain/freeze/speed/crop/mask/flip/color-filter/vignette/
+    /// color-adjustment settings to [`OcaApp::formatting_clipboard`] — what `Ctrl+Shift+C`/the
+    /// context menu's "Copiar formatação" do. A no-op if nothing is selected.
     pub fn copy_selected_clip_formatting(&mut self) {
         let Some(clip) = self.selected_clip() else {
             return;
@@ -903,6 +952,9 @@ impl OcaApp {
             flipped_h: clip.flipped_h,
             color_filter: clip.color_filter,
             vignette_intensity: clip.vignette_intensity,
+            brightness: clip.brightness,
+            contrast: clip.contrast,
+            saturation: clip.saturation,
         });
     }
 
@@ -929,6 +981,9 @@ impl OcaApp {
                 clip.flipped_h = formatting.flipped_h;
                 clip.color_filter = formatting.color_filter;
                 clip.vignette_intensity = formatting.vignette_intensity;
+                clip.brightness = formatting.brightness;
+                clip.contrast = formatting.contrast;
+                clip.saturation = formatting.saturation;
                 break;
             }
         }
@@ -1051,6 +1106,9 @@ impl OcaApp {
                 flipped_h: copied.flipped_h,
                 color_filter: copied.color_filter,
                 vignette_intensity: copied.vignette_intensity,
+                brightness: copied.brightness,
+                contrast: copied.contrast,
+                saturation: copied.saturation,
             });
     }
 
