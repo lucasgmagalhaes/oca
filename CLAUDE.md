@@ -54,7 +54,11 @@ panel), `Ctrl+B`/toolbar split-at-playhead across every track (`Track::split_cli
 bounded by a minimum duration and (right edge) the source asset's own length
 (`ClipInstance::trim_start`/`trim_end`), and drag-move a clip's body — same-track reposition
 or onto a different same-`TrackKind` track, resolved by which row's Y-range the drag lands on
-(`Timeline::move_clip_to_track`/`Track::move_clip`). The Editor screen's three columns (media
+(`Timeline::move_clip_to_track`/`Track::move_clip`), and right-click a clip for a context menu
+(per `request.md`'s Fase 3 spec, still only covering the actions that exist today — split at
+playhead, greyed out unless the clip actually covers it, and delete; copy/paste/apply-effect/
+merge-into-composite-block are follow-ups once those features themselves exist). The Editor
+screen's three columns (media
 library / preview / properties) and the timeline strip are all resizable by dragging the
 divider between them (`editor.rs::resizable_divider`/`resizable_divider_horizontal`,
 `OcaApp::lib_panel_width`/`props_panel_width`/`timeline_height`) — sizes clamp to the window's
