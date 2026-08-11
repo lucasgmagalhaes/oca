@@ -563,6 +563,7 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                         (clip.crop_x, clip.crop_y, clip.crop_w, clip.crop_h);
                     let mut mask_shape = clip.mask_shape;
                     let mut mask_corner_radius = clip.mask_corner_radius;
+                    let mut flipped_h = clip.flipped_h;
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -713,6 +714,20 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(Text::MaskExportNote.tr(locale))
+                                .size(10.5)
+                                .color(theme::TEXT_MUTED),
+                        );
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        let flip_checkbox = ui.checkbox(&mut flipped_h, Text::PropFlip.tr(locale));
+                        if flip_checkbox.changed() {
+                            app.set_selected_clip_flip_h(flipped_h);
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(Text::FlipExportNote.tr(locale))
                                 .size(10.5)
                                 .color(theme::TEXT_MUTED),
                         );
@@ -1041,6 +1056,15 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                 clip_rect.left_bottom() + egui::vec2(3.0, -2.0),
                                 egui::Align2::LEFT_BOTTOM,
                                 glyph,
+                                egui::FontId::proportional(11.0),
+                                theme::TEXT_PRIMARY,
+                            );
+                        }
+                        if clip.flipped_h {
+                            painter.text(
+                                clip_rect.center_top() + egui::vec2(0.0, 2.0),
+                                egui::Align2::CENTER_TOP,
+                                "⇄",
                                 egui::FontId::proportional(11.0),
                                 theme::TEXT_PRIMARY,
                             );

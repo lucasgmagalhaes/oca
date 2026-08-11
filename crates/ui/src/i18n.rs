@@ -117,6 +117,8 @@ text_catalog! {
     MaskRoundedRect: pt_br = "Retângulo arredondado", en = "Rounded rectangle";
     MaskCornerRadius: pt_br = "Raio do canto", en = "Corner radius";
     MaskExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda mostram o quadro inteiro.", en = "only shows a badge on the block for now — preview and export still show the full frame.";
+    PropFlip: pt_br = "⇄ Espelhar horizontal", en = "⇄ Flip horizontal";
+    FlipExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda mostram o quadro sem espelhar.", en = "only shows a badge on the block for now — preview and export still show the frame unmirrored.";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";

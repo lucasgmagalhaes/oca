@@ -156,6 +156,7 @@ struct ClipFormatting {
     crop_h: f32,
     mask_shape: avcore::timeline::MaskShape,
     mask_corner_radius: f32,
+    flipped_h: bool,
 }
 
 /// The whole application's state: which screen is showing, the loaded projects, the export
@@ -599,6 +600,7 @@ impl OcaApp {
                 crop_h: 1.0,
                 mask_shape: avcore::timeline::MaskShape::None,
                 mask_corner_radius: 0.0,
+                flipped_h: false,
             });
     }
 
@@ -641,6 +643,7 @@ impl OcaApp {
                 crop_h: 1.0,
                 mask_shape: avcore::timeline::MaskShape::None,
                 mask_corner_radius: 0.0,
+                flipped_h: false,
             });
     }
 
@@ -810,6 +813,22 @@ impl OcaApp {
         }
     }
 
+    /// Sets `selected_clip_id`'s horizontal mirroring
+    /// ([`avcore::timeline::ClipInstance::flipped_h`]) — what checking the properties panel's
+    /// "Espelhar" box does. A no-op if nothing is selected.
+    pub fn set_selected_clip_flip_h(&mut self, flipped_h: bool) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.flipped_h = flipped_h;
+                break;
+            }
+        }
+    }
+
     /// Whether formatting is waiting in the clipboard for
     /// [`OcaApp::paste_selected_clip_formatting`] — lets the timeline context menu grey out
     /// "Colar formatação" otherwise.
@@ -817,7 +836,7 @@ impl OcaApp {
         self.formatting_clipboard.is_some()
     }
 
-    /// Copies `selected_clip_id`'s gain/freeze/speed/crop/mask settings to
+    /// Copies `selected_clip_id`'s gain/freeze/speed/crop/mask/flip settings to
     /// [`OcaApp::formatting_clipboard`] — what `Ctrl+Shift+C`/the context menu's "Copiar
     /// formatação" do. A no-op if nothing is selected.
     pub fn copy_selected_clip_formatting(&mut self) {
@@ -834,6 +853,7 @@ impl OcaApp {
             crop_h: clip.crop_h,
             mask_shape: clip.mask_shape,
             mask_corner_radius: clip.mask_corner_radius,
+            flipped_h: clip.flipped_h,
         });
     }
 
@@ -857,6 +877,7 @@ impl OcaApp {
                 clip.crop_h = formatting.crop_h;
                 clip.mask_shape = formatting.mask_shape;
                 clip.mask_corner_radius = formatting.mask_corner_radius;
+                clip.flipped_h = formatting.flipped_h;
                 break;
             }
         }
@@ -976,6 +997,7 @@ impl OcaApp {
                 crop_h: copied.crop_h,
                 mask_shape: copied.mask_shape,
                 mask_corner_radius: copied.mask_corner_radius,
+                flipped_h: copied.flipped_h,
             });
     }
 
