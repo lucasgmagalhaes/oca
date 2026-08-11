@@ -29,7 +29,7 @@ pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
 pub use persistence::{load_project_from_file, save_project_to_file, PersistError};
 pub use preview::{Preview, PreviewError};
 pub use probe::{probe_media, ProbeError, ProbedMedia};
-pub use project::{Project, Recency};
+pub use project::{Project, Recency, Sequence};
 pub use proxy::{ensure_proxy, ProxyError};
 pub use render::{render_export, RenderError, RenderOutcome};
 pub use timeline::{ClipInstance, Timeline, Track, TrackKind};

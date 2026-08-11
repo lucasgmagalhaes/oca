@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::export::{ExportJob, ExportJobStatus};
 use crate::media::{LoudnessMetrics, MediaAsset, MediaKind};
-use crate::project::{Project, Recency};
+use crate::project::{Project, Recency, Sequence};
 use crate::timeline::{ClipInstance, Timeline, Track, TrackKind};
 
 fn asset(
@@ -183,7 +183,12 @@ pub fn sample_projects() -> Vec<Project> {
             last_edited: Recency::HoursAgo(2),
             summary: "Cortes dos boss fights, um vídeo por chefe.".to_string(),
             media_library: cuphead_media_library(),
-            timeline: cuphead_timeline(),
+            sequences: vec![Sequence {
+                id: 1,
+                name: "Sequência principal".to_string(),
+                timeline: cuphead_timeline(),
+            }],
+            active_sequence: 0,
             file_path: None,
         },
         Project {
@@ -203,10 +208,15 @@ pub fn sample_projects() -> Vec<Project> {
                 None,
                 -15.2,
             )],
-            timeline: Timeline {
-                tracks: vec![],
-                playhead_secs: 0.0,
-            },
+            sequences: vec![Sequence {
+                id: 1,
+                name: "Sequência principal".to_string(),
+                timeline: Timeline {
+                    tracks: vec![],
+                    playhead_secs: 0.0,
+                },
+            }],
+            active_sequence: 0,
             file_path: None,
         },
         Project {
@@ -215,10 +225,15 @@ pub fn sample_projects() -> Vec<Project> {
             last_edited: Recency::DaysAgo(3),
             summary: "Cortes verticais pra Shorts/Reels.".to_string(),
             media_library: vec![],
-            timeline: Timeline {
-                tracks: vec![],
-                playhead_secs: 0.0,
-            },
+            sequences: vec![Sequence {
+                id: 1,
+                name: "Sequência principal".to_string(),
+                timeline: Timeline {
+                    tracks: vec![],
+                    playhead_secs: 0.0,
+                },
+            }],
+            active_sequence: 0,
             file_path: None,
         },
     ]

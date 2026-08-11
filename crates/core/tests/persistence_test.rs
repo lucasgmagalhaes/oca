@@ -17,7 +17,7 @@ fn round_trips_a_project_through_json() {
 fn round_trips_a_project_with_an_empty_timeline_and_library() {
     let original = sample_projects().into_iter().nth(2).unwrap();
     assert!(original.media_library.is_empty());
-    assert!(original.timeline.tracks.is_empty());
+    assert!(original.timeline().tracks.is_empty());
     let json = to_json(&original).unwrap();
     let restored = from_json(&json).unwrap();
     assert_eq!(original, restored);

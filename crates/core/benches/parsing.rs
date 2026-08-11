@@ -12,7 +12,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use avcore::loudness::parse_loudnorm_stderr;
 use avcore::persistence::{from_json, to_json};
 use avcore::timeline::{ClipInstance, Timeline, Track, TrackKind};
-use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency};
+use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency, Sequence};
 
 const LOUDNORM_STDERR_FIXTURE: &str = r#"
 ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers
@@ -83,14 +83,19 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
         last_edited: Recency::HoursAgo(1),
         summary: "Synthetic project for benchmarking.".to_string(),
         media_library,
-        timeline: Timeline {
-            tracks: vec![
-                make_track(1, "V1", TrackKind::Video),
-                make_track(2, "A1", TrackKind::Audio),
-                make_track(3, "A2", TrackKind::Audio),
-            ],
-            playhead_secs: 0.0,
-        },
+        sequences: vec![Sequence {
+            id: 1,
+            name: "Sequência principal".to_string(),
+            timeline: Timeline {
+                tracks: vec![
+                    make_track(1, "V1", TrackKind::Video),
+                    make_track(2, "A1", TrackKind::Audio),
+                    make_track(3, "A2", TrackKind::Audio),
+                ],
+                playhead_secs: 0.0,
+            },
+        }],
+        active_sequence: 0,
         file_path: None,
     }
 }
@@ -125,7 +130,7 @@ fn bench_timeline_duration(c: &mut Criterion) {
     for clip_count in [10usize, 200, 1000] {
         let project = large_project(50, clip_count);
         group.bench_function(format!("{clip_count}_clips_per_track"), |b| {
-            b.iter(|| black_box(&project.timeline).duration_secs())
+            b.iter(|| black_box(project.timeline()).duration_secs())
         });
     }
 

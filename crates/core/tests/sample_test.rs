@@ -26,7 +26,7 @@ fn media_asset_ids_are_unique_within_each_project() {
 fn every_timeline_clip_references_an_asset_in_the_same_project() {
     for project in sample_projects() {
         let asset_ids: HashSet<u64> = project.media_library.iter().map(|a| a.id).collect();
-        for track in &project.timeline.tracks {
+        for track in &project.timeline().tracks {
             for clip in &track.clips {
                 assert!(
                     asset_ids.contains(&clip.asset_id),
