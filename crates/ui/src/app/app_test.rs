@@ -57,6 +57,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         mask_corner_radius: 0.0,
         flipped_h: false,
         color_filter: avcore::timeline::ColorFilter::None,
+        vignette_intensity: 0.0,
     }
 }
 
@@ -1384,6 +1385,72 @@ fn set_selected_clip_color_filter_is_a_no_op_when_nothing_is_selected() {
 }
 
 #[test]
+fn set_selected_clip_vignette_updates_the_selected_clip() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(2);
+
+    app.set_selected_clip_vignette(0.5);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].vignette_intensity, 0.0);
+    assert_eq!(clips[1].vignette_intensity, 0.5);
+}
+
+#[test]
+fn set_selected_clip_vignette_clamps_to_vignette_intensity_range() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_vignette(5.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(
+        clips[0].vignette_intensity,
+        *crate::app::VIGNETTE_INTENSITY_RANGE.end()
+    );
+}
+
+#[test]
+fn set_selected_clip_vignette_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.set_selected_clip_vignette(0.5);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].vignette_intensity, 0.0);
+}
+
+#[test]
 fn copy_selected_clip_formatting_is_a_no_op_when_nothing_is_selected() {
     let mut app = test_app(
         vec![test_project_with_tracks(
@@ -1423,6 +1490,7 @@ fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_posit
     app.set_selected_clip_mask(avcore::timeline::MaskShape::Circle, 0.3);
     app.set_selected_clip_flip_h(true);
     app.set_selected_clip_color_filter(avcore::timeline::ColorFilter::Sepia);
+    app.set_selected_clip_vignette(0.5);
     app.copy_selected_clip_formatting();
 
     app.selected_clip_id = Some(2);
@@ -1445,6 +1513,7 @@ fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_posit
     assert_eq!(clips[1].mask_corner_radius, 0.3);
     assert!(clips[1].flipped_h);
     assert_eq!(clips[1].color_filter, avcore::timeline::ColorFilter::Sepia);
+    assert_eq!(clips[1].vignette_intensity, 0.5);
     assert_eq!(clips[1].start_secs, 10.0); // position untouched
     assert_eq!(clips[1].source_out_secs, 20.0); // trim untouched
 }
@@ -1565,6 +1634,7 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
     app.set_selected_clip_mask(avcore::timeline::MaskShape::RoundedRect, 0.4);
     app.set_selected_clip_flip_h(true);
     app.set_selected_clip_color_filter(avcore::timeline::ColorFilter::BlackAndWhite);
+    app.set_selected_clip_vignette(0.7);
     app.copy_selected_clip();
     app.active_project_mut().timeline_mut().playhead_secs = 30.0;
 
@@ -1591,6 +1661,7 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
         pasted.color_filter,
         avcore::timeline::ColorFilter::BlackAndWhite
     ); // so does the color filter.
+    assert_eq!(pasted.vignette_intensity, 0.7); // so does vignette.
 }
 
 #[test]

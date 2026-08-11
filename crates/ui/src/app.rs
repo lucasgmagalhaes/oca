@@ -87,6 +87,10 @@ pub const CROP_MIN_SIZE: f32 = 0.05;
 /// [`avcore::timeline::ClipInstance::mask_corner_radius`]).
 pub const MASK_CORNER_RADIUS_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 
+/// Slider bounds for the properties panel's vignette control (Fase 4's "Efeitos visuais",
+/// [`avcore::timeline::ClipInstance::vignette_intensity`]).
+pub const VIGNETTE_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
+
 /// A message from a background render worker thread (see [`OcaApp::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
@@ -158,6 +162,7 @@ struct ClipFormatting {
     mask_corner_radius: f32,
     flipped_h: bool,
     color_filter: avcore::timeline::ColorFilter,
+    vignette_intensity: f32,
 }
 
 /// The whole application's state: which screen is showing, the loaded projects, the export
@@ -603,6 +608,7 @@ impl OcaApp {
                 mask_corner_radius: 0.0,
                 flipped_h: false,
                 color_filter: avcore::timeline::ColorFilter::None,
+                vignette_intensity: 0.0,
             });
     }
 
@@ -647,6 +653,7 @@ impl OcaApp {
                 mask_corner_radius: 0.0,
                 flipped_h: false,
                 color_filter: avcore::timeline::ColorFilter::None,
+                vignette_intensity: 0.0,
             });
     }
 
@@ -848,6 +855,27 @@ impl OcaApp {
         }
     }
 
+    /// Sets `selected_clip_id`'s vignette strength
+    /// ([`avcore::timeline::ClipInstance::vignette_intensity`], clamped to
+    /// [`VIGNETTE_INTENSITY_RANGE`]) — what dragging the properties panel's vignette slider
+    /// does. A no-op if nothing is selected.
+    pub fn set_selected_clip_vignette(&mut self, vignette_intensity: f32) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let vignette_intensity = vignette_intensity.clamp(
+            *VIGNETTE_INTENSITY_RANGE.start(),
+            *VIGNETTE_INTENSITY_RANGE.end(),
+        );
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.vignette_intensity = vignette_intensity;
+                break;
+            }
+        }
+    }
+
     /// Whether formatting is waiting in the clipboard for
     /// [`OcaApp::paste_selected_clip_formatting`] — lets the timeline context menu grey out
     /// "Colar formatação" otherwise.
@@ -855,9 +883,9 @@ impl OcaApp {
         self.formatting_clipboard.is_some()
     }
 
-    /// Copies `selected_clip_id`'s gain/freeze/speed/crop/mask/flip/color-filter settings to
-    /// [`OcaApp::formatting_clipboard`] — what `Ctrl+Shift+C`/the context menu's "Copiar
-    /// formatação" do. A no-op if nothing is selected.
+    /// Copies `selected_clip_id`'s gain/freeze/speed/crop/mask/flip/color-filter/vignette
+    /// settings to [`OcaApp::formatting_clipboard`] — what `Ctrl+Shift+C`/the context menu's
+    /// "Copiar formatação" do. A no-op if nothing is selected.
     pub fn copy_selected_clip_formatting(&mut self) {
         let Some(clip) = self.selected_clip() else {
             return;
@@ -874,6 +902,7 @@ impl OcaApp {
             mask_corner_radius: clip.mask_corner_radius,
             flipped_h: clip.flipped_h,
             color_filter: clip.color_filter,
+            vignette_intensity: clip.vignette_intensity,
         });
     }
 
@@ -899,6 +928,7 @@ impl OcaApp {
                 clip.mask_corner_radius = formatting.mask_corner_radius;
                 clip.flipped_h = formatting.flipped_h;
                 clip.color_filter = formatting.color_filter;
+                clip.vignette_intensity = formatting.vignette_intensity;
                 break;
             }
         }
@@ -1020,6 +1050,7 @@ impl OcaApp {
                 mask_corner_radius: copied.mask_corner_radius,
                 flipped_h: copied.flipped_h,
                 color_filter: copied.color_filter,
+                vignette_intensity: copied.vignette_intensity,
             });
     }
 

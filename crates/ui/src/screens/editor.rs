@@ -6,7 +6,7 @@ use eframe::egui::{self, RichText};
 
 use crate::app::{
     EditorTool, OcaApp, CROP_MIN_SIZE, GAIN_DB_RANGE, MASK_CORNER_RADIUS_RANGE, SPEED_FACTOR_RANGE,
-    THUMBNAIL_BUCKET_SECS,
+    THUMBNAIL_BUCKET_SECS, VIGNETTE_INTENSITY_RANGE,
 };
 use crate::i18n::Text;
 use crate::screens::widgets;
@@ -565,6 +565,7 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                     let mut mask_corner_radius = clip.mask_corner_radius;
                     let mut flipped_h = clip.flipped_h;
                     let mut color_filter = clip.color_filter;
+                    let mut vignette_intensity = clip.vignette_intensity;
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -761,6 +762,24 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(Text::ColorFilterExportNote.tr(locale))
+                                .size(10.5)
+                                .color(theme::TEXT_MUTED),
+                        );
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        widgets::section_label(ui, Text::PropVignette.tr(locale));
+                        let vignette_slider = ui.add(
+                            egui::Slider::new(&mut vignette_intensity, VIGNETTE_INTENSITY_RANGE)
+                                .fixed_decimals(2),
+                        );
+                        if vignette_slider.changed() {
+                            app.set_selected_clip_vignette(vignette_intensity);
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(Text::VignetteExportNote.tr(locale))
                                 .size(10.5)
                                 .color(theme::TEXT_MUTED),
                         );
@@ -1084,6 +1103,15 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                         }
                         if let Some(tint) = color_filter_tint(clip.color_filter) {
                             painter.rect_filled(clip_rect, egui::CornerRadius::same(4), tint);
+                        }
+                        if clip.has_vignette() {
+                            let alpha = (clip.vignette_intensity * 200.0) as u8;
+                            painter.rect_stroke(
+                                clip_rect,
+                                egui::CornerRadius::same(4),
+                                egui::Stroke::new(3.0, egui::Color32::from_black_alpha(alpha)),
+                                egui::StrokeKind::Inside,
+                            );
                         }
                         if clip.composite_id.is_some() {
                             painter.rect_stroke(
