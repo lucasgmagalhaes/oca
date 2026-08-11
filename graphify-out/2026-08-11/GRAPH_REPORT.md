@@ -1,16 +1,16 @@
 # Graph Report - oca  (2026-08-11)
 
 ## Corpus Check
-- 70 files · ~54,959 words
+- 71 files · ~56,027 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 719 nodes · 1275 edges · 36 communities (34 shown, 2 thin omitted)
+- 737 nodes · 1315 edges · 36 communities (34 shown, 2 thin omitted)
 - Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 55 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `287d0f16`
+- Built from commit: `0704e627`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -47,15 +47,15 @@
 - editor.rs
 
 ## God Nodes (most connected - your core abstractions)
-1. `OcaApp` - 72 edges
-2. `test_app()` - 50 edges
-3. `Project` - 25 edges
+1. `OcaApp` - 75 edges
+2. `test_app()` - 54 edges
+3. `Project` - 30 edges
 4. `MediaAsset` - 20 edges
 5. `Preview` - 15 edges
-6. `Task Breakdown — Fase 1 (Motor central)` - 15 edges
-7. `Track` - 14 edges
-8. `track_with()` - 14 edges
-9. `Timeline` - 13 edges
+6. `Timeline` - 15 edges
+7. `Task Breakdown — Fase 1 (Motor central)` - 15 edges
+8. `Track` - 14 edges
+9. `track_with()` - 14 edges
 10. `probe_media()` - 12 edges
 
 ## Surprising Connections (you probably didn't know these)
@@ -76,16 +76,16 @@
 ## Communities (36 total, 2 thin omitted)
 
 ### Community 0 - "OcaApp"
-Cohesion: 0.06
-Nodes (31): Arc, TrackKind, downscale_rgba(), EditorTool, extract_thumbnail(), import_one(), ImportEvent, next_clip_id() (+23 more)
+Cohesion: 0.07
+Nodes (29): Arc, downscale_rgba(), EditorTool, extract_thumbnail(), import_one(), ImportEvent, next_clip_id(), OcaApp (+21 more)
 
 ### Community 1 - "Project"
-Cohesion: 0.08
-Nodes (36): bench_parse_loudnorm_stderr(), bench_project_json_round_trip(), bench_timeline_duration(), large_project(), from_json(), load_project_from_file(), PersistError, Display (+28 more)
+Cohesion: 0.07
+Nodes (42): bench_parse_loudnorm_stderr(), bench_project_json_round_trip(), bench_timeline_duration(), large_project(), from_json(), load_project_from_file(), PersistError, Display (+34 more)
 
 ### Community 2 - "app_test.rs"
-Cohesion: 0.06
-Nodes (58): ClipInstance, Option, String, Vec, Track, add_and_open_project_appends_and_opens_it(), add_asset_to_timeline_appends_after_whatever_is_already_on_the_matching_track(), add_asset_to_timeline_creates_a_track_and_appends_a_clip_when_none_exists() (+50 more)
+Cohesion: 0.05
+Nodes (64): ClipInstance, Option, String, Vec, Track, TrackKind, add_and_open_project_appends_and_opens_it(), add_asset_to_timeline_appends_after_whatever_is_already_on_the_matching_track() (+56 more)
 
 ### Community 3 - "avbridge/src/lib.rs"
 Cohesion: 0.07
@@ -100,16 +100,16 @@ Cohesion: 0.09
 Nodes (23): AppSink, BoolError, Preview, PreviewError, Display, Error, Formatter, Option (+15 more)
 
 ### Community 6 - "widgets.rs"
-Cohesion: 0.10
-Nodes (23): App, Ui, show(), Ui, show(), Ui, show(), Ui (+15 more)
+Cohesion: 0.09
+Nodes (26): App, Ui, show(), Ui, show(), Ui, show(), rail_button() (+18 more)
 
 ### Community 7 - "bridge.c"
 Cohesion: 0.11
 Nodes (34): AudioFilterChain, AVCodec, AVCodecContext, AVFormatContext, AVFrame, AVPacket, AVStream, accumulate_waveform_frame() (+26 more)
 
 ### Community 8 - "i18n.rs"
-Cohesion: 0.10
-Nodes (20): ExportJob, ExportJobStatus, PathBuf, String, test_job(), Screen, job(), job_detail_line_flips_the_negative_lufs_sign_for_display() (+12 more)
+Cohesion: 0.11
+Nodes (18): ExportJob, ExportJobStatus, PathBuf, String, test_job(), Screen, job(), job_detail_line_flips_the_negative_lufs_sign_for_display() (+10 more)
 
 ### Community 9 - "Plano de Execução — oca (PacoPaçoca)"
 Cohesion: 0.08
@@ -184,8 +184,8 @@ Cohesion: 0.20
 Nodes (12): generate_waveform(), Display, Error, Formatter, Path, Result, Vec, WaveformError (+4 more)
 
 ### Community 35 - "editor.rs"
-Cohesion: 0.20
-Nodes (22): draw_filmstrip(), draw_playhead(), draw_waveform(), media_library_panel(), preview_panel(), prop_row(), properties_panel(), resizable_divider() (+14 more)
+Cohesion: 0.19
+Nodes (23): draw_filmstrip(), draw_playhead(), draw_waveform(), media_library_panel(), preview_panel(), prop_row(), properties_panel(), resizable_divider() (+15 more)
 
 ## Knowledge Gaps
 - **101 isolated node(s):** `TrimEdge`, `What this is`, `Commands`, `Architecture`, `Approach` (+96 more)
@@ -196,16 +196,16 @@ Nodes (22): draw_filmstrip(), draw_playhead(), draw_waveform(), media_library_pa
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `OcaApp` connect `OcaApp` to `Project`, `app_test.rs`, `editor.rs`, `Preview`, `widgets.rs`, `i18n.rs`?**
-  _High betweenness centrality (0.174) - this node is a cross-community bridge._
+  _High betweenness centrality (0.175) - this node is a cross-community bridge._
 - **Why does `RenderError` connect `render_export` to `avbridge/src/lib.rs`?**
-  _High betweenness centrality (0.120) - this node is a cross-community bridge._
+  _High betweenness centrality (0.119) - this node is a cross-community bridge._
 - **Why does `EncodeError` connect `avbridge/src/lib.rs` to `render_export`?**
-  _High betweenness centrality (0.107) - this node is a cross-community bridge._
+  _High betweenness centrality (0.106) - this node is a cross-community bridge._
 - **What connects `TrimEdge`, `What this is`, `Commands` to the rest of the system?**
   _101 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `OcaApp` be split into smaller, more focused modules?**
-  _Cohesion score 0.06490384615384616 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06538461538461539 - nodes in this community are weakly interconnected._
 - **Should `Project` be split into smaller, more focused modules?**
-  _Cohesion score 0.0824829931972789 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07017543859649122 - nodes in this community are weakly interconnected._
 - **Should `app_test.rs` be split into smaller, more focused modules?**
-  _Cohesion score 0.05794556628621598 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05297297297297297 - nodes in this community are weakly interconnected._
