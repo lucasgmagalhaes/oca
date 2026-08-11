@@ -34,6 +34,21 @@ pub struct ClipInstance {
     /// gain.
     #[serde(default)]
     pub gain_db: f32,
+    /// `true` if this block is frozen — holds a single still frame
+    /// ([`ClipInstance::source_in_secs`]) for its whole displayed duration instead of playing
+    /// through the trimmed source range, per `request.md`'s Fase 4 "Congelar" spec ("segura um
+    /// quadro específico por uma duração configurável"). The held frame is picked by trimming
+    /// `source_in_secs` to it; the hold duration is just the block's existing on-timeline
+    /// length ([`ClipInstance::duration_secs`]), adjustable the same way as any other clip via
+    /// the existing trim handles — freeze doesn't need its own duration field. Currently only
+    /// changes how the timeline draws the block (`ui`'s timeline panel shows a single repeated
+    /// poster frame instead of a filmstrip, per-position thumbnails); it doesn't yet affect
+    /// preview playback (`avcore::preview::Preview` always plays the real decoded source) or
+    /// export (still passthrough-copies video, see `core::render`) — the same kind of
+    /// preview/export gap as [`ClipInstance::gain_db`]. `#[serde(default)]` so older saved
+    /// projects load unfrozen.
+    #[serde(default)]
+    pub frozen: bool,
 }
 
 impl ClipInstance {
@@ -131,6 +146,7 @@ impl Track {
             // block.
             composite_id: clip.composite_id,
             gain_db: clip.gain_db,
+            frozen: clip.frozen,
         };
         clip.source_out_secs = split_source_secs;
 

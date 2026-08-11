@@ -9,6 +9,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         source_out_secs,
         composite_id: None,
         gain_db: 0.0,
+        frozen: false,
     }
 }
 
@@ -135,6 +136,19 @@ fn split_clip_at_keeps_gain_db_on_both_halves() {
     assert!(split);
     assert_eq!(track.clips[0].gain_db, 3.0);
     assert_eq!(track.clips[1].gain_db, 3.0);
+}
+
+#[test]
+fn split_clip_at_keeps_frozen_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.frozen = true;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    assert!(track.clips[0].frozen);
+    assert!(track.clips[1].frozen);
 }
 
 #[test]

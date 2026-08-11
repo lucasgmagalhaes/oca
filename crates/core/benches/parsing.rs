@@ -75,6 +75,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 source_out_secs: 30.0,
                 composite_id: None,
                 gain_db: 0.0,
+                frozen: false,
             })
             .collect(),
     };
