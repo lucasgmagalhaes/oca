@@ -23,6 +23,21 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      # `core` links gstreamer/gstreamer-app/gstreamer-video (the `preview` module) via
+      # gstreamer-sys crates, which locate GStreamer at build time through pkg-config — neither
+      # is present on the windows-latest image by default, so both are set up explicitly here.
+      # windows-latest's own pkg-config (MSYS2's) is known to choke on GStreamer's .pc files,
+      # hence pkgconfiglite specifically (same guidance the setup-gstreamer action's README
+      # gives) rather than whatever pkg-config the image already carries.
+      - name: Install pkg-config
+        run: choco install pkgconfiglite -y --no-progress
+
+      - name: Setup GStreamer
+        uses: blinemedical/setup-gstreamer@1.4.0
+        with:
+          version: '1.26.11'
+          arch: 'x86_64'
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
