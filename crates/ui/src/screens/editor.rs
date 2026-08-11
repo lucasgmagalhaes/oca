@@ -33,6 +33,18 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
     if delete_pressed {
         app.delete_selected_clip();
     }
+    let ctrl_c_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::C));
+    if ctrl_c_pressed {
+        app.copy_selected_clip();
+    }
+    let ctrl_x_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::X));
+    if ctrl_x_pressed {
+        app.cut_selected_clip();
+    }
+    let ctrl_v_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::V));
+    if ctrl_v_pressed {
+        app.paste_clip_at_playhead();
+    }
 
     ui.vertical(|ui| {
         toolbar(app, ui);
@@ -582,8 +594,12 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
 
         let locale = app.locale;
         let playhead_secs = app.active_project().timeline().playhead_secs;
+        let has_clipboard_clip = app.has_clipboard_clip();
         let mut clicked_clip_id = None;
         let mut delete_requests: Vec<u64> = Vec::new();
+        let mut copy_requests: Vec<u64> = Vec::new();
+        let mut cut_requests: Vec<u64> = Vec::new();
+        let mut paste_requested = false;
         let mut split_at_playhead_requested = false;
         let mut trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
         let mut clip_drags: Vec<ClipDrag> = Vec::new();
@@ -652,6 +668,24 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                 .clicked()
                             {
                                 split_at_playhead_requested = true;
+                                ui.close();
+                            }
+                            if ui.button(Text::ContextMenuCopy.tr(locale)).clicked() {
+                                copy_requests.push(clip.id);
+                                ui.close();
+                            }
+                            if ui.button(Text::ContextMenuCut.tr(locale)).clicked() {
+                                cut_requests.push(clip.id);
+                                ui.close();
+                            }
+                            if ui
+                                .add_enabled(
+                                    has_clipboard_clip,
+                                    egui::Button::new(Text::ContextMenuPaste.tr(locale)),
+                                )
+                                .clicked()
+                            {
+                                paste_requested = true;
                                 ui.close();
                             }
                             if ui.button(Text::ContextMenuDelete.tr(locale)).clicked() {
@@ -761,6 +795,17 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         });
         if let Some(id) = clicked_clip_id {
             app.selected_clip_id = Some(id);
+        }
+        for clip_id in copy_requests {
+            app.selected_clip_id = Some(clip_id);
+            app.copy_selected_clip();
+        }
+        for clip_id in cut_requests {
+            app.selected_clip_id = Some(clip_id);
+            app.cut_selected_clip();
+        }
+        if paste_requested {
+            app.paste_clip_at_playhead();
         }
         for clip_id in delete_requests {
             app.selected_clip_id = Some(clip_id);

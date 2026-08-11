@@ -213,6 +213,12 @@ pub struct OcaApp {
     /// how dragging an asset out of the library and dropping it on the timeline works. Always
     /// `None` between frames.
     pub pending_asset_drop: Option<(u64, egui::Pos2)>,
+    /// The last clip copied or cut via `Ctrl+C`/`Ctrl+X`/the timeline context menu, and the
+    /// track kind it came from (so a paste lands on a matching-kind track — same rule as a
+    /// drag-move). Not scoped to a project or sequence: pasting into a different tab, or even
+    /// a different project, is what makes "copiar e colar entre abas" (`request.md`'s Fase 3
+    /// spec) work for free, rather than needing separate cross-tab plumbing.
+    clipboard_clip: Option<(avcore::timeline::ClipInstance, avcore::timeline::TrackKind)>,
 }
 
 impl OcaApp {
@@ -260,6 +266,7 @@ impl OcaApp {
             thumbnail_textures: HashMap::new(),
             requested_thumbnails: HashSet::new(),
             pending_asset_drop: None,
+            clipboard_clip: None,
         }
     }
 
@@ -579,6 +586,67 @@ impl OcaApp {
             track.clips.retain(|c| c.id != clip_id);
         }
         self.selected_clip_id = None;
+    }
+
+    /// Whether a clip is waiting in the clipboard for [`OcaApp::paste_clip_at_playhead`] — lets
+    /// the timeline context menu grey out "Colar" instead of pasting nothing.
+    pub fn has_clipboard_clip(&self) -> bool {
+        self.clipboard_clip.is_some()
+    }
+
+    /// Copies `selected_clip_id` (and the track kind it's on) to [`OcaApp::clipboard_clip`] —
+    /// what `Ctrl+C`/the timeline context menu's "Copiar" do. A no-op if nothing is selected.
+    pub fn copy_selected_clip(&mut self) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let found = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .find_map(|t| {
+                t.clips
+                    .iter()
+                    .find(|c| c.id == clip_id)
+                    .map(|c| (c.clone(), t.kind))
+            });
+        if let Some(copied) = found {
+            self.clipboard_clip = Some(copied);
+        }
+    }
+
+    /// [`OcaApp::copy_selected_clip`] followed by [`OcaApp::delete_selected_clip`] — what
+    /// `Ctrl+X`/the context menu's "Recortar" do.
+    pub fn cut_selected_clip(&mut self) {
+        self.copy_selected_clip();
+        self.delete_selected_clip();
+    }
+
+    /// Pastes [`OcaApp::clipboard_clip`] as a new, freshly-id'd clip at the playhead's current
+    /// position on the active sequence — what `Ctrl+V`/the context menu's "Colar" do. Lands on
+    /// a matching-kind track the same way [`OcaApp::add_asset_to_timeline`] does (first
+    /// existing track of that kind, auto-created if none exists); always the playhead, not
+    /// wherever the context menu happened to be opened — a known simplification. A no-op if
+    /// the clipboard is empty. Works across sequence tabs and even across projects, since
+    /// `clipboard_clip` isn't scoped to either.
+    pub fn paste_clip_at_playhead(&mut self) {
+        let Some((copied, kind)) = self.clipboard_clip.clone() else {
+            return;
+        };
+        let playhead_secs = self.active_project().timeline().playhead_secs;
+        let timeline = self.active_project_mut().timeline_mut();
+        let track_index = resolve_or_create_track(timeline, kind, None);
+        let clip_id = next_clip_id(timeline);
+        timeline.tracks[track_index]
+            .clips
+            .push(avcore::timeline::ClipInstance {
+                id: clip_id,
+                asset_id: copied.asset_id,
+                start_secs: playhead_secs,
+                source_in_secs: copied.source_in_secs,
+                source_out_secs: copied.source_out_secs,
+            });
     }
 
     /// Minimum clip duration a drag-trim is allowed to shrink a clip to — small enough to feel

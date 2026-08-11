@@ -110,6 +110,9 @@ text_catalog! {
     TimelineEmpty: pt_br = "Este projeto ainda não tem clipes na timeline.", en = "This project doesn't have any clips on the timeline yet.";
     ContextMenuSplit: pt_br = "✂ Dividir no playhead", en = "✂ Split at playhead";
     ContextMenuDelete: pt_br = "🗑 Excluir", en = "🗑 Delete";
+    ContextMenuCopy: pt_br = "⧉ Copiar", en = "⧉ Copy";
+    ContextMenuCut: pt_br = "✂ Recortar", en = "✂ Cut";
+    ContextMenuPaste: pt_br = "📋 Colar no playhead", en = "📋 Paste at playhead";
     DefaultSequenceName: pt_br = "Sequência principal", en = "Main sequence";
     AddSequenceTab: pt_br = "＋", en = "＋";
     PreviewUnavailable: pt_br = "Pré-visualização indisponível", en = "Preview unavailable";

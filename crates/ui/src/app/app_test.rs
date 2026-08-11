@@ -121,6 +121,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         thumbnail_textures: HashMap::new(),
         requested_thumbnails: HashSet::new(),
         pending_asset_drop: None,
+        clipboard_clip: None,
     }
 }
 
@@ -793,6 +794,111 @@ fn delete_selected_clip_removes_it_from_its_track_and_clears_the_selection() {
     assert_eq!(clips.len(), 1);
     assert_eq!(clips[0].id, 2);
     assert_eq!(app.selected_clip_id, None);
+}
+
+#[test]
+fn copy_selected_clip_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.copy_selected_clip();
+
+    assert!(!app.has_clipboard_clip());
+}
+
+#[test]
+fn paste_clip_at_playhead_is_a_no_op_with_an_empty_clipboard() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(1, TrackKind::Video, vec![])],
+        )],
+        Vec::new(),
+    );
+
+    app.paste_clip_at_playhead();
+
+    assert!(app.active_project().timeline().tracks[0].clips.is_empty());
+}
+
+#[test]
+fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(5, 0.0, 2.0, 12.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(5);
+    app.copy_selected_clip();
+    app.active_project_mut().timeline_mut().playhead_secs = 30.0;
+
+    app.paste_clip_at_playhead();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips.len(), 2);
+    let pasted = &clips[1];
+    assert_ne!(pasted.id, 5); // fresh id, not a duplicate of the copied clip's.
+    assert_eq!(pasted.start_secs, 30.0);
+    assert_eq!(pasted.source_in_secs, 2.0);
+    assert_eq!(pasted.source_out_secs, 12.0);
+}
+
+#[test]
+fn paste_clip_at_playhead_survives_a_sequence_switch() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.copy_selected_clip();
+
+    app.add_sequence(); // switches to a fresh, empty tab.
+    app.paste_clip_at_playhead();
+
+    assert_eq!(app.active_project().timeline().tracks[0].clips.len(), 1);
+}
+
+#[test]
+fn cut_selected_clip_copies_then_removes_the_clip() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.cut_selected_clip();
+
+    assert!(app.active_project().timeline().tracks[0].clips.is_empty());
+    assert!(app.has_clipboard_clip());
 }
 
 #[test]
