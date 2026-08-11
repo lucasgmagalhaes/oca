@@ -31,6 +31,21 @@ pub enum ColorFilter {
     Sepia,
 }
 
+/// Transition style for a block's incoming edge, per `request.md`'s Fase 4 "Efeitos visuais"
+/// spec ("Transições entre clipes (fade, corte seco, slide, zoom)"). `HardCut` is the spec's
+/// "corte seco" spelled out as an explicit choice, distinct from `None` meaning "no transition
+/// configured yet" — both currently render identically (nothing renders either), but they mean
+/// different things to the user's edit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum TransitionType {
+    #[default]
+    None,
+    Fade,
+    HardCut,
+    Slide,
+    Zoom,
+}
+
 /// One placed instance of a `MediaAsset` on the timeline. `source_in_secs`/`source_out_secs`
 /// mark the trimmed range within the source asset; `start_secs` is its position on the track.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -197,10 +212,30 @@ pub struct ClipInstance {
     /// unpixelized.
     #[serde(default)]
     pub pixelize_intensity: f32,
+    /// Transition style for this block's incoming edge ([`TransitionType::None`] by default) —
+    /// per `request.md`'s Fase 4 "Efeitos visuais" spec ("Transições entre clipes"). Models
+    /// only the transition entering this clip, not a real cross-blend between two adjacent
+    /// clips — that would need a relationship between this clip and the one before it, not a
+    /// field on a single `ClipInstance`. A deliberately smaller first cut, same shape as the
+    /// rest of this struct's effect fields. Currently has no visible effect anywhere (`ui`'s
+    /// properties panel just exposes the picker); doesn't yet affect preview playback or export
+    /// — the same kind of gap as [`ClipInstance::gain_db`]. `#[serde(default)]` so older saved
+    /// projects load with no transition.
+    #[serde(default)]
+    pub transition_in: TransitionType,
+    /// Duration in seconds of [`ClipInstance::transition_in`], meaningless while it's
+    /// `TransitionType::None`. `#[serde(default = ..)]` so older saved projects load at a
+    /// reasonable default duration.
+    #[serde(default = "default_transition_duration")]
+    pub transition_duration_secs: f32,
 }
 
 fn default_speed_factor() -> f32 {
     1.0
+}
+
+fn default_transition_duration() -> f32 {
+    0.5
 }
 
 fn default_crop_extent() -> f32 {
@@ -255,6 +290,12 @@ impl ClipInstance {
     /// `true` if chroma key ([`ClipInstance::chroma_key_enabled`]) is on.
     pub fn is_chroma_keyed(&self) -> bool {
         self.chroma_key_enabled
+    }
+
+    /// `true` if a transition ([`ClipInstance::transition_in`]) is configured on this block's
+    /// incoming edge.
+    pub fn has_transition(&self) -> bool {
+        self.transition_in != TransitionType::None
     }
 
     /// True if `at_secs` (timeline-relative) falls strictly inside this clip's placed range.
@@ -361,6 +402,12 @@ impl Track {
             shake_intensity: clip.shake_intensity,
             glitch_intensity: clip.glitch_intensity,
             pixelize_intensity: clip.pixelize_intensity,
+            // Arguably a freshly-split second half shouldn't inherit an "incoming transition"
+            // meant for the original clip's start, but every other field here is propagated
+            // unconditionally on split, so this stays consistent with that rather than special-
+            // casing it.
+            transition_in: clip.transition_in,
+            transition_duration_secs: clip.transition_duration_secs,
         };
         clip.source_out_secs = split_source_secs;
 

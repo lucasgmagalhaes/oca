@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use avcore::persistence::{
     from_json, load_project_from_file, save_project_to_file, to_json, PersistError,
 };
-use avcore::timeline::{ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind};
+use avcore::timeline::{
+    ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
+};
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency, Sequence};
 
 fn clip(id: u64, asset_id: u64) -> ClipInstance {
@@ -38,6 +40,8 @@ fn clip(id: u64, asset_id: u64) -> ClipInstance {
         shake_intensity: 0.0,
         glitch_intensity: 0.0,
         pixelize_intensity: 0.0,
+        transition_in: TransitionType::None,
+        transition_duration_secs: 0.5,
     }
 }
 

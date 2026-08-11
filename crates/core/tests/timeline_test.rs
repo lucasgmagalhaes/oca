@@ -1,4 +1,6 @@
-use avcore::timeline::{ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind};
+use avcore::timeline::{
+    ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
+};
 
 fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> ClipInstance {
     ClipInstance {
@@ -31,6 +33,8 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         shake_intensity: 0.0,
         glitch_intensity: 0.0,
         pixelize_intensity: 0.0,
+        transition_in: TransitionType::None,
+        transition_duration_secs: 0.5,
     }
 }
 
@@ -437,6 +441,30 @@ fn split_clip_at_keeps_other_effects_on_both_halves() {
             ),
             (0.1, 0.2, 0.3, 0.4)
         );
+    }
+}
+
+#[test]
+fn new_clip_defaults_to_no_transition() {
+    let c = clip(1, 0.0, 0.0, 10.0);
+    assert!(!c.has_transition());
+    assert_eq!(c.transition_in, TransitionType::None);
+    assert_eq!(c.transition_duration_secs, 0.5);
+}
+
+#[test]
+fn split_clip_at_keeps_transition_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.transition_in = TransitionType::Fade;
+    clip.transition_duration_secs = 1.2;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert_eq!(half.transition_in, TransitionType::Fade);
+        assert_eq!(half.transition_duration_secs, 1.2);
     }
 }
 
