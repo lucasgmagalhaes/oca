@@ -31,6 +31,8 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         shake_intensity: 0.0,
         glitch_intensity: 0.0,
         pixelize_intensity: 0.0,
+        zoom_start: 1.0,
+        zoom_end: 1.0,
     }
 }
 
@@ -437,6 +439,28 @@ fn split_clip_at_keeps_other_effects_on_both_halves() {
             ),
             (0.1, 0.2, 0.3, 0.4)
         );
+    }
+}
+
+#[test]
+fn new_clip_defaults_to_unity_zoom() {
+    let c = clip(1, 0.0, 0.0, 10.0);
+    assert_eq!((c.zoom_start, c.zoom_end), (1.0, 1.0));
+    assert!(!c.is_zoomed());
+}
+
+#[test]
+fn split_clip_at_keeps_zoom_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.zoom_start = 1.0;
+    clip.zoom_end = 2.5;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert_eq!((half.zoom_start, half.zoom_end), (1.0, 2.5));
     }
 }
 

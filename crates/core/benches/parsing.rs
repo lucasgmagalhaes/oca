@@ -97,6 +97,8 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 shake_intensity: 0.0,
                 glitch_intensity: 0.0,
                 pixelize_intensity: 0.0,
+                zoom_start: 1.0,
+                zoom_end: 1.0,
             })
             .collect(),
     };

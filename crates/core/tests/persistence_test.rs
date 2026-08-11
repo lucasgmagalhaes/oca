@@ -38,6 +38,8 @@ fn clip(id: u64, asset_id: u64) -> ClipInstance {
         shake_intensity: 0.0,
         glitch_intensity: 0.0,
         pixelize_intensity: 0.0,
+        zoom_start: 1.0,
+        zoom_end: 1.0,
     }
 }
 
