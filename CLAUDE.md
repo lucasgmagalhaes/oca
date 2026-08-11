@@ -43,9 +43,12 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   (`ClipInstance::sharpen`) round out that "Efeitos visuais" group — four properties-panel
   sliders with no visible effect anywhere yet, not even a timeline cue. Chroma key
   (`ClipInstance::chroma_key_enabled`/`chroma_key_color`/`chroma_key_tolerance`) is a checkbox +
-  color picker + tolerance slider, with a "🟩" badge (bottom-center) on the timeline block. Same
-  preview/export gap as the rest for all of these. Check `features/request.md` for what's still
-  unbuilt before assuming a feature is live — when in doubt, `graphify query`.
+  color picker + tolerance slider, with a "🟩" badge (bottom-center) on the timeline block. Blur,
+  shake, glitch, and pixelize (`ClipInstance::blur_intensity/shake_intensity/glitch_intensity/
+  pixelize_intensity`) round out the initial "Efeitos visuais" list from `request.md` — four more
+  sliders with no visible effect anywhere yet. Same preview/export gap as the rest for all of
+  these. Check `features/request.md` for what's still unbuilt before assuming a feature is live —
+  when in doubt, `graphify query`.
 
 ## Commands
 
