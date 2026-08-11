@@ -49,9 +49,15 @@ bounded by a minimum duration and (right edge) the source asset's own length
 (`ClipInstance::trim_start`/`trim_end`), and drag-move a clip's body — same-track reposition
 or onto a different same-`TrackKind` track, resolved by which row's Y-range the drag lands on
 (`Timeline::move_clip_to_track`/`Track::move_clip`). Still missing: distinct per-position
-timeline thumbnails and audio waveforms. Importing files (`library.rs`/`OcaApp::spawn_import`) now probes/measures/generates
-proxies on a background thread instead of blocking the UI — large source files used to freeze
-the app. A background export queue worker already runs (`OcaApp::pump_export_queue`
+timeline thumbnails and audio waveforms. Importing files (`library.rs`/`OcaApp::spawn_import`)
+runs each file on its own background thread instead of blocking the UI — large source files
+used to freeze the app. Each file becomes usable in the media library as soon as its (cheap,
+metadata-only) probe returns; loudness measurement and proxy generation, both full decode
+passes that can take minutes, keep running afterward and patch the already-visible asset in
+place once done (`ImportEvent::AssetReady` then `ImportEvent::Enriched`, correlated by an
+`import_token` in `OcaApp::pending_enrichment`) — matching how other NLEs show an import
+instantly and refine it in the background, rather than blocking "imported" on both decode
+passes finishing first. A background export queue worker already runs (`OcaApp::pump_export_queue`
 dispatches `avcore::render_export` on a spawned thread, progress/done/failed/cancelled
 reported back over `tokio::mpsc`) — the queue panel doesn't yet support reordering/pausing
 jobs or persisting the queue across sessions. Check the plan doc for which phase a task
