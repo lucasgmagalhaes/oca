@@ -7,12 +7,12 @@
   "5": "Preview",
   "6": "i18n.rs",
   "7": "bridge.c",
-  "8": "render_export",
+  "8": "MediaAsset",
   "9": "Plano de Execução — oca (PacoPaçoca)",
-  "10": "MediaAsset",
+  "10": "probe_media",
   "11": "ensure_proxy",
-  "12": "parse_loudnorm_stderr",
-  "13": "ColorFilter",
+  "12": "core/src/lib.rs",
+  "13": "MaskShape",
   "14": "Task Breakdown — Fase 1 (Motor central)",
   "15": "Reviewer Agent",
   "16": "Plano de Execução — oca (PacoPaçoca)",
@@ -45,5 +45,7 @@
   "43": "Project",
   "44": "to_json",
   "45": "timeline.rs",
-  "47": "parsing.rs"
+  "46": "media_test.rs",
+  "47": "parsing.rs",
+  "48": "sample_export_jobs"
 }
