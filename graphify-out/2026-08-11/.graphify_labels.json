@@ -33,6 +33,7 @@
   "31": "mod.rs",
   "32": "poll_for_descendants",
   "33": "test_launch.py",
-  "34": "generate_waveform",
-  "35": "editor.rs"
+  "34": "core/src/lib.rs",
+  "35": "editor.rs",
+  "36": "ClipInstance"
 }
