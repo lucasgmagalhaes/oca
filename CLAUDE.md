@@ -24,8 +24,12 @@ decoded frames are uploaded to an egui texture every frame, and play/pause/seek 
 click-to-seek position slider) drive the pipeline — playback of the selected clip only, not
 yet full multi-clip timeline playback. Double-clicking an asset in the Editor's media library
 panel adds it to the timeline (`OcaApp::add_asset_to_timeline`) — appended, untrimmed, onto
-the first track of matching kind (auto-creating `"V1"`/`"A1"` if none exists yet); this is the
-only way a clip gets onto the timeline today, no drag-and-drop from the library. The timeline
+the first track of matching kind (auto-creating `"V1"`/`"A1"` if none exists yet). Dragging an
+asset out of the library and dropping it on the timeline strip does the same insert but at the
+drop position, on whichever track row the pointer landed on
+(`OcaApp::add_asset_to_timeline_at`, `editor.rs::media_library_panel`/`timeline_panel` relaying
+the drop through `OcaApp::pending_asset_drop`) — both entry points share track
+resolution/creation via `resolve_or_create_track`. The timeline
 (`editor.rs::timeline_panel`) draws clips at their real `start_secs` position, video clips
 show a tiled poster-frame thumbnail once one's been generated on a background thread
 (`OcaApp::request_thumbnail`/`extract_thumbnail`, reusing `avcore::preview::Preview` — one
@@ -41,8 +45,7 @@ bounded by a minimum duration and (right edge) the source asset's own length
 (`ClipInstance::trim_start`/`trim_end`), and drag-move a clip's body — same-track reposition
 or onto a different same-`TrackKind` track, resolved by which row's Y-range the drag lands on
 (`Timeline::move_clip_to_track`/`Track::move_clip`). Still missing: distinct per-position
-timeline thumbnails, audio waveforms, and drag-and-drop import-to-timeline (double-click only,
-for now). Importing files (`library.rs`/`OcaApp::spawn_import`) now probes/measures/generates
+timeline thumbnails and audio waveforms. Importing files (`library.rs`/`OcaApp::spawn_import`) now probes/measures/generates
 proxies on a background thread instead of blocking the UI — large source files used to freeze
 the app. A background export queue worker already runs (`OcaApp::pump_export_queue`
 dispatches `avcore::render_export` on a spawned thread, progress/done/failed/cancelled
