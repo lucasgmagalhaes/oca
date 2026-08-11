@@ -97,6 +97,7 @@ make build     # debug build, whole workspace
 make run       # run the GUI app (debug)
 make test      # run every crate's test suite
 make test-core # cargo test -p core only
+make test-e2e  # pytest + pywinauto against a built target/debug/ui.exe (see below)
 make bench     # criterion benchmarks (core parsing/serialization) -> target/criterion/report/index.html
 make fmt       # cargo fmt --all
 make lint      # cargo clippy --workspace --all-targets
@@ -109,6 +110,26 @@ is a one-liner (see [`Makefile`](Makefile)).
 Single test: `cargo test -p core --test probe_test measure_loudness` (integration tests, one
 `<module>_test.rs` file per module under `crates/core/tests/`) or `cargo test -p ui i18n::tests`
 for the `src/<module>/<module>_test.rs` unit tests in `ui`.
+
+**End-to-end tests** (`e2e/`) drive the real built `ui.exe` through Windows UI Automation via
+`pytest` + `pywinauto` (`backend="uia"`) — a different layer from the Rust unit/integration
+tests above: those exercise `OcaApp`'s methods directly, these click on the actual rendered
+window the way a user would, so they're what actually proves a change *works*, not just that
+it compiles and its logic is correct in isolation. Works because `ui/Cargo.toml` builds
+`eframe` with the `accesskit` feature — egui's own widgets (`ui.button`/`ui.label`/...)
+publish an accessible name/role for free. Hand-painted controls that skip egui's widget API
+don't get this automatically — `nav_rail.rs`'s `rail_button` was patched to call
+`response.widget_info(...)` explicitly so the nav rail is reachable by name at all; other
+custom-painted controls (media library items, timeline clips) aren't yet, so e2e coverage for
+those still needs coordinate-based pywinauto calls, or the same `widget_info` treatment first.
+One-time setup: `python -m pip install -r e2e/requirements.txt`. Needs a debug build first
+(`make build`) and the FFmpeg/GStreamer runtime DLL dirs on `PATH` for the *launched process*
+(same requirement as running `ui.exe` by hand) — `make test-e2e` exports both automatically,
+running `pytest` directly under `e2e/` needs them exported first. The `oca_window` fixture
+(`e2e/conftest.py`) launches its own `ui.exe`, waits for the main window, and calls
+`set_focus()` on it before yielding — without that, synthetic clicks land on whatever window
+actually has focus (often the terminal `pytest` ran from) and silently do nothing, no
+exception raised, the kind of failure that looks like a UI bug but isn't one.
 
 ## Architecture
 
