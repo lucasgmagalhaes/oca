@@ -48,11 +48,26 @@ jobs:
           path: ffmpeg-dev
           key: ffmpeg-btbn-win64-gpl-shared-master-latest
 
+      # BtbN rotates its `latest` release tag on every nightly autobuild; a request landing
+      # mid-rotation can hit the new tag before its assets finish uploading, returning a 404
+      # that clears up within minutes. Retry with backoff instead of failing the whole job.
       - name: Download FFmpeg dev build (BtbN)
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl-shared.zip" -OutFile ffmpeg.zip
+          $uri = "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl-shared.zip"
+          $maxAttempts = 5
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri $uri -OutFile ffmpeg.zip
+              break
+            } catch {
+              if ($attempt -eq $maxAttempts) { throw }
+              $delay = 15 * $attempt
+              Write-Host "Download failed (attempt $attempt/$maxAttempts): $($_.Exception.Message). Retrying in $delay s..."
+              Start-Sleep -Seconds $delay
+            }
+          }
           Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg-extracted
           $inner = Get-ChildItem ffmpeg-extracted | Select-Object -First 1
           Move-Item $inner.FullName ffmpeg-dev
