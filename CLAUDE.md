@@ -29,8 +29,11 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   panel drag values gated to video clips) is the same shape again — a "⛶" badge on the timeline
   block, no preview/export effect yet. Copy formatting (`Ctrl+Shift+C`/`Ctrl+Shift+V`,
   `OcaApp::copy_selected_clip_formatting`/`paste_selected_clip_formatting`) copies gain/freeze/
-  speed/crop between blocks without duplicating the clip. Check `features/request.md` for
-  what's still unbuilt before assuming a feature is live — when in doubt, `graphify query`.
+  speed/crop/mask between blocks without duplicating the clip. Layer masks
+  (`ClipInstance::mask_shape`: none/circle/rounded-rect, `mask_corner_radius` for the latter) are
+  the same shape too — a shape picker plus corner-radius slider in the properties panel, a "●"/
+  "▢" badge on the timeline block. Check `features/request.md` for what's still unbuilt before
+  assuming a feature is live — when in doubt, `graphify query`.
 
 ## Commands
 
