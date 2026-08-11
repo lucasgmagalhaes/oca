@@ -78,6 +78,11 @@ pub const GAIN_DB_RANGE: std::ops::RangeInclusive<f32> = -24.0..=24.0;
 /// [`OcaApp::set_selected_clip_speed`] clamps to this range.
 pub const SPEED_FACTOR_RANGE: std::ops::RangeInclusive<f32> = 0.25..=4.0;
 
+/// Minimum width/height the properties panel's crop controls allow for
+/// [`avcore::timeline::ClipInstance::crop_w`]/`crop_h` (Fase 4's "Recorte") — keeps a drag from
+/// collapsing the crop rect to nothing.
+pub const CROP_MIN_SIZE: f32 = 0.05;
+
 /// A message from a background render worker thread (see [`OcaApp::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
@@ -135,12 +140,16 @@ struct ThumbnailReady {
 /// Deliberately excludes structural fields (`id`, `asset_id`, `start_secs`,
 /// `source_in_secs`/`source_out_secs`, `composite_id`) — those describe what/where a clip is,
 /// not how it's rendered. Grows as more per-block settings (like `gain_db`/`frozen`/
-/// `speed_factor`) join `ClipInstance`.
+/// `speed_factor`/crop) join `ClipInstance`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ClipFormatting {
     gain_db: f32,
     frozen: bool,
     speed_factor: f32,
+    crop_x: f32,
+    crop_y: f32,
+    crop_w: f32,
+    crop_h: f32,
 }
 
 /// The whole application's state: which screen is showing, the loaded projects, the export
@@ -578,6 +587,10 @@ impl OcaApp {
                 gain_db: 0.0,
                 frozen: false,
                 speed_factor: 1.0,
+                crop_x: 0.0,
+                crop_y: 0.0,
+                crop_w: 1.0,
+                crop_h: 1.0,
             });
     }
 
@@ -614,6 +627,10 @@ impl OcaApp {
                 gain_db: 0.0,
                 frozen: false,
                 speed_factor: 1.0,
+                crop_x: 0.0,
+                crop_y: 0.0,
+                crop_w: 1.0,
+                crop_h: 1.0,
             });
     }
 
@@ -733,6 +750,30 @@ impl OcaApp {
         }
     }
 
+    /// Sets `selected_clip_id`'s crop rect ([`avcore::timeline::ClipInstance::crop_x`]/`crop_y`/
+    /// `crop_w`/`crop_h`), each independently clamped to `[0.0, 1.0]` (`crop_w`/`crop_h` floored
+    /// at [`CROP_MIN_SIZE`]) — what dragging the properties panel's crop controls does. A no-op
+    /// if nothing is selected.
+    pub fn set_selected_clip_crop(&mut self, crop_x: f32, crop_y: f32, crop_w: f32, crop_h: f32) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let crop_x = crop_x.clamp(0.0, 1.0);
+        let crop_y = crop_y.clamp(0.0, 1.0);
+        let crop_w = crop_w.clamp(CROP_MIN_SIZE, 1.0);
+        let crop_h = crop_h.clamp(CROP_MIN_SIZE, 1.0);
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.crop_x = crop_x;
+                clip.crop_y = crop_y;
+                clip.crop_w = crop_w;
+                clip.crop_h = crop_h;
+                break;
+            }
+        }
+    }
+
     /// Whether formatting is waiting in the clipboard for
     /// [`OcaApp::paste_selected_clip_formatting`] — lets the timeline context menu grey out
     /// "Colar formatação" otherwise.
@@ -740,7 +781,7 @@ impl OcaApp {
         self.formatting_clipboard.is_some()
     }
 
-    /// Copies `selected_clip_id`'s gain/freeze/speed settings to
+    /// Copies `selected_clip_id`'s gain/freeze/speed/crop settings to
     /// [`OcaApp::formatting_clipboard`] — what `Ctrl+Shift+C`/the context menu's "Copiar
     /// formatação" do. A no-op if nothing is selected.
     pub fn copy_selected_clip_formatting(&mut self) {
@@ -751,6 +792,10 @@ impl OcaApp {
             gain_db: clip.gain_db,
             frozen: clip.frozen,
             speed_factor: clip.speed_factor,
+            crop_x: clip.crop_x,
+            crop_y: clip.crop_y,
+            crop_w: clip.crop_w,
+            crop_h: clip.crop_h,
         });
     }
 
@@ -768,6 +813,10 @@ impl OcaApp {
                 clip.gain_db = formatting.gain_db;
                 clip.frozen = formatting.frozen;
                 clip.speed_factor = formatting.speed_factor;
+                clip.crop_x = formatting.crop_x;
+                clip.crop_y = formatting.crop_y;
+                clip.crop_w = formatting.crop_w;
+                clip.crop_h = formatting.crop_h;
                 break;
             }
         }
@@ -881,6 +930,10 @@ impl OcaApp {
                 gain_db: copied.gain_db,
                 frozen: copied.frozen,
                 speed_factor: copied.speed_factor,
+                crop_x: copied.crop_x,
+                crop_y: copied.crop_y,
+                crop_w: copied.crop_w,
+                crop_h: copied.crop_h,
             });
     }
 

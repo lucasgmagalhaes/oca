@@ -4,7 +4,9 @@ use avcore::media::format_timecode;
 use avcore::MediaAsset;
 use eframe::egui::{self, RichText};
 
-use crate::app::{EditorTool, OcaApp, GAIN_DB_RANGE, SPEED_FACTOR_RANGE, THUMBNAIL_BUCKET_SECS};
+use crate::app::{
+    EditorTool, OcaApp, CROP_MIN_SIZE, GAIN_DB_RANGE, SPEED_FACTOR_RANGE, THUMBNAIL_BUCKET_SECS,
+};
 use crate::i18n::Text;
 use crate::screens::widgets;
 use crate::theme;
@@ -556,6 +558,8 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                     let mut gain_db = clip.gain_db;
                     let mut frozen = clip.frozen;
                     let mut speed_factor = clip.speed_factor;
+                    let (mut crop_x, mut crop_y, mut crop_w, mut crop_h) =
+                        (clip.crop_x, clip.crop_y, clip.crop_w, clip.crop_h);
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -611,6 +615,63 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                             .size(10.5)
                             .color(theme::TEXT_MUTED),
                     );
+
+                    // Crop reframes the video frame itself — no meaning for an audio block.
+                    if app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Video) {
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        widgets::section_label(ui, Text::PropCrop.tr(locale));
+                        let mut crop_changed = false;
+                        ui.horizontal(|ui| {
+                            crop_changed |= ui
+                                .add(
+                                    egui::DragValue::new(&mut crop_x)
+                                        .speed(0.01)
+                                        .range(0.0..=1.0)
+                                        .prefix("x "),
+                                )
+                                .changed();
+                            crop_changed |= ui
+                                .add(
+                                    egui::DragValue::new(&mut crop_y)
+                                        .speed(0.01)
+                                        .range(0.0..=1.0)
+                                        .prefix("y "),
+                                )
+                                .changed();
+                        });
+                        ui.horizontal(|ui| {
+                            crop_changed |= ui
+                                .add(
+                                    egui::DragValue::new(&mut crop_w)
+                                        .speed(0.01)
+                                        .range(CROP_MIN_SIZE..=1.0)
+                                        .prefix("w "),
+                                )
+                                .changed();
+                            crop_changed |= ui
+                                .add(
+                                    egui::DragValue::new(&mut crop_h)
+                                        .speed(0.01)
+                                        .range(CROP_MIN_SIZE..=1.0)
+                                        .prefix("h "),
+                                )
+                                .changed();
+                        });
+                        if crop_changed {
+                            app.set_selected_clip_crop(crop_x, crop_y, crop_w, crop_h);
+                        }
+                        if ui.button(Text::CropReset.tr(locale)).clicked() {
+                            app.set_selected_clip_crop(0.0, 0.0, 1.0, 1.0);
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(Text::CropExportNote.tr(locale))
+                                .size(10.5)
+                                .color(theme::TEXT_MUTED),
+                        );
+                    }
                 }
             });
         });
@@ -904,6 +965,15 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                 clip_rect.right_top() + egui::vec2(-3.0, 2.0),
                                 egui::Align2::RIGHT_TOP,
                                 format!("{:.2}x", clip.speed_factor),
+                                egui::FontId::proportional(11.0),
+                                theme::TEXT_PRIMARY,
+                            );
+                        }
+                        if clip.is_cropped() {
+                            painter.text(
+                                clip_rect.right_bottom() + egui::vec2(-3.0, -2.0),
+                                egui::Align2::RIGHT_BOTTOM,
+                                "⛶",
                                 egui::FontId::proportional(11.0),
                                 theme::TEXT_PRIMARY,
                             );

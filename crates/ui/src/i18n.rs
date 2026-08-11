@@ -108,6 +108,9 @@ text_catalog! {
     FreezeExportNote: pt_br = "afeta só a timeline por enquanto — preview e export ainda tocam a fonte normalmente.", en = "affects only the timeline for now — preview and export still play the source normally.";
     PropSpeed: pt_br = "Velocidade", en = "Speed";
     SpeedExportNote: pt_br = "mostra só um selo no bloco por enquanto — ainda não reamostra áudio nem muda a duração na timeline.", en = "only shows a badge on the block for now — doesn't resample audio or change the timeline duration yet.";
+    PropCrop: pt_br = "Recorte (x, y, largura, altura)", en = "Crop (x, y, width, height)";
+    CropReset: pt_br = "Redefinir recorte", en = "Reset crop";
+    CropExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda mostram o quadro inteiro.", en = "only shows a badge on the block for now — preview and export still show the full frame.";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";
