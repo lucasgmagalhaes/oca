@@ -3,9 +3,8 @@
 //! Holds the project/timeline/media data model (see [`project`], [`timeline`], [`media`],
 //! [`export`]), the `ffprobe`/`ffmpeg` wrappers that populate that model from real files
 //! ([`probe`], [`loudness`]), lightweight editing proxies ([`proxy`]), the normalized-export
-//! renderer ([`render`]), a GStreamer-based playback pipeline ([`preview`]), JSON save/load
-//! ([`persistence`]), and mock data for exercising the UI before those wrappers are wired into
-//! it end-to-end ([`sample`]).
+//! renderer ([`render`]), a GStreamer-based playback pipeline ([`preview`]), and JSON save/load
+//! ([`persistence`]).
 //!
 //! Nothing in this crate depends on `egui` or any GUI toolkit — `ui` is the only
 //! consumer, and it owns all presentation/formatting concerns (see its `i18n` module).
@@ -19,7 +18,6 @@ pub mod probe;
 pub mod project;
 pub mod proxy;
 pub mod render;
-pub mod sample;
 pub mod timeline;
 pub mod waveform;
 

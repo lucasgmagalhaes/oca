@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use avcore::{sample, ExportJob, ExportJobStatus, MediaAsset, Project, RenderOutcome};
+use avcore::{ExportJob, ExportJobStatus, MediaAsset, Project, RenderOutcome};
 use eframe::egui;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
@@ -232,8 +232,8 @@ pub struct OcaApp {
     /// now" — [`OcaApp::pump_export_queue`] uses its length against `queue_workers`.
     active_renders: HashMap<u64, Arc<AtomicBool>>,
     /// The GStreamer pipeline for `selected_asset_id`, if it could be opened (`None` before any
-    /// selection, before it's been lazily opened, and when `Preview::open` failed, e.g. the
-    /// sample-data assets' placeholder paths — see [`OcaApp::ensure_preview_loaded`]).
+    /// selection, before it's been lazily opened, and when `Preview::open` failed, e.g. a
+    /// source file that's since been moved or deleted — see [`OcaApp::ensure_preview_loaded`]).
     preview: Option<avcore::preview::Preview>,
     /// The asset id [`OcaApp::ensure_preview_loaded`] last attempted to open a pipeline for,
     /// whether or not it succeeded — lets it tell "already tried and failed for this exact
@@ -323,15 +323,11 @@ pub struct OcaApp {
 }
 
 impl OcaApp {
-    /// Builds the initial app state: applies the theme, loads the mock projects/export
-    /// queue (see [`avcore::sample`]), and selects the first project's first asset.
+    /// Builds the initial app state: applies the theme and starts with an empty project list
+    /// and export queue — every project, asset, and job comes from the user via "Novo
+    /// projeto"/"Abrir projeto" and real imports, not mock data.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::apply(&cc.egui_ctx);
-        let projects = sample::sample_projects();
-        let selected_asset_id = projects
-            .first()
-            .and_then(|p| p.media_library.first())
-            .map(|a| a.id);
         let (render_tx, render_rx) = mpsc::unbounded_channel();
         let (import_tx, import_rx) = mpsc::unbounded_channel();
         let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
@@ -339,10 +335,10 @@ impl OcaApp {
             screen: Screen::Home,
             tool: EditorTool::Select,
             locale: Locale::PtBr,
-            projects,
+            projects: Vec::new(),
             active_project: 0,
-            selected_asset_id,
-            export_jobs: sample::sample_export_jobs(),
+            selected_asset_id: None,
+            export_jobs: Vec::new(),
             queue_workers: 1,
             prefs: PrefsState::default(),
             render_tx,
@@ -464,9 +460,9 @@ impl OcaApp {
     /// change is what actually triggers `Preview::open` rather than `select_asset` itself.
     /// Prefers the editing proxy if one exists (lighter to decode), otherwise the original
     /// source file. Leaves `preview` as `None` without an error dialog if `Preview::open` fails
-    /// (e.g. the sample-data projects' placeholder paths, which don't exist on disk) — the
-    /// Editor screen shows a muted "preview unavailable" label instead, and won't retry until
-    /// the selection changes again.
+    /// (e.g. a source file that's been moved or deleted since import) — the Editor screen shows
+    /// a muted "preview unavailable" label instead, and won't retry until the selection changes
+    /// again.
     pub fn ensure_preview_loaded(&mut self) {
         if self.preview.is_some() || self.preview_attempted_for == self.selected_asset_id {
             return;
@@ -480,9 +476,8 @@ impl OcaApp {
             .proxy_path
             .clone()
             .unwrap_or_else(|| asset.source_path.clone());
-        // Sample-data projects (see avcore::sample) point at placeholder paths that don't
-        // exist on disk. Checking first avoids spinning up a whole GStreamer pipeline just to
-        // watch it fail to open a file that was never there.
+        // A moved/deleted source file would otherwise still spin up a whole GStreamer pipeline
+        // just to watch it fail to open a file that isn't there.
         if !path.exists() {
             return;
         }

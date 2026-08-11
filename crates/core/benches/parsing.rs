@@ -37,8 +37,8 @@ video:0kB audio:0kB subtitle:0kB other streams:0kB global headers:0kB muxing ove
 "#;
 
 /// A project sized like a long-running edit session (Minecraft-longplay-into-many-shorts
-/// territory) rather than the small mock projects in `avcore::sample` — big enough for
-/// serialization cost and timeline math to actually show up in a profile.
+/// territory) — big enough for serialization cost and timeline math to actually show up in a
+/// profile.
 fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
     let media_library: Vec<MediaAsset> = (0..asset_count)
         .map(|i| MediaAsset {
