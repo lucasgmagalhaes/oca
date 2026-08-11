@@ -48,7 +48,16 @@ per-block volume gain: `ClipInstance::gain_db` is persisted (and defaults to uni
 projects), survives split/copy/paste, is adjusted from the selected clip's properties panel, and
 scales that clip's waveform live through `ClipInstance::gain_linear`; it deliberately does not
 change export audio yet because `render_export` still renders one source file per queue job rather
-than a timeline mix. The timeline has a click/drag
+than a timeline mix. Freeze frame follows the same shape: `ClipInstance::frozen` (persisted,
+`#[serde(default)]`, survives split/copy/paste) marks a video block as holding its
+`source_in_secs` frame for its whole on-timeline duration — the held frame is picked by trimming
+`source_in_secs`, the hold length is just the block's existing length, so freeze needed no new
+duration field, only a checkbox in the properties panel (gated to video clips via
+`OcaApp::selected_clip_track_kind`). Currently it only changes how the timeline itself draws the
+block — `editor.rs::draw_frozen_poster` tiles one repeated poster frame with a small "❄" badge
+instead of `draw_filmstrip`'s per-position thumbnails — neither preview playback
+(`avcore::preview::Preview` always plays the real decoded source) nor export respects it yet,
+the same preview/export gap `gain_db` has. The timeline has a click/drag
 ruler that moves the playhead, and `Ctrl` + scroll zooms it
 (`OcaApp::timeline_px_per_sec`). Real editing, with no ripple (a cut/delete/move just leaves
 or closes a gap at the point of the edit, nothing downstream shifts) and no overlap checking
