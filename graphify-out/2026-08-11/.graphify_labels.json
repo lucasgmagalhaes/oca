@@ -5,10 +5,11 @@
   "3": "avbridge/src/lib.rs",
   "4": "timeline_test.rs",
   "5": "Preview",
+  "6": "i18n.rs",
   "7": "bridge.c",
-  "8": "i18n.rs",
+  "8": "widgets.rs",
   "9": "Plano de Execução — oca (PacoPaçoca)",
-  "10": "MediaAsset",
+  "10": "probe_media",
   "11": "ensure_proxy",
   "12": "parse_loudnorm_stderr",
   "13": "render_export",
@@ -33,5 +34,6 @@
   "32": "poll_for_descendants",
   "33": "test_launch.py",
   "34": "generate_waveform",
-  "35": "editor.rs"
+  "35": "editor.rs",
+  "36": "MediaAsset"
 }
