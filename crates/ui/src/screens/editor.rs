@@ -38,13 +38,21 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
         toolbar(app, ui);
         ui.add_space(4.0);
 
-        let timeline_height = 190.0;
-        let body_height = (ui.available_height() - timeline_height - 16.0).max(160.0);
         let total_width = ui.available_width();
-        let lib_w = 220.0_f32.min(total_width * 0.28);
-        let right_w = 240.0_f32.min(total_width * 0.3);
-        let gaps = ui.spacing().item_spacing.x * 2.0 + 2.0;
-        let preview_w = (total_width - lib_w - right_w - gaps).max(200.0);
+        let min_col = 160.0_f32;
+        let max_col = (total_width * 0.4).max(min_col);
+        app.lib_panel_width = app.lib_panel_width.clamp(min_col, max_col);
+        app.props_panel_width = app.props_panel_width.clamp(min_col, max_col);
+
+        let available_height = ui.available_height();
+        let min_timeline = 120.0_f32;
+        let max_timeline = (available_height - 200.0).max(min_timeline);
+        app.timeline_height = app.timeline_height.clamp(min_timeline, max_timeline);
+        let body_height = (available_height - app.timeline_height - 24.0).max(160.0);
+
+        let gaps = ui.spacing().item_spacing.x * 2.0 + DIVIDER_HIT_WIDTH * 2.0;
+        let preview_w =
+            (total_width - app.lib_panel_width - app.props_panel_width - gaps).max(200.0);
 
         ui.horizontal(|ui| {
             ui.set_height(body_height);
@@ -53,22 +61,107 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
             // see a properly bounded `max_rect` instead of the horizontal layout's full
             // remaining width — a bare `ui.set_width()` inside the panel only affects how much
             // space is reported *back* to this layout afterwards, not what the panel can paint.
-            ui.allocate_ui(egui::vec2(lib_w, body_height), |ui| {
-                media_library_panel(app, ui, lib_w, body_height);
+            ui.allocate_ui(egui::vec2(app.lib_panel_width, body_height), |ui| {
+                media_library_panel(app, ui, app.lib_panel_width, body_height);
             });
-            ui.separator();
+            resizable_divider(
+                ui,
+                body_height,
+                &mut app.lib_panel_width,
+                min_col,
+                max_col,
+                1.0,
+            );
             ui.allocate_ui(egui::vec2(preview_w, body_height), |ui| {
                 preview_panel(app, ui, body_height);
             });
-            ui.separator();
-            ui.allocate_ui(egui::vec2(right_w, body_height), |ui| {
-                properties_panel(app, ui, right_w, body_height);
+            resizable_divider(
+                ui,
+                body_height,
+                &mut app.props_panel_width,
+                min_col,
+                max_col,
+                -1.0,
+            );
+            ui.allocate_ui(egui::vec2(app.props_panel_width, body_height), |ui| {
+                properties_panel(app, ui, app.props_panel_width, body_height);
             });
         });
 
-        ui.add_space(8.0);
-        timeline_panel(app, ui, timeline_height);
+        ui.add_space(4.0);
+        resizable_divider_horizontal(
+            ui,
+            total_width,
+            &mut app.timeline_height,
+            min_timeline,
+            max_timeline,
+        );
+        ui.add_space(4.0);
+        timeline_panel(app, ui, app.timeline_height);
     });
+}
+
+/// Hit-testable width of a [`resizable_divider`]/[`resizable_divider_horizontal`] handle — wider
+/// than the 1px line it draws, since a bare 1px strip is unreliable to grab with a mouse.
+const DIVIDER_HIT_WIDTH: f32 = 6.0;
+
+/// A draggable divider between two side-by-side panels (per `request.md`'s Fase 3 "painéis de
+/// UI redimensionáveis" spec). Dragging it left/right adjusts `*width` by the pointer's
+/// horizontal movement — `sign` is `1.0` when `*width` belongs to the panel on the divider's
+/// left (dragging right grows it) or `-1.0` when it belongs to the panel on the right (dragging
+/// right shrinks it) — clamped to `[min_width, max_width]`.
+fn resizable_divider(
+    ui: &mut egui::Ui,
+    height: f32,
+    width: &mut f32,
+    min_width: f32,
+    max_width: f32,
+    sign: f32,
+) {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(DIVIDER_HIT_WIDTH, height), egui::Sense::drag());
+    if response.hovered() || response.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    }
+    if response.dragged() {
+        *width = (*width + sign * response.drag_delta().x).clamp(min_width, max_width);
+    }
+    let line_x = rect.center().x;
+    ui.painter().line_segment(
+        [
+            egui::pos2(line_x, rect.top()),
+            egui::pos2(line_x, rect.bottom()),
+        ],
+        egui::Stroke::new(1.0, theme::BORDER),
+    );
+}
+
+/// Same idea as [`resizable_divider`] but for the horizontal boundary above the timeline strip:
+/// dragging it up grows `*height` (the timeline), dragging it down shrinks it, clamped to
+/// `[min_height, max_height]`.
+fn resizable_divider_horizontal(
+    ui: &mut egui::Ui,
+    width: f32,
+    height: &mut f32,
+    min_height: f32,
+    max_height: f32,
+) {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(width, DIVIDER_HIT_WIDTH), egui::Sense::drag());
+    if response.hovered() || response.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    }
+    if response.dragged() {
+        *height = (*height - response.drag_delta().y).clamp(min_height, max_height);
+    }
+    let line_y = rect.center().y;
+    ui.painter().line_segment(
+        [
+            egui::pos2(rect.left(), line_y),
+            egui::pos2(rect.right(), line_y),
+        ],
+        egui::Stroke::new(1.0, theme::BORDER),
+    );
 }
 
 fn toolbar(app: &mut OcaApp, ui: &mut egui::Ui) {

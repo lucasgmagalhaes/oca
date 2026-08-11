@@ -184,6 +184,17 @@ pub struct OcaApp {
     /// `Ctrl` + scroll over the timeline (per `request.md`'s Fase 3 spec) — more zoom for
     /// frame-accurate edits, less to see the whole project at once.
     pub timeline_px_per_sec: f32,
+    /// Width, in points, of the Editor's media-library column — dragged via the divider
+    /// between it and the preview column (`editor.rs::resizable_divider`). Clamped to the
+    /// window's current size every frame (`editor.rs::show`), not persisted across restarts —
+    /// a known simplification short of `request.md`'s "layout salvo por projeto ou por
+    /// usuário" (per-project/per-user persistence isn't wired up yet).
+    pub lib_panel_width: f32,
+    /// Same idea as `lib_panel_width`, for the clip-properties column on the right.
+    pub props_panel_width: f32,
+    /// Height, in points, of the timeline strip — dragged via the horizontal divider above it.
+    /// Same persistence caveat as `lib_panel_width`.
+    pub timeline_height: f32,
     thumbnail_tx: UnboundedSender<ThumbnailReady>,
     thumbnail_rx: UnboundedReceiver<ThumbnailReady>,
     /// Filmstrip tile textures for video clips on the timeline, keyed by `(asset_id, bucket)`
@@ -241,6 +252,9 @@ impl OcaApp {
             pending_enrichment: HashMap::new(),
             selected_clip_id: None,
             timeline_px_per_sec: 4.0,
+            lib_panel_width: 220.0,
+            props_panel_width: 240.0,
+            timeline_height: 190.0,
             thumbnail_tx,
             thumbnail_rx,
             thumbnail_textures: HashMap::new(),
