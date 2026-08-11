@@ -24,11 +24,13 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   Speed (`ClipInstance::speed_factor`) follows the same pattern — a properties-panel slider and
   a "2.00x"-style badge on the timeline block, but doesn't resample audio or change the block's
   on-timeline length yet (that needs the timeline to support a block whose displayed duration
-  differs from its trimmed source range, which nothing does yet). Copy formatting
-  (`Ctrl+Shift+C`/`Ctrl+Shift+V`, `OcaApp::copy_selected_clip_formatting`/
-  `paste_selected_clip_formatting`) copies gain/freeze/speed between blocks without duplicating
-  the clip. Check `features/request.md` for what's still unbuilt before assuming a feature is
-  live — when in doubt, `graphify query`.
+  differs from its trimmed source range, which nothing does yet). Crop
+  (`ClipInstance::crop_x/y/w/h`, a normalized `0.0..=1.0` sub-rectangle of the frame, properties
+  panel drag values gated to video clips) is the same shape again — a "⛶" badge on the timeline
+  block, no preview/export effect yet. Copy formatting (`Ctrl+Shift+C`/`Ctrl+Shift+V`,
+  `OcaApp::copy_selected_clip_formatting`/`paste_selected_clip_formatting`) copies gain/freeze/
+  speed/crop between blocks without duplicating the clip. Check `features/request.md` for
+  what's still unbuilt before assuming a feature is live — when in doubt, `graphify query`.
 
 ## Commands
 
