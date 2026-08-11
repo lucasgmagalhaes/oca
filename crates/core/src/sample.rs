@@ -113,6 +113,7 @@ fn cuphead_timeline() -> Timeline {
                         source_in_secs: 0.0,
                         source_out_secs: 30.0,
                         composite_id: None,
+                        gain_db: 0.0,
                     },
                     ClipInstance {
                         id: 2,
@@ -121,6 +122,7 @@ fn cuphead_timeline() -> Timeline {
                         source_in_secs: 0.0,
                         source_out_secs: 44.0,
                         composite_id: None,
+                        gain_db: 0.0,
                     },
                     ClipInstance {
                         id: 3,
@@ -129,6 +131,7 @@ fn cuphead_timeline() -> Timeline {
                         source_in_secs: 0.0,
                         source_out_secs: 24.0,
                         composite_id: None,
+                        gain_db: 0.0,
                     },
                 ],
             },
@@ -144,6 +147,7 @@ fn cuphead_timeline() -> Timeline {
                         source_in_secs: 0.0,
                         source_out_secs: 30.0,
                         composite_id: None,
+                        gain_db: 0.0,
                     },
                     ClipInstance {
                         id: 5,
@@ -152,6 +156,7 @@ fn cuphead_timeline() -> Timeline {
                         source_in_secs: 0.0,
                         source_out_secs: 44.0,
                         composite_id: None,
+                        gain_db: 0.0,
                     },
                     ClipInstance {
                         id: 6,
@@ -160,6 +165,7 @@ fn cuphead_timeline() -> Timeline {
                         source_in_secs: 0.0,
                         source_out_secs: 24.0,
                         composite_id: None,
+                        gain_db: 0.0,
                     },
                 ],
             },
@@ -174,6 +180,7 @@ fn cuphead_timeline() -> Timeline {
                     source_in_secs: 0.0,
                     source_out_secs: 98.0,
                     composite_id: None,
+                    gain_db: 0.0,
                 }],
             },
         ],

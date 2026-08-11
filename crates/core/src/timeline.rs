@@ -25,6 +25,15 @@ pub struct ClipInstance {
     /// loads, every clip in it just standalone (`None`).
     #[serde(default)]
     pub composite_id: Option<u64>,
+    /// Volume adjustment in decibels applied to this block's audio, independent of every other
+    /// clip — per `request.md`'s Fase 4 "ganho de volume por bloco" spec. `0.0` is unity gain.
+    /// Currently only feeds the timeline waveform display (`ui`'s `draw_waveform`, scaled by
+    /// [`ClipInstance::gain_linear`]); export doesn't mix the timeline yet (it still
+    /// passthrough-renders a single source file per job, see `core::render`), so this doesn't
+    /// affect exported audio yet. `#[serde(default)]` so older saved projects load at unity
+    /// gain.
+    #[serde(default)]
+    pub gain_db: f32,
 }
 
 impl ClipInstance {
@@ -32,6 +41,12 @@ impl ClipInstance {
     /// full duration.
     pub fn duration_secs(&self) -> f64 {
         self.source_out_secs - self.source_in_secs
+    }
+
+    /// Linear amplitude multiplier for [`ClipInstance::gain_db`] — e.g. `+6.0` dB roughly
+    /// doubles amplitude, `-6.0` dB roughly halves it. `0.0` dB gives `1.0` (unity).
+    pub fn gain_linear(&self) -> f32 {
+        10f32.powf(self.gain_db / 20.0)
     }
 
     /// True if `at_secs` (timeline-relative) falls strictly inside this clip's placed range.
@@ -115,6 +130,7 @@ impl Track {
             // Splitting a composite member must not silently ungroup it from the rest of the
             // block.
             composite_id: clip.composite_id,
+            gain_db: clip.gain_db,
         };
         clip.source_out_secs = split_source_secs;
 

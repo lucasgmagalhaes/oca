@@ -14,6 +14,31 @@ fn round_trips_a_project_through_json() {
 }
 
 #[test]
+fn projects_saved_before_per_block_gain_load_at_unity_gain() {
+    let original = sample_projects().into_iter().next().unwrap();
+    let mut value: serde_json::Value = serde_json::from_str(&to_json(&original).unwrap()).unwrap();
+    for track in value["sequences"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .flat_map(|sequence| sequence["timeline"]["tracks"].as_array_mut().unwrap())
+    {
+        for clip in track["clips"].as_array_mut().unwrap() {
+            clip.as_object_mut().unwrap().remove("gain_db");
+        }
+    }
+
+    let restored = from_json(&serde_json::to_string(&value).unwrap()).unwrap();
+
+    assert!(restored
+        .sequences
+        .iter()
+        .flat_map(|sequence| &sequence.timeline.tracks)
+        .flat_map(|track| &track.clips)
+        .all(|clip| clip.gain_db == 0.0));
+}
+
+#[test]
 fn round_trips_a_project_with_an_empty_timeline_and_library() {
     let original = sample_projects().into_iter().nth(2).unwrap();
     assert!(original.media_library.is_empty());

@@ -8,12 +8,32 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         source_in_secs,
         source_out_secs,
         composite_id: None,
+        gain_db: 0.0,
     }
 }
 
 #[test]
 fn clip_duration_is_out_minus_in() {
     assert_eq!(clip(1, 0.0, 10.0, 30.0).duration_secs(), 20.0);
+}
+
+#[test]
+fn zero_gain_db_is_unity_linear_gain() {
+    assert_eq!(clip(1, 0.0, 0.0, 10.0).gain_linear(), 1.0);
+}
+
+#[test]
+fn positive_gain_db_scales_linear_gain_above_unity() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.gain_db = 6.0;
+    assert!((c.gain_linear() - 1.9953).abs() < 0.001);
+}
+
+#[test]
+fn negative_gain_db_scales_linear_gain_below_unity() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.gain_db = -6.0;
+    assert!((c.gain_linear() - 0.5012).abs() < 0.001);
 }
 
 #[test]
@@ -102,6 +122,19 @@ fn split_clip_at_keeps_both_halves_in_the_same_composite_group() {
     assert!(split);
     assert_eq!(track.clips[0].composite_id, Some(7));
     assert_eq!(track.clips[1].composite_id, Some(7));
+}
+
+#[test]
+fn split_clip_at_keeps_gain_db_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.gain_db = 3.0;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    assert_eq!(track.clips[0].gain_db, 3.0);
+    assert_eq!(track.clips[1].gain_db, 3.0);
 }
 
 #[test]
