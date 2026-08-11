@@ -1,3 +1,5 @@
 /target
 **/target
-graphify-out/cost.json 
+graphify-out/cost.json
+e2e/.pytest_cache
+e2e/__pycache__

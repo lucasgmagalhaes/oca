@@ -51,6 +51,10 @@ fn rail_button(ui: &mut egui::Ui, app: &mut OcaApp, screen: Screen, icon: &str, 
     };
 
     let (rect, response) = ui.allocate_exact_size(egui::vec2(52.0, 46.0), egui::Sense::click());
+    // Hand-painted below rather than a real `ui.button()`, so without this it carries no
+    // accessible name — screen readers and UI-Automation-driven e2e tests alike would only
+    // ever see an unlabeled clickable rect at this position.
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
     if ui.is_rect_visible(rect) {
         let bg: Option<Color32> = if active {
             Some(theme::ACCENT.gamma_multiply(0.18))

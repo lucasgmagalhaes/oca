@@ -17,7 +17,7 @@ export FFMPEG_DIR := C:/Users/lucas/AppData/Local/Microsoft/WinGet/Packages/BtbN
 export PKG_CONFIG_PATH := C:/Users/lucas/gstreamer-msvc/1.0/msvc_x86_64/lib/pkgconfig
 export PATH := $(FFMPEG_DIR)/bin;C:/Users/lucas/gstreamer-msvc/1.0/msvc_x86_64/bin;$(PATH)
 
-.PHONY: build release run debug test test-core test-app test-xtask bench fmt fmt-check lint graph docs check clean
+.PHONY: build release run debug test test-core test-app test-xtask test-e2e bench fmt fmt-check lint graph docs check clean
 
 # Debug build of the whole workspace (core, ui, xtask).
 build:
@@ -51,6 +51,13 @@ test-app:
 
 test-xtask:
 	cargo test -p xtask
+
+# End-to-end tests (e2e/, pytest + pywinauto) driving the real built ui.exe through Windows
+# UI Automation. Needs a debug build first (this target doesn't build one for you, since e2e
+# runs typically follow a `make build`/`make run` you already did) and Python deps installed
+# once: `python -m pip install -r e2e/requirements.txt`.
+test-e2e:
+	cd e2e && python -m pytest
 
 # Runs the criterion benchmarks (parsing ffprobe/loudnorm output, project (de)serialization,
 # timeline duration math) and writes an HTML report to target/criterion/report/index.html.
