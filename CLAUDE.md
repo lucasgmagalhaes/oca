@@ -63,7 +63,14 @@ library / preview / properties) and the timeline strip are all resizable by drag
 divider between them (`editor.rs::resizable_divider`/`resizable_divider_horizontal`,
 `OcaApp::lib_panel_width`/`props_panel_width`/`timeline_height`) — sizes clamp to the window's
 current size every frame but aren't persisted across restarts yet, short of `request.md`'s
-"layout salvo por projeto ou por usuário". Importing files (`library.rs`/`OcaApp::spawn_import`)
+"layout salvo por projeto ou por usuário". A project can hold multiple sequences (tabs) —
+`avcore::project::Sequence`, each with its own `Timeline` — shown as a tab bar above the
+three-column body (`editor.rs::sequence_tab_bar`); every project always has at least one, and
+every clip-editing `OcaApp` method reads/writes through `Project::timeline`/`timeline_mut`
+(the active tab), never a `timeline` field directly. Export settings staying per-job rather
+than gaining a per-sequence default, and no rename/delete/reorder for tabs yet, are the two
+gaps short of `request.md`'s full "abas de projeto" spec. Importing files
+(`library.rs`/`OcaApp::spawn_import`)
 runs each file on its own background thread instead of blocking the UI — large source files
 used to freeze the app. Each file becomes usable in the media library as soon as its (cheap,
 metadata-only) probe returns; loudness measurement, proxy generation, and waveform computation,
