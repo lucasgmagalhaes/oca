@@ -4,7 +4,7 @@ use avcore::media::format_timecode;
 use avcore::MediaAsset;
 use eframe::egui::{self, RichText};
 
-use crate::app::{EditorTool, OcaApp, GAIN_DB_RANGE, THUMBNAIL_BUCKET_SECS};
+use crate::app::{EditorTool, OcaApp, GAIN_DB_RANGE, SPEED_FACTOR_RANGE, THUMBNAIL_BUCKET_SECS};
 use crate::i18n::Text;
 use crate::screens::widgets;
 use crate::theme;
@@ -555,6 +555,7 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                 if let Some(clip) = app.selected_clip() {
                     let mut gain_db = clip.gain_db;
                     let mut frozen = clip.frozen;
+                    let mut speed_factor = clip.speed_factor;
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -591,6 +592,25 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                                 .color(theme::TEXT_MUTED),
                         );
                     }
+
+                    ui.add_space(10.0);
+                    ui.separator();
+                    ui.add_space(6.0);
+                    widgets::section_label(ui, Text::PropSpeed.tr(locale));
+                    let speed_slider = ui.add(
+                        egui::Slider::new(&mut speed_factor, SPEED_FACTOR_RANGE)
+                            .suffix("x")
+                            .fixed_decimals(2),
+                    );
+                    if speed_slider.changed() {
+                        app.set_selected_clip_speed(speed_factor);
+                    }
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(Text::SpeedExportNote.tr(locale))
+                            .size(10.5)
+                            .color(theme::TEXT_MUTED),
+                    );
                 }
             });
         });
@@ -877,6 +897,15 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                 egui::CornerRadius::same(4),
                                 egui::Stroke::new(1.5, theme::ACCENT_2),
                                 egui::StrokeKind::Inside,
+                            );
+                        }
+                        if clip.speed_factor != 1.0 {
+                            painter.text(
+                                clip_rect.right_top() + egui::vec2(-3.0, 2.0),
+                                egui::Align2::RIGHT_TOP,
+                                format!("{:.2}x", clip.speed_factor),
+                                egui::FontId::proportional(11.0),
+                                theme::TEXT_PRIMARY,
                             );
                         }
                         if app.multi_selected_clip_ids.contains(&clip.id) {

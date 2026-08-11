@@ -48,6 +48,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         composite_id: None,
         gain_db: 0.0,
         frozen: false,
+        speed_factor: 1.0,
     }
 }
 
@@ -1080,6 +1081,69 @@ fn set_selected_clip_frozen_is_a_no_op_when_nothing_is_selected() {
 }
 
 #[test]
+fn set_selected_clip_speed_updates_the_selected_clip() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(2);
+
+    app.set_selected_clip_speed(2.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].speed_factor, 1.0);
+    assert_eq!(clips[1].speed_factor, 2.0);
+}
+
+#[test]
+fn set_selected_clip_speed_clamps_to_speed_factor_range() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_speed(999.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].speed_factor, *crate::app::SPEED_FACTOR_RANGE.end());
+}
+
+#[test]
+fn set_selected_clip_speed_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.set_selected_clip_speed(2.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].speed_factor, 1.0);
+}
+
+#[test]
 fn copy_selected_clip_formatting_is_a_no_op_when_nothing_is_selected() {
     let mut app = test_app(
         vec![test_project_with_tracks(
@@ -1114,6 +1178,7 @@ fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_posit
     app.selected_clip_id = Some(1);
     app.set_selected_clip_gain(6.0);
     app.set_selected_clip_frozen(true);
+    app.set_selected_clip_speed(2.0);
     app.copy_selected_clip_formatting();
 
     app.selected_clip_id = Some(2);
@@ -1122,6 +1187,7 @@ fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_posit
     let clips = &app.active_project().timeline().tracks[0].clips;
     assert_eq!(clips[1].gain_db, 6.0);
     assert!(clips[1].frozen);
+    assert_eq!(clips[1].speed_factor, 2.0);
     assert_eq!(clips[1].start_secs, 10.0); // position untouched
     assert_eq!(clips[1].source_out_secs, 20.0); // trim untouched
 }
@@ -1237,6 +1303,7 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
     app.selected_clip_id = Some(5);
     app.set_selected_clip_gain(4.0);
     app.set_selected_clip_frozen(true);
+    app.set_selected_clip_speed(2.0);
     app.copy_selected_clip();
     app.active_project_mut().timeline_mut().playhead_secs = 30.0;
 
@@ -1251,6 +1318,7 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
     assert_eq!(pasted.source_out_secs, 12.0);
     assert_eq!(pasted.gain_db, 4.0); // gain travels with the clip through copy/paste.
     assert!(pasted.frozen); // so does frozen.
+    assert_eq!(pasted.speed_factor, 2.0); // so does speed.
 }
 
 #[test]

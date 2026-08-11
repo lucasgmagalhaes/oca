@@ -74,6 +74,10 @@ pub const LUFS_PROFILES: [(&str, f32); 3] = [
 /// por bloco") — [`OcaApp::set_selected_clip_gain`] clamps to this range.
 pub const GAIN_DB_RANGE: std::ops::RangeInclusive<f32> = -24.0..=24.0;
 
+/// Slider bounds for the properties panel's per-block speed control (Fase 4's "Velocidade") —
+/// [`OcaApp::set_selected_clip_speed`] clamps to this range.
+pub const SPEED_FACTOR_RANGE: std::ops::RangeInclusive<f32> = 0.25..=4.0;
+
 /// A message from a background render worker thread (see [`OcaApp::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
@@ -130,12 +134,13 @@ struct ThumbnailReady {
 /// itself, per `request.md`'s Fase 4 "copiar formatação" spec (`Ctrl+Shift+C`/`Ctrl+Shift+V`).
 /// Deliberately excludes structural fields (`id`, `asset_id`, `start_secs`,
 /// `source_in_secs`/`source_out_secs`, `composite_id`) — those describe what/where a clip is,
-/// not how it's rendered. Grows as more per-block settings (like `gain_db`/`frozen`) join
-/// `ClipInstance`.
+/// not how it's rendered. Grows as more per-block settings (like `gain_db`/`frozen`/
+/// `speed_factor`) join `ClipInstance`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ClipFormatting {
     gain_db: f32,
     frozen: bool,
+    speed_factor: f32,
 }
 
 /// The whole application's state: which screen is showing, the loaded projects, the export
@@ -572,6 +577,7 @@ impl OcaApp {
                 composite_id: None,
                 gain_db: 0.0,
                 frozen: false,
+                speed_factor: 1.0,
             });
     }
 
@@ -607,6 +613,7 @@ impl OcaApp {
                 composite_id: None,
                 gain_db: 0.0,
                 frozen: false,
+                speed_factor: 1.0,
             });
     }
 
@@ -708,6 +715,24 @@ impl OcaApp {
         }
     }
 
+    /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::speed_factor`], clamped to
+    /// [`SPEED_FACTOR_RANGE`] — what dragging the properties panel's speed slider does. A no-op
+    /// if nothing is selected.
+    pub fn set_selected_clip_speed(&mut self, speed_factor: f32) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let speed_factor =
+            speed_factor.clamp(*SPEED_FACTOR_RANGE.start(), *SPEED_FACTOR_RANGE.end());
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.speed_factor = speed_factor;
+                break;
+            }
+        }
+    }
+
     /// Whether formatting is waiting in the clipboard for
     /// [`OcaApp::paste_selected_clip_formatting`] — lets the timeline context menu grey out
     /// "Colar formatação" otherwise.
@@ -715,9 +740,9 @@ impl OcaApp {
         self.formatting_clipboard.is_some()
     }
 
-    /// Copies `selected_clip_id`'s gain/freeze settings to [`OcaApp::formatting_clipboard`] —
-    /// what `Ctrl+Shift+C`/the context menu's "Copiar formatação" do. A no-op if nothing is
-    /// selected.
+    /// Copies `selected_clip_id`'s gain/freeze/speed settings to
+    /// [`OcaApp::formatting_clipboard`] — what `Ctrl+Shift+C`/the context menu's "Copiar
+    /// formatação" do. A no-op if nothing is selected.
     pub fn copy_selected_clip_formatting(&mut self) {
         let Some(clip) = self.selected_clip() else {
             return;
@@ -725,6 +750,7 @@ impl OcaApp {
         self.formatting_clipboard = Some(ClipFormatting {
             gain_db: clip.gain_db,
             frozen: clip.frozen,
+            speed_factor: clip.speed_factor,
         });
     }
 
@@ -741,6 +767,7 @@ impl OcaApp {
             if let Some(clip) = track.clip_mut(clip_id) {
                 clip.gain_db = formatting.gain_db;
                 clip.frozen = formatting.frozen;
+                clip.speed_factor = formatting.speed_factor;
                 break;
             }
         }
@@ -853,6 +880,7 @@ impl OcaApp {
                 composite_id: None,
                 gain_db: copied.gain_db,
                 frozen: copied.frozen,
+                speed_factor: copied.speed_factor,
             });
     }
 
