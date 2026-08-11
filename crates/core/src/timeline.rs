@@ -131,6 +131,23 @@ pub struct ClipInstance {
     /// `#[serde(default)]` so older saved projects load with no vignette.
     #[serde(default)]
     pub vignette_intensity: f32,
+    /// Brightness adjustment for this block, `-1.0..=1.0` (`0.0` is unchanged) — per
+    /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Brilho, contraste e saturação").
+    /// Currently has no visible effect anywhere (`ui`'s properties panel just exposes the
+    /// slider); doesn't yet affect preview playback or export — the same kind of gap as
+    /// [`ClipInstance::gain_db`]. `#[serde(default)]` so older saved projects load unchanged.
+    #[serde(default)]
+    pub brightness: f32,
+    /// Contrast multiplier for this block, `0.0..=2.0` (`1.0` is unchanged) — same spec and gap
+    /// as [`ClipInstance::brightness`]. `#[serde(default = ..)]` so older saved projects load
+    /// unchanged.
+    #[serde(default = "default_unity_multiplier")]
+    pub contrast: f32,
+    /// Saturation multiplier for this block, `0.0..=2.0` (`1.0` is unchanged, `0.0` is
+    /// grayscale) — same spec and gap as [`ClipInstance::brightness`]. `#[serde(default = ..)]`
+    /// so older saved projects load unchanged.
+    #[serde(default = "default_unity_multiplier")]
+    pub saturation: f32,
 }
 
 fn default_speed_factor() -> f32 {
@@ -138,6 +155,10 @@ fn default_speed_factor() -> f32 {
 }
 
 fn default_crop_extent() -> f32 {
+    1.0
+}
+
+fn default_unity_multiplier() -> f32 {
     1.0
 }
 
@@ -267,6 +288,9 @@ impl Track {
             flipped_h: clip.flipped_h,
             color_filter: clip.color_filter,
             vignette_intensity: clip.vignette_intensity,
+            brightness: clip.brightness,
+            contrast: clip.contrast,
+            saturation: clip.saturation,
         };
         clip.source_out_secs = split_source_secs;
 

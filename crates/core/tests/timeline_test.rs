@@ -20,6 +20,9 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         flipped_h: false,
         color_filter: ColorFilter::None,
         vignette_intensity: 0.0,
+        brightness: 0.0,
+        contrast: 1.0,
+        saturation: 1.0,
     }
 }
 
@@ -318,6 +321,31 @@ fn split_clip_at_keeps_vignette_on_both_halves() {
     assert!(split);
     for half in &track.clips {
         assert_eq!(half.vignette_intensity, 0.6);
+    }
+}
+
+#[test]
+fn new_clip_defaults_to_unchanged_color_adjustment() {
+    let c = clip(1, 0.0, 0.0, 10.0);
+    assert_eq!((c.brightness, c.contrast, c.saturation), (0.0, 1.0, 1.0));
+}
+
+#[test]
+fn split_clip_at_keeps_color_adjustment_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.brightness = 0.2;
+    clip.contrast = 1.5;
+    clip.saturation = 0.5;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert_eq!(
+            (half.brightness, half.contrast, half.saturation),
+            (0.2, 1.5, 0.5)
+        );
     }
 }
 
