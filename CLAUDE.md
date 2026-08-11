@@ -43,7 +43,12 @@ the timeline zooms in, per `request.md`'s Fase 3 spec; a known simplification, n
 so a filmstrip zoomed in past roughly one tile per bucket repeats a tile a few times in a row),
 audio clips draw a min/max peak waveform (`avcore::waveform::generate_waveform`, a fixed
 `WAVEFORM_BUCKET_COUNT`-bucket table computed once per asset during import enrichment and
-resampled per pixel column at draw time — see `editor.rs::draw_waveform`), has a click/drag
+resampled per pixel column at draw time — see `editor.rs::draw_waveform`). Fase 4 has begun with
+per-block volume gain: `ClipInstance::gain_db` is persisted (and defaults to unity for older
+projects), survives split/copy/paste, is adjusted from the selected clip's properties panel, and
+scales that clip's waveform live through `ClipInstance::gain_linear`; it deliberately does not
+change export audio yet because `render_export` still renders one source file per queue job rather
+than a timeline mix. The timeline has a click/drag
 ruler that moves the playhead, and `Ctrl` + scroll zooms it
 (`OcaApp::timeline_px_per_sec`). Real editing, with no ripple (a cut/delete/move just leaves
 or closes a gap at the point of the edit, nothing downstream shifts) and no overlap checking
