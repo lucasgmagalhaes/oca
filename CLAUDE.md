@@ -61,8 +61,18 @@ matching-kind track (auto-created if none exists) rather than wherever the clip 
 known simplification. Not scoped to a project or sequence, so pasting into a different tab (or
 even a different project) "just works" — request.md's Fase 3 "copiar e colar entre abas" for
 free. Right-click a clip for a context menu with the same actions (per `request.md`'s Fase 3
-spec) plus delete; apply-effect/merge-into-composite-block are follow-ups once those features
-themselves exist. The Editor screen's three columns (media
+spec) plus delete; apply-effect is a follow-up once effects themselves exist. `Ctrl`+click 2+
+clips (`OcaApp::toggle_multi_select`) then the toolbar's "Mesclar em bloco" button
+(`OcaApp::merge_into_composite`) groups them into a composite block — `ClipInstance::composite_id`,
+shared by every member, not a distinct clip type — per `request.md`'s Fase 3 "blocos compostos"
+spec. A composite block then behaves as one clip for the operations that matter most: dragging
+any member moves the whole group by the same delta (`OcaApp::move_clip_with_group`), splitting
+one at the playhead keeps both halves in the group (`Track::split_clip_at`), and deleting one
+deletes all of them (`OcaApp::delete_selected_clip`). Two scope limits, both enforced rather
+than silently broken: a group can't span tracks (merging across tracks, or dragging a member
+onto a different track, is a no-op/falls back to a same-track move), and copy/paste doesn't
+replicate group membership yet (a pasted clip is always standalone). The Editor screen's three
+columns (media
 library / preview / properties) and the timeline strip are all resizable by dragging the
 divider between them (`editor.rs::resizable_divider`/`resizable_divider_horizontal`,
 `OcaApp::lib_panel_width`/`props_panel_width`/`timeline_height`) — sizes clamp to the window's
