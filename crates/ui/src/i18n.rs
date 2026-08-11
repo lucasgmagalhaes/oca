@@ -143,6 +143,10 @@ text_catalog! {
     PropGlitch: pt_br = "Glitch", en = "Glitch";
     PropPixelize: pt_br = "Pixelizar", en = "Pixelize";
     OtherEffectsExportNote: pt_br = "ainda não têm efeito visível em lugar nenhum — preview e export ignoram esses valores por enquanto.", en = "have no visible effect anywhere yet — preview and export ignore these values for now.";
+    PropZoom: pt_br = "Zoom (punch-in / ken burns)", en = "Zoom (punch-in / ken burns)";
+    PropZoomStart: pt_br = "Zoom inicial", en = "Start zoom";
+    PropZoomEnd: pt_br = "Zoom final", en = "End zoom";
+    ZoomExportNote: pt_br = "só afeta o painel de propriedades por enquanto, sem efeito no preview ou na exportação.", en = "only affects the properties panel for now, no effect on preview or export.";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";

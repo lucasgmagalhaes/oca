@@ -578,6 +578,7 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                     let mut shake_intensity = clip.shake_intensity;
                     let mut glitch_intensity = clip.glitch_intensity;
                     let mut pixelize_intensity = clip.pixelize_intensity;
+                    let (mut zoom_start, mut zoom_end) = (clip.zoom_start, clip.zoom_end);
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -922,6 +923,33 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(Text::OtherEffectsExportNote.tr(locale))
+                                .size(10.5)
+                                .color(theme::TEXT_MUTED),
+                        );
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        widgets::section_label(ui, Text::PropZoom.tr(locale));
+                        let mut zoom_changed = false;
+                        zoom_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut zoom_start, crate::app::ZOOM_RANGE)
+                                    .text(Text::PropZoomStart.tr(locale)),
+                            )
+                            .changed();
+                        zoom_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut zoom_end, crate::app::ZOOM_RANGE)
+                                    .text(Text::PropZoomEnd.tr(locale)),
+                            )
+                            .changed();
+                        if zoom_changed {
+                            app.set_selected_clip_zoom(zoom_start, zoom_end);
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(Text::ZoomExportNote.tr(locale))
                                 .size(10.5)
                                 .color(theme::TEXT_MUTED),
                         );
