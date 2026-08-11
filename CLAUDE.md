@@ -21,8 +21,10 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   (`ClipInstance::frozen`) — both live in the properties panel and affect the timeline display
   (waveform scaling / poster-frame draw) but not preview playback or export yet, since export
   still passthrough-renders one source file per job rather than mixing the actual timeline.
-  Check `features/request.md` for what's still unbuilt before assuming a feature is live —
-  when in doubt, `graphify query`.
+  Copy formatting (`Ctrl+Shift+C`/`Ctrl+Shift+V`, `OcaApp::copy_selected_clip_formatting`/
+  `paste_selected_clip_formatting`) copies just those gain/freeze settings between blocks
+  without duplicating the clip. Check `features/request.md` for what's still unbuilt before
+  assuming a feature is live — when in doubt, `graphify query`.
 
 ## Commands
 
