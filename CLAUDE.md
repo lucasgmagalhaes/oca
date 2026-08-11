@@ -46,9 +46,10 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   color picker + tolerance slider, with a "🟩" badge (bottom-center) on the timeline block. Blur,
   shake, glitch, and pixelize (`ClipInstance::blur_intensity/shake_intensity/glitch_intensity/
   pixelize_intensity`) round out the initial "Efeitos visuais" list from `request.md` — four more
-  sliders with no visible effect anywhere yet. Same preview/export gap as the rest for all of
-  these. Check `features/request.md` for what's still unbuilt before assuming a feature is live —
-  when in doubt, `graphify query`.
+  sliders with no visible effect anywhere yet. Zoom (`ClipInstance::zoom_start/zoom_end`, per
+  `request.md`'s "Zoom (punch-in / ken burns)") is two more properties-panel sliders with no
+  visible effect anywhere, same preview/export gap as the rest. Check `features/request.md` for
+  what's still unbuilt before assuming a feature is live — when in doubt, `graphify query`.
 
 ## Commands
 
