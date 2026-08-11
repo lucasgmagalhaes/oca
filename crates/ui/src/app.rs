@@ -70,6 +70,10 @@ pub const LUFS_PROFILES: [(&str, f32); 3] = [
     ("-23 LUFS · Broadcast", -23.0),
 ];
 
+/// Slider bounds for the properties panel's per-block gain control (Fase 4's "ganho de volume
+/// por bloco") — [`OcaApp::set_selected_clip_gain`] clamps to this range.
+pub const GAIN_DB_RANGE: std::ops::RangeInclusive<f32> = -24.0..=24.0;
+
 /// A message from a background render worker thread (see [`OcaApp::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
@@ -297,6 +301,33 @@ impl OcaApp {
             .find(|a| a.id == id)
     }
 
+    /// The timeline clip backing the properties panel's per-block gain control, if
+    /// `selected_clip_id` points at one on the active sequence.
+    pub fn selected_clip(&self) -> Option<&avcore::timeline::ClipInstance> {
+        let id = self.selected_clip_id?;
+        self.active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .find(|c| c.id == id)
+    }
+
+    /// Selects a timeline clip and its backing asset together, so the properties panel's
+    /// per-block controls and the preview stay in sync with a direct timeline click.
+    pub fn select_timeline_clip(&mut self, id: u64) {
+        let asset_id = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.clips)
+            .find(|clip| clip.id == id)
+            .map(|clip| clip.asset_id);
+        self.selected_clip_id = Some(id);
+        self.select_asset(asset_id);
+    }
+
     /// Switches the active project to `index` and navigates to the Editor screen — this is
     /// what a project card click on the Início screen does.
     pub fn open_project(&mut self, index: usize) {
@@ -508,6 +539,7 @@ impl OcaApp {
                 source_in_secs: 0.0,
                 source_out_secs: duration_secs,
                 composite_id: None,
+                gain_db: 0.0,
             });
     }
 
@@ -541,6 +573,7 @@ impl OcaApp {
                 source_in_secs: 0.0,
                 source_out_secs: duration_secs,
                 composite_id: None,
+                gain_db: 0.0,
             });
     }
 
@@ -608,6 +641,23 @@ impl OcaApp {
             }
         }
         self.selected_clip_id = None;
+    }
+
+    /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::gain_db`], clamped to
+    /// [`GAIN_DB_RANGE`] — what dragging the properties panel's gain slider does. A no-op if
+    /// nothing is selected.
+    pub fn set_selected_clip_gain(&mut self, gain_db: f32) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let gain_db = gain_db.clamp(*GAIN_DB_RANGE.start(), *GAIN_DB_RANGE.end());
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.gain_db = gain_db;
+                break;
+            }
+        }
     }
 
     /// Adds/removes `clip_id` from [`OcaApp::multi_selected_clip_ids`] — what `Ctrl+click`ing
@@ -715,6 +765,7 @@ impl OcaApp {
                 // composite member — copy/paste doesn't replicate group membership (a known
                 // gap short of request.md's "reutilizado ... como se fosse um clipe só").
                 composite_id: None,
+                gain_db: copied.gain_db,
             });
     }
 

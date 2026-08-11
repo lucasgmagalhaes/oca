@@ -4,7 +4,7 @@ use avcore::media::format_timecode;
 use avcore::MediaAsset;
 use eframe::egui::{self, RichText};
 
-use crate::app::{EditorTool, OcaApp, THUMBNAIL_BUCKET_SECS};
+use crate::app::{EditorTool, OcaApp, GAIN_DB_RANGE, THUMBNAIL_BUCKET_SECS};
 use crate::i18n::Text;
 use crate::screens::widgets;
 use crate::theme;
@@ -464,7 +464,7 @@ fn preview_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
     });
 }
 
-fn properties_panel(app: &OcaApp, ui: &mut egui::Ui, width: f32, height: f32) {
+fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32) {
     let locale = app.locale;
     egui::Frame::new()
         .inner_margin(egui::Margin::same(12))
@@ -536,6 +536,28 @@ fn properties_panel(app: &OcaApp, ui: &mut egui::Ui, width: f32, height: f32) {
                         .size(10.5)
                         .color(theme::TEXT_MUTED),
                 );
+
+                if let Some(clip) = app.selected_clip() {
+                    let mut gain_db = clip.gain_db;
+                    ui.add_space(10.0);
+                    ui.separator();
+                    ui.add_space(6.0);
+                    widgets::section_label(ui, Text::PropGain.tr(locale));
+                    let slider = ui.add(
+                        egui::Slider::new(&mut gain_db, GAIN_DB_RANGE)
+                            .suffix(" dB")
+                            .fixed_decimals(1),
+                    );
+                    if slider.changed() {
+                        app.set_selected_clip_gain(gain_db);
+                    }
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(Text::GainExportNote.tr(locale))
+                            .size(10.5)
+                            .color(theme::TEXT_MUTED),
+                    );
+                }
             });
         });
 }
@@ -776,8 +798,8 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                     clip_rect,
                                     peaks,
                                     asset.duration_secs,
-                                    clip.source_in_secs,
-                                    clip.source_out_secs,
+                                    clip.source_in_secs..clip.source_out_secs,
+                                    clip.gain_linear(),
                                     theme::TEXT_PRIMARY.gamma_multiply(0.7),
                                 );
                             }
@@ -826,7 +848,7 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
             }
         });
         if let Some(id) = clicked_clip_id {
-            app.selected_clip_id = Some(id);
+            app.select_timeline_clip(id);
         }
         for clip_id in multi_select_requests {
             app.toggle_multi_select(clip_id);
@@ -970,18 +992,18 @@ fn draw_waveform(
     clip_rect: egui::Rect,
     peaks: &[(f32, f32)],
     asset_duration_secs: f64,
-    source_in_secs: f64,
-    source_out_secs: f64,
+    source_range_secs: std::ops::Range<f64>,
+    gain_linear: f32,
     color: egui::Color32,
 ) {
     if peaks.is_empty() || asset_duration_secs <= 0.0 {
         return;
     }
     let bucket_count = peaks.len() as f64;
-    let start_bucket =
-        (source_in_secs / asset_duration_secs * bucket_count).clamp(0.0, bucket_count - 1.0);
+    let start_bucket = (source_range_secs.start / asset_duration_secs * bucket_count)
+        .clamp(0.0, bucket_count - 1.0);
     let end_bucket =
-        (source_out_secs / asset_duration_secs * bucket_count).clamp(0.0, bucket_count);
+        (source_range_secs.end / asset_duration_secs * bucket_count).clamp(0.0, bucket_count);
     let bucket_span = (end_bucket - start_bucket).max(1.0);
 
     let mid_y = clip_rect.center().y;
@@ -992,6 +1014,10 @@ fn draw_waveform(
         let t = x as f64 / width_px as f64;
         let bucket = ((start_bucket + t * bucket_span) as usize).min(peaks.len() - 1);
         let (min, max) = peaks[bucket];
+        // Live gain preview (Fase 4 "ganho de volume por bloco") — bars scale with the block's
+        // gain, clamped so extreme gain doesn't paint outside the clip's own row.
+        let min = (min * gain_linear).clamp(-1.0, 1.0);
+        let max = (max * gain_linear).clamp(-1.0, 1.0);
         let px = clip_rect.left() + x as f32;
         painter.line_segment(
             [

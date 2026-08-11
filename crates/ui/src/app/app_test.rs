@@ -46,6 +46,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         source_in_secs,
         source_out_secs,
         composite_id: None,
+        gain_db: 0.0,
     }
 }
 
@@ -972,6 +973,85 @@ fn delete_selected_clip_removes_it_from_its_track_and_clears_the_selection() {
 }
 
 #[test]
+fn set_selected_clip_gain_updates_the_selected_clip() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(2);
+
+    app.set_selected_clip_gain(6.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].gain_db, 0.0);
+    assert_eq!(clips[1].gain_db, 6.0);
+}
+
+#[test]
+fn set_selected_clip_gain_clamps_to_gain_db_range() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_gain(999.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].gain_db, *crate::app::GAIN_DB_RANGE.end());
+}
+
+#[test]
+fn set_selected_clip_gain_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.set_selected_clip_gain(6.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].gain_db, 0.0);
+}
+
+#[test]
+fn select_timeline_clip_synchronizes_its_backing_asset() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(7, 0.0, 0.0, 10.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.select_timeline_clip(7);
+
+    assert_eq!(app.selected_clip_id, Some(7));
+    assert_eq!(app.selected_asset_id, Some(1));
+}
+
+#[test]
 fn copy_selected_clip_is_a_no_op_when_nothing_is_selected() {
     let mut app = test_app(
         vec![test_project_with_tracks(
@@ -1019,6 +1099,7 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
         Vec::new(),
     );
     app.selected_clip_id = Some(5);
+    app.set_selected_clip_gain(4.0);
     app.copy_selected_clip();
     app.active_project_mut().timeline_mut().playhead_secs = 30.0;
 
@@ -1031,6 +1112,7 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
     assert_eq!(pasted.start_secs, 30.0);
     assert_eq!(pasted.source_in_secs, 2.0);
     assert_eq!(pasted.source_out_secs, 12.0);
+    assert_eq!(pasted.gain_db, 4.0); // gain travels with the clip through copy/paste.
 }
 
 #[test]
