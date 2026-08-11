@@ -11,7 +11,7 @@
   "9": "Plano de Execução — oca (PacoPaçoca)",
   "10": "probe_media",
   "11": "ensure_proxy",
-  "12": "parse_loudnorm_stderr",
+  "12": "MediaAsset",
   "13": "render_export",
   "14": "Task Breakdown — Fase 1 (Motor central)",
   "15": "Reviewer Agent",
@@ -35,5 +35,10 @@
   "33": "test_launch.py",
   "34": "generate_waveform",
   "35": "editor.rs",
-  "36": "MediaAsset"
+  "36": "app.rs",
+  "37": ".active_project",
+  "38": ".ui",
+  "39": "Option",
+  "40": "test_project",
+  "41": "test_asset"
 }
