@@ -11,6 +11,10 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
+        crop_x: 0.0,
+        crop_y: 0.0,
+        crop_w: 1.0,
+        crop_h: 1.0,
     }
 }
 
@@ -168,6 +172,43 @@ fn split_clip_at_keeps_speed_factor_on_both_halves() {
     assert!(split);
     assert_eq!(track.clips[0].speed_factor, 2.0);
     assert_eq!(track.clips[1].speed_factor, 2.0);
+}
+
+#[test]
+fn new_clip_defaults_to_an_uncropped_full_frame() {
+    let c = clip(1, 0.0, 0.0, 10.0);
+    assert!(!c.is_cropped());
+    assert_eq!(
+        (c.crop_x, c.crop_y, c.crop_w, c.crop_h),
+        (0.0, 0.0, 1.0, 1.0)
+    );
+}
+
+#[test]
+fn is_cropped_is_true_when_any_crop_field_differs_from_the_full_frame() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.crop_w = 0.5;
+    assert!(c.is_cropped());
+}
+
+#[test]
+fn split_clip_at_keeps_crop_rect_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.crop_x = 0.1;
+    clip.crop_y = 0.2;
+    clip.crop_w = 0.5;
+    clip.crop_h = 0.6;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert_eq!(
+            (half.crop_x, half.crop_y, half.crop_w, half.crop_h),
+            (0.1, 0.2, 0.5, 0.6)
+        );
+    }
 }
 
 #[test]

@@ -59,9 +59,32 @@ pub struct ClipInstance {
     /// so older saved projects load at normal speed.
     #[serde(default = "default_speed_factor")]
     pub speed_factor: f32,
+    /// Normalized crop rectangle within the source frame — `(crop_x, crop_y)` is the visible
+    /// sub-rectangle's top-left corner, `(crop_w, crop_h)` its size, all fractions of the full
+    /// frame (`0.0..=1.0`). Defaults to `(0.0, 0.0, 1.0, 1.0)` — the whole frame, uncropped —
+    /// per `request.md`'s Fase 4 "Recorte (crop)" spec: reframing separate from the time-based
+    /// split already covered in Fase 3. Currently only shown as a badge on the timeline block
+    /// (`ui`'s timeline panel, via [`ClipInstance::is_cropped`]); doesn't yet affect preview
+    /// playback or export — the same kind of gap as [`ClipInstance::gain_db`]. Independently
+    /// clamped to `[0.0, 1.0]` when set (`ui`'s `OcaApp::set_selected_clip_crop`); a crop rect
+    /// extending past the frame edge (`crop_x + crop_w > 1.0`) isn't rejected — a known
+    /// simplification with no visible effect yet since nothing renders the crop.
+    /// `#[serde(default = ..)]` so older saved projects load uncropped.
+    #[serde(default)]
+    pub crop_x: f32,
+    #[serde(default)]
+    pub crop_y: f32,
+    #[serde(default = "default_crop_extent")]
+    pub crop_w: f32,
+    #[serde(default = "default_crop_extent")]
+    pub crop_h: f32,
 }
 
 fn default_speed_factor() -> f32 {
+    1.0
+}
+
+fn default_crop_extent() -> f32 {
     1.0
 }
 
@@ -76,6 +99,11 @@ impl ClipInstance {
     /// doubles amplitude, `-6.0` dB roughly halves it. `0.0` dB gives `1.0` (unity).
     pub fn gain_linear(&self) -> f32 {
         10f32.powf(self.gain_db / 20.0)
+    }
+
+    /// `true` if the crop rect isn't the full, uncropped frame.
+    pub fn is_cropped(&self) -> bool {
+        self.crop_x != 0.0 || self.crop_y != 0.0 || self.crop_w != 1.0 || self.crop_h != 1.0
     }
 
     /// True if `at_secs` (timeline-relative) falls strictly inside this clip's placed range.
@@ -162,6 +190,10 @@ impl Track {
             gain_db: clip.gain_db,
             frozen: clip.frozen,
             speed_factor: clip.speed_factor,
+            crop_x: clip.crop_x,
+            crop_y: clip.crop_y,
+            crop_w: clip.crop_w,
+            crop_h: clip.crop_h,
         };
         clip.source_out_secs = split_source_secs;
 
