@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::export::{ExportJob, ExportJobStatus};
 use crate::media::{LoudnessMetrics, MediaAsset, MediaKind};
 use crate::project::{Project, Recency, Sequence};
-use crate::timeline::{ClipInstance, MaskShape, Timeline, Track, TrackKind};
+use crate::timeline::{ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind};
 
 fn asset(
     id: u64,
@@ -123,6 +123,7 @@ fn cuphead_timeline() -> Timeline {
                         mask_shape: MaskShape::None,
                         mask_corner_radius: 0.0,
                         flipped_h: false,
+                        color_filter: ColorFilter::None,
                     },
                     ClipInstance {
                         id: 2,
@@ -141,6 +142,7 @@ fn cuphead_timeline() -> Timeline {
                         mask_shape: MaskShape::None,
                         mask_corner_radius: 0.0,
                         flipped_h: false,
+                        color_filter: ColorFilter::None,
                     },
                     ClipInstance {
                         id: 3,
@@ -159,6 +161,7 @@ fn cuphead_timeline() -> Timeline {
                         mask_shape: MaskShape::None,
                         mask_corner_radius: 0.0,
                         flipped_h: false,
+                        color_filter: ColorFilter::None,
                     },
                 ],
             },
@@ -184,6 +187,7 @@ fn cuphead_timeline() -> Timeline {
                         mask_shape: MaskShape::None,
                         mask_corner_radius: 0.0,
                         flipped_h: false,
+                        color_filter: ColorFilter::None,
                     },
                     ClipInstance {
                         id: 5,
@@ -202,6 +206,7 @@ fn cuphead_timeline() -> Timeline {
                         mask_shape: MaskShape::None,
                         mask_corner_radius: 0.0,
                         flipped_h: false,
+                        color_filter: ColorFilter::None,
                     },
                     ClipInstance {
                         id: 6,
@@ -220,6 +225,7 @@ fn cuphead_timeline() -> Timeline {
                         mask_shape: MaskShape::None,
                         mask_corner_radius: 0.0,
                         flipped_h: false,
+                        color_filter: ColorFilter::None,
                     },
                 ],
             },
@@ -244,6 +250,7 @@ fn cuphead_timeline() -> Timeline {
                     mask_shape: MaskShape::None,
                     mask_corner_radius: 0.0,
                     flipped_h: false,
+                    color_filter: ColorFilter::None,
                 }],
             },
         ],

@@ -11,7 +11,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 use avcore::loudness::parse_loudnorm_stderr;
 use avcore::persistence::{from_json, to_json};
-use avcore::timeline::{ClipInstance, MaskShape, Timeline, Track, TrackKind};
+use avcore::timeline::{ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind};
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency, Sequence};
 
 const LOUDNORM_STDERR_FIXTURE: &str = r#"
@@ -84,6 +84,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 mask_shape: MaskShape::None,
                 mask_corner_radius: 0.0,
                 flipped_h: false,
+                color_filter: ColorFilter::None,
             })
             .collect(),
     };

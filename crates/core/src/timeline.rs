@@ -20,6 +20,17 @@ pub enum MaskShape {
     RoundedRect,
 }
 
+/// Color filter for a block, per `request.md`'s Fase 4 "Efeitos visuais" spec ("Preto e branco
+/// e sépia"). A bounded subset of the eventual "Filtros de cor e LUTs" library — just these two
+/// fixed looks, no adjustable LUT yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ColorFilter {
+    #[default]
+    None,
+    BlackAndWhite,
+    Sepia,
+}
+
 /// One placed instance of a `MediaAsset` on the timeline. `source_in_secs`/`source_out_secs`
 /// mark the trimmed range within the source asset; `start_secs` is its position on the track.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -107,6 +118,12 @@ pub struct ClipInstance {
     /// older saved projects load unflipped.
     #[serde(default)]
     pub flipped_h: bool,
+    /// Color filter applied to this block ([`ColorFilter::None`] by default). Currently only
+    /// shown as a tinted timeline-block fill (`ui`'s timeline panel); doesn't yet affect
+    /// preview playback or export — the same kind of gap as [`ClipInstance::gain_db`].
+    /// `#[serde(default)]` so older saved projects load unfiltered.
+    #[serde(default)]
+    pub color_filter: ColorFilter,
 }
 
 fn default_speed_factor() -> f32 {
@@ -138,6 +155,11 @@ impl ClipInstance {
     /// `true` if a layer mask ([`ClipInstance::mask_shape`]) is applied.
     pub fn is_masked(&self) -> bool {
         self.mask_shape != MaskShape::None
+    }
+
+    /// `true` if a color filter ([`ClipInstance::color_filter`]) is applied.
+    pub fn is_color_filtered(&self) -> bool {
+        self.color_filter != ColorFilter::None
     }
 
     /// True if `at_secs` (timeline-relative) falls strictly inside this clip's placed range.
@@ -231,6 +253,7 @@ impl Track {
             mask_shape: clip.mask_shape,
             mask_corner_radius: clip.mask_corner_radius,
             flipped_h: clip.flipped_h,
+            color_filter: clip.color_filter,
         };
         clip.source_out_secs = split_source_secs;
 

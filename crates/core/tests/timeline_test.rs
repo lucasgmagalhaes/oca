@@ -1,4 +1,4 @@
-use avcore::timeline::{ClipInstance, MaskShape, Timeline, Track, TrackKind};
+use avcore::timeline::{ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind};
 
 fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> ClipInstance {
     ClipInstance {
@@ -18,6 +18,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         mask_shape: MaskShape::None,
         mask_corner_radius: 0.0,
         flipped_h: false,
+        color_filter: ColorFilter::None,
     }
 }
 
@@ -260,6 +261,34 @@ fn split_clip_at_keeps_flip_on_both_halves() {
     assert!(split);
     for half in &track.clips {
         assert!(half.flipped_h);
+    }
+}
+
+#[test]
+fn new_clip_defaults_to_unfiltered() {
+    let c = clip(1, 0.0, 0.0, 10.0);
+    assert!(!c.is_color_filtered());
+    assert_eq!(c.color_filter, ColorFilter::None);
+}
+
+#[test]
+fn is_color_filtered_is_true_for_any_filter_but_none() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.color_filter = ColorFilter::Sepia;
+    assert!(c.is_color_filtered());
+}
+
+#[test]
+fn split_clip_at_keeps_color_filter_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.color_filter = ColorFilter::BlackAndWhite;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert_eq!(half.color_filter, ColorFilter::BlackAndWhite);
     }
 }
 
