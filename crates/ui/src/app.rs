@@ -111,6 +111,22 @@ pub const SHARPEN_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 /// visuais", [`avcore::timeline::ClipInstance::chroma_key_tolerance`]).
 pub const CHROMA_KEY_TOLERANCE_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 
+/// Slider bounds for the properties panel's blur control (Fase 4's "Efeitos visuais",
+/// [`avcore::timeline::ClipInstance::blur_intensity`]).
+pub const BLUR_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
+
+/// Slider bounds for the properties panel's shake control (Fase 4's "Efeitos visuais",
+/// [`avcore::timeline::ClipInstance::shake_intensity`]).
+pub const SHAKE_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
+
+/// Slider bounds for the properties panel's glitch control (Fase 4's "Efeitos visuais",
+/// [`avcore::timeline::ClipInstance::glitch_intensity`]).
+pub const GLITCH_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
+
+/// Slider bounds for the properties panel's pixelize control (Fase 4's "Efeitos visuais",
+/// [`avcore::timeline::ClipInstance::pixelize_intensity`]).
+pub const PIXELIZE_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
+
 /// A message from a background render worker thread (see [`OcaApp::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
@@ -190,6 +206,10 @@ struct ClipFormatting {
     chroma_key_enabled: bool,
     chroma_key_color: [u8; 3],
     chroma_key_tolerance: f32,
+    blur_intensity: f32,
+    shake_intensity: f32,
+    glitch_intensity: f32,
+    pixelize_intensity: f32,
 }
 
 /// The whole application's state: which screen is showing, the loaded projects, the export
@@ -643,6 +663,10 @@ impl OcaApp {
                 chroma_key_enabled: false,
                 chroma_key_color: [0, 255, 0],
                 chroma_key_tolerance: 0.4,
+                blur_intensity: 0.0,
+                shake_intensity: 0.0,
+                glitch_intensity: 0.0,
+                pixelize_intensity: 0.0,
             });
     }
 
@@ -695,6 +719,10 @@ impl OcaApp {
                 chroma_key_enabled: false,
                 chroma_key_color: [0, 255, 0],
                 chroma_key_tolerance: 0.4,
+                blur_intensity: 0.0,
+                shake_intensity: 0.0,
+                glitch_intensity: 0.0,
+                pixelize_intensity: 0.0,
             });
     }
 
@@ -963,6 +991,85 @@ impl OcaApp {
         }
     }
 
+    /// Sets `selected_clip_id`'s blur strength
+    /// ([`avcore::timeline::ClipInstance::blur_intensity`], clamped to [`BLUR_INTENSITY_RANGE`])
+    /// — what dragging the properties panel's blur slider does. A no-op if nothing is selected.
+    pub fn set_selected_clip_blur(&mut self, blur_intensity: f32) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let blur_intensity =
+            blur_intensity.clamp(*BLUR_INTENSITY_RANGE.start(), *BLUR_INTENSITY_RANGE.end());
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.blur_intensity = blur_intensity;
+                break;
+            }
+        }
+    }
+
+    /// Sets `selected_clip_id`'s camera-shake strength
+    /// ([`avcore::timeline::ClipInstance::shake_intensity`], clamped to
+    /// [`SHAKE_INTENSITY_RANGE`]) — what dragging the properties panel's shake slider does. A
+    /// no-op if nothing is selected.
+    pub fn set_selected_clip_shake(&mut self, shake_intensity: f32) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let shake_intensity =
+            shake_intensity.clamp(*SHAKE_INTENSITY_RANGE.start(), *SHAKE_INTENSITY_RANGE.end());
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.shake_intensity = shake_intensity;
+                break;
+            }
+        }
+    }
+
+    /// Sets `selected_clip_id`'s glitch strength
+    /// ([`avcore::timeline::ClipInstance::glitch_intensity`], clamped to
+    /// [`GLITCH_INTENSITY_RANGE`]) — what dragging the properties panel's glitch slider does. A
+    /// no-op if nothing is selected.
+    pub fn set_selected_clip_glitch(&mut self, glitch_intensity: f32) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let glitch_intensity = glitch_intensity.clamp(
+            *GLITCH_INTENSITY_RANGE.start(),
+            *GLITCH_INTENSITY_RANGE.end(),
+        );
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.glitch_intensity = glitch_intensity;
+                break;
+            }
+        }
+    }
+
+    /// Sets `selected_clip_id`'s pixelize/mosaic-censor strength
+    /// ([`avcore::timeline::ClipInstance::pixelize_intensity`], clamped to
+    /// [`PIXELIZE_INTENSITY_RANGE`]) — what dragging the properties panel's pixelize slider
+    /// does. A no-op if nothing is selected.
+    pub fn set_selected_clip_pixelize(&mut self, pixelize_intensity: f32) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let pixelize_intensity = pixelize_intensity.clamp(
+            *PIXELIZE_INTENSITY_RANGE.start(),
+            *PIXELIZE_INTENSITY_RANGE.end(),
+        );
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.pixelize_intensity = pixelize_intensity;
+                break;
+            }
+        }
+    }
+
     /// Sets `selected_clip_id`'s brightness/contrast/saturation
     /// ([`avcore::timeline::ClipInstance::brightness`]/`contrast`/`saturation`), each
     /// independently clamped to its own range ([`BRIGHTNESS_RANGE`]/[`CONTRAST_RANGE`]/
@@ -1025,6 +1132,10 @@ impl OcaApp {
             chroma_key_enabled: clip.chroma_key_enabled,
             chroma_key_color: clip.chroma_key_color,
             chroma_key_tolerance: clip.chroma_key_tolerance,
+            blur_intensity: clip.blur_intensity,
+            shake_intensity: clip.shake_intensity,
+            glitch_intensity: clip.glitch_intensity,
+            pixelize_intensity: clip.pixelize_intensity,
         });
     }
 
@@ -1058,6 +1169,10 @@ impl OcaApp {
                 clip.chroma_key_enabled = formatting.chroma_key_enabled;
                 clip.chroma_key_color = formatting.chroma_key_color;
                 clip.chroma_key_tolerance = formatting.chroma_key_tolerance;
+                clip.blur_intensity = formatting.blur_intensity;
+                clip.shake_intensity = formatting.shake_intensity;
+                clip.glitch_intensity = formatting.glitch_intensity;
+                clip.pixelize_intensity = formatting.pixelize_intensity;
                 break;
             }
         }
@@ -1187,6 +1302,10 @@ impl OcaApp {
                 chroma_key_enabled: copied.chroma_key_enabled,
                 chroma_key_color: copied.chroma_key_color,
                 chroma_key_tolerance: copied.chroma_key_tolerance,
+                blur_intensity: copied.blur_intensity,
+                shake_intensity: copied.shake_intensity,
+                glitch_intensity: copied.glitch_intensity,
+                pixelize_intensity: copied.pixelize_intensity,
             });
     }
 

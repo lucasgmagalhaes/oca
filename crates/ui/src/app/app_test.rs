@@ -65,6 +65,10 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         chroma_key_enabled: false,
         chroma_key_color: [0, 255, 0],
         chroma_key_tolerance: 0.4,
+        blur_intensity: 0.0,
+        shake_intensity: 0.0,
+        glitch_intensity: 0.0,
+        pixelize_intensity: 0.0,
     }
 }
 
@@ -1668,6 +1672,182 @@ fn set_selected_clip_chroma_key_is_a_no_op_when_nothing_is_selected() {
 }
 
 #[test]
+fn set_selected_clip_blur_updates_and_clamps() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_blur(5.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(
+        clips[0].blur_intensity,
+        *crate::app::BLUR_INTENSITY_RANGE.end()
+    );
+}
+
+#[test]
+fn set_selected_clip_blur_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.set_selected_clip_blur(0.5);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].blur_intensity, 0.0);
+}
+
+#[test]
+fn set_selected_clip_shake_updates_and_clamps() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_shake(5.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(
+        clips[0].shake_intensity,
+        *crate::app::SHAKE_INTENSITY_RANGE.end()
+    );
+}
+
+#[test]
+fn set_selected_clip_shake_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.set_selected_clip_shake(0.5);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].shake_intensity, 0.0);
+}
+
+#[test]
+fn set_selected_clip_glitch_updates_and_clamps() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_glitch(5.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(
+        clips[0].glitch_intensity,
+        *crate::app::GLITCH_INTENSITY_RANGE.end()
+    );
+}
+
+#[test]
+fn set_selected_clip_glitch_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.set_selected_clip_glitch(0.5);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].glitch_intensity, 0.0);
+}
+
+#[test]
+fn set_selected_clip_pixelize_updates_and_clamps() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_pixelize(5.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(
+        clips[0].pixelize_intensity,
+        *crate::app::PIXELIZE_INTENSITY_RANGE.end()
+    );
+}
+
+#[test]
+fn set_selected_clip_pixelize_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.set_selected_clip_pixelize(0.5);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].pixelize_intensity, 0.0);
+}
+
+#[test]
 fn copy_selected_clip_formatting_is_a_no_op_when_nothing_is_selected() {
     let mut app = test_app(
         vec![test_project_with_tracks(
@@ -1711,6 +1891,10 @@ fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_posit
     app.set_selected_clip_color_adjust(0.2, 1.5, 0.5);
     app.set_selected_clip_sharpen(0.6);
     app.set_selected_clip_chroma_key(true, [10, 200, 30], 0.7);
+    app.set_selected_clip_blur(0.1);
+    app.set_selected_clip_shake(0.2);
+    app.set_selected_clip_glitch(0.3);
+    app.set_selected_clip_pixelize(0.4);
     app.copy_selected_clip_formatting();
 
     app.selected_clip_id = Some(2);
@@ -1742,6 +1926,15 @@ fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_posit
     assert!(clips[1].chroma_key_enabled);
     assert_eq!(clips[1].chroma_key_color, [10, 200, 30]);
     assert_eq!(clips[1].chroma_key_tolerance, 0.7);
+    assert_eq!(
+        (
+            clips[1].blur_intensity,
+            clips[1].shake_intensity,
+            clips[1].glitch_intensity,
+            clips[1].pixelize_intensity
+        ),
+        (0.1, 0.2, 0.3, 0.4)
+    );
     assert_eq!(clips[1].start_secs, 10.0); // position untouched
     assert_eq!(clips[1].source_out_secs, 20.0); // trim untouched
 }
@@ -1866,6 +2059,10 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
     app.set_selected_clip_color_adjust(0.3, 1.2, 0.8);
     app.set_selected_clip_sharpen(0.9);
     app.set_selected_clip_chroma_key(true, [5, 180, 5], 0.55);
+    app.set_selected_clip_blur(0.1);
+    app.set_selected_clip_shake(0.2);
+    app.set_selected_clip_glitch(0.3);
+    app.set_selected_clip_pixelize(0.4);
     app.copy_selected_clip();
     app.active_project_mut().timeline_mut().playhead_secs = 30.0;
 
@@ -1901,6 +2098,15 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
     assert!(pasted.chroma_key_enabled); // so does chroma key.
     assert_eq!(pasted.chroma_key_color, [5, 180, 5]);
     assert_eq!(pasted.chroma_key_tolerance, 0.55);
+    assert_eq!(
+        (
+            pasted.blur_intensity,
+            pasted.shake_intensity,
+            pasted.glitch_intensity,
+            pasted.pixelize_intensity
+        ),
+        (0.1, 0.2, 0.3, 0.4)
+    ); // so do blur/shake/glitch/pixelize.
 }
 
 #[test]

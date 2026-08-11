@@ -5,8 +5,9 @@ use avcore::MediaAsset;
 use eframe::egui::{self, RichText};
 
 use crate::app::{
-    EditorTool, OcaApp, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE, CONTRAST_RANGE,
-    CROP_MIN_SIZE, GAIN_DB_RANGE, MASK_CORNER_RADIUS_RANGE, SATURATION_RANGE, SHARPEN_RANGE,
+    EditorTool, OcaApp, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE,
+    CONTRAST_RANGE, CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, MASK_CORNER_RADIUS_RANGE,
+    PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SHAKE_INTENSITY_RANGE, SHARPEN_RANGE,
     SPEED_FACTOR_RANGE, THUMBNAIL_BUCKET_SECS, VIGNETTE_INTENSITY_RANGE,
 };
 use crate::i18n::Text;
@@ -573,6 +574,10 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                     let mut chroma_key_enabled = clip.chroma_key_enabled;
                     let mut chroma_key_color = clip.chroma_key_color;
                     let mut chroma_key_tolerance = clip.chroma_key_tolerance;
+                    let mut blur_intensity = clip.blur_intensity;
+                    let mut shake_intensity = clip.shake_intensity;
+                    let mut glitch_intensity = clip.glitch_intensity;
+                    let mut pixelize_intensity = clip.pixelize_intensity;
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -872,6 +877,51 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(Text::ChromaKeyExportNote.tr(locale))
+                                .size(10.5)
+                                .color(theme::TEXT_MUTED),
+                        );
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        widgets::section_label(ui, Text::PropOtherEffects.tr(locale));
+                        let mut other_effects_changed = false;
+                        other_effects_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut blur_intensity, BLUR_INTENSITY_RANGE)
+                                    .text(Text::PropBlur.tr(locale)),
+                            )
+                            .changed();
+                        other_effects_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut shake_intensity, SHAKE_INTENSITY_RANGE)
+                                    .text(Text::PropShake.tr(locale)),
+                            )
+                            .changed();
+                        other_effects_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut glitch_intensity, GLITCH_INTENSITY_RANGE)
+                                    .text(Text::PropGlitch.tr(locale)),
+                            )
+                            .changed();
+                        other_effects_changed |= ui
+                            .add(
+                                egui::Slider::new(
+                                    &mut pixelize_intensity,
+                                    PIXELIZE_INTENSITY_RANGE,
+                                )
+                                .text(Text::PropPixelize.tr(locale)),
+                            )
+                            .changed();
+                        if other_effects_changed {
+                            app.set_selected_clip_blur(blur_intensity);
+                            app.set_selected_clip_shake(shake_intensity);
+                            app.set_selected_clip_glitch(glitch_intensity);
+                            app.set_selected_clip_pixelize(pixelize_intensity);
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(Text::OtherEffectsExportNote.tr(locale))
                                 .size(10.5)
                                 .color(theme::TEXT_MUTED),
                         );

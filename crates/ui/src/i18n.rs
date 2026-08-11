@@ -137,6 +137,12 @@ text_catalog! {
     ChromaKeyColor: pt_br = "Cor:", en = "Color:";
     ChromaKeyTolerance: pt_br = "Tolerância", en = "Tolerance";
     ChromaKeyExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda não removem o fundo.", en = "only shows a badge on the block for now — preview and export don't remove the background yet.";
+    PropOtherEffects: pt_br = "Outros efeitos", en = "Other effects";
+    PropBlur: pt_br = "Blur", en = "Blur";
+    PropShake: pt_br = "Tremido", en = "Shake";
+    PropGlitch: pt_br = "Glitch", en = "Glitch";
+    PropPixelize: pt_br = "Pixelizar", en = "Pixelize";
+    OtherEffectsExportNote: pt_br = "ainda não têm efeito visível em lugar nenhum — preview e export ignoram esses valores por enquanto.", en = "have no visible effect anywhere yet — preview and export ignore these values for now.";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";
