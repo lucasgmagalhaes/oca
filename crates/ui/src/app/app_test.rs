@@ -69,6 +69,8 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         shake_intensity: 0.0,
         glitch_intensity: 0.0,
         pixelize_intensity: 0.0,
+        transition_in: avcore::timeline::TransitionType::None,
+        transition_duration_secs: 0.5,
     }
 }
 
@@ -1604,6 +1606,84 @@ fn set_selected_clip_sharpen_is_a_no_op_when_nothing_is_selected() {
 }
 
 #[test]
+fn set_selected_clip_transition_updates_the_selected_clip() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(2);
+
+    app.set_selected_clip_transition(avcore::timeline::TransitionType::Fade, 1.2);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(
+        clips[0].transition_in,
+        avcore::timeline::TransitionType::None
+    );
+    assert_eq!(clips[0].transition_duration_secs, 0.5);
+    assert_eq!(
+        clips[1].transition_in,
+        avcore::timeline::TransitionType::Fade
+    );
+    assert_eq!(clips[1].transition_duration_secs, 1.2);
+}
+
+#[test]
+fn set_selected_clip_transition_clamps_duration_to_range() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_transition(avcore::timeline::TransitionType::Slide, 10.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(
+        clips[0].transition_duration_secs,
+        *crate::app::TRANSITION_DURATION_RANGE.end()
+    );
+}
+
+#[test]
+fn set_selected_clip_transition_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.set_selected_clip_transition(avcore::timeline::TransitionType::Fade, 1.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(
+        clips[0].transition_in,
+        avcore::timeline::TransitionType::None
+    );
+    assert_eq!(clips[0].transition_duration_secs, 0.5);
+}
+
+#[test]
 fn set_selected_clip_chroma_key_updates_the_selected_clip() {
     let mut app = test_app(
         vec![test_project_with_tracks(
@@ -1895,6 +1975,7 @@ fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_posit
     app.set_selected_clip_shake(0.2);
     app.set_selected_clip_glitch(0.3);
     app.set_selected_clip_pixelize(0.4);
+    app.set_selected_clip_transition(avcore::timeline::TransitionType::Fade, 1.2);
     app.copy_selected_clip_formatting();
 
     app.selected_clip_id = Some(2);
@@ -1935,6 +2016,11 @@ fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_posit
         ),
         (0.1, 0.2, 0.3, 0.4)
     );
+    assert_eq!(
+        clips[1].transition_in,
+        avcore::timeline::TransitionType::Fade
+    );
+    assert_eq!(clips[1].transition_duration_secs, 1.2);
     assert_eq!(clips[1].start_secs, 10.0); // position untouched
     assert_eq!(clips[1].source_out_secs, 20.0); // trim untouched
 }
@@ -2063,6 +2149,7 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
     app.set_selected_clip_shake(0.2);
     app.set_selected_clip_glitch(0.3);
     app.set_selected_clip_pixelize(0.4);
+    app.set_selected_clip_transition(avcore::timeline::TransitionType::Slide, 0.9);
     app.copy_selected_clip();
     app.active_project_mut().timeline_mut().playhead_secs = 30.0;
 
@@ -2107,6 +2194,11 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
         ),
         (0.1, 0.2, 0.3, 0.4)
     ); // so do blur/shake/glitch/pixelize.
+    assert_eq!(
+        pasted.transition_in,
+        avcore::timeline::TransitionType::Slide
+    ); // so does the transition.
+    assert_eq!(pasted.transition_duration_secs, 0.9);
 }
 
 #[test]

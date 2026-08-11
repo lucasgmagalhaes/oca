@@ -578,6 +578,8 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                     let mut shake_intensity = clip.shake_intensity;
                     let mut glitch_intensity = clip.glitch_intensity;
                     let mut pixelize_intensity = clip.pixelize_intensity;
+                    let mut transition_in = clip.transition_in;
+                    let mut transition_duration_secs = clip.transition_duration_secs;
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -925,6 +927,53 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                                 .size(10.5)
                                 .color(theme::TEXT_MUTED),
                         );
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        widgets::section_label(ui, Text::PropTransition.tr(locale));
+                        let mut transition_changed = false;
+                        egui::ComboBox::from_id_salt("transition_in")
+                            .selected_text(transition_type_label(transition_in, locale))
+                            .show_ui(ui, |ui| {
+                                for transition in [
+                                    avcore::timeline::TransitionType::None,
+                                    avcore::timeline::TransitionType::Fade,
+                                    avcore::timeline::TransitionType::HardCut,
+                                    avcore::timeline::TransitionType::Slide,
+                                    avcore::timeline::TransitionType::Zoom,
+                                ] {
+                                    transition_changed |= ui
+                                        .selectable_value(
+                                            &mut transition_in,
+                                            transition,
+                                            transition_type_label(transition, locale),
+                                        )
+                                        .changed();
+                                }
+                            });
+                        let transition_duration_slider = ui.add(
+                            egui::Slider::new(
+                                &mut transition_duration_secs,
+                                crate::app::TRANSITION_DURATION_RANGE,
+                            )
+                            .suffix(" s")
+                            .fixed_decimals(2)
+                            .text(Text::PropTransitionDuration.tr(locale)),
+                        );
+                        transition_changed |= transition_duration_slider.changed();
+                        if transition_changed {
+                            app.set_selected_clip_transition(
+                                transition_in,
+                                transition_duration_secs,
+                            );
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(Text::TransitionExportNote.tr(locale))
+                                .size(10.5)
+                                .color(theme::TEXT_MUTED),
+                        );
                     }
                 }
             });
@@ -965,6 +1014,19 @@ fn color_filter_label(
             Text::ColorFilterBlackAndWhite.tr(locale).to_string()
         }
         avcore::timeline::ColorFilter::Sepia => Text::ColorFilterSepia.tr(locale).to_string(),
+    }
+}
+
+fn transition_type_label(
+    transition: avcore::timeline::TransitionType,
+    locale: crate::i18n::Locale,
+) -> String {
+    match transition {
+        avcore::timeline::TransitionType::None => Text::TransitionNone.tr(locale).to_string(),
+        avcore::timeline::TransitionType::Fade => Text::TransitionFade.tr(locale).to_string(),
+        avcore::timeline::TransitionType::HardCut => Text::TransitionHardCut.tr(locale).to_string(),
+        avcore::timeline::TransitionType::Slide => Text::TransitionSlide.tr(locale).to_string(),
+        avcore::timeline::TransitionType::Zoom => Text::TransitionZoom.tr(locale).to_string(),
     }
 }
 

@@ -143,6 +143,14 @@ text_catalog! {
     PropGlitch: pt_br = "Glitch", en = "Glitch";
     PropPixelize: pt_br = "Pixelizar", en = "Pixelize";
     OtherEffectsExportNote: pt_br = "ainda não têm efeito visível em lugar nenhum — preview e export ignoram esses valores por enquanto.", en = "have no visible effect anywhere yet — preview and export ignore these values for now.";
+    PropTransition: pt_br = "Transição", en = "Transition";
+    TransitionNone: pt_br = "Nenhuma", en = "None";
+    TransitionFade: pt_br = "Fade", en = "Fade";
+    TransitionHardCut: pt_br = "Corte seco", en = "Hard cut";
+    TransitionSlide: pt_br = "Slide", en = "Slide";
+    TransitionZoom: pt_br = "Zoom", en = "Zoom";
+    PropTransitionDuration: pt_br = "Duração da transição", en = "Transition duration";
+    TransitionExportNote: pt_br = "só afeta o painel de propriedades por enquanto, sem efeito no preview ou na exportação — e modela só a transição de entrada deste bloco, não uma mistura real entre dois clipes.", en = "only affects the properties panel for now, with no effect on preview or export — and models only this block's incoming transition, not a real cross-blend between two clips.";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";
