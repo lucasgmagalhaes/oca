@@ -539,7 +539,11 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
             );
         });
 
+        let locale = app.locale;
+        let playhead_secs = app.active_project().timeline.playhead_secs;
         let mut clicked_clip_id = None;
+        let mut delete_requests: Vec<u64> = Vec::new();
+        let mut split_at_playhead_requested = false;
         let mut trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
         let mut clip_drags: Vec<ClipDrag> = Vec::new();
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
@@ -595,6 +599,25 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                             ui.id().with(("timeline_clip", clip.id)),
                             egui::Sense::click_and_drag(),
                         );
+                        let covers_playhead = clip.start_secs <= playhead_secs
+                            && playhead_secs < clip.start_secs + clip.duration_secs();
+                        body_response.context_menu(|ui| {
+                            clicked_clip_id = Some(clip.id);
+                            if ui
+                                .add_enabled(
+                                    covers_playhead,
+                                    egui::Button::new(Text::ContextMenuSplit.tr(locale)),
+                                )
+                                .clicked()
+                            {
+                                split_at_playhead_requested = true;
+                                ui.close();
+                            }
+                            if ui.button(Text::ContextMenuDelete.tr(locale)).clicked() {
+                                delete_requests.push(clip.id);
+                                ui.close();
+                            }
+                        });
                         let left_response = ui.interact(
                             left_edge_rect,
                             ui.id().with(("timeline_clip_trim_start", clip.id)),
@@ -697,6 +720,13 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         });
         if let Some(id) = clicked_clip_id {
             app.selected_clip_id = Some(id);
+        }
+        for clip_id in delete_requests {
+            app.selected_clip_id = Some(clip_id);
+            app.delete_selected_clip();
+        }
+        if split_at_playhead_requested {
+            app.split_at_playhead();
         }
         for (clip_id, edge) in trim_requests {
             match edge {
