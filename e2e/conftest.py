@@ -28,6 +28,24 @@ WINDOW_TITLE = "oca"
 LAUNCH_TIMEOUT_SECS = 20
 
 
+def poll_for_descendants(window, title, control_type="Text", timeout_secs=5.0, interval_secs=0.1):
+    """Repeatedly re-queries `window`'s accessibility tree for a descendant control matching
+    `title`/`control_type` until one shows up or `timeout_secs` elapses.
+
+    A single snapshot isn't enough: the app only repaints every 200ms while idle
+    (OcaApp::ui's request_repaint_after), so a UI change (navigation, a background import
+    landing) isn't necessarily visible to UI Automation the instant the triggering action
+    (click_input, etc.) returns.
+    """
+    deadline = time.monotonic() + timeout_secs
+    while time.monotonic() < deadline:
+        matches = window.descendants(title=title, control_type=control_type)
+        if matches:
+            return matches
+        time.sleep(interval_secs)
+    return []
+
+
 @pytest.fixture
 def oca_window():
     """Launches a fresh ui.exe, waits for its main window, yields it, then tears it down."""
