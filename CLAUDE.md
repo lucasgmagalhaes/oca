@@ -110,9 +110,11 @@ Three-crate split, enforced by dependency direction: `avbridge` has no dependent
   waveform peak extraction.
 - **`core`** — project/timeline/media data model plus the wrappers that populate it (`probe`,
   `render`, `loudness`, `proxy`, `waveform`, all via `avbridge`), a `playbin`-based GStreamer
-  playback pipeline (`preview`), JSON save/load (`persistence`), and mock sample data
-  (`sample`). Locale-neutral: stores data like `Recency` (an enum), never pre-formatted
-  strings — formatting is `ui`'s job.
+  playback pipeline (`preview`), and JSON save/load (`persistence`). Locale-neutral: stores data
+  like `Recency` (an enum), never pre-formatted strings — formatting is `ui`'s job. The app
+  starts with an empty project list; every project, asset, and export job comes from the user
+  ("Novo projeto"/"Abrir projeto" and real imports) — there is no mock/sample data anywhere in
+  the codebase.
 - **`ui`** — the eframe/egui GUI (glow/OpenGL backend): `app.rs` holds top-level state
   (`OcaApp`) and mutation methods; `screens/` has one module per screen (home, library, editor,
   queue, prefs) plus shared `widgets`; `theme.rs` is the dark/teal palette; **all UI strings
