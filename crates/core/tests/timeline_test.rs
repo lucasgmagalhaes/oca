@@ -23,6 +23,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         brightness: 0.0,
         contrast: 1.0,
         saturation: 1.0,
+        sharpen: 0.0,
     }
 }
 
@@ -346,6 +347,25 @@ fn split_clip_at_keeps_color_adjustment_on_both_halves() {
             (half.brightness, half.contrast, half.saturation),
             (0.2, 1.5, 0.5)
         );
+    }
+}
+
+#[test]
+fn new_clip_defaults_to_unsharpened() {
+    assert_eq!(clip(1, 0.0, 0.0, 10.0).sharpen, 0.0);
+}
+
+#[test]
+fn split_clip_at_keeps_sharpen_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.sharpen = 0.4;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert_eq!(half.sharpen, 0.4);
     }
 }
 

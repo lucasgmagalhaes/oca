@@ -128,6 +128,7 @@ fn cuphead_timeline() -> Timeline {
                         brightness: 0.0,
                         contrast: 1.0,
                         saturation: 1.0,
+                        sharpen: 0.0,
                     },
                     ClipInstance {
                         id: 2,
@@ -151,6 +152,7 @@ fn cuphead_timeline() -> Timeline {
                         brightness: 0.0,
                         contrast: 1.0,
                         saturation: 1.0,
+                        sharpen: 0.0,
                     },
                     ClipInstance {
                         id: 3,
@@ -174,6 +176,7 @@ fn cuphead_timeline() -> Timeline {
                         brightness: 0.0,
                         contrast: 1.0,
                         saturation: 1.0,
+                        sharpen: 0.0,
                     },
                 ],
             },
@@ -204,6 +207,7 @@ fn cuphead_timeline() -> Timeline {
                         brightness: 0.0,
                         contrast: 1.0,
                         saturation: 1.0,
+                        sharpen: 0.0,
                     },
                     ClipInstance {
                         id: 5,
@@ -227,6 +231,7 @@ fn cuphead_timeline() -> Timeline {
                         brightness: 0.0,
                         contrast: 1.0,
                         saturation: 1.0,
+                        sharpen: 0.0,
                     },
                     ClipInstance {
                         id: 6,
@@ -250,6 +255,7 @@ fn cuphead_timeline() -> Timeline {
                         brightness: 0.0,
                         contrast: 1.0,
                         saturation: 1.0,
+                        sharpen: 0.0,
                     },
                 ],
             },
@@ -279,6 +285,7 @@ fn cuphead_timeline() -> Timeline {
                     brightness: 0.0,
                     contrast: 1.0,
                     saturation: 1.0,
+                    sharpen: 0.0,
                 }],
             },
         ],

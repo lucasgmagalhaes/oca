@@ -148,6 +148,13 @@ pub struct ClipInstance {
     /// so older saved projects load unchanged.
     #[serde(default = "default_unity_multiplier")]
     pub saturation: f32,
+    /// Sharpen strength for this block, `0.0..=1.0` (`0.0` is off) — per `request.md`'s Fase 4
+    /// "Efeitos visuais" spec ("Nitidez (sharpen)"). Currently has no visible effect anywhere
+    /// (`ui`'s properties panel just exposes the slider); doesn't yet affect preview playback or
+    /// export — the same kind of gap as [`ClipInstance::gain_db`]. `#[serde(default)]` so older
+    /// saved projects load unsharpened.
+    #[serde(default)]
+    pub sharpen: f32,
 }
 
 fn default_speed_factor() -> f32 {
@@ -291,6 +298,7 @@ impl Track {
             brightness: clip.brightness,
             contrast: clip.contrast,
             saturation: clip.saturation,
+            sharpen: clip.sharpen,
         };
         clip.source_out_secs = split_source_secs;
 

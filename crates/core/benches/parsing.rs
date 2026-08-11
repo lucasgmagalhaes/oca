@@ -89,6 +89,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 brightness: 0.0,
                 contrast: 1.0,
                 saturation: 1.0,
+                sharpen: 0.0,
             })
             .collect(),
     };
