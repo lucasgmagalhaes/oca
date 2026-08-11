@@ -5,7 +5,6 @@
   "3": "avbridge/src/lib.rs",
   "4": "timeline_test.rs",
   "5": "Preview",
-  "6": "widgets.rs",
   "7": "bridge.c",
   "8": "i18n.rs",
   "9": "Plano de Execução — oca (PacoPaçoca)",
@@ -34,8 +33,5 @@
   "32": "poll_for_descendants",
   "33": "test_launch.py",
   "34": "generate_waveform",
-  "35": "editor.rs",
-  "36": "Option",
-  "37": "app.rs",
-  "38": ".ui"
+  "35": "editor.rs"
 }

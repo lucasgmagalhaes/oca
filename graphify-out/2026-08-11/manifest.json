@@ -35,8 +35,8 @@
     "semantic_hash": ""
   },
   "crates/core/benches/parsing.rs": {
-    "mtime": 1786455817.3145142,
-    "ast_hash": "822312b9df1461a135959def15740289",
+    "mtime": 1786468458.0036905,
+    "ast_hash": "1cbccfb5d361625c12d500f9d01f3b63",
     "semantic_hash": ""
   },
   "crates/core/src/export.rs": {
@@ -100,13 +100,13 @@
     "semantic_hash": ""
   },
   "crates/core/src/sample.rs": {
-    "mtime": 1786455843.9158852,
-    "ast_hash": "0faada608168d9148d96f989a21265db",
+    "mtime": 1786468436.9362984,
+    "ast_hash": "e3fbd8d7640d5f37d3bd334690ed0b31",
     "semantic_hash": ""
   },
   "crates/core/src/timeline.rs": {
-    "mtime": 1786455784.843656,
-    "ast_hash": "4bced966c1c1345920b3b22fdd6882b7",
+    "mtime": 1786468418.1736467,
+    "ast_hash": "d20546575683367afd1de080dd212b41",
     "semantic_hash": ""
   },
   "crates/core/tests/gstreamer_link_test.rs": {
@@ -125,8 +125,8 @@
     "semantic_hash": ""
   },
   "crates/core/tests/persistence_test.rs": {
-    "mtime": 1786459846.449286,
-    "ast_hash": "fa54b7ae05ceab2381db44aaab52d7ee",
+    "mtime": 1786460708.7519002,
+    "ast_hash": "f86ececb0e4f222fb5dcb60062a56556",
     "semantic_hash": ""
   },
   "crates/core/tests/preview_test.rs": {
@@ -155,23 +155,23 @@
     "semantic_hash": ""
   },
   "crates/core/tests/timeline_test.rs": {
-    "mtime": 1786456029.5486598,
-    "ast_hash": "5804d6d2f06a13120e41e62acfa24e10",
+    "mtime": 1786468606.7505133,
+    "ast_hash": "8eab744d6f5d679ec8794857ddf92f23",
     "semantic_hash": ""
   },
   "crates/ui/src/app.rs": {
-    "mtime": 1786459843.4157515,
-    "ast_hash": "6a42f7614b075b6601e24dc54c3a7428",
+    "mtime": 1786468487.319506,
+    "ast_hash": "7cf97ed8bfc7fda421e35d13cbd62265",
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1786459891.2590916,
-    "ast_hash": "d0f6a51817a3dfc10687af3617c2ee29",
+    "mtime": 1786468631.5797443,
+    "ast_hash": "5efef47bb079e1eacc3640b19a0a64ae",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1786455899.644969,
-    "ast_hash": "0410a253b5a8d38e2621098e53c32344",
+    "mtime": 1786468495.591464,
+    "ast_hash": "a8fbdf1244d2bc445144082535c5cd40",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -190,8 +190,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor.rs": {
-    "mtime": 1786460025.569445,
-    "ast_hash": "96d7a92513266198c42da7d5f6acea1d",
+    "mtime": 1786468640.9351237,
+    "ast_hash": "7f99825be8b1812fa7b4dbd94422c106",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/home.rs": {
@@ -240,8 +240,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786459847.7033954,
-    "ast_hash": "ba774f0d78cc55ffc5a5626ef4b8bff2",
+    "mtime": 1786468702.9650457,
+    "ast_hash": "02198d179546827e6c460d994774be03",
     "semantic_hash": ""
   },
   "README.md": {
