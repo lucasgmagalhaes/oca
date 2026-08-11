@@ -83,6 +83,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 crop_h: 1.0,
                 mask_shape: MaskShape::None,
                 mask_corner_radius: 0.0,
+                flipped_h: false,
             })
             .collect(),
     };

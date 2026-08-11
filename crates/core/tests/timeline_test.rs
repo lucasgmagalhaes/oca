@@ -17,6 +17,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         crop_h: 1.0,
         mask_shape: MaskShape::None,
         mask_corner_radius: 0.0,
+        flipped_h: false,
     }
 }
 
@@ -240,6 +241,25 @@ fn split_clip_at_keeps_mask_on_both_halves() {
     for half in &track.clips {
         assert_eq!(half.mask_shape, MaskShape::RoundedRect);
         assert_eq!(half.mask_corner_radius, 0.3);
+    }
+}
+
+#[test]
+fn new_clip_defaults_to_unflipped() {
+    assert!(!clip(1, 0.0, 0.0, 10.0).flipped_h);
+}
+
+#[test]
+fn split_clip_at_keeps_flip_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.flipped_h = true;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert!(half.flipped_h);
     }
 }
 

@@ -122,6 +122,7 @@ fn cuphead_timeline() -> Timeline {
                         crop_h: 1.0,
                         mask_shape: MaskShape::None,
                         mask_corner_radius: 0.0,
+                        flipped_h: false,
                     },
                     ClipInstance {
                         id: 2,
@@ -139,6 +140,7 @@ fn cuphead_timeline() -> Timeline {
                         crop_h: 1.0,
                         mask_shape: MaskShape::None,
                         mask_corner_radius: 0.0,
+                        flipped_h: false,
                     },
                     ClipInstance {
                         id: 3,
@@ -156,6 +158,7 @@ fn cuphead_timeline() -> Timeline {
                         crop_h: 1.0,
                         mask_shape: MaskShape::None,
                         mask_corner_radius: 0.0,
+                        flipped_h: false,
                     },
                 ],
             },
@@ -180,6 +183,7 @@ fn cuphead_timeline() -> Timeline {
                         crop_h: 1.0,
                         mask_shape: MaskShape::None,
                         mask_corner_radius: 0.0,
+                        flipped_h: false,
                     },
                     ClipInstance {
                         id: 5,
@@ -197,6 +201,7 @@ fn cuphead_timeline() -> Timeline {
                         crop_h: 1.0,
                         mask_shape: MaskShape::None,
                         mask_corner_radius: 0.0,
+                        flipped_h: false,
                     },
                     ClipInstance {
                         id: 6,
@@ -214,6 +219,7 @@ fn cuphead_timeline() -> Timeline {
                         crop_h: 1.0,
                         mask_shape: MaskShape::None,
                         mask_corner_radius: 0.0,
+                        flipped_h: false,
                     },
                 ],
             },
@@ -237,6 +243,7 @@ fn cuphead_timeline() -> Timeline {
                     crop_h: 1.0,
                     mask_shape: MaskShape::None,
                     mask_corner_radius: 0.0,
+                    flipped_h: false,
                 }],
             },
         ],

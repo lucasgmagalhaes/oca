@@ -100,6 +100,13 @@ pub struct ClipInstance {
     /// saved projects load at `0.0` (square corners).
     #[serde(default)]
     pub mask_corner_radius: f32,
+    /// `true` if this block's frame is mirrored horizontally, per `request.md`'s Fase 4
+    /// "Efeitos visuais" spec ("Espelhar (flip horizontal)"). Currently only shown as a badge
+    /// on the timeline block (`ui`'s timeline panel); doesn't yet affect preview playback or
+    /// export — the same kind of gap as [`ClipInstance::gain_db`]. `#[serde(default)]` so
+    /// older saved projects load unflipped.
+    #[serde(default)]
+    pub flipped_h: bool,
 }
 
 fn default_speed_factor() -> f32 {
@@ -223,6 +230,7 @@ impl Track {
             crop_h: clip.crop_h,
             mask_shape: clip.mask_shape,
             mask_corner_radius: clip.mask_corner_radius,
+            flipped_h: clip.flipped_h,
         };
         clip.source_out_secs = split_source_secs;
 
