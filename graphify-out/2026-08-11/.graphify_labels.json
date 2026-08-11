@@ -1,6 +1,6 @@
 {
   "0": "OcaApp",
-  "1": "persistence.rs",
+  "1": "Project",
   "2": "app_test.rs",
   "3": "avbridge/src/lib.rs",
   "4": "timeline_test.rs",
@@ -11,8 +11,7 @@
   "9": "Plano de Execução — oca (PacoPaçoca)",
   "10": "probe_media",
   "11": "ensure_proxy",
-  "12": "core/src/lib.rs",
-  "13": "MaskShape",
+  "12": "parse_loudnorm_stderr",
   "14": "Task Breakdown — Fase 1 (Motor central)",
   "15": "Reviewer Agent",
   "16": "Plano de Execução — oca (PacoPaçoca)",
@@ -41,11 +40,5 @@
   "39": "Option",
   "40": "test_project",
   "41": "test_asset",
-  "42": "ClipInstance",
-  "43": "Project",
-  "44": "to_json",
-  "45": "timeline.rs",
-  "46": "media_test.rs",
-  "47": "parsing.rs",
-  "48": "sample_export_jobs"
+  "42": "ClipInstance"
 }
