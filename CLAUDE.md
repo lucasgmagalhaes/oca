@@ -54,11 +54,15 @@ panel), `Ctrl+B`/toolbar split-at-playhead across every track (`Track::split_cli
 bounded by a minimum duration and (right edge) the source asset's own length
 (`ClipInstance::trim_start`/`trim_end`), and drag-move a clip's body — same-track reposition
 or onto a different same-`TrackKind` track, resolved by which row's Y-range the drag lands on
-(`Timeline::move_clip_to_track`/`Track::move_clip`), and right-click a clip for a context menu
-(per `request.md`'s Fase 3 spec, still only covering the actions that exist today — split at
-playhead, greyed out unless the clip actually covers it, and delete; copy/paste/apply-effect/
-merge-into-composite-block are follow-ups once those features themselves exist). The Editor
-screen's three columns (media
+(`Timeline::move_clip_to_track`/`Track::move_clip`), and `Ctrl+C`/`Ctrl+X`/`Ctrl+V`
+(`OcaApp::copy_selected_clip`/`cut_selected_clip`/`paste_clip_at_playhead`) copy, cut and paste
+a clip via a one-slot `OcaApp::clipboard_clip` — paste always lands at the playhead on a
+matching-kind track (auto-created if none exists) rather than wherever the clip was cut from, a
+known simplification. Not scoped to a project or sequence, so pasting into a different tab (or
+even a different project) "just works" — request.md's Fase 3 "copiar e colar entre abas" for
+free. Right-click a clip for a context menu with the same actions (per `request.md`'s Fase 3
+spec) plus delete; apply-effect/merge-into-composite-block are follow-ups once those features
+themselves exist. The Editor screen's three columns (media
 library / preview / properties) and the timeline strip are all resizable by dragging the
 divider between them (`editor.rs::resizable_divider`/`resizable_divider_horizontal`,
 `OcaApp::lib_panel_width`/`props_panel_width`/`timeline_height`) — sizes clamp to the window's
