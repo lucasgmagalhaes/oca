@@ -132,6 +132,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         requested_thumbnails: HashSet::new(),
         pending_asset_drop: None,
         clipboard_clip: None,
+        formatting_clipboard: None,
         multi_selected_clip_ids: HashSet::new(),
     }
 }
@@ -1075,6 +1076,75 @@ fn set_selected_clip_frozen_is_a_no_op_when_nothing_is_selected() {
     app.set_selected_clip_frozen(true);
 
     let clips = &app.active_project().timeline().tracks[0].clips;
+    assert!(!clips[0].frozen);
+}
+
+#[test]
+fn copy_selected_clip_formatting_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.copy_selected_clip_formatting();
+
+    assert!(!app.has_formatting_clipboard());
+}
+
+#[test]
+fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_position() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.set_selected_clip_gain(6.0);
+    app.set_selected_clip_frozen(true);
+    app.copy_selected_clip_formatting();
+
+    app.selected_clip_id = Some(2);
+    app.paste_selected_clip_formatting();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[1].gain_db, 6.0);
+    assert!(clips[1].frozen);
+    assert_eq!(clips[1].start_secs, 10.0); // position untouched
+    assert_eq!(clips[1].source_out_secs, 20.0); // trim untouched
+}
+
+#[test]
+fn paste_selected_clip_formatting_is_a_no_op_with_an_empty_clipboard() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.paste_selected_clip_formatting();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].gain_db, 0.0);
     assert!(!clips[0].frozen);
 }
 

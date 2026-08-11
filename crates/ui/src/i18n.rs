@@ -117,6 +117,8 @@ text_catalog! {
     ContextMenuCopy: pt_br = "⧉ Copiar", en = "⧉ Copy";
     ContextMenuCut: pt_br = "✂ Recortar", en = "✂ Cut";
     ContextMenuPaste: pt_br = "📋 Colar no playhead", en = "📋 Paste at playhead";
+    ContextMenuCopyFormatting: pt_br = "🎨 Copiar formatação", en = "🎨 Copy formatting";
+    ContextMenuPasteFormatting: pt_br = "🎨 Colar formatação", en = "🎨 Paste formatting";
     DefaultSequenceName: pt_br = "Sequência principal", en = "Main sequence";
     AddSequenceTab: pt_br = "＋", en = "＋";
     MergeIntoComposite: pt_br = "⛓ Mesclar em bloco", en = "⛓ Merge into block";

@@ -125,6 +125,19 @@ struct ThumbnailReady {
     rgba: Vec<u8>,
 }
 
+/// The subset of a [`avcore::timeline::ClipInstance`]'s fields considered "formatting" —
+/// effects/settings that can be copied onto a different block without duplicating the clip
+/// itself, per `request.md`'s Fase 4 "copiar formatação" spec (`Ctrl+Shift+C`/`Ctrl+Shift+V`).
+/// Deliberately excludes structural fields (`id`, `asset_id`, `start_secs`,
+/// `source_in_secs`/`source_out_secs`, `composite_id`) — those describe what/where a clip is,
+/// not how it's rendered. Grows as more per-block settings (like `gain_db`/`frozen`) join
+/// `ClipInstance`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ClipFormatting {
+    gain_db: f32,
+    frozen: bool,
+}
+
 /// The whole application's state: which screen is showing, the loaded projects, the export
 /// queue, and user preferences. `eframe` owns one instance of this for the app's lifetime
 /// and calls [`OcaApp::ui`](eframe::App::ui) on it every frame.
@@ -223,6 +236,10 @@ pub struct OcaApp {
     /// a different project, is what makes "copiar e colar entre abas" (`request.md`'s Fase 3
     /// spec) work for free, rather than needing separate cross-tab plumbing.
     clipboard_clip: Option<(avcore::timeline::ClipInstance, avcore::timeline::TrackKind)>,
+    /// The last formatting (gain/freeze settings, not the clip itself) copied via
+    /// `Ctrl+Shift+C`/the timeline context menu — [`OcaApp::paste_selected_clip_formatting`]
+    /// applies it onto a different block, per `request.md`'s Fase 4 "copiar formatação" spec.
+    formatting_clipboard: Option<ClipFormatting>,
     /// Clip ids picked (via `Ctrl+click`) as candidates for [`OcaApp::merge_into_composite`] —
     /// separate from `selected_clip_id`, which stays single-target for every other clip
     /// operation (trim, delete, copy, split). Cleared after a successful merge; not otherwise
@@ -277,6 +294,7 @@ impl OcaApp {
             requested_thumbnails: HashSet::new(),
             pending_asset_drop: None,
             clipboard_clip: None,
+            formatting_clipboard: None,
             multi_selected_clip_ids: HashSet::new(),
         }
     }
@@ -685,6 +703,44 @@ impl OcaApp {
         for track in &mut timeline.tracks {
             if let Some(clip) = track.clip_mut(clip_id) {
                 clip.frozen = frozen;
+                break;
+            }
+        }
+    }
+
+    /// Whether formatting is waiting in the clipboard for
+    /// [`OcaApp::paste_selected_clip_formatting`] — lets the timeline context menu grey out
+    /// "Colar formatação" otherwise.
+    pub fn has_formatting_clipboard(&self) -> bool {
+        self.formatting_clipboard.is_some()
+    }
+
+    /// Copies `selected_clip_id`'s gain/freeze settings to [`OcaApp::formatting_clipboard`] —
+    /// what `Ctrl+Shift+C`/the context menu's "Copiar formatação" do. A no-op if nothing is
+    /// selected.
+    pub fn copy_selected_clip_formatting(&mut self) {
+        let Some(clip) = self.selected_clip() else {
+            return;
+        };
+        self.formatting_clipboard = Some(ClipFormatting {
+            gain_db: clip.gain_db,
+            frozen: clip.frozen,
+        });
+    }
+
+    /// Applies [`OcaApp::formatting_clipboard`] onto `selected_clip_id`, without touching any
+    /// other field (position, trim, composite membership) — what `Ctrl+Shift+V`/the context
+    /// menu's "Colar formatação" do. A no-op if nothing is selected or the clipboard is empty.
+    pub fn paste_selected_clip_formatting(&mut self) {
+        let (Some(clip_id), Some(formatting)) = (self.selected_clip_id, self.formatting_clipboard)
+        else {
+            return;
+        };
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.gain_db = formatting.gain_db;
+                clip.frozen = formatting.frozen;
                 break;
             }
         }

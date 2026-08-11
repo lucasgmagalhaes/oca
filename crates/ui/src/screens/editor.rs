@@ -33,7 +33,8 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
     if delete_pressed {
         app.delete_selected_clip();
     }
-    let ctrl_c_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::C));
+    let ctrl_c_pressed =
+        ui.input(|i| i.modifiers.ctrl && !i.modifiers.shift && i.key_pressed(egui::Key::C));
     if ctrl_c_pressed {
         app.copy_selected_clip();
     }
@@ -41,9 +42,23 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
     if ctrl_x_pressed {
         app.cut_selected_clip();
     }
-    let ctrl_v_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::V));
+    let ctrl_v_pressed =
+        ui.input(|i| i.modifiers.ctrl && !i.modifiers.shift && i.key_pressed(egui::Key::V));
     if ctrl_v_pressed {
         app.paste_clip_at_playhead();
+    }
+    // Ctrl+Shift+C/V — "copiar formatação" (request.md's Fase 4 spec): copies just the
+    // gain/freeze settings from the selected clip onto another, without duplicating the clip
+    // itself. Distinct from plain Ctrl+C/V (whole-clip copy/paste) above.
+    let ctrl_shift_c_pressed =
+        ui.input(|i| i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::C));
+    if ctrl_shift_c_pressed {
+        app.copy_selected_clip_formatting();
+    }
+    let ctrl_shift_v_pressed =
+        ui.input(|i| i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::V));
+    if ctrl_shift_v_pressed {
+        app.paste_selected_clip_formatting();
     }
 
     ui.vertical(|ui| {
@@ -647,10 +662,13 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         let locale = app.locale;
         let playhead_secs = app.active_project().timeline().playhead_secs;
         let has_clipboard_clip = app.has_clipboard_clip();
+        let has_formatting_clipboard = app.has_formatting_clipboard();
         let mut clicked_clip_id = None;
         let mut delete_requests: Vec<u64> = Vec::new();
         let mut copy_requests: Vec<u64> = Vec::new();
         let mut cut_requests: Vec<u64> = Vec::new();
+        let mut copy_formatting_requests: Vec<u64> = Vec::new();
+        let mut paste_formatting_requests: Vec<u64> = Vec::new();
         let mut multi_select_requests: Vec<u64> = Vec::new();
         let mut paste_requested = false;
         let mut split_at_playhead_requested = false;
@@ -741,6 +759,25 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                 paste_requested = true;
                                 ui.close();
                             }
+                            ui.separator();
+                            if ui
+                                .button(Text::ContextMenuCopyFormatting.tr(locale))
+                                .clicked()
+                            {
+                                copy_formatting_requests.push(clip.id);
+                                ui.close();
+                            }
+                            if ui
+                                .add_enabled(
+                                    has_formatting_clipboard,
+                                    egui::Button::new(Text::ContextMenuPasteFormatting.tr(locale)),
+                                )
+                                .clicked()
+                            {
+                                paste_formatting_requests.push(clip.id);
+                                ui.close();
+                            }
+                            ui.separator();
                             if ui.button(Text::ContextMenuDelete.tr(locale)).clicked() {
                                 delete_requests.push(clip.id);
                                 ui.close();
@@ -890,6 +927,14 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         for clip_id in cut_requests {
             app.selected_clip_id = Some(clip_id);
             app.cut_selected_clip();
+        }
+        for clip_id in copy_formatting_requests {
+            app.selected_clip_id = Some(clip_id);
+            app.copy_selected_clip_formatting();
+        }
+        for clip_id in paste_formatting_requests {
+            app.selected_clip_id = Some(clip_id);
+            app.paste_selected_clip_formatting();
         }
         if paste_requested {
             app.paste_clip_at_playhead();
