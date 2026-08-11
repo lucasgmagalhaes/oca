@@ -115,6 +115,7 @@ fn cuphead_timeline() -> Timeline {
                         composite_id: None,
                         gain_db: 0.0,
                         frozen: false,
+                        speed_factor: 1.0,
                     },
                     ClipInstance {
                         id: 2,
@@ -125,6 +126,7 @@ fn cuphead_timeline() -> Timeline {
                         composite_id: None,
                         gain_db: 0.0,
                         frozen: false,
+                        speed_factor: 1.0,
                     },
                     ClipInstance {
                         id: 3,
@@ -135,6 +137,7 @@ fn cuphead_timeline() -> Timeline {
                         composite_id: None,
                         gain_db: 0.0,
                         frozen: false,
+                        speed_factor: 1.0,
                     },
                 ],
             },
@@ -152,6 +155,7 @@ fn cuphead_timeline() -> Timeline {
                         composite_id: None,
                         gain_db: 0.0,
                         frozen: false,
+                        speed_factor: 1.0,
                     },
                     ClipInstance {
                         id: 5,
@@ -162,6 +166,7 @@ fn cuphead_timeline() -> Timeline {
                         composite_id: None,
                         gain_db: 0.0,
                         frozen: false,
+                        speed_factor: 1.0,
                     },
                     ClipInstance {
                         id: 6,
@@ -172,6 +177,7 @@ fn cuphead_timeline() -> Timeline {
                         composite_id: None,
                         gain_db: 0.0,
                         frozen: false,
+                        speed_factor: 1.0,
                     },
                 ],
             },
@@ -188,6 +194,7 @@ fn cuphead_timeline() -> Timeline {
                     composite_id: None,
                     gain_db: 0.0,
                     frozen: false,
+                    speed_factor: 1.0,
                 }],
             },
         ],

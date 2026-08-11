@@ -49,6 +49,20 @@ pub struct ClipInstance {
     /// projects load unfrozen.
     #[serde(default)]
     pub frozen: bool,
+    /// Playback speed multiplier for this block — `2.0` plays twice as fast, `0.5` half speed,
+    /// per `request.md`'s Fase 4 "Velocidade" spec. `1.0` is normal speed. Currently only shown
+    /// as a badge on the timeline block (`ui`'s timeline panel); it doesn't yet resample audio,
+    /// change the block's on-timeline duration, or affect preview playback or export — the same
+    /// kind of gap as [`ClipInstance::gain_db`]/[`ClipInstance::frozen`], just earlier: speed
+    /// needs the timeline to support a block whose on-screen length differs from
+    /// `source_out_secs - source_in_secs`, which nothing here does yet. `#[serde(default = ..)]`
+    /// so older saved projects load at normal speed.
+    #[serde(default = "default_speed_factor")]
+    pub speed_factor: f32,
+}
+
+fn default_speed_factor() -> f32 {
+    1.0
 }
 
 impl ClipInstance {
@@ -147,6 +161,7 @@ impl Track {
             composite_id: clip.composite_id,
             gain_db: clip.gain_db,
             frozen: clip.frozen,
+            speed_factor: clip.speed_factor,
         };
         clip.source_out_secs = split_source_secs;
 
