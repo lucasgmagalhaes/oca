@@ -5,9 +5,9 @@ use avcore::MediaAsset;
 use eframe::egui::{self, RichText};
 
 use crate::app::{
-    EditorTool, OcaApp, BRIGHTNESS_RANGE, CONTRAST_RANGE, CROP_MIN_SIZE, GAIN_DB_RANGE,
-    MASK_CORNER_RADIUS_RANGE, SATURATION_RANGE, SHARPEN_RANGE, SPEED_FACTOR_RANGE,
-    THUMBNAIL_BUCKET_SECS, VIGNETTE_INTENSITY_RANGE,
+    EditorTool, OcaApp, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE, CONTRAST_RANGE,
+    CROP_MIN_SIZE, GAIN_DB_RANGE, MASK_CORNER_RADIUS_RANGE, SATURATION_RANGE, SHARPEN_RANGE,
+    SPEED_FACTOR_RANGE, THUMBNAIL_BUCKET_SECS, VIGNETTE_INTENSITY_RANGE,
 };
 use crate::i18n::Text;
 use crate::screens::widgets;
@@ -570,6 +570,9 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                     let (mut brightness, mut contrast, mut saturation) =
                         (clip.brightness, clip.contrast, clip.saturation);
                     let mut sharpen = clip.sharpen;
+                    let mut chroma_key_enabled = clip.chroma_key_enabled;
+                    let mut chroma_key_color = clip.chroma_key_color;
+                    let mut chroma_key_tolerance = clip.chroma_key_tolerance;
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -833,6 +836,42 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(Text::SharpenExportNote.tr(locale))
+                                .size(10.5)
+                                .color(theme::TEXT_MUTED),
+                        );
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        let mut chroma_key_changed = false;
+                        let chroma_checkbox =
+                            ui.checkbox(&mut chroma_key_enabled, Text::PropChromaKey.tr(locale));
+                        chroma_key_changed |= chroma_checkbox.changed();
+                        if chroma_key_enabled {
+                            ui.horizontal(|ui| {
+                                ui.label(Text::ChromaKeyColor.tr(locale));
+                                chroma_key_changed |=
+                                    ui.color_edit_button_srgb(&mut chroma_key_color).changed();
+                            });
+                            let tolerance_slider = ui.add(
+                                egui::Slider::new(
+                                    &mut chroma_key_tolerance,
+                                    CHROMA_KEY_TOLERANCE_RANGE,
+                                )
+                                .text(Text::ChromaKeyTolerance.tr(locale)),
+                            );
+                            chroma_key_changed |= tolerance_slider.changed();
+                        }
+                        if chroma_key_changed {
+                            app.set_selected_clip_chroma_key(
+                                chroma_key_enabled,
+                                chroma_key_color,
+                                chroma_key_tolerance,
+                            );
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(Text::ChromaKeyExportNote.tr(locale))
                                 .size(10.5)
                                 .color(theme::TEXT_MUTED),
                         );
@@ -1211,6 +1250,15 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                 clip_rect.center_top() + egui::vec2(0.0, 2.0),
                                 egui::Align2::CENTER_TOP,
                                 "⇄",
+                                egui::FontId::proportional(11.0),
+                                theme::TEXT_PRIMARY,
+                            );
+                        }
+                        if clip.is_chroma_keyed() {
+                            painter.text(
+                                clip_rect.center_bottom() + egui::vec2(0.0, -2.0),
+                                egui::Align2::CENTER_BOTTOM,
+                                "🟩",
                                 egui::FontId::proportional(11.0),
                                 theme::TEXT_PRIMARY,
                             );

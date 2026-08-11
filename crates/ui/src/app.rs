@@ -107,6 +107,10 @@ pub const SATURATION_RANGE: std::ops::RangeInclusive<f32> = 0.0..=2.0;
 /// [`avcore::timeline::ClipInstance::sharpen`]).
 pub const SHARPEN_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 
+/// Slider bounds for the properties panel's chroma key tolerance control (Fase 4's "Efeitos
+/// visuais", [`avcore::timeline::ClipInstance::chroma_key_tolerance`]).
+pub const CHROMA_KEY_TOLERANCE_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
+
 /// A message from a background render worker thread (see [`OcaApp::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
@@ -183,6 +187,9 @@ struct ClipFormatting {
     contrast: f32,
     saturation: f32,
     sharpen: f32,
+    chroma_key_enabled: bool,
+    chroma_key_color: [u8; 3],
+    chroma_key_tolerance: f32,
 }
 
 /// The whole application's state: which screen is showing, the loaded projects, the export
@@ -633,6 +640,9 @@ impl OcaApp {
                 contrast: 1.0,
                 saturation: 1.0,
                 sharpen: 0.0,
+                chroma_key_enabled: false,
+                chroma_key_color: [0, 255, 0],
+                chroma_key_tolerance: 0.4,
             });
     }
 
@@ -682,6 +692,9 @@ impl OcaApp {
                 contrast: 1.0,
                 saturation: 1.0,
                 sharpen: 0.0,
+                chroma_key_enabled: false,
+                chroma_key_color: [0, 255, 0],
+                chroma_key_tolerance: 0.4,
             });
     }
 
@@ -921,6 +934,35 @@ impl OcaApp {
         }
     }
 
+    /// Sets `selected_clip_id`'s chroma key settings
+    /// ([`avcore::timeline::ClipInstance::chroma_key_enabled`]/`chroma_key_color`/
+    /// `chroma_key_tolerance`, the tolerance clamped to [`CHROMA_KEY_TOLERANCE_RANGE`]) — what
+    /// toggling the checkbox or adjusting the color/tolerance controls in the properties panel
+    /// does. A no-op if nothing is selected.
+    pub fn set_selected_clip_chroma_key(
+        &mut self,
+        chroma_key_enabled: bool,
+        chroma_key_color: [u8; 3],
+        chroma_key_tolerance: f32,
+    ) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let chroma_key_tolerance = chroma_key_tolerance.clamp(
+            *CHROMA_KEY_TOLERANCE_RANGE.start(),
+            *CHROMA_KEY_TOLERANCE_RANGE.end(),
+        );
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.chroma_key_enabled = chroma_key_enabled;
+                clip.chroma_key_color = chroma_key_color;
+                clip.chroma_key_tolerance = chroma_key_tolerance;
+                break;
+            }
+        }
+    }
+
     /// Sets `selected_clip_id`'s brightness/contrast/saturation
     /// ([`avcore::timeline::ClipInstance::brightness`]/`contrast`/`saturation`), each
     /// independently clamped to its own range ([`BRIGHTNESS_RANGE`]/[`CONTRAST_RANGE`]/
@@ -980,6 +1022,9 @@ impl OcaApp {
             contrast: clip.contrast,
             saturation: clip.saturation,
             sharpen: clip.sharpen,
+            chroma_key_enabled: clip.chroma_key_enabled,
+            chroma_key_color: clip.chroma_key_color,
+            chroma_key_tolerance: clip.chroma_key_tolerance,
         });
     }
 
@@ -1010,6 +1055,9 @@ impl OcaApp {
                 clip.contrast = formatting.contrast;
                 clip.saturation = formatting.saturation;
                 clip.sharpen = formatting.sharpen;
+                clip.chroma_key_enabled = formatting.chroma_key_enabled;
+                clip.chroma_key_color = formatting.chroma_key_color;
+                clip.chroma_key_tolerance = formatting.chroma_key_tolerance;
                 break;
             }
         }
@@ -1136,6 +1184,9 @@ impl OcaApp {
                 contrast: copied.contrast,
                 saturation: copied.saturation,
                 sharpen: copied.sharpen,
+                chroma_key_enabled: copied.chroma_key_enabled,
+                chroma_key_color: copied.chroma_key_color,
+                chroma_key_tolerance: copied.chroma_key_tolerance,
             });
     }
 

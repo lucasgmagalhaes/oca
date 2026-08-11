@@ -133,6 +133,10 @@ text_catalog! {
     ColorAdjustExportNote: pt_br = "ainda não tem efeito visível em lugar nenhum — preview e export ignoram esses valores por enquanto.", en = "has no visible effect anywhere yet — preview and export ignore these values for now.";
     PropSharpen: pt_br = "Nitidez", en = "Sharpen";
     SharpenExportNote: pt_br = "ainda não tem efeito visível em lugar nenhum — preview e export ignoram esse valor por enquanto.", en = "has no visible effect anywhere yet — preview and export ignore this value for now.";
+    PropChromaKey: pt_br = "🟩 Chroma key", en = "🟩 Chroma key";
+    ChromaKeyColor: pt_br = "Cor:", en = "Color:";
+    ChromaKeyTolerance: pt_br = "Tolerância", en = "Tolerance";
+    ChromaKeyExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda não removem o fundo.", en = "only shows a badge on the block for now — preview and export don't remove the background yet.";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";
