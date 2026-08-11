@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+
 use avcore::media::format_timecode;
+use avcore::MediaAsset;
 use eframe::egui::{self, RichText};
 
-use crate::app::{EditorTool, OcaApp};
+use crate::app::{EditorTool, OcaApp, THUMBNAIL_BUCKET_SECS};
 use crate::i18n::Text;
 use crate::screens::widgets;
 use crate::theme;
@@ -447,7 +450,7 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         let mut trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
         let mut clip_drags: Vec<ClipDrag> = Vec::new();
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
-        let mut thumbnail_requests: Vec<(u64, u64, f64)> = Vec::new();
+        let mut thumbnail_requests: Vec<(u64, i64)> = Vec::new();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for track in &app.active_project().timeline.tracks {
                 ui.horizontal(|ui| {
@@ -541,41 +544,35 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                             trim_requests.push((clip.id, TrimEdge::End(secs)));
                         }
 
-                        let thumbnail = if track.kind == avcore::timeline::TrackKind::Video {
-                            app.thumbnail_textures.get(&clip.id)
-                        } else {
-                            None
-                        };
-                        match thumbnail {
-                            Some(texture) => {
-                                draw_tiled_thumbnail(painter, clip_rect, texture);
+                        painter.rect_filled(clip_rect, egui::CornerRadius::same(4), color);
+                        let asset = app
+                            .active_project()
+                            .media_library
+                            .iter()
+                            .find(|a| a.id == clip.asset_id);
+                        if track.kind == avcore::timeline::TrackKind::Video {
+                            if let Some(asset) = asset {
+                                draw_filmstrip(
+                                    &app.thumbnail_textures,
+                                    painter,
+                                    clip_rect,
+                                    asset,
+                                    clip.source_in_secs,
+                                    px_per_sec,
+                                    &mut thumbnail_requests,
+                                );
                             }
-                            None => {
-                                painter.rect_filled(clip_rect, egui::CornerRadius::same(4), color);
-                                if track.kind == avcore::timeline::TrackKind::Video {
-                                    thumbnail_requests.push((
-                                        clip.id,
-                                        clip.asset_id,
-                                        clip.source_in_secs,
-                                    ));
-                                } else if let Some(asset) = app
-                                    .active_project()
-                                    .media_library
-                                    .iter()
-                                    .find(|a| a.id == clip.asset_id)
-                                {
-                                    if let Some(peaks) = &asset.waveform_peaks {
-                                        draw_waveform(
-                                            painter,
-                                            clip_rect,
-                                            peaks,
-                                            asset.duration_secs,
-                                            clip.source_in_secs,
-                                            clip.source_out_secs,
-                                            theme::TEXT_PRIMARY.gamma_multiply(0.7),
-                                        );
-                                    }
-                                }
+                        } else if let Some(asset) = asset {
+                            if let Some(peaks) = &asset.waveform_peaks {
+                                draw_waveform(
+                                    painter,
+                                    clip_rect,
+                                    peaks,
+                                    asset.duration_secs,
+                                    clip.source_in_secs,
+                                    clip.source_out_secs,
+                                    theme::TEXT_PRIMARY.gamma_multiply(0.7),
+                                );
                             }
                         }
                         if app.selected_clip_id == Some(clip.id) {
@@ -632,8 +629,8 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                 _ => app.move_clip(drag.clip_id, drag.new_start_secs),
             }
         }
-        for (clip_id, asset_id, source_in_secs) in thumbnail_requests {
-            app.request_thumbnail(clip_id, asset_id, source_in_secs);
+        for (asset_id, bucket) in thumbnail_requests {
+            app.request_thumbnail(asset_id, bucket);
         }
         // An asset dragged out of the media library and released somewhere at or below the
         // ruler: whichever track row's Y-range the pointer landed on becomes the preferred
@@ -658,30 +655,51 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
     });
 }
 
-/// Tiles `texture` across `clip_rect` at its own aspect ratio (scaled to the clip's height) —
-/// reads like a filmstrip even though every tile shows the same poster frame, and the tile
-/// count grows with the clip's on-screen width, so it gets denser as the timeline zooms in.
-/// The last tile is width-clamped so it can't bleed into the next clip.
-fn draw_tiled_thumbnail(
+/// Draws one filmstrip tile per column of `clip_rect` (each column's width set by `asset`'s
+/// aspect ratio scaled to the clip's height, same as a single poster frame tiled), each showing
+/// the cached thumbnail texture for whichever [`THUMBNAIL_BUCKET_SECS`]-quantized source-time
+/// bucket that column falls in (`OcaApp::thumbnail_textures`) — distinct buckets read like a
+/// true filmstrip, unlike one poster frame repeated. A column whose bucket has no texture yet
+/// is queued into `thumbnail_requests` (deduplicated against already-pending buckets by
+/// [`OcaApp::request_thumbnail`] once the caller applies it) and left showing the clip's plain
+/// background color, already painted underneath by the caller, until it arrives. A no-op if
+/// `asset` has no resolution (audio-only, shouldn't happen for a clip on a video track).
+fn draw_filmstrip(
+    thumbnail_textures: &HashMap<(u64, i64), egui::TextureHandle>,
     painter: &egui::Painter,
     clip_rect: egui::Rect,
-    texture: &egui::TextureHandle,
+    asset: &MediaAsset,
+    source_in_secs: f64,
+    px_per_sec: f32,
+    thumbnail_requests: &mut Vec<(u64, i64)>,
 ) {
-    let tex_size = texture.size_vec2();
+    let Some((res_w, res_h)) = asset.resolution else {
+        return;
+    };
+    if res_h == 0 {
+        return;
+    }
     let tile_height = clip_rect.height();
-    let tile_width = (tile_height * tex_size.x / tex_size.y).max(1.0);
+    let tile_width = (tile_height * res_w as f32 / res_h as f32).max(1.0);
 
     let mut x = clip_rect.left();
     while x < clip_rect.right() {
         let w = tile_width.min(clip_rect.right() - x);
         let tile_rect =
             egui::Rect::from_min_size(egui::pos2(x, clip_rect.top()), egui::vec2(w, tile_height));
-        painter.image(
-            texture.id(),
-            tile_rect,
-            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-            egui::Color32::WHITE,
-        );
+        let time_in_source = source_in_secs + ((x - clip_rect.left()) / px_per_sec) as f64;
+        let bucket = (time_in_source / THUMBNAIL_BUCKET_SECS).floor() as i64;
+        match thumbnail_textures.get(&(asset.id, bucket)) {
+            Some(texture) => {
+                painter.image(
+                    texture.id(),
+                    tile_rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
+            }
+            None => thumbnail_requests.push((asset.id, bucket)),
+        }
         x += tile_width;
     }
 }
@@ -689,8 +707,8 @@ fn draw_tiled_thumbnail(
 /// Draws one vertical min/max bar per horizontal pixel of `clip_rect`, resampling `peaks`
 /// (the asset's full-duration waveform, see [`avcore::waveform`]) down to whatever's visible
 /// between `source_in_secs` and `source_out_secs` — the same "fixed-resolution source data
-/// resampled to the current on-screen width" idea as `draw_tiled_thumbnail`'s zoom handling,
-/// just per-column instead of per-tile. A no-op if `peaks` is empty or `asset_duration_secs`
+/// resampled to the current on-screen width" idea as `draw_filmstrip`'s zoom handling, just
+/// per-column instead of per-tile. A no-op if `peaks` is empty or `asset_duration_secs`
 /// is non-positive (shouldn't happen for a real decoded asset, but guards div-by-zero).
 fn draw_waveform(
     painter: &egui::Painter,

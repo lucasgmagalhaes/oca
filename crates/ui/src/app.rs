@@ -110,11 +110,12 @@ enum ImportEvent {
 }
 
 /// A poster frame extracted on a background thread (see [`OcaApp::request_thumbnail`]),
-/// ready to upload as an egui texture. No failure variant — a clip whose thumbnail couldn't
-/// be extracted just never gets one; [`OcaApp::requested_thumbnails`] already stops it from
+/// ready to upload as an egui texture. No failure variant — a (asset, bucket) that couldn't be
+/// extracted just never gets a texture; [`OcaApp::requested_thumbnails`] already stops it from
 /// being retried every frame.
 struct ThumbnailReady {
-    clip_id: u64,
+    asset_id: u64,
+    bucket: i64,
     width: u32,
     height: u32,
     rgba: Vec<u8>,
@@ -185,14 +186,17 @@ pub struct OcaApp {
     pub timeline_px_per_sec: f32,
     thumbnail_tx: UnboundedSender<ThumbnailReady>,
     thumbnail_rx: UnboundedReceiver<ThumbnailReady>,
-    /// Poster-frame textures for video clips on the timeline, keyed by clip id. Generated once
-    /// per clip id (see [`OcaApp::requested_thumbnails`]) — trimming a clip afterward doesn't
-    /// regenerate it, a known simplification, not a bug.
-    pub thumbnail_textures: HashMap<u64, egui::TextureHandle>,
-    /// Clip ids a thumbnail has already been requested for, successfully or not — stops
-    /// [`OcaApp::request_thumbnail`] from spawning a new extraction thread every frame for a
-    /// clip that's still pending, or that already failed once.
-    requested_thumbnails: HashSet<u64>,
+    /// Filmstrip tile textures for video clips on the timeline, keyed by `(asset_id, bucket)`
+    /// where `bucket` is a source-time offset quantized to [`THUMBNAIL_BUCKET_SECS`] (see
+    /// `editor.rs::draw_filmstrip`) — shared across every clip on that asset, and stable across
+    /// zoom changes rather than tied to a particular on-screen tile. A known simplification:
+    /// the bucket size is fixed, not adapted to the current zoom, so a very zoomed-in filmstrip
+    /// can repeat the same tile a few times in a row instead of showing a unique frame each.
+    pub thumbnail_textures: HashMap<(u64, i64), egui::TextureHandle>,
+    /// `(asset_id, bucket)` pairs a thumbnail has already been requested for, successfully or
+    /// not — stops [`OcaApp::request_thumbnail`] from spawning a new extraction thread every
+    /// frame for a bucket that's still pending, or that already failed once.
+    requested_thumbnails: HashSet<(u64, i64)>,
     /// Set by the media library panel on the frame a dragged asset is released (screen-space
     /// pointer position), consumed by the timeline panel later in the same frame to place it —
     /// how dragging an asset out of the library and dropping it on the timeline works. Always
@@ -692,16 +696,18 @@ impl OcaApp {
     }
 
     /// Requests a poster-frame thumbnail for a timeline clip — what `timeline_panel` calls for
-    /// every video clip that doesn't have one cached yet. A no-op if `clip_id` was already
-    /// requested (successfully or not; see [`OcaApp::requested_thumbnails`]). Extraction (open
-    /// the asset's proxy-or-source file, seek to `source_in_secs`, grab a frame, downscale)
-    /// runs on a background thread — the same reasoning as [`OcaApp::spawn_import`]: this is
-    /// FFI/decode work that must not run on the UI thread.
-    pub fn request_thumbnail(&mut self, clip_id: u64, asset_id: u64, source_in_secs: f64) {
-        if self.requested_thumbnails.contains(&clip_id) {
+    /// every visible filmstrip tile that doesn't have a texture cached yet (see
+    /// `editor.rs::draw_filmstrip`). A no-op if `(asset_id, bucket)` was already requested
+    /// (successfully or not; see [`OcaApp::requested_thumbnails`]). Extraction (open the
+    /// asset's proxy-or-source file, seek to the bucket's representative time, grab a frame,
+    /// downscale) runs on a background thread — the same reasoning as
+    /// [`OcaApp::spawn_import`]: this is FFI/decode work that must not run on the UI thread.
+    pub fn request_thumbnail(&mut self, asset_id: u64, bucket: i64) {
+        let key = (asset_id, bucket);
+        if self.requested_thumbnails.contains(&key) {
             return;
         }
-        self.requested_thumbnails.insert(clip_id);
+        self.requested_thumbnails.insert(key);
 
         let Some(asset) = self
             .active_project()
@@ -715,12 +721,14 @@ impl OcaApp {
             .proxy_path
             .clone()
             .unwrap_or_else(|| asset.source_path.clone());
+        let at_secs = bucket as f64 * THUMBNAIL_BUCKET_SECS;
 
         let tx = self.thumbnail_tx.clone();
         std::thread::spawn(move || {
-            if let Some((width, height, rgba)) = extract_thumbnail(&path, source_in_secs) {
+            if let Some((width, height, rgba)) = extract_thumbnail(&path, at_secs) {
                 let _ = tx.send(ThumbnailReady {
-                    clip_id,
+                    asset_id,
+                    bucket,
                     width,
                     height,
                     rgba,
@@ -738,11 +746,12 @@ impl OcaApp {
                 &ready.rgba,
             );
             let texture = ctx.load_texture(
-                format!("thumb-{}", ready.clip_id),
+                format!("thumb-{}-{}", ready.asset_id, ready.bucket),
                 image,
                 egui::TextureOptions::LINEAR,
             );
-            self.thumbnail_textures.insert(ready.clip_id, texture);
+            self.thumbnail_textures
+                .insert((ready.asset_id, ready.bucket), texture);
         }
     }
 
@@ -987,6 +996,12 @@ fn import_one(
 /// Longest side, in pixels, a generated thumbnail is downscaled to — tiny on purpose, these
 /// are drawn small and tiled, not viewed full-size.
 const THUMBNAIL_MAX_DIM: u32 = 96;
+
+/// Source-time width, in seconds, of one filmstrip thumbnail bucket (see
+/// [`OcaApp::thumbnail_textures`]). Fixed rather than zoom-dependent — simpler cache
+/// invalidation (a bucket's key never changes as the user zooms) at the cost of some tiles
+/// repeating when zoomed in past roughly one tile per this many seconds.
+pub const THUMBNAIL_BUCKET_SECS: f64 = 1.0;
 
 /// Runs on [`OcaApp::request_thumbnail`]'s background thread — opens `path`, seeks to
 /// `at_secs`, and grabs the first frame that decodes, downscaled. `None` if the file doesn't
