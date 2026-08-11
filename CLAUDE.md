@@ -34,11 +34,14 @@ drop position, on whichever track row the pointer landed on
 (`OcaApp::add_asset_to_timeline_at`, `editor.rs::media_library_panel`/`timeline_panel` relaying
 the drop through `OcaApp::pending_asset_drop`) — both entry points share track
 resolution/creation via `resolve_or_create_track`. The timeline
-(`editor.rs::timeline_panel`) draws clips at their real `start_secs` position, video clips
-show a tiled poster-frame thumbnail once one's been generated on a background thread
-(`OcaApp::request_thumbnail`/`extract_thumbnail`, reusing `avcore::preview::Preview` — one
-frame per clip, tiled to read like a filmstrip, not per-position frames yet), audio clips draw
-a min/max peak waveform (`avcore::waveform::generate_waveform`, a fixed
+(`editor.rs::timeline_panel`) draws clips at their real `start_secs` position, video clips draw
+a filmstrip of distinct per-position poster frames (`editor.rs::draw_filmstrip`, one tile per
+on-screen column; each tile's frame is extracted lazily on a background thread once its
+source-time bucket — fixed-width, quantized by `OcaApp::THUMBNAIL_BUCKET_SECS`, shared across
+every clip on that asset rather than per-clip — scrolls into view, so it gets visibly denser as
+the timeline zooms in, per `request.md`'s Fase 3 spec; a known simplification, not zoom-adaptive,
+so a filmstrip zoomed in past roughly one tile per bucket repeats a tile a few times in a row),
+audio clips draw a min/max peak waveform (`avcore::waveform::generate_waveform`, a fixed
 `WAVEFORM_BUCKET_COUNT`-bucket table computed once per asset during import enrichment and
 resampled per pixel column at draw time — see `editor.rs::draw_waveform`), has a click/drag
 ruler that moves the playhead, and `Ctrl` + scroll zooms it
@@ -51,8 +54,7 @@ panel), `Ctrl+B`/toolbar split-at-playhead across every track (`Track::split_cli
 bounded by a minimum duration and (right edge) the source asset's own length
 (`ClipInstance::trim_start`/`trim_end`), and drag-move a clip's body — same-track reposition
 or onto a different same-`TrackKind` track, resolved by which row's Y-range the drag lands on
-(`Timeline::move_clip_to_track`/`Track::move_clip`). Still missing: distinct per-position
-timeline thumbnails. Importing files (`library.rs`/`OcaApp::spawn_import`)
+(`Timeline::move_clip_to_track`/`Track::move_clip`). Importing files (`library.rs`/`OcaApp::spawn_import`)
 runs each file on its own background thread instead of blocking the UI — large source files
 used to freeze the app. Each file becomes usable in the media library as soon as its (cheap,
 metadata-only) probe returns; loudness measurement, proxy generation, and waveform computation,
