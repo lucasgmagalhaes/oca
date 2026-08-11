@@ -27,6 +27,10 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         chroma_key_enabled: false,
         chroma_key_color: [0, 255, 0],
         chroma_key_tolerance: 0.4,
+        blur_intensity: 0.0,
+        shake_intensity: 0.0,
+        glitch_intensity: 0.0,
+        pixelize_intensity: 0.0,
     }
 }
 
@@ -394,6 +398,45 @@ fn split_clip_at_keeps_chroma_key_on_both_halves() {
         assert!(half.chroma_key_enabled);
         assert_eq!(half.chroma_key_color, [10, 200, 30]);
         assert_eq!(half.chroma_key_tolerance, 0.7);
+    }
+}
+
+#[test]
+fn new_clip_defaults_to_no_other_effects() {
+    let c = clip(1, 0.0, 0.0, 10.0);
+    assert_eq!(
+        (
+            c.blur_intensity,
+            c.shake_intensity,
+            c.glitch_intensity,
+            c.pixelize_intensity
+        ),
+        (0.0, 0.0, 0.0, 0.0)
+    );
+}
+
+#[test]
+fn split_clip_at_keeps_other_effects_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.blur_intensity = 0.1;
+    clip.shake_intensity = 0.2;
+    clip.glitch_intensity = 0.3;
+    clip.pixelize_intensity = 0.4;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert_eq!(
+            (
+                half.blur_intensity,
+                half.shake_intensity,
+                half.glitch_intensity,
+                half.pixelize_intensity
+            ),
+            (0.1, 0.2, 0.3, 0.4)
+        );
     }
 }
 

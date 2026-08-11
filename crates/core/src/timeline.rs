@@ -173,6 +173,30 @@ pub struct ClipInstance {
     /// a reasonable default tolerance.
     #[serde(default = "default_chroma_key_tolerance")]
     pub chroma_key_tolerance: f32,
+    /// Blur strength for this block, `0.0..=1.0` (`0.0` is off) — per `request.md`'s Fase 4
+    /// "Efeitos visuais" spec ("Blur"). Currently has no visible effect anywhere (`ui`'s
+    /// properties panel just exposes the slider); doesn't yet affect preview playback or export
+    /// — the same kind of gap as [`ClipInstance::gain_db`]. `#[serde(default)]` so older saved
+    /// projects load unblurred.
+    #[serde(default)]
+    pub blur_intensity: f32,
+    /// Camera-shake strength for this block, `0.0..=1.0` (`0.0` is off) — per `request.md`'s
+    /// Fase 4 "Efeitos visuais" spec ("Shake"), the deliberate counterpart of the eventual video
+    /// stabilization feature. Same gap as [`ClipInstance::blur_intensity`]. `#[serde(default)]`
+    /// so older saved projects load unshaken.
+    #[serde(default)]
+    pub shake_intensity: f32,
+    /// Glitch strength for this block, `0.0..=1.0` (`0.0` is off) — per `request.md`'s Fase 4
+    /// "Efeitos visuais" spec ("Glitch"). Same gap as [`ClipInstance::blur_intensity`].
+    /// `#[serde(default)]` so older saved projects load unglitched.
+    #[serde(default)]
+    pub glitch_intensity: f32,
+    /// Pixelize/mosaic-censor strength for this block, `0.0..=1.0` (`0.0` is off) — per
+    /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Pixelizar/censura (mosaico)"). Same gap as
+    /// [`ClipInstance::blur_intensity`]. `#[serde(default)]` so older saved projects load
+    /// unpixelized.
+    #[serde(default)]
+    pub pixelize_intensity: f32,
 }
 
 fn default_speed_factor() -> f32 {
@@ -333,6 +357,10 @@ impl Track {
             chroma_key_enabled: clip.chroma_key_enabled,
             chroma_key_color: clip.chroma_key_color,
             chroma_key_tolerance: clip.chroma_key_tolerance,
+            blur_intensity: clip.blur_intensity,
+            shake_intensity: clip.shake_intensity,
+            glitch_intensity: clip.glitch_intensity,
+            pixelize_intensity: clip.pixelize_intensity,
         };
         clip.source_out_secs = split_source_secs;
 
