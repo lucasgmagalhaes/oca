@@ -97,6 +97,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         render_rx,
         active_renders: HashMap::new(),
         preview: None,
+        preview_attempted_for: None,
         preview_texture: None,
         preview_playing: false,
         import_tx,
@@ -462,8 +463,8 @@ fn select_asset_resets_playback_state_and_the_uploaded_texture() {
     assert!(app.preview_texture.is_none());
 }
 
-// test_asset()'s source_path is a relative, nonexistent file, so `reload_preview` always
-// bails out before actually touching GStreamer here (see the `path.exists()` guard in
+// test_asset()'s source_path is a relative, nonexistent file, so `ensure_preview_loaded`
+// always bails out before actually touching GStreamer here (see the `path.exists()` guard in
 // app.rs) — these exercise the no-pipeline branches of the preview API, not real playback.
 #[test]
 fn preview_accessors_are_none_without_a_live_pipeline() {

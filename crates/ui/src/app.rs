@@ -120,10 +120,15 @@ pub struct OcaApp {
     /// A job id present here is the source of truth for "how many workers are busy right
     /// now" — [`OcaApp::pump_export_queue`] uses its length against `queue_workers`.
     active_renders: HashMap<u64, Arc<AtomicBool>>,
-    /// The GStreamer pipeline for `selected_asset_id`, if it could be opened (`None` both
-    /// before any selection and when `Preview::open` failed, e.g. the sample-data assets'
-    /// placeholder paths — see [`OcaApp::select_asset`]).
+    /// The GStreamer pipeline for `selected_asset_id`, if it could be opened (`None` before any
+    /// selection, before it's been lazily opened, and when `Preview::open` failed, e.g. the
+    /// sample-data assets' placeholder paths — see [`OcaApp::ensure_preview_loaded`]).
     preview: Option<avcore::preview::Preview>,
+    /// The asset id [`OcaApp::ensure_preview_loaded`] last attempted to open a pipeline for,
+    /// whether or not it succeeded — lets it tell "already tried and failed for this exact
+    /// selection, don't retry every frame" apart from "selection changed, try again".
+    /// `select_asset` clears this back to `None` so a fresh selection always gets one attempt.
+    preview_attempted_for: Option<u64>,
     /// Uploaded from the latest [`avcore::preview::Preview::current_frame`] each frame the
     /// Editor screen is shown; `None` until the first frame decodes. Reset on every
     /// [`OcaApp::select_asset`] call so a stale frame from the previous clip never lingers.
@@ -178,7 +183,7 @@ impl OcaApp {
         let (render_tx, render_rx) = mpsc::unbounded_channel();
         let (import_tx, import_rx) = mpsc::unbounded_channel();
         let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
-        let mut app = Self {
+        Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
             locale: Locale::PtBr,
@@ -192,6 +197,7 @@ impl OcaApp {
             render_rx,
             active_renders: HashMap::new(),
             preview: None,
+            preview_attempted_for: None,
             preview_texture: None,
             preview_playing: false,
             import_tx,
@@ -204,9 +210,7 @@ impl OcaApp {
             thumbnail_textures: HashMap::new(),
             requested_thumbnails: HashSet::new(),
             pending_asset_drop: None,
-        };
-        app.reload_preview();
-        app
+        }
     }
 
     /// The project currently open in the Editor/Mídia screens.
@@ -238,24 +242,36 @@ impl OcaApp {
         self.screen = Screen::Editor;
     }
 
-    /// Selects `id` as the Editor's active clip and (re)opens the preview pipeline for it —
-    /// what clicking an asset in the media library panel does, and what [`OcaApp::open_project`]
-    /// uses to select the newly-opened project's first asset. `None` clears the selection
-    /// (empty media library).
+    /// Selects `id` as the Editor's active clip and clears out whatever pipeline/texture/
+    /// playback state belonged to the previous one — what clicking an asset in the media
+    /// library panel does, and what [`OcaApp::open_project`] uses to select the newly-opened
+    /// project's first asset. `None` clears the selection (empty media library). Does *not*
+    /// itself open a pipeline for the new selection — [`OcaApp::ensure_preview_loaded`] does
+    /// that lazily, the next time the Editor's preview panel actually draws, so switching
+    /// projects or asking for a project at startup never pays GStreamer's open cost for an
+    /// asset nobody's looking at yet.
     pub fn select_asset(&mut self, id: Option<u64>) {
         self.selected_asset_id = id;
-        self.reload_preview();
-    }
-
-    /// Tears down the current preview pipeline (if any) and, if `selected_asset_id` points at
-    /// an asset, opens a new one for it — from the editing proxy if one exists (lighter to
-    /// decode), otherwise the original source file. Left as `None` without an error dialog if
-    /// `Preview::open` fails (e.g. the sample-data projects' placeholder paths, which don't
-    /// exist on disk) — the Editor screen shows a muted "preview unavailable" label instead.
-    fn reload_preview(&mut self) {
         self.preview = None;
+        self.preview_attempted_for = None;
         self.preview_texture = None;
         self.preview_playing = false;
+    }
+
+    /// Opens a pipeline for `selected_asset_id` if one isn't already open and hasn't already
+    /// been tried for this exact selection — called once per frame from the Editor's preview
+    /// panel, right before it reads any preview state, so the first paint after a selection
+    /// change is what actually triggers `Preview::open` rather than `select_asset` itself.
+    /// Prefers the editing proxy if one exists (lighter to decode), otherwise the original
+    /// source file. Leaves `preview` as `None` without an error dialog if `Preview::open` fails
+    /// (e.g. the sample-data projects' placeholder paths, which don't exist on disk) — the
+    /// Editor screen shows a muted "preview unavailable" label instead, and won't retry until
+    /// the selection changes again.
+    pub fn ensure_preview_loaded(&mut self) {
+        if self.preview.is_some() || self.preview_attempted_for == self.selected_asset_id {
+            return;
+        }
+        self.preview_attempted_for = self.selected_asset_id;
 
         let Some(asset) = self.selected_asset() else {
             return;
@@ -305,8 +321,9 @@ impl OcaApp {
         }
     }
 
-    /// Whether the currently selected asset has a live preview pipeline — `false` both before
-    /// any selection and when [`OcaApp::reload_preview`] couldn't open one.
+    /// Whether the currently selected asset has a live preview pipeline — `false` before any
+    /// selection, before [`OcaApp::ensure_preview_loaded`] has run for it, and when it
+    /// couldn't open one.
     pub fn preview_available(&self) -> bool {
         self.preview.is_some()
     }
@@ -882,8 +899,9 @@ fn extract_thumbnail(path: &Path, at_secs: f64) -> Option<(u32, u32, Vec<u8>)> {
     let preview = avcore::preview::Preview::open(path).ok()?;
     let _ = preview.seek(at_secs.max(0.0));
 
-    // current_frame() is non-blocking (see reload_preview's doc comment on the same choice) —
-    // a frame isn't necessarily ready the instant seek() returns, so poll briefly for one.
+    // current_frame() is non-blocking (see ensure_preview_loaded's doc comment on the same
+    // choice) — a frame isn't necessarily ready the instant seek() returns, so poll briefly
+    // for one.
     let deadline = Instant::now() + Duration::from_millis(800);
     let frame = loop {
         if let Some(frame) = preview.current_frame() {

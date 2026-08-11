@@ -229,6 +229,11 @@ fn media_library_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: 
 }
 
 fn preview_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
+    // Lazy: the pipeline for the current selection is opened here, on the first paint of this
+    // panel after a selection change — not by `select_asset` itself — so opening a project or
+    // launching the app never pays GStreamer's open cost for an asset the Editor screen hasn't
+    // actually been shown for yet.
+    app.ensure_preview_loaded();
     let locale = app.locale;
     ui.vertical(|ui| {
         ui.set_height(height);
