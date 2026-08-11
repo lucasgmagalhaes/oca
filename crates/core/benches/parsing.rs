@@ -73,6 +73,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 start_secs: i as f64 * 30.0,
                 source_in_secs: 0.0,
                 source_out_secs: 30.0,
+                composite_id: None,
             })
             .collect(),
     };

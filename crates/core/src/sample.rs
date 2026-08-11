@@ -112,6 +112,7 @@ fn cuphead_timeline() -> Timeline {
                         start_secs: 0.0,
                         source_in_secs: 0.0,
                         source_out_secs: 30.0,
+                        composite_id: None,
                     },
                     ClipInstance {
                         id: 2,
@@ -119,6 +120,7 @@ fn cuphead_timeline() -> Timeline {
                         start_secs: 30.0,
                         source_in_secs: 0.0,
                         source_out_secs: 44.0,
+                        composite_id: None,
                     },
                     ClipInstance {
                         id: 3,
@@ -126,6 +128,7 @@ fn cuphead_timeline() -> Timeline {
                         start_secs: 74.0,
                         source_in_secs: 0.0,
                         source_out_secs: 24.0,
+                        composite_id: None,
                     },
                 ],
             },
@@ -140,6 +143,7 @@ fn cuphead_timeline() -> Timeline {
                         start_secs: 0.0,
                         source_in_secs: 0.0,
                         source_out_secs: 30.0,
+                        composite_id: None,
                     },
                     ClipInstance {
                         id: 5,
@@ -147,6 +151,7 @@ fn cuphead_timeline() -> Timeline {
                         start_secs: 30.0,
                         source_in_secs: 0.0,
                         source_out_secs: 44.0,
+                        composite_id: None,
                     },
                     ClipInstance {
                         id: 6,
@@ -154,6 +159,7 @@ fn cuphead_timeline() -> Timeline {
                         start_secs: 74.0,
                         source_in_secs: 0.0,
                         source_out_secs: 24.0,
+                        composite_id: None,
                     },
                 ],
             },
@@ -167,6 +173,7 @@ fn cuphead_timeline() -> Timeline {
                     start_secs: 0.0,
                     source_in_secs: 0.0,
                     source_out_secs: 98.0,
+                    composite_id: None,
                 }],
             },
         ],

@@ -7,6 +7,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         start_secs,
         source_in_secs,
         source_out_secs,
+        composite_id: None,
     }
 }
 
@@ -88,6 +89,19 @@ fn split_clip_at_divides_the_covering_clip_into_two() {
         track.clips,
         vec![clip(1, 10.0, 0.0, 10.0), clip(99, 20.0, 10.0, 20.0)]
     );
+}
+
+#[test]
+fn split_clip_at_keeps_both_halves_in_the_same_composite_group() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.composite_id = Some(7);
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    assert_eq!(track.clips[0].composite_id, Some(7));
+    assert_eq!(track.clips[1].composite_id, Some(7));
 }
 
 #[test]

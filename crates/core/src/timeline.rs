@@ -17,6 +17,14 @@ pub struct ClipInstance {
     pub start_secs: f64,
     pub source_in_secs: f64,
     pub source_out_secs: f64,
+    /// `Some(group_id)` if this clip is a member of a composite block (per `request.md`'s
+    /// Fase 3 "blocos compostos" spec) — every clip sharing the same id, always on the same
+    /// track (composite blocks don't span tracks yet), moves/splits/deletes together as a
+    /// unit (see `ui`'s `OcaApp::merge_into_composite` and the timeline panel's drag/delete
+    /// handling). `#[serde(default)]` so a project saved before this field existed still
+    /// loads, every clip in it just standalone (`None`).
+    #[serde(default)]
+    pub composite_id: Option<u64>,
 }
 
 impl ClipInstance {
@@ -104,6 +112,9 @@ impl Track {
             start_secs: at_secs,
             source_in_secs: split_source_secs,
             source_out_secs: clip.source_out_secs,
+            // Splitting a composite member must not silently ungroup it from the rest of the
+            // block.
+            composite_id: clip.composite_id,
         };
         clip.source_out_secs = split_source_secs;
 
