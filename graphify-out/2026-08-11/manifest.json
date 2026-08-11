@@ -210,8 +210,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/nav_rail.rs": {
-    "mtime": 1786450434.5610392,
-    "ast_hash": "2e304156d48c88549af23626d7d60e9b",
+    "mtime": 1786388561.9032433,
+    "ast_hash": "9e2679dfe68e827b57a903e5cded9f9d",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/prefs.rs": {
@@ -240,8 +240,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786450785.410504,
-    "ast_hash": "037fed33894340383a56b234cb1a8d09",
+    "mtime": 1786450164.1818867,
+    "ast_hash": "19528ed684478d65cd1955f1ef44e4c2",
     "semantic_hash": ""
   },
   "README.md": {
@@ -337,31 +337,6 @@
   "crates/core/tests/fixtures/video.mp4": {
     "mtime": 1786377168.9435897,
     "ast_hash": "458c7ce4b2468c9aa084d2b9379b80b7",
-    "semantic_hash": ""
-  },
-  "e2e/conftest.py": {
-    "mtime": 1786450993.999627,
-    "ast_hash": "f257264b5cfff0c3ffadec25ad410d09",
-    "semantic_hash": ""
-  },
-  "e2e/test_import.py": {
-    "mtime": 1786451011.5232048,
-    "ast_hash": "2d3d127b052ef4d64a803aa2a8bcf0c1",
-    "semantic_hash": ""
-  },
-  "e2e/test_launch.py": {
-    "mtime": 1786450537.5082815,
-    "ast_hash": "9c3c0ddcf3092fdfd1258a0c18a407b8",
-    "semantic_hash": ""
-  },
-  "e2e/test_navigation.py": {
-    "mtime": 1786451001.5602822,
-    "ast_hash": "b831df69c55c880f3a14f154c6f5f1ec",
-    "semantic_hash": ""
-  },
-  "e2e/requirements.txt": {
-    "mtime": 1786450516.9159942,
-    "ast_hash": "8190dc682cd31cfdab69be8734c250c3",
     "semantic_hash": ""
   }
 }
