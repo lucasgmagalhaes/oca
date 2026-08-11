@@ -37,8 +37,11 @@ resolution/creation via `resolve_or_create_track`. The timeline
 (`editor.rs::timeline_panel`) draws clips at their real `start_secs` position, video clips
 show a tiled poster-frame thumbnail once one's been generated on a background thread
 (`OcaApp::request_thumbnail`/`extract_thumbnail`, reusing `avcore::preview::Preview` — one
-frame per clip, tiled to read like a filmstrip, not per-position frames yet; audio waveforms
-aren't done), has a click/drag ruler that moves the playhead, and `Ctrl` + scroll zooms it
+frame per clip, tiled to read like a filmstrip, not per-position frames yet), audio clips draw
+a min/max peak waveform (`avcore::waveform::generate_waveform`, a fixed
+`WAVEFORM_BUCKET_COUNT`-bucket table computed once per asset during import enrichment and
+resampled per pixel column at draw time — see `editor.rs::draw_waveform`), has a click/drag
+ruler that moves the playhead, and `Ctrl` + scroll zooms it
 (`OcaApp::timeline_px_per_sec`). Real editing, with no ripple (a cut/delete/move just leaves
 or closes a gap at the point of the edit, nothing downstream shifts) and no overlap checking
 (`avcore::timeline::Track`'s long-standing documented policy): clip select
@@ -49,15 +52,16 @@ bounded by a minimum duration and (right edge) the source asset's own length
 (`ClipInstance::trim_start`/`trim_end`), and drag-move a clip's body — same-track reposition
 or onto a different same-`TrackKind` track, resolved by which row's Y-range the drag lands on
 (`Timeline::move_clip_to_track`/`Track::move_clip`). Still missing: distinct per-position
-timeline thumbnails and audio waveforms. Importing files (`library.rs`/`OcaApp::spawn_import`)
+timeline thumbnails. Importing files (`library.rs`/`OcaApp::spawn_import`)
 runs each file on its own background thread instead of blocking the UI — large source files
 used to freeze the app. Each file becomes usable in the media library as soon as its (cheap,
-metadata-only) probe returns; loudness measurement and proxy generation, both full decode
-passes that can take minutes, keep running afterward and patch the already-visible asset in
-place once done (`ImportEvent::AssetReady` then `ImportEvent::Enriched`, correlated by an
-`import_token` in `OcaApp::pending_enrichment`) — matching how other NLEs show an import
-instantly and refine it in the background, rather than blocking "imported" on both decode
-passes finishing first. A background export queue worker already runs (`OcaApp::pump_export_queue`
+metadata-only) probe returns; loudness measurement, proxy generation, and waveform computation,
+all full decode passes that can take minutes, keep running afterward and patch the
+already-visible asset in place once done (`ImportEvent::AssetReady` then
+`ImportEvent::Enriched`, correlated by an `import_token` in `OcaApp::pending_enrichment`) —
+matching how other NLEs show an import instantly and refine it in the background, rather than
+blocking "imported" on every decode pass finishing first. A background export queue worker
+already runs (`OcaApp::pump_export_queue`
 dispatches `avcore::render_export` on a spawned thread, progress/done/failed/cancelled
 reported back over `tokio::mpsc`) — the queue panel doesn't yet support reordering/pausing
 jobs or persisting the queue across sessions. Check the plan doc for which phase a task
@@ -147,12 +151,14 @@ and `ui` is its only consumer.
   (`avbridge_measure_loudness`, same decode→loudnorm shape without the encoder — its
   report has no queryable struct API, only `av_log` output during filter-graph teardown, so
   this installs a process-global log callback for the call's duration; **not thread-safe**,
-  documented on the function), and proxy generation (`avbridge_generate_proxy`: video
+  documented on the function), proxy generation (`avbridge_generate_proxy`: video
   decoded → libswscale downscale (aspect-preserving) → `libopenh264` re-encode, audio decoded
-  → format-matched → AAC re-encode).
+  → format-matched → AAC re-encode), and waveform peak extraction (`avbridge_generate_waveform`:
+  audio decoded → downmixed to mono float → min/max amplitude accumulated into a fixed number
+  of sample-index buckets, nothing written or re-encoded).
 - **`core`** — project/timeline/media data model plus the media wrappers that populate
-  it (`probe`, `render`, `loudness`, and `proxy` — all via `avbridge` FFI, no subprocess
-  left in any of them), a `playbin`-based GStreamer playback pipeline (`preview`: open/play/pause/seek/
+  it (`probe`, `render`, `loudness`, `proxy`, and `waveform` — all via `avbridge` FFI, no
+  subprocess left in any of them), a `playbin`-based GStreamer playback pipeline (`preview`: open/play/pause/seek/
   query, `current_frame()` pulls packed RGBA via an appsink), JSON save/load (`persistence`),
   and mock sample data (`sample`) used to exercise the UI before real files
   are wired in. Locale-neutral by design: it stores data like `Recency` (an enum), never
