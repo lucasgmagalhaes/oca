@@ -137,6 +137,7 @@ fn tool_button(app: &mut OcaApp, ui: &mut egui::Ui, tool: EditorTool, icon: &str
 fn media_library_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32) {
     let mut clicked_id = None;
     let mut add_to_timeline_id = None;
+    let mut dropped_asset = None;
 
     egui::Frame::new()
         .inner_margin(egui::Margin::same(12))
@@ -178,12 +179,37 @@ fn media_library_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: 
                                 });
                             })
                             .response
-                            .interact(egui::Sense::click());
+                            .interact(egui::Sense::click_and_drag());
                         if response.clicked() {
                             clicked_id = Some(asset.id);
                         }
                         if response.double_clicked() {
                             add_to_timeline_id = Some(asset.id);
+                        }
+                        if response.dragged() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                            if let Some(pos) = response.interact_pointer_pos() {
+                                egui::Area::new(ui.id().with(("asset_drag_ghost", asset.id)))
+                                    .fixed_pos(pos + egui::vec2(12.0, 12.0))
+                                    .order(egui::Order::Tooltip)
+                                    .interactable(false)
+                                    .show(ui.ctx(), |ui| {
+                                        egui::Frame::new()
+                                            .fill(theme::SURFACE_2)
+                                            .corner_radius(4)
+                                            .inner_margin(egui::Margin::symmetric(8, 4))
+                                            .show(ui, |ui| {
+                                                ui.label(
+                                                    RichText::new(&asset.file_name).size(11.0),
+                                                );
+                                            });
+                                    });
+                            }
+                        }
+                        if response.drag_stopped() {
+                            if let Some(pos) = response.interact_pointer_pos() {
+                                dropped_asset = Some((asset.id, pos));
+                            }
                         }
                         ui.add_space(6.0);
                     }
@@ -193,6 +219,9 @@ fn media_library_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: 
 
     if let Some(id) = clicked_id {
         app.select_asset(Some(id));
+    }
+    if let Some(dropped) = dropped_asset {
+        app.pending_asset_drop = Some(dropped);
     }
     if let Some(id) = add_to_timeline_id {
         app.add_asset_to_timeline(id);
@@ -387,12 +416,14 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
 
         // Ruler: click or drag to move the playhead. Kept as its own thin strip rather than
         // reusing a track row so scrubbing doesn't depend on there being any tracks yet.
+        let mut ruler_top = 0.0_f32;
         ui.horizontal(|ui| {
             ui.add_space(TRACK_LABEL_WIDTH);
             let (rect, response) = ui.allocate_exact_size(
                 egui::vec2(ui.available_width(), 14.0),
                 egui::Sense::click_and_drag(),
             );
+            ruler_top = rect.top();
             ui.painter().rect_filled(rect, 0, theme::SURFACE_2);
             if let Some(pos) = response.interact_pointer_pos() {
                 let secs = ((pos.x - rect.left()) / px_per_sec).max(0.0) as f64;
@@ -581,6 +612,26 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         }
         for (clip_id, asset_id, source_in_secs) in thumbnail_requests {
             app.request_thumbnail(clip_id, asset_id, source_in_secs);
+        }
+        // An asset dragged out of the media library and released somewhere at or below the
+        // ruler: whichever track row's Y-range the pointer landed on becomes the preferred
+        // drop target (`OcaApp::add_asset_to_timeline_at` falls back to a matching-kind track
+        // if that row's kind doesn't match the asset, same as a cross-track clip move). A
+        // release above the ruler means the drag never reached the timeline at all, so it's
+        // ignored rather than silently appending.
+        if let Some((asset_id, pos)) = app.pending_asset_drop.take() {
+            if pos.y >= ruler_top {
+                let target = track_rows
+                    .iter()
+                    .find(|(_, _, rect)| rect.y_range().contains(pos.y));
+                match target {
+                    Some((track_id, _, rect)) => {
+                        let secs = ((pos.x - rect.left()) / px_per_sec).max(0.0) as f64;
+                        app.add_asset_to_timeline_at(asset_id, Some(*track_id), secs);
+                    }
+                    None => app.add_asset_to_timeline(asset_id),
+                }
+            }
         }
     });
 }

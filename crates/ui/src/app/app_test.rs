@@ -108,6 +108,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         thumbnail_rx,
         thumbnail_textures: HashMap::new(),
         requested_thumbnails: HashSet::new(),
+        pending_asset_drop: None,
     }
 }
 

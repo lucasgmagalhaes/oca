@@ -158,6 +158,11 @@ pub struct OcaApp {
     /// [`OcaApp::request_thumbnail`] from spawning a new extraction thread every frame for a
     /// clip that's still pending, or that already failed once.
     requested_thumbnails: HashSet<u64>,
+    /// Set by the media library panel on the frame a dragged asset is released (screen-space
+    /// pointer position), consumed by the timeline panel later in the same frame to place it —
+    /// how dragging an asset out of the library and dropping it on the timeline works. Always
+    /// `None` between frames.
+    pub pending_asset_drop: Option<(u64, egui::Pos2)>,
 }
 
 impl OcaApp {
@@ -198,6 +203,7 @@ impl OcaApp {
             thumbnail_rx,
             thumbnail_textures: HashMap::new(),
             requested_thumbnails: HashSet::new(),
+            pending_asset_drop: None,
         };
         app.reload_preview();
         app
@@ -374,48 +380,13 @@ impl OcaApp {
     /// ([`avcore::timeline::Track::duration_secs`] — `0.0` for an empty/new track). A no-op if
     /// `asset_id` isn't in the active project's media library.
     pub fn add_asset_to_timeline(&mut self, asset_id: u64) {
-        let Some(asset) = self
-            .active_project()
-            .media_library
-            .iter()
-            .find(|a| a.id == asset_id)
-        else {
+        let Some((kind, duration_secs)) = self.asset_kind_and_duration(asset_id) else {
             return;
         };
-        let kind = match asset.kind {
-            avcore::MediaKind::Video => avcore::timeline::TrackKind::Video,
-            avcore::MediaKind::Audio => avcore::timeline::TrackKind::Audio,
-        };
-        let duration_secs = asset.duration_secs;
-
         let timeline = &mut self.active_project_mut().timeline;
-        let track_index = match timeline.tracks.iter().position(|t| t.kind == kind) {
-            Some(index) => index,
-            None => {
-                let track_id = timeline.tracks.iter().map(|t| t.id).max().unwrap_or(0) + 1;
-                let name = match kind {
-                    avcore::timeline::TrackKind::Video => "V1",
-                    avcore::timeline::TrackKind::Audio => "A1",
-                };
-                timeline.tracks.push(avcore::timeline::Track {
-                    id: track_id,
-                    name: name.to_string(),
-                    kind,
-                    clips: Vec::new(),
-                });
-                timeline.tracks.len() - 1
-            }
-        };
-
-        let clip_id = timeline
-            .tracks
-            .iter()
-            .flat_map(|t| &t.clips)
-            .map(|c| c.id)
-            .max()
-            .unwrap_or(0)
-            + 1;
+        let track_index = resolve_or_create_track(timeline, kind, None);
         let start_secs = timeline.tracks[track_index].duration_secs();
+        let clip_id = next_clip_id(timeline);
         timeline.tracks[track_index]
             .clips
             .push(avcore::timeline::ClipInstance {
@@ -425,6 +396,53 @@ impl OcaApp {
                 source_in_secs: 0.0,
                 source_out_secs: duration_secs,
             });
+    }
+
+    /// Inserts `asset_id` onto the timeline at `start_secs` — what dropping an asset dragged
+    /// out of the media library onto the timeline strip does. Prefers `preferred_track_id` if
+    /// it exists and matches the asset's kind (the track row the drop landed on); otherwise
+    /// falls back to the same track-resolution as [`OcaApp::add_asset_to_timeline`] (first
+    /// existing track of matching kind, auto-created if none exists). A no-op if `asset_id`
+    /// isn't in the active project's media library or `start_secs` is negative.
+    pub fn add_asset_to_timeline_at(
+        &mut self,
+        asset_id: u64,
+        preferred_track_id: Option<u64>,
+        start_secs: f64,
+    ) {
+        if start_secs < 0.0 {
+            return;
+        }
+        let Some((kind, duration_secs)) = self.asset_kind_and_duration(asset_id) else {
+            return;
+        };
+        let timeline = &mut self.active_project_mut().timeline;
+        let track_index = resolve_or_create_track(timeline, kind, preferred_track_id);
+        let clip_id = next_clip_id(timeline);
+        timeline.tracks[track_index]
+            .clips
+            .push(avcore::timeline::ClipInstance {
+                id: clip_id,
+                asset_id,
+                start_secs,
+                source_in_secs: 0.0,
+                source_out_secs: duration_secs,
+            });
+    }
+
+    /// Looks up `asset_id` in the active project's media library and returns its track kind
+    /// and duration, or `None` if it isn't there.
+    fn asset_kind_and_duration(&self, asset_id: u64) -> Option<(avcore::timeline::TrackKind, f64)> {
+        let asset = self
+            .active_project()
+            .media_library
+            .iter()
+            .find(|a| a.id == asset_id)?;
+        let kind = match asset.kind {
+            avcore::MediaKind::Video => avcore::timeline::TrackKind::Video,
+            avcore::MediaKind::Audio => avcore::timeline::TrackKind::Audio,
+        };
+        Some((kind, asset.duration_secs))
     }
 
     /// Splits whichever clip covers the timeline playhead, on every track that has one there,
@@ -763,6 +781,54 @@ impl OcaApp {
             let _ = tx.send(event);
         });
     }
+}
+
+/// Finds the track to place a new clip of `kind` on, for [`OcaApp::add_asset_to_timeline`] and
+/// [`OcaApp::add_asset_to_timeline_at`]: `preferred_track_id` if it exists and matches `kind`,
+/// else the first existing track of that kind, else a newly created `"V1"`/`"A1"` track
+/// appended to `timeline.tracks`. Returns the resolved track's index.
+fn resolve_or_create_track(
+    timeline: &mut avcore::timeline::Timeline,
+    kind: avcore::timeline::TrackKind,
+    preferred_track_id: Option<u64>,
+) -> usize {
+    if let Some(id) = preferred_track_id {
+        if let Some(index) = timeline
+            .tracks
+            .iter()
+            .position(|t| t.id == id && t.kind == kind)
+        {
+            return index;
+        }
+    }
+    if let Some(index) = timeline.tracks.iter().position(|t| t.kind == kind) {
+        return index;
+    }
+    let track_id = timeline.tracks.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+    let name = match kind {
+        avcore::timeline::TrackKind::Video => "V1",
+        avcore::timeline::TrackKind::Audio => "A1",
+    };
+    timeline.tracks.push(avcore::timeline::Track {
+        id: track_id,
+        name: name.to_string(),
+        kind,
+        clips: Vec::new(),
+    });
+    timeline.tracks.len() - 1
+}
+
+/// The next free clip id across every track in `timeline` — one past the current max, `1` if
+/// the timeline has no clips yet.
+fn next_clip_id(timeline: &avcore::timeline::Timeline) -> u64 {
+    timeline
+        .tracks
+        .iter()
+        .flat_map(|t| &t.clips)
+        .map(|c| c.id)
+        .max()
+        .unwrap_or(0)
+        + 1
 }
 
 /// Runs on [`OcaApp::spawn_import`]'s background thread — probes `path`, measures its
