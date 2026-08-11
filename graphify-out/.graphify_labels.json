@@ -33,5 +33,6 @@
   "31": "mod.rs",
   "32": "poll_for_descendants",
   "33": "test_launch.py",
-  "34": "generate_waveform"
+  "34": "generate_waveform",
+  "35": "editor.rs"
 }

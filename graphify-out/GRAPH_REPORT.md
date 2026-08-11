@@ -1,16 +1,16 @@
 # Graph Report - oca  (2026-08-11)
 
 ## Corpus Check
-- 70 files · ~54,066 words
+- 70 files · ~54,362 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 715 nodes · 1264 edges · 35 communities (33 shown, 2 thin omitted)
+- 717 nodes · 1269 edges · 36 communities (34 shown, 2 thin omitted)
 - Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 55 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `10ae3440`
+- Built from commit: `b3ffedd7`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -44,12 +44,13 @@
 - Commit Plan — Fase 1
 - poll_for_descendants
 - generate_waveform
+- editor.rs
 
 ## God Nodes (most connected - your core abstractions)
 1. `OcaApp` - 72 edges
 2. `test_app()` - 50 edges
 3. `Project` - 25 edges
-4. `MediaAsset` - 18 edges
+4. `MediaAsset` - 20 edges
 5. `Preview` - 15 edges
 6. `Task Breakdown — Fase 1 (Motor central)` - 15 edges
 7. `Track` - 14 edges
@@ -72,19 +73,19 @@
 ## Import Cycles
 - 2-file cycle: `crates/ui/src/app.rs -> crates/ui/src/i18n.rs -> crates/ui/src/app.rs`
 
-## Communities (35 total, 2 thin omitted)
+## Communities (36 total, 2 thin omitted)
 
 ### Community 0 - "OcaApp"
-Cohesion: 0.05
-Nodes (49): Arc, TrackKind, downscale_rgba(), EditorTool, extract_thumbnail(), import_one(), ImportEvent, next_clip_id() (+41 more)
+Cohesion: 0.06
+Nodes (31): Arc, TrackKind, downscale_rgba(), EditorTool, extract_thumbnail(), import_one(), ImportEvent, next_clip_id() (+23 more)
 
 ### Community 1 - "Project"
-Cohesion: 0.06
-Nodes (41): bench_parse_loudnorm_stderr(), bench_project_json_round_trip(), bench_timeline_duration(), large_project(), from_json(), load_project_from_file(), PersistError, Display (+33 more)
+Cohesion: 0.08
+Nodes (35): bench_parse_loudnorm_stderr(), bench_project_json_round_trip(), bench_timeline_duration(), large_project(), from_json(), load_project_from_file(), PersistError, Display (+27 more)
 
 ### Community 2 - "app_test.rs"
-Cohesion: 0.08
-Nodes (51): add_and_open_project_appends_and_opens_it(), add_asset_to_timeline_appends_after_whatever_is_already_on_the_matching_track(), add_asset_to_timeline_creates_a_track_and_appends_a_clip_when_none_exists(), add_asset_to_timeline_creates_an_audio_track_for_an_audio_asset(), add_asset_to_timeline_is_a_no_op_for_an_unknown_asset_id(), cancel_export_job_flags_an_active_render_instead_of_removing_it(), cancel_export_job_removes_a_job_that_has_not_started_rendering(), create_new_project_assigns_the_next_id_after_the_highest_existing_one() (+43 more)
+Cohesion: 0.06
+Nodes (57): ClipInstance, Option, String, Vec, Track, add_and_open_project_appends_and_opens_it(), add_asset_to_timeline_appends_after_whatever_is_already_on_the_matching_track(), add_asset_to_timeline_creates_a_track_and_appends_a_clip_when_none_exists() (+49 more)
 
 ### Community 3 - "avbridge/src/lib.rs"
 Cohesion: 0.07
@@ -182,6 +183,10 @@ Nodes (9): oca_window(), poll_for_descendants(), Repeatedly re-queries `window`'
 Cohesion: 0.20
 Nodes (12): generate_waveform(), Display, Error, Formatter, Path, Result, Vec, WaveformError (+4 more)
 
+### Community 35 - "editor.rs"
+Cohesion: 0.21
+Nodes (20): draw_filmstrip(), draw_playhead(), draw_waveform(), media_library_panel(), preview_panel(), prop_row(), properties_panel(), Color32 (+12 more)
+
 ## Knowledge Gaps
 - **101 isolated node(s):** `TrimEdge`, `What this is`, `Commands`, `Architecture`, `Approach` (+96 more)
   These have ≤1 connection - possible missing edges or undocumented components.
@@ -190,17 +195,17 @@ Nodes (12): generate_waveform(), Display, Error, Formatter, Path, Result, Vec, W
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `OcaApp` connect `OcaApp` to `Project`, `app_test.rs`, `Preview`, `widgets.rs`, `i18n.rs`?**
-  _High betweenness centrality (0.190) - this node is a cross-community bridge._
+- **Why does `OcaApp` connect `OcaApp` to `Project`, `app_test.rs`, `editor.rs`, `Preview`, `widgets.rs`, `i18n.rs`?**
+  _High betweenness centrality (0.173) - this node is a cross-community bridge._
 - **Why does `RenderError` connect `render_export` to `avbridge/src/lib.rs`?**
   _High betweenness centrality (0.121) - this node is a cross-community bridge._
-- **Why does `Preview` connect `Preview` to `OcaApp`, `Project`?**
-  _High betweenness centrality (0.111) - this node is a cross-community bridge._
+- **Why does `EncodeError` connect `avbridge/src/lib.rs` to `render_export`?**
+  _High betweenness centrality (0.108) - this node is a cross-community bridge._
 - **What connects `TrimEdge`, `What this is`, `Commands` to the rest of the system?**
   _101 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `OcaApp` be split into smaller, more focused modules?**
-  _Cohesion score 0.05335628227194492 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06490384615384616 - nodes in this community are weakly interconnected._
 - **Should `Project` be split into smaller, more focused modules?**
-  _Cohesion score 0.06093189964157706 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08421985815602837 - nodes in this community are weakly interconnected._
 - **Should `app_test.rs` be split into smaller, more focused modules?**
-  _Cohesion score 0.08069381598793364 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05879692446856626 - nodes in this community are weakly interconnected._
