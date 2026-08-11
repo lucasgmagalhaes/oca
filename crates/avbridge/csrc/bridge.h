@@ -166,4 +166,30 @@ typedef enum {
 OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path,
                                             int target_height);
 
+typedef enum {
+    OCA_WAVEFORM_OK = 0,
+    OCA_WAVEFORM_ERR_OPEN_INPUT = 1,
+    OCA_WAVEFORM_ERR_STREAM_INFO = 2,
+    /* The input has no audio stream to compute a waveform from. */
+    OCA_WAVEFORM_ERR_NO_AUDIO_STREAM = 3,
+    /* Couldn't find/open the audio decoder. */
+    OCA_WAVEFORM_ERR_DECODER = 4,
+    /* Couldn't build the mono-downmix filter graph. */
+    OCA_WAVEFORM_ERR_FILTER_GRAPH = 5,
+    /* A decode/filter call failed mid-stream (not at setup), or bucket_count was <= 0. */
+    OCA_WAVEFORM_ERR_PIPELINE = 6,
+} OcaWaveformStatus;
+
+/* Computes per-bucket min/max amplitude peaks (each in [-1, 1]) of in_path's audio stream,
+   downmixed to mono, for waveform rendering. The full duration is divided into bucket_count
+   equal-length buckets by sample index (not wall-clock time) — out_min/out_max must each point
+   at a writable array of at least bucket_count floats; both are fully overwritten (a bucket
+   with no samples in it, e.g. because the duration estimate undershoots, is left at 0.0f).
+   Equivalent in spirit to
+   ffmpeg -i in_path -af "aformat=sample_fmts=flt:channel_layouts=mono" -f null -
+   with peak tracking bolted on, but nothing is written or re-encoded.
+   Fails with OCA_WAVEFORM_ERR_NO_AUDIO_STREAM if in_path has no audio stream. */
+OcaWaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_count,
+                                                  float *out_min, float *out_max);
+
 #endif

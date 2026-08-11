@@ -46,6 +46,12 @@ unsafe extern "C" {
         out_path: *const c_char,
         target_height: c_int,
     ) -> c_int;
+    fn avbridge_generate_waveform(
+        in_path: *const c_char,
+        bucket_count: c_int,
+        out_min: *mut f32,
+        out_max: *mut f32,
+    ) -> c_int;
 }
 
 /// Trampoline handed to the C side as `progress_cb`; `user_data` is a `*mut F` for whatever
@@ -533,4 +539,83 @@ pub fn generate_proxy(
         13 => Err(ProxyError::Pipeline),
         other => Err(ProxyError::Unknown(other)),
     }
+}
+
+/// What [`generate_waveform`] failed on.
+#[derive(Debug)]
+pub enum WaveformError {
+    /// `path` contains a NUL byte and can't be handed to the C API.
+    InvalidPath(NulError),
+    OpenInput,
+    StreamInfo,
+    /// `path` has no audio stream to compute a waveform from.
+    NoAudioStream,
+    /// Couldn't find/open the audio decoder.
+    Decoder,
+    /// Couldn't build the mono-downmix filter graph.
+    FilterGraph,
+    /// A decode/filter call failed mid-stream (not at setup).
+    Pipeline,
+    /// The C side returned a status code this crate doesn't know about.
+    Unknown(c_int),
+}
+
+impl std::fmt::Display for WaveformError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WaveformError::InvalidPath(e) => write!(f, "path is not a valid C string: {e}"),
+            WaveformError::OpenInput => write!(f, "failed to open input"),
+            WaveformError::StreamInfo => write!(f, "failed to read stream info"),
+            WaveformError::NoAudioStream => write!(f, "input has no audio stream"),
+            WaveformError::Decoder => write!(f, "failed to open the audio decoder"),
+            WaveformError::FilterGraph => {
+                write!(f, "failed to build the mono-downmix filter graph")
+            }
+            WaveformError::Pipeline => write!(f, "decode/filter pipeline failed mid-stream"),
+            WaveformError::Unknown(code) => write!(f, "unknown waveform status code: {code}"),
+        }
+    }
+}
+
+impl std::error::Error for WaveformError {}
+
+/// Computes `bucket_count` per-bucket (min, max) amplitude peaks — each in `[-1.0, 1.0]` — of
+/// `path`'s audio stream downmixed to mono, for waveform rendering. The full duration is
+/// divided into equal-length buckets by sample index, so a bucket with no samples in it (e.g.
+/// the duration estimate undershot) comes back as `(0.0, 0.0)` rather than left uninitialized.
+pub fn generate_waveform(
+    path: &Path,
+    bucket_count: usize,
+) -> Result<Vec<(f32, f32)>, WaveformError> {
+    let c_path =
+        CString::new(path.to_string_lossy().as_bytes()).map_err(WaveformError::InvalidPath)?;
+
+    let mut mins = vec![0.0f32; bucket_count];
+    let mut maxs = vec![0.0f32; bucket_count];
+
+    // SAFETY: c_path is a valid NUL-terminated C string for the duration of this call.
+    // `mins`/`maxs` are valid, writable buffers of `bucket_count` f32s each — the C side never
+    // writes past that length. `bridge.c` closes the decoder and filter graph contexts on
+    // every exit path.
+    let status = unsafe {
+        avbridge_generate_waveform(
+            c_path.as_ptr(),
+            bucket_count as c_int,
+            mins.as_mut_ptr(),
+            maxs.as_mut_ptr(),
+        )
+    };
+
+    match status {
+        0 => {}
+        1 => return Err(WaveformError::OpenInput),
+        2 => return Err(WaveformError::StreamInfo),
+        3 => return Err(WaveformError::NoAudioStream),
+        4 => return Err(WaveformError::Decoder),
+        5 => return Err(WaveformError::FilterGraph),
+        6 => return Err(WaveformError::Pipeline),
+        other => return Err(WaveformError::Unknown(other)),
+    }
+
+    Ok(mins.into_iter().zip(maxs).collect())
 }
