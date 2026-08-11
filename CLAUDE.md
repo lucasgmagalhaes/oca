@@ -47,8 +47,13 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   shake, glitch, and pixelize (`ClipInstance::blur_intensity/shake_intensity/glitch_intensity/
   pixelize_intensity`) round out the initial "Efeitos visuais" list from `request.md` — four more
   sliders with no visible effect anywhere yet. Same preview/export gap as the rest for all of
-  these. Check `features/request.md` for what's still unbuilt before assuming a feature is live —
-  when in doubt, `graphify query`.
+  these. Transitions (`ClipInstance::transition_in`: none/fade/hard cut/slide/zoom, plus
+  `transition_duration_secs`) close out `request.md`'s "Efeitos visuais" list — a properties-
+  panel picker and duration slider, no visible effect anywhere yet (same preview/export gap as
+  the rest), and modeling only a block's incoming edge rather than a real two-clip cross-blend,
+  which would need a relationship between adjacent clips instead of a single-clip field. Check
+  `features/request.md` for what's still unbuilt before assuming a feature is live — when in
+  doubt, `graphify query`.
 
 ## Commands
 
