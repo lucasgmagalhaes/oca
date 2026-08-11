@@ -21,10 +21,14 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   (`ClipInstance::frozen`) — both live in the properties panel and affect the timeline display
   (waveform scaling / poster-frame draw) but not preview playback or export yet, since export
   still passthrough-renders one source file per job rather than mixing the actual timeline.
-  Copy formatting (`Ctrl+Shift+C`/`Ctrl+Shift+V`, `OcaApp::copy_selected_clip_formatting`/
-  `paste_selected_clip_formatting`) copies just those gain/freeze settings between blocks
-  without duplicating the clip. Check `features/request.md` for what's still unbuilt before
-  assuming a feature is live — when in doubt, `graphify query`.
+  Speed (`ClipInstance::speed_factor`) follows the same pattern — a properties-panel slider and
+  a "2.00x"-style badge on the timeline block, but doesn't resample audio or change the block's
+  on-timeline length yet (that needs the timeline to support a block whose displayed duration
+  differs from its trimmed source range, which nothing does yet). Copy formatting
+  (`Ctrl+Shift+C`/`Ctrl+Shift+V`, `OcaApp::copy_selected_clip_formatting`/
+  `paste_selected_clip_formatting`) copies gain/freeze/speed between blocks without duplicating
+  the clip. Check `features/request.md` for what's still unbuilt before assuming a feature is
+  live — when in doubt, `graphify query`.
 
 ## Commands
 
