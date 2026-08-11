@@ -219,6 +219,12 @@ pub struct OcaApp {
     /// a different project, is what makes "copiar e colar entre abas" (`request.md`'s Fase 3
     /// spec) work for free, rather than needing separate cross-tab plumbing.
     clipboard_clip: Option<(avcore::timeline::ClipInstance, avcore::timeline::TrackKind)>,
+    /// Clip ids picked (via `Ctrl+click`) as candidates for [`OcaApp::merge_into_composite`] —
+    /// separate from `selected_clip_id`, which stays single-target for every other clip
+    /// operation (trim, delete, copy, split). Cleared after a successful merge; not otherwise
+    /// tied to `selected_clip_id`, so the last-clicked clip can be a multi-select member
+    /// without also being "the" selection.
+    pub multi_selected_clip_ids: HashSet<u64>,
 }
 
 impl OcaApp {
@@ -267,6 +273,7 @@ impl OcaApp {
             requested_thumbnails: HashSet::new(),
             pending_asset_drop: None,
             clipboard_clip: None,
+            multi_selected_clip_ids: HashSet::new(),
         }
     }
 
@@ -500,6 +507,7 @@ impl OcaApp {
                 start_secs,
                 source_in_secs: 0.0,
                 source_out_secs: duration_secs,
+                composite_id: None,
             });
     }
 
@@ -532,6 +540,7 @@ impl OcaApp {
                 start_secs,
                 source_in_secs: 0.0,
                 source_out_secs: duration_secs,
+                composite_id: None,
             });
     }
 
@@ -576,16 +585,72 @@ impl OcaApp {
 
     /// Removes `selected_clip_id` from whichever track has it and clears the selection — what
     /// pressing `Delete` on the timeline does. Leaves a gap rather than rippling later clips
-    /// left, matching `split_at_playhead`'s equally simple non-ripple editing model. A no-op
-    /// if nothing is selected.
+    /// left, matching `split_at_playhead`'s equally simple non-ripple editing model. If the
+    /// selected clip is a composite block member (`composite_id.is_some()`), every clip
+    /// sharing that id is removed too — deleting one member deletes the whole block, per
+    /// `request.md`'s Fase 3 "reutilizado ... como se fosse um clipe só" spec. A no-op if
+    /// nothing is selected.
     pub fn delete_selected_clip(&mut self) {
         let Some(clip_id) = self.selected_clip_id else {
             return;
         };
-        for track in &mut self.active_project_mut().timeline_mut().tracks {
-            track.clips.retain(|c| c.id != clip_id);
+        let timeline = self.active_project_mut().timeline_mut();
+        let composite_id = timeline
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .find(|c| c.id == clip_id)
+            .and_then(|c| c.composite_id);
+        for track in &mut timeline.tracks {
+            match composite_id {
+                Some(group) => track.clips.retain(|c| c.composite_id != Some(group)),
+                None => track.clips.retain(|c| c.id != clip_id),
+            }
         }
         self.selected_clip_id = None;
+    }
+
+    /// Adds/removes `clip_id` from [`OcaApp::multi_selected_clip_ids`] — what `Ctrl+click`ing
+    /// a timeline clip does, building up a set of candidates for
+    /// [`OcaApp::merge_into_composite`].
+    pub fn toggle_multi_select(&mut self, clip_id: u64) {
+        if !self.multi_selected_clip_ids.remove(&clip_id) {
+            self.multi_selected_clip_ids.insert(clip_id);
+        }
+    }
+
+    /// Merges every clip in [`OcaApp::multi_selected_clip_ids`] into one composite block —
+    /// what the toolbar's "Mesclar em bloco composto" button does (per `request.md`'s Fase 3
+    /// "blocos compostos" spec). Assigns them all a fresh `composite_id` and clears the
+    /// multi-selection. A no-op, leaving the multi-selection untouched so the user can fix
+    /// their pick, if fewer than two ids were selected or they aren't all on the same track —
+    /// composite blocks don't span tracks yet.
+    pub fn merge_into_composite(&mut self) {
+        if self.multi_selected_clip_ids.len() < 2 {
+            return;
+        }
+        let ids = self.multi_selected_clip_ids.clone();
+        let timeline = self.active_project_mut().timeline_mut();
+        let Some(track) = timeline
+            .tracks
+            .iter_mut()
+            .find(|t| ids.iter().all(|id| t.clips.iter().any(|c| c.id == *id)))
+        else {
+            return;
+        };
+        let group_id = track
+            .clips
+            .iter()
+            .filter_map(|c| c.composite_id)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        for clip in &mut track.clips {
+            if ids.contains(&clip.id) {
+                clip.composite_id = Some(group_id);
+            }
+        }
+        self.multi_selected_clip_ids.clear();
     }
 
     /// Whether a clip is waiting in the clipboard for [`OcaApp::paste_clip_at_playhead`] — lets
@@ -646,6 +711,10 @@ impl OcaApp {
                 start_secs: playhead_secs,
                 source_in_secs: copied.source_in_secs,
                 source_out_secs: copied.source_out_secs,
+                // A pasted clip is always standalone, even if the copied original was a
+                // composite member — copy/paste doesn't replicate group membership (a known
+                // gap short of request.md's "reutilizado ... como se fosse um clipe só").
+                composite_id: None,
             });
     }
 
@@ -711,6 +780,40 @@ impl OcaApp {
             if track.move_clip(clip_id, new_start_secs) {
                 return;
             }
+        }
+    }
+
+    /// [`OcaApp::move_clip`], but if `clip_id` is a composite block member every other clip
+    /// sharing its `composite_id` moves by the same delta, on the same track — what dragging a
+    /// composite block's body does, so the whole block reads as one clip per `request.md`'s
+    /// Fase 3 "blocos compostos" spec. A no-op if `clip_id` isn't found; falls back to a plain
+    /// [`OcaApp::move_clip`] if it isn't a composite member.
+    pub fn move_clip_with_group(&mut self, clip_id: u64, new_start_secs: f64) {
+        let found = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .find_map(|t| {
+                let dragged = t.clips.iter().find(|c| c.id == clip_id)?;
+                Some((dragged.start_secs, dragged.composite_id, t))
+            });
+        let Some((old_start_secs, composite_id, track)) = found else {
+            return;
+        };
+        let Some(group) = composite_id else {
+            self.move_clip(clip_id, new_start_secs);
+            return;
+        };
+        let delta = new_start_secs - old_start_secs;
+        let updates: Vec<(u64, f64)> = track
+            .clips
+            .iter()
+            .filter(|c| c.composite_id == Some(group))
+            .map(|c| (c.id, c.start_secs + delta))
+            .collect();
+        for (id, start_secs) in updates {
+            self.move_clip(id, start_secs);
         }
     }
 

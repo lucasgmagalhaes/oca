@@ -45,6 +45,14 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         start_secs,
         source_in_secs,
         source_out_secs,
+        composite_id: None,
+    }
+}
+
+fn test_composite_clip(id: u64, start_secs: f64, composite_id: u64) -> ClipInstance {
+    ClipInstance {
+        composite_id: Some(composite_id),
+        ..test_clip(id, start_secs, 0.0, 10.0)
     }
 }
 
@@ -122,6 +130,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         requested_thumbnails: HashSet::new(),
         pending_asset_drop: None,
         clipboard_clip: None,
+        multi_selected_clip_ids: HashSet::new(),
     }
 }
 
@@ -730,6 +739,172 @@ fn move_clip_ignores_a_negative_position() {
     assert_eq!(
         app.active_project().timeline().tracks[0].clips[0].start_secs,
         10.0
+    );
+}
+
+#[test]
+fn toggle_multi_select_adds_then_removes() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.toggle_multi_select(1);
+    assert!(app.multi_selected_clip_ids.contains(&1));
+
+    app.toggle_multi_select(1);
+    assert!(!app.multi_selected_clip_ids.contains(&1));
+}
+
+#[test]
+fn merge_into_composite_is_a_no_op_with_fewer_than_two_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.toggle_multi_select(1);
+
+    app.merge_into_composite();
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].composite_id,
+        None
+    );
+    assert!(app.multi_selected_clip_ids.contains(&1)); // left untouched, not cleared.
+}
+
+#[test]
+fn merge_into_composite_is_a_no_op_when_ids_span_different_tracks() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![
+                test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]),
+                test_track(2, TrackKind::Video, vec![test_clip(2, 10.0, 0.0, 10.0)]),
+            ],
+        )],
+        Vec::new(),
+    );
+    app.toggle_multi_select(1);
+    app.toggle_multi_select(2);
+
+    app.merge_into_composite();
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].composite_id,
+        None
+    );
+    assert_eq!(
+        app.active_project().timeline().tracks[1].clips[0].composite_id,
+        None
+    );
+}
+
+#[test]
+fn merge_into_composite_assigns_a_shared_id_and_clears_the_multi_selection() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![
+                    test_clip(1, 0.0, 0.0, 10.0),
+                    test_clip(2, 10.0, 0.0, 10.0),
+                    test_clip(3, 20.0, 0.0, 10.0),
+                ],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.toggle_multi_select(1);
+    app.toggle_multi_select(2);
+
+    app.merge_into_composite();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    let group = clips[0].composite_id;
+    assert!(group.is_some());
+    assert_eq!(clips[1].composite_id, group);
+    assert_eq!(clips[2].composite_id, None); // not selected, left standalone.
+    assert!(app.multi_selected_clip_ids.is_empty());
+}
+
+#[test]
+fn delete_selected_clip_removes_every_composite_member() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![
+                    test_composite_clip(1, 0.0, 9),
+                    test_composite_clip(2, 10.0, 9),
+                    test_clip(3, 20.0, 0.0, 10.0),
+                ],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.delete_selected_clip();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips.len(), 1);
+    assert_eq!(clips[0].id, 3);
+}
+
+#[test]
+fn move_clip_with_group_moves_every_member_by_the_same_delta() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![
+                    test_composite_clip(1, 0.0, 9),
+                    test_composite_clip(2, 10.0, 9),
+                    test_clip(3, 100.0, 0.0, 10.0),
+                ],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.move_clip_with_group(1, 50.0); // +50s delta.
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].start_secs, 50.0);
+    assert_eq!(clips[1].start_secs, 60.0);
+    assert_eq!(clips[2].start_secs, 100.0); // standalone clip, untouched.
+}
+
+#[test]
+fn move_clip_with_group_behaves_like_a_single_move_when_not_composite() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.move_clip_with_group(1, 30.0);
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].start_secs,
+        30.0
     );
 }
 

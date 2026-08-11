@@ -115,6 +115,8 @@ text_catalog! {
     ContextMenuPaste: pt_br = "📋 Colar no playhead", en = "📋 Paste at playhead";
     DefaultSequenceName: pt_br = "Sequência principal", en = "Main sequence";
     AddSequenceTab: pt_br = "＋", en = "＋";
+    MergeIntoComposite: pt_br = "⛓ Mesclar em bloco", en = "⛓ Merge into block";
+    MergeIntoCompositeHint: pt_br = "Ctrl+clique em 2+ clipes na timeline pra selecionar, depois mescle num bloco composto", en = "Ctrl+click 2+ clips on the timeline to pick them, then merge into a composite block";
     PreviewUnavailable: pt_br = "Pré-visualização indisponível", en = "Preview unavailable";
 
     LibraryTitle: pt_br = "Biblioteca de mídia", en = "Media library";

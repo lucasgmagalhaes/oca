@@ -197,6 +197,17 @@ fn toolbar(app: &mut OcaApp, ui: &mut egui::Ui) {
         }
         tool_button(app, ui, EditorTool::Trim, "⇔", Text::ToolTrim.tr(locale));
         ui.separator();
+        if ui
+            .add_enabled(
+                app.multi_selected_clip_ids.len() >= 2,
+                egui::Button::new(Text::MergeIntoComposite.tr(locale)),
+            )
+            .on_hover_text(Text::MergeIntoCompositeHint.tr(locale))
+            .clicked()
+        {
+            app.merge_into_composite();
+        }
+        ui.separator();
         let _ = ui.button("↺");
         let _ = ui.button("↻");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -599,6 +610,7 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         let mut delete_requests: Vec<u64> = Vec::new();
         let mut copy_requests: Vec<u64> = Vec::new();
         let mut cut_requests: Vec<u64> = Vec::new();
+        let mut multi_select_requests: Vec<u64> = Vec::new();
         let mut paste_requested = false;
         let mut split_at_playhead_requested = false;
         let mut trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
@@ -711,7 +723,11 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
                         }
                         if body_response.clicked() {
-                            clicked_clip_id = Some(clip.id);
+                            if ui.input(|i| i.modifiers.ctrl) {
+                                multi_select_requests.push(clip.id);
+                            } else {
+                                clicked_clip_id = Some(clip.id);
+                            }
                         }
                         if body_response.dragged() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -766,6 +782,22 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                 );
                             }
                         }
+                        if clip.composite_id.is_some() {
+                            painter.rect_stroke(
+                                clip_rect,
+                                egui::CornerRadius::same(4),
+                                egui::Stroke::new(1.5, theme::ACCENT_2),
+                                egui::StrokeKind::Inside,
+                            );
+                        }
+                        if app.multi_selected_clip_ids.contains(&clip.id) {
+                            painter.rect_stroke(
+                                clip_rect,
+                                egui::CornerRadius::same(4),
+                                egui::Stroke::new(2.0, theme::ERROR),
+                                egui::StrokeKind::Inside,
+                            );
+                        }
                         if app.selected_clip_id == Some(clip.id) {
                             painter.rect_stroke(
                                 clip_rect,
@@ -795,6 +827,9 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         });
         if let Some(id) = clicked_clip_id {
             app.selected_clip_id = Some(id);
+        }
+        for clip_id in multi_select_requests {
+            app.toggle_multi_select(clip_id);
         }
         for clip_id in copy_requests {
             app.selected_clip_id = Some(clip_id);
@@ -831,11 +866,22 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                     *kind == drag.kind && rect.y_range().contains(drag.pointer_y)
                 })
                 .map(|(id, _, _)| *id);
+            // A composite block's members must all stay on the same track (see
+            // ClipInstance::composite_id's doc comment), so a cross-track drop is refused for
+            // one — it falls back to the same-track group move below instead.
+            let is_composite = app
+                .active_project()
+                .timeline()
+                .tracks
+                .iter()
+                .flat_map(|t| &t.clips)
+                .find(|c| c.id == drag.clip_id)
+                .is_some_and(|c| c.composite_id.is_some());
             match target_track_id {
-                Some(track_id) if track_id != drag.source_track_id => {
+                Some(track_id) if track_id != drag.source_track_id && !is_composite => {
                     app.move_clip_to_track(drag.clip_id, track_id, drag.new_start_secs);
                 }
-                _ => app.move_clip(drag.clip_id, drag.new_start_secs),
+                _ => app.move_clip_with_group(drag.clip_id, drag.new_start_secs),
             }
         }
         for (asset_id, bucket) in thumbnail_requests {
