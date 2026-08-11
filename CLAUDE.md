@@ -18,10 +18,14 @@ wired end-to-end from the UI (`home.rs` open dialog, `editor.rs` save). Probing
 subprocess, no ffprobe/ffmpeg on PATH required for any of them (proxy uses `libopenh264` — BSD
 — since this LGPL FFmpeg build has no `libx264`/GPL). The GStreamer preview pipeline
 (`avcore::preview::Preview`) is wired into the Editor screen's preview panel (`ui/src/
-app.rs::OcaApp::{select_asset,reload_preview,pump_preview_frame}` +
-`ui/src/screens/editor.rs::preview_panel`): clicking an asset in the media library opens it,
-decoded frames are uploaded to an egui texture every frame, and play/pause/seek (including a
-click-to-seek position slider) drive the pipeline — playback of the selected clip only, not
+app.rs::OcaApp::{select_asset,ensure_preview_loaded,pump_preview_frame}` +
+`ui/src/screens/editor.rs::preview_panel`): clicking an asset in the media library selects it,
+but the pipeline itself opens lazily — `ensure_preview_loaded` runs once per frame from the top
+of `preview_panel` and is a no-op once a pipeline is open or has already been tried for the
+current selection, so switching projects or launching the app doesn't pay GStreamer's open cost
+until the Editor screen's preview panel is actually painted. Decoded frames are uploaded to an
+egui texture every frame, and play/pause/seek (including a click-to-seek position slider) drive
+the pipeline — playback of the selected clip only, not
 yet full multi-clip timeline playback. Double-clicking an asset in the Editor's media library
 panel adds it to the timeline (`OcaApp::add_asset_to_timeline`) — appended, untrimmed, onto
 the first track of matching kind (auto-creating `"V1"`/`"A1"` if none exists yet). Dragging an
