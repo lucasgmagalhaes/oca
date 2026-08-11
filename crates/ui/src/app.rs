@@ -157,6 +157,7 @@ struct ClipFormatting {
     mask_shape: avcore::timeline::MaskShape,
     mask_corner_radius: f32,
     flipped_h: bool,
+    color_filter: avcore::timeline::ColorFilter,
 }
 
 /// The whole application's state: which screen is showing, the loaded projects, the export
@@ -601,6 +602,7 @@ impl OcaApp {
                 mask_shape: avcore::timeline::MaskShape::None,
                 mask_corner_radius: 0.0,
                 flipped_h: false,
+                color_filter: avcore::timeline::ColorFilter::None,
             });
     }
 
@@ -644,6 +646,7 @@ impl OcaApp {
                 mask_shape: avcore::timeline::MaskShape::None,
                 mask_corner_radius: 0.0,
                 flipped_h: false,
+                color_filter: avcore::timeline::ColorFilter::None,
             });
     }
 
@@ -829,6 +832,22 @@ impl OcaApp {
         }
     }
 
+    /// Sets `selected_clip_id`'s color filter
+    /// ([`avcore::timeline::ClipInstance::color_filter`]) — what picking a filter in the
+    /// properties panel does. A no-op if nothing is selected.
+    pub fn set_selected_clip_color_filter(&mut self, color_filter: avcore::timeline::ColorFilter) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.color_filter = color_filter;
+                break;
+            }
+        }
+    }
+
     /// Whether formatting is waiting in the clipboard for
     /// [`OcaApp::paste_selected_clip_formatting`] — lets the timeline context menu grey out
     /// "Colar formatação" otherwise.
@@ -836,7 +855,7 @@ impl OcaApp {
         self.formatting_clipboard.is_some()
     }
 
-    /// Copies `selected_clip_id`'s gain/freeze/speed/crop/mask/flip settings to
+    /// Copies `selected_clip_id`'s gain/freeze/speed/crop/mask/flip/color-filter settings to
     /// [`OcaApp::formatting_clipboard`] — what `Ctrl+Shift+C`/the context menu's "Copiar
     /// formatação" do. A no-op if nothing is selected.
     pub fn copy_selected_clip_formatting(&mut self) {
@@ -854,6 +873,7 @@ impl OcaApp {
             mask_shape: clip.mask_shape,
             mask_corner_radius: clip.mask_corner_radius,
             flipped_h: clip.flipped_h,
+            color_filter: clip.color_filter,
         });
     }
 
@@ -878,6 +898,7 @@ impl OcaApp {
                 clip.mask_shape = formatting.mask_shape;
                 clip.mask_corner_radius = formatting.mask_corner_radius;
                 clip.flipped_h = formatting.flipped_h;
+                clip.color_filter = formatting.color_filter;
                 break;
             }
         }
@@ -998,6 +1019,7 @@ impl OcaApp {
                 mask_shape: copied.mask_shape,
                 mask_corner_radius: copied.mask_corner_radius,
                 flipped_h: copied.flipped_h,
+                color_filter: copied.color_filter,
             });
     }
 

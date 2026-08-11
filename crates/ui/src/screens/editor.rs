@@ -564,6 +564,7 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                     let mut mask_shape = clip.mask_shape;
                     let mut mask_corner_radius = clip.mask_corner_radius;
                     let mut flipped_h = clip.flipped_h;
+                    let mut color_filter = clip.color_filter;
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -731,6 +732,38 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                                 .size(10.5)
                                 .color(theme::TEXT_MUTED),
                         );
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        widgets::section_label(ui, Text::PropColorFilter.tr(locale));
+                        let mut color_filter_changed = false;
+                        egui::ComboBox::from_id_salt("color_filter")
+                            .selected_text(color_filter_label(color_filter, locale))
+                            .show_ui(ui, |ui| {
+                                for filter in [
+                                    avcore::timeline::ColorFilter::None,
+                                    avcore::timeline::ColorFilter::BlackAndWhite,
+                                    avcore::timeline::ColorFilter::Sepia,
+                                ] {
+                                    color_filter_changed |= ui
+                                        .selectable_value(
+                                            &mut color_filter,
+                                            filter,
+                                            color_filter_label(filter, locale),
+                                        )
+                                        .changed();
+                                }
+                            });
+                        if color_filter_changed {
+                            app.set_selected_clip_color_filter(color_filter);
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(Text::ColorFilterExportNote.tr(locale))
+                                .size(10.5)
+                                .color(theme::TEXT_MUTED),
+                        );
                     }
                 }
             });
@@ -742,6 +775,35 @@ fn mask_shape_label(shape: avcore::timeline::MaskShape, locale: crate::i18n::Loc
         avcore::timeline::MaskShape::None => Text::MaskNone.tr(locale).to_string(),
         avcore::timeline::MaskShape::Circle => Text::MaskCircle.tr(locale).to_string(),
         avcore::timeline::MaskShape::RoundedRect => Text::MaskRoundedRect.tr(locale).to_string(),
+    }
+}
+
+/// A translucent overlay color hinting at [`avcore::timeline::ClipInstance::color_filter`] on
+/// the timeline block — `None` for [`avcore::timeline::ColorFilter::None`] (nothing drawn).
+/// Just a preview-panel cue, not the real filtered pixels (see the field's doc comment for the
+/// preview/export gap).
+fn color_filter_tint(filter: avcore::timeline::ColorFilter) -> Option<egui::Color32> {
+    match filter {
+        avcore::timeline::ColorFilter::None => None,
+        avcore::timeline::ColorFilter::BlackAndWhite => {
+            Some(egui::Color32::from_rgba_unmultiplied(128, 128, 128, 90))
+        }
+        avcore::timeline::ColorFilter::Sepia => {
+            Some(egui::Color32::from_rgba_unmultiplied(180, 130, 60, 70))
+        }
+    }
+}
+
+fn color_filter_label(
+    filter: avcore::timeline::ColorFilter,
+    locale: crate::i18n::Locale,
+) -> String {
+    match filter {
+        avcore::timeline::ColorFilter::None => Text::ColorFilterNone.tr(locale).to_string(),
+        avcore::timeline::ColorFilter::BlackAndWhite => {
+            Text::ColorFilterBlackAndWhite.tr(locale).to_string()
+        }
+        avcore::timeline::ColorFilter::Sepia => Text::ColorFilterSepia.tr(locale).to_string(),
     }
 }
 
@@ -1019,6 +1081,9 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                     theme::TEXT_PRIMARY.gamma_multiply(0.7),
                                 );
                             }
+                        }
+                        if let Some(tint) = color_filter_tint(clip.color_filter) {
+                            painter.rect_filled(clip_rect, egui::CornerRadius::same(4), tint);
                         }
                         if clip.composite_id.is_some() {
                             painter.rect_stroke(

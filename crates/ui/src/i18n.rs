@@ -119,6 +119,11 @@ text_catalog! {
     MaskExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda mostram o quadro inteiro.", en = "only shows a badge on the block for now — preview and export still show the full frame.";
     PropFlip: pt_br = "⇄ Espelhar horizontal", en = "⇄ Flip horizontal";
     FlipExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda mostram o quadro sem espelhar.", en = "only shows a badge on the block for now — preview and export still show the frame unmirrored.";
+    PropColorFilter: pt_br = "Filtro de cor", en = "Color filter";
+    ColorFilterNone: pt_br = "Nenhum", en = "None";
+    ColorFilterBlackAndWhite: pt_br = "Preto e branco", en = "Black and white";
+    ColorFilterSepia: pt_br = "Sépia", en = "Sepia";
+    ColorFilterExportNote: pt_br = "mostra só uma prévia tintada no bloco por enquanto — preview e export ainda mostram as cores originais.", en = "only shows a tinted preview on the block for now — preview and export still show the original colors.";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";
