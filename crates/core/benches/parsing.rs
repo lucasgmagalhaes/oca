@@ -85,6 +85,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 mask_corner_radius: 0.0,
                 flipped_h: false,
                 color_filter: ColorFilter::None,
+                vignette_intensity: 0.0,
             })
             .collect(),
     };

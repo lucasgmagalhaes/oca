@@ -124,6 +124,7 @@ fn cuphead_timeline() -> Timeline {
                         mask_corner_radius: 0.0,
                         flipped_h: false,
                         color_filter: ColorFilter::None,
+                        vignette_intensity: 0.0,
                     },
                     ClipInstance {
                         id: 2,
@@ -143,6 +144,7 @@ fn cuphead_timeline() -> Timeline {
                         mask_corner_radius: 0.0,
                         flipped_h: false,
                         color_filter: ColorFilter::None,
+                        vignette_intensity: 0.0,
                     },
                     ClipInstance {
                         id: 3,
@@ -162,6 +164,7 @@ fn cuphead_timeline() -> Timeline {
                         mask_corner_radius: 0.0,
                         flipped_h: false,
                         color_filter: ColorFilter::None,
+                        vignette_intensity: 0.0,
                     },
                 ],
             },
@@ -188,6 +191,7 @@ fn cuphead_timeline() -> Timeline {
                         mask_corner_radius: 0.0,
                         flipped_h: false,
                         color_filter: ColorFilter::None,
+                        vignette_intensity: 0.0,
                     },
                     ClipInstance {
                         id: 5,
@@ -207,6 +211,7 @@ fn cuphead_timeline() -> Timeline {
                         mask_corner_radius: 0.0,
                         flipped_h: false,
                         color_filter: ColorFilter::None,
+                        vignette_intensity: 0.0,
                     },
                     ClipInstance {
                         id: 6,
@@ -226,6 +231,7 @@ fn cuphead_timeline() -> Timeline {
                         mask_corner_radius: 0.0,
                         flipped_h: false,
                         color_filter: ColorFilter::None,
+                        vignette_intensity: 0.0,
                     },
                 ],
             },
@@ -251,6 +257,7 @@ fn cuphead_timeline() -> Timeline {
                     mask_corner_radius: 0.0,
                     flipped_h: false,
                     color_filter: ColorFilter::None,
+                    vignette_intensity: 0.0,
                 }],
             },
         ],

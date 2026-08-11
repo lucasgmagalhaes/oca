@@ -19,6 +19,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         mask_corner_radius: 0.0,
         flipped_h: false,
         color_filter: ColorFilter::None,
+        vignette_intensity: 0.0,
     }
 }
 
@@ -289,6 +290,34 @@ fn split_clip_at_keeps_color_filter_on_both_halves() {
     assert!(split);
     for half in &track.clips {
         assert_eq!(half.color_filter, ColorFilter::BlackAndWhite);
+    }
+}
+
+#[test]
+fn new_clip_defaults_to_no_vignette() {
+    let c = clip(1, 0.0, 0.0, 10.0);
+    assert!(!c.has_vignette());
+    assert_eq!(c.vignette_intensity, 0.0);
+}
+
+#[test]
+fn has_vignette_is_true_above_zero() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.vignette_intensity = 0.4;
+    assert!(c.has_vignette());
+}
+
+#[test]
+fn split_clip_at_keeps_vignette_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.vignette_intensity = 0.6;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert_eq!(half.vignette_intensity, 0.6);
     }
 }
 

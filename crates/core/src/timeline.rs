@@ -124,6 +124,13 @@ pub struct ClipInstance {
     /// `#[serde(default)]` so older saved projects load unfiltered.
     #[serde(default)]
     pub color_filter: ColorFilter,
+    /// Vignette strength for this block, `0.0..=1.0` (`0.0` is off) — per `request.md`'s Fase 4
+    /// "Efeitos visuais" spec ("Vinheta"). Currently only shown as a darkened border stroke
+    /// around the timeline block, scaled by intensity (`ui`'s timeline panel); doesn't yet
+    /// affect preview playback or export — the same kind of gap as [`ClipInstance::gain_db`].
+    /// `#[serde(default)]` so older saved projects load with no vignette.
+    #[serde(default)]
+    pub vignette_intensity: f32,
 }
 
 fn default_speed_factor() -> f32 {
@@ -160,6 +167,11 @@ impl ClipInstance {
     /// `true` if a color filter ([`ClipInstance::color_filter`]) is applied.
     pub fn is_color_filtered(&self) -> bool {
         self.color_filter != ColorFilter::None
+    }
+
+    /// `true` if [`ClipInstance::vignette_intensity`] is above zero.
+    pub fn has_vignette(&self) -> bool {
+        self.vignette_intensity > 0.0
     }
 
     /// True if `at_secs` (timeline-relative) falls strictly inside this clip's placed range.
@@ -254,6 +266,7 @@ impl Track {
             mask_corner_radius: clip.mask_corner_radius,
             flipped_h: clip.flipped_h,
             color_filter: clip.color_filter,
+            vignette_intensity: clip.vignette_intensity,
         };
         clip.source_out_secs = split_source_secs;
 
