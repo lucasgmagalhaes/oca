@@ -131,6 +131,8 @@ text_catalog! {
     PropContrast: pt_br = "Contraste", en = "Contrast";
     PropSaturation: pt_br = "Saturação", en = "Saturation";
     ColorAdjustExportNote: pt_br = "ainda não tem efeito visível em lugar nenhum — preview e export ignoram esses valores por enquanto.", en = "has no visible effect anywhere yet — preview and export ignore these values for now.";
+    PropSharpen: pt_br = "Nitidez", en = "Sharpen";
+    SharpenExportNote: pt_br = "ainda não tem efeito visível em lugar nenhum — preview e export ignoram esse valor por enquanto.", en = "has no visible effect anywhere yet — preview and export ignore this value for now.";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";

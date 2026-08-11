@@ -103,6 +103,10 @@ pub const CONTRAST_RANGE: std::ops::RangeInclusive<f32> = 0.0..=2.0;
 /// [`avcore::timeline::ClipInstance::saturation`]).
 pub const SATURATION_RANGE: std::ops::RangeInclusive<f32> = 0.0..=2.0;
 
+/// Slider bounds for the properties panel's sharpen control (Fase 4's "Efeitos visuais",
+/// [`avcore::timeline::ClipInstance::sharpen`]).
+pub const SHARPEN_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
+
 /// A message from a background render worker thread (see [`OcaApp::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
@@ -178,6 +182,7 @@ struct ClipFormatting {
     brightness: f32,
     contrast: f32,
     saturation: f32,
+    sharpen: f32,
 }
 
 /// The whole application's state: which screen is showing, the loaded projects, the export
@@ -627,6 +632,7 @@ impl OcaApp {
                 brightness: 0.0,
                 contrast: 1.0,
                 saturation: 1.0,
+                sharpen: 0.0,
             });
     }
 
@@ -675,6 +681,7 @@ impl OcaApp {
                 brightness: 0.0,
                 contrast: 1.0,
                 saturation: 1.0,
+                sharpen: 0.0,
             });
     }
 
@@ -897,6 +904,23 @@ impl OcaApp {
         }
     }
 
+    /// Sets `selected_clip_id`'s sharpen strength
+    /// ([`avcore::timeline::ClipInstance::sharpen`], clamped to [`SHARPEN_RANGE`]) — what
+    /// dragging the properties panel's sharpen slider does. A no-op if nothing is selected.
+    pub fn set_selected_clip_sharpen(&mut self, sharpen: f32) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let sharpen = sharpen.clamp(*SHARPEN_RANGE.start(), *SHARPEN_RANGE.end());
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.sharpen = sharpen;
+                break;
+            }
+        }
+    }
+
     /// Sets `selected_clip_id`'s brightness/contrast/saturation
     /// ([`avcore::timeline::ClipInstance::brightness`]/`contrast`/`saturation`), each
     /// independently clamped to its own range ([`BRIGHTNESS_RANGE`]/[`CONTRAST_RANGE`]/
@@ -955,6 +979,7 @@ impl OcaApp {
             brightness: clip.brightness,
             contrast: clip.contrast,
             saturation: clip.saturation,
+            sharpen: clip.sharpen,
         });
     }
 
@@ -984,6 +1009,7 @@ impl OcaApp {
                 clip.brightness = formatting.brightness;
                 clip.contrast = formatting.contrast;
                 clip.saturation = formatting.saturation;
+                clip.sharpen = formatting.sharpen;
                 break;
             }
         }
@@ -1109,6 +1135,7 @@ impl OcaApp {
                 brightness: copied.brightness,
                 contrast: copied.contrast,
                 saturation: copied.saturation,
+                sharpen: copied.sharpen,
             });
     }
 

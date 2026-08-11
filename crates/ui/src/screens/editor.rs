@@ -6,8 +6,8 @@ use eframe::egui::{self, RichText};
 
 use crate::app::{
     EditorTool, OcaApp, BRIGHTNESS_RANGE, CONTRAST_RANGE, CROP_MIN_SIZE, GAIN_DB_RANGE,
-    MASK_CORNER_RADIUS_RANGE, SATURATION_RANGE, SPEED_FACTOR_RANGE, THUMBNAIL_BUCKET_SECS,
-    VIGNETTE_INTENSITY_RANGE,
+    MASK_CORNER_RADIUS_RANGE, SATURATION_RANGE, SHARPEN_RANGE, SPEED_FACTOR_RANGE,
+    THUMBNAIL_BUCKET_SECS, VIGNETTE_INTENSITY_RANGE,
 };
 use crate::i18n::Text;
 use crate::screens::widgets;
@@ -569,6 +569,7 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                     let mut vignette_intensity = clip.vignette_intensity;
                     let (mut brightness, mut contrast, mut saturation) =
                         (clip.brightness, clip.contrast, clip.saturation);
+                    let mut sharpen = clip.sharpen;
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -816,6 +817,22 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(Text::ColorAdjustExportNote.tr(locale))
+                                .size(10.5)
+                                .color(theme::TEXT_MUTED),
+                        );
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        widgets::section_label(ui, Text::PropSharpen.tr(locale));
+                        let sharpen_slider = ui
+                            .add(egui::Slider::new(&mut sharpen, SHARPEN_RANGE).fixed_decimals(2));
+                        if sharpen_slider.changed() {
+                            app.set_selected_clip_sharpen(sharpen);
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(Text::SharpenExportNote.tr(locale))
                                 .size(10.5)
                                 .color(theme::TEXT_MUTED),
                         );

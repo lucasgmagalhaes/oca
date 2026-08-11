@@ -61,6 +61,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         brightness: 0.0,
         contrast: 1.0,
         saturation: 1.0,
+        sharpen: 0.0,
     }
 }
 
@@ -1533,6 +1534,69 @@ fn set_selected_clip_color_adjust_is_a_no_op_when_nothing_is_selected() {
 }
 
 #[test]
+fn set_selected_clip_sharpen_updates_the_selected_clip() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(2);
+
+    app.set_selected_clip_sharpen(0.6);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].sharpen, 0.0);
+    assert_eq!(clips[1].sharpen, 0.6);
+}
+
+#[test]
+fn set_selected_clip_sharpen_clamps_to_sharpen_range() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_sharpen(5.0);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].sharpen, *crate::app::SHARPEN_RANGE.end());
+}
+
+#[test]
+fn set_selected_clip_sharpen_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.set_selected_clip_sharpen(0.6);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].sharpen, 0.0);
+}
+
+#[test]
 fn copy_selected_clip_formatting_is_a_no_op_when_nothing_is_selected() {
     let mut app = test_app(
         vec![test_project_with_tracks(
@@ -1574,6 +1638,7 @@ fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_posit
     app.set_selected_clip_color_filter(avcore::timeline::ColorFilter::Sepia);
     app.set_selected_clip_vignette(0.5);
     app.set_selected_clip_color_adjust(0.2, 1.5, 0.5);
+    app.set_selected_clip_sharpen(0.6);
     app.copy_selected_clip_formatting();
 
     app.selected_clip_id = Some(2);
@@ -1601,6 +1666,7 @@ fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_posit
         (clips[1].brightness, clips[1].contrast, clips[1].saturation),
         (0.2, 1.5, 0.5)
     );
+    assert_eq!(clips[1].sharpen, 0.6);
     assert_eq!(clips[1].start_secs, 10.0); // position untouched
     assert_eq!(clips[1].source_out_secs, 20.0); // trim untouched
 }
@@ -1723,6 +1789,7 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
     app.set_selected_clip_color_filter(avcore::timeline::ColorFilter::BlackAndWhite);
     app.set_selected_clip_vignette(0.7);
     app.set_selected_clip_color_adjust(0.3, 1.2, 0.8);
+    app.set_selected_clip_sharpen(0.9);
     app.copy_selected_clip();
     app.active_project_mut().timeline_mut().playhead_secs = 30.0;
 
@@ -1754,6 +1821,7 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
         (pasted.brightness, pasted.contrast, pasted.saturation),
         (0.3, 1.2, 0.8)
     ); // so does the color adjustment.
+    assert_eq!(pasted.sharpen, 0.9); // so does sharpen.
 }
 
 #[test]
