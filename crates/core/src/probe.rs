@@ -76,6 +76,8 @@ impl ProbedMedia {
             loudness: None,
             // Generated on demand — see `crate::proxy::ensure_proxy`.
             proxy_path: None,
+            // Computed by a separate pass — see `crate::waveform::generate_waveform`.
+            waveform_peaks: None,
         }
     }
 }

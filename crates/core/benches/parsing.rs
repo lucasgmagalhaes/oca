@@ -58,6 +58,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 loudness_range_lu: 7.0,
             }),
             proxy_path: None,
+            waveform_peaks: None,
         })
         .collect();
 

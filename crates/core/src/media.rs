@@ -44,6 +44,12 @@ pub struct MediaAsset {
     /// after the proxy cache is cleared, or the project is opened on another machine).
     #[serde(skip)]
     pub proxy_path: Option<PathBuf>,
+    /// Per-bucket (min, max) amplitude peaks of this asset's audio track (see
+    /// [`crate::waveform`]), for drawing a waveform under its audio clips on the timeline.
+    /// `None` for a video-only asset, or before the background enrichment pass computes it.
+    /// Serialized (unlike `proxy_path`) — recomputing it means a full audio decode pass, so a
+    /// reopened project keeps it rather than paying that cost again.
+    pub waveform_peaks: Option<Vec<(f32, f32)>>,
 }
 
 impl MediaAsset {

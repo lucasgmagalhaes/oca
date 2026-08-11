@@ -21,6 +21,7 @@ pub mod proxy;
 pub mod render;
 pub mod sample;
 pub mod timeline;
+pub mod waveform;
 
 pub use export::{ExportJob, ExportJobStatus};
 pub use loudness::{measure_loudness, LoudnessError};
@@ -32,3 +33,4 @@ pub use project::{Project, Recency};
 pub use proxy::{ensure_proxy, ProxyError};
 pub use render::{render_export, RenderError, RenderOutcome};
 pub use timeline::{ClipInstance, Timeline, Track, TrackKind};
+pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};

@@ -39,6 +39,7 @@ fn asset(
             loudness_range_lu: 8.0,
         }),
         proxy_path: None,
+        waveform_peaks: None,
     }
 }
 
