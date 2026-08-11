@@ -558,6 +558,23 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                         clip.asset_id,
                                         clip.source_in_secs,
                                     ));
+                                } else if let Some(asset) = app
+                                    .active_project()
+                                    .media_library
+                                    .iter()
+                                    .find(|a| a.id == clip.asset_id)
+                                {
+                                    if let Some(peaks) = &asset.waveform_peaks {
+                                        draw_waveform(
+                                            painter,
+                                            clip_rect,
+                                            peaks,
+                                            asset.duration_secs,
+                                            clip.source_in_secs,
+                                            clip.source_out_secs,
+                                            theme::TEXT_PRIMARY.gamma_multiply(0.7),
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -666,6 +683,50 @@ fn draw_tiled_thumbnail(
             egui::Color32::WHITE,
         );
         x += tile_width;
+    }
+}
+
+/// Draws one vertical min/max bar per horizontal pixel of `clip_rect`, resampling `peaks`
+/// (the asset's full-duration waveform, see [`avcore::waveform`]) down to whatever's visible
+/// between `source_in_secs` and `source_out_secs` — the same "fixed-resolution source data
+/// resampled to the current on-screen width" idea as `draw_tiled_thumbnail`'s zoom handling,
+/// just per-column instead of per-tile. A no-op if `peaks` is empty or `asset_duration_secs`
+/// is non-positive (shouldn't happen for a real decoded asset, but guards div-by-zero).
+fn draw_waveform(
+    painter: &egui::Painter,
+    clip_rect: egui::Rect,
+    peaks: &[(f32, f32)],
+    asset_duration_secs: f64,
+    source_in_secs: f64,
+    source_out_secs: f64,
+    color: egui::Color32,
+) {
+    if peaks.is_empty() || asset_duration_secs <= 0.0 {
+        return;
+    }
+    let bucket_count = peaks.len() as f64;
+    let start_bucket =
+        (source_in_secs / asset_duration_secs * bucket_count).clamp(0.0, bucket_count - 1.0);
+    let end_bucket =
+        (source_out_secs / asset_duration_secs * bucket_count).clamp(0.0, bucket_count);
+    let bucket_span = (end_bucket - start_bucket).max(1.0);
+
+    let mid_y = clip_rect.center().y;
+    let half_h = clip_rect.height() / 2.0 - 1.0;
+    let width_px = clip_rect.width().max(1.0) as usize;
+
+    for x in 0..width_px {
+        let t = x as f64 / width_px as f64;
+        let bucket = ((start_bucket + t * bucket_span) as usize).min(peaks.len() - 1);
+        let (min, max) = peaks[bucket];
+        let px = clip_rect.left() + x as f32;
+        painter.line_segment(
+            [
+                egui::pos2(px, mid_y - max * half_h),
+                egui::pos2(px, mid_y - min * half_h),
+            ],
+            egui::Stroke::new(1.0, color),
+        );
     }
 }
 

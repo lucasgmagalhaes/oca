@@ -101,6 +101,7 @@ enum ImportEvent {
         import_token: u64,
         loudness: Option<avcore::LoudnessMetrics>,
         proxy_path: Option<PathBuf>,
+        waveform_peaks: Option<Vec<(f32, f32)>>,
     },
     Failed {
         path: PathBuf,
@@ -666,6 +667,7 @@ impl OcaApp {
                     import_token,
                     loudness,
                     proxy_path,
+                    waveform_peaks,
                 } => {
                     let Some(asset_id) = self.pending_enrichment.remove(&import_token) else {
                         continue;
@@ -678,6 +680,7 @@ impl OcaApp {
                     {
                         asset.loudness = loudness;
                         asset.proxy_path = proxy_path;
+                        asset.waveform_peaks = waveform_peaks;
                     }
                 }
                 ImportEvent::Failed { path, message } => {
@@ -910,10 +913,10 @@ fn next_clip_id(timeline: &avcore::timeline::Timeline) -> u64 {
 /// Runs on one of [`OcaApp::spawn_import`]'s per-file background threads, in two phases.
 /// Phase one probes `path` and sends [`ImportEvent::AssetReady`] the moment that (cheap)
 /// call returns — a file that fails to probe sends [`ImportEvent::Failed`] instead and skips
-/// phase two entirely. Phase two measures loudness and (for video) generates an editing
-/// proxy, then sends [`ImportEvent::Enriched`] with whatever came of it; a step that fails
-/// just leaves that one field `None` — the asset was already fully usable from phase one, just
-/// not as light to scrub or already loudness-tagged in the meantime.
+/// phase two entirely. Phase two measures loudness, (for video) generates an editing proxy,
+/// and computes a waveform peak table, then sends [`ImportEvent::Enriched`] with whatever came
+/// of it; a step that fails just leaves that one field `None` — the asset was already fully
+/// usable from phase one, just not as light to scrub, loudness-tagged, or waveform-drawn yet.
 fn import_one(
     path: &Path,
     project_id: u64,
@@ -962,11 +965,22 @@ fn import_one(
     } else {
         None
     };
+    let waveform_peaks = match avcore::generate_waveform(path) {
+        Ok(peaks) => Some(peaks),
+        Err(e) => {
+            // Also hit by a video-only asset (no audio track to compute a waveform from) —
+            // not worth a distinct log line from an actual decode failure, same as
+            // measure_loudness's NoAudioStream case above.
+            eprintln!("failed to compute waveform for {}: {e}", path.display());
+            None
+        }
+    };
     let _ = tx.send(ImportEvent::Enriched {
         project_id,
         import_token,
         loudness,
         proxy_path,
+        waveform_peaks,
     });
 }
 

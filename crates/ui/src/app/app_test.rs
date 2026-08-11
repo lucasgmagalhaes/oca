@@ -57,6 +57,7 @@ fn test_asset(id: u64) -> MediaAsset {
         sample_rate_khz: None,
         loudness: None,
         proxy_path: None,
+        waveform_peaks: None,
     }
 }
 
@@ -858,6 +859,7 @@ fn pump_import_queue_applies_enrichment_to_the_asset_it_was_assigned() {
             import_token: 7,
             loudness: Some(loudness),
             proxy_path: Some(PathBuf::from("proxy.mp4")),
+            waveform_peaks: Some(vec![(-0.5, 0.5)]),
         })
         .unwrap();
     app.pump_import_queue();
@@ -870,6 +872,7 @@ fn pump_import_queue_applies_enrichment_to_the_asset_it_was_assigned() {
         .unwrap();
     assert_eq!(imported.loudness, Some(loudness));
     assert_eq!(imported.proxy_path, Some(PathBuf::from("proxy.mp4")));
+    assert_eq!(imported.waveform_peaks, Some(vec![(-0.5, 0.5)]));
 }
 
 #[test]
@@ -881,6 +884,7 @@ fn pump_import_queue_ignores_enrichment_for_an_unknown_token() {
             import_token: 999,
             loudness: None,
             proxy_path: None,
+            waveform_peaks: None,
         })
         .unwrap();
 
