@@ -1,6 +1,6 @@
 use super::*;
 use avcore::timeline::{ClipInstance, Track, TrackKind};
-use avcore::{MediaAsset, MediaKind, Recency, Timeline};
+use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Recency, Timeline};
 use eframe::egui;
 
 fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
@@ -103,6 +103,8 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         import_tx,
         import_rx,
         pending_imports: 0,
+        next_import_token: 0,
+        pending_enrichment: HashMap::new(),
         selected_clip_id: None,
         timeline_px_per_sec: 4.0,
         thumbnail_tx,
@@ -778,6 +780,7 @@ fn pump_import_queue_adds_the_asset_to_its_target_project_with_a_fresh_id() {
     app.import_tx
         .send(ImportEvent::AssetReady {
             project_id: 1,
+            import_token: 0,
             asset: ready_asset,
         })
         .unwrap();
@@ -805,6 +808,7 @@ fn pump_import_queue_targets_the_project_by_id_not_the_active_index() {
     app.import_tx
         .send(ImportEvent::AssetReady {
             project_id: 1,
+            import_token: 0,
             asset: test_asset(0),
         })
         .unwrap();
@@ -827,6 +831,62 @@ fn pump_import_queue_targets_the_project_by_id_not_the_active_index() {
         .unwrap()
         .media_library
         .is_empty());
+}
+
+#[test]
+fn pump_import_queue_applies_enrichment_to_the_asset_it_was_assigned() {
+    let mut app = test_app(vec![test_project(1, vec![test_asset(5)])], Vec::new());
+    let mut ready_asset = test_asset(0);
+    ready_asset.file_name = "clip.mp4".to_string();
+    app.import_tx
+        .send(ImportEvent::AssetReady {
+            project_id: 1,
+            import_token: 7,
+            asset: ready_asset,
+        })
+        .unwrap();
+    app.pump_import_queue();
+    let loudness = LoudnessMetrics {
+        integrated_lufs: -14.0,
+        true_peak_dbtp: -1.0,
+        loudness_range_lu: 6.0,
+    };
+
+    app.import_tx
+        .send(ImportEvent::Enriched {
+            project_id: 1,
+            import_token: 7,
+            loudness: Some(loudness),
+            proxy_path: Some(PathBuf::from("proxy.mp4")),
+        })
+        .unwrap();
+    app.pump_import_queue();
+
+    let imported = app
+        .active_project()
+        .media_library
+        .iter()
+        .find(|a| a.file_name == "clip.mp4")
+        .unwrap();
+    assert_eq!(imported.loudness, Some(loudness));
+    assert_eq!(imported.proxy_path, Some(PathBuf::from("proxy.mp4")));
+}
+
+#[test]
+fn pump_import_queue_ignores_enrichment_for_an_unknown_token() {
+    let mut app = test_app(vec![test_project(1, vec![test_asset(5)])], Vec::new());
+    app.import_tx
+        .send(ImportEvent::Enriched {
+            project_id: 1,
+            import_token: 999,
+            loudness: None,
+            proxy_path: None,
+        })
+        .unwrap();
+
+    app.pump_import_queue();
+
+    assert_eq!(app.active_project().media_library.len(), 1);
 }
 
 #[test]
