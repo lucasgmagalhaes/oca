@@ -39,9 +39,10 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   "Filtros de cor e LUTs" library) is shown as a translucent tint over the timeline block instead
   of a badge, since the corners are taken. Vignette (`ClipInstance::vignette_intensity`,
   `0.0..=1.0`) is a darkened border stroke scaled by intensity, same idea. Brightness/contrast/
-  saturation (`ClipInstance::brightness/contrast/saturation`) round out that "Efeitos visuais"
-  group — three properties-panel sliders with no visible effect anywhere yet, not even a
-  timeline cue. Same preview/export gap as the rest for all of these. Check `features/request.md`
+  saturation (`ClipInstance::brightness/contrast/saturation`) and sharpen
+  (`ClipInstance::sharpen`) round out that "Efeitos visuais" group — four properties-panel
+  sliders with no visible effect anywhere yet, not even a timeline cue. Same preview/export gap
+  as the rest for all of these. Check `features/request.md`
   for what's still unbuilt before
   assuming a feature is live — when in doubt, `graphify query`.
 
