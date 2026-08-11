@@ -35,5 +35,7 @@
   "33": "test_launch.py",
   "34": "generate_waveform",
   "35": "editor.rs",
-  "36": "ClipInstance"
+  "36": "Option",
+  "37": "app.rs",
+  "38": ".ui"
 }
