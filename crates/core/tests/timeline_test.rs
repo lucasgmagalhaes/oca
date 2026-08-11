@@ -1,4 +1,4 @@
-use avcore::timeline::{ClipInstance, Timeline, Track, TrackKind};
+use avcore::timeline::{ClipInstance, MaskShape, Timeline, Track, TrackKind};
 
 fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> ClipInstance {
     ClipInstance {
@@ -15,6 +15,8 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         crop_y: 0.0,
         crop_w: 1.0,
         crop_h: 1.0,
+        mask_shape: MaskShape::None,
+        mask_corner_radius: 0.0,
     }
 }
 
@@ -208,6 +210,36 @@ fn split_clip_at_keeps_crop_rect_on_both_halves() {
             (half.crop_x, half.crop_y, half.crop_w, half.crop_h),
             (0.1, 0.2, 0.5, 0.6)
         );
+    }
+}
+
+#[test]
+fn new_clip_defaults_to_unmasked() {
+    let c = clip(1, 0.0, 0.0, 10.0);
+    assert!(!c.is_masked());
+    assert_eq!(c.mask_shape, MaskShape::None);
+}
+
+#[test]
+fn is_masked_is_true_for_any_shape_but_none() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.mask_shape = MaskShape::Circle;
+    assert!(c.is_masked());
+}
+
+#[test]
+fn split_clip_at_keeps_mask_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.mask_shape = MaskShape::RoundedRect;
+    clip.mask_corner_radius = 0.3;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert_eq!(half.mask_shape, MaskShape::RoundedRect);
+        assert_eq!(half.mask_corner_radius, 0.3);
     }
 }
 

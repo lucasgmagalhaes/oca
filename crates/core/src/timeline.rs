@@ -8,6 +8,18 @@ pub enum TrackKind {
     Audio,
 }
 
+/// Layer mask shape for a block, per `request.md`'s Fase 4 "Máscaras" spec — clips a layer to a
+/// shape instead of the plain rectangular crop ([`ClipInstance::crop_x`] etc.), e.g. for webcam
+/// frames. `Custom` (a user-drawn shape) isn't supported yet — only the two fixed shapes the
+/// spec names alongside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum MaskShape {
+    #[default]
+    None,
+    Circle,
+    RoundedRect,
+}
+
 /// One placed instance of a `MediaAsset` on the timeline. `source_in_secs`/`source_out_secs`
 /// mark the trimmed range within the source asset; `start_secs` is its position on the track.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -78,6 +90,16 @@ pub struct ClipInstance {
     pub crop_w: f32,
     #[serde(default = "default_crop_extent")]
     pub crop_h: f32,
+    /// Layer mask shape ([`MaskShape::None`] by default — unmasked). Independent of the
+    /// rectangular crop above; a block can be both cropped and masked. `#[serde(default)]` so
+    /// older saved projects load unmasked.
+    #[serde(default)]
+    pub mask_shape: MaskShape,
+    /// Corner radius for [`MaskShape::RoundedRect`], as a fraction (`0.0..=1.0`) of the block's
+    /// shorter frame dimension — meaningless for the other shapes. `#[serde(default)]` so older
+    /// saved projects load at `0.0` (square corners).
+    #[serde(default)]
+    pub mask_corner_radius: f32,
 }
 
 fn default_speed_factor() -> f32 {
@@ -104,6 +126,11 @@ impl ClipInstance {
     /// `true` if the crop rect isn't the full, uncropped frame.
     pub fn is_cropped(&self) -> bool {
         self.crop_x != 0.0 || self.crop_y != 0.0 || self.crop_w != 1.0 || self.crop_h != 1.0
+    }
+
+    /// `true` if a layer mask ([`ClipInstance::mask_shape`]) is applied.
+    pub fn is_masked(&self) -> bool {
+        self.mask_shape != MaskShape::None
     }
 
     /// True if `at_secs` (timeline-relative) falls strictly inside this clip's placed range.
@@ -194,6 +221,8 @@ impl Track {
             crop_y: clip.crop_y,
             crop_w: clip.crop_w,
             crop_h: clip.crop_h,
+            mask_shape: clip.mask_shape,
+            mask_corner_radius: clip.mask_corner_radius,
         };
         clip.source_out_secs = split_source_secs;
 
