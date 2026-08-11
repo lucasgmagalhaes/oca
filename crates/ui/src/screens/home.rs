@@ -60,7 +60,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                     let summary = project.summary.clone();
                     let meta = crate::i18n::recency_label(app.locale, project.last_edited);
                     let track_names: Vec<String> = project
-                        .timeline
+                        .timeline()
                         .tracks
                         .iter()
                         .map(|t| t.name.clone())

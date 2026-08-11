@@ -1,6 +1,6 @@
 use super::*;
 use avcore::timeline::{ClipInstance, Track, TrackKind};
-use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Recency, Timeline};
+use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Recency, Sequence, Timeline};
 use eframe::egui;
 
 fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
@@ -10,17 +10,22 @@ fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
         last_edited: Recency::HoursAgo(0),
         summary: String::new(),
         media_library: assets,
-        timeline: Timeline {
-            tracks: Vec::new(),
-            playhead_secs: 0.0,
-        },
+        sequences: vec![Sequence {
+            id: 1,
+            name: "Sequence 1".to_string(),
+            timeline: Timeline {
+                tracks: Vec::new(),
+                playhead_secs: 0.0,
+            },
+        }],
+        active_sequence: 0,
         file_path: None,
     }
 }
 
 fn test_project_with_tracks(id: u64, tracks: Vec<Track>) -> Project {
     let mut project = test_project(id, Vec::new());
-    project.timeline.tracks = tracks;
+    project.timeline_mut().tracks = tracks;
     project
 }
 
@@ -181,12 +186,52 @@ fn create_new_project_starts_at_one_when_no_projects_exist() {
 }
 
 #[test]
+fn add_sequence_appends_a_named_tab_and_switches_to_it() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.add_sequence();
+
+    assert_eq!(app.active_project().sequences.len(), 2);
+    assert_eq!(app.active_project().sequences[1].name, "Sequência 2");
+    assert_eq!(app.active_project().active_sequence, 1);
+    assert!(app.active_project().timeline().tracks.is_empty());
+}
+
+#[test]
+fn add_sequence_clears_a_stale_clip_selection() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.selected_clip_id = Some(1);
+
+    app.add_sequence();
+
+    assert_eq!(app.selected_clip_id, None);
+}
+
+#[test]
+fn select_sequence_switches_the_active_index() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_sequence();
+    app.select_sequence(0);
+
+    assert_eq!(app.active_project().active_sequence, 0);
+}
+
+#[test]
+fn select_sequence_is_a_no_op_for_an_out_of_range_index() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.select_sequence(5);
+
+    assert_eq!(app.active_project().active_sequence, 0);
+}
+
+#[test]
 fn add_asset_to_timeline_creates_a_track_and_appends_a_clip_when_none_exists() {
     let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 
     app.add_asset_to_timeline(1);
 
-    let tracks = &app.active_project().timeline.tracks;
+    let tracks = &app.active_project().timeline().tracks;
     assert_eq!(tracks.len(), 1);
     assert_eq!(tracks[0].name, "V1");
     assert_eq!(tracks[0].kind, TrackKind::Video);
@@ -210,7 +255,7 @@ fn add_asset_to_timeline_creates_an_audio_track_for_an_audio_asset() {
 
     app.add_asset_to_timeline(1);
 
-    let tracks = &app.active_project().timeline.tracks;
+    let tracks = &app.active_project().timeline().tracks;
     assert_eq!(tracks[0].name, "A1");
     assert_eq!(tracks[0].kind, TrackKind::Audio);
 }
@@ -218,7 +263,7 @@ fn add_asset_to_timeline_creates_an_audio_track_for_an_audio_asset() {
 #[test]
 fn add_asset_to_timeline_appends_after_whatever_is_already_on_the_matching_track() {
     let mut project = test_project(1, vec![test_asset(2)]);
-    project.timeline.tracks = vec![test_track(
+    project.timeline_mut().tracks = vec![test_track(
         1,
         TrackKind::Video,
         vec![test_clip(1, 0.0, 0.0, 20.0)],
@@ -227,7 +272,7 @@ fn add_asset_to_timeline_appends_after_whatever_is_already_on_the_matching_track
 
     app.add_asset_to_timeline(2);
 
-    let tracks = &app.active_project().timeline.tracks;
+    let tracks = &app.active_project().timeline().tracks;
     assert_eq!(tracks.len(), 1); // Reused the existing Video track, no second one created.
     assert_eq!(tracks[0].clips.len(), 2);
     assert_eq!(tracks[0].clips[1].start_secs, 20.0);
@@ -240,7 +285,7 @@ fn add_asset_to_timeline_is_a_no_op_for_an_unknown_asset_id() {
 
     app.add_asset_to_timeline(99);
 
-    assert!(app.active_project().timeline.tracks.is_empty());
+    assert!(app.active_project().timeline().tracks.is_empty());
 }
 
 #[test]
@@ -509,11 +554,11 @@ fn split_at_playhead_splits_the_covering_clip_on_every_track_that_has_one() {
         )],
         Vec::new(),
     );
-    app.active_project_mut().timeline.playhead_secs = 10.0;
+    app.active_project_mut().timeline_mut().playhead_secs = 10.0;
 
     app.split_at_playhead();
 
-    let tracks = &app.active_project().timeline.tracks;
+    let tracks = &app.active_project().timeline().tracks;
     assert_eq!(tracks[0].clips.len(), 2);
     assert_eq!(tracks[1].clips.len(), 2);
     assert_eq!(tracks[0].clips[1].start_secs, 10.0);
@@ -534,11 +579,11 @@ fn split_at_playhead_only_splits_tracks_the_playhead_actually_covers() {
         )],
         Vec::new(),
     );
-    app.active_project_mut().timeline.playhead_secs = 10.0;
+    app.active_project_mut().timeline_mut().playhead_secs = 10.0;
 
     app.split_at_playhead();
 
-    let tracks = &app.active_project().timeline.tracks;
+    let tracks = &app.active_project().timeline().tracks;
     assert_eq!(tracks[0].clips.len(), 2);
     assert_eq!(tracks[1].clips.len(), 1);
 }
@@ -556,11 +601,11 @@ fn split_at_playhead_is_a_no_op_when_nothing_covers_the_playhead() {
         )],
         Vec::new(),
     );
-    app.active_project_mut().timeline.playhead_secs = 50.0;
+    app.active_project_mut().timeline_mut().playhead_secs = 50.0;
 
     app.split_at_playhead();
 
-    assert_eq!(app.active_project().timeline.tracks[0].clips.len(), 1);
+    assert_eq!(app.active_project().timeline().tracks[0].clips.len(), 1);
 }
 
 #[test]
@@ -579,7 +624,7 @@ fn trim_clip_start_moves_the_left_edge_and_keeps_the_end_fixed() {
 
     app.trim_clip_start(1, 15.0);
 
-    let clip = &app.active_project().timeline.tracks[0].clips[0];
+    let clip = &app.active_project().timeline().tracks[0].clips[0];
     assert_eq!(clip.start_secs, 15.0);
     assert_eq!(clip.source_in_secs, 10.0);
     assert_eq!(clip.source_out_secs, 30.0);
@@ -602,7 +647,7 @@ fn trim_clip_start_ignores_an_unknown_clip_id() {
     app.trim_clip_start(99, 15.0);
 
     assert_eq!(
-        app.active_project().timeline.tracks[0].clips[0].start_secs,
+        app.active_project().timeline().tracks[0].clips[0].start_secs,
         10.0
     );
 }
@@ -610,7 +655,7 @@ fn trim_clip_start_ignores_an_unknown_clip_id() {
 #[test]
 fn trim_clip_end_moves_the_right_edge_and_keeps_the_start_fixed() {
     let mut project = test_project(1, vec![test_asset(1)]);
-    project.timeline.tracks = vec![test_track(
+    project.timeline_mut().tracks = vec![test_track(
         1,
         TrackKind::Video,
         vec![test_clip(1, 0.0, 0.0, 8.0)],
@@ -619,7 +664,7 @@ fn trim_clip_end_moves_the_right_edge_and_keeps_the_start_fixed() {
 
     app.trim_clip_end(1, 5.0);
 
-    let clip = &app.active_project().timeline.tracks[0].clips[0];
+    let clip = &app.active_project().timeline().tracks[0].clips[0];
     assert_eq!(clip.start_secs, 0.0);
     assert_eq!(clip.source_out_secs, 5.0);
 }
@@ -628,7 +673,7 @@ fn trim_clip_end_moves_the_right_edge_and_keeps_the_start_fixed() {
 fn trim_clip_end_is_bounded_by_the_source_assets_own_duration() {
     // test_asset's duration_secs is a fixed 10.0.
     let mut project = test_project(1, vec![test_asset(1)]);
-    project.timeline.tracks = vec![test_track(
+    project.timeline_mut().tracks = vec![test_track(
         1,
         TrackKind::Video,
         vec![test_clip(1, 0.0, 0.0, 8.0)],
@@ -638,7 +683,7 @@ fn trim_clip_end_is_bounded_by_the_source_assets_own_duration() {
     app.trim_clip_end(1, 50.0);
 
     assert_eq!(
-        app.active_project().timeline.tracks[0].clips[0].source_out_secs,
+        app.active_project().timeline().tracks[0].clips[0].source_out_secs,
         8.0
     );
 }
@@ -659,7 +704,7 @@ fn move_clip_repositions_it_on_its_own_track() {
 
     app.move_clip(1, 40.0);
 
-    let clip = &app.active_project().timeline.tracks[0].clips[0];
+    let clip = &app.active_project().timeline().tracks[0].clips[0];
     assert_eq!(clip.start_secs, 40.0);
     assert_eq!(clip.source_in_secs, 5.0);
     assert_eq!(clip.source_out_secs, 15.0);
@@ -682,7 +727,7 @@ fn move_clip_ignores_a_negative_position() {
     app.move_clip(1, -5.0);
 
     assert_eq!(
-        app.active_project().timeline.tracks[0].clips[0].start_secs,
+        app.active_project().timeline().tracks[0].clips[0].start_secs,
         10.0
     );
 }
@@ -702,8 +747,8 @@ fn move_clip_to_track_relocates_a_clip_to_a_same_kind_track() {
 
     app.move_clip_to_track(1, 2, 5.0);
 
-    assert!(app.active_project().timeline.tracks[0].clips.is_empty());
-    let moved = &app.active_project().timeline.tracks[1].clips[0];
+    assert!(app.active_project().timeline().tracks[0].clips.is_empty());
+    let moved = &app.active_project().timeline().tracks[1].clips[0];
     assert_eq!(moved.id, 1);
     assert_eq!(moved.start_secs, 5.0);
 }
@@ -723,8 +768,8 @@ fn move_clip_to_track_ignores_a_mismatched_kind() {
 
     app.move_clip_to_track(1, 2, 5.0);
 
-    assert_eq!(app.active_project().timeline.tracks[0].clips.len(), 1);
-    assert!(app.active_project().timeline.tracks[1].clips.is_empty());
+    assert_eq!(app.active_project().timeline().tracks[0].clips.len(), 1);
+    assert!(app.active_project().timeline().tracks[1].clips.is_empty());
 }
 
 #[test]
@@ -744,7 +789,7 @@ fn delete_selected_clip_removes_it_from_its_track_and_clears_the_selection() {
 
     app.delete_selected_clip();
 
-    let clips = &app.active_project().timeline.tracks[0].clips;
+    let clips = &app.active_project().timeline().tracks[0].clips;
     assert_eq!(clips.len(), 1);
     assert_eq!(clips[0].id, 2);
     assert_eq!(app.selected_clip_id, None);
@@ -766,7 +811,7 @@ fn delete_selected_clip_is_a_no_op_when_nothing_is_selected() {
 
     app.delete_selected_clip();
 
-    assert_eq!(app.active_project().timeline.tracks[0].clips.len(), 1);
+    assert_eq!(app.active_project().timeline().tracks[0].clips.len(), 1);
 }
 
 #[test]

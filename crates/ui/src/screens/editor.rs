@@ -37,6 +37,8 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
     ui.vertical(|ui| {
         toolbar(app, ui);
         ui.add_space(4.0);
+        sequence_tab_bar(app, ui);
+        ui.add_space(4.0);
 
         let total_width = ui.available_width();
         let min_col = 160.0_f32;
@@ -198,6 +200,45 @@ fn toolbar(app: &mut OcaApp, ui: &mut egui::Ui) {
             }
         });
     });
+}
+
+/// Row of tabs, one per sequence in the active project (per `request.md`'s Fase 3 "abas de
+/// projeto" spec) — click a tab to switch which sequence's timeline the rest of the Editor
+/// screen shows, or the trailing "+" to append a new empty one and switch to it.
+fn sequence_tab_bar(app: &mut OcaApp, ui: &mut egui::Ui) {
+    let locale = app.locale;
+    let active_index = app.active_project().active_sequence;
+    let mut select_index = None;
+    let mut add_requested = false;
+
+    ui.horizontal(|ui| {
+        for (index, sequence) in app.active_project().sequences.iter().enumerate() {
+            let active = index == active_index;
+            let text = RichText::new(&sequence.name).color(if active {
+                theme::ACCENT
+            } else {
+                theme::TEXT_SECONDARY
+            });
+            let button = egui::Button::new(text).fill(if active {
+                theme::SURFACE_2
+            } else {
+                theme::SURFACE
+            });
+            if ui.add(button).clicked() && !active {
+                select_index = Some(index);
+            }
+        }
+        if ui.button(Text::AddSequenceTab.tr(locale)).clicked() {
+            add_requested = true;
+        }
+    });
+
+    if let Some(index) = select_index {
+        app.select_sequence(index);
+    }
+    if add_requested {
+        app.add_sequence();
+    }
 }
 
 /// Saves the active project to its remembered [`avcore::Project::file_path`], or prompts
@@ -378,7 +419,7 @@ fn preview_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                     app.seek_preview(duration);
                 }
             }
-            let timeline = &app.active_project().timeline;
+            let timeline = app.active_project().timeline();
             ui.label(
                 RichText::new(format!(
                     "{} / {}",
@@ -528,19 +569,19 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
             ui.painter().rect_filled(rect, 0, theme::SURFACE_2);
             if let Some(pos) = response.interact_pointer_pos() {
                 let secs = ((pos.x - rect.left()) / px_per_sec).max(0.0) as f64;
-                app.active_project_mut().timeline.playhead_secs = secs;
+                app.active_project_mut().timeline_mut().playhead_secs = secs;
             }
             draw_playhead(
                 ui,
                 rect,
-                app.active_project().timeline.playhead_secs,
+                app.active_project().timeline().playhead_secs,
                 px_per_sec,
                 2.0,
             );
         });
 
         let locale = app.locale;
-        let playhead_secs = app.active_project().timeline.playhead_secs;
+        let playhead_secs = app.active_project().timeline().playhead_secs;
         let mut clicked_clip_id = None;
         let mut delete_requests: Vec<u64> = Vec::new();
         let mut split_at_playhead_requested = false;
@@ -549,7 +590,7 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
         let mut thumbnail_requests: Vec<(u64, i64)> = Vec::new();
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for track in &app.active_project().timeline.tracks {
+            for track in &app.active_project().timeline().tracks {
                 ui.horizontal(|ui| {
                     ui.add_sized(
                         [TRACK_LABEL_WIDTH, 28.0],
@@ -703,14 +744,14 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                     draw_playhead(
                         ui,
                         track_rect,
-                        app.active_project().timeline.playhead_secs,
+                        app.active_project().timeline().playhead_secs,
                         px_per_sec,
                         1.0,
                     );
                 });
                 ui.add_space(4.0);
             }
-            if app.active_project().timeline.tracks.is_empty() {
+            if app.active_project().timeline().tracks.is_empty() {
                 ui.label(
                     RichText::new(Text::TimelineEmpty.tr(app.locale))
                         .size(12.0)

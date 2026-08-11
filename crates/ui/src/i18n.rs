@@ -110,6 +110,8 @@ text_catalog! {
     TimelineEmpty: pt_br = "Este projeto ainda não tem clipes na timeline.", en = "This project doesn't have any clips on the timeline yet.";
     ContextMenuSplit: pt_br = "✂ Dividir no playhead", en = "✂ Split at playhead";
     ContextMenuDelete: pt_br = "🗑 Excluir", en = "🗑 Delete";
+    DefaultSequenceName: pt_br = "Sequência principal", en = "Main sequence";
+    AddSequenceTab: pt_br = "＋", en = "＋";
     PreviewUnavailable: pt_br = "Pré-visualização indisponível", en = "Preview unavailable";
 
     LibraryTitle: pt_br = "Biblioteca de mídia", en = "Media library";
@@ -194,6 +196,16 @@ pub fn recency_label(locale: Locale, recency: Recency) -> String {
         (Locale::En, Recency::Yesterday) => "Edited yesterday".to_string(),
         (Locale::En, Recency::DaysAgo(1)) => "Edited 1 day ago".to_string(),
         (Locale::En, Recency::DaysAgo(n)) => format!("Edited {n} days ago"),
+    }
+}
+
+/// Default name for the `n`-th sequence tab a project's "+" button adds (e.g. "Sequência 2") —
+/// the *first* sequence a project starts with instead gets [`Text::DefaultSequenceName`], a
+/// distinct, non-numbered string.
+pub fn sequence_name(locale: Locale, n: usize) -> String {
+    match locale {
+        Locale::PtBr => format!("Sequência {n}"),
+        Locale::En => format!("Sequence {n}"),
     }
 }
 

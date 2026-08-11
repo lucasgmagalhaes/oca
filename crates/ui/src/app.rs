@@ -12,7 +12,7 @@ use avcore::{sample, ExportJob, ExportJobStatus, MediaAsset, Project, RenderOutc
 use eframe::egui;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::i18n::Locale;
+use crate::i18n::{Locale, Text};
 use crate::screens;
 use crate::theme;
 
@@ -411,7 +411,7 @@ impl OcaApp {
 
         if self.preview_playing {
             if let Some(position) = preview.position_secs() {
-                self.active_project_mut().timeline.playhead_secs = position;
+                self.active_project_mut().timeline_mut().playhead_secs = position;
             }
         }
     }
@@ -432,12 +432,43 @@ impl OcaApp {
             last_edited: avcore::Recency::HoursAgo(0),
             summary: String::new(),
             media_library: Vec::new(),
-            timeline: avcore::Timeline {
-                tracks: Vec::new(),
-                playhead_secs: 0.0,
-            },
+            sequences: vec![avcore::Sequence {
+                id: 1,
+                name: Text::DefaultSequenceName.tr(self.locale).to_string(),
+                timeline: avcore::Timeline {
+                    tracks: Vec::new(),
+                    playhead_secs: 0.0,
+                },
+            }],
+            active_sequence: 0,
             file_path: None,
         });
+    }
+
+    /// Appends a new, empty sequence tab to the active project and switches to it — what the
+    /// Editor's tab bar "+" button does (per `request.md`'s Fase 3 "abas de projeto" spec).
+    /// Named positionally (`Text::DefaultSequenceName` is reserved for a project's first,
+    /// non-numbered tab).
+    pub fn add_sequence(&mut self) {
+        let locale = self.locale;
+        let project = self.active_project_mut();
+        let n = project.sequences.len() + 1;
+        project.new_sequence(crate::i18n::sequence_name(locale, n));
+        // Clip ids are only unique within a sequence (each one numbers its own clips from 1
+        // via next_clip_id), so a selection left over from the previous tab could otherwise
+        // spuriously highlight an unrelated clip if the ids happen to collide.
+        self.selected_clip_id = None;
+    }
+
+    /// Switches the active project's tab to `index` — what clicking a tab in the Editor's tab
+    /// bar does. A no-op if `index` is out of range.
+    pub fn select_sequence(&mut self, index: usize) {
+        let project = self.active_project_mut();
+        if index < project.sequences.len() {
+            project.active_sequence = index;
+            // See add_sequence's comment on why a cross-sequence selection isn't safe to keep.
+            self.selected_clip_id = None;
+        }
     }
 
     /// Appends `asset_id` to the timeline as a new, untrimmed clip — what double-clicking an
@@ -450,7 +481,7 @@ impl OcaApp {
         let Some((kind, duration_secs)) = self.asset_kind_and_duration(asset_id) else {
             return;
         };
-        let timeline = &mut self.active_project_mut().timeline;
+        let timeline = self.active_project_mut().timeline_mut();
         let track_index = resolve_or_create_track(timeline, kind, None);
         let start_secs = timeline.tracks[track_index].duration_secs();
         let clip_id = next_clip_id(timeline);
@@ -483,7 +514,7 @@ impl OcaApp {
         let Some((kind, duration_secs)) = self.asset_kind_and_duration(asset_id) else {
             return;
         };
-        let timeline = &mut self.active_project_mut().timeline;
+        let timeline = self.active_project_mut().timeline_mut();
         let track_index = resolve_or_create_track(timeline, kind, preferred_track_id);
         let clip_id = next_clip_id(timeline);
         timeline.tracks[track_index]
@@ -517,10 +548,10 @@ impl OcaApp {
     /// track at once (rather than just a clicked clip) keeps V1/A1/A2 in sync, which is the
     /// point of a gameplay edit. A no-op on any track where nothing covers the playhead.
     pub fn split_at_playhead(&mut self) {
-        let at_secs = self.active_project().timeline.playhead_secs;
+        let at_secs = self.active_project().timeline().playhead_secs;
         let mut next_clip_id = self
             .active_project()
-            .timeline
+            .timeline()
             .tracks
             .iter()
             .flat_map(|t| &t.clips)
@@ -529,7 +560,7 @@ impl OcaApp {
             .unwrap_or(0)
             + 1;
 
-        for track in &mut self.active_project_mut().timeline.tracks {
+        for track in &mut self.active_project_mut().timeline_mut().tracks {
             if track.split_clip_at(at_secs, next_clip_id) {
                 next_clip_id += 1;
             }
@@ -544,7 +575,7 @@ impl OcaApp {
         let Some(clip_id) = self.selected_clip_id else {
             return;
         };
-        for track in &mut self.active_project_mut().timeline.tracks {
+        for track in &mut self.active_project_mut().timeline_mut().tracks {
             track.clips.retain(|c| c.id != clip_id);
         }
         self.selected_clip_id = None;
@@ -560,7 +591,7 @@ impl OcaApp {
     /// [`avcore::timeline::ClipInstance::trim_start`]'s bounds (start/source-in going
     /// negative, or shrinking past [`OcaApp::MIN_TRIM_DURATION_SECS`]).
     pub fn trim_clip_start(&mut self, clip_id: u64, new_start_secs: f64) {
-        for track in &mut self.active_project_mut().timeline.tracks {
+        for track in &mut self.active_project_mut().timeline_mut().tracks {
             if let Some(clip) = track.clip_mut(clip_id) {
                 clip.trim_start(new_start_secs.max(0.0), Self::MIN_TRIM_DURATION_SECS);
                 return;
@@ -576,7 +607,7 @@ impl OcaApp {
     pub fn trim_clip_end(&mut self, clip_id: u64, new_end_secs: f64) {
         let asset_id = self
             .active_project()
-            .timeline
+            .timeline()
             .tracks
             .iter()
             .flat_map(|t| &t.clips)
@@ -592,7 +623,7 @@ impl OcaApp {
             .find(|a| a.id == asset_id)
             .map(|a| a.duration_secs);
 
-        for track in &mut self.active_project_mut().timeline.tracks {
+        for track in &mut self.active_project_mut().timeline_mut().tracks {
             if let Some(clip) = track.clip_mut(clip_id) {
                 clip.trim_end(
                     new_end_secs,
@@ -608,7 +639,7 @@ impl OcaApp {
     /// clip's body does when it's dropped back on the same track it started on. A no-op if
     /// the clip isn't found or `new_start_secs` is negative.
     pub fn move_clip(&mut self, clip_id: u64, new_start_secs: f64) {
-        for track in &mut self.active_project_mut().timeline.tracks {
+        for track in &mut self.active_project_mut().timeline_mut().tracks {
             if track.move_clip(clip_id, new_start_secs) {
                 return;
             }
@@ -621,7 +652,7 @@ impl OcaApp {
     /// the kinds don't match, or `new_start_secs` is negative — see
     /// [`avcore::timeline::Timeline::move_clip_to_track`] for the exact rules.
     pub fn move_clip_to_track(&mut self, clip_id: u64, target_track_id: u64, new_start_secs: f64) {
-        self.active_project_mut().timeline.move_clip_to_track(
+        self.active_project_mut().timeline_mut().move_clip_to_track(
             clip_id,
             target_track_id,
             new_start_secs,
