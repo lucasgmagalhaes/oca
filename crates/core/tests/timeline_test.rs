@@ -24,6 +24,9 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         contrast: 1.0,
         saturation: 1.0,
         sharpen: 0.0,
+        chroma_key_enabled: false,
+        chroma_key_color: [0, 255, 0],
+        chroma_key_tolerance: 0.4,
     }
 }
 
@@ -366,6 +369,31 @@ fn split_clip_at_keeps_sharpen_on_both_halves() {
     assert!(split);
     for half in &track.clips {
         assert_eq!(half.sharpen, 0.4);
+    }
+}
+
+#[test]
+fn new_clip_defaults_to_chroma_key_disabled() {
+    let c = clip(1, 0.0, 0.0, 10.0);
+    assert!(!c.is_chroma_keyed());
+    assert_eq!(c.chroma_key_color, [0, 255, 0]);
+}
+
+#[test]
+fn split_clip_at_keeps_chroma_key_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.chroma_key_enabled = true;
+    clip.chroma_key_color = [10, 200, 30];
+    clip.chroma_key_tolerance = 0.7;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert!(half.chroma_key_enabled);
+        assert_eq!(half.chroma_key_color, [10, 200, 30]);
+        assert_eq!(half.chroma_key_tolerance, 0.7);
     }
 }
 

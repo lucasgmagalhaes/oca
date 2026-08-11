@@ -155,6 +155,24 @@ pub struct ClipInstance {
     /// saved projects load unsharpened.
     #[serde(default)]
     pub sharpen: f32,
+    /// `true` if chroma key (green-screen removal) is enabled for this block, per
+    /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Chroma key"). Currently has no visible
+    /// effect anywhere (`ui`'s properties panel just exposes the toggle/color/tolerance
+    /// controls); doesn't yet affect preview playback or export — the same kind of gap as
+    /// [`ClipInstance::gain_db`]. `#[serde(default)]` so older saved projects load disabled.
+    #[serde(default)]
+    pub chroma_key_enabled: bool,
+    /// The key color to remove, as `[r, g, b]` (`0..=255` each) — meaningless while
+    /// [`ClipInstance::chroma_key_enabled`] is `false`. `#[serde(default = ..)]` so older saved
+    /// projects load at the conventional chroma-green `#00FF00`.
+    #[serde(default = "default_chroma_key_color")]
+    pub chroma_key_color: [u8; 3],
+    /// How close a pixel's color must be to [`ClipInstance::chroma_key_color`] to be keyed out,
+    /// `0.0..=1.0` (`0.0` is exact-match-only, `1.0` keys everything) — meaningless while
+    /// `chroma_key_enabled` is `false`. `#[serde(default = ..)]` so older saved projects load at
+    /// a reasonable default tolerance.
+    #[serde(default = "default_chroma_key_tolerance")]
+    pub chroma_key_tolerance: f32,
 }
 
 fn default_speed_factor() -> f32 {
@@ -167,6 +185,14 @@ fn default_crop_extent() -> f32 {
 
 fn default_unity_multiplier() -> f32 {
     1.0
+}
+
+fn default_chroma_key_color() -> [u8; 3] {
+    [0, 255, 0]
+}
+
+fn default_chroma_key_tolerance() -> f32 {
+    0.4
 }
 
 impl ClipInstance {
@@ -200,6 +226,11 @@ impl ClipInstance {
     /// `true` if [`ClipInstance::vignette_intensity`] is above zero.
     pub fn has_vignette(&self) -> bool {
         self.vignette_intensity > 0.0
+    }
+
+    /// `true` if chroma key ([`ClipInstance::chroma_key_enabled`]) is on.
+    pub fn is_chroma_keyed(&self) -> bool {
+        self.chroma_key_enabled
     }
 
     /// True if `at_secs` (timeline-relative) falls strictly inside this clip's placed range.
@@ -299,6 +330,9 @@ impl Track {
             contrast: clip.contrast,
             saturation: clip.saturation,
             sharpen: clip.sharpen,
+            chroma_key_enabled: clip.chroma_key_enabled,
+            chroma_key_color: clip.chroma_key_color,
+            chroma_key_tolerance: clip.chroma_key_tolerance,
         };
         clip.source_out_secs = split_source_secs;
 

@@ -90,6 +90,9 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 contrast: 1.0,
                 saturation: 1.0,
                 sharpen: 0.0,
+                chroma_key_enabled: false,
+                chroma_key_color: [0, 255, 0],
+                chroma_key_tolerance: 0.4,
             })
             .collect(),
     };
