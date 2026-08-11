@@ -539,6 +539,7 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
 
                 if let Some(clip) = app.selected_clip() {
                     let mut gain_db = clip.gain_db;
+                    let mut frozen = clip.frozen;
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -557,6 +558,24 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                             .size(10.5)
                             .color(theme::TEXT_MUTED),
                     );
+
+                    // "Congelar" only makes sense for a video block — audio clips have no
+                    // frame to hold.
+                    if app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Video) {
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        let checkbox = ui.checkbox(&mut frozen, Text::PropFreeze.tr(locale));
+                        if checkbox.changed() {
+                            app.set_selected_clip_frozen(frozen);
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(Text::FreezeExportNote.tr(locale))
+                                .size(10.5)
+                                .color(theme::TEXT_MUTED),
+                        );
+                    }
                 }
             });
         });
@@ -781,15 +800,26 @@ fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                             .find(|a| a.id == clip.asset_id);
                         if track.kind == avcore::timeline::TrackKind::Video {
                             if let Some(asset) = asset {
-                                draw_filmstrip(
-                                    &app.thumbnail_textures,
-                                    painter,
-                                    clip_rect,
-                                    asset,
-                                    clip.source_in_secs,
-                                    px_per_sec,
-                                    &mut thumbnail_requests,
-                                );
+                                if clip.frozen {
+                                    draw_frozen_poster(
+                                        &app.thumbnail_textures,
+                                        painter,
+                                        clip_rect,
+                                        asset,
+                                        clip.source_in_secs,
+                                        &mut thumbnail_requests,
+                                    );
+                                } else {
+                                    draw_filmstrip(
+                                        &app.thumbnail_textures,
+                                        painter,
+                                        clip_rect,
+                                        asset,
+                                        clip.source_in_secs,
+                                        px_per_sec,
+                                        &mut thumbnail_requests,
+                                    );
+                                }
                             }
                         } else if let Some(asset) = asset {
                             if let Some(peaks) = &asset.waveform_peaks {
@@ -979,6 +1009,61 @@ fn draw_filmstrip(
         }
         x += tile_width;
     }
+}
+
+/// Draws a single poster frame — the one at `source_in_secs`, the frame a frozen block
+/// ([`avcore::timeline::ClipInstance::frozen`]) holds per `request.md`'s Fase 4 "Congelar"
+/// spec — tiled across all of `clip_rect`, plus a small "❄" badge marking the block as frozen
+/// even at a zoom level too tight to tell a still poster from a real filmstrip. Reuses
+/// `draw_filmstrip`'s texture cache/request plumbing, just pinned to one bucket instead of one
+/// per column. A no-op if `asset` has no resolution (audio-only, shouldn't happen for a clip on
+/// a video track).
+fn draw_frozen_poster(
+    thumbnail_textures: &HashMap<(u64, i64), egui::TextureHandle>,
+    painter: &egui::Painter,
+    clip_rect: egui::Rect,
+    asset: &MediaAsset,
+    source_in_secs: f64,
+    thumbnail_requests: &mut Vec<(u64, i64)>,
+) {
+    let Some((res_w, res_h)) = asset.resolution else {
+        return;
+    };
+    if res_h == 0 {
+        return;
+    }
+    let tile_height = clip_rect.height();
+    let tile_width = (tile_height * res_w as f32 / res_h as f32).max(1.0);
+    let bucket = (source_in_secs / THUMBNAIL_BUCKET_SECS).floor() as i64;
+
+    match thumbnail_textures.get(&(asset.id, bucket)) {
+        Some(texture) => {
+            let mut x = clip_rect.left();
+            while x < clip_rect.right() {
+                let w = tile_width.min(clip_rect.right() - x);
+                let tile_rect = egui::Rect::from_min_size(
+                    egui::pos2(x, clip_rect.top()),
+                    egui::vec2(w, tile_height),
+                );
+                painter.image(
+                    texture.id(),
+                    tile_rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
+                x += tile_width;
+            }
+        }
+        None => thumbnail_requests.push((asset.id, bucket)),
+    }
+
+    painter.text(
+        clip_rect.left_top() + egui::vec2(3.0, 2.0),
+        egui::Align2::LEFT_TOP,
+        "❄",
+        egui::FontId::proportional(12.0),
+        egui::Color32::WHITE,
+    );
 }
 
 /// Draws one vertical min/max bar per horizontal pixel of `clip_rect`, resampling `peaks`

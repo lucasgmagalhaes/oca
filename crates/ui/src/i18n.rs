@@ -104,6 +104,8 @@ text_catalog! {
     ProxyAbsent: pt_br = "usando original", en = "using original";
     PropGain: pt_br = "Ganho do bloco", en = "Block gain";
     GainExportNote: pt_br = "afeta só a waveform por enquanto — export ainda não mixa a timeline.", en = "affects only the waveform for now — export doesn't mix the timeline yet.";
+    PropFreeze: pt_br = "❄ Congelar quadro", en = "❄ Freeze frame";
+    FreezeExportNote: pt_br = "afeta só a timeline por enquanto — preview e export ainda tocam a fonte normalmente.", en = "affects only the timeline for now — preview and export still play the source normally.";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";

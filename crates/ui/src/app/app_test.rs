@@ -47,6 +47,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         source_out_secs,
         composite_id: None,
         gain_db: 0.0,
+        frozen: false,
     }
 }
 
@@ -1036,6 +1037,71 @@ fn set_selected_clip_gain_is_a_no_op_when_nothing_is_selected() {
 }
 
 #[test]
+fn set_selected_clip_frozen_updates_the_selected_clip() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(2);
+
+    app.set_selected_clip_frozen(true);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert!(!clips[0].frozen);
+    assert!(clips[1].frozen);
+}
+
+#[test]
+fn set_selected_clip_frozen_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.set_selected_clip_frozen(true);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert!(!clips[0].frozen);
+}
+
+#[test]
+fn selected_clip_track_kind_reports_the_track_the_clip_lives_on() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![
+                test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]),
+                test_track(2, TrackKind::Audio, vec![test_clip(2, 0.0, 0.0, 10.0)]),
+            ],
+        )],
+        Vec::new(),
+    );
+
+    app.selected_clip_id = Some(1);
+    assert_eq!(app.selected_clip_track_kind(), Some(TrackKind::Video));
+
+    app.selected_clip_id = Some(2);
+    assert_eq!(app.selected_clip_track_kind(), Some(TrackKind::Audio));
+
+    app.selected_clip_id = None;
+    assert_eq!(app.selected_clip_track_kind(), None);
+}
+
+#[test]
 fn select_timeline_clip_synchronizes_its_backing_asset() {
     let mut project = test_project(1, vec![test_asset(1)]);
     project.timeline_mut().tracks = vec![test_track(
@@ -1100,6 +1166,7 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
     );
     app.selected_clip_id = Some(5);
     app.set_selected_clip_gain(4.0);
+    app.set_selected_clip_frozen(true);
     app.copy_selected_clip();
     app.active_project_mut().timeline_mut().playhead_secs = 30.0;
 
@@ -1113,6 +1180,7 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
     assert_eq!(pasted.source_in_secs, 2.0);
     assert_eq!(pasted.source_out_secs, 12.0);
     assert_eq!(pasted.gain_db, 4.0); // gain travels with the clip through copy/paste.
+    assert!(pasted.frozen); // so does frozen.
 }
 
 #[test]

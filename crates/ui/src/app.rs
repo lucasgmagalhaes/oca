@@ -301,7 +301,7 @@ impl OcaApp {
             .find(|a| a.id == id)
     }
 
-    /// The timeline clip backing the properties panel's per-block gain control, if
+    /// The timeline clip backing the properties panel's per-block controls (gain, freeze), if
     /// `selected_clip_id` points at one on the active sequence.
     pub fn selected_clip(&self) -> Option<&avcore::timeline::ClipInstance> {
         let id = self.selected_clip_id?;
@@ -311,6 +311,19 @@ impl OcaApp {
             .iter()
             .flat_map(|t| &t.clips)
             .find(|c| c.id == id)
+    }
+
+    /// The kind of track `selected_clip_id` lives on, if any — lets the properties panel gate
+    /// the freeze-frame toggle to video clips only ("Congelar" holds a video frame, audio
+    /// clips have none).
+    pub fn selected_clip_track_kind(&self) -> Option<avcore::timeline::TrackKind> {
+        let id = self.selected_clip_id?;
+        self.active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .find(|t| t.clips.iter().any(|c| c.id == id))
+            .map(|t| t.kind)
     }
 
     /// Selects a timeline clip and its backing asset together, so the properties panel's
@@ -540,6 +553,7 @@ impl OcaApp {
                 source_out_secs: duration_secs,
                 composite_id: None,
                 gain_db: 0.0,
+                frozen: false,
             });
     }
 
@@ -574,6 +588,7 @@ impl OcaApp {
                 source_out_secs: duration_secs,
                 composite_id: None,
                 gain_db: 0.0,
+                frozen: false,
             });
     }
 
@@ -655,6 +670,21 @@ impl OcaApp {
         for track in &mut timeline.tracks {
             if let Some(clip) = track.clip_mut(clip_id) {
                 clip.gain_db = gain_db;
+                break;
+            }
+        }
+    }
+
+    /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::frozen`] — what checking the
+    /// properties panel's "Congelar quadro" box does. A no-op if nothing is selected.
+    pub fn set_selected_clip_frozen(&mut self, frozen: bool) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.frozen = frozen;
                 break;
             }
         }
@@ -766,6 +796,7 @@ impl OcaApp {
                 // gap short of request.md's "reutilizado ... como se fosse um clipe só").
                 composite_id: None,
                 gain_db: copied.gain_db,
+                frozen: copied.frozen,
             });
     }
 
