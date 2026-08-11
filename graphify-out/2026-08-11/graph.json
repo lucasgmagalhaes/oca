@@ -1147,7 +1147,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "loudness.rs"
     },
     {
@@ -1158,7 +1158,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_loudnesserror",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "loudnesserror"
     },
     {
@@ -1169,7 +1169,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_rs_error",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "error"
     },
     {
@@ -1180,7 +1180,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_rs_display",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "display"
     },
     {
@@ -1191,7 +1191,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_loudnesserror_fmt",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": ".fmt()"
     },
     {
@@ -1202,7 +1202,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_rs_formatter",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "formatter"
     },
     {
@@ -1213,7 +1213,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_rs_result",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "result"
     },
     {
@@ -1224,7 +1224,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_measure_loudness",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "measure_loudness()"
     },
     {
@@ -1235,7 +1235,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_rs_path",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "path"
     },
     {
@@ -1246,7 +1246,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_loudnormreport",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "loudnormreport"
     },
     {
@@ -1257,7 +1257,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_rs_string",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "string"
     },
     {
@@ -1268,7 +1268,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_parse_loudnorm_stderr",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "parse_loudnorm_stderr()"
     },
     {
@@ -1279,7 +1279,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_extract_first_json_object",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "extract_first_json_object()"
     },
     {
@@ -1290,7 +1290,7 @@
       "_origin": "ast",
       "id": "crates_core_src_loudness_rs_option",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "option"
     },
     {
@@ -1322,8 +1322,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "crates_core_src_media",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "media.rs"
     },
     {
@@ -1333,8 +1333,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "crates_core_src_media_mediakind",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "mediakind"
     },
     {
@@ -1345,7 +1345,7 @@
       "_origin": "ast",
       "id": "crates_core_src_media_loudnessmetrics",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "loudnessmetrics"
     },
     {
@@ -1355,8 +1355,8 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "crates_core_src_media_mediaasset",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "mediaasset"
     },
     {
@@ -1366,8 +1366,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_media_rs_string",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "string"
     },
     {
@@ -1377,8 +1377,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_media_rs_pathbuf",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "pathbuf"
     },
     {
@@ -1388,8 +1388,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_media_rs_option",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "option"
     },
     {
@@ -1399,8 +1399,8 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "crates_core_src_media_mediaasset_duration_label",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": ".duration_label()"
     },
     {
@@ -1410,8 +1410,8 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "crates_core_src_media_format_timecode",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "format_timecode()"
     },
     {
@@ -2477,8 +2477,8 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "crates_core_src_sample_asset",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "asset()"
     },
     {
@@ -2488,8 +2488,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_sample_rs_option",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "option"
     },
     {
@@ -2521,8 +2521,8 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "crates_core_src_sample_cuphead_timeline",
-      "community": 4,
-      "community_name": "timeline_test.rs",
+      "community": 1,
+      "community_name": "Project",
       "norm_label": "cuphead_timeline()"
     },
     {
@@ -2554,8 +2554,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "crates_core_src_timeline",
-      "community": 4,
-      "community_name": "timeline_test.rs",
+      "community": 1,
+      "community_name": "Project",
       "norm_label": "timeline.rs"
     },
     {
@@ -2565,8 +2565,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "crates_core_src_timeline_trackkind",
-      "community": 4,
-      "community_name": "timeline_test.rs",
+      "community": 0,
+      "community_name": "OcaApp",
       "norm_label": "trackkind"
     },
     {
@@ -2719,8 +2719,8 @@
       "source_location": "L147",
       "_origin": "ast",
       "id": "crates_core_src_timeline_timeline",
-      "community": 4,
-      "community_name": "timeline_test.rs",
+      "community": 1,
+      "community_name": "Project",
       "norm_label": "timeline"
     },
     {
@@ -2741,8 +2741,8 @@
       "source_location": "L168",
       "_origin": "ast",
       "id": "crates_core_src_timeline_timeline_move_clip_to_track",
-      "community": 4,
-      "community_name": "timeline_test.rs",
+      "community": 1,
+      "community_name": "Project",
       "norm_label": ".move_clip_to_track()"
     },
     {
@@ -2775,7 +2775,7 @@
       "_origin": "ast",
       "id": "crates_core_tests_loudness_test",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "tests/loudness_test.rs"
     },
     {
@@ -2786,7 +2786,7 @@
       "_origin": "ast",
       "id": "crates_core_tests_loudness_test_fixture",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "fixture()"
     },
     {
@@ -2797,7 +2797,7 @@
       "_origin": "ast",
       "id": "crates_core_tests_loudness_test_rs_pathbuf",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "pathbuf"
     },
     {
@@ -2808,7 +2808,7 @@
       "_origin": "ast",
       "id": "crates_core_tests_loudness_test_extracts_the_measurement_fields_from_a_realistic_stderr_dump",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "extracts_the_measurement_fields_from_a_realistic_stderr_dump()"
     },
     {
@@ -2819,7 +2819,7 @@
       "_origin": "ast",
       "id": "crates_core_tests_loudness_test_errors_when_there_is_no_json_block",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "errors_when_there_is_no_json_block()"
     },
     {
@@ -2830,7 +2830,7 @@
       "_origin": "ast",
       "id": "crates_core_tests_loudness_test_errors_when_the_json_block_is_not_a_loudnorm_report",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "errors_when_the_json_block_is_not_a_loudnorm_report()"
     },
     {
@@ -2841,7 +2841,7 @@
       "_origin": "ast",
       "id": "crates_core_tests_loudness_test_measures_a_real_file_via_the_ffi_bridge",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "measures_a_real_file_via_the_ffi_bridge()"
     },
     {
@@ -2852,7 +2852,7 @@
       "_origin": "ast",
       "id": "crates_core_tests_loudness_test_errors_on_a_missing_file",
       "community": 12,
-      "community_name": "parse_loudnorm_stderr",
+      "community_name": "MediaAsset",
       "norm_label": "errors_on_a_missing_file()"
     },
     {
@@ -2862,8 +2862,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "crates_core_tests_media_test",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "media_test.rs"
     },
     {
@@ -2873,8 +2873,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "crates_core_tests_media_test_zero_seconds_is_zeroed_mm_ss",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "zero_seconds_is_zeroed_mm_ss()"
     },
     {
@@ -2884,8 +2884,8 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "crates_core_tests_media_test_under_a_minute_pads_seconds",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "under_a_minute_pads_seconds()"
     },
     {
@@ -2895,8 +2895,8 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "crates_core_tests_media_test_drops_the_hour_component_under_an_hour",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "drops_the_hour_component_under_an_hour()"
     },
     {
@@ -2906,8 +2906,8 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "crates_core_tests_media_test_includes_hour_component_at_and_beyond_an_hour",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "includes_hour_component_at_and_beyond_an_hour()"
     },
     {
@@ -2917,8 +2917,8 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "crates_core_tests_media_test_rounds_to_the_nearest_second",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "rounds_to_the_nearest_second()"
     },
     {
@@ -2928,8 +2928,8 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "crates_core_tests_media_test_duration_label_delegates_to_format_timecode",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "duration_label_delegates_to_format_timecode()"
     },
     {
@@ -3841,8 +3841,8 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "crates_ui_src_app_importevent",
-      "community": 0,
-      "community_name": "OcaApp",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "importevent"
     },
     {
@@ -4413,8 +4413,8 @@
       "source_location": "L1008",
       "_origin": "ast",
       "id": "crates_ui_src_app_downscale_rgba",
-      "community": 0,
-      "community_name": "OcaApp",
+      "community": 5,
+      "community_name": "Preview",
       "norm_label": "downscale_rgba()"
     },
     {
@@ -4545,8 +4545,8 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "crates_ui_src_app_app_test_test_asset_with_kind",
-      "community": 1,
-      "community_name": "Project",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "test_asset_with_kind()"
     },
     {
@@ -5546,8 +5546,8 @@
       "source_location": "L675",
       "_origin": "ast",
       "id": "crates_ui_src_screens_editor_clipdrag",
-      "community": 4,
-      "community_name": "timeline_test.rs",
+      "community": 0,
+      "community_name": "OcaApp",
       "norm_label": "clipdrag"
     },
     {
@@ -5914,6 +5914,166 @@
       "norm_label": "context"
     },
     {
+      "label": "conftest.py",
+      "file_type": "code",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "e2e_conftest",
+      "community": 32,
+      "community_name": "poll_for_descendants",
+      "norm_label": "conftest.py"
+    },
+    {
+      "label": "poll_for_descendants()",
+      "file_type": "code",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L31",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "e2e_conftest_poll_for_descendants",
+      "community": 32,
+      "community_name": "poll_for_descendants",
+      "norm_label": "poll_for_descendants()"
+    },
+    {
+      "label": "fixture",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "fixture",
+      "community": 32,
+      "community_name": "poll_for_descendants",
+      "norm_label": "fixture"
+    },
+    {
+      "label": "oca_window()",
+      "file_type": "code",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L50",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "e2e_conftest_oca_window",
+      "community": 32,
+      "community_name": "poll_for_descendants",
+      "norm_label": "oca_window()"
+    },
+    {
+      "label": "_wait_for_window()",
+      "file_type": "code",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L74",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "e2e_conftest_wait_for_window",
+      "community": 32,
+      "community_name": "poll_for_descendants",
+      "norm_label": "_wait_for_window()"
+    },
+    {
+      "label": "Popen",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "popen",
+      "community": 32,
+      "community_name": "poll_for_descendants",
+      "norm_label": "popen"
+    },
+    {
+      "label": "Repeatedly re-queries `window`'s accessibility tree for a descendant control\u2026",
+      "file_type": "rationale",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L32",
+      "_origin": "ast",
+      "id": "e2e_conftest_rationale_32",
+      "community": 32,
+      "community_name": "poll_for_descendants",
+      "norm_label": "repeatedly re-queries `window`'s accessibility tree for a descendant control..."
+    },
+    {
+      "label": "Launches a fresh ui.exe, waits for its main window, yields it, then tears it\u2026",
+      "file_type": "rationale",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L51",
+      "_origin": "ast",
+      "id": "e2e_conftest_rationale_51",
+      "community": 32,
+      "community_name": "poll_for_descendants",
+      "norm_label": "launches a fresh ui.exe, waits for its main window, yields it, then tears it..."
+    },
+    {
+      "label": "test_import.py",
+      "file_type": "code",
+      "source_file": "e2e/test_import.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "e2e_test_import",
+      "community": 32,
+      "community_name": "poll_for_descendants",
+      "norm_label": "test_import.py"
+    },
+    {
+      "label": "test_importing_a_file_adds_it_to_the_library_quickly()",
+      "file_type": "code",
+      "source_file": "e2e/test_import.py",
+      "source_location": "L20",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "e2e_test_import_test_importing_a_file_adds_it_to_the_library_quickly",
+      "community": 32,
+      "community_name": "poll_for_descendants",
+      "norm_label": "test_importing_a_file_adds_it_to_the_library_quickly()"
+    },
+    {
+      "label": "test_launch.py",
+      "file_type": "code",
+      "source_file": "e2e/test_launch.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "e2e_test_launch",
+      "community": 33,
+      "community_name": "test_launch.py",
+      "norm_label": "test_launch.py"
+    },
+    {
+      "label": "test_main_window_appears()",
+      "file_type": "code",
+      "source_file": "e2e/test_launch.py",
+      "source_location": "L1",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "e2e_test_launch_test_main_window_appears",
+      "community": 33,
+      "community_name": "test_launch.py",
+      "norm_label": "test_main_window_appears()"
+    },
+    {
+      "label": "test_navigation.py",
+      "file_type": "code",
+      "source_file": "e2e/test_navigation.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "e2e_test_navigation",
+      "community": 32,
+      "community_name": "poll_for_descendants",
+      "norm_label": "test_navigation.py"
+    },
+    {
+      "label": "test_navigating_to_each_screen_updates_the_breadcrumb()",
+      "file_type": "code",
+      "source_file": "e2e/test_navigation.py",
+      "source_location": "L15",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "e2e_test_navigation_test_navigating_to_each_screen_updates_the_breadcrumb",
+      "community": 32,
+      "community_name": "poll_for_descendants",
+      "norm_label": "test_navigating_to_each_screen_updates_the_breadcrumb()"
+    },
+    {
       "label": "CLAUDE.md",
       "file_type": "document",
       "source_file": "CLAUDE.md",
@@ -5961,7 +6121,7 @@
       "label": "Architecture",
       "file_type": "document",
       "source_file": "CLAUDE.md",
-      "source_location": "L113",
+      "source_location": "L134",
       "_origin": "ast",
       "id": "claude_architecture",
       "community": 9,
@@ -5972,7 +6132,7 @@
       "label": "Approach",
       "file_type": "document",
       "source_file": "CLAUDE.md",
-      "source_location": "L168",
+      "source_location": "L189",
       "_origin": "ast",
       "id": "claude_approach",
       "community": 9,
@@ -5983,7 +6143,7 @@
       "label": "graphify",
       "file_type": "document",
       "source_file": "CLAUDE.md",
-      "source_location": "L179",
+      "source_location": "L200",
       "_origin": "ast",
       "id": "claude_graphify",
       "community": 9,
@@ -19599,6 +19759,214 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L50",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_conftest",
+      "target": "e2e_conftest_oca_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L31",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_conftest",
+      "target": "e2e_conftest_poll_for_descendants",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L74",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_conftest",
+      "target": "e2e_conftest_wait_for_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/test_import.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_test_import",
+      "target": "e2e_conftest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/test_navigation.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_test_navigation",
+      "target": "e2e_conftest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L32",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_conftest_rationale_32",
+      "target": "e2e_conftest_poll_for_descendants",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/test_import.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_test_import",
+      "target": "e2e_conftest_poll_for_descendants",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/test_import.py",
+      "source_location": "L37",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_test_import_test_importing_a_file_adds_it_to_the_library_quickly",
+      "target": "e2e_conftest_poll_for_descendants",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/test_navigation.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_test_navigation",
+      "target": "e2e_conftest_poll_for_descendants",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/test_navigation.py",
+      "source_location": "L27",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_test_navigation_test_navigating_to_each_screen_updates_the_breadcrumb",
+      "target": "e2e_conftest_poll_for_descendants",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L49",
+      "weight": 1.0,
+      "context": "decorator",
+      "_origin": "ast",
+      "source": "e2e_conftest_oca_window",
+      "target": "fixture",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L57",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_conftest_oca_window",
+      "target": "e2e_conftest_wait_for_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L55",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_conftest_oca_window",
+      "target": "popen",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L51",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_conftest_rationale_51",
+      "target": "e2e_conftest_oca_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/conftest.py",
+      "source_location": "L74",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_conftest_wait_for_window",
+      "target": "popen",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/test_import.py",
+      "source_location": "L20",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_test_import",
+      "target": "e2e_test_import_test_importing_a_file_adds_it_to_the_library_quickly",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/test_launch.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_test_launch",
+      "target": "e2e_test_launch_test_main_window_appears",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "e2e/test_navigation.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "e2e_test_navigation",
+      "target": "e2e_test_navigation_test_navigating_to_each_screen_updates_the_breadcrumb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "CLAUDE.md",
       "source_location": "L1",
       "weight": 1.0,
@@ -19622,7 +19990,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "CLAUDE.md",
-      "source_location": "L168",
+      "source_location": "L189",
       "weight": 1.0,
       "_origin": "ast",
       "source": "claude_claude_md",
@@ -19633,7 +20001,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "CLAUDE.md",
-      "source_location": "L113",
+      "source_location": "L134",
       "weight": 1.0,
       "_origin": "ast",
       "source": "claude_claude_md",
@@ -19655,7 +20023,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "CLAUDE.md",
-      "source_location": "L179",
+      "source_location": "L200",
       "weight": 1.0,
       "_origin": "ast",
       "source": "claude_claude_md",
@@ -20973,5 +21341,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "4feeaeaf5b8056649cb8eba8cec328128feccc5a"
+  "built_at_commit": "7ea7d929ba78c04438f476a6d77d3e6ce6d9e2f1"
 }

@@ -9,9 +9,9 @@
   "7": "bridge.c",
   "8": "i18n.rs",
   "9": "Plano de Execução — oca (PacoPaçoca)",
-  "10": "probe_media",
+  "10": "MediaAsset",
   "11": "ensure_proxy",
-  "12": "MediaAsset",
+  "12": "parse_loudnorm_stderr",
   "13": "render_export",
   "14": "Task Breakdown — Fase 1 (Motor central)",
   "15": "Required checklist",
@@ -32,5 +32,6 @@
   "30": "gstreamer_link_test.rs",
   "31": "mod.rs",
   "32": "poll_for_descendants",
-  "33": "test_launch.py"
+  "33": "test_launch.py",
+  "34": "generate_waveform"
 }
