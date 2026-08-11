@@ -35,8 +35,8 @@
     "semantic_hash": ""
   },
   "crates/core/benches/parsing.rs": {
-    "mtime": 1786451671.7616336,
-    "ast_hash": "fdb9d05bec099092bba69554c947dc7b",
+    "mtime": 1786453517.8166583,
+    "ast_hash": "753151302cd230bf93d5c58615bf3923",
     "semantic_hash": ""
   },
   "crates/core/src/export.rs": {
@@ -45,8 +45,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/lib.rs": {
-    "mtime": 1786451604.1473649,
-    "ast_hash": "bcbe3f466c156d6a9d1a339d63a4528d",
+    "mtime": 1786453474.5256312,
+    "ast_hash": "ea41e22ca4a8e0f73b917262da218d0d",
     "semantic_hash": ""
   },
   "crates/core/src/loudness.rs": {
@@ -80,8 +80,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/project.rs": {
-    "mtime": 1786325145.6716452,
-    "ast_hash": "4a879a5618902a295ecee06a1cb926c3",
+    "mtime": 1786453469.233205,
+    "ast_hash": "b8392ed4f6a0c1940b253566d44b8eaf",
     "semantic_hash": ""
   },
   "crates/core/src/proxy.rs": {
@@ -100,8 +100,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/sample.rs": {
-    "mtime": 1786451647.3178728,
-    "ast_hash": "56e0ec84a79d5eb7c5d0bc59d3328a1a",
+    "mtime": 1786453499.8086782,
+    "ast_hash": "22d44f2d6ad98beedeb6c3cf3252b8fc",
     "semantic_hash": ""
   },
   "crates/core/src/timeline.rs": {
@@ -125,8 +125,8 @@
     "semantic_hash": ""
   },
   "crates/core/tests/persistence_test.rs": {
-    "mtime": 1786388546.5660293,
-    "ast_hash": "0694fc1d6f0cda435d219faa02c58e72",
+    "mtime": 1786453530.8129644,
+    "ast_hash": "0cbdfdb08b435d257fd895fc69404690",
     "semantic_hash": ""
   },
   "crates/core/tests/preview_test.rs": {
@@ -150,8 +150,8 @@
     "semantic_hash": ""
   },
   "crates/core/tests/sample_test.rs": {
-    "mtime": 1786388216.4859138,
-    "ast_hash": "871289e394fc780e6070006aebe2928d",
+    "mtime": 1786453521.6356368,
+    "ast_hash": "1d4a025b2ca353288b8ba684a874fcc0",
     "semantic_hash": ""
   },
   "crates/core/tests/timeline_test.rs": {
@@ -160,18 +160,18 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app.rs": {
-    "mtime": 1786452632.5648623,
-    "ast_hash": "be4d2afc6b6403e23c9dd6735f944415",
+    "mtime": 1786453878.9543724,
+    "ast_hash": "d90392c1a7b5ee4757f83f17d5155479",
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1786452646.0352492,
-    "ast_hash": "e3cffc3043bbcd10aa53a3d61d889ffa",
+    "mtime": 1786453970.4877872,
+    "ast_hash": "2a9d1d9fc4f5de8b48c8f768dcb12145",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1786452826.768533,
-    "ast_hash": "14f677322369671bb0609bbe33d361c3",
+    "mtime": 1786453637.2606094,
+    "ast_hash": "eb8da68b9cc341d0858b59b97632564b",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -190,13 +190,13 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor.rs": {
-    "mtime": 1786452898.0182693,
-    "ast_hash": "bb7cb002760231ce9167fb6366809e89",
+    "mtime": 1786453846.2214618,
+    "ast_hash": "ab4f0063782c060a3c23f1096e92b628",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/home.rs": {
-    "mtime": 1786388561.7976875,
-    "ast_hash": "9a8519e61d2a795f7b7d430751f04560",
+    "mtime": 1786453703.0164764,
+    "ast_hash": "1654308fb5eb4fac81a67eff035c7a51",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/library.rs": {
@@ -235,13 +235,13 @@
     "semantic_hash": ""
   },
   ".github/workflows/ci.yml": {
-    "mtime": 1786382913.3006668,
-    "ast_hash": "485726e9f021301f05431d2a15c5ce66",
+    "mtime": 1786453385.9960406,
+    "ast_hash": "c178d862425b7b44131859e20e2e6ca7",
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786452939.042611,
-    "ast_hash": "882d376e13c6dfb92b2a2b0d997da967",
+    "mtime": 1786453993.938179,
+    "ast_hash": "756f152157d966dae13144e4946daadd",
     "semantic_hash": ""
   },
   "README.md": {
@@ -377,6 +377,11 @@
   "crates/core/tests/waveform_test.rs": {
     "mtime": 1786451838.971211,
     "ast_hash": "9f8c0862bbe4175fb48772586bb0696d",
+    "semantic_hash": ""
+  },
+  "crates/core/tests/project_test.rs": {
+    "mtime": 1786453912.51121,
+    "ast_hash": "115cc4b04e4cb6b720dcf0e0e20a2e2c",
     "semantic_hash": ""
   }
 }
