@@ -93,7 +93,11 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                 ui.add(
                     egui::TextEdit::singleline(&mut app.prefs.output_folder).desired_width(400.0),
                 );
-                let _ = ui.button(Text::Browse.tr(locale));
+                if ui.button(Text::Browse.tr(locale)).clicked() {
+                    if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                        app.prefs.output_folder = folder.display().to_string();
+                    }
+                }
             });
         });
         ui.add_space(14.0);
