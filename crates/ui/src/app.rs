@@ -131,6 +131,10 @@ pub const PIXELIZE_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 /// visuais", [`avcore::timeline::ClipInstance::transition_duration_secs`]).
 pub const TRANSITION_DURATION_RANGE: std::ops::RangeInclusive<f32> = 0.1..=3.0;
 
+/// Slider bounds for the properties panel's zoom controls (Fase 4's "Efeitos visuais",
+/// [`avcore::timeline::ClipInstance::zoom_start`]/`zoom_end`).
+pub const ZOOM_RANGE: std::ops::RangeInclusive<f32> = 1.0..=3.0;
+
 /// A message from a background render worker thread (see [`OcaApp::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
@@ -216,6 +220,8 @@ struct ClipFormatting {
     pixelize_intensity: f32,
     transition_in: avcore::timeline::TransitionType,
     transition_duration_secs: f32,
+    zoom_start: f32,
+    zoom_end: f32,
 }
 
 /// The whole application's state: which screen is showing, the loaded projects, the export
@@ -670,6 +676,8 @@ impl OcaApp {
                 pixelize_intensity: 0.0,
                 transition_in: avcore::timeline::TransitionType::None,
                 transition_duration_secs: 0.5,
+                zoom_start: 1.0,
+                zoom_end: 1.0,
             });
     }
 
@@ -728,6 +736,8 @@ impl OcaApp {
                 pixelize_intensity: 0.0,
                 transition_in: avcore::timeline::TransitionType::None,
                 transition_duration_secs: 0.5,
+                zoom_start: 1.0,
+                zoom_end: 1.0,
             });
     }
 
@@ -1102,6 +1112,25 @@ impl OcaApp {
         }
     }
 
+    /// Sets `selected_clip_id`'s zoom ([`avcore::timeline::ClipInstance::zoom_start`]/
+    /// `zoom_end`), each independently clamped to [`ZOOM_RANGE`] — what dragging the properties
+    /// panel's zoom sliders does. A no-op if nothing is selected.
+    pub fn set_selected_clip_zoom(&mut self, zoom_start: f32, zoom_end: f32) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let zoom_start = zoom_start.clamp(*ZOOM_RANGE.start(), *ZOOM_RANGE.end());
+        let zoom_end = zoom_end.clamp(*ZOOM_RANGE.start(), *ZOOM_RANGE.end());
+        let timeline = self.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clip_mut(clip_id) {
+                clip.zoom_start = zoom_start;
+                clip.zoom_end = zoom_end;
+                break;
+            }
+        }
+    }
+
     /// Sets `selected_clip_id`'s brightness/contrast/saturation
     /// ([`avcore::timeline::ClipInstance::brightness`]/`contrast`/`saturation`), each
     /// independently clamped to its own range ([`BRIGHTNESS_RANGE`]/[`CONTRAST_RANGE`]/
@@ -1170,6 +1199,8 @@ impl OcaApp {
             pixelize_intensity: clip.pixelize_intensity,
             transition_in: clip.transition_in,
             transition_duration_secs: clip.transition_duration_secs,
+            zoom_start: clip.zoom_start,
+            zoom_end: clip.zoom_end,
         });
     }
 
@@ -1209,6 +1240,8 @@ impl OcaApp {
                 clip.pixelize_intensity = formatting.pixelize_intensity;
                 clip.transition_in = formatting.transition_in;
                 clip.transition_duration_secs = formatting.transition_duration_secs;
+                clip.zoom_start = formatting.zoom_start;
+                clip.zoom_end = formatting.zoom_end;
                 break;
             }
         }
@@ -1344,6 +1377,8 @@ impl OcaApp {
                 pixelize_intensity: copied.pixelize_intensity,
                 transition_in: copied.transition_in,
                 transition_duration_secs: copied.transition_duration_secs,
+                zoom_start: copied.zoom_start,
+                zoom_end: copied.zoom_end,
             });
     }
 

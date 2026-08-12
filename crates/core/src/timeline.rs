@@ -228,6 +228,20 @@ pub struct ClipInstance {
     /// reasonable default duration.
     #[serde(default = "default_transition_duration")]
     pub transition_duration_secs: f32,
+    /// Zoom/scale multiplier at this block's first frame, per `request.md`'s Fase 4 "Efeitos
+    /// visuais" spec ("Zoom (punch-in / ken burns)"). Linearly interpolated from
+    /// [`ClipInstance::zoom_start`] to [`ClipInstance::zoom_end`] across the block's displayed
+    /// duration — a per-clip approximation of the punch-in/ken-burns effect, not a general
+    /// keyframe system (that's future work). `1.0` is unity (no zoom). Currently has no visible
+    /// effect anywhere (`ui`'s properties panel just exposes the two sliders); doesn't yet
+    /// affect preview playback or export — the same kind of gap as [`ClipInstance::gain_db`].
+    /// `#[serde(default = ..)]` so older saved projects load unzoomed.
+    #[serde(default = "default_unity_multiplier")]
+    pub zoom_start: f32,
+    /// Zoom/scale multiplier at this block's last frame — see [`ClipInstance::zoom_start`].
+    /// `#[serde(default = ..)]` so older saved projects load unzoomed.
+    #[serde(default = "default_unity_multiplier")]
+    pub zoom_end: f32,
 }
 
 fn default_speed_factor() -> f32 {
@@ -296,6 +310,12 @@ impl ClipInstance {
     /// incoming edge.
     pub fn has_transition(&self) -> bool {
         self.transition_in != TransitionType::None
+    }
+
+    /// `true` if this block's zoom isn't unity at either end
+    /// ([`ClipInstance::zoom_start`]/[`ClipInstance::zoom_end`]).
+    pub fn is_zoomed(&self) -> bool {
+        self.zoom_start != 1.0 || self.zoom_end != 1.0
     }
 
     /// True if `at_secs` (timeline-relative) falls strictly inside this clip's placed range.
@@ -408,6 +428,8 @@ impl Track {
             // casing it.
             transition_in: clip.transition_in,
             transition_duration_secs: clip.transition_duration_secs,
+            zoom_start: clip.zoom_start,
+            zoom_end: clip.zoom_end,
         };
         clip.source_out_secs = split_source_secs;
 

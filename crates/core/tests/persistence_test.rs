@@ -42,6 +42,8 @@ fn clip(id: u64, asset_id: u64) -> ClipInstance {
         pixelize_intensity: 0.0,
         transition_in: TransitionType::None,
         transition_duration_secs: 0.5,
+        zoom_start: 1.0,
+        zoom_end: 1.0,
     }
 }
 
