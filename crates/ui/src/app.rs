@@ -342,9 +342,10 @@ pub struct OcaApp {
     /// `Original` (source dimensions). Persists between export invocations so the user doesn't
     /// have to re-select it every time.
     pub export_aspect_ratio: avcore::ExportAspectRatio,
-    /// When `Some((index, buffer))`, a rename modal is shown for `projects[index]` with `buffer`
-    /// as the editable name field. Committed on Enter/confirm, discarded on Escape/cancel.
-    pub renaming_project: Option<(usize, String)>,
+    /// When `Some((index, name_buf, summary_buf))`, a project-settings modal is shown for
+    /// `projects[index]` with editable name and summary fields. Committed on confirm, discarded
+    /// on Escape/cancel.
+    pub renaming_project: Option<(usize, String, String)>,
 }
 
 impl OcaApp {
@@ -1834,7 +1835,7 @@ impl OcaApp {
     /// Enter or the "Rename" button, discards on Escape or "Cancel". If the project has a saved
     /// file on disk the updated project is written back immediately so the name persists.
     fn show_rename_project_modal(&mut self, ctx: &egui::Context) {
-        let Some((idx, _)) = self.renaming_project.as_ref() else {
+        let Some((idx, _, _)) = self.renaming_project.as_ref() else {
             return;
         };
         let idx = *idx;
@@ -1843,23 +1844,29 @@ impl OcaApp {
         let mut confirmed = false;
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
-            ui.set_width(360.0);
+            ui.set_width(380.0);
             ui.label(
                 eframe::egui::RichText::new(i18n::Text::RenameProjectTitle.tr(locale))
                     .size(15.0)
                     .strong(),
             );
             ui.add_space(10.0);
-            let buf = &mut self.renaming_project.as_mut().unwrap().1;
-            let text_edit = ui.add(
-                egui::TextEdit::singleline(buf)
-                    .desired_width(f32::INFINITY)
-                    .hint_text(i18n::Text::RenameProjectTitle.tr(locale)),
+            let (_, name_buf, summary_buf) = self.renaming_project.as_mut().unwrap();
+            ui.label(i18n::Text::ProjectNameLabel.tr(locale));
+            let name_edit = ui.add(
+                egui::TextEdit::singleline(name_buf).desired_width(f32::INFINITY),
             );
-            text_edit.request_focus();
-            if text_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            name_edit.request_focus();
+            if name_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 confirmed = true;
             }
+            ui.add_space(6.0);
+            ui.label(i18n::Text::ProjectSummaryLabel.tr(locale));
+            ui.add(
+                egui::TextEdit::multiline(summary_buf)
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(3),
+            );
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 cancelled = true;
             }
@@ -1881,15 +1888,16 @@ impl OcaApp {
             return;
         }
         if confirmed {
-            if let Some((_, new_name)) = self.renaming_project.take() {
+            if let Some((_, new_name, new_summary)) = self.renaming_project.take() {
                 let name = new_name.trim().to_string();
                 if !name.is_empty() && idx < self.projects.len() {
                     self.projects[idx].name = name;
+                    self.projects[idx].summary = new_summary.trim().to_string();
                     if let Some(path) = self.projects[idx].file_path.clone() {
                         if let Err(e) =
                             avcore::save_project_to_file(&self.projects[idx], &path)
                         {
-                            self.push_toast(format!("Failed to save rename: {e}"));
+                            self.push_toast(format!("Failed to save project settings: {e}"));
                         }
                     }
                 }

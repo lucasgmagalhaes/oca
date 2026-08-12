@@ -227,9 +227,11 @@ text_catalog! {
     AutosaveDiscard: pt_br = "Descartar", en = "Discard";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
     ExportSizeEstimate: pt_br = "~{size} estimado", en = "~{size} estimated";
-    HomeCtxRename: pt_br = "Renomear...", en = "Rename...";
-    RenameProjectTitle: pt_br = "Renomear projeto", en = "Rename project";
-    RenameProjectConfirm: pt_br = "Renomear", en = "Rename";
+    HomeCtxRename: pt_br = "Configurações do projeto...", en = "Project settings...";
+    RenameProjectTitle: pt_br = "Configurações do projeto", en = "Project settings";
+    RenameProjectConfirm: pt_br = "Salvar", en = "Save";
+    ProjectNameLabel: pt_br = "Nome", en = "Name";
+    ProjectSummaryLabel: pt_br = "Descrição", en = "Description";
     CrashDetected: pt_br = "oca não foi encerrado corretamente na sessão anterior. Reabra seus projetos para verificar se há autosaves de recuperação.", en = "oca did not exit cleanly in the previous session. Reopen your projects to check for recovery autosaves.";
 }
 

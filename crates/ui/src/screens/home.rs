@@ -139,7 +139,8 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
 
                 if let Some(i) = rename_index {
                     let current_name = app.projects[i].name.clone();
-                    app.renaming_project = Some((i, current_name));
+                    let current_summary = app.projects[i].summary.clone();
+                    app.renaming_project = Some((i, current_name, current_summary));
                 } else if let Some(i) = remove_index {
                     app.remove_project(i);
                 } else if let Some(i) = open_index {
