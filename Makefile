@@ -20,8 +20,10 @@ ifeq ($(_OS),Darwin)
   # macOS — Homebrew (Apple Silicon: /opt/homebrew, Intel: /usr/local)
   _BREW_PREFIX := $(shell brew --prefix 2>/dev/null || echo /opt/homebrew)
   FFMPEG_DIR    ?= $(_BREW_PREFIX)/opt/ffmpeg
-  # GStreamer macOS SDK installs its pkg-config files under the framework.
-  PKG_CONFIG_PATH ?= /Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig
+  # GStreamer via Homebrew puts .pc files in <brew_prefix>/lib/pkgconfig.
+  # The older macOS SDK installer used /Library/Frameworks/GStreamer.framework/...
+  # Accept either; prefer the Homebrew location when both are present.
+  PKG_CONFIG_PATH ?= $(_BREW_PREFIX)/lib/pkgconfig:/Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig
   export FFMPEG_DIR
   export PKG_CONFIG_PATH
   export PATH := $(FFMPEG_DIR)/lib:$(_BREW_PREFIX)/bin:$(PATH)
