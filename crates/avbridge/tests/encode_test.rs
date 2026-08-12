@@ -103,6 +103,7 @@ fn clip(
         source_out_secs,
         gain_db,
         video_filter: video_filter.to_string(),
+        frozen: false,
     }
 }
 
@@ -127,6 +128,32 @@ fn concatenates_two_segments_with_different_filters_into_one_export() {
     // Trimmed to ~0.7s total (0.35 + 0.35) — loose bound since seek lands on the nearest
     // keyframe, not exactly at each segment's requested in-point.
     assert!(info.duration_secs > 0.0 && info.duration_secs < 2.0);
+
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
+fn freezes_a_segment_into_a_held_frame_export() {
+    let out = std::env::temp_dir().join("avbridge_test_timeline_frozen.mp4");
+    let cancel = AtomicBool::new(false);
+    let mut progress_calls = 0;
+
+    let mut frozen_clip = clip(0.1, 0.6, 0.0, "");
+    frozen_clip.frozen = true;
+    let segments = [frozen_clip];
+    let outcome = encode_timeline_export(&segments, CANVAS, &out, -14.0, &cancel, |_secs| {
+        progress_calls += 1
+    })
+    .unwrap();
+
+    assert_eq!(outcome, EncodeOutcome::Completed);
+    assert!(progress_calls > 0);
+
+    // Still spans the segment's whole trimmed duration (~0.5s) even though only one source
+    // frame is ever decoded for it.
+    let info = probe(&out).unwrap();
+    assert_eq!(info.kind, StreamKind::Video);
+    assert!(info.duration_secs > 0.3 && info.duration_secs < 1.0);
 
     let _ = std::fs::remove_file(&out);
 }

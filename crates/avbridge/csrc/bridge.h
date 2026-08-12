@@ -125,6 +125,12 @@ typedef struct {
        NUL-terminated. Empty string ("") means no clip-specific video effect — the segment
        still goes through the canvas-conform (scale/pad/fps) stage and gets re-encoded. */
     const char *video_filter;
+    /* Nonzero holds the first decoded video frame at/after source_in_secs for this segment's
+       whole trimmed duration (source_out_secs - source_in_secs) instead of playing through the
+       range — a freeze frame. video_filter still applies to every held frame. Audio is
+       unaffected — still decoded/played across the full source_in_secs..source_out_secs range
+       regardless of this flag. */
+    int frozen;
 } OcaClipSegment;
 
 /* Renders an ordered sequence of trimmed clips (`segments`, `segment_count` of them) as one

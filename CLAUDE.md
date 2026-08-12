@@ -34,6 +34,15 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   there in the rendered file — the checkbox/picker have no visible export effect despite being
   in `video_filter_chain()`'s output, same as if it weren't wired at all.
 
+  **freeze frame** (`ClipInstance::frozen`) is also now wired into export, but through a
+  different mechanism than the filter chain above: `resolve_timeline_segments` passes it
+  straight through to `avbridge::ClipSegment::frozen`, and the timeline decode loop in
+  `avbridge_encode_timeline_export` (`bridge.c`) special-cases it — instead of decoding the
+  clip's whole trimmed range, it decodes just the first frame at/after `source_in_secs` and
+  synthesizes duplicate pushes of it (spaced at `canvas_fps`) through the same per-clip filter
+  chain to fill the block's full on-timeline duration. Audio is unaffected — still decoded
+  across the clip's whole trimmed range regardless of `frozen`.
+
   Preview is now timeline-aware too, not just export: `avcore::preview::Preview` follows the
   active sequence's timeline playhead (`Track::clip_at`) instead of the media-library
   selection, reopening its `playbin` pipeline whenever the playhead crosses onto a different
@@ -45,8 +54,11 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   signed sigma) — a narrower subset than export's, live-verified against this machine's
   `gstreamer-msvc` install via `gst-inspect-1.0`. **Not covered by preview**: **vignette** (no
   matching GStreamer element found), **chroma key** (same compositing gap as export, see
-  above), and **gain_db** (preview has no audio route at all — `audio-sink` is `fakesink`,
-  deliberately, a separate pre-existing gap). Crossing a clip boundary during playback tears
+  above), **gain_db** (preview has no audio route at all — `audio-sink` is `fakesink`,
+  deliberately, a separate pre-existing gap), and now **freeze frame** too — export's hold
+  mechanism lives in `avbridge_encode_timeline_export`'s decode loop, which preview's
+  `playbin`-based pipeline never goes through, so it needs its own separate mechanism (e.g.
+  seeking-and-pausing at the held timestamp) that hasn't been built. Crossing a clip boundary during playback tears
   down and reopens the pipeline (a brief hitch at every cut) rather than gapless — a real
   compositor pipeline would be needed to avoid that, out of scope here. There is no more
   "preview a raw asset before placing it on the timeline" mode — selecting a media-library
@@ -57,10 +69,10 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   export match (the export canvas's bitrate is now a duration-weighted average of the
   timeline's own clips' source bitrates, not an exact copy, since video is re-encoded rather
   than stream-copied) are out of scope for both passes above.
-  **Not yet covered by export or preview at all**: freeze frame
-  (`ClipInstance::frozen`, needs frame-hold logic), speed (`ClipInstance::speed_factor`, needs
-  resampling + the timeline supporting a displayed duration different from the trimmed source
-  range, which nothing does yet), layer masks (`ClipInstance::mask_shape`: none/circle/
+  **Not yet covered by export or preview at all**: speed
+  (`ClipInstance::speed_factor`, needs resampling + the timeline supporting a displayed
+  duration different from the trimmed source range, which nothing does yet), layer masks
+  (`ClipInstance::mask_shape`: none/circle/
   rounded-rect, needs alpha-geometry compositing), shake/glitch/pixelize
   (`ClipInstance::shake_intensity/glitch_intensity/pixelize_intensity`), transitions
   (`ClipInstance::transition_in`: none/fade/hard cut/slide/zoom — also models only a block's

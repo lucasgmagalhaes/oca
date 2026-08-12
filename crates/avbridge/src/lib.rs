@@ -18,6 +18,7 @@ struct RawClipSegment {
     source_out_secs: f64,
     gain_db: f32,
     video_filter: *const c_char,
+    frozen: c_int,
 }
 
 #[repr(C)]
@@ -413,6 +414,11 @@ pub struct ClipSegment {
     pub source_out_secs: f64,
     pub gain_db: f32,
     pub video_filter: String,
+    /// `true` holds the first decoded video frame at/after `source_in_secs` for this segment's
+    /// whole trimmed duration instead of playing through the range — a freeze frame.
+    /// `video_filter` still applies to every held frame. Audio is unaffected either way — still
+    /// decoded/played across the full `source_in_secs..source_out_secs` range.
+    pub frozen: bool,
 }
 
 /// The fixed output frame size/rate every segment in an [`encode_timeline_export`] call is
@@ -477,6 +483,7 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
             source_out_secs: seg.source_out_secs,
             gain_db: seg.gain_db,
             video_filter: filt.as_ptr(),
+            frozen: seg.frozen as c_int,
         })
         .collect();
 

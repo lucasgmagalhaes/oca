@@ -111,6 +111,34 @@ fn renders_two_clips_with_different_effects_as_one_concatenated_export() {
 }
 
 #[test]
+fn frozen_clip_still_exports_its_full_timeline_duration() {
+    let asset = video_asset(1);
+    let mut c1 = clip(1, 1, 0.0, 0.0, 0.3);
+    c1.frozen = true;
+
+    let track = Track {
+        id: 1,
+        name: "V1".to_string(),
+        kind: TrackKind::Video,
+        clips: vec![c1],
+    };
+    let sequence = sequence_with(vec![track]);
+
+    let output = std::env::temp_dir().join("avcore_test_timeline_export_frozen.mp4");
+    let cancel = AtomicBool::new(false);
+
+    let outcome = render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_| {})
+        .unwrap();
+
+    assert_eq!(outcome, RenderOutcome::Completed);
+
+    let info = probe_media(&output).unwrap();
+    assert_eq!(info.kind, MediaKind::Video);
+
+    let _ = std::fs::remove_file(&output);
+}
+
+#[test]
 fn rejects_a_sequence_with_no_video_track() {
     let sequence = sequence_with(vec![]);
     let output = std::env::temp_dir().join("avcore_test_timeline_export_empty.mp4");

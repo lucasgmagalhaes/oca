@@ -1,5 +1,6 @@
 #include "bridge.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -1006,6 +1007,10 @@ OcaEncodeStatus avbridge_encode_timeline_export(
         {
             int video_done = 0;
             int audio_done = 0;
+            /* Set once the frozen segment's held anchor frame has been synthesized into the
+               full hold duration below — later real decoded frames within range are then just
+               discarded instead of being pushed through the filter chain again. */
+            int frozen_anchor_done = 0;
             while (!video_done || !audio_done) {
                 if (cancel && *cancel) {
                     status = OCA_ENCODE_CANCELLED;
@@ -1039,6 +1044,66 @@ OcaEncodeStatus avbridge_encode_timeline_export(
                             av_frame_unref(dec_frame);
                             continue;
                         }
+
+                        if (seg->frozen) {
+                            /* Already emitted the held frame for this segment — every later
+                               real decoded frame in range is discarded, not re-pushed. */
+                            if (frozen_anchor_done) {
+                                av_frame_unref(dec_frame);
+                                continue;
+                            }
+                            /* Hold this one anchor frame for the segment's whole trimmed
+                               duration by synthesizing duplicate pushes spaced at canvas_fps —
+                               same "one decoded frame in, one filtered frame out" contract
+                               filter_encode_write_video_frame already relies on elsewhere in
+                               this loop, just fed the same content repeatedly instead of newly
+                               decoded frames. Driving the duplicate count off canvas_fps (not
+                               the source's own frame rate) means the canvas-conform `fps=`
+                               stage sees input already arriving near its target rate, so it
+                               passes each duplicate through ~1:1 instead of needing to
+                               extrapolate — sidesteps relying on this filter graph's EOF/flush
+                               semantics, which nothing in this per-segment loop ever triggers
+                               (the graph is freed, not flushed, at segment_cleanup). */
+                            double hold_secs = seg->source_out_secs - seg->source_in_secs;
+                            double canvas_fps_d = av_q2d(canvas_fps);
+                            long long hold_frames = llround(hold_secs * canvas_fps_d);
+                            if (hold_frames < 1) {
+                                hold_frames = 1;
+                            }
+                            for (long long i = 0; i < hold_frames; i++) {
+                                if (cancel && *cancel) {
+                                    status = OCA_ENCODE_CANCELLED;
+                                    break;
+                                }
+                                double target_secs =
+                                    seg->source_in_secs + (double)i / canvas_fps_d;
+                                AVFrame *held_frame = av_frame_clone(dec_frame);
+                                if (!held_frame) {
+                                    status = OCA_ENCODE_ERR_PIPELINE;
+                                    break;
+                                }
+                                held_frame->pts =
+                                    (int64_t)llround(target_secs / av_q2d(vdec_ctx->pkt_timebase));
+                                int fret = filter_encode_write_video_frame(
+                                    out_ctx, &vchain, venc_ctx, video_out_stream, held_frame,
+                                    filt_frame, &next_video_pts, enc_pkt);
+                                av_frame_free(&held_frame);
+                                if (fret < 0) {
+                                    status = OCA_ENCODE_ERR_PIPELINE;
+                                    break;
+                                }
+                                if (progress_cb) {
+                                    progress_cb(progress_user_data,
+                                                elapsed_before_segment +
+                                                    (target_secs - seg->source_in_secs));
+                                }
+                            }
+                            frozen_anchor_done = 1;
+                            video_done = 1;
+                            av_frame_unref(dec_frame);
+                            continue;
+                        }
+
                         if (filter_encode_write_video_frame(out_ctx, &vchain, venc_ctx,
                                                              video_out_stream, dec_frame,
                                                              filt_frame, &next_video_pts,

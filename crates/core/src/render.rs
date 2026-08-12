@@ -143,9 +143,11 @@ pub fn render_export(
 /// [`crate::export::ExportJob`] takes when a job enters the queue, and what "Add Export"
 /// button actually captures, replacing a single raw asset. Covers the effect fields
 /// [`crate::timeline::ClipInstance::video_filter_chain`] documents (crop, brightness/contrast/
-/// saturation, color filter, vignette, sharpen, chroma key, blur) plus per-clip audio gain;
-/// everything else `features/request.md`'s Fase 4 status notes list (freeze frame, speed,
-/// zoom, transitions, masks, multi-track compositing) isn't resolved yet.
+/// saturation, color filter, vignette, sharpen, chroma key, blur) plus per-clip audio gain and
+/// freeze frame ([`crate::timeline::ClipInstance::frozen`], resolved to
+/// [`avbridge::ClipSegment::frozen`] rather than a filter string); everything else
+/// `features/request.md`'s Fase 4 status notes list (speed, zoom, transitions, masks,
+/// multi-track compositing) isn't resolved yet.
 ///
 /// The canvas's resolution/frame rate is the first clip's own probed resolution/fps; its
 /// bitrate is a duration-weighted average of every clip's own source bitrate — video is
@@ -192,6 +194,7 @@ pub fn resolve_timeline_segments(
             source_out_secs: clip.source_out_secs,
             gain_db: clip.gain_db,
             video_filter: clip.video_filter_chain(),
+            frozen: clip.frozen,
         });
     }
     let (width, height, fps) = dimensions_fps.ok_or(RenderError::EmptyTimeline)?;
