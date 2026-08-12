@@ -302,6 +302,15 @@ pub struct OcaApp {
     /// tied to `selected_clip_id`, so the last-clicked clip can be a multi-select member
     /// without also being "the" selection.
     pub multi_selected_clip_ids: HashSet<u64>,
+    /// Set whenever [`OcaApp::active_project_mut`] is called; cleared after each autosave
+    /// write. Guards [`OcaApp::pump_autosave`] from writing unchanged state to disk.
+    project_dirty: bool,
+    /// Timestamp of the most recent call to [`OcaApp::active_project_mut`] — the debounce
+    /// start for the 2-second idle window in [`OcaApp::pump_autosave`].
+    last_edit_instant: Option<Instant>,
+    /// Timestamp of the last successful autosave write — used to enforce the 30-second
+    /// ceiling that forces a save even during continuous editing.
+    last_autosave_instant: Option<Instant>,
 }
 
 impl OcaApp {
@@ -348,6 +357,9 @@ impl OcaApp {
             clipboard_clip: None,
             formatting_clipboard: None,
             multi_selected_clip_ids: HashSet::new(),
+            project_dirty: false,
+            last_edit_instant: None,
+            last_autosave_instant: None,
         }
     }
 
@@ -374,8 +386,11 @@ impl OcaApp {
     }
 
     /// Mutable access to the project currently open in the Editor/Mídia screens — for
-    /// imports, edits, and anything else that changes the active project in place.
+    /// imports, edits, and anything else that changes the active project in place. Sets the
+    /// autosave dirty flag so [`OcaApp::pump_autosave`] knows to write the recovery file.
     pub fn active_project_mut(&mut self) -> &mut Project {
+        self.project_dirty = true;
+        self.last_edit_instant = Some(Instant::now());
         &mut self.projects[self.active_project]
     }
 
@@ -1628,6 +1643,42 @@ impl OcaApp {
             let _ = tx.send(event);
         });
     }
+
+    /// Writes the active project to a `<name>.autosave.json` recovery file next to the project's
+    /// own save file, subject to a 2-second idle debounce and a 30-second forced-save ceiling.
+    /// Skips silently if the project has never been saved (no `file_path` yet) or hasn't changed.
+    /// Serializes on the calling thread (fast, in-memory) then writes on a background thread so
+    /// the UI never blocks on file I/O.
+    fn pump_autosave(&mut self) {
+        if !self.project_dirty || self.projects.is_empty() {
+            return;
+        }
+        let Some(file_path) = self.active_project().file_path.clone() else {
+            return;
+        };
+        let now = Instant::now();
+        let debounce_done = self
+            .last_edit_instant
+            .map(|t| now.duration_since(t) >= Duration::from_secs(2))
+            .unwrap_or(false);
+        let ceiling_hit = self
+            .last_autosave_instant
+            .map(|t| now.duration_since(t) >= Duration::from_secs(30))
+            .unwrap_or(false);
+        if !debounce_done && !ceiling_hit {
+            return;
+        }
+        let json = match avcore::persistence::to_json(self.active_project()) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let autosave_path = file_path.with_extension("autosave.json");
+        self.project_dirty = false;
+        self.last_autosave_instant = Some(now);
+        std::thread::spawn(move || {
+            let _ = std::fs::write(autosave_path, json.as_bytes());
+        });
+    }
 }
 
 /// Finds the track to place a new clip of `kind` on, for [`OcaApp::add_asset_to_timeline`] and
@@ -1817,6 +1868,7 @@ impl eframe::App for OcaApp {
         self.pump_import_queue();
         self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());
+        self.pump_autosave();
         if self.preview_playing {
             // Smooth video needs every-frame repaints; the 200ms throttle below would show
             // it as a slideshow.
