@@ -235,5 +235,16 @@ fn open_containing_folder(output_path: &str) {
     let _ = std::process::Command::new("explorer").arg(folder).spawn();
 }
 
-#[cfg(not(target_os = "windows"))]
-fn open_containing_folder(_output_path: &str) {}
+#[cfg(target_os = "macos")]
+fn open_containing_folder(output_path: &str) {
+    let path = std::path::Path::new(output_path);
+    let folder = path.parent().unwrap_or(path);
+    let _ = std::process::Command::new("open").arg(folder).spawn();
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn open_containing_folder(output_path: &str) {
+    let path = std::path::Path::new(output_path);
+    let folder = path.parent().unwrap_or(path);
+    let _ = std::process::Command::new("xdg-open").arg(folder).spawn();
+}

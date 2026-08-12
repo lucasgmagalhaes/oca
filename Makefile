@@ -5,17 +5,45 @@
 # is a thin wrapper around a single cargo/rustup command, so running that command directly
 # works too if you'd rather skip make entirely.
 
-# FFMPEG_DIR/PKG_CONFIG_PATH aren't set as persistent Windows env vars on this machine, so
-# every fresh shell needs them before cargo can even locate FFmpeg/GStreamer's dev files —
-# pinned here to this machine's actual install locations (MSVC target, the workspace default)
-# so every target below works out of the box. Also extends PATH with both libraries' runtime
-# DLL dirs, needed by anything that links and runs a binary (run/debug/test/bench), not just
-# compiles one. If you already export real FFMPEG_DIR/PKG_CONFIG_PATH yourself, these override
-# them for recipes run through this Makefile — adjust the three paths below if FFmpeg/
-# GStreamer live somewhere else on your machine.
-export FFMPEG_DIR := C:/Users/lucas/AppData/Local/Microsoft/WinGet/Packages/BtbN.FFmpeg.LGPL.Shared.8.1_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-n8.1.2-34-g9b6c8969e0-win64-lgpl-shared-8.1
-export PKG_CONFIG_PATH := C:/Users/lucas/gstreamer-msvc/1.0/msvc_x86_64/lib/pkgconfig
-export PATH := $(FFMPEG_DIR)/bin;C:/Users/lucas/gstreamer-msvc/1.0/msvc_x86_64/bin;$(PATH)
+# ---------------------------------------------------------------------------
+# Platform-specific library paths
+#
+# Set FFMPEG_DIR and (where needed) PKG_CONFIG_PATH in your environment, or
+# let the platform block below provide sensible defaults based on common
+# install locations.  Nothing here is user-specific — adjust your shell's
+# environment instead of editing this file.
+# ---------------------------------------------------------------------------
+
+_OS := $(shell uname -s 2>/dev/null || echo Windows)
+
+ifeq ($(_OS),Darwin)
+  # macOS — Homebrew (Apple Silicon: /opt/homebrew, Intel: /usr/local)
+  _BREW_PREFIX := $(shell brew --prefix 2>/dev/null || echo /opt/homebrew)
+  FFMPEG_DIR    ?= $(_BREW_PREFIX)/opt/ffmpeg
+  # GStreamer macOS SDK installs its pkg-config files under the framework.
+  PKG_CONFIG_PATH ?= /Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig
+  export FFMPEG_DIR
+  export PKG_CONFIG_PATH
+  export PATH := $(FFMPEG_DIR)/lib:$(_BREW_PREFIX)/bin:$(PATH)
+else ifeq ($(_OS),Linux)
+  # Linux — pkg-config handles discovery; FFMPEG_DIR falls back to /usr.
+  FFMPEG_DIR ?= $(shell pkg-config --variable=prefix libavformat 2>/dev/null || echo /usr)
+  export FFMPEG_DIR
+  export PATH := $(FFMPEG_DIR)/bin:$(PATH)
+else
+  # Windows — set FFMPEG_DIR and PKG_CONFIG_PATH in your environment before
+  # running make, or override them on the command line:
+  #   make build FFMPEG_DIR=C:/path/to/ffmpeg PKG_CONFIG_PATH=C:/path/to/gst/pkgconfig
+  ifndef FFMPEG_DIR
+    $(error FFMPEG_DIR is not set. Point it at an FFmpeg dev build with include/ and lib/ subdirectories.)
+  endif
+  ifndef PKG_CONFIG_PATH
+    $(warning PKG_CONFIG_PATH is not set; GStreamer headers may not be found.)
+  endif
+  export FFMPEG_DIR
+  export PKG_CONFIG_PATH
+  export PATH := $(FFMPEG_DIR)/bin;$(PATH)
+endif
 
 .PHONY: build release run debug test test-core test-app test-xtask test-e2e bench fmt fmt-check lint graph docs check clean
 

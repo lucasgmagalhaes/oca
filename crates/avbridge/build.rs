@@ -1,6 +1,9 @@
-//! Locates FFmpeg (libavformat/libavcodec/libavutil) via the `FFMPEG_DIR` env var — the
-//! convention used by BtbN's Windows shared builds (`FFMPEG_DIR/include`, `FFMPEG_DIR/lib`) —
-//! and compiles `csrc/bridge.c` against it.
+//! Locates FFmpeg (libavformat/libavcodec/libavutil) via the `FFMPEG_DIR` env var
+//! (`FFMPEG_DIR/include`, `FFMPEG_DIR/lib`) and compiles `csrc/bridge.c` against it.
+//!
+//! On Windows the import libs are copied into OUT_DIR under unique names to avoid the
+//! GStreamer-vs-FFmpeg naming conflict (see comment below).  On macOS/Linux we link
+//! directly with -L/-l; the naming conflict does not arise there.
 
 use std::env;
 use std::path::PathBuf;
@@ -36,42 +39,68 @@ fn main() {
         .include(&include_dir)
         .compile("avbridge_c");
 
-    // Copy the exact import libs into OUR OUT_DIR under unique names, then link against
-    // those — not `-l<name>` + `-L<lib_dir>` (bare-name search across every `-L` path on the
-    // link line). GStreamer's SDK bundles its own FFmpeg build (gst-libav) with generically
-    // named import libs (avformat.lib, etc.) for a different, older FFmpeg version
-    // (avformat-61.dll vs the avformat-62.dll here). If gstreamer-sys's `-L` also ends up on
-    // the link line, a bare `-lavformat` can resolve to GStreamer's mismatched copy instead
-    // of this one — an ABI mismatch that doesn't error at build time, just corrupts behavior
-    // at runtime (see features/fase1/commit_plan.md, chore-002).
-    //
-    // `cargo:rustc-link-arg` (a full path) would sidestep this too, but it does NOT
-    // propagate from a library crate's build script to a downstream binary's link step —
-    // only `cargo:rustc-link-lib`/`cargo:rustc-link-search` do. So instead: rename the file
-    // (uniquely prefixed, can't collide with anything another crate's search path might
-    // contain) and let bare-name search find it unambiguously.
-    let is_msvc = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
-    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR set by cargo"));
-    for name in ["avfilter", "avformat", "avcodec", "swscale", "avutil"] {
-        let (src_name, unique_name) = if is_msvc {
-            (format!("{name}.lib"), format!("avbridge_ffmpeg_{name}.lib"))
-        } else {
-            (
-                format!("lib{name}.dll.a"),
-                format!("libavbridge_ffmpeg_{name}.dll.a"),
-            )
-        };
-        let src_path = lib_dir.join(&src_name);
-        if !src_path.is_file() {
-            panic!(
-                "expected {} to exist under FFMPEG_DIR/lib ({})",
-                src_name,
-                lib_dir.display()
-            );
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let is_windows = target_os == "windows";
+
+    if is_windows {
+        // On Windows, GStreamer's SDK bundles its own FFmpeg build (gst-libav) with
+        // generically named import libs (avformat.lib etc.) for a different, older FFmpeg
+        // version.  If gstreamer-sys's -L also ends up on the link line a bare -lavformat
+        // can silently resolve to the wrong copy — ABI mismatch that only surfaces at
+        // runtime (see features/fase1/commit_plan.md, chore-002).
+        //
+        // Fix: copy the exact import libs into OUT_DIR under unique names and link those,
+        // so bare-name search always finds our copy first.  cargo:rustc-link-arg with a
+        // full path would also work, but it does NOT propagate from a lib crate's build
+        // script to downstream binary link steps — only rustc-link-lib/search do.
+        let is_msvc = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
+        let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR set by cargo"));
+        for name in ["avfilter", "avformat", "avcodec", "swscale", "avutil"] {
+            let (src_name, unique_name) = if is_msvc {
+                (format!("{name}.lib"), format!("avbridge_ffmpeg_{name}.lib"))
+            } else {
+                (
+                    format!("lib{name}.dll.a"),
+                    format!("libavbridge_ffmpeg_{name}.dll.a"),
+                )
+            };
+            let src_path = lib_dir.join(&src_name);
+            if !src_path.is_file() {
+                panic!(
+                    "expected {} to exist under FFMPEG_DIR/lib ({})",
+                    src_name,
+                    lib_dir.display()
+                );
+            }
+            std::fs::copy(&src_path, out_dir.join(&unique_name)).unwrap_or_else(|e| {
+                panic!("failed to copy {} into OUT_DIR: {e}", src_path.display())
+            });
+            println!("cargo:rustc-link-lib=dylib=avbridge_ffmpeg_{name}");
         }
-        std::fs::copy(&src_path, out_dir.join(&unique_name))
-            .unwrap_or_else(|e| panic!("failed to copy {} into OUT_DIR: {e}", src_path.display()));
-        println!("cargo:rustc-link-lib=dylib=avbridge_ffmpeg_{name}");
+        println!("cargo:rustc-link-search=native={}", out_dir.display());
+    } else {
+        // macOS / Linux: no GStreamer naming conflict; link directly.
+        // Verify the expected shared-lib files exist so the error is actionable.
+        let (ext, prefix) = if target_os == "macos" {
+            ("dylib", "lib")
+        } else {
+            ("so", "lib")
+        };
+        for name in ["avfilter", "avformat", "avcodec", "swscale", "avutil"] {
+            let file_name = format!("{prefix}{name}.{ext}");
+            // On macOS Homebrew the dylibs are symlinks like libavformat.dylib -> libavformat.61.dylib.
+            // Accept either the versioned or unversioned name; just check the directory has something.
+            let found = std::fs::read_dir(&lib_dir)
+                .map(|mut d| d.any(|e| e.map(|e| e.file_name().to_string_lossy().starts_with(&format!("{prefix}{name}."))).unwrap_or(false)))
+                .unwrap_or(false);
+            if !found {
+                panic!(
+                    "expected {file_name} (or a versioned variant) under FFMPEG_DIR/lib ({})",
+                    lib_dir.display()
+                );
+            }
+            println!("cargo:rustc-link-lib=dylib={name}");
+        }
+        println!("cargo:rustc-link-search=native={}", lib_dir.display());
     }
-    println!("cargo:rustc-link-search=native={}", out_dir.display());
 }
