@@ -50,6 +50,10 @@ pub struct PrefsState {
     pub export_workers: u8,
     pub output_folder: String,
     pub autosave_minutes: u8,
+    /// Absolute paths of recently opened project JSON files, most-recent first, capped at 10.
+    /// Loaded at startup to restore the Home screen's project grid across sessions.
+    #[serde(default)]
+    pub recent_project_paths: Vec<String>,
 }
 
 impl Default for PrefsState {
@@ -60,6 +64,7 @@ impl Default for PrefsState {
             export_workers: 1,
             output_folder: String::new(),
             autosave_minutes: 5,
+            recent_project_paths: Vec::new(),
         }
     }
 }
@@ -348,6 +353,20 @@ impl OcaApp {
         }
         // Write the sentinel — deleted on clean exit via on_exit(). Survives a crash.
         let _ = std::fs::write(&sentinel, b"");
+        let prefs = load_prefs();
+        // Reload projects from the last session. Failures (moved/deleted files) are silently
+        // skipped — the missing path will be pruned from recents next time prefs are saved.
+        let projects: Vec<avcore::Project> = prefs
+            .recent_project_paths
+            .iter()
+            .filter_map(|p| {
+                let path = PathBuf::from(p);
+                avcore::load_project_from_file(&path).ok().map(|mut proj| {
+                    proj.file_path = Some(path);
+                    proj
+                })
+            })
+            .collect();
         let (render_tx, render_rx) = mpsc::unbounded_channel();
         let (import_tx, import_rx) = mpsc::unbounded_channel();
         let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
@@ -355,11 +374,11 @@ impl OcaApp {
             screen: Screen::Home,
             tool: EditorTool::Select,
             locale: Locale::PtBr,
-            projects: Vec::new(),
+            projects,
             active_project: 0,
             selected_asset_id: None,
             export_jobs: Vec::new(),
-            prefs: load_prefs(),
+            prefs,
             render_tx,
             render_rx,
             active_renders: HashMap::new(),
@@ -704,7 +723,16 @@ impl OcaApp {
     /// (an empty project) and "Abrir projeto" (one just loaded from disk).
     pub fn add_and_open_project(&mut self, project: Project) {
         self.projects.push(project);
-        self.open_project(self.projects.len() - 1);
+        let idx = self.projects.len() - 1;
+        // Track the file path in recent projects before open_project() runs.
+        if let Some(path) = self.projects[idx].file_path.clone() {
+            let path_str = path.display().to_string();
+            self.prefs.recent_project_paths.retain(|p| p != &path_str);
+            self.prefs.recent_project_paths.insert(0, path_str);
+            self.prefs.recent_project_paths.truncate(10);
+            self.save_prefs();
+        }
+        self.open_project(idx);
     }
 
     /// Builds an empty project with a fresh id and opens it — what "Novo projeto" does.
@@ -1858,9 +1886,22 @@ impl OcaApp {
     }
 
     /// Serializes `prefs` to the platform config file on a background thread. Called whenever
-    /// the preferences modal closes so the user's settings survive the next launch.
+    /// the preferences modal closes or a project is opened. Prunes `recent_project_paths`
+    /// entries whose files no longer exist before serializing.
     pub fn save_prefs(&self) {
-        let Ok(json) = serde_json::to_string_pretty(&self.prefs) else {
+        let mut prefs_snapshot = serde_json::to_value(&self.prefs).unwrap_or_default();
+        // Prune stale recents (moved/deleted files) so the list stays clean.
+        if let Some(arr) = prefs_snapshot
+            .get_mut("recent_project_paths")
+            .and_then(|v| v.as_array_mut())
+        {
+            arr.retain(|v| {
+                v.as_str()
+                    .map(|p| std::path::Path::new(p).exists())
+                    .unwrap_or(false)
+            });
+        }
+        let Ok(json) = serde_json::to_string_pretty(&prefs_snapshot) else {
             return;
         };
         let path = prefs_path();

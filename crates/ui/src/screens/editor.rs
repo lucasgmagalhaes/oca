@@ -300,7 +300,13 @@ fn save_active_project(app: &mut OcaApp) {
     match avcore::save_project_to_file(app.active_project(), &path) {
         Ok(()) => {
             tracing::info!(path = %path.display(), "project saved");
+            let path_str = path.display().to_string();
             app.active_project_mut().file_path = Some(path);
+            // Track in recents (covers first Save As, where file_path was previously None).
+            app.prefs.recent_project_paths.retain(|p| p != &path_str);
+            app.prefs.recent_project_paths.insert(0, path_str);
+            app.prefs.recent_project_paths.truncate(10);
+            app.save_prefs();
         }
         Err(e) => app.push_toast(format!("Failed to save project: {e}")),
     }
