@@ -4,12 +4,11 @@ use crate::app::{OcaApp, Screen};
 use crate::i18n;
 use crate::theme;
 
-const ITEMS: [(Screen, &str); 5] = [
+const ITEMS: [(Screen, &str); 4] = [
     (Screen::Home, "⌂"),
     (Screen::Editor, "✂"),
     (Screen::Library, "▤"),
     (Screen::Queue, "≡"),
-    (Screen::Prefs, "⚙"),
 ];
 
 /// Renders the left icon rail and handles screen-switching clicks.
@@ -38,6 +37,9 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                     let label = i18n::nav_label(app.locale, screen);
                     rail_button(ui, app, screen, icon, label);
                 }
+
+                let prefs_label = i18n::Text::NavPrefs.tr(app.locale);
+                prefs_button(ui, app, "⚙", prefs_label);
             });
         });
 }
@@ -85,6 +87,44 @@ fn rail_button(ui: &mut egui::Ui, app: &mut OcaApp, screen: Screen, icon: &str, 
     }
     if response.clicked() {
         app.screen = screen;
+    }
+    ui.add_space(2.0);
+}
+
+fn prefs_button(ui: &mut egui::Ui, app: &mut OcaApp, icon: &str, label: &str) {
+    let active = app.prefs_open;
+    let color = if active { theme::ACCENT } else { theme::TEXT_MUTED };
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(52.0, 46.0), egui::Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
+    if ui.is_rect_visible(rect) {
+        let bg: Option<Color32> = if active {
+            Some(theme::ACCENT.gamma_multiply(0.18))
+        } else if response.hovered() {
+            Some(theme::SURFACE_2)
+        } else {
+            None
+        };
+        if let Some(bg) = bg {
+            ui.painter().rect_filled(rect, egui::CornerRadius::same(8), bg);
+        }
+        let painter = ui.painter_at(rect);
+        painter.text(
+            rect.center_top() + egui::vec2(0.0, 14.0),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            egui::FontId::proportional(15.0),
+            color,
+        );
+        painter.text(
+            rect.center_bottom() - egui::vec2(0.0, 8.0),
+            egui::Align2::CENTER_CENTER,
+            label,
+            egui::FontId::proportional(9.0),
+            color,
+        );
+    }
+    if response.clicked() {
+        app.prefs_open = !app.prefs_open;
     }
     ui.add_space(2.0);
 }

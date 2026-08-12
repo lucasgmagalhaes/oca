@@ -26,7 +26,6 @@ pub enum Screen {
     Editor,
     Library,
     Queue,
-    Prefs,
 }
 
 /// The editor toolbar's active tool (Selecionar / Aparar). Currently just tracked for the
@@ -311,6 +310,10 @@ pub struct OcaApp {
     /// Timestamp of the last successful autosave write — used to enforce the 30-second
     /// ceiling that forces a save even during continuous editing.
     last_autosave_instant: Option<Instant>,
+    /// Whether the preferences modal is currently open — toggled by the nav rail's ⚙ button.
+    /// Kept separate from `screen` so the modal overlays whatever screen is currently active
+    /// rather than replacing it with a dedicated route.
+    pub prefs_open: bool,
     /// Set to the autosave file path when opening a project that has a newer autosave on disk.
     /// [`OcaApp::pump_autosave_restore`] consumes it to show the restore/discard modal.
     autosave_restore_pending: Option<PathBuf>,
@@ -360,6 +363,7 @@ impl OcaApp {
             clipboard_clip: None,
             formatting_clipboard: None,
             multi_selected_clip_ids: HashSet::new(),
+            prefs_open: false,
             project_dirty: false,
             last_edit_instant: None,
             last_autosave_instant: None,
@@ -1648,6 +1652,24 @@ impl OcaApp {
         });
     }
 
+    /// Shows the preferences modal when `prefs_open` is set, overlaying whatever screen is
+    /// currently active. Closing the modal (clicking outside or pressing Escape) clears the
+    /// flag. Content is [`crate::screens::prefs::show`] — unchanged from when it was a full
+    /// screen, just wrapped in an `egui::Modal` instead.
+    fn show_prefs_modal(&mut self, ctx: &egui::Context) {
+        if !self.prefs_open {
+            return;
+        }
+        let modal = egui::Modal::new(egui::Id::new("prefs_modal"));
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(600.0);
+            screens::prefs::show(self, ui);
+        });
+        if response.should_close() {
+            self.prefs_open = false;
+        }
+    }
+
     /// Writes the active project to a `<name>.autosave.json` recovery file next to the project's
     /// own save file, subject to a 2-second idle debounce and a 30-second forced-save ceiling.
     /// Skips silently if the project has never been saved (no `file_path` yet) or hasn't changed.
@@ -1965,8 +1987,8 @@ impl eframe::App for OcaApp {
             Screen::Editor => screens::editor::show(self, ui),
             Screen::Library => screens::library::show(self, ui),
             Screen::Queue => screens::queue::show(self, ui),
-            Screen::Prefs => screens::prefs::show(self, ui),
         });
+        self.show_prefs_modal(ui.ctx());
     }
 }
 

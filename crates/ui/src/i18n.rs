@@ -75,7 +75,6 @@ text_catalog! {
     ScreenTitleEditor: pt_br = "Editor", en = "Editor";
     ScreenTitleLibrary: pt_br = "Mídia", en = "Media";
     ScreenTitleQueue: pt_br = "Fila de exportação", en = "Export queue";
-    ScreenTitlePrefs: pt_br = "Ajustes", en = "Settings";
     UnsavedChanges: pt_br = "Alterações não salvas", en = "Unsaved changes";
 
     HomeTitle: pt_br = "Projetos recentes", en = "Recent projects";
@@ -231,7 +230,6 @@ pub fn screen_title(locale: Locale, screen: Screen) -> &'static str {
         Screen::Editor => Text::ScreenTitleEditor.tr(locale),
         Screen::Library => Text::ScreenTitleLibrary.tr(locale),
         Screen::Queue => Text::ScreenTitleQueue.tr(locale),
-        Screen::Prefs => Text::ScreenTitlePrefs.tr(locale),
     }
 }
 
@@ -242,7 +240,6 @@ pub fn nav_label(locale: Locale, screen: Screen) -> &'static str {
         Screen::Editor => Text::NavEditor.tr(locale),
         Screen::Library => Text::NavLibrary.tr(locale),
         Screen::Queue => Text::NavQueue.tr(locale),
-        Screen::Prefs => Text::NavPrefs.tr(locale),
     }
 }
 
