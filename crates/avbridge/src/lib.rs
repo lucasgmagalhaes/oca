@@ -97,35 +97,26 @@ pub fn version() -> u32 {
 }
 
 /// What [`probe`] failed on.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ProbeError {
     /// `path` contains a NUL byte and can't be handed to the C API.
+    #[error("path is not a valid C string: {0}")]
     InvalidPath(NulError),
     /// `avformat_open_input` failed — bad path, unreadable file, or an unrecognized container.
+    #[error("failed to open input")]
     Open,
     /// `avformat_find_stream_info` failed — the container opened but its streams couldn't be
     /// read.
+    #[error("failed to read stream info")]
     StreamInfo,
     /// The file has neither a video nor an audio stream.
+    #[error("no video or audio stream found")]
     NoMediaStream,
     /// The C side returned a status code this crate doesn't know about (version skew between
     /// `bridge.h` and this file).
+    #[error("unknown probe status code: {0}")]
     Unknown(c_int),
 }
-
-impl std::fmt::Display for ProbeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ProbeError::InvalidPath(e) => write!(f, "path is not a valid C string: {e}"),
-            ProbeError::Open => write!(f, "failed to open input"),
-            ProbeError::StreamInfo => write!(f, "failed to read stream info"),
-            ProbeError::NoMediaStream => write!(f, "no video or audio stream found"),
-            ProbeError::Unknown(code) => write!(f, "unknown probe status code: {code}"),
-        }
-    }
-}
-
-impl std::error::Error for ProbeError {}
 
 /// The picked stream's kind — mirrors [`ProbeInfo::has_video`] but as an enum for callers that
 /// want to match on it.
@@ -209,45 +200,36 @@ pub fn probe(path: &Path) -> Result<ProbeInfo, ProbeError> {
 }
 
 /// What [`remux_copy`] failed on.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum RemuxError {
     /// `in_path`/`out_path` contains a NUL byte and can't be handed to the C API.
+    #[error("path is not a valid C string: {0}")]
     InvalidPath(NulError),
     /// Couldn't open `in_path`.
+    #[error("failed to open input")]
     OpenInput,
     /// Couldn't read `in_path`'s streams.
+    #[error("failed to read stream info")]
     StreamInfo,
     /// Couldn't guess an output format for `out_path` (unrecognized extension).
+    #[error("failed to allocate output context")]
     AllocOutput,
     /// Couldn't create an output stream matching one of the input's streams.
+    #[error("failed to create an output stream")]
     NewStream,
     /// Couldn't open `out_path` for writing.
+    #[error("failed to open output for writing")]
     OpenOutput,
     /// Failed writing the output container's header.
+    #[error("failed to write output header")]
     WriteHeader,
     /// Failed partway through writing packets — `out_path` may be a truncated/invalid file.
+    #[error("failed to write a frame")]
     WriteFrame,
     /// The C side returned a status code this crate doesn't know about.
+    #[error("unknown remux status code: {0}")]
     Unknown(c_int),
 }
-
-impl std::fmt::Display for RemuxError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RemuxError::InvalidPath(e) => write!(f, "path is not a valid C string: {e}"),
-            RemuxError::OpenInput => write!(f, "failed to open input"),
-            RemuxError::StreamInfo => write!(f, "failed to read stream info"),
-            RemuxError::AllocOutput => write!(f, "failed to allocate output context"),
-            RemuxError::NewStream => write!(f, "failed to create an output stream"),
-            RemuxError::OpenOutput => write!(f, "failed to open output for writing"),
-            RemuxError::WriteHeader => write!(f, "failed to write output header"),
-            RemuxError::WriteFrame => write!(f, "failed to write a frame"),
-            RemuxError::Unknown(code) => write!(f, "unknown remux status code: {code}"),
-        }
-    }
-}
-
-impl std::error::Error for RemuxError {}
 
 /// Demuxes `in_path` and remuxes every video/audio stream to `out_path` unchanged — no decode,
 /// no encode, no filtering. Equivalent to `ffmpeg -i in_path -c copy out_path`.
@@ -276,68 +258,54 @@ pub fn remux_copy(in_path: &Path, out_path: &Path) -> Result<(), RemuxError> {
 }
 
 /// What [`encode_export`] failed on.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum EncodeError {
     /// `in_path`/`out_path` contains a NUL byte and can't be handed to the C API.
+    #[error("path is not a valid C string: {0}")]
     InvalidPath(NulError),
+    #[error("failed to open input")]
     OpenInput,
+    #[error("failed to read stream info")]
     StreamInfo,
+    #[error("failed to allocate output context")]
     AllocOutput,
+    #[error("failed to create an output stream")]
     NewStream,
+    #[error("failed to open output for writing")]
     OpenOutput,
+    #[error("failed to write output header")]
     WriteHeader,
+    #[error("failed to write a frame")]
     WriteFrame,
     /// `in_path` has no audio stream to normalize.
+    #[error("input has no audio stream")]
     NoAudioStream,
     /// Couldn't find/open the audio decoder.
+    #[error("failed to open the audio decoder")]
     Decoder,
     /// Couldn't build the loudnorm/limiter filter graph.
+    #[error("failed to build the audio filter graph")]
     FilterGraph,
     /// Couldn't find/open the AAC encoder.
+    #[error("failed to open the AAC encoder")]
     Encoder,
     /// A decode/filter/encode call failed mid-stream (not at setup).
+    #[error("decode/filter/encode pipeline failed mid-stream")]
     Pipeline,
     /// (`encode_timeline_export` only) a segment has no video stream.
+    #[error("a segment has no video stream")]
     NoVideoStream,
     /// (`encode_timeline_export` only) a later segment's audio format (sample rate/format/
     /// channel layout) doesn't match the first segment's.
+    #[error("a segment's audio format doesn't match the first segment's")]
     AudioFormatMismatch,
     /// (`encode_timeline_export` only) `segments` was empty.
+    #[error("no segments to render")]
     EmptyTimeline,
     /// The C side returned a status code this crate doesn't know about.
+    #[error("unknown encode status code: {0}")]
     Unknown(c_int),
 }
-
-impl std::fmt::Display for EncodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EncodeError::InvalidPath(e) => write!(f, "path is not a valid C string: {e}"),
-            EncodeError::OpenInput => write!(f, "failed to open input"),
-            EncodeError::StreamInfo => write!(f, "failed to read stream info"),
-            EncodeError::AllocOutput => write!(f, "failed to allocate output context"),
-            EncodeError::NewStream => write!(f, "failed to create an output stream"),
-            EncodeError::OpenOutput => write!(f, "failed to open output for writing"),
-            EncodeError::WriteHeader => write!(f, "failed to write output header"),
-            EncodeError::WriteFrame => write!(f, "failed to write a frame"),
-            EncodeError::NoAudioStream => write!(f, "input has no audio stream"),
-            EncodeError::Decoder => write!(f, "failed to open the audio decoder"),
-            EncodeError::FilterGraph => write!(f, "failed to build the audio filter graph"),
-            EncodeError::Encoder => write!(f, "failed to open the AAC encoder"),
-            EncodeError::Pipeline => write!(f, "decode/filter/encode pipeline failed mid-stream"),
-            EncodeError::NoVideoStream => write!(f, "a segment has no video stream"),
-            EncodeError::AudioFormatMismatch => {
-                write!(
-                    f,
-                    "a segment's audio format doesn't match the first segment's"
-                )
-            }
-            EncodeError::EmptyTimeline => write!(f, "no segments to render"),
-            EncodeError::Unknown(code) => write!(f, "unknown encode status code: {code}"),
-        }
-    }
-}
-
-impl std::error::Error for EncodeError {}
 
 /// How [`encode_export`] ended: all the way through, or stopped early because `cancel` was
 /// set. Mirrors `avcore::render::RenderOutcome`.
@@ -531,48 +499,39 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
 }
 
 /// What [`measure_loudness_json`] failed on.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum LoudnessError {
     /// `path` contains a NUL byte and can't be handed to the C API.
+    #[error("path is not a valid C string: {0}")]
     InvalidPath(NulError),
+    #[error("failed to open input")]
     OpenInput,
+    #[error("failed to read stream info")]
     StreamInfo,
     /// `path` has no audio stream to measure.
+    #[error("input has no audio stream")]
     NoAudioStream,
     /// Couldn't find/open the audio decoder.
+    #[error("failed to open the audio decoder")]
     Decoder,
     /// Couldn't build the loudnorm filter graph.
+    #[error("failed to build the loudnorm filter graph")]
     FilterGraph,
     /// A decode/filter call failed mid-stream (not at setup).
+    #[error("decode/filter pipeline failed mid-stream")]
     Pipeline,
     /// The pipeline ran to completion but no loudnorm JSON report was captured.
+    #[error("no loudnorm report was captured")]
     NoReport,
     /// The captured report wasn't valid UTF-8 (shouldn't happen — loudnorm's JSON output is
     /// ASCII — but the buffer is truncated if it doesn't fit, which could in principle split
     /// a multi-byte sequence).
+    #[error("loudnorm report wasn't valid UTF-8: {0}")]
     InvalidUtf8(std::str::Utf8Error),
     /// The C side returned a status code this crate doesn't know about.
+    #[error("unknown loudness status code: {0}")]
     Unknown(c_int),
 }
-
-impl std::fmt::Display for LoudnessError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LoudnessError::InvalidPath(e) => write!(f, "path is not a valid C string: {e}"),
-            LoudnessError::OpenInput => write!(f, "failed to open input"),
-            LoudnessError::StreamInfo => write!(f, "failed to read stream info"),
-            LoudnessError::NoAudioStream => write!(f, "input has no audio stream"),
-            LoudnessError::Decoder => write!(f, "failed to open the audio decoder"),
-            LoudnessError::FilterGraph => write!(f, "failed to build the loudnorm filter graph"),
-            LoudnessError::Pipeline => write!(f, "decode/filter pipeline failed mid-stream"),
-            LoudnessError::NoReport => write!(f, "no loudnorm report was captured"),
-            LoudnessError::InvalidUtf8(e) => write!(f, "loudnorm report wasn't valid UTF-8: {e}"),
-            LoudnessError::Unknown(code) => write!(f, "unknown loudness status code: {code}"),
-        }
-    }
-}
-
-impl std::error::Error for LoudnessError {}
 
 /// Measures integrated loudness / true peak / loudness range via a single-pass `loudnorm`
 /// analysis (`I=-16:TP=-1.5:LRA=11`). Returns the raw JSON report text — parsing it is the
@@ -616,56 +575,47 @@ pub fn measure_loudness_json(path: &Path) -> Result<String, LoudnessError> {
 }
 
 /// What [`generate_proxy`] failed on.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ProxyError {
     /// `in_path`/`out_path` contains a NUL byte and can't be handed to the C API.
+    #[error("path is not a valid C string: {0}")]
     InvalidPath(NulError),
+    #[error("failed to open input")]
     OpenInput,
+    #[error("failed to read stream info")]
     StreamInfo,
     /// `in_path` has no video stream to make a proxy of.
+    #[error("input has no video stream")]
     NoVideoStream,
+    #[error("failed to allocate output context")]
     AllocOutput,
+    #[error("failed to create an output stream")]
     NewStream,
+    #[error("failed to open output for writing")]
     OpenOutput,
+    #[error("failed to write output header")]
     WriteHeader,
+    #[error("failed to write a frame")]
     WriteFrame,
     /// Couldn't find/open the video or audio decoder.
+    #[error("failed to open a decoder")]
     Decoder,
     /// Couldn't find/open the `libopenh264` video encoder or the AAC audio encoder.
+    #[error("failed to open an encoder")]
     Encoder,
     /// Couldn't build the video scaler.
+    #[error("failed to build the video scaler")]
     Scaler,
     /// Couldn't build the (filterless, format-conversion-only) audio graph.
+    #[error("failed to build the audio format-match graph")]
     FilterGraph,
     /// A decode/scale/encode call failed mid-stream (not at setup).
+    #[error("decode/scale/encode pipeline failed mid-stream")]
     Pipeline,
     /// The C side returned a status code this crate doesn't know about.
+    #[error("unknown proxy status code: {0}")]
     Unknown(c_int),
 }
-
-impl std::fmt::Display for ProxyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ProxyError::InvalidPath(e) => write!(f, "path is not a valid C string: {e}"),
-            ProxyError::OpenInput => write!(f, "failed to open input"),
-            ProxyError::StreamInfo => write!(f, "failed to read stream info"),
-            ProxyError::NoVideoStream => write!(f, "input has no video stream"),
-            ProxyError::AllocOutput => write!(f, "failed to allocate output context"),
-            ProxyError::NewStream => write!(f, "failed to create an output stream"),
-            ProxyError::OpenOutput => write!(f, "failed to open output for writing"),
-            ProxyError::WriteHeader => write!(f, "failed to write output header"),
-            ProxyError::WriteFrame => write!(f, "failed to write a frame"),
-            ProxyError::Decoder => write!(f, "failed to open a decoder"),
-            ProxyError::Encoder => write!(f, "failed to open an encoder"),
-            ProxyError::Scaler => write!(f, "failed to build the video scaler"),
-            ProxyError::FilterGraph => write!(f, "failed to build the audio format-match graph"),
-            ProxyError::Pipeline => write!(f, "decode/scale/encode pipeline failed mid-stream"),
-            ProxyError::Unknown(code) => write!(f, "unknown proxy status code: {code}"),
-        }
-    }
-}
-
-impl std::error::Error for ProxyError {}
 
 /// Generates a downscaled editing proxy of `in_path`'s video (height = `target_height`, width
 /// computed to preserve the source's aspect ratio) via `libopenh264` (BSD-licensed — this
@@ -708,42 +658,31 @@ pub fn generate_proxy(
 }
 
 /// What [`generate_waveform`] failed on.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum WaveformError {
     /// `path` contains a NUL byte and can't be handed to the C API.
+    #[error("path is not a valid C string: {0}")]
     InvalidPath(NulError),
+    #[error("failed to open input")]
     OpenInput,
+    #[error("failed to read stream info")]
     StreamInfo,
     /// `path` has no audio stream to compute a waveform from.
+    #[error("input has no audio stream")]
     NoAudioStream,
     /// Couldn't find/open the audio decoder.
+    #[error("failed to open the audio decoder")]
     Decoder,
     /// Couldn't build the mono-downmix filter graph.
+    #[error("failed to build the mono-downmix filter graph")]
     FilterGraph,
     /// A decode/filter call failed mid-stream (not at setup).
+    #[error("decode/filter pipeline failed mid-stream")]
     Pipeline,
     /// The C side returned a status code this crate doesn't know about.
+    #[error("unknown waveform status code: {0}")]
     Unknown(c_int),
 }
-
-impl std::fmt::Display for WaveformError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            WaveformError::InvalidPath(e) => write!(f, "path is not a valid C string: {e}"),
-            WaveformError::OpenInput => write!(f, "failed to open input"),
-            WaveformError::StreamInfo => write!(f, "failed to read stream info"),
-            WaveformError::NoAudioStream => write!(f, "input has no audio stream"),
-            WaveformError::Decoder => write!(f, "failed to open the audio decoder"),
-            WaveformError::FilterGraph => {
-                write!(f, "failed to build the mono-downmix filter graph")
-            }
-            WaveformError::Pipeline => write!(f, "decode/filter pipeline failed mid-stream"),
-            WaveformError::Unknown(code) => write!(f, "unknown waveform status code: {code}"),
-        }
-    }
-}
-
-impl std::error::Error for WaveformError {}
 
 /// Computes `bucket_count` per-bucket (min, max) amplitude peaks — each in `[-1.0, 1.0]` — of
 /// `path`'s audio stream downmixed to mono, for waveform rendering. The full duration is

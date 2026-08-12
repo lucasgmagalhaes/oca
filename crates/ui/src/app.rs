@@ -188,43 +188,9 @@ struct ThumbnailReady {
     rgba: Vec<u8>,
 }
 
-/// The subset of a [`avcore::timeline::ClipInstance`]'s fields considered "formatting" —
-/// effects/settings that can be copied onto a different block without duplicating the clip
-/// itself, per `request.md`'s Fase 4 "copiar formatação" spec (`Ctrl+Shift+C`/`Ctrl+Shift+V`).
-/// Deliberately excludes structural fields (`id`, `asset_id`, `start_secs`,
-/// `source_in_secs`/`source_out_secs`, `composite_id`) — those describe what/where a clip is,
-/// not how it's rendered. Grows as more per-block settings (like `gain_db`/`frozen`/
-/// `speed_factor`/crop/mask) join `ClipInstance`.
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct ClipFormatting {
-    gain_db: f32,
-    frozen: bool,
-    speed_factor: f32,
-    crop_x: f32,
-    crop_y: f32,
-    crop_w: f32,
-    crop_h: f32,
-    mask_shape: avcore::timeline::MaskShape,
-    mask_corner_radius: f32,
-    flipped_h: bool,
-    color_filter: avcore::timeline::ColorFilter,
-    vignette_intensity: f32,
-    brightness: f32,
-    contrast: f32,
-    saturation: f32,
-    sharpen: f32,
-    chroma_key_enabled: bool,
-    chroma_key_color: [u8; 3],
-    chroma_key_tolerance: f32,
-    blur_intensity: f32,
-    shake_intensity: f32,
-    glitch_intensity: f32,
-    pixelize_intensity: f32,
-    transition_in: avcore::timeline::TransitionType,
-    transition_duration_secs: f32,
-    zoom_start: f32,
-    zoom_end: f32,
-}
+// ClipFormatting is defined in core::timeline and re-exported as avcore::ClipFormatting;
+// the type alias below is kept for in-module readability only.
+use avcore::ClipFormatting;
 
 /// The whole application's state: which screen is showing, the loaded projects, the export
 /// queue, and user preferences. `eframe` owns one instance of this for the app's lifetime
@@ -483,6 +449,15 @@ impl OcaApp {
         self.selected_asset_id = id;
     }
 
+    /// Id of the clip covering the active sequence's timeline playhead, if any. Cheaper than
+    /// [`OcaApp::current_preview_clip`] — no clones — used by [`OcaApp::ensure_preview_loaded`]
+    /// for the early-exit check.
+    fn current_preview_clip_id(&self) -> Option<u64> {
+        let timeline = self.active_project().timeline();
+        let track = timeline.tracks.iter().find(|t| t.kind == TrackKind::Video)?;
+        Some(track.clip_at(timeline.playhead_secs)?.id)
+    }
+
     /// The clip covering the active sequence's timeline playhead, and the asset it plays from,
     /// if both resolve — `None` if the video track is missing/empty, nothing covers the
     /// playhead ([`avcore::timeline::Track::clip_at`]), or the clip's `asset_id` isn't in the
@@ -515,11 +490,11 @@ impl OcaApp {
     /// (`preview_playing` was already `true`) so crossing a cut doesn't pause playback, just
     /// hitches while the new pipeline opens.
     pub fn ensure_preview_loaded(&mut self) {
-        let current = self.current_preview_clip();
-        let current_clip_id = current.as_ref().map(|(clip, _)| clip.id);
+        let current_clip_id = self.current_preview_clip_id();
         if current_clip_id == self.preview_clip_id {
             return;
         }
+        let current = self.current_preview_clip();
         self.preview = None;
         self.preview_texture = None;
         self.preview_clip_id = current_clip_id;
@@ -902,54 +877,38 @@ impl OcaApp {
         self.selected_clip_id = None;
     }
 
+    /// Calls `f` with a mutable borrow of the selected clip, if any — the shared dispatch path
+    /// for every `set_selected_clip_*` setter.
+    fn with_selected_clip_mut(&mut self, f: impl FnOnce(&mut avcore::timeline::ClipInstance)) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        if let Some(clip) = self.active_project_mut().timeline_mut().clip_mut(clip_id) {
+            f(clip);
+        }
+    }
+
     /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::gain_db`], clamped to
     /// [`GAIN_DB_RANGE`] — what dragging the properties panel's gain slider does. A no-op if
     /// nothing is selected.
     pub fn set_selected_clip_gain(&mut self, gain_db: f32) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let gain_db = gain_db.clamp(*GAIN_DB_RANGE.start(), *GAIN_DB_RANGE.end());
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.gain_db = gain_db;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| clip.gain_db = gain_db);
     }
 
     /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::frozen`] — what checking the
     /// properties panel's "Congelar quadro" box does. A no-op if nothing is selected.
     pub fn set_selected_clip_frozen(&mut self, frozen: bool) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.frozen = frozen;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| clip.frozen = frozen);
     }
 
     /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::speed_factor`], clamped to
     /// [`SPEED_FACTOR_RANGE`] — what dragging the properties panel's speed slider does. A no-op
     /// if nothing is selected.
     pub fn set_selected_clip_speed(&mut self, speed_factor: f32) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let speed_factor =
             speed_factor.clamp(*SPEED_FACTOR_RANGE.start(), *SPEED_FACTOR_RANGE.end());
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.speed_factor = speed_factor;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| clip.speed_factor = speed_factor);
     }
 
     /// Sets `selected_clip_id`'s crop rect ([`avcore::timeline::ClipInstance::crop_x`]/`crop_y`/
@@ -957,23 +916,16 @@ impl OcaApp {
     /// at [`CROP_MIN_SIZE`]) — what dragging the properties panel's crop controls does. A no-op
     /// if nothing is selected.
     pub fn set_selected_clip_crop(&mut self, crop_x: f32, crop_y: f32, crop_w: f32, crop_h: f32) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let crop_x = crop_x.clamp(0.0, 1.0);
         let crop_y = crop_y.clamp(0.0, 1.0);
         let crop_w = crop_w.clamp(CROP_MIN_SIZE, 1.0);
         let crop_h = crop_h.clamp(CROP_MIN_SIZE, 1.0);
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.crop_x = crop_x;
-                clip.crop_y = crop_y;
-                clip.crop_w = crop_w;
-                clip.crop_h = crop_h;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| {
+            clip.crop_x = crop_x;
+            clip.crop_y = crop_y;
+            clip.crop_w = crop_w;
+            clip.crop_h = crop_h;
+        });
     }
 
     /// Sets `selected_clip_id`'s layer mask ([`avcore::timeline::ClipInstance::mask_shape`]/
@@ -985,53 +937,28 @@ impl OcaApp {
         mask_shape: avcore::timeline::MaskShape,
         mask_corner_radius: f32,
     ) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let mask_corner_radius = mask_corner_radius.clamp(
             *MASK_CORNER_RADIUS_RANGE.start(),
             *MASK_CORNER_RADIUS_RANGE.end(),
         );
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.mask_shape = mask_shape;
-                clip.mask_corner_radius = mask_corner_radius;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| {
+            clip.mask_shape = mask_shape;
+            clip.mask_corner_radius = mask_corner_radius;
+        });
     }
 
     /// Sets `selected_clip_id`'s horizontal mirroring
     /// ([`avcore::timeline::ClipInstance::flipped_h`]) — what checking the properties panel's
     /// "Espelhar" box does. A no-op if nothing is selected.
     pub fn set_selected_clip_flip_h(&mut self, flipped_h: bool) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.flipped_h = flipped_h;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| clip.flipped_h = flipped_h);
     }
 
     /// Sets `selected_clip_id`'s color filter
     /// ([`avcore::timeline::ClipInstance::color_filter`]) — what picking a filter in the
     /// properties panel does. A no-op if nothing is selected.
     pub fn set_selected_clip_color_filter(&mut self, color_filter: avcore::timeline::ColorFilter) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.color_filter = color_filter;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| clip.color_filter = color_filter);
     }
 
     /// Sets `selected_clip_id`'s vignette strength
@@ -1039,37 +966,19 @@ impl OcaApp {
     /// [`VIGNETTE_INTENSITY_RANGE`]) — what dragging the properties panel's vignette slider
     /// does. A no-op if nothing is selected.
     pub fn set_selected_clip_vignette(&mut self, vignette_intensity: f32) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let vignette_intensity = vignette_intensity.clamp(
             *VIGNETTE_INTENSITY_RANGE.start(),
             *VIGNETTE_INTENSITY_RANGE.end(),
         );
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.vignette_intensity = vignette_intensity;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| clip.vignette_intensity = vignette_intensity);
     }
 
     /// Sets `selected_clip_id`'s sharpen strength
     /// ([`avcore::timeline::ClipInstance::sharpen`], clamped to [`SHARPEN_RANGE`]) — what
     /// dragging the properties panel's sharpen slider does. A no-op if nothing is selected.
     pub fn set_selected_clip_sharpen(&mut self, sharpen: f32) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let sharpen = sharpen.clamp(*SHARPEN_RANGE.start(), *SHARPEN_RANGE.end());
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.sharpen = sharpen;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| clip.sharpen = sharpen);
     }
 
     /// Sets `selected_clip_id`'s chroma key settings
@@ -1083,40 +992,24 @@ impl OcaApp {
         chroma_key_color: [u8; 3],
         chroma_key_tolerance: f32,
     ) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let chroma_key_tolerance = chroma_key_tolerance.clamp(
             *CHROMA_KEY_TOLERANCE_RANGE.start(),
             *CHROMA_KEY_TOLERANCE_RANGE.end(),
         );
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.chroma_key_enabled = chroma_key_enabled;
-                clip.chroma_key_color = chroma_key_color;
-                clip.chroma_key_tolerance = chroma_key_tolerance;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| {
+            clip.chroma_key_enabled = chroma_key_enabled;
+            clip.chroma_key_color = chroma_key_color;
+            clip.chroma_key_tolerance = chroma_key_tolerance;
+        });
     }
 
     /// Sets `selected_clip_id`'s blur strength
     /// ([`avcore::timeline::ClipInstance::blur_intensity`], clamped to [`BLUR_INTENSITY_RANGE`])
     /// — what dragging the properties panel's blur slider does. A no-op if nothing is selected.
     pub fn set_selected_clip_blur(&mut self, blur_intensity: f32) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let blur_intensity =
             blur_intensity.clamp(*BLUR_INTENSITY_RANGE.start(), *BLUR_INTENSITY_RANGE.end());
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.blur_intensity = blur_intensity;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| clip.blur_intensity = blur_intensity);
     }
 
     /// Sets `selected_clip_id`'s camera-shake strength
@@ -1124,18 +1017,9 @@ impl OcaApp {
     /// [`SHAKE_INTENSITY_RANGE`]) — what dragging the properties panel's shake slider does. A
     /// no-op if nothing is selected.
     pub fn set_selected_clip_shake(&mut self, shake_intensity: f32) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let shake_intensity =
             shake_intensity.clamp(*SHAKE_INTENSITY_RANGE.start(), *SHAKE_INTENSITY_RANGE.end());
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.shake_intensity = shake_intensity;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| clip.shake_intensity = shake_intensity);
     }
 
     /// Sets `selected_clip_id`'s glitch strength
@@ -1143,20 +1027,11 @@ impl OcaApp {
     /// [`GLITCH_INTENSITY_RANGE`]) — what dragging the properties panel's glitch slider does. A
     /// no-op if nothing is selected.
     pub fn set_selected_clip_glitch(&mut self, glitch_intensity: f32) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let glitch_intensity = glitch_intensity.clamp(
             *GLITCH_INTENSITY_RANGE.start(),
             *GLITCH_INTENSITY_RANGE.end(),
         );
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.glitch_intensity = glitch_intensity;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| clip.glitch_intensity = glitch_intensity);
     }
 
     /// Sets `selected_clip_id`'s pixelize/mosaic-censor strength
@@ -1164,20 +1039,11 @@ impl OcaApp {
     /// [`PIXELIZE_INTENSITY_RANGE`]) — what dragging the properties panel's pixelize slider
     /// does. A no-op if nothing is selected.
     pub fn set_selected_clip_pixelize(&mut self, pixelize_intensity: f32) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let pixelize_intensity = pixelize_intensity.clamp(
             *PIXELIZE_INTENSITY_RANGE.start(),
             *PIXELIZE_INTENSITY_RANGE.end(),
         );
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.pixelize_intensity = pixelize_intensity;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| clip.pixelize_intensity = pixelize_intensity);
     }
 
     /// Sets `selected_clip_id`'s transition
@@ -1190,40 +1056,26 @@ impl OcaApp {
         transition_in: avcore::timeline::TransitionType,
         transition_duration_secs: f32,
     ) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let transition_duration_secs = transition_duration_secs.clamp(
             *TRANSITION_DURATION_RANGE.start(),
             *TRANSITION_DURATION_RANGE.end(),
         );
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.transition_in = transition_in;
-                clip.transition_duration_secs = transition_duration_secs;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| {
+            clip.transition_in = transition_in;
+            clip.transition_duration_secs = transition_duration_secs;
+        });
     }
 
     /// Sets `selected_clip_id`'s zoom ([`avcore::timeline::ClipInstance::zoom_start`]/
     /// `zoom_end`), each independently clamped to [`ZOOM_RANGE`] — what dragging the properties
     /// panel's zoom sliders does. A no-op if nothing is selected.
     pub fn set_selected_clip_zoom(&mut self, zoom_start: f32, zoom_end: f32) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let zoom_start = zoom_start.clamp(*ZOOM_RANGE.start(), *ZOOM_RANGE.end());
         let zoom_end = zoom_end.clamp(*ZOOM_RANGE.start(), *ZOOM_RANGE.end());
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.zoom_start = zoom_start;
-                clip.zoom_end = zoom_end;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| {
+            clip.zoom_start = zoom_start;
+            clip.zoom_end = zoom_end;
+        });
     }
 
     /// Sets `selected_clip_id`'s brightness/contrast/saturation
@@ -1237,21 +1089,14 @@ impl OcaApp {
         contrast: f32,
         saturation: f32,
     ) {
-        let Some(clip_id) = self.selected_clip_id else {
-            return;
-        };
         let brightness = brightness.clamp(*BRIGHTNESS_RANGE.start(), *BRIGHTNESS_RANGE.end());
         let contrast = contrast.clamp(*CONTRAST_RANGE.start(), *CONTRAST_RANGE.end());
         let saturation = saturation.clamp(*SATURATION_RANGE.start(), *SATURATION_RANGE.end());
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.brightness = brightness;
-                clip.contrast = contrast;
-                clip.saturation = saturation;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| {
+            clip.brightness = brightness;
+            clip.contrast = contrast;
+            clip.saturation = saturation;
+        });
     }
 
     /// Whether formatting is waiting in the clipboard for
@@ -1268,78 +1113,17 @@ impl OcaApp {
         let Some(clip) = self.selected_clip() else {
             return;
         };
-        self.formatting_clipboard = Some(ClipFormatting {
-            gain_db: clip.gain_db,
-            frozen: clip.frozen,
-            speed_factor: clip.speed_factor,
-            crop_x: clip.crop_x,
-            crop_y: clip.crop_y,
-            crop_w: clip.crop_w,
-            crop_h: clip.crop_h,
-            mask_shape: clip.mask_shape,
-            mask_corner_radius: clip.mask_corner_radius,
-            flipped_h: clip.flipped_h,
-            color_filter: clip.color_filter,
-            vignette_intensity: clip.vignette_intensity,
-            brightness: clip.brightness,
-            contrast: clip.contrast,
-            saturation: clip.saturation,
-            sharpen: clip.sharpen,
-            chroma_key_enabled: clip.chroma_key_enabled,
-            chroma_key_color: clip.chroma_key_color,
-            chroma_key_tolerance: clip.chroma_key_tolerance,
-            blur_intensity: clip.blur_intensity,
-            shake_intensity: clip.shake_intensity,
-            glitch_intensity: clip.glitch_intensity,
-            pixelize_intensity: clip.pixelize_intensity,
-            transition_in: clip.transition_in,
-            transition_duration_secs: clip.transition_duration_secs,
-            zoom_start: clip.zoom_start,
-            zoom_end: clip.zoom_end,
-        });
+        self.formatting_clipboard = Some(clip.formatting());
     }
 
     /// Applies [`OcaApp::formatting_clipboard`] onto `selected_clip_id`, without touching any
     /// other field (position, trim, composite membership) — what `Ctrl+Shift+V`/the context
     /// menu's "Colar formatação" do. A no-op if nothing is selected or the clipboard is empty.
     pub fn paste_selected_clip_formatting(&mut self) {
-        let (Some(clip_id), Some(formatting)) = (self.selected_clip_id, self.formatting_clipboard)
-        else {
+        let Some(formatting) = self.formatting_clipboard else {
             return;
         };
-        let timeline = self.active_project_mut().timeline_mut();
-        for track in &mut timeline.tracks {
-            if let Some(clip) = track.clip_mut(clip_id) {
-                clip.gain_db = formatting.gain_db;
-                clip.frozen = formatting.frozen;
-                clip.speed_factor = formatting.speed_factor;
-                clip.crop_x = formatting.crop_x;
-                clip.crop_y = formatting.crop_y;
-                clip.crop_w = formatting.crop_w;
-                clip.crop_h = formatting.crop_h;
-                clip.mask_shape = formatting.mask_shape;
-                clip.mask_corner_radius = formatting.mask_corner_radius;
-                clip.flipped_h = formatting.flipped_h;
-                clip.color_filter = formatting.color_filter;
-                clip.vignette_intensity = formatting.vignette_intensity;
-                clip.brightness = formatting.brightness;
-                clip.contrast = formatting.contrast;
-                clip.saturation = formatting.saturation;
-                clip.sharpen = formatting.sharpen;
-                clip.chroma_key_enabled = formatting.chroma_key_enabled;
-                clip.chroma_key_color = formatting.chroma_key_color;
-                clip.chroma_key_tolerance = formatting.chroma_key_tolerance;
-                clip.blur_intensity = formatting.blur_intensity;
-                clip.shake_intensity = formatting.shake_intensity;
-                clip.glitch_intensity = formatting.glitch_intensity;
-                clip.pixelize_intensity = formatting.pixelize_intensity;
-                clip.transition_in = formatting.transition_in;
-                clip.transition_duration_secs = formatting.transition_duration_secs;
-                clip.zoom_start = formatting.zoom_start;
-                clip.zoom_end = formatting.zoom_end;
-                break;
-            }
-        }
+        self.with_selected_clip_mut(|clip| clip.apply_formatting(&formatting));
     }
 
     /// Adds/removes `clip_id` from [`OcaApp::multi_selected_clip_ids`] — what `Ctrl+click`ing

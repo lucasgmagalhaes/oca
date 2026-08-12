@@ -247,6 +247,40 @@ pub struct ClipInstance {
     pub zoom_end: f32,
 }
 
+/// The rendering/display settings of a [`ClipInstance`] that can be copied onto a different
+/// block without touching its structural fields (`id`, `asset_id`, start/trim, composite
+/// membership). Used by `ui`'s "copiar formatação" feature (`Ctrl+Shift+C`/`V`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ClipFormatting {
+    pub gain_db: f32,
+    pub frozen: bool,
+    pub speed_factor: f32,
+    pub crop_x: f32,
+    pub crop_y: f32,
+    pub crop_w: f32,
+    pub crop_h: f32,
+    pub mask_shape: MaskShape,
+    pub mask_corner_radius: f32,
+    pub flipped_h: bool,
+    pub color_filter: ColorFilter,
+    pub vignette_intensity: f32,
+    pub brightness: f32,
+    pub contrast: f32,
+    pub saturation: f32,
+    pub sharpen: f32,
+    pub chroma_key_enabled: bool,
+    pub chroma_key_color: [u8; 3],
+    pub chroma_key_tolerance: f32,
+    pub blur_intensity: f32,
+    pub shake_intensity: f32,
+    pub glitch_intensity: f32,
+    pub pixelize_intensity: f32,
+    pub transition_in: TransitionType,
+    pub transition_duration_secs: f32,
+    pub zoom_start: f32,
+    pub zoom_end: f32,
+}
+
 fn default_speed_factor() -> f32 {
     1.0
 }
@@ -406,6 +440,74 @@ impl ClipInstance {
         true
     }
 
+    /// Snapshots every rendering/display field as a [`ClipFormatting`] value — used by
+    /// `ui`'s "copiar formatação" feature to copy settings that can be pasted onto a
+    /// different block without duplicating the clip itself.
+    pub fn formatting(&self) -> ClipFormatting {
+        ClipFormatting {
+            gain_db: self.gain_db,
+            frozen: self.frozen,
+            speed_factor: self.speed_factor,
+            crop_x: self.crop_x,
+            crop_y: self.crop_y,
+            crop_w: self.crop_w,
+            crop_h: self.crop_h,
+            mask_shape: self.mask_shape,
+            mask_corner_radius: self.mask_corner_radius,
+            flipped_h: self.flipped_h,
+            color_filter: self.color_filter,
+            vignette_intensity: self.vignette_intensity,
+            brightness: self.brightness,
+            contrast: self.contrast,
+            saturation: self.saturation,
+            sharpen: self.sharpen,
+            chroma_key_enabled: self.chroma_key_enabled,
+            chroma_key_color: self.chroma_key_color,
+            chroma_key_tolerance: self.chroma_key_tolerance,
+            blur_intensity: self.blur_intensity,
+            shake_intensity: self.shake_intensity,
+            glitch_intensity: self.glitch_intensity,
+            pixelize_intensity: self.pixelize_intensity,
+            transition_in: self.transition_in,
+            transition_duration_secs: self.transition_duration_secs,
+            zoom_start: self.zoom_start,
+            zoom_end: self.zoom_end,
+        }
+    }
+
+    /// Applies every field from `f` onto this clip, leaving structural fields (`id`,
+    /// `asset_id`, `start_secs`, `source_in_secs`/`source_out_secs`, `composite_id`)
+    /// unchanged — the "colar formatação" counterpart to [`Self::formatting`].
+    pub fn apply_formatting(&mut self, f: &ClipFormatting) {
+        self.gain_db = f.gain_db;
+        self.frozen = f.frozen;
+        self.speed_factor = f.speed_factor;
+        self.crop_x = f.crop_x;
+        self.crop_y = f.crop_y;
+        self.crop_w = f.crop_w;
+        self.crop_h = f.crop_h;
+        self.mask_shape = f.mask_shape;
+        self.mask_corner_radius = f.mask_corner_radius;
+        self.flipped_h = f.flipped_h;
+        self.color_filter = f.color_filter;
+        self.vignette_intensity = f.vignette_intensity;
+        self.brightness = f.brightness;
+        self.contrast = f.contrast;
+        self.saturation = f.saturation;
+        self.sharpen = f.sharpen;
+        self.chroma_key_enabled = f.chroma_key_enabled;
+        self.chroma_key_color = f.chroma_key_color;
+        self.chroma_key_tolerance = f.chroma_key_tolerance;
+        self.blur_intensity = f.blur_intensity;
+        self.shake_intensity = f.shake_intensity;
+        self.glitch_intensity = f.glitch_intensity;
+        self.pixelize_intensity = f.pixelize_intensity;
+        self.transition_in = f.transition_in;
+        self.transition_duration_secs = f.transition_duration_secs;
+        self.zoom_start = f.zoom_start;
+        self.zoom_end = f.zoom_end;
+    }
+
     /// Drags the clip's right edge to `new_end_secs` (timeline-relative), keeping `start_secs`
     /// and `source_in_secs` fixed. No-op (`false`) if that would shrink the clip below
     /// `min_duration_secs`, or (when `max_source_out_secs` is known — the source asset's own
@@ -550,6 +652,12 @@ pub struct Timeline {
 }
 
 impl Timeline {
+    /// Mutable access to the clip with `clip_id` across all tracks, if it exists. Searches
+    /// tracks in order and returns the first match — clip ids are unique within a timeline.
+    pub fn clip_mut(&mut self, clip_id: u64) -> Option<&mut ClipInstance> {
+        self.tracks.iter_mut().find_map(|t| t.clip_mut(clip_id))
+    }
+
     /// The position, in seconds, where the last clip on any track ends — i.e. how long the
     /// edited sequence runs for. `0.0` for an empty timeline.
     pub fn duration_secs(&self) -> f64 {

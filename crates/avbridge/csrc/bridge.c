@@ -17,16 +17,26 @@
 
 uint32_t avbridge_version(void) { return avformat_version(); }
 
+/* Opens `path` and reads its stream info into a new AVFormatContext.
+   Returns 0 on success (caller owns *fmt_ctx_out and must close it),
+   -1 if avformat_open_input failed, -2 if avformat_find_stream_info failed
+   (*fmt_ctx_out is NULL in both error cases). */
+static int oca_open_input(const char *path, AVFormatContext **fmt_ctx_out) {
+    if (avformat_open_input(fmt_ctx_out, path, NULL, NULL) < 0)
+        return -1;
+    if (avformat_find_stream_info(*fmt_ctx_out, NULL) < 0) {
+        avformat_close_input(fmt_ctx_out);
+        return -2;
+    }
+    return 0;
+}
+
 OcaProbeStatus avbridge_probe(const char *path, OcaProbeInfo *out) {
     AVFormatContext *fmt_ctx = NULL;
 
-    if (avformat_open_input(&fmt_ctx, path, NULL, NULL) < 0) {
-        return OCA_PROBE_ERR_OPEN;
-    }
-
-    if (avformat_find_stream_info(fmt_ctx, NULL) < 0) {
-        avformat_close_input(&fmt_ctx);
-        return OCA_PROBE_ERR_STREAM_INFO;
+    switch (oca_open_input(path, &fmt_ctx)) {
+        case -1: return OCA_PROBE_ERR_OPEN;
+        case -2: return OCA_PROBE_ERR_STREAM_INFO;
     }
 
     AVStream *video = NULL;
@@ -87,12 +97,9 @@ OcaRemuxStatus avbridge_remux_copy(const char *in_path, const char *out_path) {
     int *stream_mapping = NULL;
     OcaRemuxStatus status = OCA_REMUX_OK;
 
-    if (avformat_open_input(&in_ctx, in_path, NULL, NULL) < 0) {
-        return OCA_REMUX_ERR_OPEN_INPUT;
-    }
-    if (avformat_find_stream_info(in_ctx, NULL) < 0) {
-        avformat_close_input(&in_ctx);
-        return OCA_REMUX_ERR_STREAM_INFO;
+    switch (oca_open_input(in_path, &in_ctx)) {
+        case -1: return OCA_REMUX_ERR_OPEN_INPUT;
+        case -2: return OCA_REMUX_ERR_STREAM_INFO;
     }
 
     avformat_alloc_output_context2(&out_ctx, NULL, NULL, out_path);
@@ -481,12 +488,9 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
     int audio_in_index = -1;
     int audio_out_index = -1;
 
-    if (avformat_open_input(&in_ctx, in_path, NULL, NULL) < 0) {
-        return OCA_ENCODE_ERR_OPEN_INPUT;
-    }
-    if (avformat_find_stream_info(in_ctx, NULL) < 0) {
-        avformat_close_input(&in_ctx);
-        return OCA_ENCODE_ERR_STREAM_INFO;
+    switch (oca_open_input(in_path, &in_ctx)) {
+        case -1: return OCA_ENCODE_ERR_OPEN_INPUT;
+        case -2: return OCA_ENCODE_ERR_STREAM_INFO;
     }
 
     for (unsigned int i = 0; i < in_ctx->nb_streams; i++) {
@@ -823,15 +827,11 @@ OcaEncodeStatus avbridge_encode_timeline_export(
         int video_in_index = -1;
         int audio_in_index = -1;
 
-        if (avformat_open_input(&in_ctx, seg->source_path, NULL, NULL) < 0) {
-            status = OCA_ENCODE_ERR_OPEN_INPUT;
-            break;
+        switch (oca_open_input(seg->source_path, &in_ctx)) {
+            case -1: status = OCA_ENCODE_ERR_OPEN_INPUT; break;
+            case -2: status = OCA_ENCODE_ERR_STREAM_INFO; break;
         }
-        if (avformat_find_stream_info(in_ctx, NULL) < 0) {
-            avformat_close_input(&in_ctx);
-            status = OCA_ENCODE_ERR_STREAM_INFO;
-            break;
-        }
+        if (status != OCA_ENCODE_OK) break;
         for (unsigned int s = 0; s < in_ctx->nb_streams; s++) {
             enum AVMediaType type = in_ctx->streams[s]->codecpar->codec_type;
             if (video_in_index < 0 && type == AVMEDIA_TYPE_VIDEO) {
@@ -1322,12 +1322,9 @@ OcaLoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
         out_json[0] = '\0';
     }
 
-    if (avformat_open_input(&in_ctx, in_path, NULL, NULL) < 0) {
-        return OCA_LOUDNESS_ERR_OPEN_INPUT;
-    }
-    if (avformat_find_stream_info(in_ctx, NULL) < 0) {
-        avformat_close_input(&in_ctx);
-        return OCA_LOUDNESS_ERR_STREAM_INFO;
+    switch (oca_open_input(in_path, &in_ctx)) {
+        case -1: return OCA_LOUDNESS_ERR_OPEN_INPUT;
+        case -2: return OCA_LOUDNESS_ERR_STREAM_INFO;
     }
 
     for (unsigned int i = 0; i < in_ctx->nb_streams; i++) {
@@ -1569,12 +1566,9 @@ OcaWaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_cou
         out_max[i] = 0.0f;
     }
 
-    if (avformat_open_input(&in_ctx, in_path, NULL, NULL) < 0) {
-        return OCA_WAVEFORM_ERR_OPEN_INPUT;
-    }
-    if (avformat_find_stream_info(in_ctx, NULL) < 0) {
-        avformat_close_input(&in_ctx);
-        return OCA_WAVEFORM_ERR_STREAM_INFO;
+    switch (oca_open_input(in_path, &in_ctx)) {
+        case -1: return OCA_WAVEFORM_ERR_OPEN_INPUT;
+        case -2: return OCA_WAVEFORM_ERR_STREAM_INFO;
     }
 
     for (unsigned int i = 0; i < in_ctx->nb_streams; i++) {
@@ -1718,12 +1712,9 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
     int audio_out_index = -1;
     int64_t next_video_pts = 0;
 
-    if (avformat_open_input(&in_ctx, in_path, NULL, NULL) < 0) {
-        return OCA_PROXY_ERR_OPEN_INPUT;
-    }
-    if (avformat_find_stream_info(in_ctx, NULL) < 0) {
-        avformat_close_input(&in_ctx);
-        return OCA_PROXY_ERR_STREAM_INFO;
+    switch (oca_open_input(in_path, &in_ctx)) {
+        case -1: return OCA_PROXY_ERR_OPEN_INPUT;
+        case -2: return OCA_PROXY_ERR_STREAM_INFO;
     }
 
     for (unsigned int i = 0; i < in_ctx->nb_streams; i++) {

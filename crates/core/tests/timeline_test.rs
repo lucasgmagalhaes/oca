@@ -1,6 +1,7 @@
 use avcore::timeline::{
     ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
 };
+use avcore::ClipFormatting;
 
 fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> ClipInstance {
     ClipInstance {
@@ -854,4 +855,99 @@ fn move_clip_is_a_no_op_for_an_unknown_clip_id() {
 
     assert!(!moved);
     assert_eq!(track.clips[0], clip(1, 0.0, 0.0, 10.0));
+}
+
+#[test]
+fn formatting_roundtrip_preserves_all_fields() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.gain_db = 3.0;
+    c.frozen = true;
+    c.speed_factor = 1.5;
+    c.crop_x = 0.1;
+    c.crop_y = 0.2;
+    c.crop_w = 0.7;
+    c.crop_h = 0.8;
+    c.mask_shape = MaskShape::Circle;
+    c.mask_corner_radius = 0.25;
+    c.flipped_h = true;
+    c.color_filter = ColorFilter::Sepia;
+    c.vignette_intensity = 0.6;
+    c.brightness = 0.3;
+    c.contrast = 1.2;
+    c.saturation = 0.8;
+    c.sharpen = 0.4;
+    c.chroma_key_enabled = true;
+    c.chroma_key_color = [10, 200, 30];
+    c.chroma_key_tolerance = 0.35;
+    c.blur_intensity = 0.2;
+    c.shake_intensity = 0.1;
+    c.glitch_intensity = 0.05;
+    c.pixelize_intensity = 0.15;
+    c.transition_in = TransitionType::Fade;
+    c.transition_duration_secs = 1.0;
+    c.zoom_start = 1.2;
+    c.zoom_end = 1.8;
+
+    let fmt = c.formatting();
+
+    let mut dest = clip(2, 5.0, 0.0, 20.0);
+    dest.apply_formatting(&fmt);
+
+    assert_eq!(dest.formatting(), fmt);
+    // Structural fields must not be touched by apply_formatting.
+    assert_eq!(dest.id, 2);
+    assert_eq!(dest.start_secs, 5.0);
+    assert_eq!(dest.source_in_secs, 0.0);
+    assert_eq!(dest.source_out_secs, 20.0);
+}
+
+#[test]
+fn apply_formatting_overwrites_all_effect_fields() {
+    let neutral: ClipFormatting = clip(1, 0.0, 0.0, 10.0).formatting();
+    let mut c = clip(2, 0.0, 0.0, 5.0);
+    c.gain_db = 6.0;
+    c.color_filter = ColorFilter::BlackAndWhite;
+    c.vignette_intensity = 0.9;
+
+    c.apply_formatting(&neutral);
+
+    assert_eq!(c.gain_db, 0.0);
+    assert_eq!(c.color_filter, ColorFilter::None);
+    assert_eq!(c.vignette_intensity, 0.0);
+}
+
+#[test]
+fn timeline_clip_mut_finds_a_clip_across_tracks() {
+    let mut timeline = timeline_with(vec![
+        Track {
+            id: 1,
+            name: "V1".to_string(),
+            kind: TrackKind::Video,
+            clips: vec![clip(1, 0.0, 0.0, 10.0)],
+        },
+        Track {
+            id: 2,
+            name: "A1".to_string(),
+            kind: TrackKind::Audio,
+            clips: vec![clip(2, 0.0, 0.0, 10.0)],
+        },
+    ]);
+
+    let found = timeline.clip_mut(2).unwrap();
+    found.gain_db = 3.0;
+
+    assert_eq!(timeline.tracks[1].clips[0].gain_db, 3.0);
+    assert_eq!(timeline.tracks[0].clips[0].gain_db, 0.0);
+}
+
+#[test]
+fn timeline_clip_mut_returns_none_for_an_unknown_id() {
+    let mut timeline = timeline_with(vec![Track {
+        id: 1,
+        name: "V1".to_string(),
+        kind: TrackKind::Video,
+        clips: vec![clip(1, 0.0, 0.0, 10.0)],
+    }]);
+
+    assert!(timeline.clip_mut(99).is_none());
 }

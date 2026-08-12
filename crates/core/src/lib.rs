@@ -34,5 +34,5 @@ pub use render::{
     render_export, render_export_job, render_timeline_export, resolve_timeline_segments,
     RenderError, RenderOutcome,
 };
-pub use timeline::{ClipInstance, Timeline, Track, TrackKind};
+pub use timeline::{ClipFormatting, ClipInstance, Timeline, Track, TrackKind};
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};
