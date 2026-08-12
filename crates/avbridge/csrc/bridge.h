@@ -136,6 +136,12 @@ typedef struct {
        atempo filter in the shared audio graph. Values are clamped to [0.5, 100.0] for the
        audio side (atempo's supported range); video setpts handles any positive value. */
     float speed_factor;
+    /* Ken-burns zoom: linear interpolation from zoom_start to zoom_end over the clip's
+       output duration. 1.0 is no zoom; 1.5 shows the center 67% of the frame scaled to full
+       size. Applied via an animated crop+scale stage after the fps conform step. Both values
+       are clamped to [0.1, 20.0]. No-op when both are 1.0. */
+    float zoom_start;
+    float zoom_end;
 } OcaClipSegment;
 
 /* Renders an ordered sequence of trimmed clips (`segments`, `segment_count` of them) as one

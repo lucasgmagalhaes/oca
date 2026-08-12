@@ -986,7 +986,7 @@ OcaEncodeStatus avbridge_encode_timeline_export(
            a final format lock so the encoder always receives yuv420p regardless of what the
            clip filters produce. Rebuilt every segment since the clip filter differs. */
         {
-            char vfilter_descr[1024];
+            char vfilter_descr[2048];
             const char *clip_filter =
                 (seg->video_filter && seg->video_filter[0]) ? seg->video_filter : "";
             char setpts_str[48] = "";
@@ -994,11 +994,51 @@ OcaEncodeStatus avbridge_encode_timeline_export(
                 snprintf(setpts_str, sizeof(setpts_str), "setpts=PTS/%.6f,",
                          (double)seg->speed_factor);
             }
+            char zoom_str[512] = "";
+            float zs = seg->zoom_start > 0.0f ? seg->zoom_start : 1.0f;
+            float ze = seg->zoom_end > 0.0f ? seg->zoom_end : 1.0f;
+            if (zs < 0.1f) zs = 0.1f;  if (zs > 20.0f) zs = 20.0f;
+            if (ze < 0.1f) ze = 0.1f;  if (ze > 20.0f) ze = 20.0f;
+            if (fabsf(zs - 1.0f) > 1e-4f || fabsf(ze - 1.0f) > 1e-4f) {
+                double source_dur = seg->source_out_secs - seg->source_in_secs;
+                double speed = seg->speed_factor > 0.0f ? seg->speed_factor : 1.0f;
+                double timeline_dur = source_dur / speed;
+                double total_frames =
+                    timeline_dur * (double)canvas_fps.num / (double)canvas_fps.den;
+                if (total_frames < 1.0) total_frames = 1.0;
+                double N = total_frames - 1.0;
+                if (N < 1.0) N = 1.0;
+                double A = zs;
+                double B = ((double)ze - (double)zs) / N;
+                if (fabs(B) < 1e-9) {
+                    snprintf(zoom_str, sizeof(zoom_str),
+                             "crop=iw/%.5f:ih/%.5f:iw*(1-1/%.5f)/2:ih*(1-1/%.5f)/2"
+                             ",scale=iw*%.5f:ih*%.5f",
+                             A, A, A, A, A, A);
+                } else {
+                    snprintf(zoom_str, sizeof(zoom_str),
+                             "crop=iw/(%.7f+%.9f*n):ih/(%.7f+%.9f*n)"
+                             ":iw*(1-1/(%.7f+%.9f*n))/2:ih*(1-1/(%.7f+%.9f*n))/2"
+                             ",scale=iw*(%.7f+%.9f*n):ih*(%.7f+%.9f*n)",
+                             A, B, A, B, A, B, A, B, A, B, A, B);
+                }
+            }
+            /* Build the post-fps portion: optional zoom, optional clip_filter, separated by
+               commas only where both neighbours are non-empty. */
+            char post_fps[1600] = "";
+            if (zoom_str[0] && clip_filter[0]) {
+                snprintf(post_fps, sizeof(post_fps), "%s,%s", zoom_str, clip_filter);
+            } else if (zoom_str[0]) {
+                snprintf(post_fps, sizeof(post_fps), "%s", zoom_str);
+            } else if (clip_filter[0]) {
+                snprintf(post_fps, sizeof(post_fps), "%s", clip_filter);
+            }
             snprintf(vfilter_descr, sizeof(vfilter_descr),
                      "%sscale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-"
                      "ih)/2,fps=%d/%d%s%s,format=yuv420p",
                      setpts_str, canvas_width, canvas_height, canvas_width, canvas_height,
-                     canvas_fps.num, canvas_fps.den, clip_filter[0] ? "," : "", clip_filter);
+                     canvas_fps.num, canvas_fps.den,
+                     post_fps[0] ? "," : "", post_fps);
             if (init_video_filter_chain(vdec_ctx, vfilter_descr, &vchain) < 0) {
                 status = OCA_ENCODE_ERR_FILTER_GRAPH;
                 goto segment_cleanup;

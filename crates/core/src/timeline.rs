@@ -360,12 +360,11 @@ impl ClipInstance {
     /// `features/request.md`'s Fase 4 "Efeitos visuais" list): crop, brightness/contrast/
     /// saturation, the black-and-white/sepia color filter, vignette, sharpen, chroma key, blur,
     /// and horizontal flip. `gain_db` is audio, not video, and isn't part of this chain.
-    /// `speed_factor` is handled in `bridge.c` via a `setpts` filter inserted before the canvas
-    /// fps stage (not here). `mask_shape`/`glitch_intensity`/`transition_in`/`zoom_start`/
-    /// `zoom_end` each need a materially different mechanism
-    /// (alpha-geometry compositing, cross-clip blending, keyframed
-    /// crop-over-time) and aren't covered here yet. `frozen` also needs a different mechanism
-    /// (frame duplication) but is covered elsewhere — see [`ClipInstance::frozen`]'s doc.
+    /// `speed_factor` and `zoom_start`/`zoom_end` are handled in `bridge.c` (not here).
+    /// `mask_shape`/`transition_in` each need a materially different mechanism
+    /// (alpha-geometry compositing, cross-clip blending) and aren't covered here yet.
+    /// `frozen` also needs a different mechanism (frame duplication) but is covered elsewhere —
+    /// see [`ClipInstance::frozen`]'s doc.
     ///
     /// Returns `""` (no-op) if none of the covered effects deviate from neutral. Filters are
     /// comma-joined in a fixed order — crop first (so later filters see the cropped frame,
@@ -426,6 +425,14 @@ impl ClipInstance {
                 "crop=iw*{keep:.4}:ih*{keep:.4}:iw*{m:.4}*(1+sin(n*0.31)):ih*{m:.4}*(1+cos(n*0.23)),scale=iw*{sb:.4}:ih*{sb:.4}",
                 m = margin,
                 sb = scale_back,
+            ));
+        }
+        if self.glitch_intensity > 0.0 {
+            // Temporal luma + chroma noise approximates digital glitch corruption.
+            let ls = (self.glitch_intensity * 60.0).round() as u32;
+            let cs = (self.glitch_intensity * 25.0).round() as u32;
+            stages.push(format!(
+                "noise=c0s={ls}:c0f=t:c1s={cs}:c1f=t:c2s={cs}:c2f=t"
             ));
         }
         if self.has_vignette() {

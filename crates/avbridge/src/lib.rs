@@ -20,6 +20,8 @@ struct RawClipSegment {
     video_filter: *const c_char,
     frozen: c_int,
     speed_factor: f32,
+    zoom_start: f32,
+    zoom_end: f32,
 }
 
 #[repr(C)]
@@ -393,6 +395,12 @@ pub struct ClipSegment {
     /// conform stage (video) and an `atempo=speed` command in the shared audio
     /// filter graph. Audio is clamped to `[0.5, 100.0]` (atempo's range).
     pub speed_factor: f32,
+    /// Ken-burns zoom: linearly interpolated from `zoom_start` to `zoom_end` over the clip's
+    /// output duration. `1.0` is no zoom. Handled in `bridge.c` via an animated crop+scale
+    /// filter after the canvas fps conform step.
+    pub zoom_start: f32,
+    /// See [`ClipSegment::zoom_start`].
+    pub zoom_end: f32,
 }
 
 /// The fixed output frame size/rate every segment in an [`encode_timeline_export`] call is
@@ -459,6 +467,8 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
             video_filter: filt.as_ptr(),
             frozen: seg.frozen as c_int,
             speed_factor: seg.speed_factor,
+            zoom_start: seg.zoom_start,
+            zoom_end: seg.zoom_end,
         })
         .collect();
 

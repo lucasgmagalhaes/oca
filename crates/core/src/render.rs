@@ -196,6 +196,8 @@ pub fn resolve_timeline_segments(
             video_filter: clip.video_filter_chain(),
             frozen: clip.frozen,
             speed_factor: clip.speed_factor,
+            zoom_start: clip.zoom_start,
+            zoom_end: clip.zoom_end,
         });
     }
     let (width, height, fps) = dimensions_fps.ok_or(RenderError::EmptyTimeline)?;

@@ -105,6 +105,8 @@ fn clip(
         video_filter: video_filter.to_string(),
         frozen: false,
         speed_factor: 1.0,
+        zoom_start: 1.0,
+        zoom_end: 1.0,
     }
 }
 
