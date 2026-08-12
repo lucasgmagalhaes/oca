@@ -14,6 +14,8 @@ use avcore::{
 use eframe::egui;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
+use tracing::{debug, error, info, warn};
+
 use crate::i18n::{Locale, Text};
 use crate::screens;
 use crate::theme;
@@ -460,7 +462,14 @@ impl OcaApp {
     /// what a project card click on the Início screen does.
     pub fn open_project(&mut self, index: usize) {
         self.active_project = index;
-        let asset_id = self.active_project().media_library.first().map(|a| a.id);
+        let project = self.active_project();
+        info!(
+            project_id = project.id,
+            name = %project.name,
+            path = ?project.file_path,
+            "project opened"
+        );
+        let asset_id = project.media_library.first().map(|a| a.id);
         self.select_asset(asset_id);
         self.screen = Screen::Editor;
     }
@@ -543,19 +552,20 @@ impl OcaApp {
 
         match avcore::preview::Preview::open(&path, Some(&clip)) {
             Ok(preview) => {
+                debug!(path = %path.display(), clip_id = clip.id, "preview pipeline opened");
                 let playhead = self.active_project().timeline().playhead_secs;
                 let offset = clip.source_in_secs + (playhead - clip.start_secs);
                 if let Err(e) = preview.seek(offset) {
-                    eprintln!("failed to seek newly opened preview: {e}");
+                    warn!(error = %e, "failed to seek newly opened preview");
                 }
                 if self.preview_playing {
                     if let Err(e) = preview.play() {
-                        eprintln!("failed to resume preview playback across a cut: {e}");
+                        warn!(error = %e, "failed to resume preview playback across a cut");
                     }
                 }
                 self.preview = Some(preview);
             }
-            Err(e) => eprintln!("failed to open preview for {}: {e}", path.display()),
+            Err(e) => error!(path = %path.display(), error = %e, "failed to open preview pipeline"),
         }
     }
 
@@ -572,7 +582,7 @@ impl OcaApp {
         };
         match result {
             Ok(()) => self.preview_playing = !self.preview_playing,
-            Err(e) => eprintln!("failed to toggle preview playback: {e}"),
+            Err(e) => warn!(error = %e, "failed to toggle preview playback"),
         }
     }
 
@@ -592,7 +602,7 @@ impl OcaApp {
             (Some(preview), Some(clip)) => {
                 let offset = clip.source_in_secs + (position_secs - clip.start_secs);
                 if let Err(e) = preview.seek(offset) {
-                    eprintln!("failed to seek preview: {e}");
+                    warn!(error = %e, "failed to seek preview");
                 }
                 self.active_project_mut().timeline_mut().playhead_secs = position_secs;
             }
@@ -1449,6 +1459,13 @@ impl OcaApp {
                         .max()
                         .unwrap_or(0)
                         + 1;
+                    info!(
+                        asset_id = next_id,
+                        path = %asset.source_path.display(),
+                        codec = %asset.codec,
+                        duration_secs = asset.duration_secs,
+                        "asset imported"
+                    );
                     asset.id = next_id;
                     project.media_library.push(asset);
                     self.pending_enrichment.insert(import_token, next_id);
@@ -1469,6 +1486,12 @@ impl OcaApp {
                     };
                     if let Some(asset) = project.media_library.iter_mut().find(|a| a.id == asset_id)
                     {
+                        debug!(
+                            asset_id,
+                            loudness_lufs = loudness,
+                            has_proxy = proxy_path.is_some(),
+                            "asset enrichment complete"
+                        );
                         asset.loudness = loudness;
                         asset.proxy_path = proxy_path;
                         asset.waveform_peaks = waveform_peaks;
@@ -1476,6 +1499,7 @@ impl OcaApp {
                 }
                 ImportEvent::Failed { path, message } => {
                     self.pending_imports = self.pending_imports.saturating_sub(1);
+                    error!(path = %path.display(), error = %message, "asset import failed");
                     self.push_toast(format!(
                         "Import failed — {}: {message}",
                         path.file_name()
@@ -1562,6 +1586,7 @@ impl OcaApp {
         output_path: String,
     ) {
         let id = self.export_jobs.iter().map(|j| j.id).max().unwrap_or(0) + 1;
+        info!(job_id = id, title = %title, output = %output_path, "export job queued");
         self.export_jobs.push(ExportJob {
             id,
             title,
@@ -1599,17 +1624,20 @@ impl OcaApp {
                 }
                 RenderEvent::Done { job_id } => {
                     if let Some(job) = self.export_jobs.iter_mut().find(|j| j.id == job_id) {
+                        info!(job_id, output = %job.output_path, "export job completed");
                         job.status = ExportJobStatus::Done;
                     }
                     self.active_renders.remove(&job_id);
                 }
                 RenderEvent::Failed { job_id, message } => {
                     if let Some(job) = self.export_jobs.iter_mut().find(|j| j.id == job_id) {
+                        error!(job_id, output = %job.output_path, error = %message, "export job failed");
                         job.status = ExportJobStatus::Failed { message };
                     }
                     self.active_renders.remove(&job_id);
                 }
                 RenderEvent::Cancelled { job_id } => {
+                    debug!(job_id, "export job cancelled");
                     self.export_jobs.retain(|j| j.id != job_id);
                     self.active_renders.remove(&job_id);
                 }
@@ -1637,6 +1665,7 @@ impl OcaApp {
         let cancel_flag = Arc::new(AtomicBool::new(false));
         self.active_renders.insert(job_id, Arc::clone(&cancel_flag));
 
+        info!(job_id, output = %output_path.display(), "export render worker dispatched");
         let tx = self.render_tx.clone();
         std::thread::spawn(move || {
             let outcome = avcore::render_export_job(
@@ -1665,6 +1694,7 @@ impl OcaApp {
     /// Queues a short-lived error message to be shown as a floating overlay at the bottom-right
     /// of the window. Replaces silent `eprintln!` calls for user-facing errors.
     pub fn push_toast(&mut self, message: String) {
+        warn!(message = %message, "user-facing error toast");
         self.toasts.push((message, Instant::now()));
     }
 
@@ -1749,10 +1779,13 @@ impl OcaApp {
             Err(_) => return,
         };
         let autosave_path = file_path.with_extension("autosave.json");
+        debug!(path = %autosave_path.display(), "writing autosave");
         self.project_dirty = false;
         self.last_autosave_instant = Some(now);
         std::thread::spawn(move || {
-            let _ = std::fs::write(autosave_path, json.as_bytes());
+            if let Err(e) = std::fs::write(&autosave_path, json.as_bytes()) {
+                error!(path = %autosave_path.display(), error = %e, "autosave write failed");
+            }
         });
     }
 
@@ -1778,12 +1811,14 @@ impl OcaApp {
                         let id = self.active_project().id;
                         restored.file_path = file_path;
                         restored.id = id;
+                        info!(path = %autosave_path.display(), "autosave restored");
                         *self.active_project_mut() = restored;
                         self.project_dirty = false;
                     }
                     self.autosave_restore_pending = None;
                 }
                 if ui.button(crate::i18n::Text::AutosaveDiscard.tr(locale)).clicked() {
+                    info!(path = %autosave_path.display(), "autosave discarded");
                     let _ = std::fs::remove_file(&autosave_path);
                     self.autosave_restore_pending = None;
                 }

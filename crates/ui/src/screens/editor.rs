@@ -298,7 +298,10 @@ fn save_active_project(app: &mut OcaApp) {
     let Some(path) = path else { return };
 
     match avcore::save_project_to_file(app.active_project(), &path) {
-        Ok(()) => app.active_project_mut().file_path = Some(path),
+        Ok(()) => {
+            tracing::info!(path = %path.display(), "project saved");
+            app.active_project_mut().file_path = Some(path);
+        }
         Err(e) => app.push_toast(format!("Failed to save project: {e}")),
     }
 }
