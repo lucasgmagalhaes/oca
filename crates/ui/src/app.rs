@@ -310,6 +310,10 @@ pub struct OcaApp {
     /// Timestamp of the last successful autosave write — used to enforce the 30-second
     /// ceiling that forces a save even during continuous editing.
     last_autosave_instant: Option<Instant>,
+    /// Short-lived error messages shown as floating overlays at the bottom-right of the window.
+    /// Each entry is `(message, born_at)`; [`OcaApp::show_toasts`] removes entries older than
+    /// 4 seconds each frame. Use [`OcaApp::push_toast`] to add one.
+    toasts: Vec<(String, Instant)>,
     /// Whether the preferences modal is currently open — toggled by the nav rail's ⚙ button.
     /// Kept separate from `screen` so the modal overlays whatever screen is currently active
     /// rather than replacing it with a dedicated route.
@@ -363,6 +367,7 @@ impl OcaApp {
             clipboard_clip: None,
             formatting_clipboard: None,
             multi_selected_clip_ids: HashSet::new(),
+            toasts: Vec::new(),
             prefs_open: false,
             project_dirty: false,
             last_edit_instant: None,
@@ -1471,7 +1476,12 @@ impl OcaApp {
                 }
                 ImportEvent::Failed { path, message } => {
                     self.pending_imports = self.pending_imports.saturating_sub(1);
-                    eprintln!("failed to import {}: {message}", path.display());
+                    self.push_toast(format!(
+                        "Import failed — {}: {message}",
+                        path.file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| path.display().to_string())
+                    ));
                 }
             }
         }
@@ -1650,6 +1660,46 @@ impl OcaApp {
             };
             let _ = tx.send(event);
         });
+    }
+
+    /// Queues a short-lived error message to be shown as a floating overlay at the bottom-right
+    /// of the window. Replaces silent `eprintln!` calls for user-facing errors.
+    pub fn push_toast(&mut self, message: String) {
+        self.toasts.push((message, Instant::now()));
+    }
+
+    /// Renders any active toasts and evicts ones older than 4 seconds. Called from [`ui`] each
+    /// frame; uses `egui::Area` in `Foreground` order so toasts float above all panels.
+    fn show_toasts(&mut self, ctx: &egui::Context) {
+        let now = Instant::now();
+        self.toasts
+            .retain(|(_, born)| now.duration_since(*born) < Duration::from_secs(4));
+        if self.toasts.is_empty() {
+            return;
+        }
+        egui::Area::new(egui::Id::new("toasts"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -16.0))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    for (msg, born) in self.toasts.iter().rev().take(3) {
+                        let age = now.duration_since(*born).as_secs_f32();
+                        let alpha = if age > 3.0 { 1.0 - (age - 3.0) } else { 1.0 };
+                        egui::Frame::new()
+                            .fill(theme::ERROR.linear_multiply(alpha))
+                            .corner_radius(6)
+                            .inner_margin(egui::Margin::symmetric(12, 8))
+                            .show(ui, |ui| {
+                                ui.set_max_width(360.0);
+                                ui.label(
+                                    egui::RichText::new(msg.as_str())
+                                        .color(egui::Color32::WHITE.linear_multiply(alpha)),
+                                );
+                            });
+                        ui.add_space(6.0);
+                    }
+                });
+            });
     }
 
     /// Shows the preferences modal when `prefs_open` is set, overlaying whatever screen is
@@ -1989,6 +2039,7 @@ impl eframe::App for OcaApp {
             Screen::Queue => screens::queue::show(self, ui),
         });
         self.show_prefs_modal(ui.ctx());
+        self.show_toasts(ui.ctx());
     }
 }
 

@@ -38,7 +38,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                                 app.add_and_open_project(project);
                                 app.check_autosave_on_open(&path);
                             }
-                            Err(e) => eprintln!("failed to open project: {e}"),
+                            Err(e) => app.push_toast(format!("Failed to open project: {e}")),
                         }
                     }
                 }
