@@ -27,6 +27,17 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                     &project.sequences[project.active_sequence],
                     &project.media_library,
                 );
+                let size_estimate_label = if let Ok((ref segments, ref canvas)) = resolved {
+                    let duration_secs: f64 = segments
+                        .iter()
+                        .map(|s| (s.source_out_secs - s.source_in_secs) / s.speed_factor as f64)
+                        .sum();
+                    // 192 kbps AAC (matches bridge.c aenc_ctx->bit_rate for timeline export)
+                    let bytes = (canvas.bit_rate_bps + 192_000) as f64 * duration_secs / 8.0;
+                    Some(format_file_size(bytes))
+                } else {
+                    None
+                };
                 let add_button = egui::Button::new(Text::AddExport.tr(locale));
                 let response = ui
                     .add_enabled(resolved.is_ok(), add_button)
@@ -83,6 +94,16 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                     if ui.selectable_label(selected, ratio.label()).clicked() {
                         app.export_aspect_ratio = *ratio;
                     }
+                }
+                if let Some(size_label) = size_estimate_label {
+                    ui.add_space(6.0);
+                    ui.label(
+                        eframe::egui::RichText::new(
+                            Text::ExportSizeEstimate.tr(locale).replace("{size}", &size_label),
+                        )
+                        .size(11.0)
+                        .color(crate::theme::TEXT_MUTED),
+                    );
                 }
             });
         });
@@ -248,6 +269,14 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
             }
         }
     });
+}
+
+fn format_file_size(bytes: f64) -> String {
+    if bytes >= 1_073_741_824.0 {
+        format!("{:.1} GB", bytes / 1_073_741_824.0)
+    } else {
+        format!("{:.0} MB", bytes / 1_048_576.0)
+    }
 }
 
 #[cfg(target_os = "windows")]

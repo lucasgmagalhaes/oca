@@ -224,6 +224,7 @@ text_catalog! {
     AutosaveRestore: pt_br = "Restaurar autosave", en = "Restore autosave";
     AutosaveDiscard: pt_br = "Descartar", en = "Discard";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
+    ExportSizeEstimate: pt_br = "~{size} estimado", en = "~{size} estimated";
     CrashDetected: pt_br = "oca não foi encerrado corretamente na sessão anterior. Reabra seus projetos para verificar se há autosaves de recuperação.", en = "oca did not exit cleanly in the previous session. Reopen your projects to check for recovery autosaves.";
 }
 
