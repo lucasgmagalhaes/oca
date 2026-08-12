@@ -142,7 +142,6 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         active_project: 0,
         selected_asset_id: None,
         export_jobs,
-        queue_workers: 1,
         prefs: PrefsState::default(),
         render_tx,
         render_rx,

@@ -84,18 +84,6 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                         app.export_aspect_ratio = *ratio;
                     }
                 }
-                ui.add_space(10.0);
-                ui.label(
-                    RichText::new(Text::ConcurrentWorkers.tr(locale))
-                        .size(12.0)
-                        .color(theme::TEXT_MUTED),
-                );
-                for w in [4u8, 2, 1] {
-                    let selected = app.queue_workers == w;
-                    if ui.selectable_label(selected, format!("{w}")).clicked() {
-                        app.queue_workers = w;
-                    }
-                }
             });
         });
         ui.add_space(4.0);

@@ -204,13 +204,12 @@ pub struct OcaApp {
     pub active_project: usize,
     pub selected_asset_id: Option<u64>,
     pub export_jobs: Vec<ExportJob>,
-    pub queue_workers: u8,
     pub prefs: PrefsState,
     render_tx: UnboundedSender<RenderEvent>,
     render_rx: UnboundedReceiver<RenderEvent>,
     /// Cancellation flags for jobs a worker thread is currently rendering, keyed by job id.
     /// A job id present here is the source of truth for "how many workers are busy right
-    /// now" — [`OcaApp::pump_export_queue`] uses its length against `queue_workers`.
+    /// now" — [`OcaApp::pump_export_queue`] uses its length against `prefs.export_workers`.
     active_renders: HashMap<u64, Arc<AtomicBool>>,
     /// The GStreamer pipeline for the clip currently covering the active sequence's timeline
     /// playhead, if it could be opened (`None` before any project has a clip at the playhead,
@@ -346,7 +345,6 @@ impl OcaApp {
             active_project: 0,
             selected_asset_id: None,
             export_jobs: Vec::new(),
-            queue_workers: 1,
             prefs: PrefsState::default(),
             render_tx,
             render_rx,
@@ -1649,7 +1647,7 @@ impl OcaApp {
             }
         }
 
-        if self.active_renders.len() >= self.queue_workers as usize {
+        if self.active_renders.len() >= self.prefs.export_workers as usize {
             return;
         }
         let Some(job) = self
