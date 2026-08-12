@@ -53,6 +53,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
             .show(ui, |ui| {
                 let count = app.projects.len();
                 let mut open_index: Option<usize> = None;
+                let mut remove_index: Option<usize> = None;
                 let mut col = 0usize;
                 let cols_per_row = 3usize;
                 for i in 0..count {
@@ -104,14 +105,26 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                         });
                     });
 
-                    if resp
+                    let card_resp = resp
                         .response
                         .interact(egui::Sense::click())
-                        .on_hover_cursor(egui::CursorIcon::PointingHand)
-                        .clicked()
-                    {
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+
+                    if card_resp.clicked() {
                         open_index = Some(i);
                     }
+
+                    let file_path = app.projects[i].file_path.clone();
+                    card_resp.context_menu(|ui| {
+                        if ui.button(crate::i18n::Text::HomeCtxRemove.tr(app.locale)).clicked() {
+                            remove_index = Some(i);
+                        }
+                        if let Some(path) = &file_path {
+                            if ui.button(crate::i18n::Text::HomeCtxShowInFinder.tr(app.locale)).clicked() {
+                                open_in_finder(path);
+                            }
+                        }
+                    });
 
                     col += 1;
                     if col >= cols_per_row {
@@ -120,9 +133,30 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                     }
                 }
 
-                if let Some(i) = open_index {
+                if let Some(i) = remove_index {
+                    app.remove_project(i);
+                } else if let Some(i) = open_index {
                     app.open_project(i);
                 }
             });
     });
+}
+
+#[cfg(target_os = "macos")]
+fn open_in_finder(path: &std::path::PathBuf) {
+    let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+}
+
+#[cfg(target_os = "windows")]
+fn open_in_finder(path: &std::path::PathBuf) {
+    let _ = std::process::Command::new("explorer")
+        .arg(format!("/select,{}", path.display()))
+        .spawn();
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn open_in_finder(path: &std::path::PathBuf) {
+    if let Some(dir) = path.parent() {
+        let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+    }
 }

@@ -82,6 +82,8 @@ text_catalog! {
     NewProject: pt_br = "＋ Novo projeto", en = "＋ New project";
     OpenProject: pt_br = "Abrir projeto…", en = "Open project…";
     UntitledProject: pt_br = "Projeto sem título", en = "Untitled project";
+    HomeCtxRemove: pt_br = "Remover da lista", en = "Remove from list";
+    HomeCtxShowInFinder: pt_br = "Mostrar no Finder", en = "Show in Finder";
     Save: pt_br = "💾 Salvar", en = "💾 Save";
     ClipsUnit: pt_br = "clipes", en = "clips";
     ClipUnitSingular: pt_br = "clipe", en = "clip";

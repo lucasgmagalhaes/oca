@@ -735,6 +735,26 @@ impl OcaApp {
         self.open_project(idx);
     }
 
+    /// Removes the project at `index` from the in-memory list and from `prefs.recent_project_paths`,
+    /// then persists prefs. Adjusts `active_project` so it stays in bounds. Does NOT navigate —
+    /// the caller (Home screen) decides whether to switch screens.
+    pub fn remove_project(&mut self, index: usize) {
+        if index >= self.projects.len() {
+            return;
+        }
+        // Remove from recents before dropping the project.
+        if let Some(path) = &self.projects[index].file_path {
+            let path_str = path.display().to_string();
+            self.prefs.recent_project_paths.retain(|p| p != &path_str);
+        }
+        self.projects.remove(index);
+        // Keep active_project in bounds.
+        if !self.projects.is_empty() && self.active_project >= self.projects.len() {
+            self.active_project = self.projects.len() - 1;
+        }
+        self.save_prefs();
+    }
+
     /// Builds an empty project with a fresh id and opens it — what "Novo projeto" does.
     pub fn create_new_project(&mut self, name: String) {
         let id = self.projects.iter().map(|p| p.id).max().unwrap_or(0) + 1;
