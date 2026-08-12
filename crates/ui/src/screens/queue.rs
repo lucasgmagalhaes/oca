@@ -40,13 +40,33 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                             .set_file_name(default_name)
                             .save_file()
                         {
-                            app.queue_export(
-                                sequence_name,
-                                segments,
-                                canvas,
-                                target_lufs,
-                                output.display().to_string(),
-                            );
+                            let proceed = if output.exists() {
+                                let filename = output
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().into_owned())
+                                    .unwrap_or_else(|| output.display().to_string());
+                                rfd::MessageDialog::new()
+                                    .set_title(Text::ExportFileExistsTitle.tr(locale))
+                                    .set_description(format!("{filename} already exists."))
+                                    .set_level(rfd::MessageLevel::Warning)
+                                    .set_buttons(rfd::MessageButtons::OkCancelCustom(
+                                        Text::ExportFileExistsOverwrite.tr(locale).to_owned(),
+                                        "Cancel".to_owned(),
+                                    ))
+                                    .show()
+                                    == rfd::MessageDialogResult::Ok
+                            } else {
+                                true
+                            };
+                            if proceed {
+                                app.queue_export(
+                                    sequence_name,
+                                    segments,
+                                    canvas,
+                                    target_lufs,
+                                    output.display().to_string(),
+                                );
+                            }
                         }
                     }
                 }

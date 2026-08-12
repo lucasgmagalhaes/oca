@@ -217,6 +217,8 @@ text_catalog! {
     ShortcutMarkInOut: pt_br = "Marcar entrada / saída", en = "Mark in / out";
     ShortcutSendToQueue: pt_br = "Enviar para fila de exportação", en = "Send to export queue";
     KeySpace: pt_br = "Espaço", en = "Space";
+    ExportFileExistsTitle: pt_br = "Arquivo já existe", en = "File already exists";
+    ExportFileExistsOverwrite: pt_br = "Sobrescrever", en = "Overwrite";
     AutosaveFound: pt_br = "Foi encontrado um autosave mais recente para este projeto. Deseja restaurá-lo?", en = "A more recent autosave was found for this project. Do you want to restore it?";
     AutosaveRestore: pt_br = "Restaurar autosave", en = "Restore autosave";
     AutosaveDiscard: pt_br = "Descartar", en = "Discard";
