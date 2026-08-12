@@ -54,6 +54,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                 let count = app.projects.len();
                 let mut open_index: Option<usize> = None;
                 let mut remove_index: Option<usize> = None;
+                let mut rename_index: Option<usize> = None;
                 let mut col = 0usize;
                 let cols_per_row = 3usize;
                 for i in 0..count {
@@ -116,6 +117,9 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
 
                     let file_path = app.projects[i].file_path.clone();
                     card_resp.context_menu(|ui| {
+                        if ui.button(crate::i18n::Text::HomeCtxRename.tr(app.locale)).clicked() {
+                            rename_index = Some(i);
+                        }
                         if ui.button(crate::i18n::Text::HomeCtxRemove.tr(app.locale)).clicked() {
                             remove_index = Some(i);
                         }
@@ -133,7 +137,10 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                     }
                 }
 
-                if let Some(i) = remove_index {
+                if let Some(i) = rename_index {
+                    let current_name = app.projects[i].name.clone();
+                    app.renaming_project = Some((i, current_name));
+                } else if let Some(i) = remove_index {
                     app.remove_project(i);
                 } else if let Some(i) = open_index {
                     app.open_project(i);

@@ -342,6 +342,9 @@ pub struct OcaApp {
     /// `Original` (source dimensions). Persists between export invocations so the user doesn't
     /// have to re-select it every time.
     pub export_aspect_ratio: avcore::ExportAspectRatio,
+    /// When `Some((index, buffer))`, a rename modal is shown for `projects[index]` with `buffer`
+    /// as the editable name field. Committed on Enter/confirm, discarded on Escape/cancel.
+    pub renaming_project: Option<(usize, String)>,
 }
 
 impl OcaApp {
@@ -417,6 +420,7 @@ impl OcaApp {
             autosave_restore_pending: None,
             crash_detected,
             export_aspect_ratio: avcore::ExportAspectRatio::default(),
+            renaming_project: None,
         }
     }
 
@@ -1821,6 +1825,73 @@ impl OcaApp {
         }
     }
 
+    /// Shows the rename-project modal when `renaming_project` is `Some`. Commits the new name on
+    /// Enter or the "Rename" button, discards on Escape or "Cancel". If the project has a saved
+    /// file on disk the updated project is written back immediately so the name persists.
+    fn show_rename_project_modal(&mut self, ctx: &egui::Context) {
+        let Some((idx, _)) = self.renaming_project.as_ref() else {
+            return;
+        };
+        let idx = *idx;
+        let locale = self.locale;
+        let modal = egui::Modal::new(egui::Id::new("rename_project_modal"));
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.label(
+                eframe::egui::RichText::new(i18n::Text::RenameProjectTitle.tr(locale))
+                    .size(15.0)
+                    .strong(),
+            );
+            ui.add_space(10.0);
+            let buf = &mut self.renaming_project.as_mut().unwrap().1;
+            let text_edit = ui.add(
+                egui::TextEdit::singleline(buf)
+                    .desired_width(f32::INFINITY)
+                    .hint_text(i18n::Text::RenameProjectTitle.tr(locale)),
+            );
+            text_edit.request_focus();
+            if text_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                confirmed = true;
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .button(i18n::Text::RenameProjectConfirm.tr(locale))
+                    .clicked()
+                {
+                    confirmed = true;
+                }
+                if ui.button(i18n::Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if response.should_close() || cancelled {
+            self.renaming_project = None;
+            return;
+        }
+        if confirmed {
+            if let Some((_, new_name)) = self.renaming_project.take() {
+                let name = new_name.trim().to_string();
+                if !name.is_empty() && idx < self.projects.len() {
+                    self.projects[idx].name = name;
+                    if let Some(path) = self.projects[idx].file_path.clone() {
+                        if let Err(e) =
+                            avcore::save_project_to_file(&self.projects[idx], &path)
+                        {
+                            self.push_toast(format!("Failed to save rename: {e}"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Writes the active project to a `<name>.autosave.json` recovery file next to the project's
     /// own save file, subject to a 2-second idle debounce and a 30-second forced-save ceiling.
     /// Skips silently if the project has never been saved (no `file_path` yet) or hasn't changed.
@@ -2238,6 +2309,7 @@ impl eframe::App for OcaApp {
             Screen::Queue => screens::queue::show(self, ui),
         });
         self.show_prefs_modal(ui.ctx());
+        self.show_rename_project_modal(ui.ctx());
         self.show_toasts(ui.ctx());
     }
 
