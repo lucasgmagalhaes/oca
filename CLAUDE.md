@@ -103,26 +103,26 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
 
 - **Fase 5/6 (partially done):** export queue now supports **aspect ratio selection**
   (`ExportAspectRatio`: Original/16:9/9:16/1:1; `core::render::apply_export_aspect_ratio`
-  overrides the canvas w/h; the queue screen has a compact inline picker). **Preferences are
+  overrides the canvas w/h; the queue screen has a compact inline picker). **Preferences
   persisted** to a platform JSON file (`~/Library/Application Support/oca/prefs.json` on macOS,
-  `%APPDATA%\oca\prefs.json` on Windows, `~/.config/oca/prefs.json` on Linux) — loaded at
-  startup, saved on prefs modal close (`OcaApp::save_prefs` / `load_prefs`; `serde` derive on
-  `PrefsState`). **Debounced autosave** (2s idle / 30s ceiling, background write to
-  `<project>.autosave.json`) with **restore-on-open modal** when a newer autosave is found.
-  **Crash detection** via a sentinel file (`oca.running` next to prefs) — written on launch,
-  deleted in `OcaApp::on_exit`; survives a crash and triggers a one-time toast + tracing warn
-  on the next launch, prompting the user to reopen their projects to check for autosave
-  recovery. **Prefs modal** converted from a full screen to an `egui::Modal` overlay (Prefs is
-  no longer a `Screen` variant). **Error toasts** for import/open/save failures replace silent
-  `eprintln!` calls. **File conflict check** in the Add Export dialog (native `rfd::MessageDialog`
-  confirm-overwrite). **Estimated file size** shown in the export queue job detail line.
-  **Structured logging** with `tracing` macros instrumented across import/export/preview/project/
-  autosave paths — subscriber wiring (`tracing-subscriber` + `tracing-appender` rolling file)
-  is documented in `main.rs::init_logging()` and `ui/Cargo.toml` comments, pending a
-  `cargo fetch` when network is available. **Export worker count** unified under
-  `prefs.export_workers` (the old duplicate `queue_workers` field and its inline selector were
-  removed). **Not yet done**: GPU encode, key bindings configuráveis, Whisper subtitles, text
-  overlays, layer masks, transitions, multi-track compositing.
+  `%APPDATA%\oca\prefs.json` on Windows, `~/.config/oca/prefs.json` on Linux) — includes
+  `lufs_profile`, `true_peak_limiter`, `export_workers`, `output_folder`, `autosave_minutes`,
+  `recent_project_paths`, and **locale** (UI language persists across restarts).
+  **Export queue persisted** to `queue.json` alongside `prefs.json` — jobs saved on
+  add/cancel/Done/Failed; loaded at startup with Rendering/Paused jobs reset to Queued.
+  **Recent project list** — persisted in `prefs.recent_project_paths`, restored at startup,
+  capped at 10, stale entries pruned on each prefs save. **Debounced autosave** (2s idle /
+  30s ceiling, background write to `<project>.autosave.json`) with **restore-on-open modal**
+  when a newer autosave is found. **Crash detection** via sentinel file (`oca.running`) +
+  **panic hook** writing `crash_<ts>.txt` to the log dir. **Prefs modal** overlays the current
+  screen (`egui::Modal`). **Home screen right-click context menu** on project cards: "Project
+  settings..." (editable name + description via modal), "Remove from list",
+  "Show in Finder/Explorer". **Export file dialog** opens at `prefs.output_folder` when set.
+  **File size estimate** (`~X MB`) shown in the queue header based on canvas bitrate + 192kbps
+  AAC × total output duration. **Structured logging** via `tracing` + rolling file +
+  stderr (debug builds); `main.rs::init_logging()`. **Export worker count** under
+  `prefs.export_workers`. **Not yet done**: GPU encode, key bindings configuráveis, Whisper
+  subtitles, text overlays, layer masks, transitions, multi-track compositing.
 
 ## Commands
 
