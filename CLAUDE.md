@@ -101,6 +101,29 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   bottom-center) regardless of render status. Check `features/request.md` for what's still
   unbuilt before assuming a feature is live — when in doubt, `graphify query`.
 
+- **Fase 5/6 (partially done):** export queue now supports **aspect ratio selection**
+  (`ExportAspectRatio`: Original/16:9/9:16/1:1; `core::render::apply_export_aspect_ratio`
+  overrides the canvas w/h; the queue screen has a compact inline picker). **Preferences are
+  persisted** to a platform JSON file (`~/Library/Application Support/oca/prefs.json` on macOS,
+  `%APPDATA%\oca\prefs.json` on Windows, `~/.config/oca/prefs.json` on Linux) — loaded at
+  startup, saved on prefs modal close (`OcaApp::save_prefs` / `load_prefs`; `serde` derive on
+  `PrefsState`). **Debounced autosave** (2s idle / 30s ceiling, background write to
+  `<project>.autosave.json`) with **restore-on-open modal** when a newer autosave is found.
+  **Crash detection** via a sentinel file (`oca.running` next to prefs) — written on launch,
+  deleted in `OcaApp::on_exit`; survives a crash and triggers a one-time toast + tracing warn
+  on the next launch, prompting the user to reopen their projects to check for autosave
+  recovery. **Prefs modal** converted from a full screen to an `egui::Modal` overlay (Prefs is
+  no longer a `Screen` variant). **Error toasts** for import/open/save failures replace silent
+  `eprintln!` calls. **File conflict check** in the Add Export dialog (native `rfd::MessageDialog`
+  confirm-overwrite). **Estimated file size** shown in the export queue job detail line.
+  **Structured logging** with `tracing` macros instrumented across import/export/preview/project/
+  autosave paths — subscriber wiring (`tracing-subscriber` + `tracing-appender` rolling file)
+  is documented in `main.rs::init_logging()` and `ui/Cargo.toml` comments, pending a
+  `cargo fetch` when network is available. **Export worker count** unified under
+  `prefs.export_workers` (the old duplicate `queue_workers` field and its inline selector were
+  removed). **Not yet done**: GPU encode, key bindings configuráveis, Whisper subtitles, text
+  overlays, layer masks, transitions, multi-track compositing.
+
 ## Commands
 
 Requires Rust (stable) via rustup, either the MSVC or GNU target.
