@@ -56,7 +56,7 @@ impl Default for PrefsState {
             lufs_profile: 0,
             true_peak_limiter: true,
             export_workers: 1,
-            output_folder: r"C:\Videos\PacoPaçoca\Export".to_string(),
+            output_folder: String::new(),
             autosave_minutes: 5,
         }
     }
