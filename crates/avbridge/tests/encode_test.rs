@@ -104,6 +104,7 @@ fn clip(
         gain_db,
         video_filter: video_filter.to_string(),
         frozen: false,
+        speed_factor: 1.0,
     }
 }
 

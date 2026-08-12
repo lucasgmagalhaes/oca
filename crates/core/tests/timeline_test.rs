@@ -313,7 +313,10 @@ fn split_clip_at_keeps_speed_factor_on_both_halves() {
     clip.speed_factor = 2.0;
     let mut track = track_with(vec![clip]);
 
-    let split = track.split_clip_at(20.0, 99);
+    // With speed=2.0 the clip's timeline duration is (20-0)/2=10s, spanning 10..20.
+    // Split at 15.0 (midpoint) — splitting at the former end boundary (20.0) would now
+    // be outside the clip and return false.
+    let split = track.split_clip_at(15.0, 99);
 
     assert!(split);
     assert_eq!(track.clips[0].speed_factor, 2.0);

@@ -19,6 +19,7 @@ struct RawClipSegment {
     gain_db: f32,
     video_filter: *const c_char,
     frozen: c_int,
+    speed_factor: f32,
 }
 
 #[repr(C)]
@@ -387,6 +388,11 @@ pub struct ClipSegment {
     /// `video_filter` still applies to every held frame. Audio is unaffected either way — still
     /// decoded/played across the full `source_in_secs..source_out_secs` range.
     pub frozen: bool,
+    /// Playback speed multiplier — `1.0` is normal speed, `2.0` is double speed,
+    /// `0.5` is half speed. Drives a `setpts=PTS/speed` filter before the fps
+    /// conform stage (video) and an `atempo=speed` command in the shared audio
+    /// filter graph. Audio is clamped to `[0.5, 100.0]` (atempo's range).
+    pub speed_factor: f32,
 }
 
 /// The fixed output frame size/rate every segment in an [`encode_timeline_export`] call is
@@ -452,6 +458,7 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
             gain_db: seg.gain_db,
             video_filter: filt.as_ptr(),
             frozen: seg.frozen as c_int,
+            speed_factor: seg.speed_factor,
         })
         .collect();
 

@@ -913,8 +913,8 @@ OcaEncodeStatus avbridge_encode_timeline_export(
                this graph — the value here is just segment 0's own gain, applied the same way
                right after setup below. */
             snprintf(afilter_descr, sizeof(afilter_descr),
-                     "volume@vol=0dB,loudnorm=I=%.1f:TP=-1.0:LRA=11,alimiter=limit=0.95:attack="
-                     "5:release=50",
+                     "atempo@tempo=1.0,volume@vol=0dB,loudnorm=I=%.1f:TP=-1.0:LRA=11,alimiter="
+                     "limit=0.95:attack=5:release=50",
                      (double)target_lufs);
             if (init_audio_filter_chain(adec_ctx, aencoder, afilter_descr, &achain) < 0) {
                 status = OCA_ENCODE_ERR_FILTER_GRAPH;
@@ -972,6 +972,13 @@ OcaEncodeStatus avbridge_encode_timeline_export(
             char gain_str[32];
             snprintf(gain_str, sizeof(gain_str), "%.4fdB", (double)seg->gain_db);
             avfilter_graph_send_command(achain.graph, "vol", "volume", gain_str, NULL, 0, 0);
+
+            float spd = seg->speed_factor > 0.0f ? seg->speed_factor : 1.0f;
+            if (spd < 0.5f) spd = 0.5f;
+            if (spd > 100.0f) spd = 100.0f;
+            char tempo_str[32];
+            snprintf(tempo_str, sizeof(tempo_str), "%.6f", (double)spd);
+            avfilter_graph_send_command(achain.graph, "tempo", "tempo", tempo_str, NULL, 0, 0);
         }
 
         /* Per-segment video filter chain: canvas-conform (scale/pad/fps, so every segment
@@ -982,11 +989,16 @@ OcaEncodeStatus avbridge_encode_timeline_export(
             char vfilter_descr[1024];
             const char *clip_filter =
                 (seg->video_filter && seg->video_filter[0]) ? seg->video_filter : "";
+            char setpts_str[48] = "";
+            if (fabsf(seg->speed_factor - 1.0f) > 1e-4f && seg->speed_factor > 0.0f) {
+                snprintf(setpts_str, sizeof(setpts_str), "setpts=PTS/%.6f,",
+                         (double)seg->speed_factor);
+            }
             snprintf(vfilter_descr, sizeof(vfilter_descr),
-                     "scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-"
+                     "%sscale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-"
                      "ih)/2,fps=%d/%d%s%s,format=yuv420p",
-                     canvas_width, canvas_height, canvas_width, canvas_height, canvas_fps.num,
-                     canvas_fps.den, clip_filter[0] ? "," : "", clip_filter);
+                     setpts_str, canvas_width, canvas_height, canvas_width, canvas_height,
+                     canvas_fps.num, canvas_fps.den, clip_filter[0] ? "," : "", clip_filter);
             if (init_video_filter_chain(vdec_ctx, vfilter_descr, &vchain) < 0) {
                 status = OCA_ENCODE_ERR_FILTER_GRAPH;
                 goto segment_cleanup;

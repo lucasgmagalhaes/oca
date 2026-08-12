@@ -131,6 +131,11 @@ typedef struct {
        unaffected — still decoded/played across the full source_in_secs..source_out_secs range
        regardless of this flag. */
     int frozen;
+    /* Playback speed multiplier — 1.0 is normal speed. Video is handled by a setpts filter
+       inserted before the canvas-conform fps stage (see bridge.c). Audio is handled by the
+       atempo filter in the shared audio graph. Values are clamped to [0.5, 100.0] for the
+       audio side (atempo's supported range); video setpts handles any positive value. */
+    float speed_factor;
 } OcaClipSegment;
 
 /* Renders an ordered sequence of trimmed clips (`segments`, `segment_count` of them) as one

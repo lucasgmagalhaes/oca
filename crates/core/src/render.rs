@@ -195,6 +195,7 @@ pub fn resolve_timeline_segments(
             gain_db: clip.gain_db,
             video_filter: clip.video_filter_chain(),
             frozen: clip.frozen,
+            speed_factor: clip.speed_factor,
         });
     }
     let (width, height, fps) = dimensions_fps.ok_or(RenderError::EmptyTimeline)?;
@@ -229,7 +230,10 @@ pub fn render_export_job(
 ) -> Result<RenderOutcome, RenderError> {
     let total_duration_secs: f64 = segments
         .iter()
-        .map(|s| s.source_out_secs - s.source_in_secs)
+        .map(|s| {
+            let speed = if s.speed_factor > 0.0 { s.speed_factor as f64 } else { 1.0 };
+            (s.source_out_secs - s.source_in_secs) / speed
+        })
         .sum();
 
     let outcome =

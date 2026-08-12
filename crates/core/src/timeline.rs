@@ -309,7 +309,7 @@ impl ClipInstance {
     /// How long this instance plays for, i.e. its trimmed length — not the source asset's
     /// full duration.
     pub fn duration_secs(&self) -> f64 {
-        self.source_out_secs - self.source_in_secs
+        (self.source_out_secs - self.source_in_secs) / self.speed_factor as f64
     }
 
     /// Linear amplitude multiplier for [`ClipInstance::gain_db`] — e.g. `+6.0` dB roughly
@@ -360,9 +360,10 @@ impl ClipInstance {
     /// `features/request.md`'s Fase 4 "Efeitos visuais" list): crop, brightness/contrast/
     /// saturation, the black-and-white/sepia color filter, vignette, sharpen, chroma key, blur,
     /// and horizontal flip. `gain_db` is audio, not video, and isn't part of this chain.
-    /// `speed_factor`/`mask_shape`/`shake_intensity`/`glitch_intensity`/`pixelize_intensity`/
-    /// `transition_in`/`zoom_start`/`zoom_end` each need a materially different mechanism
-    /// (resampling+retiming, alpha-geometry compositing, cross-clip blending, keyframed
+    /// `speed_factor` is handled in `bridge.c` via a `setpts` filter inserted before the canvas
+    /// fps stage (not here). `mask_shape`/`glitch_intensity`/`transition_in`/`zoom_start`/
+    /// `zoom_end` each need a materially different mechanism
+    /// (alpha-geometry compositing, cross-clip blending, keyframed
     /// crop-over-time) and aren't covered here yet. `frozen` also needs a different mechanism
     /// (frame duplication) but is covered elsewhere — see [`ClipInstance::frozen`]'s doc.
     ///
@@ -405,6 +406,28 @@ impl ClipInstance {
         if self.sharpen > 0.0 {
             stages.push(format!("unsharp=5:5:{:.2}:5:5:0.0", self.sharpen * 3.0));
         }
+        if self.pixelize_intensity > 0.0 {
+            // Scale down to block_size-pixel grid then back up — nearest-neighbor gives the
+            // hard mosaic look. block ranges from 2px (subtle) to 50px (heavy censorship).
+            let block = (2.0 + self.pixelize_intensity * 48.0).round() as u32;
+            stages.push(format!(
+                "scale=iw/{b}:ih/{b}:flags=neighbor,scale=iw*{b}:ih*{b}:flags=neighbor",
+                b = block
+            ));
+        }
+        if self.shake_intensity > 0.0 {
+            // Crop away a margin on all sides (giving room to "shake" into), oscillate the crop
+            // origin with two independent sinusoids, then scale back to the original frame size.
+            // margin at full intensity: 8% of each dimension per side.
+            let margin = self.shake_intensity * 0.08_f32;
+            let keep = 1.0_f32 - 2.0 * margin;
+            let scale_back = 1.0 / keep;
+            stages.push(format!(
+                "crop=iw*{keep:.4}:ih*{keep:.4}:iw*{m:.4}*(1+sin(n*0.31)):ih*{m:.4}*(1+cos(n*0.23)),scale=iw*{sb:.4}:ih*{sb:.4}",
+                m = margin,
+                sb = scale_back,
+            ));
+        }
         if self.has_vignette() {
             stages.push(format!("vignette=PI/4*{:.3}", self.vignette_intensity));
         }
@@ -428,10 +451,13 @@ impl ClipInstance {
     /// would put `new_start_secs` or the resulting `source_in_secs` below zero, or shrink the
     /// clip below `min_duration_secs`.
     pub fn trim_start(&mut self, new_start_secs: f64, min_duration_secs: f64) -> bool {
-        let delta = new_start_secs - self.start_secs;
-        let new_source_in_secs = self.source_in_secs + delta;
-        let new_duration_secs = self.source_out_secs - new_source_in_secs;
-        if new_start_secs < 0.0 || new_source_in_secs < 0.0 || new_duration_secs < min_duration_secs
+        let timeline_delta = new_start_secs - self.start_secs;
+        let new_source_in_secs = self.source_in_secs + timeline_delta * self.speed_factor as f64;
+        let new_source_duration = self.source_out_secs - new_source_in_secs;
+        let new_timeline_duration = new_source_duration / self.speed_factor as f64;
+        if new_start_secs < 0.0
+            || new_source_in_secs < 0.0
+            || new_timeline_duration < min_duration_secs
         {
             return false;
         }
@@ -518,9 +544,10 @@ impl ClipInstance {
         min_duration_secs: f64,
         max_source_out_secs: Option<f64>,
     ) -> bool {
-        let new_duration_secs = new_end_secs - self.start_secs;
-        let new_source_out_secs = self.source_in_secs + new_duration_secs;
-        if new_duration_secs < min_duration_secs {
+        let new_timeline_duration = new_end_secs - self.start_secs;
+        let new_source_out_secs =
+            self.source_in_secs + new_timeline_duration * self.speed_factor as f64;
+        if new_timeline_duration < min_duration_secs {
             return false;
         }
         if let Some(max) = max_source_out_secs {
@@ -565,7 +592,8 @@ impl Track {
         };
 
         let clip = &mut self.clips[index];
-        let split_source_secs = clip.source_in_secs + (at_secs - clip.start_secs);
+        let split_source_secs =
+            clip.source_in_secs + (at_secs - clip.start_secs) * clip.speed_factor as f64;
         let second_half = ClipInstance {
             id: new_clip_id,
             asset_id: clip.asset_id,
