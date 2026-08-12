@@ -2,8 +2,8 @@ use avcore::media::MediaKind;
 use eframe::egui::{self, RichText};
 
 use crate::app::OcaApp;
+use crate::components;
 use crate::i18n::Text;
-use crate::screens::widgets;
 use crate::theme;
 
 /// Renders the Mídia screen: a grid of every asset in the active project's media library.
@@ -70,24 +70,24 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                                     });
                                 ui.label(RichText::new(&asset.file_name).size(12.5));
                                 ui.horizontal_wrapped(|ui| {
-                                    widgets::tag_outline(ui, &asset.codec);
+                                    components::tag_outline(ui, &asset.codec);
                                     if asset.source_bitrate_mbps > 0.0 {
-                                        widgets::tag_outline(
+                                        components::tag_outline(
                                             ui,
                                             &format!("{:.0} Mbps", asset.source_bitrate_mbps),
                                         );
                                     }
                                     if let Some(khz) = asset.sample_rate_khz {
-                                        widgets::tag_outline(ui, &format!("{khz:.0}kHz"));
+                                        components::tag_outline(ui, &format!("{khz:.0}kHz"));
                                     }
                                     if let Some(l) = &asset.loudness {
-                                        widgets::tag_outline(
+                                        components::tag_outline(
                                             ui,
                                             &format!("{:.1} LUFS", l.integrated_lufs),
                                         );
                                     }
                                     if asset.proxy_path.is_some() {
-                                        widgets::tag_accent(ui, Text::ProxyReady.tr(locale));
+                                        components::tag_accent(ui, Text::ProxyReady.tr(locale));
                                     }
                                 });
                                 ui.label(

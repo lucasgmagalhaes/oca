@@ -1,21 +1,6 @@
-//! Small presentation-only helpers shared across screens: the uppercase section headers,
-//! pill-shaped "tag" chips (in accent/outline/error colors), and the standard card `Frame`.
-//! None of these read `OcaApp` — callers pass in already-translated text.
-
 use eframe::egui::{self, Color32, RichText, Ui};
 
 use crate::theme;
-
-/// An uppercase, muted section header (e.g. "BIBLIOTECA DE MÍDIA").
-pub fn section_label(ui: &mut Ui, text: &str) {
-    ui.label(
-        RichText::new(text.to_uppercase())
-            .size(11.0)
-            .color(theme::TEXT_MUTED)
-            .strong(),
-    );
-    ui.add_space(6.0);
-}
 
 /// A pill-shaped chip in an arbitrary foreground/background color pair. Prefer
 /// [`tag_accent`]/[`tag_outline`]/[`tag_error`] for the palette's standard combinations.
@@ -42,14 +27,4 @@ pub fn tag_outline(ui: &mut Ui, text: &str) {
 /// A tag in the error color — used for failure states (e.g. "Falhou").
 pub fn tag_error(ui: &mut Ui, text: &str) {
     tag(ui, text, theme::ERROR, theme::ERROR_TINT);
-}
-
-/// The standard bordered/rounded card background used for project cards, media cards, and
-/// export queue rows.
-pub fn card_frame() -> egui::Frame {
-    egui::Frame::new()
-        .fill(theme::SURFACE)
-        .stroke(egui::Stroke::new(1.0, theme::BORDER))
-        .corner_radius(10)
-        .inner_margin(egui::Margin::same(14))
 }

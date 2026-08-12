@@ -1,8 +1,8 @@
 use eframe::egui::{self, RichText};
 
 use crate::app::OcaApp;
+use crate::components;
 use crate::i18n::Text;
-use crate::screens::widgets;
 use crate::theme;
 
 /// Renders the Início screen: a grid of recent-project cards. Clicking a card opens that
@@ -71,7 +71,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                         &track_names,
                     );
 
-                    let resp = widgets::card_frame().show(ui, |ui| {
+                    let resp = components::card_frame().show(ui, |ui| {
                         ui.set_width(card_width - 28.0);
                         ui.vertical(|ui| {
                             egui::Frame::new()

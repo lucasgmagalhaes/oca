@@ -1,8 +1,8 @@
 use eframe::egui::{self, RichText};
 
 use crate::app::{OcaApp, LUFS_PROFILES};
+use crate::components;
 use crate::i18n::{Locale, Text};
-use crate::screens::widgets;
 use crate::theme;
 
 /// Renders the Ajustes screen: language switcher, audio/export/project settings, and the
@@ -20,7 +20,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
         ui.add_space(16.0);
         ui.set_max_width(640.0);
 
-        widgets::card_frame().show(ui, |ui| {
+        components::card_frame().show(ui, |ui| {
             ui.label(
                 RichText::new(Text::PrefsLanguage.tr(locale))
                     .size(11.0)
@@ -41,7 +41,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
         });
         ui.add_space(14.0);
 
-        widgets::card_frame().show(ui, |ui| {
+        components::card_frame().show(ui, |ui| {
             ui.label(
                 RichText::new(Text::PrefsAudio.tr(locale))
                     .size(11.0)
@@ -68,7 +68,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
         });
         ui.add_space(14.0);
 
-        widgets::card_frame().show(ui, |ui| {
+        components::card_frame().show(ui, |ui| {
             ui.label(
                 RichText::new(Text::PrefsExport.tr(locale))
                     .size(11.0)
@@ -98,7 +98,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
         });
         ui.add_space(14.0);
 
-        widgets::card_frame().show(ui, |ui| {
+        components::card_frame().show(ui, |ui| {
             ui.label(
                 RichText::new(Text::PrefsProject.tr(locale))
                     .size(11.0)
@@ -120,7 +120,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
         });
         ui.add_space(14.0);
 
-        widgets::card_frame().show(ui, |ui| {
+        components::card_frame().show(ui, |ui| {
             ui.label(
                 RichText::new(Text::PrefsShortcuts.tr(locale))
                     .size(11.0)

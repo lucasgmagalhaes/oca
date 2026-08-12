@@ -10,8 +10,8 @@ use crate::app::{
     PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SHAKE_INTENSITY_RANGE, SHARPEN_RANGE,
     SPEED_FACTOR_RANGE, THUMBNAIL_BUCKET_SECS, VIGNETTE_INTENSITY_RANGE,
 };
+use crate::components;
 use crate::i18n::Text;
-use crate::screens::widgets;
 use crate::theme;
 
 /// Renders the Editor screen: toolbar, then a three-column row (media library / preview /
@@ -326,7 +326,7 @@ fn media_library_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: 
             ui.set_height(height);
             ui.vertical(|ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    widgets::section_label(ui, Text::MediaLibrary.tr(app.locale));
+                    components::section_label(ui, Text::MediaLibrary.tr(app.locale));
                     for asset in &app.active_project().media_library {
                         let selected = app.selected_asset_id == Some(asset.id);
                         let bg = if selected {
@@ -492,7 +492,7 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
             ui.set_width(width);
             ui.set_height(height);
             ui.vertical(|ui| {
-                widgets::section_label(ui, Text::SelectedClip.tr(locale));
+                components::section_label(ui, Text::SelectedClip.tr(locale));
                 let Some(asset) = app.selected_asset() else {
                     ui.label(
                         RichText::new(Text::NoClipSelected.tr(locale)).color(theme::TEXT_MUTED),
@@ -534,14 +534,14 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                 ui.add_space(10.0);
                 ui.separator();
                 ui.add_space(6.0);
-                widgets::section_label(ui, Text::OnExport.tr(locale));
+                components::section_label(ui, Text::OnExport.tr(locale));
                 ui.horizontal_wrapped(|ui| {
                     let (_, target) = crate::app::LUFS_PROFILES[app.prefs.lufs_profile];
-                    widgets::tag_accent(
+                    components::tag_accent(
                         ui,
                         &format!("{} → {target:.0} LUFS", Text::NormalizeTo.tr(locale)),
                     );
-                    widgets::tag_outline(
+                    components::tag_outline(
                         ui,
                         &format!(
                             "{} ({:.0} Mbps)",
@@ -581,427 +581,380 @@ fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32
                     let mut transition_in = clip.transition_in;
                     let mut transition_duration_secs = clip.transition_duration_secs;
                     let (mut zoom_start, mut zoom_end) = (clip.zoom_start, clip.zoom_end);
-                    ui.add_space(10.0);
-                    ui.separator();
-                    ui.add_space(6.0);
-                    widgets::section_label(ui, Text::PropGain.tr(locale));
-                    let slider = ui.add(
-                        egui::Slider::new(&mut gain_db, GAIN_DB_RANGE)
-                            .suffix(" dB")
-                            .fixed_decimals(1),
-                    );
-                    if slider.changed() {
+                    if components::property_section(
+                        ui,
+                        Text::PropGain.tr(locale),
+                        Text::GainExportNote.tr(locale),
+                        |ui| {
+                            ui.add(
+                                egui::Slider::new(&mut gain_db, GAIN_DB_RANGE)
+                                    .suffix(" dB")
+                                    .fixed_decimals(1),
+                            )
+                            .changed()
+                        },
+                    ) {
                         app.set_selected_clip_gain(gain_db);
                     }
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new(Text::GainExportNote.tr(locale))
-                            .size(10.5)
-                            .color(theme::TEXT_MUTED),
-                    );
 
                     // "Congelar" only makes sense for a video block — audio clips have no
                     // frame to hold.
-                    if app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Video) {
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                        let checkbox = ui.checkbox(&mut frozen, Text::PropFreeze.tr(locale));
-                        if checkbox.changed() {
-                            app.set_selected_clip_frozen(frozen);
-                        }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(Text::FreezeExportNote.tr(locale))
-                                .size(10.5)
-                                .color(theme::TEXT_MUTED),
-                        );
+                    if app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Video)
+                        && components::property_toggle(
+                            ui,
+                            Text::PropFreeze.tr(locale),
+                            Text::FreezeExportNote.tr(locale),
+                            &mut frozen,
+                        )
+                    {
+                        app.set_selected_clip_frozen(frozen);
                     }
 
-                    ui.add_space(10.0);
-                    ui.separator();
-                    ui.add_space(6.0);
-                    widgets::section_label(ui, Text::PropSpeed.tr(locale));
-                    let speed_slider = ui.add(
-                        egui::Slider::new(&mut speed_factor, SPEED_FACTOR_RANGE)
-                            .suffix("x")
-                            .fixed_decimals(2),
-                    );
-                    if speed_slider.changed() {
+                    if components::property_section(
+                        ui,
+                        Text::PropSpeed.tr(locale),
+                        Text::SpeedExportNote.tr(locale),
+                        |ui| {
+                            ui.add(
+                                egui::Slider::new(&mut speed_factor, SPEED_FACTOR_RANGE)
+                                    .suffix("x")
+                                    .fixed_decimals(2),
+                            )
+                            .changed()
+                        },
+                    ) {
                         app.set_selected_clip_speed(speed_factor);
                     }
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new(Text::SpeedExportNote.tr(locale))
-                            .size(10.5)
-                            .color(theme::TEXT_MUTED),
-                    );
 
                     // Crop reframes the video frame itself — no meaning for an audio block.
                     if app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Video) {
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                        widgets::section_label(ui, Text::PropCrop.tr(locale));
-                        let mut crop_changed = false;
-                        ui.horizontal(|ui| {
-                            crop_changed |= ui
-                                .add(
-                                    egui::DragValue::new(&mut crop_x)
-                                        .speed(0.01)
-                                        .range(0.0..=1.0)
-                                        .prefix("x "),
-                                )
-                                .changed();
-                            crop_changed |= ui
-                                .add(
-                                    egui::DragValue::new(&mut crop_y)
-                                        .speed(0.01)
-                                        .range(0.0..=1.0)
-                                        .prefix("y "),
-                                )
-                                .changed();
-                        });
-                        ui.horizontal(|ui| {
-                            crop_changed |= ui
-                                .add(
-                                    egui::DragValue::new(&mut crop_w)
-                                        .speed(0.01)
-                                        .range(CROP_MIN_SIZE..=1.0)
-                                        .prefix("w "),
-                                )
-                                .changed();
-                            crop_changed |= ui
-                                .add(
-                                    egui::DragValue::new(&mut crop_h)
-                                        .speed(0.01)
-                                        .range(CROP_MIN_SIZE..=1.0)
-                                        .prefix("h "),
-                                )
-                                .changed();
-                        });
-                        if crop_changed {
-                            app.set_selected_clip_crop(crop_x, crop_y, crop_w, crop_h);
-                        }
-                        if ui.button(Text::CropReset.tr(locale)).clicked() {
-                            app.set_selected_clip_crop(0.0, 0.0, 1.0, 1.0);
-                        }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(Text::CropExportNote.tr(locale))
-                                .size(10.5)
-                                .color(theme::TEXT_MUTED),
+                        components::property_section(
+                            ui,
+                            Text::PropCrop.tr(locale),
+                            Text::CropExportNote.tr(locale),
+                            |ui| {
+                                let mut crop_changed = false;
+                                ui.horizontal(|ui| {
+                                    crop_changed |= ui
+                                        .add(
+                                            egui::DragValue::new(&mut crop_x)
+                                                .speed(0.01)
+                                                .range(0.0..=1.0)
+                                                .prefix("x "),
+                                        )
+                                        .changed();
+                                    crop_changed |= ui
+                                        .add(
+                                            egui::DragValue::new(&mut crop_y)
+                                                .speed(0.01)
+                                                .range(0.0..=1.0)
+                                                .prefix("y "),
+                                        )
+                                        .changed();
+                                });
+                                ui.horizontal(|ui| {
+                                    crop_changed |= ui
+                                        .add(
+                                            egui::DragValue::new(&mut crop_w)
+                                                .speed(0.01)
+                                                .range(CROP_MIN_SIZE..=1.0)
+                                                .prefix("w "),
+                                        )
+                                        .changed();
+                                    crop_changed |= ui
+                                        .add(
+                                            egui::DragValue::new(&mut crop_h)
+                                                .speed(0.01)
+                                                .range(CROP_MIN_SIZE..=1.0)
+                                                .prefix("h "),
+                                        )
+                                        .changed();
+                                });
+                                if crop_changed {
+                                    app.set_selected_clip_crop(crop_x, crop_y, crop_w, crop_h);
+                                }
+                                if ui.button(Text::CropReset.tr(locale)).clicked() {
+                                    app.set_selected_clip_crop(0.0, 0.0, 1.0, 1.0);
+                                }
+                                crop_changed
+                            },
                         );
 
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                        widgets::section_label(ui, Text::PropMask.tr(locale));
-                        let mut mask_changed = false;
-                        egui::ComboBox::from_id_salt("mask_shape")
-                            .selected_text(mask_shape_label(mask_shape, locale))
-                            .show_ui(ui, |ui| {
-                                for shape in [
-                                    avcore::timeline::MaskShape::None,
-                                    avcore::timeline::MaskShape::Circle,
-                                    avcore::timeline::MaskShape::RoundedRect,
-                                ] {
+                        let mask_changed = components::property_section(
+                            ui,
+                            Text::PropMask.tr(locale),
+                            Text::MaskExportNote.tr(locale),
+                            |ui| {
+                                let mut mask_changed = components::enum_combo(
+                                    ui,
+                                    "mask_shape",
+                                    &[
+                                        avcore::timeline::MaskShape::None,
+                                        avcore::timeline::MaskShape::Circle,
+                                        avcore::timeline::MaskShape::RoundedRect,
+                                    ],
+                                    &mut mask_shape,
+                                    |shape| mask_shape_label(shape, locale),
+                                );
+                                if mask_shape == avcore::timeline::MaskShape::RoundedRect {
                                     mask_changed |= ui
-                                        .selectable_value(
-                                            &mut mask_shape,
-                                            shape,
-                                            mask_shape_label(shape, locale),
+                                        .add(
+                                            egui::Slider::new(
+                                                &mut mask_corner_radius,
+                                                MASK_CORNER_RADIUS_RANGE,
+                                            )
+                                            .text(Text::MaskCornerRadius.tr(locale)),
                                         )
                                         .changed();
                                 }
-                            });
-                        if mask_shape == avcore::timeline::MaskShape::RoundedRect {
-                            let radius_slider = ui.add(
-                                egui::Slider::new(
-                                    &mut mask_corner_radius,
-                                    MASK_CORNER_RADIUS_RANGE,
-                                )
-                                .text(Text::MaskCornerRadius.tr(locale)),
-                            );
-                            mask_changed |= radius_slider.changed();
-                        }
+                                mask_changed
+                            },
+                        );
                         if mask_changed {
                             app.set_selected_clip_mask(mask_shape, mask_corner_radius);
                         }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(Text::MaskExportNote.tr(locale))
-                                .size(10.5)
-                                .color(theme::TEXT_MUTED),
-                        );
 
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                        let flip_checkbox = ui.checkbox(&mut flipped_h, Text::PropFlip.tr(locale));
-                        if flip_checkbox.changed() {
+                        if components::property_toggle(
+                            ui,
+                            Text::PropFlip.tr(locale),
+                            Text::FlipExportNote.tr(locale),
+                            &mut flipped_h,
+                        ) {
                             app.set_selected_clip_flip_h(flipped_h);
                         }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(Text::FlipExportNote.tr(locale))
-                                .size(10.5)
-                                .color(theme::TEXT_MUTED),
-                        );
 
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                        widgets::section_label(ui, Text::PropColorFilter.tr(locale));
-                        let mut color_filter_changed = false;
-                        egui::ComboBox::from_id_salt("color_filter")
-                            .selected_text(color_filter_label(color_filter, locale))
-                            .show_ui(ui, |ui| {
-                                for filter in [
-                                    avcore::timeline::ColorFilter::None,
-                                    avcore::timeline::ColorFilter::BlackAndWhite,
-                                    avcore::timeline::ColorFilter::Sepia,
-                                ] {
-                                    color_filter_changed |= ui
-                                        .selectable_value(
-                                            &mut color_filter,
-                                            filter,
-                                            color_filter_label(filter, locale),
-                                        )
-                                        .changed();
-                                }
-                            });
+                        let color_filter_changed = components::property_section(
+                            ui,
+                            Text::PropColorFilter.tr(locale),
+                            Text::ColorFilterExportNote.tr(locale),
+                            |ui| {
+                                components::enum_combo(
+                                    ui,
+                                    "color_filter",
+                                    &[
+                                        avcore::timeline::ColorFilter::None,
+                                        avcore::timeline::ColorFilter::BlackAndWhite,
+                                        avcore::timeline::ColorFilter::Sepia,
+                                    ],
+                                    &mut color_filter,
+                                    |filter| color_filter_label(filter, locale),
+                                )
+                            },
+                        );
                         if color_filter_changed {
                             app.set_selected_clip_color_filter(color_filter);
                         }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(Text::ColorFilterExportNote.tr(locale))
-                                .size(10.5)
-                                .color(theme::TEXT_MUTED),
-                        );
 
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                        widgets::section_label(ui, Text::PropVignette.tr(locale));
-                        let vignette_slider = ui.add(
-                            egui::Slider::new(&mut vignette_intensity, VIGNETTE_INTENSITY_RANGE)
-                                .fixed_decimals(2),
-                        );
-                        if vignette_slider.changed() {
+                        if components::property_section(
+                            ui,
+                            Text::PropVignette.tr(locale),
+                            Text::VignetteExportNote.tr(locale),
+                            |ui| {
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut vignette_intensity,
+                                        VIGNETTE_INTENSITY_RANGE,
+                                    )
+                                    .fixed_decimals(2),
+                                )
+                                .changed()
+                            },
+                        ) {
                             app.set_selected_clip_vignette(vignette_intensity);
                         }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(Text::VignetteExportNote.tr(locale))
-                                .size(10.5)
-                                .color(theme::TEXT_MUTED),
-                        );
 
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                        widgets::section_label(ui, Text::PropColorAdjust.tr(locale));
-                        let mut color_adjust_changed = false;
-                        color_adjust_changed |= ui
-                            .add(
-                                egui::Slider::new(&mut brightness, BRIGHTNESS_RANGE)
-                                    .text(Text::PropBrightness.tr(locale)),
-                            )
-                            .changed();
-                        color_adjust_changed |= ui
-                            .add(
-                                egui::Slider::new(&mut contrast, CONTRAST_RANGE)
-                                    .text(Text::PropContrast.tr(locale)),
-                            )
-                            .changed();
-                        color_adjust_changed |= ui
-                            .add(
-                                egui::Slider::new(&mut saturation, SATURATION_RANGE)
-                                    .text(Text::PropSaturation.tr(locale)),
-                            )
-                            .changed();
-                        if color_adjust_changed {
+                        if components::property_section(
+                            ui,
+                            Text::PropColorAdjust.tr(locale),
+                            Text::ColorAdjustExportNote.tr(locale),
+                            |ui| {
+                                let mut changed = ui
+                                    .add(
+                                        egui::Slider::new(&mut brightness, BRIGHTNESS_RANGE)
+                                            .text(Text::PropBrightness.tr(locale)),
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .add(
+                                        egui::Slider::new(&mut contrast, CONTRAST_RANGE)
+                                            .text(Text::PropContrast.tr(locale)),
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .add(
+                                        egui::Slider::new(&mut saturation, SATURATION_RANGE)
+                                            .text(Text::PropSaturation.tr(locale)),
+                                    )
+                                    .changed();
+                                changed
+                            },
+                        ) {
                             app.set_selected_clip_color_adjust(brightness, contrast, saturation);
                         }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(Text::ColorAdjustExportNote.tr(locale))
-                                .size(10.5)
-                                .color(theme::TEXT_MUTED),
-                        );
 
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                        widgets::section_label(ui, Text::PropSharpen.tr(locale));
-                        let sharpen_slider = ui
-                            .add(egui::Slider::new(&mut sharpen, SHARPEN_RANGE).fixed_decimals(2));
-                        if sharpen_slider.changed() {
+                        if components::property_section(
+                            ui,
+                            Text::PropSharpen.tr(locale),
+                            Text::SharpenExportNote.tr(locale),
+                            |ui| {
+                                ui.add(
+                                    egui::Slider::new(&mut sharpen, SHARPEN_RANGE)
+                                        .fixed_decimals(2),
+                                )
+                                .changed()
+                            },
+                        ) {
                             app.set_selected_clip_sharpen(sharpen);
                         }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(Text::SharpenExportNote.tr(locale))
-                                .size(10.5)
-                                .color(theme::TEXT_MUTED),
-                        );
 
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                        let mut chroma_key_changed = false;
-                        let chroma_checkbox =
-                            ui.checkbox(&mut chroma_key_enabled, Text::PropChromaKey.tr(locale));
-                        chroma_key_changed |= chroma_checkbox.changed();
-                        if chroma_key_enabled {
-                            ui.horizontal(|ui| {
-                                ui.label(Text::ChromaKeyColor.tr(locale));
-                                chroma_key_changed |=
-                                    ui.color_edit_button_srgb(&mut chroma_key_color).changed();
-                            });
-                            let tolerance_slider = ui.add(
-                                egui::Slider::new(
-                                    &mut chroma_key_tolerance,
-                                    CHROMA_KEY_TOLERANCE_RANGE,
-                                )
-                                .text(Text::ChromaKeyTolerance.tr(locale)),
-                            );
-                            chroma_key_changed |= tolerance_slider.changed();
-                        }
-                        if chroma_key_changed {
+                        if components::property_block(
+                            ui,
+                            Text::ChromaKeyExportNote.tr(locale),
+                            |ui| {
+                                let mut changed = ui
+                                    .checkbox(
+                                        &mut chroma_key_enabled,
+                                        Text::PropChromaKey.tr(locale),
+                                    )
+                                    .changed();
+                                if chroma_key_enabled {
+                                    ui.horizontal(|ui| {
+                                        ui.label(Text::ChromaKeyColor.tr(locale));
+                                        changed |= ui
+                                            .color_edit_button_srgb(&mut chroma_key_color)
+                                            .changed();
+                                    });
+                                    changed |= ui
+                                        .add(
+                                            egui::Slider::new(
+                                                &mut chroma_key_tolerance,
+                                                CHROMA_KEY_TOLERANCE_RANGE,
+                                            )
+                                            .text(Text::ChromaKeyTolerance.tr(locale)),
+                                        )
+                                        .changed();
+                                }
+                                changed
+                            },
+                        ) {
                             app.set_selected_clip_chroma_key(
                                 chroma_key_enabled,
                                 chroma_key_color,
                                 chroma_key_tolerance,
                             );
                         }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(Text::ChromaKeyExportNote.tr(locale))
-                                .size(10.5)
-                                .color(theme::TEXT_MUTED),
-                        );
 
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                        widgets::section_label(ui, Text::PropOtherEffects.tr(locale));
-                        let mut other_effects_changed = false;
-                        other_effects_changed |= ui
-                            .add(
-                                egui::Slider::new(&mut blur_intensity, BLUR_INTENSITY_RANGE)
-                                    .text(Text::PropBlur.tr(locale)),
-                            )
-                            .changed();
-                        other_effects_changed |= ui
-                            .add(
-                                egui::Slider::new(&mut shake_intensity, SHAKE_INTENSITY_RANGE)
-                                    .text(Text::PropShake.tr(locale)),
-                            )
-                            .changed();
-                        other_effects_changed |= ui
-                            .add(
-                                egui::Slider::new(&mut glitch_intensity, GLITCH_INTENSITY_RANGE)
-                                    .text(Text::PropGlitch.tr(locale)),
-                            )
-                            .changed();
-                        other_effects_changed |= ui
-                            .add(
-                                egui::Slider::new(
-                                    &mut pixelize_intensity,
-                                    PIXELIZE_INTENSITY_RANGE,
-                                )
-                                .text(Text::PropPixelize.tr(locale)),
-                            )
-                            .changed();
-                        if other_effects_changed {
+                        if components::property_section(
+                            ui,
+                            Text::PropOtherEffects.tr(locale),
+                            Text::OtherEffectsExportNote.tr(locale),
+                            |ui| {
+                                let mut changed = ui
+                                    .add(
+                                        egui::Slider::new(
+                                            &mut blur_intensity,
+                                            BLUR_INTENSITY_RANGE,
+                                        )
+                                        .text(Text::PropBlur.tr(locale)),
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .add(
+                                        egui::Slider::new(
+                                            &mut shake_intensity,
+                                            SHAKE_INTENSITY_RANGE,
+                                        )
+                                        .text(Text::PropShake.tr(locale)),
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .add(
+                                        egui::Slider::new(
+                                            &mut glitch_intensity,
+                                            GLITCH_INTENSITY_RANGE,
+                                        )
+                                        .text(Text::PropGlitch.tr(locale)),
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .add(
+                                        egui::Slider::new(
+                                            &mut pixelize_intensity,
+                                            PIXELIZE_INTENSITY_RANGE,
+                                        )
+                                        .text(Text::PropPixelize.tr(locale)),
+                                    )
+                                    .changed();
+                                changed
+                            },
+                        ) {
                             app.set_selected_clip_blur(blur_intensity);
                             app.set_selected_clip_shake(shake_intensity);
                             app.set_selected_clip_glitch(glitch_intensity);
                             app.set_selected_clip_pixelize(pixelize_intensity);
                         }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(Text::OtherEffectsExportNote.tr(locale))
-                                .size(10.5)
-                                .color(theme::TEXT_MUTED),
-                        );
 
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                        widgets::section_label(ui, Text::PropTransition.tr(locale));
-                        let mut transition_changed = false;
-                        egui::ComboBox::from_id_salt("transition_in")
-                            .selected_text(transition_type_label(transition_in, locale))
-                            .show_ui(ui, |ui| {
-                                for transition in [
-                                    avcore::timeline::TransitionType::None,
-                                    avcore::timeline::TransitionType::Fade,
-                                    avcore::timeline::TransitionType::HardCut,
-                                    avcore::timeline::TransitionType::Slide,
-                                    avcore::timeline::TransitionType::Zoom,
-                                ] {
-                                    transition_changed |= ui
-                                        .selectable_value(
-                                            &mut transition_in,
-                                            transition,
-                                            transition_type_label(transition, locale),
+                        let transition_changed = components::property_section(
+                            ui,
+                            Text::PropTransition.tr(locale),
+                            Text::TransitionExportNote.tr(locale),
+                            |ui| {
+                                let mut changed = components::enum_combo(
+                                    ui,
+                                    "transition_in",
+                                    &[
+                                        avcore::timeline::TransitionType::None,
+                                        avcore::timeline::TransitionType::Fade,
+                                        avcore::timeline::TransitionType::HardCut,
+                                        avcore::timeline::TransitionType::Slide,
+                                        avcore::timeline::TransitionType::Zoom,
+                                    ],
+                                    &mut transition_in,
+                                    |transition| transition_type_label(transition, locale),
+                                );
+                                changed |= ui
+                                    .add(
+                                        egui::Slider::new(
+                                            &mut transition_duration_secs,
+                                            crate::app::TRANSITION_DURATION_RANGE,
                                         )
-                                        .changed();
-                                }
-                            });
-                        let transition_duration_slider = ui.add(
-                            egui::Slider::new(
-                                &mut transition_duration_secs,
-                                crate::app::TRANSITION_DURATION_RANGE,
-                            )
-                            .suffix(" s")
-                            .fixed_decimals(2)
-                            .text(Text::PropTransitionDuration.tr(locale)),
+                                        .suffix(" s")
+                                        .fixed_decimals(2)
+                                        .text(Text::PropTransitionDuration.tr(locale)),
+                                    )
+                                    .changed();
+                                changed
+                            },
                         );
-                        transition_changed |= transition_duration_slider.changed();
                         if transition_changed {
                             app.set_selected_clip_transition(
                                 transition_in,
                                 transition_duration_secs,
                             );
                         }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(Text::TransitionExportNote.tr(locale))
-                                .size(10.5)
-                                .color(theme::TEXT_MUTED),
-                        );
 
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                        widgets::section_label(ui, Text::PropZoom.tr(locale));
-                        let mut zoom_changed = false;
-                        zoom_changed |= ui
-                            .add(
-                                egui::Slider::new(&mut zoom_start, crate::app::ZOOM_RANGE)
-                                    .text(Text::PropZoomStart.tr(locale)),
-                            )
-                            .changed();
-                        zoom_changed |= ui
-                            .add(
-                                egui::Slider::new(&mut zoom_end, crate::app::ZOOM_RANGE)
-                                    .text(Text::PropZoomEnd.tr(locale)),
-                            )
-                            .changed();
-                        if zoom_changed {
+                        if components::property_section(
+                            ui,
+                            Text::PropZoom.tr(locale),
+                            Text::ZoomExportNote.tr(locale),
+                            |ui| {
+                                let mut changed = ui
+                                    .add(
+                                        egui::Slider::new(&mut zoom_start, crate::app::ZOOM_RANGE)
+                                            .text(Text::PropZoomStart.tr(locale)),
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .add(
+                                        egui::Slider::new(&mut zoom_end, crate::app::ZOOM_RANGE)
+                                            .text(Text::PropZoomEnd.tr(locale)),
+                                    )
+                                    .changed();
+                                changed
+                            },
+                        ) {
                             app.set_selected_clip_zoom(zoom_start, zoom_end);
                         }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(Text::ZoomExportNote.tr(locale))
-                                .size(10.5)
-                                .color(theme::TEXT_MUTED),
-                        );
                     }
                 }
             });
@@ -1074,7 +1027,7 @@ const MAX_PX_PER_SEC: f32 = 60.0;
 const TRACK_LABEL_WIDTH: f32 = 50.0;
 
 fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
-    widgets::card_frame().show(ui, |ui| {
+    components::card_frame().show(ui, |ui| {
         ui.set_height(height - 20.0);
 
         // Ctrl+scroll zooms the timeline in/out (request.md's Fase 3 spec). egui's

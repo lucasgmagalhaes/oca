@@ -17,6 +17,3 @@ pub mod nav_rail;
 pub mod prefs;
 /// The Fila screen: the export queue's job list and worker-count control.
 pub mod queue;
-
-/// Shared helpers for rendering mockup-style "tag" chips and section headers.
-pub mod widgets;

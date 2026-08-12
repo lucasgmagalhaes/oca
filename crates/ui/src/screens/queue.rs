@@ -2,8 +2,8 @@ use avcore::export::ExportJobStatus;
 use eframe::egui::{self, RichText};
 
 use crate::app::{OcaApp, LUFS_PROFILES};
+use crate::components;
 use crate::i18n::{self, Text};
-use crate::screens::widgets;
 use crate::theme;
 
 /// Renders the Fila screen: the export queue's job list (reorder for queued jobs, cancel for
@@ -90,7 +90,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
         let len = app.export_jobs.len();
         for i in 0..len {
             let job = &app.export_jobs[i];
-            widgets::card_frame().show(ui, |ui| {
+            components::card_frame().show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("⠿").color(theme::TEXT_MUTED));
                     ui.vertical(|ui| {
@@ -99,15 +99,17 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                             let status_label = i18n::job_status_label(locale, &job.status);
                             match &job.status {
                                 ExportJobStatus::Rendering { .. } => {
-                                    widgets::tag_accent(ui, status_label)
+                                    components::tag_accent(ui, status_label)
                                 }
-                                ExportJobStatus::Queued => widgets::tag_outline(ui, status_label),
+                                ExportJobStatus::Queued => {
+                                    components::tag_outline(ui, status_label)
+                                }
                                 ExportJobStatus::Paused { .. } => {
-                                    widgets::tag_outline(ui, status_label)
+                                    components::tag_outline(ui, status_label)
                                 }
-                                ExportJobStatus::Done => widgets::tag_accent(ui, status_label),
+                                ExportJobStatus::Done => components::tag_accent(ui, status_label),
                                 ExportJobStatus::Failed { .. } => {
-                                    widgets::tag_error(ui, status_label)
+                                    components::tag_error(ui, status_label)
                                 }
                             }
                             ui.label(RichText::new(&job.title).size(13.0));
