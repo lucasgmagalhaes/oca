@@ -311,6 +311,9 @@ pub struct OcaApp {
     /// Timestamp of the last successful autosave write — used to enforce the 30-second
     /// ceiling that forces a save even during continuous editing.
     last_autosave_instant: Option<Instant>,
+    /// Set to the autosave file path when opening a project that has a newer autosave on disk.
+    /// [`OcaApp::pump_autosave_restore`] consumes it to show the restore/discard modal.
+    autosave_restore_pending: Option<PathBuf>,
 }
 
 impl OcaApp {
@@ -360,6 +363,7 @@ impl OcaApp {
             project_dirty: false,
             last_edit_instant: None,
             last_autosave_instant: None,
+            autosave_restore_pending: None,
         }
     }
 
@@ -1679,6 +1683,72 @@ impl OcaApp {
             let _ = std::fs::write(autosave_path, json.as_bytes());
         });
     }
+
+    /// If a newer autosave was found when the active project was opened ([`autosave_restore_pending`]
+    /// is set), shows a modal offering to restore or discard it. Restore replaces the active
+    /// project's data in place (keeping its `file_path` and id). Discard deletes the autosave file.
+    fn pump_autosave_restore(&mut self, ctx: &egui::Context) {
+        let Some(autosave_path) = self.autosave_restore_pending.clone() else {
+            return;
+        };
+        let locale = self.locale;
+        let modal = egui::Modal::new(egui::Id::new("autosave_restore"));
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.label(crate::i18n::Text::AutosaveFound.tr(locale));
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui.button(crate::i18n::Text::AutosaveRestore.tr(locale)).clicked() {
+                    if let Ok(mut restored) =
+                        avcore::load_project_from_file(&autosave_path)
+                    {
+                        let file_path = self.active_project().file_path.clone();
+                        let id = self.active_project().id;
+                        restored.file_path = file_path;
+                        restored.id = id;
+                        *self.active_project_mut() = restored;
+                        self.project_dirty = false;
+                    }
+                    self.autosave_restore_pending = None;
+                }
+                if ui.button(crate::i18n::Text::AutosaveDiscard.tr(locale)).clicked() {
+                    let _ = std::fs::remove_file(&autosave_path);
+                    self.autosave_restore_pending = None;
+                }
+            });
+        });
+        if response.should_close() {
+            self.autosave_restore_pending = None;
+        }
+    }
+
+    /// Flags that a project with `file_path` should offer autosave restoration on open, if
+    /// `<file_path>.autosave.json` exists and is newer than the project file itself.
+    pub fn check_autosave_on_open(&mut self, file_path: &Path) {
+        let autosave_path = file_path.with_extension("autosave.json");
+        if autosave_is_newer(&autosave_path, file_path) {
+            self.autosave_restore_pending = Some(autosave_path);
+        }
+    }
+}
+
+/// Returns `true` if `autosave_path` exists and has a modification time strictly newer than
+/// `project_path`. Returns `false` if either file's metadata can't be read or the timestamps
+/// can't be compared.
+fn autosave_is_newer(autosave_path: &Path, project_path: &Path) -> bool {
+    let Ok(as_meta) = std::fs::metadata(autosave_path) else {
+        return false;
+    };
+    let Ok(proj_meta) = std::fs::metadata(project_path) else {
+        return true;
+    };
+    let Ok(as_time) = as_meta.modified() else {
+        return false;
+    };
+    let Ok(proj_time) = proj_meta.modified() else {
+        return false;
+    };
+    as_time > proj_time
 }
 
 /// Finds the track to place a new clip of `kind` on, for [`OcaApp::add_asset_to_timeline`] and
@@ -1869,6 +1939,7 @@ impl eframe::App for OcaApp {
         self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());
         self.pump_autosave();
+        self.pump_autosave_restore(ui.ctx());
         if self.preview_playing {
             // Smooth video needs every-frame repaints; the 200ms throttle below would show
             // it as a slideshow.

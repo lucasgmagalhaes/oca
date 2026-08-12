@@ -172,6 +172,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         project_dirty: false,
         last_edit_instant: None,
         last_autosave_instant: None,
+        autosave_restore_pending: None,
     }
 }
 

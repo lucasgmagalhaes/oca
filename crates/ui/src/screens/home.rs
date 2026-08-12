@@ -34,8 +34,9 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                     {
                         match avcore::load_project_from_file(&path) {
                             Ok(mut project) => {
-                                project.file_path = Some(path);
+                                project.file_path = Some(path.clone());
                                 app.add_and_open_project(project);
+                                app.check_autosave_on_open(&path);
                             }
                             Err(e) => eprintln!("failed to open project: {e}"),
                         }
