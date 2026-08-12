@@ -48,10 +48,14 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                         let canvas =
                             avcore::apply_export_aspect_ratio(canvas, app.export_aspect_ratio);
                         let default_name = format!("{sequence_name}_export.mp4");
-                        if let Some(output) = rfd::FileDialog::new()
+                        let mut dialog = rfd::FileDialog::new()
                             .add_filter("MP4", &["mp4"])
-                            .set_file_name(default_name)
-                            .save_file()
+                            .set_file_name(default_name);
+                        if !app.prefs.output_folder.is_empty() {
+                            dialog = dialog
+                                .set_directory(&app.prefs.output_folder);
+                        }
+                        if let Some(output) = dialog.save_file()
                         {
                             let proceed = if output.exists() {
                                 let filename = output
