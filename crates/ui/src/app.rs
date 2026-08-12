@@ -40,8 +40,9 @@ pub enum EditorTool {
     Trim,
 }
 
-/// User-configurable settings shown on the Ajustes screen. Not persisted yet (Fase 5 adds a
-/// preferences file) — resets to [`PrefsState::default`] every launch.
+/// User-configurable settings shown on the Ajustes screen. Persisted to a JSON file in the
+/// platform config dir — see [`OcaApp::save_prefs`] / [`load_prefs`].
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct PrefsState {
     /// Index into [`LUFS_PROFILES`].
     pub lufs_profile: usize,
@@ -319,6 +320,9 @@ pub struct OcaApp {
     /// Kept separate from `screen` so the modal overlays whatever screen is currently active
     /// rather than replacing it with a dedicated route.
     pub prefs_open: bool,
+    /// The value of `prefs_open` on the previous frame — lets [`OcaApp::ui`] detect the
+    /// closing edge (true → false) and trigger a prefs save exactly once.
+    prev_prefs_open: bool,
     /// Set to the autosave file path when opening a project that has a newer autosave on disk.
     /// [`OcaApp::pump_autosave_restore`] consumes it to show the restore/discard modal.
     autosave_restore_pending: Option<PathBuf>,
@@ -345,7 +349,7 @@ impl OcaApp {
             active_project: 0,
             selected_asset_id: None,
             export_jobs: Vec::new(),
-            prefs: PrefsState::default(),
+            prefs: load_prefs(),
             render_tx,
             render_rx,
             active_renders: HashMap::new(),
@@ -373,6 +377,7 @@ impl OcaApp {
             multi_selected_clip_ids: HashSet::new(),
             toasts: Vec::new(),
             prefs_open: false,
+            prev_prefs_open: false,
             project_dirty: false,
             last_edit_instant: None,
             last_autosave_instant: None,
@@ -1840,6 +1845,62 @@ impl OcaApp {
             self.autosave_restore_pending = Some(autosave_path);
         }
     }
+
+    /// Serializes `prefs` to the platform config file on a background thread. Called whenever
+    /// the preferences modal closes so the user's settings survive the next launch.
+    pub fn save_prefs(&self) {
+        let Ok(json) = serde_json::to_string_pretty(&self.prefs) else {
+            return;
+        };
+        let path = prefs_path();
+        std::thread::spawn(move || {
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            if let Err(e) = std::fs::write(&path, json.as_bytes()) {
+                tracing::error!(path = %path.display(), error = %e, "failed to write prefs");
+            } else {
+                tracing::debug!(path = %path.display(), "prefs saved");
+            }
+        });
+    }
+}
+
+/// Loads [`PrefsState`] from the platform config file, falling back to the default if the file
+/// is absent or cannot be parsed.
+pub fn load_prefs() -> PrefsState {
+    let path = prefs_path();
+    let Ok(bytes) = std::fs::read(&path) else {
+        return PrefsState::default();
+    };
+    serde_json::from_slice(&bytes).unwrap_or_default()
+}
+
+/// Returns the platform-appropriate path for the oca preferences file.
+///
+/// - macOS:   `~/Library/Application Support/oca/prefs.json`
+/// - Windows: `%APPDATA%\oca\prefs.json`
+/// - Linux:   `~/.config/oca/prefs.json`
+fn prefs_path() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join("Library/Application Support/oca/prefs.json");
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return PathBuf::from(appdata).join("oca\\prefs.json");
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(".config/oca/prefs.json");
+        }
+    }
+    PathBuf::from("prefs.json")
 }
 
 /// Returns `true` if `autosave_path` exists and has a modification time strictly newer than
@@ -2050,6 +2111,11 @@ impl eframe::App for OcaApp {
         self.pump_preview_frame(ui.ctx());
         self.pump_autosave();
         self.pump_autosave_restore(ui.ctx());
+        // Detect the prefs modal closing (true → false) and persist the new settings.
+        if self.prev_prefs_open && !self.prefs_open {
+            self.save_prefs();
+        }
+        self.prev_prefs_open = self.prefs_open;
         if self.preview_playing {
             // Smooth video needs every-frame repaints; the 200ms throttle below would show
             // it as a slideshow.

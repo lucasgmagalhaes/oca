@@ -170,6 +170,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         multi_selected_clip_ids: HashSet::new(),
         toasts: Vec::new(),
         prefs_open: false,
+        prev_prefs_open: false,
         project_dirty: false,
         last_edit_instant: None,
         last_autosave_instant: None,
