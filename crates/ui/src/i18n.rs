@@ -293,19 +293,42 @@ pub fn job_status_label(locale: Locale, status: &ExportJobStatus) -> &'static st
     }
 }
 
-/// The export queue's secondary line for `job` — `"-14 LUFS · 42 Mbps · /export/…"` for a
-/// normal job, or `"Erro: <message>"`/`"Error: <message>"` for a failed one.
+/// The export queue's secondary line for `job` —
+/// `"-14 LUFS · 42 Mbps · ~342 MB · /export/…"` for a normal job with a non-zero duration,
+/// or `"Erro: <message>"`/`"Error: <message>"` for a failed one. The size estimate is omitted
+/// when the job's segments carry no duration (e.g. in tests with an empty segment list).
 pub fn job_detail_line(locale: Locale, job: &ExportJob) -> String {
     match &job.status {
         ExportJobStatus::Failed { message } => {
             format!("{}: {message}", Text::ErrorPrefix.tr(locale))
         }
-        _ => format!(
-            "-{:.0} LUFS · {:.0} Mbps · {}",
-            -job.target_lufs,
-            job.canvas.bit_rate_bps as f32 / 1_000_000.0,
-            job.output_path
-        ),
+        _ => {
+            let total_secs: f64 = job
+                .segments
+                .iter()
+                .map(|s| {
+                    let speed = if s.speed_factor > 0.0 { s.speed_factor as f64 } else { 1.0 };
+                    (s.source_out_secs - s.source_in_secs) / speed
+                })
+                .sum();
+            let size_str = if total_secs > 0.0 {
+                let mb = (job.canvas.bit_rate_bps as f64 * total_secs) / 8.0 / 1_048_576.0;
+                if mb >= 1024.0 {
+                    format!(" · ~{:.1} GB", mb / 1024.0)
+                } else {
+                    format!(" · ~{:.0} MB", mb)
+                }
+            } else {
+                String::new()
+            };
+            format!(
+                "-{:.0} LUFS · {:.0} Mbps{} · {}",
+                -job.target_lufs,
+                job.canvas.bit_rate_bps as f32 / 1_000_000.0,
+                size_str,
+                job.output_path
+            )
+        }
     }
 }
 
