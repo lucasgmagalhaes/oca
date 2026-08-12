@@ -21,26 +21,30 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                     .strong(),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let selected_asset = app.selected_asset().cloned();
+                let project = app.active_project();
+                let sequence_name = project.sequences[project.active_sequence].name.clone();
+                let resolved = avcore::resolve_timeline_segments(
+                    &project.sequences[project.active_sequence],
+                    &project.media_library,
+                );
                 let add_button = egui::Button::new(Text::AddExport.tr(locale));
                 let response = ui
-                    .add_enabled(selected_asset.is_some(), add_button)
+                    .add_enabled(resolved.is_ok(), add_button)
                     .on_disabled_hover_text(Text::AddExportNeedsClip.tr(locale));
                 if response.clicked() {
-                    if let Some(asset) = selected_asset {
+                    if let Ok((segments, canvas)) = resolved {
                         let (_, target_lufs) = LUFS_PROFILES[app.prefs.lufs_profile];
-                        let default_name =
-                            format!("{}_export.mp4", asset.file_name.trim_end_matches(".mp4"));
+                        let default_name = format!("{sequence_name}_export.mp4");
                         if let Some(output) = rfd::FileDialog::new()
                             .add_filter("MP4", &["mp4"])
                             .set_file_name(default_name)
                             .save_file()
                         {
                             app.queue_export(
-                                asset.file_name.clone(),
-                                asset.source_path.clone(),
+                                sequence_name,
+                                segments,
+                                canvas,
                                 target_lufs,
-                                asset.source_bitrate_mbps,
                                 output.display().to_string(),
                             );
                         }

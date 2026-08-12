@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use avcore::{ExportJob, ExportJobStatus, MediaAsset, Project, RenderOutcome};
+use avcore::{
+    ClipInstance, ExportJob, ExportJobStatus, MediaAsset, Project, RenderOutcome, TrackKind,
+};
 use eframe::egui;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
@@ -243,18 +245,20 @@ pub struct OcaApp {
     /// A job id present here is the source of truth for "how many workers are busy right
     /// now" — [`OcaApp::pump_export_queue`] uses its length against `queue_workers`.
     active_renders: HashMap<u64, Arc<AtomicBool>>,
-    /// The GStreamer pipeline for `selected_asset_id`, if it could be opened (`None` before any
-    /// selection, before it's been lazily opened, and when `Preview::open` failed, e.g. a
-    /// source file that's since been moved or deleted — see [`OcaApp::ensure_preview_loaded`]).
+    /// The GStreamer pipeline for the clip currently covering the active sequence's timeline
+    /// playhead, if it could be opened (`None` before any project has a clip at the playhead,
+    /// before it's been lazily opened, and when `Preview::open` failed, e.g. a source file
+    /// that's since been moved or deleted — see [`OcaApp::ensure_preview_loaded`]).
     preview: Option<avcore::preview::Preview>,
-    /// The asset id [`OcaApp::ensure_preview_loaded`] last attempted to open a pipeline for,
+    /// The clip id [`OcaApp::ensure_preview_loaded`] last attempted to open a pipeline for,
     /// whether or not it succeeded — lets it tell "already tried and failed for this exact
-    /// selection, don't retry every frame" apart from "selection changed, try again".
-    /// `select_asset` clears this back to `None` so a fresh selection always gets one attempt.
-    preview_attempted_for: Option<u64>,
+    /// clip, don't retry every frame" apart from "the playhead moved onto a different clip, try
+    /// again".
+    preview_clip_id: Option<u64>,
     /// Uploaded from the latest [`avcore::preview::Preview::current_frame`] each frame the
-    /// Editor screen is shown; `None` until the first frame decodes. Reset on every
-    /// [`OcaApp::select_asset`] call so a stale frame from the previous clip never lingers.
+    /// Editor screen is shown; `None` until the first frame decodes. Reset whenever
+    /// [`OcaApp::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
+    /// frame from the previous one never lingers.
     pub preview_texture: Option<egui::TextureHandle>,
     /// Whether the preview pipeline is in `Playing` state. `Preview` has no state getter of
     /// its own, so the Editor's play/pause button and [`OcaApp::pump_export_queue`]'s repaint
@@ -357,7 +361,7 @@ impl OcaApp {
             render_rx,
             active_renders: HashMap::new(),
             preview: None,
-            preview_attempted_for: None,
+            preview_clip_id: None,
             preview_texture: None,
             preview_playing: false,
             import_tx,
@@ -477,28 +481,51 @@ impl OcaApp {
     /// asset nobody's looking at yet.
     pub fn select_asset(&mut self, id: Option<u64>) {
         self.selected_asset_id = id;
-        self.preview = None;
-        self.preview_attempted_for = None;
-        self.preview_texture = None;
-        self.preview_playing = false;
     }
 
-    /// Opens a pipeline for `selected_asset_id` if one isn't already open and hasn't already
-    /// been tried for this exact selection — called once per frame from the Editor's preview
-    /// panel, right before it reads any preview state, so the first paint after a selection
-    /// change is what actually triggers `Preview::open` rather than `select_asset` itself.
-    /// Prefers the editing proxy if one exists (lighter to decode), otherwise the original
-    /// source file. Leaves `preview` as `None` without an error dialog if `Preview::open` fails
-    /// (e.g. a source file that's been moved or deleted since import) — the Editor screen shows
-    /// a muted "preview unavailable" label instead, and won't retry until the selection changes
-    /// again.
+    /// The clip covering the active sequence's timeline playhead, and the asset it plays from,
+    /// if both resolve — `None` if the video track is missing/empty, nothing covers the
+    /// playhead ([`avcore::timeline::Track::clip_at`]), or the clip's `asset_id` isn't in the
+    /// media library.
+    fn current_preview_clip(&self) -> Option<(ClipInstance, MediaAsset)> {
+        let project = self.active_project();
+        let timeline = project.timeline();
+        let track = timeline
+            .tracks
+            .iter()
+            .find(|t| t.kind == TrackKind::Video)?;
+        let clip = track.clip_at(timeline.playhead_secs)?;
+        let asset = project
+            .media_library
+            .iter()
+            .find(|a| a.id == clip.asset_id)?;
+        Some((clip.clone(), asset.clone()))
+    }
+
+    /// Reopens the preview pipeline whenever the clip covering the timeline playhead
+    /// ([`OcaApp::current_preview_clip`]) differs from the one last opened for
+    /// (`preview_clip_id`) — called once per frame from the Editor's preview panel, right
+    /// before it reads any preview state, so the first paint after the playhead moves onto a
+    /// different clip is what actually triggers `Preview::open`. Prefers the editing proxy if
+    /// one exists (lighter to decode), otherwise the original source file. Leaves `preview` as
+    /// `None` without an error dialog if `Preview::open` fails (e.g. a source file that's been
+    /// moved or deleted since import) — the Editor screen shows a muted "preview unavailable"
+    /// label instead, and won't retry until the playhead moves onto a different clip. Seeks
+    /// into the newly opened clip at the playhead's own offset, and resumes playback
+    /// (`preview_playing` was already `true`) so crossing a cut doesn't pause playback, just
+    /// hitches while the new pipeline opens.
     pub fn ensure_preview_loaded(&mut self) {
-        if self.preview.is_some() || self.preview_attempted_for == self.selected_asset_id {
+        let current = self.current_preview_clip();
+        let current_clip_id = current.as_ref().map(|(clip, _)| clip.id);
+        if current_clip_id == self.preview_clip_id {
             return;
         }
-        self.preview_attempted_for = self.selected_asset_id;
+        self.preview = None;
+        self.preview_texture = None;
+        self.preview_clip_id = current_clip_id;
 
-        let Some(asset) = self.selected_asset() else {
+        let Some((clip, asset)) = current else {
+            self.preview_playing = false;
             return;
         };
         let path = asset
@@ -511,8 +538,20 @@ impl OcaApp {
             return;
         }
 
-        match avcore::preview::Preview::open(&path) {
-            Ok(preview) => self.preview = Some(preview),
+        match avcore::preview::Preview::open(&path, Some(&clip)) {
+            Ok(preview) => {
+                let playhead = self.active_project().timeline().playhead_secs;
+                let offset = clip.source_in_secs + (playhead - clip.start_secs);
+                if let Err(e) = preview.seek(offset) {
+                    eprintln!("failed to seek newly opened preview: {e}");
+                }
+                if self.preview_playing {
+                    if let Err(e) = preview.play() {
+                        eprintln!("failed to resume preview playback across a cut: {e}");
+                    }
+                }
+                self.preview = Some(preview);
+            }
             Err(e) => eprintln!("failed to open preview for {}: {e}", path.display()),
         }
     }
@@ -534,35 +573,53 @@ impl OcaApp {
         }
     }
 
-    /// Seeks the current preview pipeline to `position_secs`. A no-op if nothing is selected
-    /// or the pipeline failed to open.
+    /// Seeks to `position_secs` (timeline-relative). Takes the fast path — seeking the
+    /// already-open pipeline directly — when `position_secs` still falls within the clip it's
+    /// currently loaded for; otherwise updates the timeline playhead and lets
+    /// [`OcaApp::ensure_preview_loaded`] open the right clip's pipeline next frame. A no-op if
+    /// nothing is selected or the pipeline failed to open.
     pub fn seek_preview(&mut self, position_secs: f64) {
-        let Some(preview) = &self.preview else {
-            return;
-        };
-        if let Err(e) = preview.seek(position_secs) {
-            eprintln!("failed to seek preview: {e}");
+        let same_clip = self
+            .preview_clip_id
+            .zip(self.current_preview_clip())
+            .filter(|(loaded_id, (clip, _))| *loaded_id == clip.id)
+            .map(|(_, (clip, _))| clip);
+
+        match (&self.preview, same_clip) {
+            (Some(preview), Some(clip)) => {
+                let offset = clip.source_in_secs + (position_secs - clip.start_secs);
+                if let Err(e) = preview.seek(offset) {
+                    eprintln!("failed to seek preview: {e}");
+                }
+                self.active_project_mut().timeline_mut().playhead_secs = position_secs;
+            }
+            _ => {
+                self.active_project_mut().timeline_mut().playhead_secs = position_secs;
+            }
         }
     }
 
-    /// Whether the currently selected asset has a live preview pipeline — `false` before any
-    /// selection, before [`OcaApp::ensure_preview_loaded`] has run for it, and when it
-    /// couldn't open one.
+    /// Whether the clip at the timeline playhead has a live preview pipeline — `false` before
+    /// any clip covers the playhead, before [`OcaApp::ensure_preview_loaded`] has run for it,
+    /// and when it couldn't open one.
     pub fn preview_available(&self) -> bool {
         self.preview.is_some()
     }
 
-    pub fn preview_duration_secs(&self) -> Option<f64> {
-        self.preview.as_ref().and_then(|p| p.duration_secs())
-    }
-
-    pub fn preview_position_secs(&self) -> Option<f64> {
-        self.preview.as_ref().and_then(|p| p.position_secs())
+    /// Whether a clip currently covers the timeline playhead, whether or not its preview
+    /// pipeline could actually be opened — distinguishes "nothing to preview here" from
+    /// "something's here but its preview failed to open" for the Editor's empty-state label.
+    pub fn preview_clip_present(&self) -> bool {
+        self.preview_clip_id.is_some()
     }
 
     /// Pulls the latest decoded video frame (if any) into `preview_texture`, and — while
-    /// playing — mirrors the pipeline's position into the active project's timeline playhead
-    /// so the Editor's timecode label stays in sync. Called once per frame from
+    /// playing — mirrors the pipeline's position into the active project's timeline playhead,
+    /// converting from the clip-relative position `Preview` reports back to timeline time.
+    /// Once the clip currently loaded (`preview_clip_id`) plays past its own
+    /// `source_out_secs`, advances the playhead to that clip's end instead — the next frame's
+    /// `ensure_preview_loaded` call then naturally opens whatever clip (if any) covers that
+    /// position, continuing playback across the cut. Called once per frame from
     /// [`eframe::App::ui`], before the screens draw.
     fn pump_preview_frame(&mut self, ctx: &egui::Context) {
         let Some(preview) = &self.preview else {
@@ -583,11 +640,32 @@ impl OcaApp {
             }
         }
 
-        if self.preview_playing {
-            if let Some(position) = preview.position_secs() {
-                self.active_project_mut().timeline_mut().playhead_secs = position;
-            }
+        if !self.preview_playing {
+            return;
         }
+        let Some(position) = preview.position_secs() else {
+            return;
+        };
+        let Some(clip_id) = self.preview_clip_id else {
+            return;
+        };
+        let Some(clip) = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .find_map(|t| t.clips.iter().find(|c| c.id == clip_id))
+            .cloned()
+        else {
+            return;
+        };
+
+        let new_playhead = if position >= clip.source_out_secs {
+            clip.start_secs + clip.duration_secs()
+        } else {
+            clip.start_secs + (position - clip.source_in_secs)
+        };
+        self.active_project_mut().timeline_mut().playhead_secs = new_playhead;
     }
 
     /// Appends `project` to the project list and opens it — used for both "Novo projeto"
@@ -1652,24 +1730,27 @@ impl OcaApp {
         }
     }
 
-    /// Appends a new `Queued` job — what "Adicionar exportação" does. Picked up by
+    /// Appends a new `Queued` job — what "Adicionar exportação" does, given `segments`/
+    /// `canvas` already resolved from the active sequence (see
+    /// `avcore::resolve_timeline_segments`) so this job renders the timeline as it was at the
+    /// moment it entered the queue, not whatever it's edited to later. Picked up by
     /// [`OcaApp::pump_export_queue`] once a worker slot ([`OcaApp::queue_workers`])
     /// frees up.
     pub fn queue_export(
         &mut self,
         title: String,
-        source_path: PathBuf,
+        segments: Vec<avcore::ClipSegment>,
+        canvas: avcore::Canvas,
         target_lufs: f32,
-        bitrate_mbps: f32,
         output_path: String,
     ) {
         let id = self.export_jobs.iter().map(|j| j.id).max().unwrap_or(0) + 1;
         self.export_jobs.push(ExportJob {
             id,
             title,
-            source_path,
+            segments,
+            canvas,
             target_lufs,
-            bitrate_mbps,
             output_path,
             status: ExportJobStatus::Queued,
         });
@@ -1730,7 +1811,8 @@ impl OcaApp {
         };
 
         let job_id = job.id;
-        let source_path = job.source_path.clone();
+        let segments = job.segments.clone();
+        let canvas = job.canvas;
         let output_path = PathBuf::from(&job.output_path);
         let target_lufs = job.target_lufs;
         job.status = ExportJobStatus::Rendering { percent: 0 };
@@ -1740,15 +1822,11 @@ impl OcaApp {
 
         let tx = self.render_tx.clone();
         std::thread::spawn(move || {
-            let duration_secs = avcore::probe_media(&source_path)
-                .map(|probed| probed.duration_secs)
-                .unwrap_or(0.0);
-
-            let outcome = avcore::render_export(
-                &source_path,
+            let outcome = avcore::render_export_job(
+                &segments,
+                canvas,
                 &output_path,
                 target_lufs,
-                duration_secs,
                 &cancel_flag,
                 |percent| {
                     let _ = tx.send(RenderEvent::Progress { job_id, percent });
@@ -1907,7 +1985,7 @@ fn extract_thumbnail(path: &Path, at_secs: f64) -> Option<(u32, u32, Vec<u8>)> {
     if !path.exists() {
         return None;
     }
-    let preview = avcore::preview::Preview::open(path).ok()?;
+    let preview = avcore::preview::Preview::open(path, None).ok()?;
     let _ = preview.seek(at_secs.max(0.0));
 
     // current_frame() is non-blocking (see ensure_preview_loaded's doc comment on the same

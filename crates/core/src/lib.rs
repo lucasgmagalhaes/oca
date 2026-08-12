@@ -21,6 +21,7 @@ pub mod render;
 pub mod timeline;
 pub mod waveform;
 
+pub use avbridge::{Canvas, ClipSegment};
 pub use export::{ExportJob, ExportJobStatus};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
@@ -29,6 +30,9 @@ pub use preview::{Preview, PreviewError};
 pub use probe::{probe_media, ProbeError, ProbedMedia};
 pub use project::{Project, Recency, Sequence};
 pub use proxy::{ensure_proxy, ProxyError};
-pub use render::{render_export, RenderError, RenderOutcome};
+pub use render::{
+    render_export, render_export_job, render_timeline_export, resolve_timeline_segments,
+    RenderError, RenderOutcome,
+};
 pub use timeline::{ClipInstance, Timeline, Track, TrackKind};
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};

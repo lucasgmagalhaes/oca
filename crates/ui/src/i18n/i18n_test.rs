@@ -87,9 +87,15 @@ fn job(status: ExportJobStatus) -> ExportJob {
     ExportJob {
         id: 1,
         title: "Test job".to_string(),
-        source_path: Default::default(),
+        segments: Vec::new(),
+        canvas: avcore::Canvas {
+            width: 1920,
+            height: 1080,
+            fps_num: 30,
+            fps_den: 1,
+            bit_rate_bps: 42_000_000,
+        },
         target_lufs: -14.0,
-        bitrate_mbps: 42.0,
         output_path: "/export/test.mp4".to_string(),
         status,
     }

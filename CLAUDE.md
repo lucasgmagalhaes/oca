@@ -17,45 +17,63 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   panels, per-position filmstrip thumbnails, waveforms. JSON project save/load. Background
   import (probe first, loudness/proxy/waveform enrich in place after) and background export
   queue.
-- **Fase 4 (in progress):** per-block volume gain (`ClipInstance::gain_db`) and freeze frame
-  (`ClipInstance::frozen`) — both live in the properties panel and affect the timeline display
-  (waveform scaling / poster-frame draw) but not preview playback or export yet, since export
-  still passthrough-renders one source file per job rather than mixing the actual timeline.
-  Speed (`ClipInstance::speed_factor`) follows the same pattern — a properties-panel slider and
-  a "2.00x"-style badge on the timeline block, but doesn't resample audio or change the block's
-  on-timeline length yet (that needs the timeline to support a block whose displayed duration
-  differs from its trimmed source range, which nothing does yet). Crop
-  (`ClipInstance::crop_x/y/w/h`, a normalized `0.0..=1.0` sub-rectangle of the frame, properties
-  panel drag values gated to video clips) is the same shape again — a "⛶" badge on the timeline
-  block, no preview/export effect yet. Copy formatting (`Ctrl+Shift+C`/`Ctrl+Shift+V`,
-  `OcaApp::copy_selected_clip_formatting`/`paste_selected_clip_formatting`) copies gain/freeze/
-  speed/crop/mask/flip/color-filter between blocks without duplicating the clip. Layer masks
-  (`ClipInstance::mask_shape`: none/circle/rounded-rect, `mask_corner_radius` for the latter) are
-  the same shape too — a shape picker plus corner-radius slider in the properties panel, a "●"/
-  "▢" badge on the timeline block. Horizontal flip (`ClipInstance::flipped_h`, video-only
-  checkbox) rounds out the timeline block's badge corners (freeze top-left, speed top-right,
-  crop bottom-right, mask bottom-left, flip "⇄" top-center). Color filter
-  (`ClipInstance::color_filter`: none/black-and-white/sepia, a bounded subset of the eventual
-  "Filtros de cor e LUTs" library) is shown as a translucent tint over the timeline block instead
-  of a badge, since the corners are taken. Vignette (`ClipInstance::vignette_intensity`,
-  `0.0..=1.0`) is a darkened border stroke scaled by intensity, same idea. Brightness/contrast/
-  saturation (`ClipInstance::brightness/contrast/saturation`) and sharpen
-  (`ClipInstance::sharpen`) round out that "Efeitos visuais" group — four properties-panel
-  sliders with no visible effect anywhere yet, not even a timeline cue. Chroma key
-  (`ClipInstance::chroma_key_enabled`/`chroma_key_color`/`chroma_key_tolerance`) is a checkbox +
-  color picker + tolerance slider, with a "🟩" badge (bottom-center) on the timeline block. Blur,
-  shake, glitch, and pixelize (`ClipInstance::blur_intensity/shake_intensity/glitch_intensity/
-  pixelize_intensity`) round out the initial "Efeitos visuais" list from `request.md` — four more
-  sliders with no visible effect anywhere yet. Same preview/export gap as the rest for all of
-  these. Transitions (`ClipInstance::transition_in`: none/fade/hard cut/slide/zoom, plus
-  `transition_duration_secs`) are a properties-panel picker and duration slider, no visible
-  effect anywhere yet (same preview/export gap as the rest), and model only a block's incoming
-  edge rather than a real two-clip cross-blend, which would need a relationship between adjacent
-  clips instead of a single-clip field. Zoom (`ClipInstance::zoom_start`/`zoom_end`, per
-  `request.md`'s "Zoom (punch-in / ken burns)") closes out `request.md`'s "Efeitos visuais" list
-  — two more properties-panel sliders with no visible effect anywhere, same preview/export gap
-  as the rest. Check `features/request.md` for what's still unbuilt before assuming a feature is
-  live — when in doubt, `graphify query`.
+- **Fase 4 (in progress):** export is now timeline-aware — "Add Export" renders the active
+  sequence's video track (in `start_secs` order) instead of one raw asset
+  (`core::render::render_timeline_export`/`render_export_job`, `avbridge_encode_timeline_export`
+  in `bridge.c`, a real video `AVFilterGraph` decode→filter→libopenh264-encode pipeline, unlike
+  the older passthrough-copy `render_export`/`avbridge_encode_export` which still exists and is
+  otherwise unused). `ClipInstance::video_filter_chain()` builds each clip's own avfilter chain
+  from the subset of effect fields expressible as a static per-clip filter — **gain_db** (as a
+  runtime-adjustable `volume` stage ahead of the shared loudnorm/limiter graph), **crop_x/y/w/h**,
+  **flipped_h**, **color_filter** (black-and-white/sepia), **vignette_intensity**,
+  **brightness/contrast/saturation**, **sharpen**, **chroma_key_enabled/color/tolerance**, and
+  **blur_intensity** — all now audible/visible in the exported file, not just the properties
+  panel and timeline badges. **Chroma key is the one exception**: `colorkey` marks matching
+  pixels transparent, but the final `format=yuv420p` conform stage drops that alpha plane with
+  nothing composited underneath (no multi-track layering yet), so the keyed color is still
+  there in the rendered file — the checkbox/picker have no visible export effect despite being
+  in `video_filter_chain()`'s output, same as if it weren't wired at all.
+
+  Preview is now timeline-aware too, not just export: `avcore::preview::Preview` follows the
+  active sequence's timeline playhead (`Track::clip_at`) instead of the media-library
+  selection, reopening its `playbin` pipeline whenever the playhead crosses onto a different
+  clip (`OcaApp::ensure_preview_loaded`/`pump_preview_frame`/`seek_preview` in `ui/src/app.rs`)
+  and applying that clip's effects via a `gst::Bin` on `playbin`'s `video-filter` property
+  (`build_video_filter_bin` in `preview.rs`). Covers **crop**, **flipped_h**,
+  **brightness/contrast/saturation**, **color_filter** (black-and-white via forced saturation,
+  sepia via `coloreffects`), and **blur_intensity**/**sharpen** (one `gaussianblur` element,
+  signed sigma) — a narrower subset than export's, live-verified against this machine's
+  `gstreamer-msvc` install via `gst-inspect-1.0`. **Not covered by preview**: **vignette** (no
+  matching GStreamer element found), **chroma key** (same compositing gap as export, see
+  above), and **gain_db** (preview has no audio route at all — `audio-sink` is `fakesink`,
+  deliberately, a separate pre-existing gap). Crossing a clip boundary during playback tears
+  down and reopens the pipeline (a brief hitch at every cut) rather than gapless — a real
+  compositor pipeline would be needed to avoid that, out of scope here. There is no more
+  "preview a raw asset before placing it on the timeline" mode — selecting a media-library
+  asset (`selected_asset_id`) no longer affects preview at all, only what covers the playhead
+  does.
+
+  Multiple video tracks / layered compositing, audio-only tracks, and an exact source-bitrate
+  export match (the export canvas's bitrate is now a duration-weighted average of the
+  timeline's own clips' source bitrates, not an exact copy, since video is re-encoded rather
+  than stream-copied) are out of scope for both passes above.
+  **Not yet covered by export or preview at all**: freeze frame
+  (`ClipInstance::frozen`, needs frame-hold logic), speed (`ClipInstance::speed_factor`, needs
+  resampling + the timeline supporting a displayed duration different from the trimmed source
+  range, which nothing does yet), layer masks (`ClipInstance::mask_shape`: none/circle/
+  rounded-rect, needs alpha-geometry compositing), shake/glitch/pixelize
+  (`ClipInstance::shake_intensity/glitch_intensity/pixelize_intensity`), transitions
+  (`ClipInstance::transition_in`: none/fade/hard cut/slide/zoom — also models only a block's
+  incoming edge, not a real two-clip cross-blend, which would need a relationship between
+  adjacent clips instead of a single-clip field), and zoom (`ClipInstance::zoom_start`/
+  `zoom_end`, needs keyframed crop-over-time). Copy formatting (`Ctrl+Shift+C`/`Ctrl+Shift+V`,
+  `OcaApp::copy_selected_clip_formatting`/`paste_selected_clip_formatting`) copies all of the
+  above between blocks without duplicating the clip, regardless of which ones render yet. Every
+  field still has its properties-panel control and timeline badge/tint/stroke (freeze top-left,
+  speed top-right, crop bottom-right, mask bottom-left, flip "⇄" top-center, color filter as a
+  translucent tint, vignette as a darkened border stroke, chroma key as a "🟩" badge
+  bottom-center) regardless of render status. Check `features/request.md` for what's still
+  unbuilt before assuming a feature is live — when in doubt, `graphify query`.
 
 ## Commands
 

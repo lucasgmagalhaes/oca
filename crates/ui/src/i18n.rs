@@ -182,7 +182,7 @@ text_catalog! {
 
     QueueTitle: pt_br = "Fila de exportação", en = "Export queue";
     AddExport: pt_br = "＋ Adicionar exportação", en = "＋ Add export";
-    AddExportNeedsClip: pt_br = "Selecione um clipe na Mídia ou no Editor primeiro", en = "Select a clip in Mídia or the Editor first";
+    AddExportNeedsClip: pt_br = "Adicione ao menos um clipe de vídeo na sequência ativa primeiro", en = "Add at least one video clip to the active sequence first";
     ConcurrentWorkers: pt_br = "Workers simultâneos", en = "Concurrent workers";
     QueueSubtitle: pt_br = "A edição continua responsiva enquanto os jobs renderizam em segundo plano. A fila persiste entre sessões.", en = "Editing stays responsive while jobs render in the background. The queue persists across sessions.";
     QueueTechNote: pt_br = "Nota técnica: cada job é um snapshot (bitrate/perfil/destino) tirado no momento em que entra na fila — mudanças no projeto ativo depois disso não afetam o job. Render roda em worker separado da UI (tokio::mpsc); 1 worker por padrão, configurável em Preferências.", en = "Technical note: each job is a snapshot (bitrate/profile/destination) taken the moment it enters the queue — later changes to the active project don't affect the job. Rendering runs in a worker separate from the UI (tokio::mpsc); 1 worker by default, configurable in Preferences.";
@@ -299,7 +299,9 @@ pub fn job_detail_line(locale: Locale, job: &ExportJob) -> String {
         }
         _ => format!(
             "-{:.0} LUFS · {:.0} Mbps · {}",
-            -job.target_lufs, job.bitrate_mbps, job.output_path
+            -job.target_lufs,
+            job.canvas.bit_rate_bps as f32 / 1_000_000.0,
+            job.output_path
         ),
     }
 }

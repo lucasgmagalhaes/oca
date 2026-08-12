@@ -12,6 +12,15 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
 #[repr(C)]
+struct RawClipSegment {
+    source_path: *const c_char,
+    source_in_secs: f64,
+    source_out_secs: f64,
+    gain_db: f32,
+    video_filter: *const c_char,
+}
+
+#[repr(C)]
 struct RawProbeInfo {
     has_video: c_int,
     duration_secs: f64,
@@ -30,6 +39,20 @@ unsafe extern "C" {
     fn avbridge_remux_copy(in_path: *const c_char, out_path: *const c_char) -> c_int;
     fn avbridge_encode_export(
         in_path: *const c_char,
+        out_path: *const c_char,
+        target_lufs: f32,
+        progress_cb: Option<unsafe extern "C" fn(user_data: *mut c_void, seconds: f64)>,
+        progress_user_data: *mut c_void,
+        cancel: *const u8,
+    ) -> c_int;
+    fn avbridge_encode_timeline_export(
+        segments: *const RawClipSegment,
+        segment_count: c_int,
+        canvas_width: c_int,
+        canvas_height: c_int,
+        canvas_fps_num: c_int,
+        canvas_fps_den: c_int,
+        canvas_bit_rate_bps: c_longlong,
         out_path: *const c_char,
         target_lufs: f32,
         progress_cb: Option<unsafe extern "C" fn(user_data: *mut c_void, seconds: f64)>,
@@ -273,6 +296,13 @@ pub enum EncodeError {
     Encoder,
     /// A decode/filter/encode call failed mid-stream (not at setup).
     Pipeline,
+    /// (`encode_timeline_export` only) a segment has no video stream.
+    NoVideoStream,
+    /// (`encode_timeline_export` only) a later segment's audio format (sample rate/format/
+    /// channel layout) doesn't match the first segment's.
+    AudioFormatMismatch,
+    /// (`encode_timeline_export` only) `segments` was empty.
+    EmptyTimeline,
     /// The C side returned a status code this crate doesn't know about.
     Unknown(c_int),
 }
@@ -293,6 +323,14 @@ impl std::fmt::Display for EncodeError {
             EncodeError::FilterGraph => write!(f, "failed to build the audio filter graph"),
             EncodeError::Encoder => write!(f, "failed to open the AAC encoder"),
             EncodeError::Pipeline => write!(f, "decode/filter/encode pipeline failed mid-stream"),
+            EncodeError::NoVideoStream => write!(f, "a segment has no video stream"),
+            EncodeError::AudioFormatMismatch => {
+                write!(
+                    f,
+                    "a segment's audio format doesn't match the first segment's"
+                )
+            }
+            EncodeError::EmptyTimeline => write!(f, "no segments to render"),
             EncodeError::Unknown(code) => write!(f, "unknown encode status code: {code}"),
         }
     }
@@ -360,6 +398,127 @@ pub fn encode_export<F: FnMut(f64)>(
         11 => Err(EncodeError::Encoder),
         12 => Err(EncodeError::Pipeline),
         13 => Ok(EncodeOutcome::Cancelled),
+        other => Err(EncodeError::Unknown(other)),
+    }
+}
+
+/// One trimmed clip in an [`encode_timeline_export`] timeline: a source file, the range of it
+/// to use (`source_in_secs..source_out_secs`), a linear gain in dB, and a pre-built avfilter
+/// chain description for this clip's own video effects (empty string = none — the segment
+/// still gets canvas-conformed and re-encoded).
+#[derive(Debug, Clone)]
+pub struct ClipSegment {
+    pub source_path: std::path::PathBuf,
+    pub source_in_secs: f64,
+    pub source_out_secs: f64,
+    pub gain_db: f32,
+    pub video_filter: String,
+}
+
+/// The fixed output frame size/rate every segment in an [`encode_timeline_export`] call is
+/// scaled/padded/frame-rate-conformed onto.
+#[derive(Debug, Clone, Copy)]
+pub struct Canvas {
+    pub width: u32,
+    pub height: u32,
+    pub fps_num: u32,
+    pub fps_den: u32,
+    /// Target video bitrate in bits per second for the whole timeline's single encoder —
+    /// unlike [`encode_export`]'s exact source-bitrate passthrough, this is a target the
+    /// libopenh264 encoder aims for (there's no way to guarantee an exact output bitrate once
+    /// video is re-encoded rather than stream-copied).
+    pub bit_rate_bps: i64,
+}
+
+/// Renders `segments` as one continuous export onto a `canvas_width`x`canvas_height` canvas
+/// at `canvas_fps_num`/`canvas_fps_den`: video is decoded, each segment's own filter chain
+/// applied (prefixed with a canvas-conform scale/pad/fps stage), and re-encoded via
+/// libopenh264 — unlike [`encode_export`], video is never stream-copied, since each clip may
+/// need a different filter chain. Audio across all segments runs through ONE continuous
+/// loudnorm+limiter graph (so normalization sees the whole timeline) before being re-encoded
+/// to AAC — every segment's audio must therefore share the same sample rate/format/channel
+/// layout ([`EncodeError::AudioFormatMismatch`] otherwise), and every segment must have both a
+/// video and an audio stream ([`EncodeError::NoVideoStream`] / [`EncodeError::NoAudioStream`]).
+///
+/// Calls `on_progress(seconds_processed)` with the cumulative timeline position, and checks
+/// `cancel` between packets — same cancellation contract as [`encode_export`].
+pub fn encode_timeline_export<F: FnMut(f64)>(
+    segments: &[ClipSegment],
+    canvas: Canvas,
+    out_path: &Path,
+    target_lufs: f32,
+    cancel: &AtomicBool,
+    mut on_progress: F,
+) -> Result<EncodeOutcome, EncodeError> {
+    if segments.is_empty() {
+        return Err(EncodeError::EmptyTimeline);
+    }
+
+    let c_out =
+        CString::new(out_path.to_string_lossy().as_bytes()).map_err(EncodeError::InvalidPath)?;
+
+    let mut c_paths = Vec::with_capacity(segments.len());
+    let mut c_filters = Vec::with_capacity(segments.len());
+    for seg in segments {
+        c_paths.push(
+            CString::new(seg.source_path.to_string_lossy().as_bytes())
+                .map_err(EncodeError::InvalidPath)?,
+        );
+        c_filters
+            .push(CString::new(seg.video_filter.as_bytes()).map_err(EncodeError::InvalidPath)?);
+    }
+    let raw_segments: Vec<RawClipSegment> = segments
+        .iter()
+        .zip(c_paths.iter())
+        .zip(c_filters.iter())
+        .map(|((seg, path), filt)| RawClipSegment {
+            source_path: path.as_ptr(),
+            source_in_secs: seg.source_in_secs,
+            source_out_secs: seg.source_out_secs,
+            gain_db: seg.gain_db,
+            video_filter: filt.as_ptr(),
+        })
+        .collect();
+
+    // SAFETY: raw_segments' pointers stay valid for the call — c_paths/c_filters (which they
+    // point into) and raw_segments itself are all stack locals held alive until this function
+    // returns, none of them mutated during the call. c_out, progress_trampoline::<F>, and
+    // cancel.as_ptr() carry the same safety argument as encode_export's identical call.
+    let status = unsafe {
+        avbridge_encode_timeline_export(
+            raw_segments.as_ptr(),
+            raw_segments.len() as c_int,
+            canvas.width as c_int,
+            canvas.height as c_int,
+            canvas.fps_num as c_int,
+            canvas.fps_den as c_int,
+            canvas.bit_rate_bps as c_longlong,
+            c_out.as_ptr(),
+            target_lufs,
+            Some(progress_trampoline::<F>),
+            &mut on_progress as *mut _ as *mut c_void,
+            cancel.as_ptr() as *const u8,
+        )
+    };
+
+    match status {
+        0 => Ok(EncodeOutcome::Completed),
+        1 => Err(EncodeError::OpenInput),
+        2 => Err(EncodeError::StreamInfo),
+        3 => Err(EncodeError::AllocOutput),
+        4 => Err(EncodeError::NewStream),
+        5 => Err(EncodeError::OpenOutput),
+        6 => Err(EncodeError::WriteHeader),
+        7 => Err(EncodeError::WriteFrame),
+        8 => Err(EncodeError::NoAudioStream),
+        9 => Err(EncodeError::Decoder),
+        10 => Err(EncodeError::FilterGraph),
+        11 => Err(EncodeError::Encoder),
+        12 => Err(EncodeError::Pipeline),
+        13 => Ok(EncodeOutcome::Cancelled),
+        14 => Err(EncodeError::NoVideoStream),
+        15 => Err(EncodeError::AudioFormatMismatch),
+        16 => Err(EncodeError::EmptyTimeline),
         other => Err(EncodeError::Unknown(other)),
     }
 }

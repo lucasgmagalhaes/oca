@@ -1,7 +1,18 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use avbridge::{encode_export, probe, EncodeError, EncodeOutcome, StreamKind};
+use avbridge::{
+    encode_export, encode_timeline_export, probe, Canvas, ClipSegment, EncodeError, EncodeOutcome,
+    StreamKind,
+};
+
+const CANVAS: Canvas = Canvas {
+    width: 320,
+    height: 240,
+    fps_num: 30,
+    fps_den: 1,
+    bit_rate_bps: 500_000,
+};
 
 fn fixture(name: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -76,6 +87,89 @@ fn fails_on_audio_only_input_without_error_for_video_field() {
 
     let info = probe(&out).unwrap();
     assert_eq!(info.kind, StreamKind::Audio);
+
+    let _ = std::fs::remove_file(&out);
+}
+
+fn clip(
+    source_in_secs: f64,
+    source_out_secs: f64,
+    gain_db: f32,
+    video_filter: &str,
+) -> ClipSegment {
+    ClipSegment {
+        source_path: fixture("video.mp4"),
+        source_in_secs,
+        source_out_secs,
+        gain_db,
+        video_filter: video_filter.to_string(),
+    }
+}
+
+#[test]
+fn concatenates_two_segments_with_different_filters_into_one_export() {
+    let out = std::env::temp_dir().join("avbridge_test_timeline_ok.mp4");
+    let cancel = AtomicBool::new(false);
+    let mut progress_calls = 0;
+
+    let segments = [clip(0.0, 0.35, 0.0, ""), clip(0.35, 0.7, 6.0, "hflip")];
+    let outcome = encode_timeline_export(&segments, CANVAS, &out, -14.0, &cancel, |_secs| {
+        progress_calls += 1
+    })
+    .unwrap();
+
+    assert_eq!(outcome, EncodeOutcome::Completed);
+    assert!(progress_calls > 0);
+
+    let info = probe(&out).unwrap();
+    assert_eq!(info.kind, StreamKind::Video);
+    assert_eq!(info.resolution, Some((320, 240)));
+    // Trimmed to ~0.7s total (0.35 + 0.35) — loose bound since seek lands on the nearest
+    // keyframe, not exactly at each segment's requested in-point.
+    assert!(info.duration_secs > 0.0 && info.duration_secs < 2.0);
+
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
+fn rejects_an_empty_timeline() {
+    let out = std::env::temp_dir().join("avbridge_test_timeline_empty.mp4");
+    let cancel = AtomicBool::new(false);
+
+    let err = encode_timeline_export(&[], CANVAS, &out, -14.0, &cancel, |_| {}).unwrap_err();
+
+    assert!(matches!(err, EncodeError::EmptyTimeline));
+}
+
+#[test]
+fn fails_on_a_segment_with_a_missing_source() {
+    let out = std::env::temp_dir().join("avbridge_test_timeline_missing.mp4");
+    let cancel = AtomicBool::new(false);
+    let mut missing = clip(0.0, 0.5, 0.0, "");
+    missing.source_path = fixture("does_not_exist.mp4");
+
+    let err = encode_timeline_export(&[missing], CANVAS, &out, -14.0, &cancel, |_| {}).unwrap_err();
+
+    assert!(matches!(err, EncodeError::OpenInput));
+}
+
+#[test]
+fn cancelling_mid_timeline_export_leaves_no_valid_file() {
+    let out = std::env::temp_dir().join("avbridge_test_timeline_cancelled.mp4");
+    let cancel = AtomicBool::new(false);
+    let mut calls = 0;
+
+    let segments = [clip(0.0, 0.35, 0.0, ""), clip(0.35, 0.7, 0.0, "")];
+    let outcome = encode_timeline_export(&segments, CANVAS, &out, -14.0, &cancel, |_secs| {
+        calls += 1;
+        if calls >= 3 {
+            cancel.store(true, Ordering::Relaxed);
+        }
+    })
+    .unwrap();
+
+    assert_eq!(outcome, EncodeOutcome::Cancelled);
+    assert!(probe(&out).is_err());
 
     let _ = std::fs::remove_file(&out);
 }

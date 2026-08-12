@@ -435,7 +435,7 @@ fn preview_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                         }
                         ui.add(egui::Image::new(texture).fit_to_exact_size(size));
                     }
-                    None if app.selected_asset_id.is_some() && !app.preview_available() => {
+                    None if app.preview_clip_present() && !app.preview_available() => {
                         ui.label(
                             RichText::new(Text::PreviewUnavailable.tr(locale))
                                 .size(13.0)
@@ -447,6 +447,7 @@ fn preview_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                     }
                 });
             });
+        let timeline_duration = app.active_project().timeline().duration_secs();
         ui.horizontal(|ui| {
             if ui.small_button("⏮").clicked() {
                 app.seek_preview(0.0);
@@ -459,25 +460,24 @@ fn preview_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                 app.toggle_preview_playback();
             }
             if ui.small_button("⏭").clicked() {
-                if let Some(duration) = app.preview_duration_secs() {
-                    app.seek_preview(duration);
-                }
+                app.seek_preview(timeline_duration);
             }
-            let timeline = app.active_project().timeline();
+            let playhead = app.active_project().timeline().playhead_secs;
             ui.label(
                 RichText::new(format!(
                     "{} / {}",
-                    format_timecode(timeline.playhead_secs),
-                    format_timecode(timeline.duration_secs().max(timeline.playhead_secs))
+                    format_timecode(playhead),
+                    format_timecode(timeline_duration.max(playhead))
                 ))
                 .size(12.0)
                 .color(theme::TEXT_SECONDARY)
                 .monospace(),
             );
         });
-        if let Some(duration) = app.preview_duration_secs().filter(|d| *d > 0.0) {
-            let mut position = app.preview_position_secs().unwrap_or(0.0);
-            let slider = ui.add(egui::Slider::new(&mut position, 0.0..=duration).show_value(false));
+        if timeline_duration > 0.0 {
+            let mut position = app.active_project().timeline().playhead_secs;
+            let slider =
+                ui.add(egui::Slider::new(&mut position, 0.0..=timeline_duration).show_value(false));
             if slider.changed() {
                 app.seek_preview(position);
             }

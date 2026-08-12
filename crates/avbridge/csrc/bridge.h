@@ -83,6 +83,15 @@ typedef enum {
     /* *cancel became nonzero mid-render — out_path is a truncated/invalid file, not written
        past the header. Not a failure: matches render.rs's RenderOutcome::Cancelled. */
     OCA_ENCODE_CANCELLED = 13,
+    /* A segment (avbridge_encode_timeline_export only) has no video stream. */
+    OCA_ENCODE_ERR_NO_VIDEO_STREAM = 14,
+    /* A later segment's audio (sample rate/format/channel layout) doesn't match the first
+       segment's — avbridge_encode_timeline_export keeps one audio filter graph open across
+       the whole timeline (so loudnorm sees it as one continuous stream), which requires every
+       segment to decode to the same PCM shape. */
+    OCA_ENCODE_ERR_AUDIO_FORMAT_MISMATCH = 15,
+    /* avbridge_encode_timeline_export was called with segment_count <= 0. */
+    OCA_ENCODE_ERR_EMPTY_TIMELINE = 16,
 } OcaEncodeStatus;
 
 /* Called periodically during the read/decode loop with the input packet's position, in
@@ -102,6 +111,46 @@ typedef void (*OcaProgressCallback)(void *user_data, double seconds_processed);
 OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path,
                                             float target_lufs, OcaProgressCallback progress_cb,
                                             void *progress_user_data, const uint8_t *cancel);
+
+typedef struct {
+    /* UTF-8, NUL-terminated. */
+    const char *source_path;
+    /* Trim range within source_path, in seconds. */
+    double source_in_secs;
+    double source_out_secs;
+    /* Per-clip linear gain in dB, applied (as the `volume` filter's dB form) before the
+       shared loudnorm/limiter chain sees this segment's audio. */
+    float gain_db;
+    /* Pre-built avfilter chain description (e.g. "eq=brightness=0.1,hflip"), UTF-8,
+       NUL-terminated. Empty string ("") means no clip-specific video effect — the segment
+       still goes through the canvas-conform (scale/pad/fps) stage and gets re-encoded. */
+    const char *video_filter;
+} OcaClipSegment;
+
+/* Renders an ordered sequence of trimmed clips (`segments`, `segment_count` of them) as one
+   continuous export: video is decoded, each segment's own avfilter chain applied (prefixed
+   with a canvas-conform scale/pad/fps stage so every segment lands on the same
+   canvas_width/canvas_height/canvas_fps), and re-encoded via libopenh264 at
+   canvas_bit_rate_bps — unlike
+   avbridge_encode_export, video is never stream-copied here, since each clip may need a
+   different filter chain. Audio across all segments is decoded, gain-adjusted per segment,
+   and run through ONE continuous loudnorm+limiter graph (so normalization sees the whole
+   timeline, not each clip in isolation) before being re-encoded to AAC 192kbps — this is why
+   every segment's audio must share the same sample rate/format/channel layout
+   (OCA_ENCODE_ERR_AUDIO_FORMAT_MISMATCH otherwise). Every segment must have both a video and
+   an audio stream (OCA_ENCODE_ERR_NO_VIDEO_STREAM / OCA_ENCODE_ERR_NO_AUDIO_STREAM).
+
+   progress_cb/progress_user_data may both be NULL to skip progress reporting; when set,
+   called with the cumulative timeline position in seconds (sum of prior segments' trimmed
+   durations plus progress within the current one), never past the sum of all segments'
+   trimmed durations.
+   cancel may be NULL to disable cancellation; otherwise checked between packets — once
+   `*cancel` is nonzero, stops and returns OCA_ENCODE_CANCELLED without writing a trailer. */
+OcaEncodeStatus avbridge_encode_timeline_export(
+    const OcaClipSegment *segments, int segment_count, int canvas_width, int canvas_height,
+    int canvas_fps_num, int canvas_fps_den, int64_t canvas_bit_rate_bps, const char *out_path,
+    float target_lufs, OcaProgressCallback progress_cb, void *progress_user_data,
+    const uint8_t *cancel);
 
 typedef enum {
     OCA_LOUDNESS_OK = 0,

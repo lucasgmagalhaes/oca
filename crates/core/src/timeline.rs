@@ -318,6 +318,65 @@ impl ClipInstance {
         self.zoom_start != 1.0 || self.zoom_end != 1.0
     }
 
+    /// Builds this clip's avfilter chain description for `core::render::render_timeline_export`
+    /// — the subset of effect fields expressible as a static per-clip video filter (see
+    /// `features/request.md`'s Fase 4 "Efeitos visuais" list): crop, brightness/contrast/
+    /// saturation, the black-and-white/sepia color filter, vignette, sharpen, chroma key, blur,
+    /// and horizontal flip. `gain_db` is audio, not video, and isn't part of this chain.
+    /// `frozen`/`speed_factor`/`mask_shape`/`shake_intensity`/`glitch_intensity`/
+    /// `pixelize_intensity`/`transition_in`/`zoom_start`/`zoom_end` each need a materially
+    /// different mechanism (frame duplication, resampling+retiming, alpha-geometry
+    /// compositing, cross-clip blending, keyframed crop-over-time) and aren't covered here yet.
+    ///
+    /// Returns `""` (no-op) if none of the covered effects deviate from neutral. Filters are
+    /// comma-joined in a fixed order — crop first (so later filters see the cropped frame,
+    /// not un-cropped coordinates), flip last (so it doesn't mirror crop/vignette geometry) —
+    /// which is a judgment call, not something derivable from the field values themselves.
+    pub fn video_filter_chain(&self) -> String {
+        let mut stages = Vec::new();
+
+        if self.is_cropped() {
+            stages.push(format!(
+                "crop=iw*{}:ih*{}:iw*{}:ih*{}",
+                self.crop_w, self.crop_h, self.crop_x, self.crop_y
+            ));
+        }
+        if self.brightness != 0.0 || self.contrast != 1.0 || self.saturation != 1.0 {
+            stages.push(format!(
+                "eq=brightness={}:contrast={}:saturation={}",
+                self.brightness, self.contrast, self.saturation
+            ));
+        }
+        match self.color_filter {
+            ColorFilter::None => {}
+            ColorFilter::BlackAndWhite => stages.push("hue=s=0".to_string()),
+            ColorFilter::Sepia => stages.push(
+                "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:0".to_string(),
+            ),
+        }
+        if self.is_chroma_keyed() {
+            let [r, g, b] = self.chroma_key_color;
+            stages.push(format!(
+                "colorkey=0x{r:02x}{g:02x}{b:02x}:{:.3}:0.1",
+                self.chroma_key_tolerance
+            ));
+        }
+        if self.blur_intensity > 0.0 {
+            stages.push(format!("boxblur={:.2}", self.blur_intensity * 10.0));
+        }
+        if self.sharpen > 0.0 {
+            stages.push(format!("unsharp=5:5:{:.2}:5:5:0.0", self.sharpen * 3.0));
+        }
+        if self.has_vignette() {
+            stages.push(format!("vignette=PI/4*{:.3}", self.vignette_intensity));
+        }
+        if self.flipped_h {
+            stages.push("hflip".to_string());
+        }
+
+        stages.join(",")
+    }
+
     /// True if `at_secs` (timeline-relative) falls strictly inside this clip's placed range.
     /// Boundary-exact positions return `false` — splitting exactly on an edge would just
     /// produce a zero-length half.
@@ -379,6 +438,17 @@ pub struct Track {
 }
 
 impl Track {
+    /// The clip covering `at_secs` (timeline-relative), inclusive of `start_secs` — distinct
+    /// from [`ClipInstance::contains`]'s strict-interior semantics (which exists for split
+    /// safety, so splitting exactly on an edge doesn't produce a zero-length half). This one is
+    /// for "what's playing right now" queries (preview), where the clip starting exactly at
+    /// the playhead should count. `None` if nothing on this track covers `at_secs`.
+    pub fn clip_at(&self, at_secs: f64) -> Option<&ClipInstance> {
+        self.clips
+            .iter()
+            .find(|c| at_secs >= c.start_secs && at_secs < c.start_secs + c.duration_secs())
+    }
+
     /// Splits the clip covering `at_secs` (timeline-relative) into two: the original keeps
     /// `id` and has its `source_out_secs` trimmed to the split point; a new clip starting at
     /// `at_secs`, with `new_clip_id` and the rest of the original's source range, is inserted

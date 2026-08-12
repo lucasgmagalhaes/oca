@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use avcore::preview::Preview;
+use avcore::timeline::{ClipInstance, ColorFilter, MaskShape, TransitionType};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -8,9 +9,47 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
+fn clip() -> ClipInstance {
+    ClipInstance {
+        id: 1,
+        asset_id: 1,
+        start_secs: 0.0,
+        source_in_secs: 0.0,
+        source_out_secs: 1.0,
+        composite_id: None,
+        gain_db: 0.0,
+        frozen: false,
+        speed_factor: 1.0,
+        crop_x: 0.0,
+        crop_y: 0.0,
+        crop_w: 1.0,
+        crop_h: 1.0,
+        mask_shape: MaskShape::None,
+        mask_corner_radius: 0.0,
+        flipped_h: false,
+        color_filter: ColorFilter::None,
+        vignette_intensity: 0.0,
+        brightness: 0.0,
+        contrast: 1.0,
+        saturation: 1.0,
+        sharpen: 0.0,
+        chroma_key_enabled: false,
+        chroma_key_color: [0, 255, 0],
+        chroma_key_tolerance: 0.4,
+        blur_intensity: 0.0,
+        shake_intensity: 0.0,
+        glitch_intensity: 0.0,
+        pixelize_intensity: 0.0,
+        transition_in: TransitionType::None,
+        transition_duration_secs: 0.5,
+        zoom_start: 1.0,
+        zoom_end: 1.0,
+    }
+}
+
 #[test]
 fn opens_a_real_file_and_reports_duration() {
-    let preview = Preview::open(&fixture("video.mp4")).unwrap();
+    let preview = Preview::open(&fixture("video.mp4"), None).unwrap();
     let duration = preview
         .duration_secs()
         .expect("duration should be known after preroll");
@@ -19,14 +58,14 @@ fn opens_a_real_file_and_reports_duration() {
 
 #[test]
 fn play_then_pause_does_not_error() {
-    let preview = Preview::open(&fixture("video.mp4")).unwrap();
+    let preview = Preview::open(&fixture("video.mp4"), None).unwrap();
     preview.play().unwrap();
     preview.pause().unwrap();
 }
 
 #[test]
 fn seek_succeeds_and_position_stays_in_bounds() {
-    let preview = Preview::open(&fixture("video.mp4")).unwrap();
+    let preview = Preview::open(&fixture("video.mp4"), None).unwrap();
     let duration = preview.duration_secs().unwrap();
 
     preview.seek(duration / 2.0).unwrap();
@@ -38,12 +77,12 @@ fn seek_succeeds_and_position_stays_in_bounds() {
 
 #[test]
 fn errors_on_a_missing_file() {
-    assert!(Preview::open(&fixture("does_not_exist.mp4")).is_err());
+    assert!(Preview::open(&fixture("does_not_exist.mp4"), None).is_err());
 }
 
 #[test]
 fn current_frame_returns_correctly_sized_rgba() {
-    let preview = Preview::open(&fixture("video.mp4")).unwrap();
+    let preview = Preview::open(&fixture("video.mp4"), None).unwrap();
     let frame = preview
         .current_frame()
         .expect("a frame should be available right after preroll");
@@ -59,6 +98,42 @@ fn current_frame_returns_correctly_sized_rgba() {
 
 #[test]
 fn current_frame_is_none_for_audio_only_input() {
-    let preview = Preview::open(&fixture("audio.m4a")).unwrap();
+    let preview = Preview::open(&fixture("audio.m4a"), None).unwrap();
     assert!(preview.current_frame().is_none());
+}
+
+#[test]
+fn a_neutral_clip_applies_no_filter_bin_and_frame_size_is_unchanged() {
+    let preview = Preview::open(&fixture("video.mp4"), Some(&clip())).unwrap();
+    let frame = preview.current_frame().unwrap();
+    assert_eq!((frame.width, frame.height), (320, 240));
+}
+
+#[test]
+fn a_cropped_clip_shrinks_the_decoded_frame() {
+    let mut c = clip();
+    c.crop_x = 0.25;
+    c.crop_y = 0.25;
+    c.crop_w = 0.5;
+    c.crop_h = 0.5;
+
+    let preview = Preview::open(&fixture("video.mp4"), Some(&c)).unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("a frame should be available right after preroll");
+
+    assert_eq!((frame.width, frame.height), (160, 120));
+}
+
+#[test]
+fn a_flipped_clip_still_opens_and_decodes() {
+    let mut c = clip();
+    c.flipped_h = true;
+
+    let preview = Preview::open(&fixture("video.mp4"), Some(&c)).unwrap();
+    let frame = preview.current_frame().unwrap();
+    // videoflip doesn't change dimensions for a horizontal flip — this just proves the filter
+    // bin links and the pipeline still preroll a real frame, not that pixels are mirrored
+    // (nothing here decodes/compares pixel content).
+    assert_eq!((frame.width, frame.height), (320, 240));
 }

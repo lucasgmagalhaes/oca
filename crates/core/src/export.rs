@@ -1,6 +1,6 @@
-use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize};
+
+use crate::{Canvas, ClipSegment};
 
 /// A queued render's lifecycle. `Rendering`/`Paused` carry a snapshot progress percentage;
 /// the queue itself (Fase 4) will drive these via the background worker channel.
@@ -13,16 +13,17 @@ pub enum ExportJobStatus {
     Failed { message: String },
 }
 
-/// One export job. Configuration fields are a snapshot taken when the job entered the
-/// queue — later edits to the source project must not retroactively change a queued job.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// One export job: a snapshot of a sequence's video-track clips, resolved to
+/// [`ClipSegment`]s, taken when the job entered the queue — later edits to the source
+/// project must not retroactively change a queued job. Rendered via
+/// [`crate::render::render_timeline_export`]'s underlying `avbridge::encode_timeline_export`.
+#[derive(Debug, Clone)]
 pub struct ExportJob {
     pub id: u64,
     pub title: String,
-    /// The file this job renders from — see [`crate::render::render_export`].
-    pub source_path: PathBuf,
+    pub segments: Vec<ClipSegment>,
+    pub canvas: Canvas,
     pub target_lufs: f32,
-    pub bitrate_mbps: f32,
     pub output_path: String,
     pub status: ExportJobStatus,
 }

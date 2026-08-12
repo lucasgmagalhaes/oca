@@ -65,6 +65,99 @@ fn negative_gain_db_scales_linear_gain_below_unity() {
 }
 
 #[test]
+fn video_filter_chain_is_empty_for_a_neutral_clip() {
+    assert_eq!(clip(1, 0.0, 0.0, 10.0).video_filter_chain(), "");
+}
+
+#[test]
+fn video_filter_chain_includes_crop_when_cropped() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.crop_x = 0.1;
+    c.crop_y = 0.2;
+    c.crop_w = 0.5;
+    c.crop_h = 0.6;
+    assert_eq!(c.video_filter_chain(), "crop=iw*0.5:ih*0.6:iw*0.1:ih*0.2");
+}
+
+#[test]
+fn video_filter_chain_includes_eq_when_color_adjusted() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.brightness = 0.2;
+    assert_eq!(
+        c.video_filter_chain(),
+        "eq=brightness=0.2:contrast=1:saturation=1"
+    );
+}
+
+#[test]
+fn video_filter_chain_maps_black_and_white_to_hue_desaturate() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.color_filter = ColorFilter::BlackAndWhite;
+    assert_eq!(c.video_filter_chain(), "hue=s=0");
+}
+
+#[test]
+fn video_filter_chain_maps_sepia_to_colorchannelmixer() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.color_filter = ColorFilter::Sepia;
+    assert_eq!(
+        c.video_filter_chain(),
+        "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:0"
+    );
+}
+
+#[test]
+fn video_filter_chain_includes_colorkey_when_chroma_keyed() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.chroma_key_enabled = true;
+    c.chroma_key_color = [0, 255, 0];
+    c.chroma_key_tolerance = 0.4;
+    assert_eq!(c.video_filter_chain(), "colorkey=0x00ff00:0.400:0.1");
+}
+
+#[test]
+fn video_filter_chain_includes_boxblur_when_blurred() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.blur_intensity = 0.5;
+    assert_eq!(c.video_filter_chain(), "boxblur=5.00");
+}
+
+#[test]
+fn video_filter_chain_includes_unsharp_when_sharpened() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.sharpen = 0.5;
+    assert_eq!(c.video_filter_chain(), "unsharp=5:5:1.50:5:5:0.0");
+}
+
+#[test]
+fn video_filter_chain_includes_vignette_when_vignetted() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.vignette_intensity = 0.8;
+    assert_eq!(c.video_filter_chain(), "vignette=PI/4*0.800");
+}
+
+#[test]
+fn video_filter_chain_includes_hflip_last_when_flipped() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.flipped_h = true;
+    c.vignette_intensity = 0.5;
+    assert_eq!(c.video_filter_chain(), "vignette=PI/4*0.500,hflip");
+}
+
+#[test]
+fn video_filter_chain_orders_crop_before_color_before_flip() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.crop_w = 0.5;
+    c.color_filter = ColorFilter::Sepia;
+    c.flipped_h = true;
+    assert_eq!(
+        c.video_filter_chain(),
+        "crop=iw*0.5:ih*1:iw*0:ih*0,colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.\
+         534:.131:0,hflip"
+    );
+}
+
+#[test]
 fn empty_timeline_has_zero_duration() {
     let timeline = Timeline {
         tracks: vec![],
@@ -124,6 +217,36 @@ fn track_duration_is_the_furthest_clip_end_on_this_track_only() {
     let track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 50.0, 0.0, 5.0)]);
     // Second clip ends at 50 + 5 = 55, which is furthest even though it's shorter.
     assert_eq!(track.duration_secs(), 55.0);
+}
+
+#[test]
+fn clip_at_finds_the_clip_covering_a_position() {
+    let track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 0.0, 5.0)]);
+    assert_eq!(track.clip_at(3.0).unwrap().id, 1);
+    assert_eq!(track.clip_at(12.0).unwrap().id, 2);
+}
+
+#[test]
+fn clip_at_is_inclusive_of_a_clips_start() {
+    let track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 0.0, 5.0)]);
+    assert_eq!(track.clip_at(10.0).unwrap().id, 2);
+}
+
+#[test]
+fn clip_at_is_exclusive_of_a_clips_end() {
+    let track = track_with(vec![clip(1, 0.0, 0.0, 10.0)]);
+    assert!(track.clip_at(10.0).is_none());
+}
+
+#[test]
+fn clip_at_is_none_for_a_gap_between_clips() {
+    let track = track_with(vec![clip(1, 0.0, 0.0, 5.0), clip(2, 20.0, 0.0, 5.0)]);
+    assert!(track.clip_at(10.0).is_none());
+}
+
+#[test]
+fn clip_at_is_none_for_an_empty_track() {
+    assert!(track_with(Vec::new()).clip_at(0.0).is_none());
 }
 
 #[test]

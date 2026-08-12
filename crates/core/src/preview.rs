@@ -13,6 +13,8 @@ use gstreamer_video as gst_video;
 
 use gst::prelude::*;
 
+use crate::timeline::{ClipInstance, ColorFilter};
+
 #[derive(Debug)]
 pub enum PreviewError {
     Init(gst::glib::Error),
@@ -20,6 +22,12 @@ pub enum PreviewError {
     UriConversion(gst::glib::Error),
     StateChange(gst::StateChangeError),
     Seek(gst::glib::BoolError),
+    /// Couldn't probe `path` for its actual decoded resolution — needed to convert
+    /// [`ClipInstance`]'s normalized crop rect into `videocrop`'s pixel properties.
+    Probe(avbridge::ProbeError),
+    /// Failed wiring the per-clip effects filter bin together (linking elements or adding
+    /// ghost pads).
+    FilterBin(gst::glib::BoolError),
 }
 
 impl std::fmt::Display for PreviewError {
@@ -32,6 +40,8 @@ impl std::fmt::Display for PreviewError {
             }
             PreviewError::StateChange(e) => write!(f, "failed to change pipeline state: {e}"),
             PreviewError::Seek(e) => write!(f, "failed to seek: {e}"),
+            PreviewError::Probe(e) => write!(f, "failed to probe for the effects filter bin: {e}"),
+            PreviewError::FilterBin(e) => write!(f, "failed to build the effects filter bin: {e}"),
         }
     }
 }
@@ -47,6 +57,113 @@ pub struct VideoFrame {
     pub rgba: Vec<u8>,
 }
 
+/// Builds a `gst::Bin` chaining the subset of `clip`'s effects GStreamer can apply live,
+/// suitable for `playbin`'s `video-filter` property — `None` if every covered effect is
+/// neutral (leaves `video-filter` unset). Stage order matches
+/// [`crate::timeline::ClipInstance::video_filter_chain`]'s (crop, then color adjustments, then
+/// the color-filter tint, then blur/sharpen, then flip) for consistency with what export
+/// applies, even though the element set differs (GStreamer elements here, avfilter there) and
+/// the covered subset is narrower (no vignette — no matching element in this GStreamer
+/// install; no chroma key — only meaningful once layering exists; no gain — preview has no
+/// audio route at all yet).
+///
+/// `resolution`, if known (`None` for an audio-only source, which shouldn't reach here but is
+/// handled by just skipping the crop stage), is the *actual* decoded frame size — needed since
+/// `videocrop`'s properties are plain pixel counts and `path` may be a lower-resolution editing
+/// proxy rather than the original asset.
+fn build_video_filter_bin(
+    clip: &ClipInstance,
+    resolution: Option<(u32, u32)>,
+) -> Result<Option<gst::Element>, PreviewError> {
+    let mut elements: Vec<gst::Element> = Vec::new();
+
+    if let Some((width, height)) = resolution {
+        if clip.is_cropped() {
+            let (width, height) = (width as f32, height as f32);
+            let left = (clip.crop_x * width).round().max(0.0) as i32;
+            let top = (clip.crop_y * height).round().max(0.0) as i32;
+            let right = ((1.0 - clip.crop_x - clip.crop_w) * width).round().max(0.0) as i32;
+            let bottom = ((1.0 - clip.crop_y - clip.crop_h) * height)
+                .round()
+                .max(0.0) as i32;
+            let crop = gst::ElementFactory::make("videocrop")
+                .property("left", left)
+                .property("top", top)
+                .property("right", right)
+                .property("bottom", bottom)
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            elements.push(crop);
+        }
+    }
+
+    let effective_saturation = if clip.color_filter == ColorFilter::BlackAndWhite {
+        0.0
+    } else {
+        clip.saturation as f64
+    };
+    if clip.brightness != 0.0 || clip.contrast != 1.0 || effective_saturation != 1.0 {
+        let balance = gst::ElementFactory::make("videobalance")
+            .property("brightness", clip.brightness as f64)
+            .property("contrast", clip.contrast as f64)
+            .property("saturation", effective_saturation)
+            .build()
+            .map_err(PreviewError::CreateElement)?;
+        elements.push(balance);
+    }
+
+    if clip.color_filter == ColorFilter::Sepia {
+        let sepia = gst::ElementFactory::make("coloreffects")
+            .property_from_str("preset", "sepia")
+            .build()
+            .map_err(PreviewError::CreateElement)?;
+        elements.push(sepia);
+    }
+
+    // gaussianblur's single signed `sigma` covers both blur_intensity (positive) and sharpen
+    // (negative) — the *4.0 scale is a judgment call, same style as video_filter_chain's own
+    // per-effect scale factors, not a value derived from anything.
+    let net_sigma = clip.blur_intensity as f64 * 4.0 - clip.sharpen as f64 * 4.0;
+    if net_sigma != 0.0 {
+        let blur = gst::ElementFactory::make("gaussianblur")
+            .property("sigma", net_sigma)
+            .build()
+            .map_err(PreviewError::CreateElement)?;
+        elements.push(blur);
+    }
+
+    if clip.flipped_h {
+        let flip = gst::ElementFactory::make("videoflip")
+            .property_from_str("method", "horizontal-flip")
+            .build()
+            .map_err(PreviewError::CreateElement)?;
+        elements.push(flip);
+    }
+
+    if elements.is_empty() {
+        return Ok(None);
+    }
+
+    let bin = gst::Bin::new();
+    bin.add_many(&elements).map_err(PreviewError::FilterBin)?;
+    gst::Element::link_many(&elements).map_err(PreviewError::FilterBin)?;
+
+    let sink_pad = elements
+        .first()
+        .and_then(|e| e.static_pad("sink"))
+        .expect("every filter element above has a static sink pad");
+    let src_pad = elements
+        .last()
+        .and_then(|e| e.static_pad("src"))
+        .expect("every filter element above has a static src pad");
+    let ghost_sink = gst::GhostPad::with_target(&sink_pad).map_err(PreviewError::FilterBin)?;
+    let ghost_src = gst::GhostPad::with_target(&src_pad).map_err(PreviewError::FilterBin)?;
+    bin.add_pad(&ghost_sink).map_err(PreviewError::FilterBin)?;
+    bin.add_pad(&ghost_src).map_err(PreviewError::FilterBin)?;
+
+    Ok(Some(bin.upcast::<gst::Element>()))
+}
+
 /// A single media file loaded into a `playbin`-based GStreamer pipeline for preview playback.
 /// Owns the pipeline; dropping it tears the pipeline down (`State::Null`) so GStreamer releases
 /// any decoder/output resources.
@@ -56,10 +173,16 @@ pub struct Preview {
 }
 
 impl Preview {
-    /// Opens `path` and brings the pipeline up to `Paused` (decodes enough to preroll, so
+    /// Opens `path` — the clip's resolved source (proxy or original) — and brings the
+    /// pipeline up to `Paused` (decodes enough to preroll, so
     /// [`Self::position_secs`]/[`Self::duration_secs`]/[`Self::current_frame`] have something
-    /// to report).
-    pub fn open(path: &Path) -> Result<Self, PreviewError> {
+    /// to report). `clip`, if given, has its effects (the subset [`build_video_filter_bin`]
+    /// covers) applied via `playbin`'s `video-filter` property — probed from `path` itself
+    /// first (not passed in) since `path` may be a lower-resolution editing proxy, and
+    /// `videocrop`'s properties need the actual decoded pixel size. `None` skips both the
+    /// probe and any filtering — for callers with no clip in scope at all (e.g. filmstrip
+    /// thumbnail extraction, which always shows the raw source regardless of applied effects).
+    pub fn open(path: &Path, clip: Option<&ClipInstance>) -> Result<Self, PreviewError> {
         gst::init().map_err(PreviewError::Init)?;
 
         let uri = gst::glib::filename_to_uri(path, None).map_err(PreviewError::UriConversion)?;
@@ -68,6 +191,15 @@ impl Preview {
             .build()
             .map_err(PreviewError::CreateElement)?;
         pipeline.set_property("uri", uri.as_str());
+
+        if let Some(clip) = clip {
+            let resolution = avbridge::probe(path)
+                .map_err(PreviewError::Probe)?
+                .resolution;
+            if let Some(filter_bin) = build_video_filter_bin(clip, resolution)? {
+                pipeline.set_property("video-filter", &filter_bin);
+            }
+        }
 
         // Fixed RGBA caps: whatever the source's actual pixel format is (planar YUV, etc.),
         // playbin inserts the conversion elements needed to match this — callers of

@@ -108,13 +108,23 @@ fn test_asset_with_kind(id: u64, kind: MediaKind) -> MediaAsset {
     }
 }
 
+fn test_canvas() -> avcore::Canvas {
+    avcore::Canvas {
+        width: 1920,
+        height: 1080,
+        fps_num: 30,
+        fps_den: 1,
+        bit_rate_bps: 8_000_000,
+    }
+}
+
 fn test_job(id: u64, status: ExportJobStatus) -> ExportJob {
     ExportJob {
         id,
         title: format!("Job {id}"),
-        source_path: PathBuf::from(format!("job-{id}.mp4")),
+        segments: Vec::new(),
+        canvas: test_canvas(),
         target_lufs: -14.0,
-        bitrate_mbps: 8.0,
         output_path: format!("out-{id}.mp4"),
         status,
     }
@@ -138,7 +148,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         render_rx,
         active_renders: HashMap::new(),
         preview: None,
-        preview_attempted_for: None,
+        preview_clip_id: None,
         preview_texture: None,
         preview_playing: false,
         import_tx,
@@ -357,9 +367,9 @@ fn queue_export_appends_a_queued_job_with_the_next_id() {
 
     app.queue_export(
         "Export".to_string(),
-        PathBuf::from("in.mp4"),
+        Vec::new(),
+        test_canvas(),
         -14.0,
-        8.0,
         "out.mp4".to_string(),
     );
 
@@ -375,9 +385,9 @@ fn queue_export_starts_at_one_when_no_jobs_exist() {
 
     app.queue_export(
         "Export".to_string(),
-        PathBuf::from("in.mp4"),
+        Vec::new(),
+        test_canvas(),
         -14.0,
-        8.0,
         "out.mp4".to_string(),
     );
 
@@ -535,7 +545,10 @@ fn select_asset_with_none_clears_the_selection() {
 }
 
 #[test]
-fn select_asset_resets_playback_state_and_the_uploaded_texture() {
+fn select_asset_only_updates_selected_asset_id() {
+    // Selecting a media-library asset no longer touches preview state — preview follows the
+    // timeline playhead now, a separate concept from the library selection (see
+    // `current_preview_clip`).
     let mut app = test_app(
         vec![test_project(1, vec![test_asset(1), test_asset(2)])],
         Vec::new(),
@@ -548,20 +561,19 @@ fn select_asset_resets_playback_state_and_the_uploaded_texture() {
 
     app.select_asset(Some(2));
 
-    assert!(!app.preview_playing);
-    assert!(app.preview_texture.is_none());
+    assert_eq!(app.selected_asset_id, Some(2));
+    assert!(app.preview_playing);
+    assert!(app.preview_texture.is_some());
 }
 
 // test_asset()'s source_path is a relative, nonexistent file, so `ensure_preview_loaded`
 // always bails out before actually touching GStreamer here (see the `path.exists()` guard in
 // app.rs) — these exercise the no-pipeline branches of the preview API, not real playback.
 #[test]
-fn preview_accessors_are_none_without_a_live_pipeline() {
+fn preview_available_is_false_without_a_live_pipeline() {
     let app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 
     assert!(!app.preview_available());
-    assert_eq!(app.preview_duration_secs(), None);
-    assert_eq!(app.preview_position_secs(), None);
 }
 
 #[test]
@@ -574,10 +586,90 @@ fn toggle_preview_playback_is_a_no_op_without_a_live_pipeline() {
 }
 
 #[test]
-fn seek_preview_is_a_no_op_without_a_live_pipeline() {
+fn seek_preview_updates_the_timeline_playhead_without_a_live_pipeline() {
     let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 
     app.seek_preview(5.0);
+
+    assert_eq!(app.active_project().timeline().playhead_secs, 5.0);
+}
+
+#[test]
+fn ensure_preview_loaded_is_a_no_op_with_no_video_track() {
+    let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
+
+    app.ensure_preview_loaded();
+
+    assert!(!app.preview_clip_present());
+    assert!(!app.preview_available());
+}
+
+#[test]
+fn ensure_preview_loaded_marks_a_clip_present_even_when_its_file_is_missing() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.ensure_preview_loaded();
+
+    // test_clip's asset_id (1) isn't in this project's (empty) media_library, so
+    // current_preview_clip() actually resolves to None here — covers the "clip exists on the
+    // track but its asset can't be found" branch distinctly from "no clip at all".
+    assert!(!app.preview_clip_present());
+}
+
+#[test]
+fn ensure_preview_loaded_resolves_the_clip_covering_the_playhead() {
+    let mut project = test_project_with_tracks(
+        1,
+        vec![test_track(
+            1,
+            TrackKind::Video,
+            vec![test_clip(1, 0.0, 0.0, 10.0)],
+        )],
+    );
+    project.media_library.push(test_asset(1));
+    project.timeline_mut().playhead_secs = 3.0;
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.ensure_preview_loaded();
+
+    // The clip covers the playhead and its asset resolves, so a pipeline open was attempted
+    // (and failed only because test_asset's source_path doesn't exist on disk).
+    assert!(app.preview_clip_present());
+    assert!(!app.preview_available());
+}
+
+#[test]
+fn ensure_preview_loaded_clears_state_once_the_playhead_moves_past_every_clip() {
+    let mut project = test_project_with_tracks(
+        1,
+        vec![test_track(
+            1,
+            TrackKind::Video,
+            vec![test_clip(1, 0.0, 0.0, 10.0)],
+        )],
+    );
+    project.media_library.push(test_asset(1));
+    project.timeline_mut().playhead_secs = 3.0;
+    let mut app = test_app(vec![project], Vec::new());
+    app.ensure_preview_loaded();
+    assert!(app.preview_clip_present());
+
+    app.active_project_mut().timeline_mut().playhead_secs = 20.0;
+    app.preview_playing = true;
+    app.ensure_preview_loaded();
+
+    assert!(!app.preview_clip_present());
+    assert!(!app.preview_playing);
 }
 
 #[test]
