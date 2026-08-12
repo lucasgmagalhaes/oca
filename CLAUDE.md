@@ -26,8 +26,10 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   from the subset of effect fields expressible as a static per-clip filter — **gain_db** (as a
   runtime-adjustable `volume` stage ahead of the shared loudnorm/limiter graph), **crop_x/y/w/h**,
   **flipped_h**, **color_filter** (black-and-white/sepia), **vignette_intensity**,
-  **brightness/contrast/saturation**, **sharpen**, **chroma_key_enabled/color/tolerance**, and
-  **blur_intensity** — all now audible/visible in the exported file, not just the properties
+  **brightness/contrast/saturation**, **sharpen**, **chroma_key_enabled/color/tolerance**,
+  **blur_intensity**, **pixelize_intensity** (double-scale neighbor downscale/upscale),
+  **shake_intensity** (sinusoidal crop + scale-back), and **glitch_intensity** (`noise` filter
+  on luma and chroma) — all now audible/visible in the exported file, not just the properties
   panel and timeline badges. **Chroma key is the one exception**: `colorkey` marks matching
   pixels transparent, but the final `format=yuv420p` conform stage drops that alpha plane with
   nothing composited underneath (no multi-track layering yet), so the keyed color is still
@@ -42,6 +44,21 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   synthesizes duplicate pushes of it (spaced at `canvas_fps`) through the same per-clip filter
   chain to fill the block's full on-timeline duration. Audio is unaffected — still decoded
   across the clip's whole trimmed range regardless of `frozen`.
+
+  **speed_factor** (`ClipInstance::speed_factor`) is now wired into export through two
+  mechanisms in `avbridge_encode_timeline_export` (`bridge.c`): video speed uses
+  `setpts=PTS/speed` prepended before the `fps=` conform stage (so the fps filter adjusts
+  frame count naturally); audio speed updates a named `atempo@tempo` filter instance in the
+  shared loudnorm graph via `avfilter_graph_send_command` per segment (clamped [0.5, 100.0]).
+  `ClipInstance::duration_secs()`, `trim_start()`, `trim_end()`, and `split_clip_at()` in
+  `timeline.rs` now account for speed — a faster clip occupies less on-timeline space for the
+  same trimmed source range.
+
+  **zoom_start/zoom_end** (`ClipInstance::zoom_start`/`zoom_end`) is wired into export via
+  `bridge.c` using `n` (per-frame canvas-fps counter, resets at each segment's filter rebuild)
+  for linear interpolation — `crop=iw/(A+B*n):...,scale=...` where `A=zoom_start` and
+  `B=(zoom_end-zoom_start)/(total_frames-1)`. Uses `n` rather than `t` so PTS distortion from
+  speed_factor does not affect zoom timing.
 
   Preview is now timeline-aware too, not just export: `avcore::preview::Preview` follows the
   active sequence's timeline playhead (`Track::clip_at`) instead of the media-library
@@ -69,16 +86,13 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   export match (the export canvas's bitrate is now a duration-weighted average of the
   timeline's own clips' source bitrates, not an exact copy, since video is re-encoded rather
   than stream-copied) are out of scope for both passes above.
-  **Not yet covered by export or preview at all**: speed
-  (`ClipInstance::speed_factor`, needs resampling + the timeline supporting a displayed
-  duration different from the trimmed source range, which nothing does yet), layer masks
-  (`ClipInstance::mask_shape`: none/circle/
-  rounded-rect, needs alpha-geometry compositing), shake/glitch/pixelize
-  (`ClipInstance::shake_intensity/glitch_intensity/pixelize_intensity`), transitions
-  (`ClipInstance::transition_in`: none/fade/hard cut/slide/zoom — also models only a block's
-  incoming edge, not a real two-clip cross-blend, which would need a relationship between
-  adjacent clips instead of a single-clip field), and zoom (`ClipInstance::zoom_start`/
-  `zoom_end`, needs keyframed crop-over-time). Copy formatting (`Ctrl+Shift+C`/`Ctrl+Shift+V`,
+  **Not yet covered by export or preview at all**: layer masks
+  (`ClipInstance::mask_shape`: none/circle/rounded-rect, needs alpha-geometry compositing),
+  transitions (`ClipInstance::transition_in`: none/fade/hard cut/slide/zoom — also models only
+  a block's incoming edge, not a real two-clip cross-blend, which would need a relationship
+  between adjacent clips instead of a single-clip field). **speed_factor**, **pixelize**,
+  **shake**, **glitch**, and **zoom** are now covered by export (see above) but not by preview.
+  Copy formatting (`Ctrl+Shift+C`/`Ctrl+Shift+V`,
   `OcaApp::copy_selected_clip_formatting`/`paste_selected_clip_formatting`) copies all of the
   above between blocks without duplicating the clip, regardless of which ones render yet. Every
   field still has its properties-panel control and timeline badge/tint/stroke (freeze top-left,
