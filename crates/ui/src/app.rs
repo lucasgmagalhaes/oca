@@ -346,6 +346,9 @@ pub struct OcaApp {
     /// `projects[index]` with editable name and summary fields. Committed on confirm, discarded
     /// on Escape/cancel.
     pub renaming_project: Option<(usize, String, String)>,
+    /// When `Some((seq_index, buf))`, a rename modal is shown for the active project's
+    /// `sequences[seq_index]`. Committed on Enter/confirm, discarded on Escape/cancel.
+    pub renaming_sequence: Option<(usize, String)>,
 }
 
 impl OcaApp {
@@ -422,6 +425,7 @@ impl OcaApp {
             crash_detected,
             export_aspect_ratio: avcore::ExportAspectRatio::default(),
             renaming_project: None,
+            renaming_sequence: None,
         }
     }
 
@@ -1905,6 +1909,62 @@ impl OcaApp {
         }
     }
 
+    /// Shows the rename-sequence modal when `renaming_sequence` is `Some`. Commits on Enter or
+    /// the Rename button; discards on Escape or Cancel. The active project is marked dirty so
+    /// autosave and manual save pick it up.
+    fn show_rename_sequence_modal(&mut self, ctx: &egui::Context) {
+        let Some((seq_idx, _)) = self.renaming_sequence.as_ref() else {
+            return;
+        };
+        let seq_idx = *seq_idx;
+        let locale = self.locale;
+        let modal = egui::Modal::new(egui::Id::new("rename_sequence_modal"));
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(320.0);
+            ui.label(
+                eframe::egui::RichText::new(i18n::Text::RenameSequenceTitle.tr(locale))
+                    .size(15.0)
+                    .strong(),
+            );
+            ui.add_space(10.0);
+            let buf = &mut self.renaming_sequence.as_mut().unwrap().1;
+            let text_edit = ui.add(
+                egui::TextEdit::singleline(buf).desired_width(f32::INFINITY),
+            );
+            text_edit.request_focus();
+            if text_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                confirmed = true;
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.button(i18n::Text::RenameProjectConfirm.tr(locale)).clicked() {
+                    confirmed = true;
+                }
+                if ui.button(i18n::Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if response.should_close() || cancelled {
+            self.renaming_sequence = None;
+            return;
+        }
+        if confirmed {
+            if let Some((_, new_name)) = self.renaming_sequence.take() {
+                let name = new_name.trim().to_string();
+                let proj = self.active_project_mut();
+                if !name.is_empty() && seq_idx < proj.sequences.len() {
+                    proj.sequences[seq_idx].name = name;
+                }
+            }
+        }
+    }
+
     /// Writes the active project to a `<name>.autosave.json` recovery file next to the project's
     /// own save file, subject to a 2-second idle debounce and a 30-second forced-save ceiling.
     /// Skips silently if the project has never been saved (no `file_path` yet) or hasn't changed.
@@ -2369,6 +2429,7 @@ impl eframe::App for OcaApp {
         });
         self.show_prefs_modal(ui.ctx());
         self.show_rename_project_modal(ui.ctx());
+        self.show_rename_sequence_modal(ui.ctx());
         self.show_toasts(ui.ctx());
     }
 

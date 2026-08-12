@@ -253,12 +253,15 @@ fn sequence_tab_bar(app: &mut OcaApp, ui: &mut egui::Ui) {
     let locale = app.locale;
     let active_index = app.active_project().active_sequence;
     let mut select_index = None;
+    let mut rename_index = None;
     let mut add_requested = false;
 
     ui.horizontal(|ui| {
-        for (index, sequence) in app.active_project().sequences.iter().enumerate() {
+        let count = app.active_project().sequences.len();
+        for index in 0..count {
             let active = index == active_index;
-            let text = RichText::new(&sequence.name).color(if active {
+            let name = app.active_project().sequences[index].name.clone();
+            let text = RichText::new(&name).color(if active {
                 theme::ACCENT
             } else {
                 theme::TEXT_SECONDARY
@@ -268,9 +271,18 @@ fn sequence_tab_bar(app: &mut OcaApp, ui: &mut egui::Ui) {
             } else {
                 theme::SURFACE
             });
-            if ui.add(button).clicked() && !active {
+            let resp = ui.add(button);
+            if resp.clicked() && !active {
                 select_index = Some(index);
             }
+            resp.context_menu(|ui| {
+                if ui
+                    .button(crate::i18n::Text::SequenceTabCtxRename.tr(locale))
+                    .clicked()
+                {
+                    rename_index = Some((index, name));
+                }
+            });
         }
         if ui.button(Text::AddSequenceTab.tr(locale)).clicked() {
             add_requested = true;
@@ -279,6 +291,9 @@ fn sequence_tab_bar(app: &mut OcaApp, ui: &mut egui::Ui) {
 
     if let Some(index) = select_index {
         app.select_sequence(index);
+    }
+    if let Some((index, current_name)) = rename_index {
+        app.renaming_sequence = Some((index, current_name));
     }
     if add_requested {
         app.add_sequence();

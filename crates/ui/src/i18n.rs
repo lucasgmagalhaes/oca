@@ -228,6 +228,8 @@ text_catalog! {
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
     ExportSizeEstimate: pt_br = "~{size} estimado", en = "~{size} estimated";
     HomeCtxRename: pt_br = "Configurações do projeto...", en = "Project settings...";
+    SequenceTabCtxRename: pt_br = "Renomear aba...", en = "Rename tab...";
+    RenameSequenceTitle: pt_br = "Renomear aba", en = "Rename tab";
     RenameProjectTitle: pt_br = "Configurações do projeto", en = "Project settings";
     RenameProjectConfirm: pt_br = "Salvar", en = "Save";
     ProjectNameLabel: pt_br = "Nome", en = "Name";
