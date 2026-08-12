@@ -8,6 +8,7 @@ use crate::theme;
 
 /// Renders the Mídia screen: a grid of every asset in the active project's media library.
 pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
+    app.ensure_active_project();
     let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(20.0);

@@ -386,6 +386,23 @@ impl OcaApp {
         &self.projects[self.active_project]
     }
 
+    /// Guarantees `active_project()`/`active_project_mut()` resolve — the Editor and Mídia
+    /// screens call this before touching either, since a fresh launch's `projects` starts
+    /// empty and navigating straight there (nav rail, no "Novo projeto" first) would otherwise
+    /// index out of bounds. Creates and opens an untitled project exactly like clicking "Novo
+    /// projeto" would, only when none exists yet; a no-op once any project is open.
+    ///
+    /// `create_new_project` also forces `screen` to `Editor` (what the Home "Novo projeto"
+    /// button relies on to navigate away from Home) — restored here so calling this from
+    /// Mídia doesn't hijack the user back to the Editor screen mid-render.
+    pub fn ensure_active_project(&mut self) {
+        if self.projects.is_empty() {
+            let screen_before = self.screen;
+            self.create_new_project(Text::UntitledProject.tr(self.locale).to_string());
+            self.screen = screen_before;
+        }
+    }
+
     /// Mutable access to the project currently open in the Editor/Mídia screens — for
     /// imports, edits, and anything else that changes the active project in place.
     pub fn active_project_mut(&mut self) -> &mut Project {
@@ -1947,6 +1964,15 @@ impl eframe::App for OcaApp {
         }
 
         screens::nav_rail::show(self, ui);
+
+        // Must run after `nav_rail::show` (which applies the click that changes `self.screen`)
+        // and before `breadcrumb::show` — the breadcrumb reads `active_project()` too (project
+        // name + unsaved-changes dot) whenever `screen == Editor`, and it renders before the
+        // `editor`/`library` screens' own `ensure_active_project()` call gets a chance to.
+        if matches!(self.screen, Screen::Editor | Screen::Library) {
+            self.ensure_active_project();
+        }
+
         screens::breadcrumb::show(self, ui);
 
         egui::CentralPanel::default().show(ui, |ui| match self.screen {
