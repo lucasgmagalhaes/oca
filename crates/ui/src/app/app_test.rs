@@ -175,6 +175,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         last_edit_instant: None,
         last_autosave_instant: None,
         autosave_restore_pending: None,
+        crash_detected: false,
         export_aspect_ratio: avcore::ExportAspectRatio::default(),
     }
 }

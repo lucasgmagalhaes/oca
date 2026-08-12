@@ -326,6 +326,9 @@ pub struct OcaApp {
     /// Set to the autosave file path when opening a project that has a newer autosave on disk.
     /// [`OcaApp::pump_autosave_restore`] consumes it to show the restore/discard modal.
     autosave_restore_pending: Option<PathBuf>,
+    /// `true` when a crash sentinel from a previous session was found at startup — consumed
+    /// by [`OcaApp::ui`] to show a one-time toast, then cleared.
+    crash_detected: bool,
     /// Target aspect ratio selected in the export queue's "Add Export" row. Defaults to
     /// `Original` (source dimensions). Persists between export invocations so the user doesn't
     /// have to re-select it every time.
@@ -338,6 +341,13 @@ impl OcaApp {
     /// projeto"/"Abrir projeto" and real imports, not mock data.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::apply(&cc.egui_ctx);
+        let sentinel = sentinel_path();
+        let crash_detected = sentinel.exists();
+        if let Some(dir) = sentinel.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        // Write the sentinel — deleted on clean exit via on_exit(). Survives a crash.
+        let _ = std::fs::write(&sentinel, b"");
         let (render_tx, render_rx) = mpsc::unbounded_channel();
         let (import_tx, import_rx) = mpsc::unbounded_channel();
         let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
@@ -382,6 +392,7 @@ impl OcaApp {
             last_edit_instant: None,
             last_autosave_instant: None,
             autosave_restore_pending: None,
+            crash_detected,
             export_aspect_ratio: avcore::ExportAspectRatio::default(),
         }
     }
@@ -1866,6 +1877,15 @@ impl OcaApp {
     }
 }
 
+/// Returns the path of the crash sentinel file. Its presence at startup means the previous
+/// session exited uncleanly (crash, kill, power loss). Cleared by [`OcaApp::on_exit`].
+fn sentinel_path() -> PathBuf {
+    prefs_path()
+        .parent()
+        .map(|d| d.join("oca.running"))
+        .unwrap_or_else(|| PathBuf::from("oca.running"))
+}
+
 /// Loads [`PrefsState`] from the platform config file, falling back to the default if the file
 /// is absent or cannot be parsed.
 pub fn load_prefs() -> PrefsState {
@@ -2116,6 +2136,11 @@ impl eframe::App for OcaApp {
             self.save_prefs();
         }
         self.prev_prefs_open = self.prefs_open;
+        if self.crash_detected {
+            self.crash_detected = false;
+            tracing::warn!("crash sentinel found — previous session did not exit cleanly");
+            self.push_toast(crate::i18n::Text::CrashDetected.tr(self.locale).to_string());
+        }
         if self.preview_playing {
             // Smooth video needs every-frame repaints; the 200ms throttle below would show
             // it as a slideshow.
@@ -2144,6 +2169,12 @@ impl eframe::App for OcaApp {
         });
         self.show_prefs_modal(ui.ctx());
         self.show_toasts(ui.ctx());
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Clean exit — remove the crash sentinel so the next launch doesn't think we crashed.
+        let _ = std::fs::remove_file(sentinel_path());
+        tracing::info!("clean exit — crash sentinel removed");
     }
 }
 
