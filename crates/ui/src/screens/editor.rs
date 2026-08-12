@@ -26,6 +26,7 @@ use crate::theme;
 /// reintroduces the overlapping-text/full-width-panel bugs fixed in this screen — see the
 /// "Add i18n" commit for the concrete symptoms.
 pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
+    app.ensure_active_project();
     let ctrl_s_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S));
     if ctrl_s_pressed {
         save_active_project(app);
