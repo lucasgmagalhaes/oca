@@ -378,7 +378,7 @@ pub fn encode_export<F: FnMut(f64)>(
 /// to use (`source_in_secs..source_out_secs`), a linear gain in dB, and a pre-built avfilter
 /// chain description for this clip's own video effects (empty string = none — the segment
 /// still gets canvas-conformed and re-encoded).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ClipSegment {
     pub source_path: std::path::PathBuf,
     pub source_in_secs: f64,
@@ -405,7 +405,7 @@ pub struct ClipSegment {
 
 /// The fixed output frame size/rate every segment in an [`encode_timeline_export`] call is
 /// scaled/padded/frame-rate-conformed onto.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Canvas {
     pub width: u32,
     pub height: u32,

@@ -384,7 +384,7 @@ impl OcaApp {
             projects,
             active_project: 0,
             selected_asset_id: None,
-            export_jobs: Vec::new(),
+            export_jobs: load_queue(),
             prefs,
             render_tx,
             render_rx,
@@ -1671,6 +1671,7 @@ impl OcaApp {
             output_path,
             status: ExportJobStatus::Queued,
         });
+        save_queue(&self.export_jobs);
     }
 
     /// Stops a job: kills its `ffmpeg` process if it's actively rendering, or just removes it
@@ -1681,6 +1682,7 @@ impl OcaApp {
             Some(cancel_flag) => cancel_flag.store(true, Ordering::Relaxed),
             None => self.export_jobs.retain(|j| j.id != job_id),
         }
+        save_queue(&self.export_jobs);
     }
 
     /// Applies events from render worker threads to `export_jobs`, then — if there's a free
@@ -1703,6 +1705,7 @@ impl OcaApp {
                         job.status = ExportJobStatus::Done;
                     }
                     self.active_renders.remove(&job_id);
+                    save_queue(&self.export_jobs);
                 }
                 RenderEvent::Failed { job_id, message } => {
                     if let Some(job) = self.export_jobs.iter_mut().find(|j| j.id == job_id) {
@@ -1710,11 +1713,13 @@ impl OcaApp {
                         job.status = ExportJobStatus::Failed { message };
                     }
                     self.active_renders.remove(&job_id);
+                    save_queue(&self.export_jobs);
                 }
                 RenderEvent::Cancelled { job_id } => {
                     debug!(job_id, "export job cancelled");
                     self.export_jobs.retain(|j| j.id != job_id);
                     self.active_renders.remove(&job_id);
+                    save_queue(&self.export_jobs);
                 }
             }
         }
@@ -2062,6 +2067,52 @@ fn prefs_path() -> PathBuf {
         }
     }
     PathBuf::from("prefs.json")
+}
+
+/// Returns the platform-appropriate path for the oca export queue file, next to `prefs.json`.
+fn queue_path() -> PathBuf {
+    prefs_path()
+        .parent()
+        .map(|d| d.join("queue.json"))
+        .unwrap_or_else(|| PathBuf::from("queue.json"))
+}
+
+/// Saves `jobs` to `queue.json` on a background thread. `Rendering` jobs are written as
+/// `Queued` so they restart properly if the app is reopened mid-queue. `Done` and `Failed`
+/// jobs are included for history display.
+fn save_queue(jobs: &[ExportJob]) {
+    let mut snapshot: Vec<ExportJob> = jobs.to_vec();
+    for job in &mut snapshot {
+        if matches!(job.status, ExportJobStatus::Rendering { .. }) {
+            job.status = ExportJobStatus::Queued;
+        }
+    }
+    let path = queue_path();
+    std::thread::spawn(move || {
+        if let Ok(json) = serde_json::to_string_pretty(&snapshot) {
+            let _ = std::fs::write(&path, json.as_bytes());
+        }
+    });
+}
+
+/// Loads the persisted queue from `queue.json`. Returns an empty vec if absent or unparseable.
+/// `Rendering`/`Paused` jobs are reset to `Queued` — the render worker died when the app
+/// closed.
+fn load_queue() -> Vec<ExportJob> {
+    let path = queue_path();
+    let Ok(bytes) = std::fs::read(&path) else {
+        return Vec::new();
+    };
+    let mut jobs: Vec<ExportJob> = serde_json::from_slice(&bytes).unwrap_or_default();
+    for job in &mut jobs {
+        if matches!(
+            job.status,
+            ExportJobStatus::Rendering { .. } | ExportJobStatus::Paused { .. }
+        ) {
+            job.status = ExportJobStatus::Queued;
+        }
+    }
+    jobs
 }
 
 /// Returns `true` if `autosave_path` exists and has a modification time strictly newer than
