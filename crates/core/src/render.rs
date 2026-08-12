@@ -12,6 +12,52 @@ use crate::media::MediaAsset;
 use crate::project::Sequence;
 use crate::timeline::TrackKind;
 
+/// Target output aspect ratio for a timeline export. `Original` preserves the source
+/// resolution inferred from the first clip; the fixed presets override width/height while
+/// keeping fps and bitrate from the timeline analysis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExportAspectRatio {
+    /// Keep the canvas dimensions as inferred from the first clip's source resolution.
+    #[default]
+    Original,
+    /// 1920 x 1080 — standard landscape (YouTube, Twitch).
+    Landscape,
+    /// 1080 x 1920 — vertical/shorts (YouTube Shorts, TikTok, Reels).
+    Portrait,
+    /// 1080 x 1080 — square (Instagram feed, general social).
+    Square,
+}
+
+impl ExportAspectRatio {
+    pub const ALL: &'static [ExportAspectRatio] = &[
+        ExportAspectRatio::Original,
+        ExportAspectRatio::Landscape,
+        ExportAspectRatio::Portrait,
+        ExportAspectRatio::Square,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ExportAspectRatio::Original => "Original",
+            ExportAspectRatio::Landscape => "16:9",
+            ExportAspectRatio::Portrait => "9:16",
+            ExportAspectRatio::Square => "1:1",
+        }
+    }
+}
+
+/// Overrides `canvas` width/height to match `ratio`, keeping fps and bitrate unchanged.
+/// Returns `canvas` unmodified when `ratio` is [`ExportAspectRatio::Original`].
+pub fn apply_export_aspect_ratio(canvas: Canvas, ratio: ExportAspectRatio) -> Canvas {
+    let (width, height) = match ratio {
+        ExportAspectRatio::Original => return canvas,
+        ExportAspectRatio::Landscape => (1920, 1080),
+        ExportAspectRatio::Portrait => (1080, 1920),
+        ExportAspectRatio::Square => (1080, 1080),
+    };
+    Canvas { width, height, ..canvas }
+}
+
 #[derive(Debug)]
 pub enum RenderError {
     OpenInput,

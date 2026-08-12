@@ -1,4 +1,4 @@
-use avcore::export::ExportJobStatus;
+use avcore::{self, export::ExportJobStatus};
 use eframe::egui::{self, RichText};
 
 use crate::app::{OcaApp, LUFS_PROFILES};
@@ -34,6 +34,8 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                 if response.clicked() {
                     if let Ok((segments, canvas)) = resolved {
                         let (_, target_lufs) = LUFS_PROFILES[app.prefs.lufs_profile];
+                        let canvas =
+                            avcore::apply_export_aspect_ratio(canvas, app.export_aspect_ratio);
                         let default_name = format!("{sequence_name}_export.mp4");
                         if let Some(output) = rfd::FileDialog::new()
                             .add_filter("MP4", &["mp4"])
@@ -68,6 +70,18 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                                 );
                             }
                         }
+                    }
+                }
+                ui.add_space(8.0);
+                ui.label(
+                    eframe::egui::RichText::new(Text::ExportAspectRatioLabel.tr(locale))
+                        .size(12.0)
+                        .color(crate::theme::TEXT_MUTED),
+                );
+                for ratio in avcore::ExportAspectRatio::ALL {
+                    let selected = app.export_aspect_ratio == *ratio;
+                    if ui.selectable_label(selected, ratio.label()).clicked() {
+                        app.export_aspect_ratio = *ratio;
                     }
                 }
                 ui.add_space(10.0);

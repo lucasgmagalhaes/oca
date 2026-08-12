@@ -31,8 +31,8 @@ pub use probe::{probe_media, ProbeError, ProbedMedia};
 pub use project::{Project, Recency, Sequence};
 pub use proxy::{ensure_proxy, ProxyError};
 pub use render::{
-    render_export, render_export_job, render_timeline_export, resolve_timeline_segments,
-    RenderError, RenderOutcome,
+    apply_export_aspect_ratio, render_export, render_export_job, render_timeline_export,
+    resolve_timeline_segments, ExportAspectRatio, RenderError, RenderOutcome,
 };
 pub use timeline::{ClipFormatting, ClipInstance, Timeline, Track, TrackKind};
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};

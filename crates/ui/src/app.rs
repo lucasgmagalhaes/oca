@@ -323,6 +323,10 @@ pub struct OcaApp {
     /// Set to the autosave file path when opening a project that has a newer autosave on disk.
     /// [`OcaApp::pump_autosave_restore`] consumes it to show the restore/discard modal.
     autosave_restore_pending: Option<PathBuf>,
+    /// Target aspect ratio selected in the export queue's "Add Export" row. Defaults to
+    /// `Original` (source dimensions). Persists between export invocations so the user doesn't
+    /// have to re-select it every time.
+    pub export_aspect_ratio: avcore::ExportAspectRatio,
 }
 
 impl OcaApp {
@@ -375,6 +379,7 @@ impl OcaApp {
             last_edit_instant: None,
             last_autosave_instant: None,
             autosave_restore_pending: None,
+            export_aspect_ratio: avcore::ExportAspectRatio::default(),
         }
     }
 
