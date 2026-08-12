@@ -7,7 +7,7 @@
   "5": "Preview",
   "6": "i18n.rs",
   "7": "bridge.c",
-  "8": "tag.rs",
+  "8": "library.rs",
   "9": "Plano de Execução — oca (PacoPaçoca)",
   "10": "MediaAsset",
   "11": "ensure_proxy",
@@ -43,6 +43,5 @@
   "41": "test_asset",
   "42": "ClipInstance",
   "43": "home.rs",
-  "56": "render_export",
-  "59": "ColorFilter"
+  "56": "render_export"
 }

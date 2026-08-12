@@ -1,16 +1,16 @@
 # Graph Report - oca  (2026-08-12)
 
 ## Corpus Check
-- 76 files · ~69,077 words
+- 76 files · ~69,259 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 904 nodes · 1654 edges · 46 communities (44 shown, 2 thin omitted)
+- 905 nodes · 1657 edges · 45 communities (41 shown, 4 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 51 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `025fb4ef`
+- Built from commit: `1fd0676a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -23,7 +23,7 @@
 - Preview
 - i18n.rs
 - bridge.c
-- tag.rs
+- library.rs
 - Plano de Execução — oca (PacoPaçoca)
 - MediaAsset
 - ensure_proxy
@@ -54,11 +54,10 @@
 - ClipInstance
 - home.rs
 - render_export
-- ColorFilter
 
 ## God Nodes (most connected - your core abstractions)
 1. `test_app()` - 115 edges
-2. `OcaApp` - 108 edges
+2. `OcaApp` - 109 edges
 3. `clip()` - 38 edges
 4. `Project` - 30 edges
 5. `track_with()` - 29 edges
@@ -83,14 +82,14 @@
 ## Import Cycles
 - 2-file cycle: `crates/ui/src/app.rs -> crates/ui/src/i18n.rs -> crates/ui/src/app.rs`
 
-## Communities (46 total, 2 thin omitted)
+## Communities (45 total, 4 thin omitted)
 
 ### Community 0 - "OcaApp"
 Cohesion: 0.08
 Nodes (7): OcaApp, AtomicBool, HashMap, TextureHandle, HashSet, Pos2, UnboundedReceiver
 
 ### Community 1 - "Project"
-Cohesion: 0.07
+Cohesion: 0.09
 Nodes (36): bench_parse_loudnorm_stderr(), bench_project_json_round_trip(), bench_timeline_duration(), large_project(), from_json(), load_project_from_file(), PersistError, Display (+28 more)
 
 ### Community 2 - "app_test.rs"
@@ -110,16 +109,12 @@ Cohesion: 0.09
 Nodes (23): AppSink, BoolError, Preview, PreviewError, Display, Error, Formatter, Option (+15 more)
 
 ### Community 6 - "i18n.rs"
-Cohesion: 0.06
-Nodes (33): App, ExportJob, ExportJobStatus, PathBuf, String, test_job(), Screen, card_frame() (+25 more)
+Cohesion: 0.07
+Nodes (38): App, Screen, card_frame(), Frame, property_block(), property_section(), property_toggle(), Ui (+30 more)
 
 ### Community 7 - "bridge.c"
 Cohesion: 0.11
 Nodes (34): AudioFilterChain, AVCodec, AVCodecContext, AVFormatContext, AVFrame, AVPacket, AVStream, accumulate_waveform_frame() (+26 more)
-
-### Community 8 - "tag.rs"
-Cohesion: 0.20
-Nodes (13): property_block(), property_section(), property_toggle(), Ui, Ui, section_label(), Color32, Ui (+5 more)
 
 ### Community 9 - "Plano de Execução — oca (PacoPaçoca)"
 Cohesion: 0.06
@@ -194,19 +189,19 @@ Cohesion: 0.26
 Nodes (9): oca_window(), poll_for_descendants(), Repeatedly re-queries `window`'s accessibility tree for a descendant control…, Launches a fresh ui.exe, waits for its main window, yields it, then tears it…, _wait_for_window(), test_importing_a_file_adds_it_to_the_library_quickly(), test_navigating_to_each_screen_updates_the_breadcrumb(), fixture (+1 more)
 
 ### Community 34 - "core/src/lib.rs"
-Cohesion: 0.18
-Nodes (12): generate_waveform(), Display, Error, Formatter, Path, Result, Vec, WaveformError (+4 more)
+Cohesion: 0.08
+Nodes (20): ExportJob, ExportJobStatus, PathBuf, String, generate_waveform(), Display, Error, Formatter (+12 more)
 
 ### Community 35 - "editor.rs"
 Cohesion: 0.14
-Nodes (32): ClipDrag, color_filter_label(), color_filter_tint(), draw_filmstrip(), draw_frozen_poster(), draw_playhead(), draw_waveform(), mask_shape_label() (+24 more)
+Nodes (33): ColorFilter, ClipDrag, color_filter_label(), color_filter_tint(), draw_filmstrip(), draw_frozen_poster(), draw_playhead(), draw_waveform() (+25 more)
 
 ### Community 36 - "app.rs"
-Cohesion: 0.19
+Cohesion: 0.18
 Nodes (15): Arc, downscale_rgba(), EditorTool, extract_thumbnail(), import_one(), ImportEvent, PrefsState, RenderEvent (+7 more)
 
 ### Community 38 - ".ui"
-Cohesion: 0.21
+Cohesion: 0.19
 Nodes (5): Context, Frame, Self, Ui, CreationContext
 
 ### Community 39 - "Option"
@@ -222,31 +217,23 @@ Cohesion: 0.50
 Nodes (4): pump_import_queue_adds_the_asset_to_its_target_project_with_a_fresh_id(), pump_import_queue_applies_enrichment_to_the_asset_it_was_assigned(), pump_import_queue_targets_the_project_by_id_not_the_active_index(), test_asset()
 
 ### Community 42 - "ClipInstance"
-Cohesion: 0.10
-Nodes (8): ClipInstance, Option, String, Vec, Track, clip(), test_clip(), test_composite_clip()
-
-### Community 43 - "home.rs"
-Cohesion: 0.27
-Nodes (4): Ui, show(), Ui, show()
+Cohesion: 0.08
+Nodes (11): ClipInstance, MaskShape, Option, String, Vec, Track, TransitionType, clip() (+3 more)
 
 ### Community 56 - "render_export"
 Cohesion: 0.15
 Nodes (17): render_export(), RenderError, RenderOutcome, AtomicBool, Display, Error, Formatter, From (+9 more)
 
-### Community 59 - "ColorFilter"
-Cohesion: 0.29
-Nodes (4): ColorFilter, MaskShape, TransitionType, ClipFormatting
-
 ## Knowledge Gaps
 - **107 isolated node(s):** `TrimEdge`, `What this is`, `Commands`, `Architecture`, `Approach` (+102 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **2 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `OcaApp` connect `OcaApp` to `Project`, `app_test.rs`, `editor.rs`, `app.rs`, `Preview`, `i18n.rs`, `Option`, `.active_project`, `.ui`, `ClipInstance`, `home.rs`, `ColorFilter`?**
-  _High betweenness centrality (0.232) - this node is a cross-community bridge._
+- **Why does `OcaApp` connect `OcaApp` to `Project`, `app_test.rs`, `core/src/lib.rs`, `app.rs`, `Preview`, `i18n.rs`, `Option`, `.active_project`, `.ui`, `ClipInstance`, `editor.rs`, `home.rs`, `library.rs`?**
+  _High betweenness centrality (0.234) - this node is a cross-community bridge._
 - **Why does `RenderError` connect `render_export` to `avbridge/src/lib.rs`?**
   _High betweenness centrality (0.105) - this node is a cross-community bridge._
 - **Why does `EncodeError` connect `avbridge/src/lib.rs` to `render_export`?**
@@ -256,6 +243,6 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `OcaApp` be split into smaller, more focused modules?**
   _Cohesion score 0.08205128205128205 - nodes in this community are weakly interconnected._
 - **Should `Project` be split into smaller, more focused modules?**
-  _Cohesion score 0.07407407407407407 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08865248226950355 - nodes in this community are weakly interconnected._
 - **Should `app_test.rs` be split into smaller, more focused modules?**
   _Cohesion score 0.03827483196415235 - nodes in this community are weakly interconnected._
