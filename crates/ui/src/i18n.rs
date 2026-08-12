@@ -14,8 +14,10 @@ use crate::app::Screen;
 
 /// A language the UI can be displayed in. Stored on [`crate::app::OcaApp`] and switched
 /// at runtime from the Ajustes screen — nothing here requires a restart.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Locale {
+    #[default]
     PtBr,
     En,
 }

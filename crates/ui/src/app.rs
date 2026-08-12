@@ -54,6 +54,9 @@ pub struct PrefsState {
     /// Loaded at startup to restore the Home screen's project grid across sessions.
     #[serde(default)]
     pub recent_project_paths: Vec<String>,
+    /// UI language, persisted so the user's choice survives restarts.
+    #[serde(default)]
+    pub locale: crate::i18n::Locale,
 }
 
 impl Default for PrefsState {
@@ -65,6 +68,7 @@ impl Default for PrefsState {
             output_folder: String::new(),
             autosave_minutes: 5,
             recent_project_paths: Vec::new(),
+            locale: crate::i18n::Locale::default(),
         }
     }
 }
@@ -373,7 +377,7 @@ impl OcaApp {
         Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
-            locale: Locale::PtBr,
+            locale: prefs.locale,
             projects,
             active_project: 0,
             selected_asset_id: None,
@@ -1910,6 +1914,11 @@ impl OcaApp {
     /// entries whose files no longer exist before serializing.
     pub fn save_prefs(&self) {
         let mut prefs_snapshot = serde_json::to_value(&self.prefs).unwrap_or_default();
+        // Always capture the live locale (app.locale may differ from prefs.locale if the user
+        // changed it this session without having previously saved).
+        if let Ok(locale_val) = serde_json::to_value(self.locale) {
+            prefs_snapshot["locale"] = locale_val;
+        }
         // Prune stale recents (moved/deleted files) so the list stays clean.
         if let Some(arr) = prefs_snapshot
             .get_mut("recent_project_paths")
