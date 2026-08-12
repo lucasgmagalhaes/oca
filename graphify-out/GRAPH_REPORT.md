@@ -1,16 +1,16 @@
 # Graph Report - oca  (2026-08-12)
 
 ## Corpus Check
-- 77 files · ~78,362 words
+- 77 files · ~79,110 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 981 nodes · 1918 edges · 57 communities (54 shown, 3 thin omitted)
-- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 68 edges (avg confidence: 0.8)
+- 987 nodes · 1928 edges · 56 communities (54 shown, 2 thin omitted)
+- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 69 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b3afceb7`
+- Built from commit: `bf1e2942`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -41,7 +41,7 @@
 - Watch-Gameplay.ps1
 - workflow/README.md
 - Required checklist
-- main
+- main.rs
 - Commit Plan — Fase 1
 - poll_for_descendants
 - core/src/lib.rs
@@ -57,17 +57,16 @@
 - timeline_export_test.rs
 - timeline_with
 - property.rs
-- ProbeError
 - tag.rs
 - ExportJob
 - render_test.rs
 - nav_rail.rs
 - test_canvas
 - library.rs
-- render_timeline_export
+- render.rs
 
 ## God Nodes (most connected - your core abstractions)
-1. `OcaApp` - 121 edges
+1. `OcaApp` - 122 edges
 2. `test_app()` - 119 edges
 3. `clip()` - 50 edges
 4. `ClipInstance` - 38 edges
@@ -93,7 +92,7 @@
 ## Import Cycles
 - 2-file cycle: `crates/ui/src/app.rs -> crates/ui/src/i18n.rs -> crates/ui/src/app.rs`
 
-## Communities (57 total, 3 thin omitted)
+## Communities (56 total, 2 thin omitted)
 
 ### Community 0 - "OcaApp"
 Cohesion: 0.08
@@ -101,7 +100,7 @@ Nodes (11): OcaApp, AtomicBool, FnOnce, HashMap, TextureHandle, Ui, show(), Hash
 
 ### Community 1 - "Project"
 Cohesion: 0.10
-Nodes (34): bench_parse_loudnorm_stderr(), bench_project_json_round_trip(), bench_timeline_duration(), large_project(), from_json(), load_project_from_file(), PersistError, Display (+26 more)
+Nodes (33): bench_parse_loudnorm_stderr(), bench_project_json_round_trip(), bench_timeline_duration(), large_project(), from_json(), load_project_from_file(), PersistError, Display (+25 more)
 
 ### Community 2 - "app_test.rs"
 Cohesion: 0.04
@@ -109,15 +108,15 @@ Nodes (103): add_asset_to_timeline_creates_a_track_and_appends_a_clip_when_none_
 
 ### Community 3 - "avbridge/src/lib.rs"
 Cohesion: 0.07
-Nodes (57): c_char, c_int, c_longlong, c_void, ClipSegment, encode_export(), encode_timeline_export(), EncodeError (+49 more)
+Nodes (59): c_char, c_int, c_longlong, c_void, Canvas, ClipSegment, encode_export(), encode_timeline_export() (+51 more)
 
 ### Community 4 - "timeline_test.rs"
 Cohesion: 0.08
 Nodes (34): apply_formatting_overwrites_all_effect_fields(), clip(), formatting_roundtrip_preserves_all_fields(), has_vignette_is_true_above_zero(), is_color_filtered_is_true_for_any_filter_but_none(), is_cropped_is_true_when_any_crop_field_differs_from_the_full_frame(), is_masked_is_true_for_any_shape_but_none(), negative_gain_db_scales_linear_gain_below_unity() (+26 more)
 
 ### Community 5 - "Preview"
-Cohesion: 0.12
-Nodes (18): AppSink, BoolError, build_video_filter_bin(), Preview, PreviewError, Display, Error, Formatter (+10 more)
+Cohesion: 0.09
+Nodes (29): AppSink, BoolError, build_video_filter_bin(), Preview, PreviewError, Display, Error, Formatter (+21 more)
 
 ### Community 6 - "theme.rs"
 Cohesion: 0.14
@@ -148,8 +147,8 @@ Cohesion: 0.14
 Nodes (19): extract_first_json_object(), LoudnessError, LoudnormReport, measure_loudness(), parse_loudnorm_stderr(), Display, Error, Formatter (+11 more)
 
 ### Community 13 - "enum_combo"
-Cohesion: 0.33
-Nodes (5): enum_combo(), String, Ui, Fn, T
+Cohesion: 0.22
+Nodes (7): apply_export_aspect_ratio(), ExportAspectRatio, enum_combo(), String, Ui, Fn, T
 
 ### Community 14 - "Task Breakdown — Fase 1 (Motor central)"
 Cohesion: 0.12
@@ -199,6 +198,10 @@ Nodes (4): Agents (in pipeline order), Hard rules across the pipeline, How to ru
 Cohesion: 0.29
 Nodes (7): 1. Diff size (granularity check), 2. acceptance_criteria coverage, 3. Quality — Rust, 4. Quality — C, 5. Consistency with the plan, 6. Documentation, Required checklist
 
+### Community 26 - "main.rs"
+Cohesion: 0.33
+Nodes (4): main(), platform_log_dir(), PathBuf, Result
+
 ### Community 32 - "poll_for_descendants"
 Cohesion: 0.26
 Nodes (9): oca_window(), poll_for_descendants(), Repeatedly re-queries `window`'s accessibility tree for a descendant control…, Launches a fresh ui.exe, waits for its main window, yields it, then tears it…, _wait_for_window(), test_importing_a_file_adds_it_to_the_library_quickly(), test_navigating_to_each_screen_updates_the_breadcrumb(), fixture (+1 more)
@@ -212,19 +215,19 @@ Cohesion: 0.14
 Nodes (32): ColorFilter, color_filter_label(), color_filter_tint(), draw_filmstrip(), draw_frozen_poster(), draw_playhead(), draw_waveform(), mask_shape_label() (+24 more)
 
 ### Community 36 - "app.rs"
-Cohesion: 0.17
+Cohesion: 0.15
 Nodes (16): Arc, autosave_is_newer(), downscale_rgba(), EditorTool, extract_thumbnail(), import_one(), ImportEvent, PrefsState (+8 more)
 
 ### Community 37 - "probe_media"
-Cohesion: 0.33
-Nodes (9): probe_media(), Path, converts_container_bitrate_from_bps_to_mbps(), falls_back_to_the_audio_stream_when_there_is_no_video(), fixture(), into_media_asset_carries_the_probed_fields_through(), parses_frame_rate(), probes_a_video_stream_as_the_primary_track() (+1 more)
+Cohesion: 0.16
+Nodes (16): probe_media(), ProbeError, Display, Error, Formatter, From, Path, Result (+8 more)
 
 ### Community 38 - ".ui"
-Cohesion: 0.16
+Cohesion: 0.18
 Nodes (5): Context, Frame, Self, Ui, CreationContext
 
 ### Community 39 - ".active_project"
-Cohesion: 0.16
+Cohesion: 0.19
 Nodes (5): TrackKind, next_clip_id(), resolve_or_create_track(), Option, ClipDrag
 
 ### Community 40 - "test_project"
@@ -232,8 +235,8 @@ Cohesion: 0.15
 Nodes (15): add_and_open_project_appends_and_opens_it(), add_asset_to_timeline_appends_after_whatever_is_already_on_the_matching_track(), ensure_preview_loaded_clears_state_once_the_playhead_moves_past_every_clip(), ensure_preview_loaded_resolves_the_clip_covering_the_playhead(), pump_import_queue_adds_the_asset_to_its_target_project_with_a_fresh_id(), pump_import_queue_applies_enrichment_to_the_asset_it_was_assigned(), pump_import_queue_targets_the_project_by_id_not_the_active_index(), Vec (+7 more)
 
 ### Community 42 - "ClipInstance"
-Cohesion: 0.06
-Nodes (22): ClipFormatting, ClipInstance, MaskShape, Option, String, Vec, Timeline, Track (+14 more)
+Cohesion: 0.07
+Nodes (12): ClipFormatting, ClipInstance, MaskShape, Option, String, Vec, Timeline, Track (+4 more)
 
 ### Community 43 - "i18n.rs"
 Cohesion: 0.32
@@ -255,10 +258,6 @@ Nodes (8): move_clip_to_track_is_a_no_op_across_mismatched_kinds(), move_clip_to
 Cohesion: 0.31
 Nodes (7): property_block(), property_section(), property_toggle(), FnOnce, Ui, Ui, section_label()
 
-### Community 48 - "ProbeError"
-Cohesion: 0.22
-Nodes (7): ProbeError, Display, Error, Formatter, From, Result, Self
-
 ### Community 50 - "tag.rs"
 Cohesion: 0.57
 Nodes (6): Color32, Ui, tag(), tag_accent(), tag_error(), tag_outline()
@@ -279,29 +278,29 @@ Nodes (4): prefs_button(), rail_button(), Ui, show()
 Cohesion: 0.67
 Nodes (3): queue_export_appends_a_queued_job_with_the_next_id(), queue_export_starts_at_one_when_no_jobs_exist(), test_canvas()
 
-### Community 56 - "render_timeline_export"
-Cohesion: 0.20
-Nodes (19): Canvas, Sequence, fps_to_rational(), render_export(), render_export_job(), render_timeline_export(), RenderError, RenderOutcome (+11 more)
+### Community 56 - "render.rs"
+Cohesion: 0.25
+Nodes (17): Sequence, fps_to_rational(), render_export(), render_export_job(), render_timeline_export(), RenderError, RenderOutcome, resolve_timeline_segments() (+9 more)
 
 ## Knowledge Gaps
 - **107 isolated node(s):** `TrimEdge`, `What this is`, `Commands`, `Architecture`, `Approach` (+102 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **3 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **2 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `OcaApp` connect `OcaApp` to `Project`, `app_test.rs`, `editor.rs`, `app.rs`, `Preview`, `theme.rs`, `.active_project`, `.ui`, `.active_project_mut`, `ClipInstance`, `i18n.rs`, `ExportJob`, `nav_rail.rs`, `library.rs`?**
-  _High betweenness centrality (0.238) - this node is a cross-community bridge._
+- **Why does `OcaApp` connect `OcaApp` to `Project`, `app_test.rs`, `avbridge/src/lib.rs`, `app.rs`, `Preview`, `theme.rs`, `.active_project`, `.ui`, `.active_project_mut`, `ClipInstance`, `i18n.rs`, `editor.rs`, `enum_combo`, `ExportJob`, `nav_rail.rs`, `library.rs`?**
+  _High betweenness centrality (0.246) - this node is a cross-community bridge._
 - **Why does `test_app()` connect `app_test.rs` to `OcaApp`, `Project`, `test_project`, `ExportJob`, `test_canvas`?**
-  _High betweenness centrality (0.096) - this node is a cross-community bridge._
-- **Why does `ClipInstance` connect `ClipInstance` to `OcaApp`, `Project`, `editor.rs`, `timeline_test.rs`, `Preview`, `.active_project`, `test_project`, `track_with`, `timeline_export_test.rs`?**
+  _High betweenness centrality (0.097) - this node is a cross-community bridge._
+- **Why does `ClipInstance` connect `ClipInstance` to `OcaApp`, `editor.rs`, `timeline_test.rs`, `Preview`, `.active_project`, `test_project`, `track_with`, `timeline_export_test.rs`?**
   _High betweenness centrality (0.086) - this node is a cross-community bridge._
 - **What connects `TrimEdge`, `What this is`, `Commands` to the rest of the system?**
   _107 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `OcaApp` be split into smaller, more focused modules?**
   _Cohesion score 0.07965860597439545 - nodes in this community are weakly interconnected._
 - **Should `Project` be split into smaller, more focused modules?**
-  _Cohesion score 0.09856035437430787 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.10220673635307782 - nodes in this community are weakly interconnected._
 - **Should `app_test.rs` be split into smaller, more focused modules?**
   _Cohesion score 0.03827483196415235 - nodes in this community are weakly interconnected._
