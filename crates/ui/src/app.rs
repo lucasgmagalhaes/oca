@@ -1535,7 +1535,7 @@ impl OcaApp {
                     {
                         debug!(
                             asset_id,
-                            loudness_lufs = loudness,
+                            has_loudness = loudness.is_some(),
                             has_proxy = proxy_path.is_some(),
                             "asset enrichment complete"
                         );
