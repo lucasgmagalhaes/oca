@@ -18,6 +18,7 @@ fn main() -> eframe::Result<()> {
     // TODO: call init_logging() here once tracing-subscriber + tracing-appender are in the
     // local cargo cache (run `cargo fetch` with network access, then uncomment the call and
     // the two dep lines in ui/Cargo.toml).
+    install_panic_hook();
 
     let native_options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
@@ -89,4 +90,48 @@ fn platform_log_dir() -> std::path::PathBuf {
         .ok()
         .and_then(|p| p.parent().map(|d| d.join("logs")))
         .unwrap_or_else(|| std::path::PathBuf::from("logs"))
+}
+
+/// Installs a custom panic hook that writes a crash report to the log directory before
+/// calling the default hook (which prints to stderr). Each panic produces one
+/// `crash_<unix_seconds>.txt` file containing the panic message, source location, app
+/// version, and a full backtrace (always captured, regardless of `RUST_BACKTRACE`).
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+
+        let msg = info
+            .payload()
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| {
+                info.payload()
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str())
+            })
+            .unwrap_or("<unknown>");
+
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".to_owned());
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        let report = format!(
+            "oca v{ver} crash report\ntimestamp (unix): {timestamp}\nlocation: {location}\nmessage: {msg}\n\nbacktrace:\n{backtrace}\n",
+            ver = env!("CARGO_PKG_VERSION"),
+        );
+
+        let log_dir = platform_log_dir();
+        let _ = std::fs::create_dir_all(&log_dir);
+        let crash_path = log_dir.join(format!("crash_{timestamp}.txt"));
+        let _ = std::fs::write(&crash_path, report.as_bytes());
+
+        default_hook(info);
+    }));
 }
