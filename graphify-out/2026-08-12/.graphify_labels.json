@@ -36,10 +36,11 @@
   "34": "generate_waveform",
   "35": "editor.rs",
   "36": "app.rs",
-  "37": ".create_new_project",
+  "37": ".add_and_open_project",
   "38": ".ui",
   "39": ".active_project",
   "40": "test_project",
+  "41": "library.rs",
   "42": "ClipInstance",
   "43": "i18n.rs",
   "44": "i18n_test.rs",
@@ -53,5 +54,5 @@
   "52": "render_test.rs",
   "53": "nav_rail.rs",
   "54": "test_canvas",
-  "56": "render.rs"
+  "56": "render_timeline_export"
 }
