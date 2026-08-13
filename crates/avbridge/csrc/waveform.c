@@ -111,7 +111,7 @@ static int drain_waveform_frame(AudioFilterChain *chain, AVFrame *frame, AVFrame
     }
 }
 
-OcaWaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_count,
+WaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_count,
                                                   float *out_min, float *out_max) {
     AVFormatContext *in_ctx = NULL;
     AVCodecContext *dec_ctx = NULL;
@@ -120,23 +120,23 @@ OcaWaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_cou
     AVFrame *dec_frame = NULL;
     AVFrame *filt_frame = NULL;
     WaveformAccumulator acc;
-    OcaWaveformStatus status = OCA_WAVEFORM_OK;
+    WaveformStatus status = WAVEFORM_OK;
     int audio_in_index = -1;
     int64_t total_samples;
     double duration_secs = 0.0;
     AVStream *audio_stream;
 
     if (bucket_count <= 0) {
-        return OCA_WAVEFORM_ERR_PIPELINE;
+        return WAVEFORM_ERR_PIPELINE;
     }
     for (int i = 0; i < bucket_count; i++) {
         out_min[i] = 0.0f;
         out_max[i] = 0.0f;
     }
 
-    switch (oca_open_input(in_path, &in_ctx)) {
-        case -1: return OCA_WAVEFORM_ERR_OPEN_INPUT;
-        case -2: return OCA_WAVEFORM_ERR_STREAM_INFO;
+    switch (open_input(in_path, &in_ctx)) {
+        case -1: return WAVEFORM_ERR_OPEN_INPUT;
+        case -2: return WAVEFORM_ERR_STREAM_INFO;
     }
 
     for (unsigned int i = 0; i < in_ctx->nb_streams; i++) {
@@ -147,7 +147,7 @@ OcaWaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_cou
     }
     if (audio_in_index < 0) {
         avformat_close_input(&in_ctx);
-        return OCA_WAVEFORM_ERR_NO_AUDIO_STREAM;
+        return WAVEFORM_ERR_NO_AUDIO_STREAM;
     }
 
     audio_stream = in_ctx->streams[audio_in_index];
@@ -160,23 +160,23 @@ OcaWaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_cou
     {
         const AVCodec *decoder = avcodec_find_decoder(audio_stream->codecpar->codec_id);
         if (!decoder) {
-            status = OCA_WAVEFORM_ERR_DECODER;
+            status = WAVEFORM_ERR_DECODER;
             goto cleanup;
         }
         dec_ctx = avcodec_alloc_context3(decoder);
         if (!dec_ctx || avcodec_parameters_to_context(dec_ctx, audio_stream->codecpar) < 0) {
-            status = OCA_WAVEFORM_ERR_DECODER;
+            status = WAVEFORM_ERR_DECODER;
             goto cleanup;
         }
         dec_ctx->pkt_timebase = audio_stream->time_base;
         if (avcodec_open2(dec_ctx, decoder, NULL) < 0) {
-            status = OCA_WAVEFORM_ERR_DECODER;
+            status = WAVEFORM_ERR_DECODER;
             goto cleanup;
         }
     }
 
     if (init_waveform_filter_chain(dec_ctx, &chain) < 0) {
-        status = OCA_WAVEFORM_ERR_FILTER_GRAPH;
+        status = WAVEFORM_ERR_FILTER_GRAPH;
         goto cleanup;
     }
 
@@ -184,7 +184,7 @@ OcaWaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_cou
     dec_frame = av_frame_alloc();
     filt_frame = av_frame_alloc();
     if (!pkt || !dec_frame || !filt_frame) {
-        status = OCA_WAVEFORM_ERR_PIPELINE;
+        status = WAVEFORM_ERR_PIPELINE;
         goto cleanup;
     }
 
@@ -206,7 +206,7 @@ OcaWaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_cou
         int ret = avcodec_send_packet(dec_ctx, pkt);
         av_packet_unref(pkt);
         if (ret < 0) {
-            status = OCA_WAVEFORM_ERR_PIPELINE;
+            status = WAVEFORM_ERR_PIPELINE;
             goto cleanup;
         }
         while (1) {
@@ -214,11 +214,11 @@ OcaWaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_cou
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                 break;
             } else if (ret < 0) {
-                status = OCA_WAVEFORM_ERR_PIPELINE;
+                status = WAVEFORM_ERR_PIPELINE;
                 goto cleanup;
             }
             if (drain_waveform_frame(&chain, dec_frame, filt_frame, &acc) < 0) {
-                status = OCA_WAVEFORM_ERR_PIPELINE;
+                status = WAVEFORM_ERR_PIPELINE;
                 goto cleanup;
             }
         }
@@ -227,7 +227,7 @@ OcaWaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_cou
     avcodec_send_packet(dec_ctx, NULL);
     while (avcodec_receive_frame(dec_ctx, dec_frame) >= 0) {
         if (drain_waveform_frame(&chain, dec_frame, filt_frame, &acc) < 0) {
-            status = OCA_WAVEFORM_ERR_PIPELINE;
+            status = WAVEFORM_ERR_PIPELINE;
             goto cleanup;
         }
     }

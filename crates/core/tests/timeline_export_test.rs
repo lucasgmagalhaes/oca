@@ -100,9 +100,15 @@ fn renders_two_clips_with_different_effects_as_one_concatenated_export() {
     let cancel = AtomicBool::new(false);
     let mut last_percent = 0u8;
 
-    let outcome = render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |percent| {
-        last_percent = percent
-    })
+    let outcome = render_timeline_export(
+        &sequence,
+        &[asset],
+        &output,
+        -14.0,
+        avcore::GpuEncoderPreference::Auto,
+        &cancel,
+        |percent| last_percent = percent,
+    )
     .unwrap();
 
     assert_eq!(outcome, RenderOutcome::Completed);
@@ -135,8 +141,16 @@ fn frozen_clip_still_exports_its_full_timeline_duration() {
     let output = std::env::temp_dir().join("avcore_test_timeline_export_frozen.mp4");
     let cancel = AtomicBool::new(false);
 
-    let outcome =
-        render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_| {}).unwrap();
+    let outcome = render_timeline_export(
+        &sequence,
+        &[asset],
+        &output,
+        -14.0,
+        avcore::GpuEncoderPreference::Auto,
+        &cancel,
+        |_| {},
+    )
+    .unwrap();
 
     assert_eq!(outcome, RenderOutcome::Completed);
 
@@ -152,7 +166,16 @@ fn rejects_a_sequence_with_no_video_track() {
     let output = std::env::temp_dir().join("avcore_test_timeline_export_empty.mp4");
     let cancel = AtomicBool::new(false);
 
-    let err = render_timeline_export(&sequence, &[], &output, -14.0, &cancel, |_| {}).unwrap_err();
+    let err = render_timeline_export(
+        &sequence,
+        &[],
+        &output,
+        -14.0,
+        avcore::GpuEncoderPreference::Auto,
+        &cancel,
+        |_| {},
+    )
+    .unwrap_err();
 
     assert!(matches!(err, RenderError::EmptyTimeline));
 }
@@ -174,7 +197,16 @@ fn rejects_a_clip_with_a_missing_asset() {
     let cancel = AtomicBool::new(false);
 
     // No assets at all in the media library — clip's asset_id (999) can't resolve.
-    let err = render_timeline_export(&sequence, &[], &output, -14.0, &cancel, |_| {}).unwrap_err();
+    let err = render_timeline_export(
+        &sequence,
+        &[],
+        &output,
+        -14.0,
+        avcore::GpuEncoderPreference::Auto,
+        &cancel,
+        |_| {},
+    )
+    .unwrap_err();
 
     assert!(matches!(err, RenderError::MissingAsset));
 }
@@ -197,14 +229,21 @@ fn cancelling_mid_timeline_export_reports_cancelled() {
     let cancel = AtomicBool::new(false);
     let mut calls = 0;
 
-    let outcome =
-        render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_percent| {
+    let outcome = render_timeline_export(
+        &sequence,
+        &[asset],
+        &output,
+        -14.0,
+        avcore::GpuEncoderPreference::Auto,
+        &cancel,
+        |_percent| {
             calls += 1;
             if calls >= 3 {
                 cancel.store(true, Ordering::Relaxed);
             }
-        })
-        .unwrap();
+        },
+    )
+    .unwrap();
 
     assert_eq!(outcome, RenderOutcome::Cancelled);
 
@@ -233,8 +272,16 @@ fn fade_transition_exports_without_error() {
     let output = std::env::temp_dir().join("avcore_test_timeline_export_fade.mp4");
     let cancel = AtomicBool::new(false);
 
-    let outcome =
-        render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_| {}).unwrap();
+    let outcome = render_timeline_export(
+        &sequence,
+        &[asset],
+        &output,
+        -14.0,
+        avcore::GpuEncoderPreference::Auto,
+        &cancel,
+        |_| {},
+    )
+    .unwrap();
 
     assert_eq!(outcome, RenderOutcome::Completed);
 
@@ -266,8 +313,16 @@ fn slide_transition_exports_without_error() {
     let output = std::env::temp_dir().join("avcore_test_timeline_export_slide.mp4");
     let cancel = AtomicBool::new(false);
 
-    let outcome =
-        render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_| {}).unwrap();
+    let outcome = render_timeline_export(
+        &sequence,
+        &[asset],
+        &output,
+        -14.0,
+        avcore::GpuEncoderPreference::Auto,
+        &cancel,
+        |_| {},
+    )
+    .unwrap();
 
     assert_eq!(outcome, RenderOutcome::Completed);
 
@@ -299,8 +354,16 @@ fn zoom_transition_exports_without_error() {
     let output = std::env::temp_dir().join("avcore_test_timeline_export_zoom_transition.mp4");
     let cancel = AtomicBool::new(false);
 
-    let outcome =
-        render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_| {}).unwrap();
+    let outcome = render_timeline_export(
+        &sequence,
+        &[asset],
+        &output,
+        -14.0,
+        avcore::GpuEncoderPreference::Auto,
+        &cancel,
+        |_| {},
+    )
+    .unwrap();
 
     assert_eq!(outcome, RenderOutcome::Completed);
 
@@ -312,7 +375,7 @@ fn zoom_transition_exports_without_error() {
 
 #[test]
 fn animated_ken_burns_zoom_exports_without_error() {
-    // zoom_start != zoom_end is the B != 0 branch in oca_build_kenburns_zoom — distinct from
+    // zoom_start != zoom_end is the B != 0 branch in build_kenburns_zoom — distinct from
     // (and previously broken independently of) transition_in's Zoom entry effect above: this
     // one used to fail filter-graph init outright ("Expressions with frame variables 'n', 't',
     // 'pos' are not valid in init eval_mode"), not just fail to animate, since every other
@@ -337,8 +400,16 @@ fn animated_ken_burns_zoom_exports_without_error() {
     let output = std::env::temp_dir().join("avcore_test_timeline_export_ken_burns_zoom.mp4");
     let cancel = AtomicBool::new(false);
 
-    let outcome =
-        render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_| {}).unwrap();
+    let outcome = render_timeline_export(
+        &sequence,
+        &[asset],
+        &output,
+        -14.0,
+        avcore::GpuEncoderPreference::Auto,
+        &cancel,
+        |_| {},
+    )
+    .unwrap();
 
     assert_eq!(outcome, RenderOutcome::Completed);
 

@@ -29,7 +29,7 @@
    implementation; additional tracks beyond index 1 are silently ignored.
    ========================================================================= */
 
-void oca_build_kenburns_zoom(const OcaClipSegment *seg, int fps_num, int fps_den,
+void build_kenburns_zoom(const ClipSegment *seg, int fps_num, int fps_den,
                               char *buf, size_t cap) {
     buf[0] = '\0';
     float zs = seg->zoom_start > 0.0f ? seg->zoom_start : 1.0f;
@@ -63,7 +63,7 @@ void oca_build_kenburns_zoom(const OcaClipSegment *seg, int fps_num, int fps_den
        `scale` here set `eval=frame`, and this FFmpeg build flatly rejects a frame variable
        ("n") in a filter's default "init" eval mode ("Expressions with frame variables 'n',
        't', 'pos' are not valid in init eval_mode") — so any export actually using a
-       non-degenerate zoom (B != 0) failed outright with OCA_ENCODE_ERR_FILTER_GRAPH. No
+       non-degenerate zoom (B != 0) failed outright with ENCODE_ERR_FILTER_GRAPH. No
        existing test caught this: every zoom-bearing fixture in this codebase happens to use
        zoom_start == zoom_end (the B == 0 branch above). Reimplemented as a geq inverse-sample,
        the same technique the Slide/Zoom transition cases use (see
@@ -92,7 +92,7 @@ void oca_build_kenburns_zoom(const OcaClipSegment *seg, int fps_num, int fps_den
 /* Build the complete single-track video filter string for `seg` — identical logic to
    the inline filter-string block inside avbridge_encode_timeline_export, extracted here
    so the multi-track function can reuse it for single-track fallback intervals. */
-static void oca_build_vfilter_descr(const OcaClipSegment *seg,
+static void build_vfilter_descr(const ClipSegment *seg,
                                      int cw, int ch, int fps_num, int fps_den,
                                      char *buf, size_t cap) {
     const char *cf = (seg->video_filter && seg->video_filter[0]) ? seg->video_filter : "";
@@ -101,7 +101,7 @@ static void oca_build_vfilter_descr(const OcaClipSegment *seg,
         snprintf(setpts, sizeof(setpts), "setpts=PTS/%.6f,", (double)seg->speed_factor);
 
     char zoom[2048];
-    oca_build_kenburns_zoom(seg, fps_num, fps_den, zoom, sizeof(zoom));
+    build_kenburns_zoom(seg, fps_num, fps_den, zoom, sizeof(zoom));
 
     char trans[2048] = "";
     if (seg->transition_in != 0) {
@@ -153,10 +153,10 @@ static void oca_build_vfilter_descr(const OcaClipSegment *seg,
 }
 
 /* Build the per-track filter string for use INSIDE an overlay graph — same as
-   oca_build_vfilter_descr but omits the trailing format=yuv420p (added after the
+   build_vfilter_descr but omits the trailing format=yuv420p (added after the
    overlay stage) and omits transitions (n counter semantics differ in multi-input
    graphs). */
-static void oca_build_overlay_vfilter(const OcaClipSegment *seg,
+static void build_overlay_vfilter(const ClipSegment *seg,
                                        int cw, int ch, int fps_num, int fps_den,
                                        char *buf, size_t cap) {
     const char *cf = (seg->video_filter && seg->video_filter[0]) ? seg->video_filter : "";
@@ -165,7 +165,7 @@ static void oca_build_overlay_vfilter(const OcaClipSegment *seg,
         snprintf(setpts, sizeof(setpts), "setpts=PTS/%.6f,", (double)seg->speed_factor);
 
     char zoom[2048];
-    oca_build_kenburns_zoom(seg, fps_num, fps_den, zoom, sizeof(zoom));
+    build_kenburns_zoom(seg, fps_num, fps_den, zoom, sizeof(zoom));
 
     char post[4096] = "";
     if (zoom[0] && cf[0])   snprintf(post, sizeof(post), ",%s,%s", zoom, cf);
@@ -185,9 +185,9 @@ typedef struct {
     int              seg_open;   /* index of the segment this decoder was opened for, or -1 */
     int              done;       /* av_read_frame hit EOF / source_out_secs reached */
     AVFrame         *pending;    /* last decoded frame still within range, or NULL */
-} OcaOverlayDecoder;
+} OverlayDecoder;
 
-static void oca_free_overlay_decoder(OcaOverlayDecoder *d) {
+static void free_overlay_decoder(OverlayDecoder *d) {
     if (d->pending) { av_frame_free(&d->pending); }
     avcodec_free_context(&d->vdec_ctx);
     avformat_close_input(&d->in_ctx);
@@ -197,10 +197,10 @@ static void oca_free_overlay_decoder(OcaOverlayDecoder *d) {
 }
 
 /* Open the overlay decoder for `seg`, seeking to `src_seek`. Returns 0 on success. */
-static int oca_open_overlay_decoder(const OcaClipSegment *seg, double src_seek,
-                                     OcaOverlayDecoder *d, int seg_idx) {
-    oca_free_overlay_decoder(d);
-    switch (oca_open_input(seg->source_path, &d->in_ctx)) {
+static int open_overlay_decoder(const ClipSegment *seg, double src_seek,
+                                     OverlayDecoder *d, int seg_idx) {
+    free_overlay_decoder(d);
+    switch (open_input(seg->source_path, &d->in_ctx)) {
         case -1: return -1;
         case -2: return -2;
     }
@@ -232,8 +232,8 @@ static int oca_open_overlay_decoder(const OcaClipSegment *seg, double src_seek,
 
 /* Advance `d` until it has a frame at or past `src_target`, within [seg->source_in_secs,
    seg->source_out_secs).  Stores the frame in d->pending (caller must NOT free it —
-   oca_free_overlay_decoder handles lifetime).  Returns 1 if a frame is ready, 0 if done. */
-static int oca_advance_overlay_decoder(OcaOverlayDecoder *d, const OcaClipSegment *seg,
+   free_overlay_decoder handles lifetime).  Returns 1 if a frame is ready, 0 if done. */
+static int advance_overlay_decoder(OverlayDecoder *d, const ClipSegment *seg,
                                         double src_target, AVPacket *tmp_pkt, AVFrame *tmp_frame) {
     if (d->done) return (d->pending != NULL);
     while (1) {
@@ -261,7 +261,7 @@ static int oca_advance_overlay_decoder(OcaOverlayDecoder *d, const OcaClipSegmen
 /* Build and configure a 2-input overlay AVFilterGraph:
    [in0]<f0>[v0];[in1]<f1>[v1];[v0][v1]overlay=0:0,format=yuv420p[out]
    Caller owns the returned graph + contexts; free with avfilter_graph_free(). */
-static int oca_init_overlay_graph(
+static int init_overlay_graph(
     AVCodecContext *vdec0, const char *f0,
     AVCodecContext *vdec1, const char *f1,
     AVFilterGraph **out_graph,
@@ -326,20 +326,21 @@ fail:
     return ret;
 }
 
-OcaEncodeStatus avbridge_encode_timeline_export_multi(
-    const OcaClipSegment * const *track_segs, const int *track_n_segs, int n_tracks,
+EncodeStatus avbridge_encode_timeline_export_multi(
+    const ClipSegment * const *track_segs, const int *track_n_segs, int n_tracks,
     int canvas_width, int canvas_height, int canvas_fps_num, int canvas_fps_den,
     int64_t canvas_bit_rate_bps, const char *out_path, float target_lufs,
-    OcaProgressCallback progress_cb, void *progress_user_data, const uint8_t *cancel)
+    int gpu_encoder_preference, ProgressCallback progress_cb, void *progress_user_data,
+    const uint8_t *cancel)
 {
-    if (n_tracks <= 0 || track_n_segs[0] <= 0) return OCA_ENCODE_ERR_EMPTY_TIMELINE;
+    if (n_tracks <= 0 || track_n_segs[0] <= 0) return ENCODE_ERR_EMPTY_TIMELINE;
 
     /* N=1: delegate to the established single-track implementation. */
     if (n_tracks == 1) {
         return avbridge_encode_timeline_export(
             track_segs[0], track_n_segs[0],
             canvas_width, canvas_height, canvas_fps_num, canvas_fps_den,
-            canvas_bit_rate_bps, out_path, target_lufs,
+            canvas_bit_rate_bps, out_path, target_lufs, gpu_encoder_preference,
             progress_cb, progress_user_data, cancel);
     }
 
@@ -352,34 +353,28 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
     AVPacket        *pkt          = NULL, *t1_pkt = NULL;
     AVFrame         *dec_frame    = NULL, *filt_frame = NULL, *t1_tmp = NULL;
     AVPacket        *enc_pkt      = NULL;
-    OcaEncodeStatus  status       = OCA_ENCODE_OK;
+    EncodeStatus  status       = ENCODE_OK;
     AVRational       canvas_fps   = {canvas_fps_num, canvas_fps_den};
     int64_t          next_vpts    = 0;
     double           elapsed      = 0.0;
     int              canonical_sr = 0;
     enum AVSampleFormat canonical_fmt = AV_SAMPLE_FMT_NONE;
     AVChannelLayout  canonical_ch = {0};
-    OcaOverlayDecoder ov1 = {.seg_open = -1};
+    OverlayDecoder ov1 = {.seg_open = -1};
 
     avformat_alloc_output_context2(&out_ctx, NULL, NULL, out_path);
-    if (!out_ctx) return OCA_ENCODE_ERR_ALLOC_OUTPUT;
+    if (!out_ctx) return ENCODE_ERR_ALLOC_OUTPUT;
 
-    /* Video encoder — identical setup to single-track function. */
+    /* Video encoder — same hardware-with-CPU-fallback setup as the single-track function. */
     {
-        const AVCodec *ve = avcodec_find_encoder_by_name("libopenh264");
-        if (!ve) { status = OCA_ENCODE_ERR_ENCODER; goto cleanup; }
-        venc_ctx = avcodec_alloc_context3(ve);
-        if (!venc_ctx) { status = OCA_ENCODE_ERR_ENCODER; goto cleanup; }
-        venc_ctx->width = canvas_width;  venc_ctx->height = canvas_height;
-        venc_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
-        venc_ctx->time_base = av_inv_q(canvas_fps);  venc_ctx->framerate = canvas_fps;
-        venc_ctx->gop_size = (canvas_fps.num / canvas_fps.den) * 2;
-        venc_ctx->max_b_frames = 0;  venc_ctx->bit_rate = canvas_bit_rate_bps;
-        if (out_ctx->oformat->flags & AVFMT_GLOBALHEADER) venc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-        if (avcodec_open2(venc_ctx, ve, NULL) < 0) { status = OCA_ENCODE_ERR_ENCODER; goto cleanup; }
+        int global_header = (out_ctx->oformat->flags & AVFMT_GLOBALHEADER) != 0;
+        venc_ctx = open_video_encoder((GpuEncoderPreference)gpu_encoder_preference,
+                                           canvas_width, canvas_height, canvas_fps,
+                                           canvas_bit_rate_bps, global_header, NULL);
+        if (!venc_ctx) { status = ENCODE_ERR_ENCODER; goto cleanup; }
         vout_stream = avformat_new_stream(out_ctx, NULL);
         if (!vout_stream || avcodec_parameters_from_context(vout_stream->codecpar, venc_ctx) < 0) {
-            status = OCA_ENCODE_ERR_NEW_STREAM; goto cleanup;
+            status = ENCODE_ERR_NEW_STREAM; goto cleanup;
         }
         vout_stream->time_base = venc_ctx->time_base;
     }
@@ -388,12 +383,12 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
     dec_frame = av_frame_alloc(); filt_frame = av_frame_alloc(); t1_tmp = av_frame_alloc();
     enc_pkt = av_packet_alloc();
     if (!pkt || !t1_pkt || !dec_frame || !filt_frame || !t1_tmp || !enc_pkt) {
-        status = OCA_ENCODE_ERR_PIPELINE; goto cleanup;
+        status = ENCODE_ERR_PIPELINE; goto cleanup;
     }
 
     /* Outer loop: process track-0 segments in order. */
-    for (int si = 0; si < track_n_segs[0] && status == OCA_ENCODE_OK; si++) {
-        const OcaClipSegment *seg0 = &track_segs[0][si];
+    for (int si = 0; si < track_n_segs[0] && status == ENCODE_OK; si++) {
+        const ClipSegment *seg0 = &track_segs[0][si];
         AVFormatContext *in_ctx0   = NULL;
         AVCodecContext  *vdec_ctx0 = NULL, *adec_ctx0 = NULL;
         VideoFilterChain vchain    = {0};
@@ -407,37 +402,37 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
         double spd0     = seg0->speed_factor > 0.0f ? seg0->speed_factor : 1.0f;
         double tl_start = seg0->timeline_start_secs;
 
-        switch (oca_open_input(seg0->source_path, &in_ctx0)) {
-            case -1: status = OCA_ENCODE_ERR_OPEN_INPUT; break;
-            case -2: status = OCA_ENCODE_ERR_STREAM_INFO; break;
+        switch (open_input(seg0->source_path, &in_ctx0)) {
+            case -1: status = ENCODE_ERR_OPEN_INPUT; break;
+            case -2: status = ENCODE_ERR_STREAM_INFO; break;
         }
-        if (status != OCA_ENCODE_OK) break;
+        if (status != ENCODE_OK) break;
 
         for (unsigned s = 0; s < in_ctx0->nb_streams; s++) {
             enum AVMediaType mt = in_ctx0->streams[s]->codecpar->codec_type;
             if (vidx0 < 0 && mt == AVMEDIA_TYPE_VIDEO) vidx0 = (int)s;
             else if (aidx0 < 0 && mt == AVMEDIA_TYPE_AUDIO) aidx0 = (int)s;
         }
-        if (vidx0 < 0) { avformat_close_input(&in_ctx0); status = OCA_ENCODE_ERR_NO_VIDEO_STREAM; break; }
-        if (aidx0 < 0) { avformat_close_input(&in_ctx0); status = OCA_ENCODE_ERR_NO_AUDIO_STREAM; break; }
+        if (vidx0 < 0) { avformat_close_input(&in_ctx0); status = ENCODE_ERR_NO_VIDEO_STREAM; break; }
+        if (aidx0 < 0) { avformat_close_input(&in_ctx0); status = ENCODE_ERR_NO_AUDIO_STREAM; break; }
 
         { /* Video decoder */
             AVCodecParameters *vp = in_ctx0->streams[vidx0]->codecpar;
             const AVCodec *vd = avcodec_find_decoder(vp->codec_id);
-            if (!vd) { status = OCA_ENCODE_ERR_DECODER; goto seg_cleanup; }
+            if (!vd) { status = ENCODE_ERR_DECODER; goto seg_cleanup; }
             vdec_ctx0 = avcodec_alloc_context3(vd);
-            if (!vdec_ctx0 || avcodec_parameters_to_context(vdec_ctx0, vp) < 0) { status = OCA_ENCODE_ERR_DECODER; goto seg_cleanup; }
+            if (!vdec_ctx0 || avcodec_parameters_to_context(vdec_ctx0, vp) < 0) { status = ENCODE_ERR_DECODER; goto seg_cleanup; }
             vdec_ctx0->pkt_timebase = in_ctx0->streams[vidx0]->time_base;
-            if (avcodec_open2(vdec_ctx0, vd, NULL) < 0) { status = OCA_ENCODE_ERR_DECODER; goto seg_cleanup; }
+            if (avcodec_open2(vdec_ctx0, vd, NULL) < 0) { status = ENCODE_ERR_DECODER; goto seg_cleanup; }
         }
         { /* Audio decoder */
             AVCodecParameters *ap = in_ctx0->streams[aidx0]->codecpar;
             const AVCodec *ad = avcodec_find_decoder(ap->codec_id);
-            if (!ad) { status = OCA_ENCODE_ERR_DECODER; goto seg_cleanup; }
+            if (!ad) { status = ENCODE_ERR_DECODER; goto seg_cleanup; }
             adec_ctx0 = avcodec_alloc_context3(ad);
-            if (!adec_ctx0 || avcodec_parameters_to_context(adec_ctx0, ap) < 0) { status = OCA_ENCODE_ERR_DECODER; goto seg_cleanup; }
+            if (!adec_ctx0 || avcodec_parameters_to_context(adec_ctx0, ap) < 0) { status = ENCODE_ERR_DECODER; goto seg_cleanup; }
             adec_ctx0->pkt_timebase = in_ctx0->streams[aidx0]->time_base;
-            if (avcodec_open2(adec_ctx0, ad, NULL) < 0) { status = OCA_ENCODE_ERR_DECODER; goto seg_cleanup; }
+            if (avcodec_open2(adec_ctx0, ad, NULL) < 0) { status = ENCODE_ERR_DECODER; goto seg_cleanup; }
         }
 
         if (si == 0) { /* First segment: set up audio chain + encoder + output header */
@@ -445,33 +440,33 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
             canonical_fmt = adec_ctx0->sample_fmt;
             av_channel_layout_copy(&canonical_ch, &adec_ctx0->ch_layout);
             const AVCodec *ae = avcodec_find_encoder(AV_CODEC_ID_AAC);
-            if (!ae) { status = OCA_ENCODE_ERR_ENCODER; goto seg_cleanup; }
+            if (!ae) { status = ENCODE_ERR_ENCODER; goto seg_cleanup; }
             char afd[256];
             snprintf(afd, sizeof(afd),
                      "atempo@tempo=1.0,volume@vol=0dB,loudnorm=I=%.1f:TP=-1.0:LRA=11,"
                      "alimiter=limit=0.95:attack=5:release=50", (double)target_lufs);
-            if (init_audio_filter_chain(adec_ctx0, ae, afd, &achain) < 0) { status = OCA_ENCODE_ERR_FILTER_GRAPH; goto seg_cleanup; }
+            if (init_audio_filter_chain(adec_ctx0, ae, afd, &achain) < 0) { status = ENCODE_ERR_FILTER_GRAPH; goto seg_cleanup; }
             aenc_ctx = avcodec_alloc_context3(ae);
-            if (!aenc_ctx) { status = OCA_ENCODE_ERR_ENCODER; goto seg_cleanup; }
+            if (!aenc_ctx) { status = ENCODE_ERR_ENCODER; goto seg_cleanup; }
             aenc_ctx->sample_rate = av_buffersink_get_sample_rate(achain.buffersink_ctx);
             av_buffersink_get_ch_layout(achain.buffersink_ctx, &aenc_ctx->ch_layout);
             aenc_ctx->sample_fmt = (enum AVSampleFormat)av_buffersink_get_format(achain.buffersink_ctx);
             aenc_ctx->bit_rate = 192000;
             aenc_ctx->time_base = av_buffersink_get_time_base(achain.buffersink_ctx);
             if (out_ctx->oformat->flags & AVFMT_GLOBALHEADER) aenc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-            if (avcodec_open2(aenc_ctx, ae, NULL) < 0) { status = OCA_ENCODE_ERR_ENCODER; goto seg_cleanup; }
+            if (avcodec_open2(aenc_ctx, ae, NULL) < 0) { status = ENCODE_ERR_ENCODER; goto seg_cleanup; }
             if (aenc_ctx->frame_size > 0) av_buffersink_set_frame_size(achain.buffersink_ctx, (unsigned)aenc_ctx->frame_size);
             aout_stream = avformat_new_stream(out_ctx, NULL);
-            if (!aout_stream || avcodec_parameters_from_context(aout_stream->codecpar, aenc_ctx) < 0) { status = OCA_ENCODE_ERR_NEW_STREAM; goto seg_cleanup; }
+            if (!aout_stream || avcodec_parameters_from_context(aout_stream->codecpar, aenc_ctx) < 0) { status = ENCODE_ERR_NEW_STREAM; goto seg_cleanup; }
             aout_stream->time_base = aenc_ctx->time_base;
             if (!(out_ctx->oformat->flags & AVFMT_NOFILE)) {
-                if (avio_open(&out_ctx->pb, out_path, AVIO_FLAG_WRITE) < 0) { status = OCA_ENCODE_ERR_OPEN_OUTPUT; goto seg_cleanup; }
+                if (avio_open(&out_ctx->pb, out_path, AVIO_FLAG_WRITE) < 0) { status = ENCODE_ERR_OPEN_OUTPUT; goto seg_cleanup; }
             }
-            if (avformat_write_header(out_ctx, NULL) < 0) { status = OCA_ENCODE_ERR_WRITE_HEADER; goto seg_cleanup; }
+            if (avformat_write_header(out_ctx, NULL) < 0) { status = ENCODE_ERR_WRITE_HEADER; goto seg_cleanup; }
         } else if (adec_ctx0->sample_rate != canonical_sr ||
                    adec_ctx0->sample_fmt  != canonical_fmt ||
                    av_channel_layout_compare(&adec_ctx0->ch_layout, &canonical_ch) != 0) {
-            status = OCA_ENCODE_ERR_AUDIO_FORMAT_MISMATCH; goto seg_cleanup;
+            status = ENCODE_ERR_AUDIO_FORMAT_MISMATCH; goto seg_cleanup;
         }
 
         { /* Update gain + tempo for this segment's audio */
@@ -492,18 +487,18 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
 
         { /* Per-segment decode loop */
             int vdone = 0, adone = 0;
-            while ((!vdone || !adone) && status == OCA_ENCODE_OK) {
-                if (cancel && *cancel) { status = OCA_ENCODE_CANCELLED; break; }
+            while ((!vdone || !adone) && status == ENCODE_OK) {
+                if (cancel && *cancel) { status = ENCODE_CANCELLED; break; }
                 if (av_read_frame(in_ctx0, pkt) < 0) break;
 
                 if (pkt->stream_index == vidx0 && !vdone) {
                     int ret = avcodec_send_packet(vdec_ctx0, pkt);
                     av_packet_unref(pkt);
-                    if (ret < 0) { status = OCA_ENCODE_ERR_PIPELINE; break; }
+                    if (ret < 0) { status = ENCODE_ERR_PIPELINE; break; }
                     while (1) {
                         ret = avcodec_receive_frame(vdec_ctx0, dec_frame);
                         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
-                        if (ret < 0) { status = OCA_ENCODE_ERR_PIPELINE; break; }
+                        if (ret < 0) { status = ENCODE_ERR_PIPELINE; break; }
                         double fsrc = dec_frame->pts * av_q2d(vdec_ctx0->pkt_timebase);
                         if (fsrc < seg0->source_in_secs)  { av_frame_unref(dec_frame); continue; }
                         if (fsrc >= seg0->source_out_secs) { vdone = 1; av_frame_unref(dec_frame); continue; }
@@ -513,7 +508,7 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
                         /* Find track-1 segment active at timeline time ftl. */
                         int t1_seg_idx = -1;
                         for (int s = 0; s < track_n_segs[1]; s++) {
-                            const OcaClipSegment *s1 = &track_segs[1][s];
+                            const ClipSegment *s1 = &track_segs[1][s];
                             double sp1 = s1->speed_factor > 0.0f ? s1->speed_factor : 1.0f;
                             double s1e = s1->timeline_start_secs + (s1->source_out_secs - s1->source_in_secs) / sp1;
                             if (ftl >= s1->timeline_start_secs && ftl < s1e) { t1_seg_idx = s; break; }
@@ -526,19 +521,19 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
                             if (ov_graph) { avfilter_graph_free(&ov_graph); ov_src0 = ov_src1 = ov_sink = NULL; }
                             free_video_filter_chain(&vchain);
 
-                            const OcaClipSegment *s1 = &track_segs[1][t1_seg_idx];
+                            const ClipSegment *s1 = &track_segs[1][t1_seg_idx];
                             double sp1 = s1->speed_factor > 0.0f ? s1->speed_factor : 1.0f;
                             double t1_seek = s1->source_in_secs + (ftl - s1->timeline_start_secs) * sp1;
-                            if (oca_open_overlay_decoder(s1, t1_seek, &ov1, t1_seg_idx) < 0) {
-                                status = OCA_ENCODE_ERR_DECODER; av_frame_unref(dec_frame); break;
+                            if (open_overlay_decoder(s1, t1_seek, &ov1, t1_seg_idx) < 0) {
+                                status = ENCODE_ERR_DECODER; av_frame_unref(dec_frame); break;
                             }
 
                             char f0[8192], f1[8192];
-                            oca_build_overlay_vfilter(seg0, canvas_width, canvas_height, canvas_fps_num, canvas_fps_den, f0, sizeof(f0));
-                            oca_build_overlay_vfilter(s1,   canvas_width, canvas_height, canvas_fps_num, canvas_fps_den, f1, sizeof(f1));
-                            if (oca_init_overlay_graph(vdec_ctx0, f0, ov1.vdec_ctx, f1,
+                            build_overlay_vfilter(seg0, canvas_width, canvas_height, canvas_fps_num, canvas_fps_den, f0, sizeof(f0));
+                            build_overlay_vfilter(s1,   canvas_width, canvas_height, canvas_fps_num, canvas_fps_den, f1, sizeof(f1));
+                            if (init_overlay_graph(vdec_ctx0, f0, ov1.vdec_ctx, f1,
                                                         &ov_graph, &ov_src0, &ov_src1, &ov_sink) < 0) {
-                                status = OCA_ENCODE_ERR_FILTER_GRAPH; av_frame_unref(dec_frame); break;
+                                status = ENCODE_ERR_FILTER_GRAPH; av_frame_unref(dec_frame); break;
                             }
                             ov_frame0 = ov_frame1 = 0;
                             cur_mode = 2;
@@ -546,23 +541,23 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
                             /* Switch to single-track mode */
                             if (ov_graph) { avfilter_graph_free(&ov_graph); ov_src0 = ov_src1 = ov_sink = NULL; }
                             free_video_filter_chain(&vchain);
-                            if (ov1.in_ctx) oca_free_overlay_decoder(&ov1);
+                            if (ov1.in_ctx) free_overlay_decoder(&ov1);
 
                             char vfd[16384];
-                            oca_build_vfilter_descr(seg0, canvas_width, canvas_height,
+                            build_vfilter_descr(seg0, canvas_width, canvas_height,
                                                      canvas_fps_num, canvas_fps_den, vfd, sizeof(vfd));
                             if (init_video_filter_chain(vdec_ctx0, vfd, &vchain) < 0) {
-                                status = OCA_ENCODE_ERR_FILTER_GRAPH; av_frame_unref(dec_frame); break;
+                                status = ENCODE_ERR_FILTER_GRAPH; av_frame_unref(dec_frame); break;
                             }
                             cur_mode = 1;
                         }
 
                         if (cur_mode == 2) {
                             /* Get overlay frame from track 1 (advance its decoder). */
-                            const OcaClipSegment *s1 = &track_segs[1][t1_seg_idx];
+                            const ClipSegment *s1 = &track_segs[1][t1_seg_idx];
                             double sp1 = s1->speed_factor > 0.0f ? s1->speed_factor : 1.0f;
                             double t1_src = s1->source_in_secs + (ftl - s1->timeline_start_secs) * sp1;
-                            oca_advance_overlay_decoder(&ov1, s1, t1_src, t1_pkt, t1_tmp);
+                            advance_overlay_decoder(&ov1, s1, t1_src, t1_pkt, t1_tmp);
 
                             /* Push track-0 frame to overlay graph with synthetic pts. */
                             dec_frame->pts = ov_frame0++;
@@ -579,10 +574,10 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
                             while (av_buffersink_get_frame(ov_sink, filt_frame) == 0) {
                                 filt_frame->pts = next_vpts++;
                                 if (encode_write_packet(out_ctx, venc_ctx, vout_stream, filt_frame, enc_pkt) < 0) {
-                                    status = OCA_ENCODE_ERR_PIPELINE;
+                                    status = ENCODE_ERR_PIPELINE;
                                 }
                                 av_frame_unref(filt_frame);
-                                if (status != OCA_ENCODE_OK) break;
+                                if (status != ENCODE_OK) break;
                             }
                             if (progress_cb)
                                 progress_cb(progress_user_data, elapsed + (fsrc - seg0->source_in_secs) / spd0);
@@ -590,35 +585,35 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
                             if (filter_encode_write_video_frame(out_ctx, &vchain, venc_ctx,
                                                                  vout_stream, dec_frame, filt_frame,
                                                                  &next_vpts, enc_pkt) < 0) {
-                                status = OCA_ENCODE_ERR_PIPELINE;
+                                status = ENCODE_ERR_PIPELINE;
                             }
                             if (progress_cb)
                                 progress_cb(progress_user_data, elapsed + (fsrc - seg0->source_in_secs) / spd0);
                         }
                         av_frame_unref(dec_frame);
-                        if (status != OCA_ENCODE_OK) break;
+                        if (status != ENCODE_OK) break;
                     }
                 } else if (pkt->stream_index == aidx0 && !adone) {
                     int ret = avcodec_send_packet(adec_ctx0, pkt);
                     av_packet_unref(pkt);
-                    if (ret < 0) { status = OCA_ENCODE_ERR_PIPELINE; break; }
+                    if (ret < 0) { status = ENCODE_ERR_PIPELINE; break; }
                     while (1) {
                         ret = avcodec_receive_frame(adec_ctx0, dec_frame);
                         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
-                        if (ret < 0) { status = OCA_ENCODE_ERR_PIPELINE; break; }
+                        if (ret < 0) { status = ENCODE_ERR_PIPELINE; break; }
                         double fs = dec_frame->pts * av_q2d(adec_ctx0->pkt_timebase);
                         if (fs < seg0->source_in_secs)  { av_frame_unref(dec_frame); continue; }
                         if (fs >= seg0->source_out_secs) { adone = 1; av_frame_unref(dec_frame); continue; }
                         if (filter_encode_write_frame(out_ctx, &achain, aenc_ctx, aout_stream,
                                                        dec_frame, filt_frame, enc_pkt) < 0) {
-                            status = OCA_ENCODE_ERR_PIPELINE; break;
+                            status = ENCODE_ERR_PIPELINE; break;
                         }
                         av_frame_unref(dec_frame);
                     }
                 } else {
                     av_packet_unref(pkt);
                 }
-                if (status != OCA_ENCODE_OK) break;
+                if (status != ENCODE_OK) break;
             }
         }
 
@@ -633,20 +628,20 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
     }
 
     /* Flush audio encoder + loudnorm graph. */
-    if (status == OCA_ENCODE_OK &&
+    if (status == ENCODE_OK &&
         (filter_encode_write_frame(out_ctx, &achain, aenc_ctx, aout_stream, NULL, filt_frame, enc_pkt) < 0 ||
          encode_write_packet(out_ctx, aenc_ctx, aout_stream, NULL, enc_pkt) < 0)) {
-        status = OCA_ENCODE_ERR_PIPELINE;
+        status = ENCODE_ERR_PIPELINE;
     }
     /* Flush video encoder. */
-    if (status == OCA_ENCODE_OK &&
+    if (status == ENCODE_OK &&
         encode_write_packet(out_ctx, venc_ctx, vout_stream, NULL, enc_pkt) < 0) {
-        status = OCA_ENCODE_ERR_PIPELINE;
+        status = ENCODE_ERR_PIPELINE;
     }
-    if (status == OCA_ENCODE_OK) av_write_trailer(out_ctx);
+    if (status == ENCODE_OK) av_write_trailer(out_ctx);
 
 cleanup:
-    oca_free_overlay_decoder(&ov1);
+    free_overlay_decoder(&ov1);
     av_packet_free(&pkt);
     av_packet_free(&t1_pkt);
     av_packet_free(&enc_pkt);

@@ -31,7 +31,7 @@ struct RawClipSegment {
     timeline_start_secs: f64,
 }
 
-/// Mirror of `OcaTextSegment` in `bridge.h` — one text overlay to draw on the exported video.
+/// Mirror of `TextSegment` in `bridge.h` — one text overlay to draw on the exported video.
 #[repr(C)]
 struct RawTextSegment {
     start_secs: f64,
@@ -81,6 +81,7 @@ unsafe extern "C" {
         canvas_bit_rate_bps: c_longlong,
         out_path: *const c_char,
         target_lufs: f32,
+        gpu_encoder_preference: c_int,
         progress_cb: Option<unsafe extern "C" fn(user_data: *mut c_void, seconds: f64)>,
         progress_user_data: *mut c_void,
         cancel: *const u8,
@@ -96,6 +97,7 @@ unsafe extern "C" {
         canvas_bit_rate_bps: c_longlong,
         out_path: *const c_char,
         target_lufs: f32,
+        gpu_encoder_preference: c_int,
         progress_cb: Option<unsafe extern "C" fn(user_data: *mut c_void, seconds: f64)>,
         progress_user_data: *mut c_void,
         cancel: *const u8,
@@ -480,6 +482,37 @@ pub struct Canvas {
     pub bit_rate_bps: i64,
 }
 
+/// Which video encoder [`encode_timeline_export`]/[`encode_timeline_export_multi`] should use,
+/// mirroring `bridge_internal.h`'s `GpuEncoderPreference` (passed across the FFI boundary as
+/// the same plain `int` values). `Auto` tries hardware encoders (NVENC, then Quick Sync, then
+/// AMF) in order and falls back to the CPU (libopenh264) encoder if none open; the specific
+/// hardware variants force that one encoder, still falling back to CPU if it can't open (no
+/// compatible GPU/driver present) — the C side has no way to report back which one actually got
+/// used, so a caller can't currently distinguish "used the GPU I asked for" from "silently fell
+/// back to CPU" short of noticing render speed/CPU usage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GpuEncoderPreference {
+    #[default]
+    Auto,
+    Cpu,
+    Nvenc,
+    QuickSync,
+    Amf,
+}
+
+impl GpuEncoderPreference {
+    fn as_c_int(self) -> c_int {
+        match self {
+            GpuEncoderPreference::Auto => 0,
+            GpuEncoderPreference::Cpu => 1,
+            GpuEncoderPreference::Nvenc => 2,
+            GpuEncoderPreference::QuickSync => 3,
+            GpuEncoderPreference::Amf => 4,
+        }
+    }
+}
+
 /// Renders `segments` as one continuous export onto a `canvas_width`x`canvas_height` canvas
 /// at `canvas_fps_num`/`canvas_fps_den`: video is decoded, each segment's own filter chain
 /// applied (prefixed with a canvas-conform scale/pad/fps stage), and re-encoded via
@@ -497,6 +530,7 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
     canvas: Canvas,
     out_path: &Path,
     target_lufs: f32,
+    gpu_encoder: GpuEncoderPreference,
     cancel: &AtomicBool,
     mut on_progress: F,
 ) -> Result<EncodeOutcome, EncodeError> {
@@ -552,6 +586,7 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
             canvas.bit_rate_bps as c_longlong,
             c_out.as_ptr(),
             target_lufs,
+            gpu_encoder.as_c_int(),
             Some(progress_trampoline::<F>),
             &mut on_progress as *mut _ as *mut c_void,
             cancel.as_ptr() as *const u8,
@@ -596,6 +631,7 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
     canvas: Canvas,
     out_path: &Path,
     target_lufs: f32,
+    gpu_encoder: GpuEncoderPreference,
     cancel: &AtomicBool,
     mut on_progress: F,
 ) -> Result<EncodeOutcome, EncodeError> {
@@ -608,6 +644,7 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
             canvas,
             out_path,
             target_lufs,
+            gpu_encoder,
             cancel,
             on_progress,
         );
@@ -675,6 +712,7 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
             canvas.bit_rate_bps as c_longlong,
             c_out.as_ptr(),
             target_lufs,
+            gpu_encoder.as_c_int(),
             Some(progress_trampoline::<F>),
             &mut on_progress as *mut _ as *mut c_void,
             cancel.as_ptr() as *const u8,

@@ -13,6 +13,7 @@ use avcore::render::{render_export_job_multi, resolve_timeline_segments_multi, R
 use avcore::timeline::{
     ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
 };
+use avcore::GpuEncoderPreference;
 use avcore::{probe_media, MediaAsset};
 
 fn fixture(name: &str) -> PathBuf {
@@ -104,6 +105,7 @@ fn render_multi(sequence: &Sequence, assets: &[MediaAsset], output_name: &str) -
         canvas,
         &output,
         -14.0,
+        GpuEncoderPreference::Auto,
         &[],
         &cancel,
         |_| {},
@@ -243,6 +245,7 @@ fn cancelling_mid_multi_track_export_reports_cancelled() {
         canvas,
         &output,
         -14.0,
+        GpuEncoderPreference::Auto,
         &[],
         &cancel,
         |_percent| {

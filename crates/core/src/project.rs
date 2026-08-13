@@ -49,10 +49,10 @@ pub struct Project {
 }
 
 impl Project {
-    /// The active tab's timeline — what the Editor screen and every clip-editing `OcaApp`
+    /// The active tab's timeline — what the Editor screen and every clip-editing `ui::App`
     /// method actually read. Panics if `active_sequence` is out of bounds, which shouldn't
     /// happen given `sequences` is never empty and every mutation keeps the index in range —
-    /// same trust-the-invariant style as `OcaApp::active_project`'s own indexing.
+    /// same trust-the-invariant style as `ui::App::active_project`'s own indexing.
     pub fn timeline(&self) -> &Timeline {
         &self.sequences[self.active_sequence].timeline
     }

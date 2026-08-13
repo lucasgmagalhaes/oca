@@ -117,7 +117,7 @@ static int drain_measure_frame(AudioFilterChain *chain, AVFrame *frame, AVFrame 
     }
 }
 
-OcaLoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
+LoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
                                                  size_t out_json_len) {
     AVFormatContext *in_ctx = NULL;
     AVCodecContext *dec_ctx = NULL;
@@ -125,7 +125,7 @@ OcaLoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
     AVPacket *pkt = NULL;
     AVFrame *dec_frame = NULL;
     AVFrame *filt_frame = NULL;
-    OcaLoudnessStatus status = OCA_LOUDNESS_OK;
+    LoudnessStatus status = LOUDNESS_OK;
     int audio_in_index = -1;
     int log_installed = 0;
 
@@ -133,9 +133,9 @@ OcaLoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
         out_json[0] = '\0';
     }
 
-    switch (oca_open_input(in_path, &in_ctx)) {
-        case -1: return OCA_LOUDNESS_ERR_OPEN_INPUT;
-        case -2: return OCA_LOUDNESS_ERR_STREAM_INFO;
+    switch (open_input(in_path, &in_ctx)) {
+        case -1: return LOUDNESS_ERR_OPEN_INPUT;
+        case -2: return LOUDNESS_ERR_STREAM_INFO;
     }
 
     for (unsigned int i = 0; i < in_ctx->nb_streams; i++) {
@@ -146,31 +146,31 @@ OcaLoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
     }
     if (audio_in_index < 0) {
         avformat_close_input(&in_ctx);
-        return OCA_LOUDNESS_ERR_NO_AUDIO_STREAM;
+        return LOUDNESS_ERR_NO_AUDIO_STREAM;
     }
 
     {
         const AVCodec *decoder =
             avcodec_find_decoder(in_ctx->streams[audio_in_index]->codecpar->codec_id);
         if (!decoder) {
-            status = OCA_LOUDNESS_ERR_DECODER;
+            status = LOUDNESS_ERR_DECODER;
             goto cleanup;
         }
         dec_ctx = avcodec_alloc_context3(decoder);
         if (!dec_ctx || avcodec_parameters_to_context(
                             dec_ctx, in_ctx->streams[audio_in_index]->codecpar) < 0) {
-            status = OCA_LOUDNESS_ERR_DECODER;
+            status = LOUDNESS_ERR_DECODER;
             goto cleanup;
         }
         dec_ctx->pkt_timebase = in_ctx->streams[audio_in_index]->time_base;
         if (avcodec_open2(dec_ctx, decoder, NULL) < 0) {
-            status = OCA_LOUDNESS_ERR_DECODER;
+            status = LOUDNESS_ERR_DECODER;
             goto cleanup;
         }
     }
 
     if (init_measure_filter_chain(dec_ctx, &chain) < 0) {
-        status = OCA_LOUDNESS_ERR_FILTER_GRAPH;
+        status = LOUDNESS_ERR_FILTER_GRAPH;
         goto cleanup;
     }
 
@@ -178,7 +178,7 @@ OcaLoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
     dec_frame = av_frame_alloc();
     filt_frame = av_frame_alloc();
     if (!pkt || !dec_frame || !filt_frame) {
-        status = OCA_LOUDNESS_ERR_PIPELINE;
+        status = LOUDNESS_ERR_PIPELINE;
         goto cleanup;
     }
 
@@ -199,7 +199,7 @@ OcaLoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
         int ret = avcodec_send_packet(dec_ctx, pkt);
         av_packet_unref(pkt);
         if (ret < 0) {
-            status = OCA_LOUDNESS_ERR_PIPELINE;
+            status = LOUDNESS_ERR_PIPELINE;
             goto cleanup;
         }
         while (1) {
@@ -207,11 +207,11 @@ OcaLoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                 break;
             } else if (ret < 0) {
-                status = OCA_LOUDNESS_ERR_PIPELINE;
+                status = LOUDNESS_ERR_PIPELINE;
                 goto cleanup;
             }
             if (drain_measure_frame(&chain, dec_frame, filt_frame) < 0) {
-                status = OCA_LOUDNESS_ERR_PIPELINE;
+                status = LOUDNESS_ERR_PIPELINE;
                 goto cleanup;
             }
         }
@@ -220,7 +220,7 @@ OcaLoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
     avcodec_send_packet(dec_ctx, NULL);
     while (avcodec_receive_frame(dec_ctx, dec_frame) >= 0) {
         if (drain_measure_frame(&chain, dec_frame, filt_frame) < 0) {
-            status = OCA_LOUDNESS_ERR_PIPELINE;
+            status = LOUDNESS_ERR_PIPELINE;
             goto cleanup;
         }
     }
@@ -235,8 +235,8 @@ cleanup:
     free_audio_filter_chain(&chain);
 
     if (log_installed) {
-        if (status == OCA_LOUDNESS_OK && (!out_json || out_json[0] == '\0')) {
-            status = OCA_LOUDNESS_ERR_NO_REPORT;
+        if (status == LOUDNESS_OK && (!out_json || out_json[0] == '\0')) {
+            status = LOUDNESS_ERR_NO_REPORT;
         }
         av_log_set_callback(av_log_default_callback);
         g_loudness_log_buf = NULL;

@@ -7,12 +7,12 @@
 
 uint32_t avbridge_version(void) { return avformat_version(); }
 
-OcaProbeStatus avbridge_probe(const char *path, OcaProbeInfo *out) {
+ProbeStatus avbridge_probe(const char *path, ProbeInfo *out) {
     AVFormatContext *fmt_ctx = NULL;
 
-    switch (oca_open_input(path, &fmt_ctx)) {
-        case -1: return OCA_PROBE_ERR_OPEN;
-        case -2: return OCA_PROBE_ERR_STREAM_INFO;
+    switch (open_input(path, &fmt_ctx)) {
+        case -1: return PROBE_ERR_OPEN;
+        case -2: return PROBE_ERR_STREAM_INFO;
     }
 
     AVStream *video = NULL;
@@ -29,7 +29,7 @@ OcaProbeStatus avbridge_probe(const char *path, OcaProbeInfo *out) {
     AVStream *stream = video ? video : audio;
     if (!stream) {
         avformat_close_input(&fmt_ctx);
-        return OCA_PROBE_ERR_NO_MEDIA_STREAM;
+        return PROBE_ERR_NO_MEDIA_STREAM;
     }
 
     memset(out, 0, sizeof(*out));
@@ -64,31 +64,31 @@ OcaProbeStatus avbridge_probe(const char *path, OcaProbeInfo *out) {
     }
 
     avformat_close_input(&fmt_ctx);
-    return OCA_PROBE_OK;
+    return PROBE_OK;
 }
 
-OcaRemuxStatus avbridge_remux_copy(const char *in_path, const char *out_path) {
+RemuxStatus avbridge_remux_copy(const char *in_path, const char *out_path) {
     AVFormatContext *in_ctx = NULL;
     AVFormatContext *out_ctx = NULL;
     int *stream_mapping = NULL;
-    OcaRemuxStatus status = OCA_REMUX_OK;
+    RemuxStatus status = REMUX_OK;
 
-    switch (oca_open_input(in_path, &in_ctx)) {
-        case -1: return OCA_REMUX_ERR_OPEN_INPUT;
-        case -2: return OCA_REMUX_ERR_STREAM_INFO;
+    switch (open_input(in_path, &in_ctx)) {
+        case -1: return REMUX_ERR_OPEN_INPUT;
+        case -2: return REMUX_ERR_STREAM_INFO;
     }
 
     avformat_alloc_output_context2(&out_ctx, NULL, NULL, out_path);
     if (!out_ctx) {
         avformat_close_input(&in_ctx);
-        return OCA_REMUX_ERR_ALLOC_OUTPUT;
+        return REMUX_ERR_ALLOC_OUTPUT;
     }
 
     stream_mapping = av_calloc(in_ctx->nb_streams, sizeof(*stream_mapping));
     if (!stream_mapping) {
         avformat_free_context(out_ctx);
         avformat_close_input(&in_ctx);
-        return OCA_REMUX_ERR_ALLOC_OUTPUT;
+        return REMUX_ERR_ALLOC_OUTPUT;
     }
 
     int out_stream_count = 0;
@@ -104,7 +104,7 @@ OcaRemuxStatus avbridge_remux_copy(const char *in_path, const char *out_path) {
 
         AVStream *out_stream = avformat_new_stream(out_ctx, NULL);
         if (!out_stream || avcodec_parameters_copy(out_stream->codecpar, in_codecpar) < 0) {
-            status = OCA_REMUX_ERR_NEW_STREAM;
+            status = REMUX_ERR_NEW_STREAM;
             goto cleanup;
         }
         out_stream->codecpar->codec_tag = 0;
@@ -114,20 +114,20 @@ OcaRemuxStatus avbridge_remux_copy(const char *in_path, const char *out_path) {
 
     if (!(out_ctx->oformat->flags & AVFMT_NOFILE)) {
         if (avio_open(&out_ctx->pb, out_path, AVIO_FLAG_WRITE) < 0) {
-            status = OCA_REMUX_ERR_OPEN_OUTPUT;
+            status = REMUX_ERR_OPEN_OUTPUT;
             goto cleanup;
         }
     }
 
     if (avformat_write_header(out_ctx, NULL) < 0) {
-        status = OCA_REMUX_ERR_WRITE_HEADER;
+        status = REMUX_ERR_WRITE_HEADER;
         goto cleanup_output_io;
     }
 
     {
         AVPacket *pkt = av_packet_alloc();
         if (!pkt) {
-            status = OCA_REMUX_ERR_WRITE_FRAME;
+            status = REMUX_ERR_WRITE_FRAME;
             goto cleanup_output_io;
         }
 
@@ -145,13 +145,13 @@ OcaRemuxStatus avbridge_remux_copy(const char *in_path, const char *out_path) {
             pkt->pos = -1;
 
             if (av_interleaved_write_frame(out_ctx, pkt) < 0) {
-                status = OCA_REMUX_ERR_WRITE_FRAME;
+                status = REMUX_ERR_WRITE_FRAME;
                 break;
             }
         }
         av_packet_free(&pkt);
 
-        if (status == OCA_REMUX_OK) {
+        if (status == REMUX_OK) {
             av_write_trailer(out_ctx);
         }
     }

@@ -1,5 +1,5 @@
-#ifndef OCA_AVBRIDGE_BRIDGE_H
-#define OCA_AVBRIDGE_BRIDGE_H
+#ifndef AVBRIDGE_BRIDGE_H
+#define AVBRIDGE_BRIDGE_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -8,14 +8,14 @@
 uint32_t avbridge_version(void);
 
 typedef enum {
-    OCA_PROBE_OK = 0,
+    PROBE_OK = 0,
     /* avformat_open_input() failed — bad path, unreadable file, unrecognized container. */
-    OCA_PROBE_ERR_OPEN = 1,
+    PROBE_ERR_OPEN = 1,
     /* avformat_find_stream_info() failed — container opened but streams couldn't be read. */
-    OCA_PROBE_ERR_STREAM_INFO = 2,
+    PROBE_ERR_STREAM_INFO = 2,
     /* No video or audio stream in the file. */
-    OCA_PROBE_ERR_NO_MEDIA_STREAM = 3,
-} OcaProbeStatus;
+    PROBE_ERR_NO_MEDIA_STREAM = 3,
+} ProbeStatus;
 
 typedef struct {
     /* 1 if the picked stream is video, 0 if audio. */
@@ -33,83 +33,83 @@ typedef struct {
     int fps_den;
     /* 0 when has_video is 1 or the rate is unknown. */
     int sample_rate_hz;
-} OcaProbeInfo;
+} ProbeInfo;
 
 /* Probes the media file at `path` (UTF-8, NUL-terminated) and fills `out` on success.
    Picks the first video stream if there is one, otherwise the first audio stream. */
-OcaProbeStatus avbridge_probe(const char *path, OcaProbeInfo *out);
+ProbeStatus avbridge_probe(const char *path, ProbeInfo *out);
 
 typedef enum {
-    OCA_REMUX_OK = 0,
+    REMUX_OK = 0,
     /* avformat_open_input() failed on in_path. */
-    OCA_REMUX_ERR_OPEN_INPUT = 1,
+    REMUX_ERR_OPEN_INPUT = 1,
     /* avformat_find_stream_info() failed. */
-    OCA_REMUX_ERR_STREAM_INFO = 2,
+    REMUX_ERR_STREAM_INFO = 2,
     /* Couldn't allocate/guess an output format for out_path. */
-    OCA_REMUX_ERR_ALLOC_OUTPUT = 3,
+    REMUX_ERR_ALLOC_OUTPUT = 3,
     /* Failed to create an output stream matching one of the input's streams. */
-    OCA_REMUX_ERR_NEW_STREAM = 4,
+    REMUX_ERR_NEW_STREAM = 4,
     /* avio_open() failed on out_path (e.g. unwritable directory). */
-    OCA_REMUX_ERR_OPEN_OUTPUT = 5,
+    REMUX_ERR_OPEN_OUTPUT = 5,
     /* avformat_write_header() failed. */
-    OCA_REMUX_ERR_WRITE_HEADER = 6,
+    REMUX_ERR_WRITE_HEADER = 6,
     /* av_interleaved_write_frame() failed partway through. */
-    OCA_REMUX_ERR_WRITE_FRAME = 7,
-} OcaRemuxStatus;
+    REMUX_ERR_WRITE_FRAME = 7,
+} RemuxStatus;
 
 /* Demuxes `in_path` and remuxes every stream to `out_path` unchanged — no decode, no encode,
    no filtering. Equivalent to `ffmpeg -i in_path -c copy out_path`. */
-OcaRemuxStatus avbridge_remux_copy(const char *in_path, const char *out_path);
+RemuxStatus avbridge_remux_copy(const char *in_path, const char *out_path);
 
 typedef enum {
-    OCA_ENCODE_OK = 0,
-    OCA_ENCODE_ERR_OPEN_INPUT = 1,
-    OCA_ENCODE_ERR_STREAM_INFO = 2,
-    OCA_ENCODE_ERR_ALLOC_OUTPUT = 3,
-    OCA_ENCODE_ERR_NEW_STREAM = 4,
-    OCA_ENCODE_ERR_OPEN_OUTPUT = 5,
-    OCA_ENCODE_ERR_WRITE_HEADER = 6,
-    OCA_ENCODE_ERR_WRITE_FRAME = 7,
+    ENCODE_OK = 0,
+    ENCODE_ERR_OPEN_INPUT = 1,
+    ENCODE_ERR_STREAM_INFO = 2,
+    ENCODE_ERR_ALLOC_OUTPUT = 3,
+    ENCODE_ERR_NEW_STREAM = 4,
+    ENCODE_ERR_OPEN_OUTPUT = 5,
+    ENCODE_ERR_WRITE_HEADER = 6,
+    ENCODE_ERR_WRITE_FRAME = 7,
     /* The input has no audio stream to normalize. */
-    OCA_ENCODE_ERR_NO_AUDIO_STREAM = 8,
+    ENCODE_ERR_NO_AUDIO_STREAM = 8,
     /* Couldn't find/open the audio decoder. */
-    OCA_ENCODE_ERR_DECODER = 9,
+    ENCODE_ERR_DECODER = 9,
     /* Couldn't build the loudnorm/limiter filter graph. */
-    OCA_ENCODE_ERR_FILTER_GRAPH = 10,
+    ENCODE_ERR_FILTER_GRAPH = 10,
     /* Couldn't find/open the AAC encoder. */
-    OCA_ENCODE_ERR_ENCODER = 11,
+    ENCODE_ERR_ENCODER = 11,
     /* A decode/filter/encode call failed mid-stream (not at setup). */
-    OCA_ENCODE_ERR_PIPELINE = 12,
+    ENCODE_ERR_PIPELINE = 12,
     /* *cancel became nonzero mid-render — out_path is a truncated/invalid file, not written
        past the header. Not a failure: matches render.rs's RenderOutcome::Cancelled. */
-    OCA_ENCODE_CANCELLED = 13,
+    ENCODE_CANCELLED = 13,
     /* A segment (avbridge_encode_timeline_export only) has no video stream. */
-    OCA_ENCODE_ERR_NO_VIDEO_STREAM = 14,
+    ENCODE_ERR_NO_VIDEO_STREAM = 14,
     /* A later segment's audio (sample rate/format/channel layout) doesn't match the first
        segment's — avbridge_encode_timeline_export keeps one audio filter graph open across
        the whole timeline (so loudnorm sees it as one continuous stream), which requires every
        segment to decode to the same PCM shape. */
-    OCA_ENCODE_ERR_AUDIO_FORMAT_MISMATCH = 15,
+    ENCODE_ERR_AUDIO_FORMAT_MISMATCH = 15,
     /* avbridge_encode_timeline_export was called with segment_count <= 0. */
-    OCA_ENCODE_ERR_EMPTY_TIMELINE = 16,
-} OcaEncodeStatus;
+    ENCODE_ERR_EMPTY_TIMELINE = 16,
+} EncodeStatus;
 
 /* Called periodically during the read/decode loop with the input packet's position, in
    seconds, that's just been processed. Never called with a value past the file's duration. */
-typedef void (*OcaProgressCallback)(void *user_data, double seconds_processed);
+typedef void (*ProgressCallback)(void *user_data, double seconds_processed);
 
 /* Renders `in_path` to `out_path`: video passthrough-copied, audio decoded, normalized
    (loudnorm to target_lufs + a true-peak safety limiter) and re-encoded to AAC 192kbps.
    Equivalent to:
    ffmpeg -i in_path -af "loudnorm=I=<target_lufs>:TP=-1.0:LRA=11,alimiter=limit=0.95:attack=5:release=50"
           -c:v copy -c:a aac -b:a 192k out_path
-   Fails with OCA_ENCODE_ERR_NO_AUDIO_STREAM if `in_path` has no audio stream.
+   Fails with ENCODE_ERR_NO_AUDIO_STREAM if `in_path` has no audio stream.
 
    progress_cb/progress_user_data may both be NULL to skip progress reporting.
    cancel may be NULL to disable cancellation; otherwise checked between packets — once
-   `*cancel` is nonzero, stops and returns OCA_ENCODE_CANCELLED without writing a trailer. */
-OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path,
-                                            float target_lufs, OcaProgressCallback progress_cb,
+   `*cancel` is nonzero, stops and returns ENCODE_CANCELLED without writing a trailer. */
+EncodeStatus avbridge_encode_export(const char *in_path, const char *out_path,
+                                            float target_lufs, ProgressCallback progress_cb,
                                             void *progress_user_data, const uint8_t *cancel);
 
 typedef struct {
@@ -157,7 +157,7 @@ typedef struct {
        active at any given decoded-frame time. Ignored by avbridge_encode_timeline_export
        (single-track function concatenates in order, no gaps). */
     double timeline_start_secs;
-} OcaClipSegment;
+} ClipSegment;
 
 /* Renders an ordered sequence of trimmed clips (`segments`, `segment_count` of them) as one
    continuous export: video is decoded, each segment's own avfilter chain applied (prefixed
@@ -169,46 +169,55 @@ typedef struct {
    and run through ONE continuous loudnorm+limiter graph (so normalization sees the whole
    timeline, not each clip in isolation) before being re-encoded to AAC 192kbps — this is why
    every segment's audio must share the same sample rate/format/channel layout
-   (OCA_ENCODE_ERR_AUDIO_FORMAT_MISMATCH otherwise). Every segment must have both a video and
-   an audio stream (OCA_ENCODE_ERR_NO_VIDEO_STREAM / OCA_ENCODE_ERR_NO_AUDIO_STREAM).
+   (ENCODE_ERR_AUDIO_FORMAT_MISMATCH otherwise). Every segment must have both a video and
+   an audio stream (ENCODE_ERR_NO_VIDEO_STREAM / ENCODE_ERR_NO_AUDIO_STREAM).
 
    progress_cb/progress_user_data may both be NULL to skip progress reporting; when set,
    called with the cumulative timeline position in seconds (sum of prior segments' trimmed
    durations plus progress within the current one), never past the sum of all segments'
    trimmed durations.
    cancel may be NULL to disable cancellation; otherwise checked between packets — once
-   `*cancel` is nonzero, stops and returns OCA_ENCODE_CANCELLED without writing a trailer. */
-OcaEncodeStatus avbridge_encode_timeline_export(
-    const OcaClipSegment *segments, int segment_count, int canvas_width, int canvas_height,
+   `*cancel` is nonzero, stops and returns ENCODE_CANCELLED without writing a trailer.
+
+   gpu_encoder_preference selects the video encoder (one of the GPU_ENCODER_* values —
+   see bridge_internal.h's GpuEncoderPreference; passed as plain int across the FFI
+   boundary): AUTO/0 tries hardware encoders (NVENC, then Quick Sync, then AMF) and falls back
+   to the CPU (libopenh264) encoder if none open; CPU/1 forces libopenh264; NVENC/2,
+   QUICKSYNC/3, AMF/4 force that specific hardware encoder, still falling back to CPU if it
+   can't open (no compatible GPU/driver present). */
+EncodeStatus avbridge_encode_timeline_export(
+    const ClipSegment *segments, int segment_count, int canvas_width, int canvas_height,
     int canvas_fps_num, int canvas_fps_den, int64_t canvas_bit_rate_bps, const char *out_path,
-    float target_lufs, OcaProgressCallback progress_cb, void *progress_user_data,
-    const uint8_t *cancel);
+    float target_lufs, int gpu_encoder_preference, ProgressCallback progress_cb,
+    void *progress_user_data, const uint8_t *cancel);
 
 /* Multi-track overlay compositor: composites n_tracks video tracks into a single output.
-   track_segs[k] points to an array of track_n_segs[k] OcaClipSegment entries for track k.
+   track_segs[k] points to an array of track_n_segs[k] ClipSegment entries for track k.
    Track 0 is the background (drives the output duration and audio); tracks 1..n_tracks-1 are
    overlaid on top using avfilter's overlay filter whenever a clip from those tracks is active
-   at the corresponding timeline position (determined by OcaClipSegment::timeline_start_secs).
+   at the corresponding timeline position (determined by ClipSegment::timeline_start_secs).
    Audio comes from track 0 only; tracks 1+ are video-only contributors to the composite.
-   For n_tracks == 1, delegates to avbridge_encode_timeline_export unchanged. */
-OcaEncodeStatus avbridge_encode_timeline_export_multi(
-    const OcaClipSegment * const *track_segs, const int *track_n_segs, int n_tracks,
+   For n_tracks == 1, delegates to avbridge_encode_timeline_export unchanged.
+   gpu_encoder_preference has the same meaning as avbridge_encode_timeline_export's. */
+EncodeStatus avbridge_encode_timeline_export_multi(
+    const ClipSegment * const *track_segs, const int *track_n_segs, int n_tracks,
     int canvas_width, int canvas_height, int canvas_fps_num, int canvas_fps_den,
     int64_t canvas_bit_rate_bps, const char *out_path, float target_lufs,
-    OcaProgressCallback progress_cb, void *progress_user_data, const uint8_t *cancel);
+    int gpu_encoder_preference, ProgressCallback progress_cb, void *progress_user_data,
+    const uint8_t *cancel);
 
 typedef enum {
-    OCA_LOUDNESS_OK = 0,
-    OCA_LOUDNESS_ERR_OPEN_INPUT = 1,
-    OCA_LOUDNESS_ERR_STREAM_INFO = 2,
-    OCA_LOUDNESS_ERR_NO_AUDIO_STREAM = 3,
-    OCA_LOUDNESS_ERR_DECODER = 4,
-    OCA_LOUDNESS_ERR_FILTER_GRAPH = 5,
+    LOUDNESS_OK = 0,
+    LOUDNESS_ERR_OPEN_INPUT = 1,
+    LOUDNESS_ERR_STREAM_INFO = 2,
+    LOUDNESS_ERR_NO_AUDIO_STREAM = 3,
+    LOUDNESS_ERR_DECODER = 4,
+    LOUDNESS_ERR_FILTER_GRAPH = 5,
     /* A decode/filter call failed mid-stream (not at setup). */
-    OCA_LOUDNESS_ERR_PIPELINE = 6,
+    LOUDNESS_ERR_PIPELINE = 6,
     /* The pipeline ran to completion but no loudnorm JSON report was captured. */
-    OCA_LOUDNESS_ERR_NO_REPORT = 7,
-} OcaLoudnessStatus;
+    LOUDNESS_ERR_NO_REPORT = 7,
+} LoudnessStatus;
 
 /* Measures integrated loudness / true peak / loudness range via a single-pass `loudnorm`
    analysis (I=-16:TP=-1.5:LRA=11 — matches ffmpeg's
@@ -223,31 +232,31 @@ typedef enum {
    NOT thread-safe: installs a process-global libavutil log callback for the call's duration
    (reset to av_log_default_callback before returning) — do not call this from multiple
    threads concurrently. */
-OcaLoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
+LoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
                                                  size_t out_json_len);
 
 typedef enum {
-    OCA_PROXY_OK = 0,
-    OCA_PROXY_ERR_OPEN_INPUT = 1,
-    OCA_PROXY_ERR_STREAM_INFO = 2,
+    PROXY_OK = 0,
+    PROXY_ERR_OPEN_INPUT = 1,
+    PROXY_ERR_STREAM_INFO = 2,
     /* The input has no video stream to make a proxy of. */
-    OCA_PROXY_ERR_NO_VIDEO_STREAM = 3,
-    OCA_PROXY_ERR_ALLOC_OUTPUT = 4,
-    OCA_PROXY_ERR_NEW_STREAM = 5,
-    OCA_PROXY_ERR_OPEN_OUTPUT = 6,
-    OCA_PROXY_ERR_WRITE_HEADER = 7,
-    OCA_PROXY_ERR_WRITE_FRAME = 8,
+    PROXY_ERR_NO_VIDEO_STREAM = 3,
+    PROXY_ERR_ALLOC_OUTPUT = 4,
+    PROXY_ERR_NEW_STREAM = 5,
+    PROXY_ERR_OPEN_OUTPUT = 6,
+    PROXY_ERR_WRITE_HEADER = 7,
+    PROXY_ERR_WRITE_FRAME = 8,
     /* Couldn't find/open the video or audio decoder. */
-    OCA_PROXY_ERR_DECODER = 9,
+    PROXY_ERR_DECODER = 9,
     /* Couldn't find/open the libopenh264 video encoder or the AAC audio encoder. */
-    OCA_PROXY_ERR_ENCODER = 10,
+    PROXY_ERR_ENCODER = 10,
     /* Couldn't build the video scaler (libswscale). */
-    OCA_PROXY_ERR_SCALER = 11,
+    PROXY_ERR_SCALER = 11,
     /* Couldn't build the (filterless, format-conversion-only) audio graph. */
-    OCA_PROXY_ERR_FILTER_GRAPH = 12,
+    PROXY_ERR_FILTER_GRAPH = 12,
     /* A decode/scale/encode call failed mid-stream (not at setup). */
-    OCA_PROXY_ERR_PIPELINE = 13,
-} OcaProxyStatus;
+    PROXY_ERR_PIPELINE = 13,
+} ProxyStatus;
 
 /* Generates a downscaled editing proxy of in_path's video (height = target_height, width
    computed to preserve source aspect ratio and rounded to the nearest even number, matching
@@ -255,24 +264,24 @@ typedef enum {
    LGPL FFmpeg build doesn't have). Any audio stream is re-encoded to AAC 128kbps unchanged
    otherwise (decode -> format-match the encoder -> encode, no filtering). Equivalent to:
    ffmpeg -i in_path -vf scale=-2:<target_height> -c:v libopenh264 -c:a aac -b:a 128k out_path
-   Fails with OCA_PROXY_ERR_NO_VIDEO_STREAM if in_path has no video stream. Audio is optional —
+   Fails with PROXY_ERR_NO_VIDEO_STREAM if in_path has no video stream. Audio is optional —
    a video-only input produces a video-only proxy, no error. */
-OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path,
+ProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path,
                                             int target_height);
 
 typedef enum {
-    OCA_WAVEFORM_OK = 0,
-    OCA_WAVEFORM_ERR_OPEN_INPUT = 1,
-    OCA_WAVEFORM_ERR_STREAM_INFO = 2,
+    WAVEFORM_OK = 0,
+    WAVEFORM_ERR_OPEN_INPUT = 1,
+    WAVEFORM_ERR_STREAM_INFO = 2,
     /* The input has no audio stream to compute a waveform from. */
-    OCA_WAVEFORM_ERR_NO_AUDIO_STREAM = 3,
+    WAVEFORM_ERR_NO_AUDIO_STREAM = 3,
     /* Couldn't find/open the audio decoder. */
-    OCA_WAVEFORM_ERR_DECODER = 4,
+    WAVEFORM_ERR_DECODER = 4,
     /* Couldn't build the mono-downmix filter graph. */
-    OCA_WAVEFORM_ERR_FILTER_GRAPH = 5,
+    WAVEFORM_ERR_FILTER_GRAPH = 5,
     /* A decode/filter call failed mid-stream (not at setup), or bucket_count was <= 0. */
-    OCA_WAVEFORM_ERR_PIPELINE = 6,
-} OcaWaveformStatus;
+    WAVEFORM_ERR_PIPELINE = 6,
+} WaveformStatus;
 
 /* Computes per-bucket min/max amplitude peaks (each in [-1, 1]) of in_path's audio stream,
    downmixed to mono, for waveform rendering. The full duration is divided into bucket_count
@@ -282,21 +291,21 @@ typedef enum {
    Equivalent in spirit to
    ffmpeg -i in_path -af "aformat=sample_fmts=flt:channel_layouts=mono" -f null -
    with peak tracking bolted on, but nothing is written or re-encoded.
-   Fails with OCA_WAVEFORM_ERR_NO_AUDIO_STREAM if in_path has no audio stream. */
-OcaWaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_count,
+   Fails with WAVEFORM_ERR_NO_AUDIO_STREAM if in_path has no audio stream. */
+WaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_count,
                                                   float *out_min, float *out_max);
 
 typedef enum {
-    OCA_TEXT_OVERLAY_OK = 0,
+    TEXT_OVERLAY_OK = 0,
     /* avformat_open_input() or avformat_find_stream_info() failed. */
-    OCA_TEXT_OVERLAY_ERR_OPEN_INPUT = 1,
+    TEXT_OVERLAY_ERR_OPEN_INPUT = 1,
     /* Couldn't allocate the output context or open the output file for writing. */
-    OCA_TEXT_OVERLAY_ERR_ALLOC_OUTPUT = 2,
+    TEXT_OVERLAY_ERR_ALLOC_OUTPUT = 2,
     /* Couldn't build the drawtext filter graph. */
-    OCA_TEXT_OVERLAY_ERR_FILTER_GRAPH = 3,
+    TEXT_OVERLAY_ERR_FILTER_GRAPH = 3,
     /* A decode/filter/encode call failed mid-stream. */
-    OCA_TEXT_OVERLAY_ERR_PIPELINE = 4,
-} OcaTextOverlayStatus;
+    TEXT_OVERLAY_ERR_PIPELINE = 4,
+} TextOverlayStatus;
 
 /* One text overlay to composite over an already-rendered export video. */
 typedef struct {
@@ -317,7 +326,7 @@ typedef struct {
     float pos_x;
     /* Vertical anchor as a 0.0-1.0 fraction of canvas height (0.0 = top). */
     float pos_y;
-} OcaTextSegment;
+} TextSegment;
 
 /* Opens `in_path` (an already-rendered H.264/AAC mp4), composites drawtext overlays for every
    segment in `segments` using an enable='between(t,start,end)' avfilter expression, and writes
@@ -325,13 +334,13 @@ typedef struct {
    audio is stream-copied unchanged.  canvas_width/canvas_height and canvas_fps_num/den are
    used only to size the output encoder context — they must match the actual rendered video.
 
-   The platform default font (bridge.h's OCA_DEFAULT_FONT) is used; drawtext silently renders
+   The platform default font (bridge.h's DEFAULT_FONT) is used; drawtext silently renders
    nothing if the font file doesn't exist on the system.
 
-   Returns OCA_TEXT_OVERLAY_OK immediately if segment_count <= 0 without touching any files. */
-OcaTextOverlayStatus avbridge_apply_text_overlays(
+   Returns TEXT_OVERLAY_OK immediately if segment_count <= 0 without touching any files. */
+TextOverlayStatus avbridge_apply_text_overlays(
     const char *in_path, const char *out_path,
-    const OcaTextSegment *segments, int segment_count,
+    const TextSegment *segments, int segment_count,
     int canvas_width, int canvas_height,
     int canvas_fps_num, int canvas_fps_den);
 

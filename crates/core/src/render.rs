@@ -284,6 +284,7 @@ pub fn render_export_job(
     canvas: Canvas,
     output: &Path,
     target_lufs: f32,
+    gpu_encoder: avbridge::GpuEncoderPreference,
     text_segments: &[avbridge::TextSegment],
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u8),
@@ -300,13 +301,20 @@ pub fn render_export_job(
         })
         .sum();
 
-    let outcome =
-        avbridge::encode_timeline_export(segments, canvas, output, target_lufs, cancel, |secs| {
+    let outcome = avbridge::encode_timeline_export(
+        segments,
+        canvas,
+        output,
+        target_lufs,
+        gpu_encoder,
+        cancel,
+        |secs| {
             if total_duration_secs > 0.0 {
                 let percent = ((secs / total_duration_secs) * 100.0).clamp(0.0, 100.0) as u8;
                 on_progress(percent);
             }
-        })?;
+        },
+    )?;
 
     Ok(match outcome {
         avbridge::EncodeOutcome::Completed => {
@@ -330,6 +338,7 @@ pub fn render_timeline_export(
     media_library: &[MediaAsset],
     output: &Path,
     target_lufs: f32,
+    gpu_encoder: avbridge::GpuEncoderPreference,
     cancel: &AtomicBool,
     on_progress: impl FnMut(u8),
 ) -> Result<RenderOutcome, RenderError> {
@@ -340,6 +349,7 @@ pub fn render_timeline_export(
         canvas,
         output,
         target_lufs,
+        gpu_encoder,
         &text_segments,
         cancel,
         on_progress,
@@ -516,6 +526,7 @@ pub fn render_export_job_multi(
     canvas: Canvas,
     output: &Path,
     target_lufs: f32,
+    gpu_encoder: avbridge::GpuEncoderPreference,
     text_segments: &[avbridge::TextSegment],
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u8),
@@ -529,6 +540,7 @@ pub fn render_export_job_multi(
             canvas,
             output,
             target_lufs,
+            gpu_encoder,
             text_segments,
             cancel,
             on_progress,
@@ -553,6 +565,7 @@ pub fn render_export_job_multi(
         canvas,
         output,
         target_lufs,
+        gpu_encoder,
         cancel,
         |secs| {
             if total_duration_secs > 0.0 {

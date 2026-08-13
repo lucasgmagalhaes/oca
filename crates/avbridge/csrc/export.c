@@ -5,8 +5,8 @@
 #include <libavfilter/buffersink.h>
 #include <libavformat/avformat.h>
 
-OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path,
-                                            float target_lufs, OcaProgressCallback progress_cb,
+EncodeStatus avbridge_encode_export(const char *in_path, const char *out_path,
+                                            float target_lufs, ProgressCallback progress_cb,
                                             void *progress_user_data, const uint8_t *cancel) {
     AVFormatContext *in_ctx = NULL;
     AVFormatContext *out_ctx = NULL;
@@ -18,13 +18,13 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
     AVFrame *dec_frame = NULL;
     AVFrame *filt_frame = NULL;
     AVPacket *enc_pkt = NULL;
-    OcaEncodeStatus status = OCA_ENCODE_OK;
+    EncodeStatus status = ENCODE_OK;
     int audio_in_index = -1;
     int audio_out_index = -1;
 
-    switch (oca_open_input(in_path, &in_ctx)) {
-        case -1: return OCA_ENCODE_ERR_OPEN_INPUT;
-        case -2: return OCA_ENCODE_ERR_STREAM_INFO;
+    switch (open_input(in_path, &in_ctx)) {
+        case -1: return ENCODE_ERR_OPEN_INPUT;
+        case -2: return ENCODE_ERR_STREAM_INFO;
     }
 
     for (unsigned int i = 0; i < in_ctx->nb_streams; i++) {
@@ -35,18 +35,18 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
     }
     if (audio_in_index < 0) {
         avformat_close_input(&in_ctx);
-        return OCA_ENCODE_ERR_NO_AUDIO_STREAM;
+        return ENCODE_ERR_NO_AUDIO_STREAM;
     }
 
     avformat_alloc_output_context2(&out_ctx, NULL, NULL, out_path);
     if (!out_ctx) {
-        status = OCA_ENCODE_ERR_ALLOC_OUTPUT;
+        status = ENCODE_ERR_ALLOC_OUTPUT;
         goto cleanup;
     }
 
     stream_mapping = av_calloc(in_ctx->nb_streams, sizeof(*stream_mapping));
     if (!stream_mapping) {
-        status = OCA_ENCODE_ERR_ALLOC_OUTPUT;
+        status = ENCODE_ERR_ALLOC_OUTPUT;
         goto cleanup;
     }
 
@@ -54,25 +54,25 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
         const AVCodec *decoder =
             avcodec_find_decoder(in_ctx->streams[audio_in_index]->codecpar->codec_id);
         if (!decoder) {
-            status = OCA_ENCODE_ERR_DECODER;
+            status = ENCODE_ERR_DECODER;
             goto cleanup;
         }
         dec_ctx = avcodec_alloc_context3(decoder);
         if (!dec_ctx || avcodec_parameters_to_context(
                             dec_ctx, in_ctx->streams[audio_in_index]->codecpar) < 0) {
-            status = OCA_ENCODE_ERR_DECODER;
+            status = ENCODE_ERR_DECODER;
             goto cleanup;
         }
         dec_ctx->pkt_timebase = in_ctx->streams[audio_in_index]->time_base;
         if (avcodec_open2(dec_ctx, decoder, NULL) < 0) {
-            status = OCA_ENCODE_ERR_DECODER;
+            status = ENCODE_ERR_DECODER;
             goto cleanup;
         }
     }
 
     const AVCodec *encoder = avcodec_find_encoder(AV_CODEC_ID_AAC);
     if (!encoder) {
-        status = OCA_ENCODE_ERR_ENCODER;
+        status = ENCODE_ERR_ENCODER;
         goto cleanup;
     }
 
@@ -82,14 +82,14 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
                  "loudnorm=I=%.1f:TP=-1.0:LRA=11,alimiter=limit=0.95:attack=5:release=50",
                  (double)target_lufs);
         if (init_audio_filter_chain(dec_ctx, encoder, filter_descr, &chain) < 0) {
-            status = OCA_ENCODE_ERR_FILTER_GRAPH;
+            status = ENCODE_ERR_FILTER_GRAPH;
             goto cleanup;
         }
     }
 
     enc_ctx = avcodec_alloc_context3(encoder);
     if (!enc_ctx) {
-        status = OCA_ENCODE_ERR_ENCODER;
+        status = ENCODE_ERR_ENCODER;
         goto cleanup;
     }
     enc_ctx->sample_rate = av_buffersink_get_sample_rate(chain.buffersink_ctx);
@@ -101,7 +101,7 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
         enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     }
     if (avcodec_open2(enc_ctx, encoder, NULL) < 0) {
-        status = OCA_ENCODE_ERR_ENCODER;
+        status = ENCODE_ERR_ENCODER;
         goto cleanup;
     }
     if (enc_ctx->frame_size > 0) {
@@ -122,7 +122,7 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
                 out_stream = avformat_new_stream(out_ctx, NULL);
                 if (!out_stream ||
                     avcodec_parameters_from_context(out_stream->codecpar, enc_ctx) < 0) {
-                    status = OCA_ENCODE_ERR_NEW_STREAM;
+                    status = ENCODE_ERR_NEW_STREAM;
                     goto cleanup;
                 }
                 out_stream->time_base = enc_ctx->time_base;
@@ -139,7 +139,7 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
             out_stream = avformat_new_stream(out_ctx, NULL);
             if (!out_stream ||
                 avcodec_parameters_copy(out_stream->codecpar, in_stream->codecpar) < 0) {
-                status = OCA_ENCODE_ERR_NEW_STREAM;
+                status = ENCODE_ERR_NEW_STREAM;
                 goto cleanup;
             }
             out_stream->codecpar->codec_tag = 0;
@@ -150,13 +150,13 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
 
     if (!(out_ctx->oformat->flags & AVFMT_NOFILE)) {
         if (avio_open(&out_ctx->pb, out_path, AVIO_FLAG_WRITE) < 0) {
-            status = OCA_ENCODE_ERR_OPEN_OUTPUT;
+            status = ENCODE_ERR_OPEN_OUTPUT;
             goto cleanup_output_io;
         }
     }
 
     if (avformat_write_header(out_ctx, NULL) < 0) {
-        status = OCA_ENCODE_ERR_WRITE_HEADER;
+        status = ENCODE_ERR_WRITE_HEADER;
         goto cleanup_output_io;
     }
 
@@ -165,7 +165,7 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
     filt_frame = av_frame_alloc();
     enc_pkt = av_packet_alloc();
     if (!pkt || !dec_frame || !filt_frame || !enc_pkt) {
-        status = OCA_ENCODE_ERR_PIPELINE;
+        status = ENCODE_ERR_PIPELINE;
         goto cleanup_output_io;
     }
 
@@ -178,7 +178,7 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
 
         if (cancel && *cancel) {
             av_packet_unref(pkt);
-            status = OCA_ENCODE_CANCELLED;
+            status = ENCODE_CANCELLED;
             break;
         }
         if (progress_cb && pkt->pts != AV_NOPTS_VALUE) {
@@ -191,7 +191,7 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
             int ret = avcodec_send_packet(dec_ctx, pkt);
             av_packet_unref(pkt);
             if (ret < 0) {
-                status = OCA_ENCODE_ERR_PIPELINE;
+                status = ENCODE_ERR_PIPELINE;
                 break;
             }
             while (1) {
@@ -199,16 +199,16 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
                 if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                     break;
                 } else if (ret < 0) {
-                    status = OCA_ENCODE_ERR_PIPELINE;
+                    status = ENCODE_ERR_PIPELINE;
                     break;
                 }
                 if (filter_encode_write_frame(out_ctx, &chain, enc_ctx, out_stream, dec_frame,
                                                filt_frame, enc_pkt) < 0) {
-                    status = OCA_ENCODE_ERR_PIPELINE;
+                    status = ENCODE_ERR_PIPELINE;
                     break;
                 }
             }
-            if (status != OCA_ENCODE_OK) break;
+            if (status != ENCODE_OK) break;
             continue;
         }
 
@@ -220,13 +220,13 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
             av_packet_rescale_ts(pkt, in_stream->time_base, out_stream->time_base);
             pkt->pos = -1;
             if (av_interleaved_write_frame(out_ctx, pkt) < 0) {
-                status = OCA_ENCODE_ERR_WRITE_FRAME;
+                status = ENCODE_ERR_WRITE_FRAME;
                 break;
             }
         }
     }
 
-    if (status == OCA_ENCODE_OK) {
+    if (status == ENCODE_OK) {
         /* Flush: decoder -> filter -> encoder, in that order — each stage may be holding
            buffered frames the next stage hasn't seen yet. */
         AVStream *out_stream = out_ctx->streams[audio_out_index];
@@ -234,22 +234,22 @@ OcaEncodeStatus avbridge_encode_export(const char *in_path, const char *out_path
         while (avcodec_receive_frame(dec_ctx, dec_frame) >= 0) {
             if (filter_encode_write_frame(out_ctx, &chain, enc_ctx, out_stream, dec_frame,
                                            filt_frame, enc_pkt) < 0) {
-                status = OCA_ENCODE_ERR_PIPELINE;
+                status = ENCODE_ERR_PIPELINE;
                 break;
             }
         }
-        if (status == OCA_ENCODE_OK &&
+        if (status == ENCODE_OK &&
             filter_encode_write_frame(out_ctx, &chain, enc_ctx, out_stream, NULL, filt_frame,
                                        enc_pkt) < 0) {
-            status = OCA_ENCODE_ERR_PIPELINE;
+            status = ENCODE_ERR_PIPELINE;
         }
-        if (status == OCA_ENCODE_OK &&
+        if (status == ENCODE_OK &&
             encode_write_packet(out_ctx, enc_ctx, out_stream, NULL, enc_pkt) < 0) {
-            status = OCA_ENCODE_ERR_PIPELINE;
+            status = ENCODE_ERR_PIPELINE;
         }
     }
 
-    if (status == OCA_ENCODE_OK) {
+    if (status == ENCODE_OK) {
         av_write_trailer(out_ctx);
     }
 

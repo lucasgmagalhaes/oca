@@ -75,7 +75,7 @@ pub enum TransitionType {
 
 impl TransitionType {
     /// Maps this transition to the integer code used in [`avbridge::ClipSegment::transition_in`]
-    /// and the `OcaClipSegment.transition_in` C field. `None` and `HardCut` both produce `0`
+    /// and the `ClipSegment.transition_in` C field. `None` and `HardCut` both produce `0`
     /// (no-op filter), since both mean an instant cut at the C level.
     pub fn to_export_code(self) -> u8 {
         match self {
@@ -99,7 +99,7 @@ pub struct ClipInstance {
     /// `Some(group_id)` if this clip is a member of a composite block (per `request.md`'s
     /// Fase 3 "blocos compostos" spec) — every clip sharing the same id, always on the same
     /// track (composite blocks don't span tracks yet), moves/splits/deletes together as a
-    /// unit (see `ui`'s `OcaApp::merge_into_composite` and the timeline panel's drag/delete
+    /// unit (see `ui`'s `App::merge_into_composite` and the timeline panel's drag/delete
     /// handling). `#[serde(default)]` so a project saved before this field existed still
     /// loads, every clip in it just standalone (`None`).
     #[serde(default)]
@@ -148,7 +148,7 @@ pub struct ClipInstance {
     /// split already covered in Fase 3. Currently only shown as a badge on the timeline block
     /// (`ui`'s timeline panel, via [`ClipInstance::is_cropped`]); doesn't yet affect preview
     /// playback or export — the same kind of gap as [`ClipInstance::gain_db`]. Independently
-    /// clamped to `[0.0, 1.0]` when set (`ui`'s `OcaApp::set_selected_clip_crop`); a crop rect
+    /// clamped to `[0.0, 1.0]` when set (`ui`'s `App::set_selected_clip_crop`); a crop rect
     /// extending past the frame edge (`crop_x + crop_w > 1.0`) isn't rejected — a known
     /// simplification with no visible effect yet since nothing renders the crop.
     /// `#[serde(default = ..)]` so older saved projects load uncropped.
@@ -451,7 +451,7 @@ impl ClipInstance {
                 // Note the same caveat as chroma_key's below: the final `format=yuv420p`
                 // conform on a single (non-overlay) track drops this alpha again — the mask
                 // only has a visible effect on a clip placed on an overlay track (see
-                // `oca_build_overlay_vfilter` in bridge.c, which has no such conform between
+                // `build_overlay_vfilter` in timeline_export_multi.c, which has no such conform between
                 // its two per-track chains and the `overlay` filter that composites them).
                 //
                 // avfilter's filtergraph-level parser only treats a comma as a stage separator

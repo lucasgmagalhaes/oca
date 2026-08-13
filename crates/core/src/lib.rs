@@ -21,7 +21,7 @@ pub mod render;
 pub mod timeline;
 pub mod waveform;
 
-pub use avbridge::{Canvas, ClipSegment, TextSegment};
+pub use avbridge::{Canvas, ClipSegment, GpuEncoderPreference, TextSegment};
 pub use export::{ExportJob, ExportJobStatus};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};

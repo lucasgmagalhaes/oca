@@ -21,7 +21,7 @@ static int scale_video_frame(struct SwsContext *sws_ctx, AVFrame *src_frame,
     return 0;
 }
 
-OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path,
+ProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path,
                                             int target_height) {
     AVFormatContext *in_ctx = NULL;
     AVFormatContext *out_ctx = NULL;
@@ -36,16 +36,16 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
     AVFrame *scaled_frame = NULL;
     AVFrame *filt_frame = NULL;
     AVPacket *enc_pkt = NULL;
-    OcaProxyStatus status = OCA_PROXY_OK;
+    ProxyStatus status = PROXY_OK;
     int video_in_index = -1;
     int audio_in_index = -1;
     int video_out_index = -1;
     int audio_out_index = -1;
     int64_t next_video_pts = 0;
 
-    switch (oca_open_input(in_path, &in_ctx)) {
-        case -1: return OCA_PROXY_ERR_OPEN_INPUT;
-        case -2: return OCA_PROXY_ERR_STREAM_INFO;
+    switch (open_input(in_path, &in_ctx)) {
+        case -1: return PROXY_ERR_OPEN_INPUT;
+        case -2: return PROXY_ERR_STREAM_INFO;
     }
 
     for (unsigned int i = 0; i < in_ctx->nb_streams; i++) {
@@ -58,12 +58,12 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
     }
     if (video_in_index < 0) {
         avformat_close_input(&in_ctx);
-        return OCA_PROXY_ERR_NO_VIDEO_STREAM;
+        return PROXY_ERR_NO_VIDEO_STREAM;
     }
 
     avformat_alloc_output_context2(&out_ctx, NULL, NULL, out_path);
     if (!out_ctx) {
-        status = OCA_PROXY_ERR_ALLOC_OUTPUT;
+        status = PROXY_ERR_ALLOC_OUTPUT;
         goto cleanup;
     }
 
@@ -72,17 +72,17 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
         AVCodecParameters *vpar = in_ctx->streams[video_in_index]->codecpar;
         const AVCodec *decoder = avcodec_find_decoder(vpar->codec_id);
         if (!decoder) {
-            status = OCA_PROXY_ERR_DECODER;
+            status = PROXY_ERR_DECODER;
             goto cleanup;
         }
         vdec_ctx = avcodec_alloc_context3(decoder);
         if (!vdec_ctx || avcodec_parameters_to_context(vdec_ctx, vpar) < 0) {
-            status = OCA_PROXY_ERR_DECODER;
+            status = PROXY_ERR_DECODER;
             goto cleanup;
         }
         vdec_ctx->pkt_timebase = in_ctx->streams[video_in_index]->time_base;
         if (avcodec_open2(vdec_ctx, decoder, NULL) < 0) {
-            status = OCA_PROXY_ERR_DECODER;
+            status = PROXY_ERR_DECODER;
             goto cleanup;
         }
     }
@@ -94,7 +94,7 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
     {
         const AVCodec *venc = avcodec_find_encoder_by_name("libopenh264");
         if (!venc) {
-            status = OCA_PROXY_ERR_ENCODER;
+            status = PROXY_ERR_ENCODER;
             goto cleanup;
         }
 
@@ -107,7 +107,7 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
 
         venc_ctx = avcodec_alloc_context3(venc);
         if (!venc_ctx) {
-            status = OCA_PROXY_ERR_ENCODER;
+            status = PROXY_ERR_ENCODER;
             goto cleanup;
         }
         venc_ctx->width = dst_w;
@@ -132,20 +132,20 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
             venc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
         }
         if (avcodec_open2(venc_ctx, venc, NULL) < 0) {
-            status = OCA_PROXY_ERR_ENCODER;
+            status = PROXY_ERR_ENCODER;
             goto cleanup;
         }
 
         sws_ctx = sws_getContext(src_w, src_h, vdec_ctx->pix_fmt, dst_w, dst_h,
                                   AV_PIX_FMT_YUV420P, SWS_BILINEAR, NULL, NULL, NULL);
         if (!sws_ctx) {
-            status = OCA_PROXY_ERR_SCALER;
+            status = PROXY_ERR_SCALER;
             goto cleanup;
         }
 
         AVStream *out_stream = avformat_new_stream(out_ctx, NULL);
         if (!out_stream || avcodec_parameters_from_context(out_stream->codecpar, venc_ctx) < 0) {
-            status = OCA_PROXY_ERR_NEW_STREAM;
+            status = PROXY_ERR_NEW_STREAM;
             goto cleanup;
         }
         out_stream->time_base = venc_ctx->time_base;
@@ -158,23 +158,23 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
         AVCodecParameters *apar = in_ctx->streams[audio_in_index]->codecpar;
         const AVCodec *adecoder = avcodec_find_decoder(apar->codec_id);
         if (!adecoder) {
-            status = OCA_PROXY_ERR_DECODER;
+            status = PROXY_ERR_DECODER;
             goto cleanup;
         }
         adec_ctx = avcodec_alloc_context3(adecoder);
         if (!adec_ctx || avcodec_parameters_to_context(adec_ctx, apar) < 0) {
-            status = OCA_PROXY_ERR_DECODER;
+            status = PROXY_ERR_DECODER;
             goto cleanup;
         }
         adec_ctx->pkt_timebase = in_ctx->streams[audio_in_index]->time_base;
         if (avcodec_open2(adec_ctx, adecoder, NULL) < 0) {
-            status = OCA_PROXY_ERR_DECODER;
+            status = PROXY_ERR_DECODER;
             goto cleanup;
         }
 
         const AVCodec *aenc = avcodec_find_encoder(AV_CODEC_ID_AAC);
         if (!aenc) {
-            status = OCA_PROXY_ERR_ENCODER;
+            status = PROXY_ERR_ENCODER;
             goto cleanup;
         }
 
@@ -183,13 +183,13 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
            avcodec_open2() on the AAC encoder doesn't reject whatever raw format decoding
            happens to produce — see that function's doc comment. */
         if (init_audio_filter_chain(adec_ctx, aenc, "anull", &achain) < 0) {
-            status = OCA_PROXY_ERR_FILTER_GRAPH;
+            status = PROXY_ERR_FILTER_GRAPH;
             goto cleanup;
         }
 
         aenc_ctx = avcodec_alloc_context3(aenc);
         if (!aenc_ctx) {
-            status = OCA_PROXY_ERR_ENCODER;
+            status = PROXY_ERR_ENCODER;
             goto cleanup;
         }
         aenc_ctx->sample_rate = av_buffersink_get_sample_rate(achain.buffersink_ctx);
@@ -201,7 +201,7 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
             aenc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
         }
         if (avcodec_open2(aenc_ctx, aenc, NULL) < 0) {
-            status = OCA_PROXY_ERR_ENCODER;
+            status = PROXY_ERR_ENCODER;
             goto cleanup;
         }
         if (aenc_ctx->frame_size > 0) {
@@ -210,7 +210,7 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
 
         AVStream *out_stream = avformat_new_stream(out_ctx, NULL);
         if (!out_stream || avcodec_parameters_from_context(out_stream->codecpar, aenc_ctx) < 0) {
-            status = OCA_PROXY_ERR_NEW_STREAM;
+            status = PROXY_ERR_NEW_STREAM;
             goto cleanup;
         }
         out_stream->time_base = aenc_ctx->time_base;
@@ -219,12 +219,12 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
 
     if (!(out_ctx->oformat->flags & AVFMT_NOFILE)) {
         if (avio_open(&out_ctx->pb, out_path, AVIO_FLAG_WRITE) < 0) {
-            status = OCA_PROXY_ERR_OPEN_OUTPUT;
+            status = PROXY_ERR_OPEN_OUTPUT;
             goto cleanup_output_io;
         }
     }
     if (avformat_write_header(out_ctx, NULL) < 0) {
-        status = OCA_PROXY_ERR_WRITE_HEADER;
+        status = PROXY_ERR_WRITE_HEADER;
         goto cleanup_output_io;
     }
 
@@ -234,14 +234,14 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
     filt_frame = av_frame_alloc();
     enc_pkt = av_packet_alloc();
     if (!pkt || !dec_frame || !scaled_frame || !filt_frame || !enc_pkt) {
-        status = OCA_PROXY_ERR_PIPELINE;
+        status = PROXY_ERR_PIPELINE;
         goto cleanup_output_io;
     }
     scaled_frame->format = venc_ctx->pix_fmt;
     scaled_frame->width = venc_ctx->width;
     scaled_frame->height = venc_ctx->height;
     if (av_frame_get_buffer(scaled_frame, 0) < 0) {
-        status = OCA_PROXY_ERR_PIPELINE;
+        status = PROXY_ERR_PIPELINE;
         goto cleanup_output_io;
     }
 
@@ -251,20 +251,20 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
             int ret = avcodec_send_packet(vdec_ctx, pkt);
             av_packet_unref(pkt);
             if (ret < 0) {
-                status = OCA_PROXY_ERR_PIPELINE;
+                status = PROXY_ERR_PIPELINE;
                 goto cleanup_output_io;
             }
             while (1) {
                 ret = avcodec_receive_frame(vdec_ctx, dec_frame);
                 if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
                 if (ret < 0) {
-                    status = OCA_PROXY_ERR_PIPELINE;
+                    status = PROXY_ERR_PIPELINE;
                     goto cleanup_output_io;
                 }
                 if (scale_video_frame(sws_ctx, dec_frame, scaled_frame, &next_video_pts) < 0 ||
                     encode_write_packet(out_ctx, venc_ctx, out_stream, scaled_frame, enc_pkt) <
                         0) {
-                    status = OCA_PROXY_ERR_PIPELINE;
+                    status = PROXY_ERR_PIPELINE;
                     goto cleanup_output_io;
                 }
                 av_frame_unref(dec_frame);
@@ -274,19 +274,19 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
             int ret = avcodec_send_packet(adec_ctx, pkt);
             av_packet_unref(pkt);
             if (ret < 0) {
-                status = OCA_PROXY_ERR_PIPELINE;
+                status = PROXY_ERR_PIPELINE;
                 goto cleanup_output_io;
             }
             while (1) {
                 ret = avcodec_receive_frame(adec_ctx, dec_frame);
                 if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
                 if (ret < 0) {
-                    status = OCA_PROXY_ERR_PIPELINE;
+                    status = PROXY_ERR_PIPELINE;
                     goto cleanup_output_io;
                 }
                 if (filter_encode_write_frame(out_ctx, &achain, aenc_ctx, out_stream, dec_frame,
                                                filt_frame, enc_pkt) < 0) {
-                    status = OCA_PROXY_ERR_PIPELINE;
+                    status = PROXY_ERR_PIPELINE;
                     goto cleanup_output_io;
                 }
             }
@@ -302,13 +302,13 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
         while (avcodec_receive_frame(vdec_ctx, dec_frame) >= 0) {
             if (scale_video_frame(sws_ctx, dec_frame, scaled_frame, &next_video_pts) < 0 ||
                 encode_write_packet(out_ctx, venc_ctx, out_stream, scaled_frame, enc_pkt) < 0) {
-                status = OCA_PROXY_ERR_PIPELINE;
+                status = PROXY_ERR_PIPELINE;
                 goto cleanup_output_io;
             }
             av_frame_unref(dec_frame);
         }
         if (encode_write_packet(out_ctx, venc_ctx, out_stream, NULL, enc_pkt) < 0) {
-            status = OCA_PROXY_ERR_PIPELINE;
+            status = PROXY_ERR_PIPELINE;
             goto cleanup_output_io;
         }
     }
@@ -320,19 +320,19 @@ OcaProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path
         while (avcodec_receive_frame(adec_ctx, dec_frame) >= 0) {
             if (filter_encode_write_frame(out_ctx, &achain, aenc_ctx, out_stream, dec_frame,
                                            filt_frame, enc_pkt) < 0) {
-                status = OCA_PROXY_ERR_PIPELINE;
+                status = PROXY_ERR_PIPELINE;
                 goto cleanup_output_io;
             }
         }
         if (filter_encode_write_frame(out_ctx, &achain, aenc_ctx, out_stream, NULL, filt_frame,
                                        enc_pkt) < 0 ||
             encode_write_packet(out_ctx, aenc_ctx, out_stream, NULL, enc_pkt) < 0) {
-            status = OCA_PROXY_ERR_PIPELINE;
+            status = PROXY_ERR_PIPELINE;
             goto cleanup_output_io;
         }
     }
 
-    if (status == OCA_PROXY_OK) {
+    if (status == PROXY_OK) {
         av_write_trailer(out_ctx);
     }
 

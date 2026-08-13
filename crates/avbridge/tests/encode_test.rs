@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use avbridge::{
     encode_export, encode_timeline_export, probe, Canvas, ClipSegment, EncodeError, EncodeOutcome,
-    StreamKind,
+    GpuEncoderPreference, StreamKind,
 };
 
 const CANVAS: Canvas = Canvas {
@@ -120,9 +120,15 @@ fn concatenates_two_segments_with_different_filters_into_one_export() {
     let mut progress_calls = 0;
 
     let segments = [clip(0.0, 0.35, 0.0, ""), clip(0.35, 0.7, 6.0, "hflip")];
-    let outcome = encode_timeline_export(&segments, CANVAS, &out, -14.0, &cancel, |_secs| {
-        progress_calls += 1
-    })
+    let outcome = encode_timeline_export(
+        &segments,
+        CANVAS,
+        &out,
+        -14.0,
+        GpuEncoderPreference::Auto,
+        &cancel,
+        |_secs| progress_calls += 1,
+    )
     .unwrap();
 
     assert_eq!(outcome, EncodeOutcome::Completed);
@@ -147,9 +153,15 @@ fn freezes_a_segment_into_a_held_frame_export() {
     let mut frozen_clip = clip(0.1, 0.6, 0.0, "");
     frozen_clip.frozen = true;
     let segments = [frozen_clip];
-    let outcome = encode_timeline_export(&segments, CANVAS, &out, -14.0, &cancel, |_secs| {
-        progress_calls += 1
-    })
+    let outcome = encode_timeline_export(
+        &segments,
+        CANVAS,
+        &out,
+        -14.0,
+        GpuEncoderPreference::Auto,
+        &cancel,
+        |_secs| progress_calls += 1,
+    )
     .unwrap();
 
     assert_eq!(outcome, EncodeOutcome::Completed);
@@ -169,7 +181,16 @@ fn rejects_an_empty_timeline() {
     let out = std::env::temp_dir().join("avbridge_test_timeline_empty.mp4");
     let cancel = AtomicBool::new(false);
 
-    let err = encode_timeline_export(&[], CANVAS, &out, -14.0, &cancel, |_| {}).unwrap_err();
+    let err = encode_timeline_export(
+        &[],
+        CANVAS,
+        &out,
+        -14.0,
+        GpuEncoderPreference::Auto,
+        &cancel,
+        |_| {},
+    )
+    .unwrap_err();
 
     assert!(matches!(err, EncodeError::EmptyTimeline));
 }
@@ -181,7 +202,16 @@ fn fails_on_a_segment_with_a_missing_source() {
     let mut missing = clip(0.0, 0.5, 0.0, "");
     missing.source_path = fixture("does_not_exist.mp4");
 
-    let err = encode_timeline_export(&[missing], CANVAS, &out, -14.0, &cancel, |_| {}).unwrap_err();
+    let err = encode_timeline_export(
+        &[missing],
+        CANVAS,
+        &out,
+        -14.0,
+        GpuEncoderPreference::Auto,
+        &cancel,
+        |_| {},
+    )
+    .unwrap_err();
 
     assert!(matches!(err, EncodeError::OpenInput));
 }
@@ -193,16 +223,61 @@ fn cancelling_mid_timeline_export_leaves_no_valid_file() {
     let mut calls = 0;
 
     let segments = [clip(0.0, 0.35, 0.0, ""), clip(0.35, 0.7, 0.0, "")];
-    let outcome = encode_timeline_export(&segments, CANVAS, &out, -14.0, &cancel, |_secs| {
-        calls += 1;
-        if calls >= 3 {
-            cancel.store(true, Ordering::Relaxed);
-        }
-    })
+    let outcome = encode_timeline_export(
+        &segments,
+        CANVAS,
+        &out,
+        -14.0,
+        GpuEncoderPreference::Auto,
+        &cancel,
+        |_secs| {
+            calls += 1;
+            if calls >= 3 {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        },
+    )
     .unwrap();
 
     assert_eq!(outcome, EncodeOutcome::Cancelled);
     assert!(probe(&out).is_err());
 
     let _ = std::fs::remove_file(&out);
+}
+
+/// Every [`GpuEncoderPreference`] variant must still produce a valid export — on a dev/CI
+/// machine without the requested vendor's GPU/driver, `open_video_encoder` (see gpu_encoder.c)
+/// falls through to the CPU (libopenh264) encoder rather than failing the whole export. This is
+/// the only way the hardware-encoder code paths get exercised at all in this environment: forcing
+/// e.g. `Nvenc` here deterministically hits the fallback branch (no NVIDIA GPU present), which is
+/// still a real assertion — it proves the fallback logic actually works end-to-end, not just that
+/// `Auto`/`Cpu` do.
+#[test]
+fn every_gpu_encoder_preference_falls_back_to_a_working_export() {
+    for (name, preference) in [
+        ("auto", GpuEncoderPreference::Auto),
+        ("cpu", GpuEncoderPreference::Cpu),
+        ("nvenc", GpuEncoderPreference::Nvenc),
+        ("quicksync", GpuEncoderPreference::QuickSync),
+        ("amf", GpuEncoderPreference::Amf),
+    ] {
+        let out = std::env::temp_dir().join(format!("avbridge_test_gpu_encoder_{name}.mp4"));
+        let cancel = AtomicBool::new(false);
+
+        let segments = [clip(0.0, 0.35, 0.0, "")];
+        let outcome =
+            encode_timeline_export(&segments, CANVAS, &out, -14.0, preference, &cancel, |_| {})
+                .unwrap();
+
+        assert_eq!(
+            outcome,
+            EncodeOutcome::Completed,
+            "preference {name:?} failed"
+        );
+
+        let info = probe(&out).unwrap();
+        assert_eq!(info.kind, StreamKind::Video);
+
+        let _ = std::fs::remove_file(&out);
+    }
 }
