@@ -21,7 +21,15 @@ pub enum ExportJobStatus {
 pub struct ExportJob {
     pub id: u64,
     pub title: String,
+    /// Single-track segment list kept for backwards compatibility with jobs serialized before
+    /// multi-track support was added.  When [`ExportJob::track_segments`] is non-empty,
+    /// it takes precedence and this field is ignored by the render path.
     pub segments: Vec<ClipSegment>,
+    /// One inner `Vec<ClipSegment>` per visible video track, as returned by
+    /// [`crate::render::resolve_timeline_segments_multi`].  Empty when the job was queued
+    /// before multi-track support (those jobs fall back to [`ExportJob::segments`]).
+    #[serde(default)]
+    pub track_segments: Vec<Vec<ClipSegment>>,
     pub canvas: Canvas,
     pub target_lufs: f32,
     pub output_path: String,

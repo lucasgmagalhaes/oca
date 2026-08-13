@@ -246,6 +246,7 @@ pub fn resolve_timeline_segments(
             zoom_end: clip.zoom_end,
             transition_in: clip.transition_in.to_export_code(),
             transition_duration_secs: clip.transition_duration_secs,
+            timeline_start_secs: clip.start_secs,
         });
     }
     let (width, height, fps) = dimensions_fps.ok_or(RenderError::EmptyTimeline)?;
@@ -317,6 +318,149 @@ pub fn render_timeline_export(
 ) -> Result<RenderOutcome, RenderError> {
     let (segments, canvas) = resolve_timeline_segments(sequence, media_library)?;
     render_export_job(&segments, canvas, output, target_lufs, cancel, on_progress)
+}
+
+/// Resolves all visible video tracks in `sequence` into per-track segment lists, suitable for
+/// passing to [`render_export_job_multi`].  The returned `Vec` has one inner `Vec<ClipSegment>`
+/// per visible video track that has at least one clip; the canvas is derived from the first
+/// clip of the first track (same logic as [`resolve_timeline_segments`]).
+///
+/// When the sequence has exactly one visible video track, the result is a single-element outer
+/// `Vec` that round-trips cleanly through [`render_export_job_multi`] (which delegates to
+/// [`render_export_job`] in that case).
+///
+/// Fails with [`RenderError::EmptyTimeline`] if there are no visible video tracks with clips,
+/// [`RenderError::MissingAsset`] if any clip's `asset_id` isn't in `media_library`.
+pub fn resolve_timeline_segments_multi(
+    sequence: &Sequence,
+    media_library: &[MediaAsset],
+) -> Result<(Vec<Vec<avbridge::ClipSegment>>, Canvas), RenderError> {
+    let visible_video_tracks: Vec<_> = sequence
+        .timeline
+        .tracks
+        .iter()
+        .filter(|t| t.kind == TrackKind::Video && t.visible && !t.clips.is_empty())
+        .collect();
+
+    if visible_video_tracks.is_empty() {
+        return Err(RenderError::EmptyTimeline);
+    }
+
+    let mut all_track_segments: Vec<Vec<avbridge::ClipSegment>> = Vec::new();
+    let mut canvas: Option<Canvas> = None;
+
+    for track in &visible_video_tracks {
+        let mut clips: Vec<_> = track.clips.iter().collect();
+        clips.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
+
+        let mut segments = Vec::with_capacity(clips.len());
+        let mut total_duration_secs = 0.0;
+        let mut weighted_bitrate_bps_secs = 0.0;
+        let mut dimensions_fps = None;
+
+        for clip in &clips {
+            let asset = media_library
+                .iter()
+                .find(|a| a.id == clip.asset_id)
+                .ok_or(RenderError::MissingAsset)?;
+            if dimensions_fps.is_none() {
+                let (width, height) = asset.resolution.ok_or(RenderError::NoVideoStream)?;
+                dimensions_fps = Some((width, height, asset.fps.unwrap_or(30.0)));
+            }
+            let duration_secs = clip.duration_secs();
+            total_duration_secs += duration_secs;
+            weighted_bitrate_bps_secs +=
+                asset.source_bitrate_mbps as f64 * 1_000_000.0 * duration_secs;
+            segments.push(avbridge::ClipSegment {
+                source_path: asset.source_path.clone(),
+                source_in_secs: clip.source_in_secs,
+                source_out_secs: clip.source_out_secs,
+                gain_db: clip.gain_db,
+                video_filter: clip.video_filter_chain(),
+                frozen: clip.frozen,
+                speed_factor: clip.speed_factor,
+                zoom_start: clip.zoom_start,
+                zoom_end: clip.zoom_end,
+                transition_in: clip.transition_in.to_export_code(),
+                transition_duration_secs: clip.transition_duration_secs,
+                timeline_start_secs: clip.start_secs,
+            });
+        }
+
+        if canvas.is_none() {
+            if let Some((width, height, fps)) = dimensions_fps {
+                let (fps_num, fps_den) = fps_to_rational(fps);
+                let bit_rate_bps = if total_duration_secs > 0.0 {
+                    (weighted_bitrate_bps_secs / total_duration_secs) as i64
+                } else {
+                    0
+                };
+                canvas = Some(Canvas { width, height, fps_num, fps_den, bit_rate_bps });
+            }
+        }
+
+        all_track_segments.push(segments);
+    }
+
+    let canvas = canvas.ok_or(RenderError::EmptyTimeline)?;
+    Ok((all_track_segments, canvas))
+}
+
+/// Renders `track_segments` (one `Vec<ClipSegment>` per visible video track, as returned by
+/// [`resolve_timeline_segments_multi`]) as one continuous composited file.
+///
+/// When `track_segments.len() == 1`, delegates to [`render_export_job`] — no new C code is
+/// exercised.  When there are two or more tracks, calls
+/// `avbridge::encode_timeline_export_multi` which composites via an avfilter `overlay` chain.
+/// Only the first two tracks are composited in the current implementation; additional tracks
+/// are silently ignored by the C layer.
+///
+/// `on_progress` and `cancel` have the same contract as [`render_export_job`].
+pub fn render_export_job_multi(
+    track_segments: &[Vec<avbridge::ClipSegment>],
+    canvas: Canvas,
+    output: &Path,
+    target_lufs: f32,
+    cancel: &AtomicBool,
+    mut on_progress: impl FnMut(u8),
+) -> Result<RenderOutcome, RenderError> {
+    if track_segments.is_empty() || track_segments[0].is_empty() {
+        return Err(RenderError::EmptyTimeline);
+    }
+    if track_segments.len() == 1 {
+        return render_export_job(&track_segments[0], canvas, output, target_lufs, cancel, on_progress);
+    }
+
+    // Total output duration from track 0 (the primary / audio track).
+    let total_duration_secs: f64 = track_segments[0]
+        .iter()
+        .map(|s| {
+            let speed = if s.speed_factor > 0.0 { s.speed_factor as f64 } else { 1.0 };
+            (s.source_out_secs - s.source_in_secs) / speed
+        })
+        .sum();
+
+    let outcome = avbridge::encode_timeline_export_multi(
+        track_segments,
+        canvas,
+        output,
+        target_lufs,
+        cancel,
+        |secs| {
+            if total_duration_secs > 0.0 {
+                let percent = ((secs / total_duration_secs) * 100.0).clamp(0.0, 100.0) as u8;
+                on_progress(percent);
+            }
+        },
+    )?;
+
+    Ok(match outcome {
+        avbridge::EncodeOutcome::Completed => {
+            on_progress(100);
+            RenderOutcome::Completed
+        }
+        avbridge::EncodeOutcome::Cancelled => RenderOutcome::Cancelled,
+    })
 }
 
 /// Approximates `fps` as a small integer ratio for `avbridge::Canvas` — exact for whole frame

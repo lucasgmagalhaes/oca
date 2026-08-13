@@ -109,6 +109,7 @@ fn clip(
         zoom_end: 1.0,
         transition_in: 0,
         transition_duration_secs: 0.3,
+        timeline_start_secs: 0.0,
     }
 }
 

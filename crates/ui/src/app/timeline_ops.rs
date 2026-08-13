@@ -474,6 +474,33 @@ impl OcaApp {
     /// unrestrictive, large enough that a clip can't accidentally get dragged down to
     /// (near-)zero length.
     const MIN_TRIM_DURATION_SECS: f64 = 0.1;
+
+    /// Appends a new empty video track to the active sequence's timeline. The track's name is
+    /// generated as `V<n>` where `n` is one past the count of existing video tracks — so a
+    /// timeline with one video track "V1" gets a second track "V2". The new track is always
+    /// visible and starts empty; the user drags clips onto it from the media library.
+    pub fn add_video_track(&mut self) {
+        let timeline = self.active_project_mut().timeline_mut();
+        let video_count = timeline.tracks.iter().filter(|t| t.kind == TrackKind::Video).count();
+        let track_id = timeline.tracks.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+        let name = format!("V{}", video_count + 1);
+        timeline.tracks.push(avcore::timeline::Track {
+            id: track_id,
+            name,
+            kind: TrackKind::Video,
+            clips: Vec::new(),
+            visible: true,
+        });
+    }
+
+    /// Toggles the `visible` flag on the track with `track_id` in the active sequence. A no-op
+    /// if the track isn't found (shouldn't happen from the timeline UI, but safe regardless).
+    pub fn toggle_track_visibility(&mut self, track_id: u64) {
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(track) = timeline.tracks.iter_mut().find(|t| t.id == track_id) {
+            track.visible = !track.visible;
+        }
+    }
 }
 
 /// Finds the track to place a new clip of `kind` on, for [`OcaApp::add_asset_to_timeline`] and
@@ -507,6 +534,7 @@ pub(super) fn resolve_or_create_track(
         name: name.to_string(),
         kind,
         clips: Vec::new(),
+        visible: true,
     });
     timeline.tracks.len() - 1
 }

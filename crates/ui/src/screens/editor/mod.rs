@@ -232,6 +232,9 @@ fn toolbar(app: &mut OcaApp, ui: &mut egui::Ui) {
         {
             app.merge_into_composite();
         }
+        if ui.button(Text::AddVideoTrack.tr(locale)).clicked() {
+            app.add_video_track();
+        }
         ui.separator();
         let _ = ui.button("↺");
         let _ = ui.button("↻");

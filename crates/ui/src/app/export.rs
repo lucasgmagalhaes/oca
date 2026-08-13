@@ -8,26 +8,30 @@ use tracing::{debug, error, info};
 use super::{OcaApp, RenderEvent};
 
 impl OcaApp {
-    /// Appends a new `Queued` job — what "Adicionar exportação" does, given `segments`/
+    /// Appends a new `Queued` job — what "Adicionar exportação" does, given `track_segments`/
     /// `canvas` already resolved from the active sequence (see
-    /// `avcore::resolve_timeline_segments`) so this job renders the timeline as it was at the
-    /// moment it entered the queue, not whatever it's edited to later. Picked up by
+    /// `avcore::resolve_timeline_segments_multi`) so this job renders the timeline as it was at
+    /// the moment it entered the queue, not whatever it's edited to later. Picked up by
     /// [`OcaApp::pump_export_queue`] once a worker slot ([`OcaApp::queue_workers`])
     /// frees up.
     pub fn queue_export(
         &mut self,
         title: String,
-        segments: Vec<avcore::ClipSegment>,
+        track_segments: Vec<Vec<avcore::ClipSegment>>,
         canvas: avcore::Canvas,
         target_lufs: f32,
         output_path: String,
     ) {
         let id = self.export_jobs.iter().map(|j| j.id).max().unwrap_or(0) + 1;
         info!(job_id = id, title = %title, output = %output_path, "export job queued");
+        // `segments` is kept as the first track for backwards-compatible JSON; `track_segments`
+        // carries the full multi-track snapshot that the render worker actually uses.
+        let segments = track_segments.first().cloned().unwrap_or_default();
         self.export_jobs.push(ExportJob {
             id,
             title,
             segments,
+            track_segments,
             canvas,
             target_lufs,
             output_path,
@@ -98,7 +102,13 @@ impl OcaApp {
         };
 
         let job_id = job.id;
-        let segments = job.segments.clone();
+        // Prefer multi-track snapshot; fall back to legacy single-track `segments` field for
+        // jobs persisted before multi-track support was added.
+        let track_segments: Vec<Vec<avcore::ClipSegment>> = if !job.track_segments.is_empty() {
+            job.track_segments.clone()
+        } else {
+            vec![job.segments.clone()]
+        };
         let canvas = job.canvas;
         let output_path = PathBuf::from(&job.output_path);
         let target_lufs = job.target_lufs;
@@ -110,8 +120,8 @@ impl OcaApp {
         info!(job_id, output = %output_path.display(), "export render worker dispatched");
         let tx = self.render_tx.clone();
         std::thread::spawn(move || {
-            let outcome = avcore::render_export_job(
-                &segments,
+            let outcome = avcore::render_export_job_multi(
+                &track_segments,
                 canvas,
                 &output_path,
                 target_lufs,

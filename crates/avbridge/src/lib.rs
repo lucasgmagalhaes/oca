@@ -24,6 +24,10 @@ struct RawClipSegment {
     zoom_end: f32,
     transition_in: c_int,
     transition_duration_secs: f32,
+    /// Start position of this clip on the shared timeline in seconds. Used by
+    /// `avbridge_encode_timeline_export_multi` to determine which overlay tracks are active at
+    /// any given decoded-frame time. Ignored by `avbridge_encode_timeline_export`.
+    timeline_start_secs: f64,
 }
 
 #[repr(C)]
@@ -54,6 +58,21 @@ unsafe extern "C" {
     fn avbridge_encode_timeline_export(
         segments: *const RawClipSegment,
         segment_count: c_int,
+        canvas_width: c_int,
+        canvas_height: c_int,
+        canvas_fps_num: c_int,
+        canvas_fps_den: c_int,
+        canvas_bit_rate_bps: c_longlong,
+        out_path: *const c_char,
+        target_lufs: f32,
+        progress_cb: Option<unsafe extern "C" fn(user_data: *mut c_void, seconds: f64)>,
+        progress_user_data: *mut c_void,
+        cancel: *const u8,
+    ) -> c_int;
+    fn avbridge_encode_timeline_export_multi(
+        track_segs: *const *const RawClipSegment,
+        track_n_segs: *const c_int,
+        n_tracks: c_int,
         canvas_width: c_int,
         canvas_height: c_int,
         canvas_fps_num: c_int,
@@ -411,6 +430,13 @@ pub struct ClipSegment {
     /// Duration of [`ClipSegment::transition_in`] in seconds. Ignored when `transition_in` is
     /// `0`. Converted to a frame count in `bridge.c` using the canvas fps.
     pub transition_duration_secs: f32,
+    /// Start position of this clip on the shared timeline in seconds.  Used by
+    /// [`encode_timeline_export_multi`] to determine which overlay tracks are active at any
+    /// given decoded-frame time.  Ignored by [`encode_timeline_export`] (single-track function
+    /// concatenates in order with no gaps).  Defaults to `0.0` for backwards-compatible
+    /// deserialization of jobs saved before this field existed.
+    #[serde(default)]
+    pub timeline_start_secs: f64,
 }
 
 /// The fixed output frame size/rate every segment in an [`encode_timeline_export`] call is
@@ -481,6 +507,7 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
             zoom_end: seg.zoom_end,
             transition_in: seg.transition_in as c_int,
             transition_duration_secs: seg.transition_duration_secs,
+            timeline_start_secs: seg.timeline_start_secs,
         })
         .collect();
 
@@ -492,6 +519,124 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
         avbridge_encode_timeline_export(
             raw_segments.as_ptr(),
             raw_segments.len() as c_int,
+            canvas.width as c_int,
+            canvas.height as c_int,
+            canvas.fps_num as c_int,
+            canvas.fps_den as c_int,
+            canvas.bit_rate_bps as c_longlong,
+            c_out.as_ptr(),
+            target_lufs,
+            Some(progress_trampoline::<F>),
+            &mut on_progress as *mut _ as *mut c_void,
+            cancel.as_ptr() as *const u8,
+        )
+    };
+
+    match status {
+        0 => Ok(EncodeOutcome::Completed),
+        1 => Err(EncodeError::OpenInput),
+        2 => Err(EncodeError::StreamInfo),
+        3 => Err(EncodeError::AllocOutput),
+        4 => Err(EncodeError::NewStream),
+        5 => Err(EncodeError::OpenOutput),
+        6 => Err(EncodeError::WriteHeader),
+        7 => Err(EncodeError::WriteFrame),
+        8 => Err(EncodeError::NoAudioStream),
+        9 => Err(EncodeError::Decoder),
+        10 => Err(EncodeError::FilterGraph),
+        11 => Err(EncodeError::Encoder),
+        12 => Err(EncodeError::Pipeline),
+        13 => Ok(EncodeOutcome::Cancelled),
+        14 => Err(EncodeError::NoVideoStream),
+        15 => Err(EncodeError::AudioFormatMismatch),
+        16 => Err(EncodeError::EmptyTimeline),
+        other => Err(EncodeError::Unknown(other)),
+    }
+}
+
+/// Multi-track variant of [`encode_timeline_export`]: composites N tracks of segments via an
+/// avfilter `overlay` chain. Track 0 drives the output (its segments play in order, audio comes
+/// from track 0 only). Tracks 1..n_tracks-1 are overlaid on top wherever their
+/// `timeline_start_secs`-based windows overlap with the current track-0 frame's timeline
+/// position.
+///
+/// When `n_tracks == 1`, delegates to [`encode_timeline_export`] unchanged — this is the
+/// guaranteed backward-compatible path that exercises no new C code. Additional tracks beyond
+/// index 1 are silently ignored in the current implementation (only two-input overlay is built).
+///
+/// Same cancellation and progress contract as [`encode_timeline_export`].
+pub fn encode_timeline_export_multi<F: FnMut(f64)>(
+    tracks: &[Vec<ClipSegment>],
+    canvas: Canvas,
+    out_path: &Path,
+    target_lufs: f32,
+    cancel: &AtomicBool,
+    mut on_progress: F,
+) -> Result<EncodeOutcome, EncodeError> {
+    if tracks.is_empty() || tracks[0].is_empty() {
+        return Err(EncodeError::EmptyTimeline);
+    }
+    if tracks.len() == 1 {
+        return encode_timeline_export(&tracks[0], canvas, out_path, target_lufs, cancel, on_progress);
+    }
+
+    let c_out =
+        CString::new(out_path.to_string_lossy().as_bytes()).map_err(EncodeError::InvalidPath)?;
+
+    // Build CString storage and RawClipSegment vecs for each track.
+    let mut per_track_paths: Vec<Vec<CString>>  = Vec::with_capacity(tracks.len());
+    let mut per_track_filts: Vec<Vec<CString>>  = Vec::with_capacity(tracks.len());
+    let mut per_track_raw:   Vec<Vec<RawClipSegment>> = Vec::with_capacity(tracks.len());
+    for segs in tracks {
+        let mut paths = Vec::with_capacity(segs.len());
+        let mut filts = Vec::with_capacity(segs.len());
+        for seg in segs {
+            paths.push(
+                CString::new(seg.source_path.to_string_lossy().as_bytes())
+                    .map_err(EncodeError::InvalidPath)?,
+            );
+            filts.push(
+                CString::new(seg.video_filter.as_bytes())
+                    .map_err(EncodeError::InvalidPath)?,
+            );
+        }
+        let raw: Vec<RawClipSegment> = segs
+            .iter()
+            .zip(paths.iter())
+            .zip(filts.iter())
+            .map(|((seg, path), filt)| RawClipSegment {
+                source_path: path.as_ptr(),
+                source_in_secs: seg.source_in_secs,
+                source_out_secs: seg.source_out_secs,
+                gain_db: seg.gain_db,
+                video_filter: filt.as_ptr(),
+                frozen: seg.frozen as c_int,
+                speed_factor: seg.speed_factor,
+                zoom_start: seg.zoom_start,
+                zoom_end: seg.zoom_end,
+                transition_in: seg.transition_in as c_int,
+                transition_duration_secs: seg.transition_duration_secs,
+                timeline_start_secs: seg.timeline_start_secs,
+            })
+            .collect();
+        per_track_paths.push(paths);
+        per_track_filts.push(filts);
+        per_track_raw.push(raw);
+    }
+
+    // Build pointer + count arrays for the C call.
+    let track_ptrs: Vec<*const RawClipSegment> = per_track_raw.iter().map(|v| v.as_ptr()).collect();
+    let track_counts: Vec<c_int> = per_track_raw.iter().map(|v| v.len() as c_int).collect();
+
+    // SAFETY: all pointer-backing storage (per_track_paths, per_track_filts, per_track_raw,
+    // track_ptrs, track_counts, c_out) is held alive until after avbridge_encode_timeline_export_multi
+    // returns. The function does not retain any pointer after returning. cancel is an AtomicBool
+    // aligned to at least 1 byte; its value is read atomically by the C side between frames.
+    let status = unsafe {
+        avbridge_encode_timeline_export_multi(
+            track_ptrs.as_ptr(),
+            track_counts.as_ptr(),
+            tracks.len() as c_int,
             canvas.width as c_int,
             canvas.height as c_int,
             canvas.fps_num as c_int,

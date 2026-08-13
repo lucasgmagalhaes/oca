@@ -35,6 +35,7 @@ fn test_track(id: u64, kind: TrackKind, clips: Vec<ClipInstance>) -> Track {
         name: format!("Track {id}"),
         kind,
         clips,
+        visible: true,
     }
 }
 
@@ -123,6 +124,7 @@ fn test_job(id: u64, status: ExportJobStatus) -> ExportJob {
         id,
         title: format!("Job {id}"),
         segments: Vec::new(),
+        track_segments: Vec::new(),
         canvas: test_canvas(),
         target_lufs: -14.0,
         output_path: format!("out-{id}.mp4"),
