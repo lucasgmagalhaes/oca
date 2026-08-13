@@ -179,6 +179,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         export_aspect_ratio: avcore::ExportAspectRatio::default(),
         renaming_project: None::<(usize, String, String)>,
         renaming_sequence: None,
+        binding_capture: None,
     }
 }
 

@@ -47,6 +47,85 @@ pub enum EditorTool {
     Trim,
 }
 
+/// A key + modifier combination that can be assigned to a bindable action. `key_name` is
+/// the value returned by [`egui::Key::name`] (e.g. `"Space"`, `"B"`) and accepted by
+/// [`egui::Key::from_name`], making it stable across egui versions for common keys.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct KeyCombo {
+    pub ctrl: bool,
+    pub shift: bool,
+    pub key_name: String,
+}
+
+impl KeyCombo {
+    /// Returns `true` if this combo was just pressed on the current frame.
+    pub fn matches(&self, i: &egui::InputState) -> bool {
+        let Some(key) = egui::Key::from_name(&self.key_name) else {
+            return false;
+        };
+        i.modifiers.ctrl == self.ctrl && i.modifiers.shift == self.shift && i.key_pressed(key)
+    }
+
+    /// Human-readable label, e.g. `"Ctrl+Shift+C"` or `"Space"`.
+    pub fn display(&self) -> String {
+        let mut s = String::new();
+        if self.ctrl {
+            s.push_str("Ctrl+");
+        }
+        if self.shift {
+            s.push_str("Shift+");
+        }
+        s.push_str(&self.key_name);
+        s
+    }
+}
+
+/// The four editor actions whose bindings the user can change in Preferences.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BindableAction {
+    PlayPause,
+    SplitAtPlayhead,
+    CopyFormatting,
+    PasteFormatting,
+}
+
+/// User-configurable key bindings for the four main editor shortcuts. Persisted as part of
+/// [`PrefsState`] so changes survive restarts.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct KeyBindings {
+    pub play_pause: KeyCombo,
+    pub split_at_playhead: KeyCombo,
+    pub copy_formatting: KeyCombo,
+    pub paste_formatting: KeyCombo,
+}
+
+impl Default for KeyBindings {
+    fn default() -> Self {
+        Self {
+            play_pause: KeyCombo {
+                ctrl: false,
+                shift: false,
+                key_name: "Space".to_string(),
+            },
+            split_at_playhead: KeyCombo {
+                ctrl: true,
+                shift: false,
+                key_name: "B".to_string(),
+            },
+            copy_formatting: KeyCombo {
+                ctrl: true,
+                shift: true,
+                key_name: "C".to_string(),
+            },
+            paste_formatting: KeyCombo {
+                ctrl: true,
+                shift: true,
+                key_name: "V".to_string(),
+            },
+        }
+    }
+}
+
 /// User-configurable settings shown on the Ajustes screen. Persisted to a JSON file in the
 /// platform config dir — see [`OcaApp::save_prefs`] / [`load_prefs`].
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -64,6 +143,9 @@ pub struct PrefsState {
     /// UI language, persisted so the user's choice survives restarts.
     #[serde(default)]
     pub locale: crate::i18n::Locale,
+    /// Key bindings for the four configurable editor shortcuts.
+    #[serde(default)]
+    pub key_bindings: KeyBindings,
 }
 
 impl Default for PrefsState {
@@ -76,6 +158,7 @@ impl Default for PrefsState {
             autosave_minutes: 5,
             recent_project_paths: Vec::new(),
             locale: crate::i18n::Locale::default(),
+            key_bindings: KeyBindings::default(),
         }
     }
 }
@@ -356,6 +439,9 @@ pub struct OcaApp {
     /// When `Some((seq_index, buf))`, a rename modal is shown for the active project's
     /// `sequences[seq_index]`. Committed on Enter/confirm, discarded on Escape/cancel.
     pub renaming_sequence: Option<(usize, String)>,
+    /// When `Some(action)`, the prefs modal is waiting for the next key press to set that
+    /// action's binding. Pressing Escape clears it without changing the binding.
+    pub binding_capture: Option<BindableAction>,
 }
 
 impl OcaApp {
@@ -433,6 +519,7 @@ impl OcaApp {
             export_aspect_ratio: avcore::ExportAspectRatio::default(),
             renaming_project: None,
             renaming_sequence: None,
+            binding_capture: None,
         }
     }
 

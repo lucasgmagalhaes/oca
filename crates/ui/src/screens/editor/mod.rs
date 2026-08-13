@@ -22,12 +22,20 @@ use crate::theme;
 /// "Add i18n" commit for the concrete symptoms.
 pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
     app.ensure_active_project();
+
+    // Clone the configurable combos before the first ui.input() call so we can pass them
+    // into separate closures without holding a borrow on app across the closure boundary.
+    let play_pause_combo = app.prefs.key_bindings.play_pause.clone();
+    let split_combo = app.prefs.key_bindings.split_at_playhead.clone();
+    let copy_fmt_combo = app.prefs.key_bindings.copy_formatting.clone();
+    let paste_fmt_combo = app.prefs.key_bindings.paste_formatting.clone();
+
     let ctrl_s_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S));
     if ctrl_s_pressed {
         save_active_project(app);
     }
-    let ctrl_b_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::B));
-    if ctrl_b_pressed {
+    let split_pressed = ui.input(|i| split_combo.matches(i));
+    if split_pressed {
         app.split_at_playhead();
     }
     let delete_pressed = ui.input(|i| i.key_pressed(egui::Key::Delete));
@@ -48,18 +56,19 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
     if ctrl_v_pressed {
         app.paste_clip_at_playhead();
     }
-    // Ctrl+Shift+C/V — "copiar formatação" (request.md's Fase 4 spec): copies just the
-    // gain/freeze settings from the selected clip onto another, without duplicating the clip
-    // itself. Distinct from plain Ctrl+C/V (whole-clip copy/paste) above.
-    let ctrl_shift_c_pressed =
-        ui.input(|i| i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::C));
-    if ctrl_shift_c_pressed {
+    // "Copiar/Colar formatação" — copies effect settings between clips without duplicating
+    // the clip itself. Distinct from plain Ctrl+C/V (whole-clip copy/paste) above.
+    let copy_fmt_pressed = ui.input(|i| copy_fmt_combo.matches(i));
+    if copy_fmt_pressed {
         app.copy_selected_clip_formatting();
     }
-    let ctrl_shift_v_pressed =
-        ui.input(|i| i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::V));
-    if ctrl_shift_v_pressed {
+    let paste_fmt_pressed = ui.input(|i| paste_fmt_combo.matches(i));
+    if paste_fmt_pressed {
         app.paste_selected_clip_formatting();
+    }
+    let play_pause_pressed = ui.input(|i| play_pause_combo.matches(i));
+    if play_pause_pressed {
+        app.toggle_preview_playback();
     }
 
     ui.vertical(|ui| {
