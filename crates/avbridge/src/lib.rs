@@ -10,6 +10,7 @@ use std::ffi::{c_void, CStr, CString, NulError};
 use std::os::raw::{c_char, c_int, c_longlong};
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
+use std::sync::Mutex;
 
 #[repr(C)]
 struct RawClipSegment {
@@ -732,15 +733,28 @@ pub enum LoudnessError {
     Unknown(c_int),
 }
 
+/// Process-global mutex serializing access to `avbridge_measure_loudness()`. Required because
+/// the C implementation installs a process-global FFmpeg `av_log` callback and stores the
+/// caller's output buffer in process-global variables for the duration of each call. Concurrent
+/// calls would race these globals, corrupting memory. This mutex enforces the documented
+/// "not thread-safe" contract at the Rust API boundary.
+static LOUDNESS_MUTEX: Mutex<()> = Mutex::new(());
+
 /// Measures integrated loudness / true peak / loudness range via a single-pass `loudnorm`
 /// analysis (`I=-16:TP=-1.5:LRA=11`). Returns the raw JSON report text — parsing it is the
 /// caller's job (e.g. `avcore::loudness::parse_loudnorm_stderr`, which works on this
 /// text unchanged since it never cared whether the text came from a subprocess or here).
 ///
-/// Not thread-safe — see the `// SAFETY:` note below and the doc comment on the C side.
-/// Callers must serialize calls to this function (across the whole process, not just per
-/// `Path`) with each other and with nothing else that installs an `av_log` callback.
+/// Thread-safe: this function internally serializes all calls via a process-global mutex,
+/// since the underlying C implementation uses process-global state (FFmpeg's `av_log` callback
+/// and associated buffer pointers). Concurrent calls from multiple threads will block until
+/// the active measurement completes.
 pub fn measure_loudness_json(path: &Path) -> Result<String, LoudnessError> {
+    // Acquire the lock before calling into the non-thread-safe C code. The lock is held for
+    // the entire duration of the FFmpeg decode/filter pipeline to prevent concurrent calls
+    // from racing the process-global log callback state.
+    let _guard = LOUDNESS_MUTEX.lock().unwrap();
+
     let c_path =
         CString::new(path.to_string_lossy().as_bytes()).map_err(LoudnessError::InvalidPath)?;
 
@@ -749,7 +763,9 @@ pub fn measure_loudness_json(path: &Path) -> Result<String, LoudnessError> {
     // SAFETY: c_path is a valid NUL-terminated C string for the duration of this call. `buf`
     // is a valid, writable buffer of `buf.len()` bytes; the C side never writes past that
     // length and always NUL-terminates within it on success. `bridge.c` closes the decoder
-    // and filter graph contexts on every exit path.
+    // and filter graph contexts on every exit path. The LOUDNESS_MUTEX ensures no other thread
+    // can enter this unsafe block concurrently, preventing races on the process-global
+    // g_loudness_log_buf/g_loudness_log_cap/g_loudness_log_len variables.
     let status = unsafe {
         avbridge_measure_loudness(c_path.as_ptr(), buf.as_mut_ptr() as *mut c_char, buf.len())
     };

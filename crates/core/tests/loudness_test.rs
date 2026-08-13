@@ -65,3 +65,41 @@ fn measures_a_real_file_via_the_ffi_bridge() {
 fn errors_on_a_missing_file() {
     assert!(measure_loudness(&fixture("does_not_exist.mp4")).is_err());
 }
+
+#[test]
+fn concurrent_measurements_do_not_race() {
+    // Regression test for the batch import concurrency bug: spawning multiple threads that
+    // each call measure_loudness() used to race the process-global FFmpeg log callback state
+    // in loudness.c, corrupting memory. The fix (LOUDNESS_MUTEX in avbridge/src/lib.rs)
+    // serializes all calls to the underlying C function. This test verifies that concurrent
+    // calls complete successfully without data races or crashes.
+    use std::sync::Arc;
+    use std::thread;
+
+    let path = Arc::new(fixture("video.mp4"));
+    let mut handles = vec![];
+
+    // Spawn 4 threads, each measuring the same file. Before the fix, this would reliably
+    // trigger the race condition on multi-core systems.
+    for _ in 0..4 {
+        let path = Arc::clone(&path);
+        let handle = thread::spawn(move || {
+            let metrics = measure_loudness(&path).unwrap();
+            // Basic sanity check: the measurement should be consistent across threads.
+            assert!(metrics.integrated_lufs < -10.0);
+            assert!(metrics.integrated_lufs > -60.0);
+            metrics
+        });
+        handles.push(handle);
+    }
+
+    // All threads should complete successfully and return consistent results.
+    let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+
+    // Verify all measurements are identical (same input file, same filter settings).
+    for i in 1..results.len() {
+        assert!((results[i].integrated_lufs - results[0].integrated_lufs).abs() < 0.01);
+        assert!((results[i].true_peak_dbtp - results[0].true_peak_dbtp).abs() < 0.01);
+        assert!((results[i].loudness_range_lu - results[0].loudness_range_lu).abs() < 0.01);
+    }
+}
