@@ -26,6 +26,21 @@ struct RawClipSegment {
     transition_duration_secs: f32,
 }
 
+/// Mirror of `OcaTextSegment` in `bridge.h` — one text overlay to draw on the exported video.
+#[repr(C)]
+struct RawTextSegment {
+    start_secs: f64,
+    duration_secs: f64,
+    text: *const c_char,
+    font_size: f32,
+    color_r: u8,
+    color_g: u8,
+    color_b: u8,
+    color_a: u8,
+    pos_x: f32,
+    pos_y: f32,
+}
+
 #[repr(C)]
 struct RawProbeInfo {
     has_video: c_int,
@@ -80,6 +95,16 @@ unsafe extern "C" {
         bucket_count: c_int,
         out_min: *mut f32,
         out_max: *mut f32,
+    ) -> c_int;
+    fn avbridge_apply_text_overlays(
+        in_path: *const c_char,
+        out_path: *const c_char,
+        segments: *const RawTextSegment,
+        segment_count: c_int,
+        canvas_width: c_int,
+        canvas_height: c_int,
+        canvas_fps_num: c_int,
+        canvas_fps_den: c_int,
     ) -> c_int;
 }
 
@@ -752,4 +777,119 @@ pub fn generate_waveform(
     }
 
     Ok(mins.into_iter().zip(maxs).collect())
+}
+
+/// One text overlay to composite over an exported video via `avbridge_apply_text_overlays`.
+/// Parallel to [`ClipSegment`] but for drawtext post-processing rather than the main encode.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TextSegment {
+    /// When the overlay becomes visible, in seconds from the start of the exported video.
+    pub start_secs: f64,
+    /// How long the overlay is visible, in seconds.
+    pub duration_secs: f64,
+    /// Text to render.
+    pub text: String,
+    /// Font size in points.
+    pub font_size: f32,
+    /// RGBA color: `[r, g, b, a]`, each 0–255. Alpha 255 = fully opaque.
+    pub color_rgba: [u8; 4],
+    /// Horizontal anchor as a 0.0–1.0 fraction of canvas width.
+    pub pos_x: f32,
+    /// Vertical anchor as a 0.0–1.0 fraction of canvas height.
+    pub pos_y: f32,
+}
+
+/// What [`apply_text_overlays`] failed on.
+#[derive(Debug, thiserror::Error)]
+pub enum TextOverlayError {
+    /// A path contains a NUL byte and can't be handed to the C API.
+    #[error("path is not a valid C string: {0}")]
+    InvalidPath(NulError),
+    #[error("failed to open input")]
+    OpenInput,
+    #[error("failed to allocate output context")]
+    AllocOutput,
+    #[error("failed to build the drawtext filter graph")]
+    FilterGraph,
+    #[error("decode/filter/encode pipeline failed mid-stream")]
+    Pipeline,
+    #[error("unknown text overlay status code: {0}")]
+    Unknown(c_int),
+}
+
+/// Opens `in_path` (the already-rendered export), applies `drawtext` overlays for each segment
+/// that falls within the video's timeline, and writes the result to `out_path`. The caller is
+/// responsible for renaming `out_path` over `in_path` when this returns `Ok(())`.
+///
+/// `canvas_width`/`canvas_height`/`fps_num`/`fps_den` must match the rendered file's canvas
+/// dimensions and frame rate so the drawtext filter can scale positions correctly.
+///
+/// A no-op (returns `Ok(())` immediately without calling the C function) when `segments` is
+/// empty — the caller can skip creating `out_path` in that case.
+pub fn apply_text_overlays(
+    in_path: &Path,
+    out_path: &Path,
+    segments: &[TextSegment],
+    canvas_width: u32,
+    canvas_height: u32,
+    fps_num: u32,
+    fps_den: u32,
+) -> Result<(), TextOverlayError> {
+    if segments.is_empty() {
+        return Ok(());
+    }
+
+    let c_in =
+        CString::new(in_path.to_string_lossy().as_bytes()).map_err(TextOverlayError::InvalidPath)?;
+    let c_out = CString::new(out_path.to_string_lossy().as_bytes())
+        .map_err(TextOverlayError::InvalidPath)?;
+
+    let mut c_texts: Vec<CString> = Vec::with_capacity(segments.len());
+    for seg in segments {
+        c_texts.push(
+            CString::new(seg.text.as_bytes()).map_err(TextOverlayError::InvalidPath)?,
+        );
+    }
+
+    let raw_segments: Vec<RawTextSegment> = segments
+        .iter()
+        .zip(c_texts.iter())
+        .map(|(seg, text)| RawTextSegment {
+            start_secs: seg.start_secs,
+            duration_secs: seg.duration_secs,
+            text: text.as_ptr(),
+            font_size: seg.font_size,
+            color_r: seg.color_rgba[0],
+            color_g: seg.color_rgba[1],
+            color_b: seg.color_rgba[2],
+            color_a: seg.color_rgba[3],
+            pos_x: seg.pos_x,
+            pos_y: seg.pos_y,
+        })
+        .collect();
+
+    // SAFETY: all pointers (c_in, c_out, raw_segments' text pointers from c_texts) are valid
+    // NUL-terminated C strings held alive for the full duration of this call. raw_segments is a
+    // contiguous Vec<RawTextSegment> with segment_count entries, never mutated during the call.
+    let status = unsafe {
+        avbridge_apply_text_overlays(
+            c_in.as_ptr(),
+            c_out.as_ptr(),
+            raw_segments.as_ptr(),
+            raw_segments.len() as c_int,
+            canvas_width as c_int,
+            canvas_height as c_int,
+            fps_num as c_int,
+            fps_den as c_int,
+        )
+    };
+
+    match status {
+        0 => Ok(()),
+        1 => Err(TextOverlayError::OpenInput),
+        2 => Err(TextOverlayError::AllocOutput),
+        3 => Err(TextOverlayError::FilterGraph),
+        4 => Err(TextOverlayError::Pipeline),
+        other => Err(TextOverlayError::Unknown(other)),
+    }
 }

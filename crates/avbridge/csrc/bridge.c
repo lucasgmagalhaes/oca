@@ -2142,3 +2142,343 @@ cleanup:
     avformat_close_input(&in_ctx);
     return status;
 }
+
+/* Platform-specific default font path for avbridge_apply_text_overlays. The font must exist
+   on the system at runtime — drawtext fails filter graph configuration if it is absent.
+   On Windows the drive-letter colon is escaped as \: for avfilter's option parser. */
+#if defined(__APPLE__)
+#define OCA_DEFAULT_FONT "/System/Library/Fonts/Helvetica.ttc"
+#elif defined(_WIN32)
+#define OCA_DEFAULT_FONT "C\\:/Windows/Fonts/arial.ttf"
+#else
+#define OCA_DEFAULT_FONT "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+#endif
+
+/* Maximum byte length of a single drawtext filter node description (per segment). */
+#define OCA_DRAWTEXT_SEG_MAX 1024
+
+/* Escapes `in` for use in an avfilter drawtext single-quoted 'text' value. Backslash,
+   single-quote, colon, and comma each get a backslash prefix (the latter two are avfilter
+   option and chain separators that drawtext would mis-parse otherwise).
+   Writes into `out` (size `out_size`); returns bytes written excluding NUL, or -1 on
+   buffer overflow. */
+static int escape_drawtext_text(char *out, size_t out_size, const char *in) {
+    size_t pos = 0;
+    for (size_t i = 0; in[i] != '\0'; i++) {
+        char c = in[i];
+        int needs_escape = (c == '\\' || c == '\'' || c == ':' || c == ',');
+        if (pos + (size_t)(needs_escape ? 2 : 1) + 1 > out_size) return -1;
+        if (needs_escape) out[pos++] = '\\';
+        out[pos++] = c;
+    }
+    out[pos] = '\0';
+    return (int)pos;
+}
+
+/* Opens `in_path` (an already-rendered H.264/AAC mp4 produced by
+   avbridge_encode_timeline_export), composites drawtext overlays for each segment, and
+   writes the result to `out_path`. Video is decoded, filtered, and re-encoded via
+   libopenh264; audio is stream-copied unchanged to avoid a lossy second AAC encode.
+   canvas_width/height and canvas_fps_num/den must match the rendered video so the output
+   encoder is configured correctly.
+   Returns OCA_TEXT_OVERLAY_OK immediately without touching any files when segment_count <= 0. */
+OcaTextOverlayStatus avbridge_apply_text_overlays(
+    const char *in_path, const char *out_path,
+    const OcaTextSegment *segments, int segment_count,
+    int canvas_width, int canvas_height,
+    int canvas_fps_num, int canvas_fps_den) {
+
+    if (segment_count <= 0) return OCA_TEXT_OVERLAY_OK;
+
+    OcaTextOverlayStatus status    = OCA_TEXT_OVERLAY_OK;
+    AVFormatContext *in_ctx        = NULL;
+    AVFormatContext *out_ctx       = NULL;
+    AVCodecContext  *vdec_ctx      = NULL;
+    AVCodecContext  *venc_ctx      = NULL;
+    AVFilterGraph   *filter_graph  = NULL;
+    AVFilterContext *buffersrc_ctx = NULL;
+    AVFilterContext *buffersink_ctx = NULL;
+    AVPacket *pkt       = NULL;
+    AVFrame  *dec_frame = NULL;
+    AVFrame  *filt_frame = NULL;
+    AVPacket *enc_pkt   = NULL;
+    char     *filter_str = NULL;
+    int video_in_idx  = -1, audio_in_idx  = -1;
+    int video_out_idx = -1, audio_out_idx = -1;
+    int64_t next_video_pts = 0;
+    AVRational canvas_fps = {canvas_fps_num, canvas_fps_den};
+
+    /* Open input */
+    if (oca_open_input(in_path, &in_ctx) != 0) {
+        status = OCA_TEXT_OVERLAY_ERR_OPEN_INPUT; goto cleanup;
+    }
+    for (unsigned int i = 0; i < in_ctx->nb_streams; i++) {
+        enum AVMediaType mt = in_ctx->streams[i]->codecpar->codec_type;
+        if (video_in_idx < 0 && mt == AVMEDIA_TYPE_VIDEO) video_in_idx = (int)i;
+        if (audio_in_idx < 0 && mt == AVMEDIA_TYPE_AUDIO) audio_in_idx = (int)i;
+    }
+    if (video_in_idx < 0) { status = OCA_TEXT_OVERLAY_ERR_OPEN_INPUT; goto cleanup; }
+
+    /* Open video decoder */
+    {
+        AVStream *vs = in_ctx->streams[video_in_idx];
+        const AVCodec *vdec = avcodec_find_decoder(vs->codecpar->codec_id);
+        if (!vdec) { status = OCA_TEXT_OVERLAY_ERR_OPEN_INPUT; goto cleanup; }
+        vdec_ctx = avcodec_alloc_context3(vdec);
+        if (!vdec_ctx) { status = OCA_TEXT_OVERLAY_ERR_OPEN_INPUT; goto cleanup; }
+        avcodec_parameters_to_context(vdec_ctx, vs->codecpar);
+        vdec_ctx->time_base = vs->time_base;
+        if (avcodec_open2(vdec_ctx, vdec, NULL) < 0) {
+            status = OCA_TEXT_OVERLAY_ERR_OPEN_INPUT; goto cleanup;
+        }
+    }
+
+    /* Build drawtext filter description: chain of drawtext= nodes separated by commas. */
+    {
+        size_t filter_buf_size = (size_t)segment_count * OCA_DRAWTEXT_SEG_MAX + 8;
+        filter_str = av_malloc(filter_buf_size);
+        if (!filter_str) { status = OCA_TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup; }
+
+        size_t pos = 0;
+        for (int i = 0; i < segment_count; i++) {
+            const OcaTextSegment *seg = &segments[i];
+            if (i > 0) {
+                if (pos + 2 >= filter_buf_size) {
+                    status = OCA_TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup;
+                }
+                filter_str[pos++] = ',';
+            }
+            char escaped[512];
+            if (escape_drawtext_text(escaped, sizeof(escaped), seg->text) < 0) {
+                status = OCA_TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup;
+            }
+            float alpha    = (float)seg->color_a / 255.0f;
+            double end_secs = seg->start_secs + seg->duration_secs;
+            /* enable='between(t\,start\,end)' — commas inside the value are \, escaped */
+            int written = snprintf(filter_str + pos, filter_buf_size - pos,
+                "drawtext=fontfile='%s':text='%s':fontsize=%.1f"
+                ":fontcolor=0x%02X%02X%02X@%.4f"
+                ":x=w*%.5f:y=h*%.5f"
+                ":enable='between(t\\,%.4f\\,%.4f)'",
+                OCA_DEFAULT_FONT, escaped, (double)seg->font_size,
+                (unsigned)seg->color_r, (unsigned)seg->color_g, (unsigned)seg->color_b,
+                (double)alpha,
+                (double)seg->pos_x, (double)seg->pos_y,
+                seg->start_secs, end_secs);
+            if (written < 0 || pos + (size_t)written >= filter_buf_size) {
+                status = OCA_TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup;
+            }
+            pos += (size_t)written;
+        }
+        filter_str[pos] = '\0';
+    }
+
+    /* Set up filtergraph: buffer -> [drawtext chain] -> buffersink */
+    {
+        AVStream *vs = in_ctx->streams[video_in_idx];
+        filter_graph = avfilter_graph_alloc();
+        if (!filter_graph) { status = OCA_TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup; }
+
+        const AVFilter *buffersrc  = avfilter_get_by_name("buffer");
+        const AVFilter *buffersink = avfilter_get_by_name("buffersink");
+        if (!buffersrc || !buffersink) {
+            status = OCA_TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup;
+        }
+
+        char args[256];
+        snprintf(args, sizeof(args),
+            "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d",
+            vdec_ctx->width, vdec_ctx->height, (int)vdec_ctx->pix_fmt,
+            vs->time_base.num, vs->time_base.den,
+            vdec_ctx->sample_aspect_ratio.num,
+            vdec_ctx->sample_aspect_ratio.den > 0
+                ? vdec_ctx->sample_aspect_ratio.den : 1);
+
+        if (avfilter_graph_create_filter(&buffersrc_ctx, buffersrc, "in",
+                                          args, NULL, filter_graph) < 0 ||
+            avfilter_graph_create_filter(&buffersink_ctx, buffersink, "out",
+                                          NULL, NULL, filter_graph) < 0) {
+            status = OCA_TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup;
+        }
+
+        AVFilterInOut *filt_out = avfilter_inout_alloc();
+        AVFilterInOut *filt_in  = avfilter_inout_alloc();
+        if (!filt_out || !filt_in) {
+            avfilter_inout_free(&filt_out);
+            avfilter_inout_free(&filt_in);
+            status = OCA_TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup;
+        }
+        filt_out->name       = av_strdup("in");
+        filt_out->filter_ctx = buffersrc_ctx;
+        filt_out->pad_idx    = 0;
+        filt_out->next       = NULL;
+        filt_in->name        = av_strdup("out");
+        filt_in->filter_ctx  = buffersink_ctx;
+        filt_in->pad_idx     = 0;
+        filt_in->next        = NULL;
+
+        int ret = avfilter_graph_parse_ptr(filter_graph, filter_str,
+                                            &filt_in, &filt_out, NULL);
+        avfilter_inout_free(&filt_in);
+        avfilter_inout_free(&filt_out);
+        if (ret < 0 || avfilter_graph_config(filter_graph, NULL) < 0) {
+            status = OCA_TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup;
+        }
+    }
+
+    /* Set up output context: libopenh264 for video, stream-copy for audio */
+    {
+        avformat_alloc_output_context2(&out_ctx, NULL, NULL, out_path);
+        if (!out_ctx) { status = OCA_TEXT_OVERLAY_ERR_ALLOC_OUTPUT; goto cleanup; }
+
+        const AVCodec *venc = avcodec_find_encoder_by_name("libopenh264");
+        if (!venc) { status = OCA_TEXT_OVERLAY_ERR_PIPELINE; goto cleanup; }
+        venc_ctx = avcodec_alloc_context3(venc);
+        if (!venc_ctx) { status = OCA_TEXT_OVERLAY_ERR_PIPELINE; goto cleanup; }
+
+        AVStream *vin        = in_ctx->streams[video_in_idx];
+        venc_ctx->width      = canvas_width;
+        venc_ctx->height     = canvas_height;
+        venc_ctx->pix_fmt    = AV_PIX_FMT_YUV420P;
+        venc_ctx->time_base  = av_inv_q(canvas_fps);
+        venc_ctx->framerate  = canvas_fps;
+        venc_ctx->bit_rate   = vin->codecpar->bit_rate > 0
+                                   ? vin->codecpar->bit_rate : 4000000LL;
+        venc_ctx->gop_size   = canvas_fps_den > 0
+                                   ? (canvas_fps_num / canvas_fps_den) * 2 : 60;
+        venc_ctx->max_b_frames = 0;
+        if (out_ctx->oformat->flags & AVFMT_GLOBALHEADER)
+            venc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+        if (avcodec_open2(venc_ctx, venc, NULL) < 0) {
+            status = OCA_TEXT_OVERLAY_ERR_PIPELINE; goto cleanup;
+        }
+        AVStream *vout = avformat_new_stream(out_ctx, NULL);
+        if (!vout || avcodec_parameters_from_context(vout->codecpar, venc_ctx) < 0) {
+            status = OCA_TEXT_OVERLAY_ERR_ALLOC_OUTPUT; goto cleanup;
+        }
+        vout->time_base = venc_ctx->time_base;
+        video_out_idx = vout->index;
+
+        if (audio_in_idx >= 0) {
+            AVStream *ain  = in_ctx->streams[audio_in_idx];
+            AVStream *aout = avformat_new_stream(out_ctx, NULL);
+            if (!aout || avcodec_parameters_copy(aout->codecpar, ain->codecpar) < 0) {
+                status = OCA_TEXT_OVERLAY_ERR_ALLOC_OUTPUT; goto cleanup;
+            }
+            aout->time_base = ain->time_base;
+            audio_out_idx   = aout->index;
+        }
+
+        if (!(out_ctx->oformat->flags & AVFMT_NOFILE)) {
+            if (avio_open(&out_ctx->pb, out_path, AVIO_FLAG_WRITE) < 0) {
+                status = OCA_TEXT_OVERLAY_ERR_ALLOC_OUTPUT; goto cleanup;
+            }
+        }
+        if (avformat_write_header(out_ctx, NULL) < 0) {
+            status = OCA_TEXT_OVERLAY_ERR_ALLOC_OUTPUT; goto cleanup_output_io;
+        }
+    }
+
+    pkt       = av_packet_alloc();
+    dec_frame  = av_frame_alloc();
+    filt_frame = av_frame_alloc();
+    enc_pkt    = av_packet_alloc();
+    if (!pkt || !dec_frame || !filt_frame || !enc_pkt) {
+        status = OCA_TEXT_OVERLAY_ERR_PIPELINE; goto cleanup_output_io;
+    }
+
+    /* Main decode -> filter -> encode loop */
+    while (av_read_frame(in_ctx, pkt) >= 0) {
+        if (pkt->stream_index == video_in_idx) {
+            int ret = avcodec_send_packet(vdec_ctx, pkt);
+            av_packet_unref(pkt);
+            if (ret < 0) { status = OCA_TEXT_OVERLAY_ERR_PIPELINE; goto cleanup_output_io; }
+            while (1) {
+                ret = avcodec_receive_frame(vdec_ctx, dec_frame);
+                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+                if (ret < 0) { status = OCA_TEXT_OVERLAY_ERR_PIPELINE; goto cleanup_output_io; }
+                dec_frame->pts = dec_frame->best_effort_timestamp;
+                ret = av_buffersrc_add_frame_flags(buffersrc_ctx, dec_frame,
+                                                    AV_BUFFERSRC_FLAG_KEEP_REF);
+                av_frame_unref(dec_frame);
+                if (ret < 0) { status = OCA_TEXT_OVERLAY_ERR_PIPELINE; goto cleanup_output_io; }
+                while (1) {
+                    ret = av_buffersink_get_frame(buffersink_ctx, filt_frame);
+                    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+                    if (ret < 0) {
+                        av_frame_unref(filt_frame);
+                        status = OCA_TEXT_OVERLAY_ERR_PIPELINE; goto cleanup_output_io;
+                    }
+                    filt_frame->pts = next_video_pts++;
+                    filt_frame->pict_type = AV_PICTURE_TYPE_NONE;
+                    if (encode_write_packet(out_ctx, venc_ctx,
+                                             out_ctx->streams[video_out_idx],
+                                             filt_frame, enc_pkt) < 0) {
+                        av_frame_unref(filt_frame);
+                        status = OCA_TEXT_OVERLAY_ERR_PIPELINE; goto cleanup_output_io;
+                    }
+                    av_frame_unref(filt_frame);
+                }
+            }
+        } else if (pkt->stream_index == audio_in_idx && audio_out_idx >= 0) {
+            /* Audio: rescale timestamps and stream-copy to avoid a second lossy AAC encode */
+            AVStream *ain  = in_ctx->streams[audio_in_idx];
+            AVStream *aout = out_ctx->streams[audio_out_idx];
+            av_packet_rescale_ts(pkt, ain->time_base, aout->time_base);
+            pkt->stream_index = audio_out_idx;
+            if (av_interleaved_write_frame(out_ctx, pkt) < 0) {
+                av_packet_unref(pkt);
+                status = OCA_TEXT_OVERLAY_ERR_PIPELINE; goto cleanup_output_io;
+            }
+        } else {
+            av_packet_unref(pkt);
+        }
+    }
+
+    /* Flush decoder into filtergraph */
+    avcodec_send_packet(vdec_ctx, NULL);
+    while (avcodec_receive_frame(vdec_ctx, dec_frame) >= 0) {
+        dec_frame->pts = dec_frame->best_effort_timestamp;
+        if (av_buffersrc_add_frame_flags(buffersrc_ctx, dec_frame,
+                                          AV_BUFFERSRC_FLAG_KEEP_REF) >= 0) {
+            while (av_buffersink_get_frame(buffersink_ctx, filt_frame) >= 0) {
+                filt_frame->pts = next_video_pts++;
+                filt_frame->pict_type = AV_PICTURE_TYPE_NONE;
+                encode_write_packet(out_ctx, venc_ctx, out_ctx->streams[video_out_idx],
+                                     filt_frame, enc_pkt);
+                av_frame_unref(filt_frame);
+            }
+        }
+        av_frame_unref(dec_frame);
+    }
+    /* Flush filtergraph */
+    av_buffersrc_add_frame_flags(buffersrc_ctx, NULL, 0);
+    while (av_buffersink_get_frame(buffersink_ctx, filt_frame) >= 0) {
+        filt_frame->pts = next_video_pts++;
+        filt_frame->pict_type = AV_PICTURE_TYPE_NONE;
+        encode_write_packet(out_ctx, venc_ctx, out_ctx->streams[video_out_idx],
+                             filt_frame, enc_pkt);
+        av_frame_unref(filt_frame);
+    }
+    /* Flush encoder */
+    encode_write_packet(out_ctx, venc_ctx, out_ctx->streams[video_out_idx], NULL, enc_pkt);
+
+    if (status == OCA_TEXT_OVERLAY_OK)
+        av_write_trailer(out_ctx);
+
+cleanup_output_io:
+    av_packet_free(&pkt);
+    av_packet_free(&enc_pkt);
+    av_frame_free(&dec_frame);
+    av_frame_free(&filt_frame);
+    if (out_ctx && !(out_ctx->oformat->flags & AVFMT_NOFILE))
+        avio_closep(&out_ctx->pb);
+cleanup:
+    av_free(filter_str);
+    avfilter_graph_free(&filter_graph);
+    avcodec_free_context(&vdec_ctx);
+    avcodec_free_context(&venc_ctx);
+    if (out_ctx) avformat_free_context(out_ctx);
+    avformat_close_input(&in_ctx);
+    return status;
+}

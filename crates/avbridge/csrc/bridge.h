@@ -268,4 +268,53 @@ typedef enum {
 OcaWaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_count,
                                                   float *out_min, float *out_max);
 
+typedef enum {
+    OCA_TEXT_OVERLAY_OK = 0,
+    /* avformat_open_input() or avformat_find_stream_info() failed. */
+    OCA_TEXT_OVERLAY_ERR_OPEN_INPUT = 1,
+    /* Couldn't allocate the output context or open the output file for writing. */
+    OCA_TEXT_OVERLAY_ERR_ALLOC_OUTPUT = 2,
+    /* Couldn't build the drawtext filter graph. */
+    OCA_TEXT_OVERLAY_ERR_FILTER_GRAPH = 3,
+    /* A decode/filter/encode call failed mid-stream. */
+    OCA_TEXT_OVERLAY_ERR_PIPELINE = 4,
+} OcaTextOverlayStatus;
+
+/* One text overlay to composite over an already-rendered export video. */
+typedef struct {
+    /* Timeline position in seconds where this text becomes visible. */
+    double start_secs;
+    /* How long the text stays visible, in seconds. */
+    double duration_secs;
+    /* UTF-8, NUL-terminated. Must not be NULL. */
+    const char *text;
+    /* Font size in points. */
+    float font_size;
+    /* RGBA color components, each 0-255. color_a: 0 = transparent, 255 = opaque. */
+    uint8_t color_r;
+    uint8_t color_g;
+    uint8_t color_b;
+    uint8_t color_a;
+    /* Horizontal anchor as a 0.0-1.0 fraction of canvas width (0.0 = left). */
+    float pos_x;
+    /* Vertical anchor as a 0.0-1.0 fraction of canvas height (0.0 = top). */
+    float pos_y;
+} OcaTextSegment;
+
+/* Opens `in_path` (an already-rendered H.264/AAC mp4), composites drawtext overlays for every
+   segment in `segments` using an enable='between(t,start,end)' avfilter expression, and writes
+   the result to `out_path`.  Video is decoded, filtered, and re-encoded via libopenh264;
+   audio is stream-copied unchanged.  canvas_width/canvas_height and canvas_fps_num/den are
+   used only to size the output encoder context — they must match the actual rendered video.
+
+   The platform default font (bridge.h's OCA_DEFAULT_FONT) is used; drawtext silently renders
+   nothing if the font file doesn't exist on the system.
+
+   Returns OCA_TEXT_OVERLAY_OK immediately if segment_count <= 0 without touching any files. */
+OcaTextOverlayStatus avbridge_apply_text_overlays(
+    const char *in_path, const char *out_path,
+    const OcaTextSegment *segments, int segment_count,
+    int canvas_width, int canvas_height,
+    int canvas_fps_num, int canvas_fps_den);
+
 #endif

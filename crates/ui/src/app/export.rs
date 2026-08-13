@@ -10,7 +10,8 @@ use super::{OcaApp, RenderEvent};
 impl OcaApp {
     /// Appends a new `Queued` job — what "Adicionar exportação" does, given `segments`/
     /// `canvas` already resolved from the active sequence (see
-    /// `avcore::resolve_timeline_segments`) so this job renders the timeline as it was at the
+    /// `avcore::resolve_timeline_segments`) and `text_segments` from the sequence's text tracks
+    /// (see `avcore::resolve_text_segments`) so this job renders the timeline as it was at the
     /// moment it entered the queue, not whatever it's edited to later. Picked up by
     /// [`OcaApp::pump_export_queue`] once a worker slot ([`OcaApp::queue_workers`])
     /// frees up.
@@ -18,6 +19,7 @@ impl OcaApp {
         &mut self,
         title: String,
         segments: Vec<avcore::ClipSegment>,
+        text_segments: Vec<avcore::TextSegment>,
         canvas: avcore::Canvas,
         target_lufs: f32,
         output_path: String,
@@ -28,6 +30,7 @@ impl OcaApp {
             id,
             title,
             segments,
+            text_segments,
             canvas,
             target_lufs,
             output_path,
@@ -99,6 +102,7 @@ impl OcaApp {
 
         let job_id = job.id;
         let segments = job.segments.clone();
+        let text_segments = job.text_segments.clone();
         let canvas = job.canvas;
         let output_path = PathBuf::from(&job.output_path);
         let target_lufs = job.target_lufs;
@@ -115,6 +119,7 @@ impl OcaApp {
                 canvas,
                 &output_path,
                 target_lufs,
+                &text_segments,
                 &cancel_flag,
                 |percent| {
                     let _ = tx.send(RenderEvent::Progress { job_id, percent });

@@ -47,6 +47,9 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                         let (_, target_lufs) = LUFS_PROFILES[app.prefs.lufs_profile];
                         let canvas =
                             avcore::apply_export_aspect_ratio(canvas, app.export_aspect_ratio);
+                        let text_segments = avcore::resolve_text_segments(
+                            &app.active_project().sequences[app.active_project().active_sequence],
+                        );
                         let default_name = format!("{sequence_name}_export.mp4");
                         let mut dialog = rfd::FileDialog::new()
                             .add_filter("MP4", &["mp4"])
@@ -79,6 +82,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                                 app.queue_export(
                                     sequence_name,
                                     segments,
+                                    text_segments,
                                     canvas,
                                     target_lufs,
                                     output.display().to_string(),

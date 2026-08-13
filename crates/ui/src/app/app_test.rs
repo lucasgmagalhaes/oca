@@ -35,6 +35,7 @@ fn test_track(id: u64, kind: TrackKind, clips: Vec<ClipInstance>) -> Track {
         name: format!("Track {id}"),
         kind,
         clips,
+        text_clips: vec![],
     }
 }
 
@@ -123,6 +124,7 @@ fn test_job(id: u64, status: ExportJobStatus) -> ExportJob {
         id,
         title: format!("Job {id}"),
         segments: Vec::new(),
+        text_segments: vec![],
         canvas: test_canvas(),
         target_lufs: -14.0,
         output_path: format!("out-{id}.mp4"),
@@ -156,6 +158,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         next_import_token: 0,
         pending_enrichment: HashMap::new(),
         selected_clip_id: None,
+        selected_text_clip_id: None,
         timeline_px_per_sec: 4.0,
         lib_panel_width: 220.0,
         props_panel_width: 240.0,
@@ -379,6 +382,7 @@ fn queue_export_appends_a_queued_job_with_the_next_id() {
     app.queue_export(
         "Export".to_string(),
         Vec::new(),
+        vec![],
         test_canvas(),
         -14.0,
         "out.mp4".to_string(),
@@ -397,6 +401,7 @@ fn queue_export_starts_at_one_when_no_jobs_exist() {
     app.queue_export(
         "Export".to_string(),
         Vec::new(),
+        vec![],
         test_canvas(),
         -14.0,
         "out.mp4".to_string(),

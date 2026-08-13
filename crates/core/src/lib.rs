@@ -21,7 +21,7 @@ pub mod render;
 pub mod timeline;
 pub mod waveform;
 
-pub use avbridge::{Canvas, ClipSegment};
+pub use avbridge::{Canvas, ClipSegment, TextSegment};
 pub use export::{ExportJob, ExportJobStatus};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
@@ -32,7 +32,8 @@ pub use project::{Project, Recency, Sequence};
 pub use proxy::{ensure_proxy, ProxyError};
 pub use render::{
     apply_export_aspect_ratio, render_export, render_export_job, render_timeline_export,
-    resolve_timeline_segments, ExportAspectRatio, RenderError, RenderOutcome,
+    resolve_text_segments, resolve_timeline_segments, ExportAspectRatio, RenderError,
+    RenderOutcome,
 };
-pub use timeline::{ClipFormatting, ClipInstance, Timeline, Track, TrackKind};
+pub use timeline::{ClipFormatting, ClipInstance, TextClip, Timeline, Track, TrackKind};
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};
