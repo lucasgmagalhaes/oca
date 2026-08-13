@@ -160,6 +160,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         preview_clip_id: None,
         preview_texture: None,
         preview_playing: false,
+        preview_frozen_since: None,
         import_tx,
         import_rx,
         pending_imports: 0,
@@ -616,6 +617,22 @@ fn seek_preview_updates_the_timeline_playhead_without_a_live_pipeline() {
     app.seek_preview(5.0);
 
     assert_eq!(app.active_project().timeline().playhead_secs, 5.0);
+}
+
+#[test]
+fn frozen_playhead_advances_by_elapsed_wall_clock_time() {
+    use super::preview::frozen_playhead;
+
+    assert_eq!(frozen_playhead(2.0, 1.5, 0.0, 10.0), 3.5);
+}
+
+#[test]
+fn frozen_playhead_clamps_to_the_clip_end() {
+    use super::preview::frozen_playhead;
+
+    // clip spans [5.0, 5.0+2.0) = [5.0, 7.0); way more than 2s elapsed should still land
+    // exactly on the clip's end, not run past it.
+    assert_eq!(frozen_playhead(5.0, 100.0, 5.0, 2.0), 7.0);
 }
 
 #[test]

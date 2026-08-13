@@ -22,10 +22,13 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   brightness/contrast/saturation, sharpen, chroma_key, blur, pixelize, shake, glitch,
   zoom, speed_factor, freeze_frame, transitions (fade/slide/zoom entry effects via
   `ClipSegment::transition_in` + `bridge.c` avfilter expressions; HardCut/None are no-ops).
-  **Not wired to preview:** transitions (see TODO in `build_video_filter_bin`), freeze_frame,
-  vignette, chroma_key, gain_db, speed, glitch. pixelize/shake/zoom now covered (pixelize:
-  static scale-down/up via `videoscale`; shake/zoom: `videocrop` driven per-frame by a pad
-  probe, zoom keyed off buffer PTS since preview has no fixed canvas fps).
+  **Not wired to preview:** transitions (see TODO in `build_video_filter_bin`), vignette,
+  chroma_key, gain_db, speed, glitch. pixelize/shake/zoom/freeze_frame now covered
+  (pixelize: static scale-down/up via `videoscale`; shake/zoom: `videocrop` driven per-frame by
+  a pad probe, zoom keyed off buffer PTS since preview has no fixed canvas fps; freeze_frame:
+  `ui`'s `OcaApp` keeps the pipeline `Paused` at `source_in_secs` and advances the playhead by
+  wall-clock time instead of pipeline position — see `preview_frozen_since`/`frozen_playhead`
+  in `crates/ui/src/app/preview.rs`).
   **Not wired to export or preview:** layer masks (`mask_shape`).
   **Chroma key caveat:** `colorkey` marks pixels transparent but the final `yuv420p`
   conform drops the alpha plane — keyed color still appears in output despite being in

@@ -330,6 +330,14 @@ pub struct OcaApp {
     /// its own, so the Editor's play/pause button and [`OcaApp::pump_export_queue`]'s repaint
     /// cadence both rely on this instead.
     pub preview_playing: bool,
+    /// Wall-clock playback start `(Instant, timeline playhead at that instant)` for a frozen
+    /// clip — set whenever playback begins while the clip covering the playhead has
+    /// `ClipInstance::frozen` set. A frozen clip's pipeline is kept `Paused` at
+    /// `source_in_secs` (so it always shows the held anchor frame) rather than actually
+    /// playing, so [`OcaApp::pump_preview_frame`] has no `Preview::position_secs` to derive
+    /// the advancing playhead from the way it does for a normal clip — this stands in for it.
+    /// `None` when nothing is playing or the current clip isn't frozen.
+    preview_frozen_since: Option<(std::time::Instant, f64)>,
     import_tx: UnboundedSender<ImportEvent>,
     import_rx: UnboundedReceiver<ImportEvent>,
     /// How many files a call to [`OcaApp::spawn_import`] haven't been probed yet, in the
@@ -494,6 +502,7 @@ impl OcaApp {
             preview_clip_id: None,
             preview_texture: None,
             preview_playing: false,
+            preview_frozen_since: None,
             import_tx,
             import_rx,
             pending_imports: 0,
