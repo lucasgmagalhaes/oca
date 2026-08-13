@@ -126,6 +126,21 @@ fn a_cropped_clip_shrinks_the_decoded_frame() {
 }
 
 #[test]
+fn a_pixelized_clip_still_opens_and_decodes_at_full_size() {
+    let mut c = clip();
+    c.pixelize_intensity = 0.5;
+
+    let preview = Preview::open(&fixture("video.mp4"), Some(&c)).unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("a frame should be available right after preroll");
+    // The downscale/upscale pair round-trips back to the source size — this proves the filter
+    // bin links and prerolls a real frame, not that pixels are mosaiced (nothing here
+    // decodes/compares pixel content).
+    assert_eq!((frame.width, frame.height), (320, 240));
+}
+
+#[test]
 fn a_flipped_clip_still_opens_and_decodes() {
     let mut c = clip();
     c.flipped_h = true;

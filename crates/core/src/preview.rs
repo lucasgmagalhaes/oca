@@ -61,16 +61,19 @@ pub struct VideoFrame {
 /// suitable for `playbin`'s `video-filter` property — `None` if every covered effect is
 /// neutral (leaves `video-filter` unset). Stage order matches
 /// [`crate::timeline::ClipInstance::video_filter_chain`]'s (crop, then color adjustments, then
-/// the color-filter tint, then blur/sharpen, then flip) for consistency with what export
-/// applies, even though the element set differs (GStreamer elements here, avfilter there) and
-/// the covered subset is narrower (no vignette — no matching element in this GStreamer
-/// install; no chroma key — only meaningful once layering exists; no gain — preview has no
-/// audio route at all yet).
+/// the color-filter tint, then blur/sharpen, then pixelize, then flip) for consistency with
+/// what export applies, even though the element set differs (GStreamer elements here, avfilter
+/// there) and the covered subset is narrower (no vignette — no matching element in this
+/// GStreamer install; no chroma key — only meaningful once layering exists; no gain — preview
+/// has no audio route at all yet; no shake/glitch/zoom/transitions — all four are animated
+/// per-frame in export via avfilter's `n` frame-count expressions, which this GstBin approach
+/// has no equivalent for without a manual pad-probe driving element properties frame by frame).
 ///
 /// `resolution`, if known (`None` for an audio-only source, which shouldn't reach here but is
-/// handled by just skipping the crop stage), is the *actual* decoded frame size — needed since
-/// `videocrop`'s properties are plain pixel counts and `path` may be a lower-resolution editing
-/// proxy rather than the original asset.
+/// handled by just skipping the crop/pixelize stages), is the *actual* decoded frame size —
+/// needed since `videocrop`'s properties and the pixelize downscale/upscale target size are
+/// plain pixel counts, and `path` may be a lower-resolution editing proxy rather than the
+/// original asset.
 // TODO: transitions (ClipInstance::transition_in / ClipSegment::transition_in) are not yet
 // covered by preview — the fade/slide/zoom avfilter expressions are built in bridge.c's
 // avbridge_encode_timeline_export and only affect the exported file. Adding them here would
@@ -136,6 +139,51 @@ fn build_video_filter_bin(
             .build()
             .map_err(PreviewError::CreateElement)?;
         elements.push(blur);
+    }
+
+    if let Some((width, height)) = resolution {
+        if clip.pixelize_intensity > 0.0 {
+            // Same block-size formula as video_filter_chain's: 2px (subtle) to 50px (heavy
+            // censorship). Two videoscale elements (nearest-neighbour, for the hard mosaic
+            // look — bilinear would just blur) with a capsfilter pinning each stage's output
+            // size stand in for avfilter's single scale-down/scale-up expression pair.
+            let block = (2.0 + clip.pixelize_intensity * 48.0).round().max(1.0) as u32;
+            let small_w = (width / block).max(1) as i32;
+            let small_h = (height / block).max(1) as i32;
+
+            let downscale = gst::ElementFactory::make("videoscale")
+                .property_from_str("method", "nearest-neighbour")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let small_caps = gst::ElementFactory::make("capsfilter")
+                .property(
+                    "caps",
+                    gst::Caps::builder("video/x-raw")
+                        .field("width", small_w)
+                        .field("height", small_h)
+                        .build(),
+                )
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let upscale = gst::ElementFactory::make("videoscale")
+                .property_from_str("method", "nearest-neighbour")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let full_caps = gst::ElementFactory::make("capsfilter")
+                .property(
+                    "caps",
+                    gst::Caps::builder("video/x-raw")
+                        .field("width", width as i32)
+                        .field("height", height as i32)
+                        .build(),
+                )
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            elements.push(downscale);
+            elements.push(small_caps);
+            elements.push(upscale);
+            elements.push(full_caps);
+        }
     }
 
     if clip.flipped_h {
