@@ -61,25 +61,27 @@ pub struct VideoFrame {
 /// suitable for `playbin`'s `video-filter` property — `None` if every covered effect is
 /// neutral (leaves `video-filter` unset). Stage order matches
 /// [`crate::timeline::ClipInstance::video_filter_chain`]'s (crop, then color adjustments, then
-/// the color-filter tint, then blur/sharpen, then pixelize, then flip) for consistency with
-/// what export applies, even though the element set differs (GStreamer elements here, avfilter
-/// there) and the covered subset is narrower (no vignette — no matching element in this
-/// GStreamer install; no chroma key — only meaningful once layering exists; no gain — preview
-/// has no audio route at all yet; no shake/glitch/zoom/transitions — all four are animated
-/// per-frame in export via avfilter's `n` frame-count expressions, which this GstBin approach
-/// has no equivalent for without a manual pad-probe driving element properties frame by frame).
+/// the color-filter tint, then blur/sharpen, then pixelize, then shake, then flip) for
+/// consistency with what export applies, even though the element set differs (GStreamer
+/// elements here, avfilter there) and the covered subset is narrower (no vignette — no
+/// matching element in this GStreamer install; no chroma key — only meaningful once layering
+/// exists; no gain — preview has no audio route at all yet; no glitch/zoom/transitions —
+/// animated per-frame in export via avfilter's `n` frame-count expressions with no static
+/// element equivalent GStreamer-side; shake gets one, via a pad probe, since videocrop's
+/// left/top/right/bottom properties are settable per-buffer without renegotiating caps).
 ///
 /// `resolution`, if known (`None` for an audio-only source, which shouldn't reach here but is
-/// handled by just skipping the crop/pixelize stages), is the *actual* decoded frame size —
-/// needed since `videocrop`'s properties and the pixelize downscale/upscale target size are
-/// plain pixel counts, and `path` may be a lower-resolution editing proxy rather than the
-/// original asset.
+/// handled by just skipping the crop/pixelize/shake stages), is the *actual* decoded frame
+/// size — needed since `videocrop`'s properties and the pixelize/shake downscale/upscale
+/// target sizes are plain pixel counts, and `path` may be a lower-resolution editing proxy
+/// rather than the original asset.
 // TODO: transitions (ClipInstance::transition_in / ClipSegment::transition_in) are not yet
 // covered by preview — the fade/slide/zoom avfilter expressions are built in bridge.c's
 // avbridge_encode_timeline_export and only affect the exported file. Adding them here would
 // require either a GStreamer element equivalent (e.g. `frei0r-filter-cairoimagegraphics` for
-// drawbox, or a custom element) or a manual frame-count-driven property update, neither of
-// which fits cleanly in this function's current GstBin approach.
+// drawbox, or a custom element) or a manual frame-count-driven property update — the same
+// pad-probe technique shake now uses below would work for the crop/scale-based zoom transition,
+// but fade (alpha ramp) and slide (drawbox wipe) still need their own element equivalents.
 fn build_video_filter_bin(
     clip: &ClipInstance,
     resolution: Option<(u32, u32)>,
@@ -181,6 +183,63 @@ fn build_video_filter_bin(
                 .map_err(PreviewError::CreateElement)?;
             elements.push(downscale);
             elements.push(small_caps);
+            elements.push(upscale);
+            elements.push(full_caps);
+        }
+    }
+
+    if let Some((width, height)) = resolution {
+        if clip.shake_intensity > 0.0 {
+            // avfilter's crop=...:iw*margin*(1+sin(n*0.31)):ih*margin*(1+cos(n*0.23)) slides a
+            // fixed-size crop *window* around within a margin, keyed off n (frame count).
+            // videocrop has no expression support, so a buffer probe on its sink pad recomputes
+            // left/top/right/bottom from a running frame counter before every frame — same
+            // sinusoids, translated from ffmpeg's "window position" framing to videocrop's
+            // "pixels trimmed per edge" one: left + right (and top + bottom) are kept summing
+            // to a constant total_trim (only the split between them oscillates), so videocrop's
+            // *output* size never changes frame to frame and the fixed-size upscale after it
+            // never needs to renegotiate caps mid-stream.
+            let margin = clip.shake_intensity * 0.08_f32;
+            let total_trim_w = ((width as f32 * 2.0 * margin).round() as i32)
+                .clamp(0, (width as i32 - 2).max(0));
+            let total_trim_h = ((height as f32 * 2.0 * margin).round() as i32)
+                .clamp(0, (height as i32 - 2).max(0));
+
+            let crop = gst::ElementFactory::make("videocrop")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let crop_for_probe = crop.clone();
+            let frame_counter = std::sync::atomic::AtomicU64::new(0);
+            let sink_pad = crop
+                .static_pad("sink")
+                .expect("videocrop always has a sink pad");
+            sink_pad.add_probe(gst::PadProbeType::BUFFER, move |_pad, _info| {
+                let n = frame_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) as f64;
+                let frac_x = (1.0 + (n * 0.31).sin()) / 2.0;
+                let frac_y = (1.0 + (n * 0.23).cos()) / 2.0;
+                let left = (total_trim_w as f64 * frac_x).round() as i32;
+                let top = (total_trim_h as f64 * frac_y).round() as i32;
+                crop_for_probe.set_property("left", left);
+                crop_for_probe.set_property("right", total_trim_w - left);
+                crop_for_probe.set_property("top", top);
+                crop_for_probe.set_property("bottom", total_trim_h - top);
+                gst::PadProbeReturn::Ok
+            });
+
+            let upscale = gst::ElementFactory::make("videoscale")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let full_caps = gst::ElementFactory::make("capsfilter")
+                .property(
+                    "caps",
+                    gst::Caps::builder("video/x-raw")
+                        .field("width", width as i32)
+                        .field("height", height as i32)
+                        .build(),
+                )
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            elements.push(crop);
             elements.push(upscale);
             elements.push(full_caps);
         }

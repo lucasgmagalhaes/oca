@@ -141,6 +141,26 @@ fn a_pixelized_clip_still_opens_and_decodes_at_full_size() {
 }
 
 #[test]
+fn a_shaken_clip_still_opens_and_decodes_at_full_size() {
+    let mut c = clip();
+    c.shake_intensity = 0.5;
+
+    let preview = Preview::open(&fixture("video.mp4"), Some(&c)).unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("a frame should be available right after preroll");
+    // The dynamic videocrop + fixed-size upscale round-trips back to the source size on every
+    // frame (crop's own output size never changes, only where within the margin it sits) — this
+    // proves the pad probe doesn't crash the pipeline or desync caps, not that pixels shake.
+    assert_eq!((frame.width, frame.height), (320, 240));
+
+    // A few more pulls exercise the pad probe's frame counter past frame 0 without erroring.
+    for _ in 0..3 {
+        let _ = preview.current_frame();
+    }
+}
+
+#[test]
 fn a_flipped_clip_still_opens_and_decodes() {
     let mut c = clip();
     c.flipped_h = true;
