@@ -86,7 +86,6 @@ fn fixture_project() -> Project {
                     text_clips: vec![],
 
                     visible: true,
-
                 }],
             },
         }],

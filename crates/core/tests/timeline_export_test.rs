@@ -93,7 +93,6 @@ fn renders_two_clips_with_different_effects_as_one_concatenated_export() {
         text_clips: vec![],
 
         visible: true,
-
     };
     let sequence = sequence_with(vec![track]);
 
@@ -130,15 +129,14 @@ fn frozen_clip_still_exports_its_full_timeline_duration() {
         text_clips: vec![],
 
         visible: true,
-
     };
     let sequence = sequence_with(vec![track]);
 
     let output = std::env::temp_dir().join("avcore_test_timeline_export_frozen.mp4");
     let cancel = AtomicBool::new(false);
 
-    let outcome = render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_| {})
-        .unwrap();
+    let outcome =
+        render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_| {}).unwrap();
 
     assert_eq!(outcome, RenderOutcome::Completed);
 
@@ -170,7 +168,6 @@ fn rejects_a_clip_with_a_missing_asset() {
         text_clips: vec![],
 
         visible: true,
-
     };
     let sequence = sequence_with(vec![track]);
     let output = std::env::temp_dir().join("avcore_test_timeline_export_missing_asset.mp4");
@@ -194,7 +191,6 @@ fn cancelling_mid_timeline_export_reports_cancelled() {
         text_clips: vec![],
 
         visible: true,
-
     };
     let sequence = sequence_with(vec![track]);
     let output = std::env::temp_dir().join("avcore_test_timeline_export_cancelled.mp4");
@@ -231,7 +227,6 @@ fn fade_transition_exports_without_error() {
         text_clips: vec![],
 
         visible: true,
-
     };
     let sequence = sequence_with(vec![track]);
 
@@ -265,7 +260,6 @@ fn slide_transition_exports_without_error() {
         text_clips: vec![],
 
         visible: true,
-
     };
     let sequence = sequence_with(vec![track]);
 
@@ -299,7 +293,6 @@ fn zoom_transition_exports_without_error() {
         text_clips: vec![],
 
         visible: true,
-
     };
     let sequence = sequence_with(vec![track]);
 
@@ -338,7 +331,6 @@ fn animated_ken_burns_zoom_exports_without_error() {
         text_clips: vec![],
 
         visible: true,
-
     };
     let sequence = sequence_with(vec![track]);
 

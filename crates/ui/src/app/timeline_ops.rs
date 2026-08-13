@@ -295,12 +295,7 @@ impl OcaApp {
     /// target's row is a same-kind track. A no-op if the clip or target track aren't found,
     /// the kinds don't match, or `new_start_secs` is negative — see
     /// [`avcore::timeline::Timeline::move_clip_to_track`] for the exact rules.
-    pub fn move_clip_to_track(
-        &mut self,
-        clip_id: u64,
-        target_track_id: u64,
-        new_start_secs: f64,
-    ) {
+    pub fn move_clip_to_track(&mut self, clip_id: u64, target_track_id: u64, new_start_secs: f64) {
         self.active_project_mut().timeline_mut().move_clip_to_track(
             clip_id,
             target_track_id,
@@ -481,7 +476,11 @@ impl OcaApp {
     /// visible and starts empty; the user drags clips onto it from the media library.
     pub fn add_video_track(&mut self) {
         let timeline = self.active_project_mut().timeline_mut();
-        let video_count = timeline.tracks.iter().filter(|t| t.kind == TrackKind::Video).count();
+        let video_count = timeline
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Video)
+            .count();
         let track_id = timeline.tracks.iter().map(|t| t.id).max().unwrap_or(0) + 1;
         let name = format!("V{}", video_count + 1);
         timeline.tracks.push(avcore::timeline::Track {

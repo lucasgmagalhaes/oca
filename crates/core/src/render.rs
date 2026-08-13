@@ -55,7 +55,11 @@ pub fn apply_export_aspect_ratio(canvas: Canvas, ratio: ExportAspectRatio) -> Ca
         ExportAspectRatio::Portrait => (1080, 1920),
         ExportAspectRatio::Square => (1080, 1080),
     };
-    Canvas { width, height, ..canvas }
+    Canvas {
+        width,
+        height,
+        ..canvas
+    }
 }
 
 #[derive(Debug)]
@@ -287,7 +291,11 @@ pub fn render_export_job(
     let total_duration_secs: f64 = segments
         .iter()
         .map(|s| {
-            let speed = if s.speed_factor > 0.0 { s.speed_factor as f64 } else { 1.0 };
+            let speed = if s.speed_factor > 0.0 {
+                s.speed_factor as f64
+            } else {
+                1.0
+            };
             (s.source_out_secs - s.source_in_secs) / speed
         })
         .sum();
@@ -327,19 +335,27 @@ pub fn render_timeline_export(
 ) -> Result<RenderOutcome, RenderError> {
     let (segments, canvas) = resolve_timeline_segments(sequence, media_library)?;
     let text_segments = resolve_text_segments(sequence);
-    render_export_job(&segments, canvas, output, target_lufs, &text_segments, cancel, on_progress)
+    render_export_job(
+        &segments,
+        canvas,
+        output,
+        target_lufs,
+        &text_segments,
+        cancel,
+        on_progress,
+    )
 }
 
 /// Applies text overlays to an already-written export file in place. Writes to a temp path
 /// beside `output`, then renames over `output`. Logs and silently skips on any error so a
 /// font-config failure doesn't destroy the already-completed video file.
-fn apply_text_overlay_pass(
-    output: &Path,
-    canvas: Canvas,
-    text_segments: &[avbridge::TextSegment],
-) {
-    let Some(parent) = output.parent() else { return };
-    let Some(stem) = output.file_stem().and_then(|s| s.to_str()) else { return };
+fn apply_text_overlay_pass(output: &Path, canvas: Canvas, text_segments: &[avbridge::TextSegment]) {
+    let Some(parent) = output.parent() else {
+        return;
+    };
+    let Some(stem) = output.file_stem().and_then(|s| s.to_str()) else {
+        return;
+    };
     let tmp = parent.join(format!("{stem}.text_tmp.mp4"));
 
     match avbridge::apply_text_overlays(
@@ -468,7 +484,13 @@ pub fn resolve_timeline_segments_multi(
                 } else {
                     0
                 };
-                canvas = Some(Canvas { width, height, fps_num, fps_den, bit_rate_bps });
+                canvas = Some(Canvas {
+                    width,
+                    height,
+                    fps_num,
+                    fps_den,
+                    bit_rate_bps,
+                });
             }
         }
 
@@ -502,14 +524,26 @@ pub fn render_export_job_multi(
         return Err(RenderError::EmptyTimeline);
     }
     if track_segments.len() == 1 {
-        return render_export_job(&track_segments[0], canvas, output, target_lufs, text_segments, cancel, on_progress);
+        return render_export_job(
+            &track_segments[0],
+            canvas,
+            output,
+            target_lufs,
+            text_segments,
+            cancel,
+            on_progress,
+        );
     }
 
     // Total output duration from track 0 (the primary / audio track).
     let total_duration_secs: f64 = track_segments[0]
         .iter()
         .map(|s| {
-            let speed = if s.speed_factor > 0.0 { s.speed_factor as f64 } else { 1.0 };
+            let speed = if s.speed_factor > 0.0 {
+                s.speed_factor as f64
+            } else {
+                1.0
+            };
             (s.source_out_secs - s.source_in_secs) / speed
         })
         .sum();

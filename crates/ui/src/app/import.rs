@@ -80,8 +80,7 @@ impl OcaApp {
                     else {
                         continue;
                     };
-                    if let Some(asset) =
-                        project.media_library.iter_mut().find(|a| a.id == asset_id)
+                    if let Some(asset) = project.media_library.iter_mut().find(|a| a.id == asset_id)
                     {
                         tracing::debug!(
                             asset_id,

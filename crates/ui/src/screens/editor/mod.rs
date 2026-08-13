@@ -511,8 +511,8 @@ fn preview_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         });
         if timeline_duration > 0.0 {
             let mut position = app.active_project().timeline().playhead_secs;
-            let slider = ui
-                .add(egui::Slider::new(&mut position, 0.0..=timeline_duration).show_value(false));
+            let slider =
+                ui.add(egui::Slider::new(&mut position, 0.0..=timeline_duration).show_value(false));
             if slider.changed() {
                 app.seek_preview(position);
             }

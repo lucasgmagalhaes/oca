@@ -27,8 +27,7 @@ pub(super) fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, 
                 components::section_label(ui, Text::SelectedClip.tr(locale));
                 let Some(asset) = app.selected_asset() else {
                     ui.label(
-                        RichText::new(Text::NoClipSelected.tr(locale))
-                            .color(theme::TEXT_MUTED),
+                        RichText::new(Text::NoClipSelected.tr(locale)).color(theme::TEXT_MUTED),
                     );
                     return;
                 };
@@ -132,8 +131,7 @@ pub(super) fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, 
 
                     // "Congelar" only makes sense for a video block — audio clips have no
                     // frame to hold.
-                    if app.selected_clip_track_kind()
-                        == Some(avcore::timeline::TrackKind::Video)
+                    if app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Video)
                         && components::property_toggle(
                             ui,
                             Text::PropFreeze.tr(locale),
@@ -161,9 +159,7 @@ pub(super) fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, 
                     }
 
                     // Crop reframes the video frame itself — no meaning for an audio block.
-                    if app.selected_clip_track_kind()
-                        == Some(avcore::timeline::TrackKind::Video)
-                    {
+                    if app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Video) {
                         components::property_section(
                             ui,
                             Text::PropCrop.tr(locale),
@@ -476,20 +472,14 @@ pub(super) fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, 
                             |ui| {
                                 let mut changed = ui
                                     .add(
-                                        egui::Slider::new(
-                                            &mut zoom_start,
-                                            crate::app::ZOOM_RANGE,
-                                        )
-                                        .text(Text::PropZoomStart.tr(locale)),
+                                        egui::Slider::new(&mut zoom_start, crate::app::ZOOM_RANGE)
+                                            .text(Text::PropZoomStart.tr(locale)),
                                     )
                                     .changed();
                                 changed |= ui
                                     .add(
-                                        egui::Slider::new(
-                                            &mut zoom_end,
-                                            crate::app::ZOOM_RANGE,
-                                        )
-                                        .text(Text::PropZoomEnd.tr(locale)),
+                                        egui::Slider::new(&mut zoom_end, crate::app::ZOOM_RANGE)
+                                            .text(Text::PropZoomEnd.tr(locale)),
                                     )
                                     .changed();
                                 changed
@@ -503,16 +493,11 @@ pub(super) fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, 
         });
 }
 
-fn mask_shape_label(
-    shape: avcore::timeline::MaskShape,
-    locale: crate::i18n::Locale,
-) -> String {
+fn mask_shape_label(shape: avcore::timeline::MaskShape, locale: crate::i18n::Locale) -> String {
     match shape {
         avcore::timeline::MaskShape::None => Text::MaskNone.tr(locale).to_string(),
         avcore::timeline::MaskShape::Circle => Text::MaskCircle.tr(locale).to_string(),
-        avcore::timeline::MaskShape::RoundedRect => {
-            Text::MaskRoundedRect.tr(locale).to_string()
-        }
+        avcore::timeline::MaskShape::RoundedRect => Text::MaskRoundedRect.tr(locale).to_string(),
     }
 }
 
@@ -536,9 +521,7 @@ fn transition_type_label(
     match transition {
         avcore::timeline::TransitionType::None => Text::TransitionNone.tr(locale).to_string(),
         avcore::timeline::TransitionType::Fade => Text::TransitionFade.tr(locale).to_string(),
-        avcore::timeline::TransitionType::HardCut => {
-            Text::TransitionHardCut.tr(locale).to_string()
-        }
+        avcore::timeline::TransitionType::HardCut => Text::TransitionHardCut.tr(locale).to_string(),
         avcore::timeline::TransitionType::Slide => Text::TransitionSlide.tr(locale).to_string(),
         avcore::timeline::TransitionType::Zoom => Text::TransitionZoom.tr(locale).to_string(),
     }
@@ -567,16 +550,18 @@ fn text_clip_properties(
         .cloned();
 
     let Some(mut tc) = current else {
-        ui.label(
-            RichText::new(Text::NoTextClipSelected.tr(locale)).color(theme::TEXT_MUTED),
-        );
+        ui.label(RichText::new(Text::NoTextClipSelected.tr(locale)).color(theme::TEXT_MUTED));
         return;
     };
 
     let mut changed = false;
 
     // Text content
-    ui.label(RichText::new(Text::PropTextContent.tr(locale)).size(12.0).color(theme::TEXT_MUTED));
+    ui.label(
+        RichText::new(Text::PropTextContent.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
     let text_resp = ui.add(
         egui::TextEdit::singleline(&mut tc.text)
             .desired_width(f32::INFINITY)
@@ -626,9 +611,10 @@ fn text_clip_properties(
             .color(theme::TEXT_MUTED),
     );
     if ui
-        .add(egui::Slider::new(&mut tc.pos_x, 0.0..=1.0).custom_formatter(|v, _| {
-            format!("{:.0}%", v * 100.0)
-        }))
+        .add(
+            egui::Slider::new(&mut tc.pos_x, 0.0..=1.0)
+                .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
+        )
         .changed()
     {
         changed = true;
@@ -639,9 +625,10 @@ fn text_clip_properties(
             .color(theme::TEXT_MUTED),
     );
     if ui
-        .add(egui::Slider::new(&mut tc.pos_y, 0.0..=1.0).custom_formatter(|v, _| {
-            format!("{:.0}%", v * 100.0)
-        }))
+        .add(
+            egui::Slider::new(&mut tc.pos_y, 0.0..=1.0)
+                .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
+        )
         .changed()
     {
         changed = true;

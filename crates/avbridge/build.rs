@@ -95,7 +95,16 @@ fn main() {
             // On macOS Homebrew the dylibs are symlinks like libavformat.dylib -> libavformat.61.dylib.
             // Accept either the versioned or unversioned name; just check the directory has something.
             let found = std::fs::read_dir(&lib_dir)
-                .map(|mut d| d.any(|e| e.map(|e| e.file_name().to_string_lossy().starts_with(&format!("{prefix}{name}."))).unwrap_or(false)))
+                .map(|mut d| {
+                    d.any(|e| {
+                        e.map(|e| {
+                            e.file_name()
+                                .to_string_lossy()
+                                .starts_with(&format!("{prefix}{name}."))
+                        })
+                        .unwrap_or(false)
+                    })
+                })
                 .unwrap_or(false);
             if !found {
                 panic!(

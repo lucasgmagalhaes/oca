@@ -263,8 +263,8 @@ fn build_video_filter_bin(
             // *output* size never changes frame to frame and the fixed-size upscale after it
             // never needs to renegotiate caps mid-stream.
             let margin = clip.shake_intensity * 0.08_f32;
-            let total_trim_w = ((width as f32 * 2.0 * margin).round() as i32)
-                .clamp(0, (width as i32 - 2).max(0));
+            let total_trim_w =
+                ((width as f32 * 2.0 * margin).round() as i32).clamp(0, (width as i32 - 2).max(0));
             let total_trim_h = ((height as f32 * 2.0 * margin).round() as i32)
                 .clamp(0, (height as i32 - 2).max(0));
 

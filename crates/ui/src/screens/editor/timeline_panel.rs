@@ -117,15 +117,13 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                 toggle_track_visibility_requests.push(track_id);
                             }
                             ui.add(
-                                egui::Label::new(
-                                    RichText::new(&track.name)
-                                        .size(11.0)
-                                        .color(if visible {
-                                            theme::TEXT_SECONDARY
-                                        } else {
-                                            theme::TEXT_MUTED
-                                        }),
-                                )
+                                egui::Label::new(RichText::new(&track.name).size(11.0).color(
+                                    if visible {
+                                        theme::TEXT_SECONDARY
+                                    } else {
+                                        theme::TEXT_MUTED
+                                    },
+                                ))
                                 .truncate(),
                             );
                         },
@@ -216,9 +214,7 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                             if ui
                                 .add_enabled(
                                     has_formatting_clipboard,
-                                    egui::Button::new(
-                                        Text::ContextMenuPasteFormatting.tr(locale),
-                                    ),
+                                    egui::Button::new(Text::ContextMenuPasteFormatting.tr(locale)),
                                 )
                                 .clicked()
                             {
@@ -257,8 +253,7 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                         }
                         if body_response.dragged() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                            let delta_secs =
-                                (body_response.drag_delta().x / px_per_sec) as f64;
+                            let delta_secs = (body_response.drag_delta().x / px_per_sec) as f64;
                             if let Some(pointer) = body_response.interact_pointer_pos() {
                                 clip_drags.push(ClipDrag {
                                     clip_id: clip.id,
@@ -270,13 +265,11 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                             }
                         }
                         if let Some(pos) = left_response.interact_pointer_pos() {
-                            let secs =
-                                ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
+                            let secs = ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
                             trim_requests.push((clip.id, TrimEdge::Start(secs)));
                         }
                         if let Some(pos) = right_response.interact_pointer_pos() {
-                            let secs =
-                                ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
+                            let secs = ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
                             trim_requests.push((clip.id, TrimEdge::End(secs)));
                         }
 
@@ -330,10 +323,7 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                             painter.rect_stroke(
                                 clip_rect,
                                 egui::CornerRadius::same(4),
-                                egui::Stroke::new(
-                                    3.0,
-                                    egui::Color32::from_black_alpha(alpha),
-                                ),
+                                egui::Stroke::new(3.0, egui::Color32::from_black_alpha(alpha)),
                                 egui::StrokeKind::Inside,
                             );
                         }
@@ -441,14 +431,9 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                                 tc.color_rgba[2],
                                 120,
                             );
-                            painter.rect_filled(
-                                tc_rect,
-                                egui::CornerRadius::same(4),
-                                block_color,
-                            );
+                            painter.rect_filled(tc_rect, egui::CornerRadius::same(4), block_color);
                             // Clip the text label to the block width.
-                            let label_pos =
-                                tc_rect.left_center() + egui::vec2(4.0, 0.0);
+                            let label_pos = tc_rect.left_center() + egui::vec2(4.0, 0.0);
                             painter.text(
                                 label_pos,
                                 egui::Align2::LEFT_CENTER,
@@ -627,10 +612,8 @@ fn draw_filmstrip(
     let mut x = clip_rect.left();
     while x < clip_rect.right() {
         let w = tile_width.min(clip_rect.right() - x);
-        let tile_rect = egui::Rect::from_min_size(
-            egui::pos2(x, clip_rect.top()),
-            egui::vec2(w, tile_height),
-        );
+        let tile_rect =
+            egui::Rect::from_min_size(egui::pos2(x, clip_rect.top()), egui::vec2(w, tile_height));
         let time_in_source = source_in_secs + ((x - clip_rect.left()) / px_per_sec) as f64;
         let bucket = (time_in_source / THUMBNAIL_BUCKET_SECS).floor() as i64;
         match thumbnail_textures.get(&(asset.id, bucket)) {
@@ -775,9 +758,7 @@ fn draw_playhead(
 /// the timeline block — `None` for [`avcore::timeline::ColorFilter::None`] (nothing drawn).
 /// Just a preview-panel cue, not the real filtered pixels (see the field's doc comment for the
 /// preview/export gap).
-pub(super) fn color_filter_tint(
-    filter: avcore::timeline::ColorFilter,
-) -> Option<egui::Color32> {
+pub(super) fn color_filter_tint(filter: avcore::timeline::ColorFilter) -> Option<egui::Color32> {
     match filter {
         avcore::timeline::ColorFilter::None => None,
         avcore::timeline::ColorFilter::BlackAndWhite => {

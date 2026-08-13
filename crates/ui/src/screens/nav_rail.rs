@@ -93,7 +93,11 @@ fn rail_button(ui: &mut egui::Ui, app: &mut OcaApp, screen: Screen, icon: &str, 
 
 fn prefs_button(ui: &mut egui::Ui, app: &mut OcaApp, icon: &str, label: &str) {
     let active = app.prefs_open;
-    let color = if active { theme::ACCENT } else { theme::TEXT_MUTED };
+    let color = if active {
+        theme::ACCENT
+    } else {
+        theme::TEXT_MUTED
+    };
     let (rect, response) = ui.allocate_exact_size(egui::vec2(52.0, 46.0), egui::Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
     if ui.is_rect_visible(rect) {
@@ -105,7 +109,8 @@ fn prefs_button(ui: &mut egui::Ui, app: &mut OcaApp, icon: &str, label: &str) {
             None
         };
         if let Some(bg) = bg {
-            ui.painter().rect_filled(rect, egui::CornerRadius::same(8), bg);
+            ui.painter()
+                .rect_filled(rect, egui::CornerRadius::same(8), bg);
         }
         let painter = ui.painter_at(rect);
         painter.text(

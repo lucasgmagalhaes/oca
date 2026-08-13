@@ -35,13 +35,7 @@ impl OcaApp {
     /// `crop_w`/`crop_h`), each independently clamped to `[0.0, 1.0]` (`crop_w`/`crop_h` floored
     /// at [`CROP_MIN_SIZE`]) — what dragging the properties panel's crop controls does. A no-op
     /// if nothing is selected.
-    pub fn set_selected_clip_crop(
-        &mut self,
-        crop_x: f32,
-        crop_y: f32,
-        crop_w: f32,
-        crop_h: f32,
-    ) {
+    pub fn set_selected_clip_crop(&mut self, crop_x: f32, crop_y: f32, crop_w: f32, crop_h: f32) {
         let crop_x = crop_x.clamp(0.0, 1.0);
         let crop_y = crop_y.clamp(0.0, 1.0);
         let crop_w = crop_w.clamp(CROP_MIN_SIZE, 1.0);
@@ -58,11 +52,7 @@ impl OcaApp {
     /// `mask_corner_radius`, the latter clamped to [`MASK_CORNER_RADIUS_RANGE`]) — what picking
     /// a shape/dragging the corner-radius slider in the properties panel does. A no-op if
     /// nothing is selected.
-    pub fn set_selected_clip_mask(
-        &mut self,
-        mask_shape: MaskShape,
-        mask_corner_radius: f32,
-    ) {
+    pub fn set_selected_clip_mask(&mut self, mask_shape: MaskShape, mask_corner_radius: f32) {
         let mask_corner_radius = mask_corner_radius.clamp(
             *MASK_CORNER_RADIUS_RANGE.start(),
             *MASK_CORNER_RADIUS_RANGE.end(),

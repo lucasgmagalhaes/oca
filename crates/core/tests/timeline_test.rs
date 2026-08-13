@@ -219,7 +219,6 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
                 text_clips: vec![],
 
                 visible: true,
-
             },
             Track {
                 id: 2,
@@ -231,7 +230,6 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
                 text_clips: vec![],
 
                 visible: true,
-
             },
         ],
         playhead_secs: 0.0,
@@ -250,7 +248,6 @@ fn track_with(clips: Vec<ClipInstance>) -> Track {
         text_clips: vec![],
 
         visible: true,
-
     }
 }
 
@@ -829,7 +826,6 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
             text_clips: vec![],
 
             visible: true,
-
         },
         Track {
             id: 2,
@@ -840,7 +836,6 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
             text_clips: vec![],
 
             visible: true,
-
         },
     ]);
 
@@ -863,7 +858,6 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
             text_clips: vec![],
 
             visible: true,
-
         },
         Track {
             id: 2,
@@ -874,7 +868,6 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
             text_clips: vec![],
 
             visible: true,
-
         },
     ]);
 
@@ -896,7 +889,6 @@ fn move_clip_to_track_is_a_no_op_for_an_unknown_target_track() {
         text_clips: vec![],
 
         visible: true,
-
     }]);
 
     let moved = timeline.move_clip_to_track(1, 99, 5.0);
@@ -917,7 +909,6 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
             text_clips: vec![],
 
             visible: true,
-
         },
         Track {
             id: 2,
@@ -928,7 +919,6 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
             text_clips: vec![],
 
             visible: true,
-
         },
     ]);
 
@@ -1020,7 +1010,6 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
             text_clips: vec![],
 
             visible: true,
-
         },
         Track {
             id: 2,
@@ -1031,7 +1020,6 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
             text_clips: vec![],
 
             visible: true,
-
         },
     ]);
 
@@ -1053,7 +1041,6 @@ fn timeline_clip_mut_returns_none_for_an_unknown_id() {
         text_clips: vec![],
 
         visible: true,
-
     }]);
 
     assert!(timeline.clip_mut(99).is_none());

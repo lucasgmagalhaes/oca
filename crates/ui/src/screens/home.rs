@@ -117,14 +117,23 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
 
                     let file_path = app.projects[i].file_path.clone();
                     card_resp.context_menu(|ui| {
-                        if ui.button(crate::i18n::Text::HomeCtxRename.tr(app.locale)).clicked() {
+                        if ui
+                            .button(crate::i18n::Text::HomeCtxRename.tr(app.locale))
+                            .clicked()
+                        {
                             rename_index = Some(i);
                         }
-                        if ui.button(crate::i18n::Text::HomeCtxRemove.tr(app.locale)).clicked() {
+                        if ui
+                            .button(crate::i18n::Text::HomeCtxRemove.tr(app.locale))
+                            .clicked()
+                        {
                             remove_index = Some(i);
                         }
                         if let Some(path) = &file_path {
-                            if ui.button(crate::i18n::Text::HomeCtxShowInFinder.tr(app.locale)).clicked() {
+                            if ui
+                                .button(crate::i18n::Text::HomeCtxShowInFinder.tr(app.locale))
+                                .clicked()
+                            {
                                 open_in_finder(path);
                             }
                         }
@@ -152,7 +161,10 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
 
 #[cfg(target_os = "macos")]
 fn open_in_finder(path: &std::path::PathBuf) {
-    let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+    let _ = std::process::Command::new("open")
+        .arg("-R")
+        .arg(path)
+        .spawn();
 }
 
 #[cfg(target_os = "windows")]

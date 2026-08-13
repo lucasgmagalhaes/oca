@@ -603,16 +603,23 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
         return Err(EncodeError::EmptyTimeline);
     }
     if tracks.len() == 1 {
-        return encode_timeline_export(&tracks[0], canvas, out_path, target_lufs, cancel, on_progress);
+        return encode_timeline_export(
+            &tracks[0],
+            canvas,
+            out_path,
+            target_lufs,
+            cancel,
+            on_progress,
+        );
     }
 
     let c_out =
         CString::new(out_path.to_string_lossy().as_bytes()).map_err(EncodeError::InvalidPath)?;
 
     // Build CString storage and RawClipSegment vecs for each track.
-    let mut per_track_paths: Vec<Vec<CString>>  = Vec::with_capacity(tracks.len());
-    let mut per_track_filts: Vec<Vec<CString>>  = Vec::with_capacity(tracks.len());
-    let mut per_track_raw:   Vec<Vec<RawClipSegment>> = Vec::with_capacity(tracks.len());
+    let mut per_track_paths: Vec<Vec<CString>> = Vec::with_capacity(tracks.len());
+    let mut per_track_filts: Vec<Vec<CString>> = Vec::with_capacity(tracks.len());
+    let mut per_track_raw: Vec<Vec<RawClipSegment>> = Vec::with_capacity(tracks.len());
     for segs in tracks {
         let mut paths = Vec::with_capacity(segs.len());
         let mut filts = Vec::with_capacity(segs.len());
@@ -621,10 +628,8 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
                 CString::new(seg.source_path.to_string_lossy().as_bytes())
                     .map_err(EncodeError::InvalidPath)?,
             );
-            filts.push(
-                CString::new(seg.video_filter.as_bytes())
-                    .map_err(EncodeError::InvalidPath)?,
-            );
+            filts
+                .push(CString::new(seg.video_filter.as_bytes()).map_err(EncodeError::InvalidPath)?);
         }
         let raw: Vec<RawClipSegment> = segs
             .iter()
@@ -1000,16 +1005,14 @@ pub fn apply_text_overlays(
         return Ok(());
     }
 
-    let c_in =
-        CString::new(in_path.to_string_lossy().as_bytes()).map_err(TextOverlayError::InvalidPath)?;
+    let c_in = CString::new(in_path.to_string_lossy().as_bytes())
+        .map_err(TextOverlayError::InvalidPath)?;
     let c_out = CString::new(out_path.to_string_lossy().as_bytes())
         .map_err(TextOverlayError::InvalidPath)?;
 
     let mut c_texts: Vec<CString> = Vec::with_capacity(segments.len());
     for seg in segments {
-        c_texts.push(
-            CString::new(seg.text.as_bytes()).map_err(TextOverlayError::InvalidPath)?,
-        );
+        c_texts.push(CString::new(seg.text.as_bytes()).map_err(TextOverlayError::InvalidPath)?);
     }
 
     let raw_segments: Vec<RawTextSegment> = segments

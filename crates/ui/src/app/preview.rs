@@ -24,7 +24,10 @@ impl OcaApp {
     /// for the early-exit check.
     pub(super) fn current_preview_clip_id(&self) -> Option<u64> {
         let timeline = self.active_project().timeline();
-        let track = timeline.tracks.iter().find(|t| t.kind == TrackKind::Video)?;
+        let track = timeline
+            .tracks
+            .iter()
+            .find(|t| t.kind == TrackKind::Video)?;
         Some(track.clip_at(timeline.playhead_secs)?.id)
     }
 
@@ -94,8 +97,9 @@ impl OcaApp {
                     if let Err(e) = preview.seek(clip.source_in_secs) {
                         warn!(error = %e, "failed to seek newly opened frozen preview");
                     }
-                    self.preview_frozen_since =
-                        self.preview_playing.then_some((std::time::Instant::now(), playhead));
+                    self.preview_frozen_since = self
+                        .preview_playing
+                        .then_some((std::time::Instant::now(), playhead));
                 } else {
                     let offset = clip.source_in_secs + (playhead - clip.start_secs);
                     if let Err(e) = preview.seek(offset) {
@@ -237,7 +241,12 @@ impl OcaApp {
                 .preview_frozen_since
                 .get_or_insert_with(|| (std::time::Instant::now(), clip.start_secs));
             let elapsed = started_at.elapsed().as_secs_f64();
-            frozen_playhead(playhead_at_start, elapsed, clip.start_secs, clip.duration_secs())
+            frozen_playhead(
+                playhead_at_start,
+                elapsed,
+                clip.start_secs,
+                clip.duration_secs(),
+            )
         } else {
             let Some(position) = preview.position_secs() else {
                 return;

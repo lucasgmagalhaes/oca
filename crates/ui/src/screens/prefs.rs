@@ -238,7 +238,11 @@ fn shortcut_binding_editor(app: &mut OcaApp, ui: &mut egui::Ui, locale: Locale) 
                         cancel = true;
                     }
                 } else {
-                    ui.label(RichText::new(combo_str.clone()).color(theme::TEXT_MUTED).monospace());
+                    ui.label(
+                        RichText::new(combo_str.clone())
+                            .color(theme::TEXT_MUTED)
+                            .monospace(),
+                    );
                     if ui.small_button(Text::BindingChange.tr(locale)).clicked() {
                         click_action = Some(*action);
                     }

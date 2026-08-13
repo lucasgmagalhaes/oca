@@ -460,9 +460,9 @@ impl ClipInstance {
                 // (verified against a real ffmpeg build, not just read off the docs).
                 let minwh = "min(W,H)";
                 let alpha_expr = match self.mask_shape {
-                    MaskShape::Circle => format!(
-                        "alpha(X,Y)*lte(pow(X-W/2,2)+pow(Y-H/2,2),pow({minwh}/2,2))"
-                    ),
+                    MaskShape::Circle => {
+                        format!("alpha(X,Y)*lte(pow(X-W/2,2)+pow(Y-H/2,2),pow({minwh}/2,2))")
+                    }
                     MaskShape::RoundedRect => {
                         // Rounded-rect signed-distance field: shrink the half-extents by the
                         // corner radius, measure how far outside that inner rect (X,Y) falls,
