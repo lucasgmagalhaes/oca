@@ -18,6 +18,12 @@ pub(super) fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, 
             ui.set_width(width);
             ui.set_height(height);
             ui.vertical(|ui| {
+                // Text clip properties take priority when a text clip is selected.
+                if let Some(tc_id) = app.selected_text_clip_id {
+                    text_clip_properties(app, ui, tc_id, locale);
+                    return;
+                }
+
                 components::section_label(ui, Text::SelectedClip.tr(locale));
                 let Some(asset) = app.selected_asset() else {
                     ui.label(
@@ -535,6 +541,164 @@ fn transition_type_label(
         }
         avcore::timeline::TransitionType::Slide => Text::TransitionSlide.tr(locale).to_string(),
         avcore::timeline::TransitionType::Zoom => Text::TransitionZoom.tr(locale).to_string(),
+    }
+}
+
+/// Renders the properties panel content for a selected text overlay clip. Shows controls for
+/// text content, font size, RGBA color, X/Y position, start time, and duration. Applies
+/// changes immediately by mutating the clip through the active project's timeline.
+fn text_clip_properties(
+    app: &mut OcaApp,
+    ui: &mut egui::Ui,
+    tc_id: u64,
+    locale: crate::i18n::Locale,
+) {
+    components::section_label(ui, Text::SelectedTextClip.tr(locale));
+
+    // Gather a copy of the current clip values to populate controls without holding a borrow.
+    let current = app
+        .active_project()
+        .timeline()
+        .tracks
+        .iter()
+        .filter(|t| t.kind == avcore::timeline::TrackKind::Text)
+        .flat_map(|t| &t.text_clips)
+        .find(|tc| tc.id == tc_id)
+        .cloned();
+
+    let Some(mut tc) = current else {
+        ui.label(
+            RichText::new(Text::NoTextClipSelected.tr(locale)).color(theme::TEXT_MUTED),
+        );
+        return;
+    };
+
+    let mut changed = false;
+
+    // Text content
+    ui.label(RichText::new(Text::PropTextContent.tr(locale)).size(12.0).color(theme::TEXT_MUTED));
+    let text_resp = ui.add(
+        egui::TextEdit::singleline(&mut tc.text)
+            .desired_width(f32::INFINITY)
+            .hint_text("Hello World"),
+    );
+    if text_resp.changed() {
+        changed = true;
+    }
+    ui.add_space(4.0);
+
+    // Font size
+    ui.label(
+        RichText::new(Text::PropTextFontSize.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(egui::Slider::new(&mut tc.font_size, 10.0..=120.0).suffix(" pt"))
+        .changed()
+    {
+        changed = true;
+    }
+
+    // Color picker (RGBA — alpha controlled via the color picker's alpha channel).
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(Text::PropTextColor.tr(locale))
+                .size(12.0)
+                .color(theme::TEXT_MUTED),
+        );
+        let mut color = egui::Color32::from_rgba_premultiplied(
+            tc.color_rgba[0],
+            tc.color_rgba[1],
+            tc.color_rgba[2],
+            tc.color_rgba[3],
+        );
+        if ui.color_edit_button_srgba(&mut color).changed() {
+            tc.color_rgba = [color.r(), color.g(), color.b(), color.a()];
+            changed = true;
+        }
+    });
+
+    // Position
+    ui.label(
+        RichText::new(Text::PropTextPosX.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(egui::Slider::new(&mut tc.pos_x, 0.0..=1.0).custom_formatter(|v, _| {
+            format!("{:.0}%", v * 100.0)
+        }))
+        .changed()
+    {
+        changed = true;
+    }
+    ui.label(
+        RichText::new(Text::PropTextPosY.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(egui::Slider::new(&mut tc.pos_y, 0.0..=1.0).custom_formatter(|v, _| {
+            format!("{:.0}%", v * 100.0)
+        }))
+        .changed()
+    {
+        changed = true;
+    }
+
+    // Start and duration
+    ui.label(
+        RichText::new(Text::PropTextStart.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(
+            egui::DragValue::new(&mut tc.start_secs)
+                .range(0.0..=f64::MAX)
+                .speed(0.1)
+                .suffix(" s"),
+        )
+        .changed()
+    {
+        changed = true;
+    }
+    ui.label(
+        RichText::new(Text::PropTextDuration.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(
+            egui::DragValue::new(&mut tc.duration_secs)
+                .range(0.1..=f64::MAX)
+                .speed(0.1)
+                .suffix(" s"),
+        )
+        .changed()
+    {
+        changed = true;
+    }
+
+    ui.add_space(6.0);
+    ui.label(
+        RichText::new(Text::TextExportNote.tr(locale))
+            .size(10.5)
+            .color(theme::TEXT_MUTED),
+    );
+
+    // Apply changes back to the clip in the active project.
+    if changed {
+        let timeline = app.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if track.kind == avcore::timeline::TrackKind::Text {
+                if let Some(existing) = track.text_clips.iter_mut().find(|c| c.id == tc_id) {
+                    *existing = tc;
+                    break;
+                }
+            }
+        }
     }
 }
 

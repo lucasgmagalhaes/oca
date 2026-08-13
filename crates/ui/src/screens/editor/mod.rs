@@ -233,6 +233,10 @@ fn toolbar(app: &mut OcaApp, ui: &mut egui::Ui) {
             app.merge_into_composite();
         }
         ui.separator();
+        if ui.button(Text::AddTextTrack.tr(locale)).clicked() {
+            app.add_text_track();
+        }
+        ui.separator();
         let _ = ui.button("↺");
         let _ = ui.button("↻");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

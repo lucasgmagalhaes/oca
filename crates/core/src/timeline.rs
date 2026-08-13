@@ -6,6 +6,33 @@ use serde::{Deserialize, Serialize};
 pub enum TrackKind {
     Video,
     Audio,
+    /// A text-overlay track: holds [`TextClip`]s rendered as drawtext overlays on export.
+    /// No media assets are placed here — only `text_clips`.
+    Text,
+}
+
+/// One placed text overlay on a [`Track`] whose [`TrackKind`] is [`TrackKind::Text`].
+/// Rendered into the exported video via the `drawtext` avfilter in a post-processing pass
+/// after the main timeline encode — see `avbridge::apply_text_overlays`.
+///
+/// Preview is not yet implemented — see the TODO in `core::preview`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextClip {
+    pub id: u64,
+    /// Start time on the timeline, in seconds.
+    pub start_secs: f64,
+    /// How long the text stays visible, in seconds.
+    pub duration_secs: f64,
+    /// The text string to render.
+    pub text: String,
+    /// Font size in points.
+    pub font_size: f32,
+    /// RGBA color: `[r, g, b, a]`, each 0–255. Alpha 255 = fully opaque.
+    pub color_rgba: [u8; 4],
+    /// Horizontal anchor as a 0.0–1.0 fraction of the canvas width (0.0 = left edge).
+    pub pos_x: f32,
+    /// Vertical anchor as a 0.0–1.0 fraction of the canvas height (0.0 = top edge).
+    pub pos_y: f32,
 }
 
 /// Layer mask shape for a block, per `request.md`'s Fase 4 "Máscaras" spec — clips a layer to a
@@ -583,12 +610,20 @@ impl ClipInstance {
 
 /// One row of the timeline (e.g. `V1`, `A1`, `A2` in the mockup), holding an ordered list of
 /// clips. Tracks don't overlap-check their own clips — that's an editing-time concern.
+///
+/// Text tracks (`kind == TrackKind::Text`) hold [`TextClip`]s in `text_clips` instead of
+/// [`ClipInstance`]s in `clips` — `clips` is always empty for a text track.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Track {
     pub id: u64,
     pub name: String,
     pub kind: TrackKind,
     pub clips: Vec<ClipInstance>,
+    /// Text overlays on this track. Only populated when `kind == TrackKind::Text`; always
+    /// empty for `Video`/`Audio` tracks. `#[serde(default)]` so projects saved before this
+    /// field existed load without error.
+    #[serde(default)]
+    pub text_clips: Vec<TextClip>,
 }
 
 impl Track {
@@ -684,12 +719,20 @@ impl Track {
     }
 
     /// The position, in seconds, where this track's last clip ends. `0.0` for an empty track —
-    /// the natural "append here" position for a clip added to this track.
+    /// the natural "append here" position for a clip added to this track. Accounts for both
+    /// [`ClipInstance`]s and [`TextClip`]s so text tracks report their own length correctly.
     pub fn duration_secs(&self) -> f64 {
-        self.clips
+        let clips_end = self
+            .clips
             .iter()
             .map(|c| c.start_secs + c.duration_secs())
-            .fold(0.0, f64::max)
+            .fold(0.0, f64::max);
+        let text_end = self
+            .text_clips
+            .iter()
+            .map(|t| t.start_secs + t.duration_secs)
+            .fold(0.0, f64::max);
+        clips_end.max(text_end)
     }
 }
 

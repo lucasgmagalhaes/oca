@@ -83,6 +83,8 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         let has_clipboard_clip = app.has_clipboard_clip();
         let has_formatting_clipboard = app.has_formatting_clipboard();
         let mut clicked_clip_id = None;
+        let mut clicked_text_clip_id: Option<u64> = None;
+        let mut delete_text_clip_requests: Vec<u64> = Vec::new();
         let mut delete_requests: Vec<u64> = Vec::new();
         let mut copy_requests: Vec<u64> = Vec::new();
         let mut cut_requests: Vec<u64> = Vec::new();
@@ -127,6 +129,9 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                             (avcore::timeline::TrackKind::Audio, _) => {
                                 theme::ACCENT.gamma_multiply(0.5)
                             }
+                            // Text tracks carry text_clips, not clips — this arm satisfies
+                            // exhaustiveness but is never reached at runtime.
+                            (avcore::timeline::TrackKind::Text, _) => theme::SURFACE_2,
                         };
 
                         // Narrow strips at each edge, on top of the body's click zone, so a
@@ -385,6 +390,61 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
                             );
                         }
                     }
+                    // Render text clips for text tracks as solid-color blocks with text label.
+                    if track.kind == avcore::timeline::TrackKind::Text {
+                        for tc in &track.text_clips {
+                            let x = track_rect.left() + tc.start_secs as f32 * px_per_sec;
+                            let w = (tc.duration_secs as f32 * px_per_sec).max(3.0);
+                            let tc_rect = egui::Rect::from_min_size(
+                                egui::pos2(x, track_rect.top()),
+                                egui::vec2(w, track_rect.height()),
+                            );
+                            let tc_response = ui.interact(
+                                tc_rect,
+                                ui.id().with(("timeline_text_clip", tc.id)),
+                                egui::Sense::click(),
+                            );
+                            tc_response.context_menu(|ui| {
+                                if ui.button(Text::ContextMenuDelete.tr(locale)).clicked() {
+                                    delete_text_clip_requests.push(tc.id);
+                                    ui.close();
+                                }
+                            });
+                            if tc_response.clicked() {
+                                clicked_text_clip_id = Some(tc.id);
+                            }
+                            let block_color = egui::Color32::from_rgba_unmultiplied(
+                                tc.color_rgba[0],
+                                tc.color_rgba[1],
+                                tc.color_rgba[2],
+                                120,
+                            );
+                            painter.rect_filled(
+                                tc_rect,
+                                egui::CornerRadius::same(4),
+                                block_color,
+                            );
+                            // Clip the text label to the block width.
+                            let label_pos =
+                                tc_rect.left_center() + egui::vec2(4.0, 0.0);
+                            painter.text(
+                                label_pos,
+                                egui::Align2::LEFT_CENTER,
+                                &tc.text,
+                                egui::FontId::proportional(11.0),
+                                egui::Color32::WHITE,
+                            );
+                            // Selection ring
+                            if app.selected_text_clip_id == Some(tc.id) {
+                                painter.rect_stroke(
+                                    tc_rect,
+                                    egui::CornerRadius::same(4),
+                                    egui::Stroke::new(2.0, theme::ACCENT),
+                                    egui::StrokeKind::Inside,
+                                );
+                            }
+                        }
+                    }
                     draw_playhead(
                         ui,
                         track_rect,
@@ -404,7 +464,23 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
             }
         });
         if let Some(id) = clicked_clip_id {
+            app.selected_text_clip_id = None;
             app.select_timeline_clip(id);
+        }
+        if let Some(id) = clicked_text_clip_id {
+            app.selected_clip_id = None;
+            app.selected_text_clip_id = Some(id);
+        }
+        for tc_id in delete_text_clip_requests {
+            let timeline = app.active_project_mut().timeline_mut();
+            for track in &mut timeline.tracks {
+                if track.kind == avcore::timeline::TrackKind::Text {
+                    track.text_clips.retain(|tc| tc.id != tc_id);
+                }
+            }
+            if app.selected_text_clip_id == Some(tc_id) {
+                app.selected_text_clip_id = None;
+            }
         }
         for clip_id in multi_select_requests {
             app.toggle_multi_select(clip_id);

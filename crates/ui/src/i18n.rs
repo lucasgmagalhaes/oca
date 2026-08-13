@@ -235,6 +235,20 @@ text_catalog! {
     ProjectNameLabel: pt_br = "Nome", en = "Name";
     ProjectSummaryLabel: pt_br = "Descrição", en = "Description";
     CrashDetected: pt_br = "oca não foi encerrado corretamente na sessão anterior. Reabra seus projetos para verificar se há autosaves de recuperação.", en = "oca did not exit cleanly in the previous session. Reopen your projects to check for recovery autosaves.";
+
+    AddTextTrack: pt_br = "T+ Texto", en = "T+ Text";
+    DefaultTextTrackName: pt_br = "Texto", en = "Text";
+    AddTextClip: pt_br = "+ Adicionar texto", en = "+ Add text";
+    SelectedTextClip: pt_br = "Sobreposição de texto", en = "Text overlay";
+    NoTextClipSelected: pt_br = "Nenhuma sobreposição selecionada", en = "No overlay selected";
+    PropTextContent: pt_br = "Texto", en = "Text";
+    PropTextFontSize: pt_br = "Tamanho da fonte", en = "Font size";
+    PropTextColor: pt_br = "Cor do texto", en = "Text color";
+    PropTextPosX: pt_br = "Posição X", en = "Position X";
+    PropTextPosY: pt_br = "Posição Y", en = "Position Y";
+    PropTextDuration: pt_br = "Duração (s)", en = "Duration (s)";
+    PropTextStart: pt_br = "Início (s)", en = "Start (s)";
+    TextExportNote: pt_br = "renderizado via drawtext no export — preview não suportado ainda.", en = "rendered via drawtext on export — preview not supported yet.";
 }
 
 /// The breadcrumb's title for `screen` (e.g. `Screen::Queue` -> "Fila de exportação" — longer

@@ -88,6 +88,7 @@ fn job(status: ExportJobStatus) -> ExportJob {
         id: 1,
         title: "Test job".to_string(),
         segments: Vec::new(),
+        text_segments: vec![],
         canvas: avcore::Canvas {
             width: 1920,
             height: 1080,

@@ -105,6 +105,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 zoom_end: 1.0,
             })
             .collect(),
+        text_clips: vec![],
     };
 
     Project {

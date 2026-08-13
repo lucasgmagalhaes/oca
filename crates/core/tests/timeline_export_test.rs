@@ -89,6 +89,7 @@ fn renders_two_clips_with_different_effects_as_one_concatenated_export() {
         name: "V1".to_string(),
         kind: TrackKind::Video,
         clips: vec![c2, c1], // deliberately out of start_secs order
+        text_clips: vec![],
     };
     let sequence = sequence_with(vec![track]);
 
@@ -121,6 +122,7 @@ fn frozen_clip_still_exports_its_full_timeline_duration() {
         name: "V1".to_string(),
         kind: TrackKind::Video,
         clips: vec![c1],
+        text_clips: vec![],
     };
     let sequence = sequence_with(vec![track]);
 
@@ -156,6 +158,7 @@ fn rejects_a_clip_with_a_missing_asset() {
         name: "V1".to_string(),
         kind: TrackKind::Video,
         clips: vec![clip(1, 999, 0.0, 0.0, 0.3)],
+        text_clips: vec![],
     };
     let sequence = sequence_with(vec![track]);
     let output = std::env::temp_dir().join("avcore_test_timeline_export_missing_asset.mp4");
@@ -175,6 +178,7 @@ fn cancelling_mid_timeline_export_reports_cancelled() {
         name: "V1".to_string(),
         kind: TrackKind::Video,
         clips: vec![clip(1, 1, 0.0, 0.0, 0.3), clip(2, 1, 0.3, 0.3, 0.6)],
+        text_clips: vec![],
     };
     let sequence = sequence_with(vec![track]);
     let output = std::env::temp_dir().join("avcore_test_timeline_export_cancelled.mp4");
@@ -207,6 +211,7 @@ fn fade_transition_exports_without_error() {
         name: "V1".to_string(),
         kind: TrackKind::Video,
         clips: vec![c1],
+        text_clips: vec![],
     };
     let sequence = sequence_with(vec![track]);
 
@@ -236,6 +241,7 @@ fn slide_transition_exports_without_error() {
         name: "V1".to_string(),
         kind: TrackKind::Video,
         clips: vec![c1],
+        text_clips: vec![],
     };
     let sequence = sequence_with(vec![track]);
 
@@ -265,6 +271,7 @@ fn zoom_transition_exports_without_error() {
         name: "V1".to_string(),
         kind: TrackKind::Video,
         clips: vec![c1],
+        text_clips: vec![],
     };
     let sequence = sequence_with(vec![track]);
 

@@ -1,4 +1,4 @@
-use avcore::timeline::{ClipInstance, Timeline, Track, TrackKind};
+use avcore::timeline::{ClipInstance, TextClip, Timeline, Track, TrackKind};
 
 use super::OcaApp;
 
@@ -501,25 +501,92 @@ pub(super) fn resolve_or_create_track(
     let name = match kind {
         TrackKind::Video => "V1",
         TrackKind::Audio => "A1",
+        TrackKind::Text => "T1",
     };
     timeline.tracks.push(avcore::timeline::Track {
         id: track_id,
         name: name.to_string(),
         kind,
         clips: Vec::new(),
+        text_clips: Vec::new(),
     });
     timeline.tracks.len() - 1
 }
 
-/// The next free clip id across every track in `timeline` — one past the current max, `1` if
-/// the timeline has no clips yet.
+/// The next free clip id across every track in `timeline`, including text clips — one past the
+/// current max, `1` if the timeline has no clips yet. Covers both [`ClipInstance`]s and
+/// [`TextClip`]s so their ids are globally unique within a timeline.
 pub(super) fn next_clip_id(timeline: &avcore::timeline::Timeline) -> u64 {
-    timeline
+    let video_audio_max = timeline
         .tracks
         .iter()
         .flat_map(|t| &t.clips)
         .map(|c| c.id)
         .max()
-        .unwrap_or(0)
-        + 1
+        .unwrap_or(0);
+    let text_max = timeline
+        .tracks
+        .iter()
+        .flat_map(|t| &t.text_clips)
+        .map(|c| c.id)
+        .max()
+        .unwrap_or(0);
+    video_audio_max.max(text_max) + 1
+}
+
+impl OcaApp {
+    /// Appends a new text track (`TrackKind::Text`) to the active sequence's timeline. The
+    /// track is named using [`crate::i18n::Text::DefaultTextTrackName`]. A no-op if the
+    /// project has no sequences.
+    pub fn add_text_track(&mut self) {
+        use crate::i18n::Text;
+        let locale = self.locale;
+        let track_id = {
+            let timeline = self.active_project().timeline();
+            timeline.tracks.iter().map(|t| t.id).max().unwrap_or(0) + 1
+        };
+        let name = Text::DefaultTextTrackName.tr(locale).to_string();
+        self.active_project_mut()
+            .timeline_mut()
+            .tracks
+            .push(avcore::timeline::Track {
+                id: track_id,
+                name,
+                kind: TrackKind::Text,
+                clips: Vec::new(),
+                text_clips: Vec::new(),
+            });
+    }
+
+    /// Appends a new [`TextClip`] to the first text track in the active sequence, starting at
+    /// the current playhead position and lasting 3 seconds. Selects it immediately so the
+    /// properties panel shows its controls. A no-op if no text track exists yet.
+    pub fn add_text_clip(&mut self) {
+        let playhead_secs = self.active_project().timeline().playhead_secs;
+        let track_id = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .find(|t| t.kind == TrackKind::Text)
+            .map(|t| t.id);
+        let Some(track_id) = track_id else { return };
+
+        let clip_id = next_clip_id(self.active_project().timeline());
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(track) = timeline.tracks.iter_mut().find(|t| t.id == track_id) {
+            track.text_clips.push(TextClip {
+                id: clip_id,
+                start_secs: playhead_secs,
+                duration_secs: 3.0,
+                text: "Text".to_string(),
+                font_size: 48.0,
+                color_rgba: [255, 255, 255, 255],
+                pos_x: 0.1,
+                pos_y: 0.85,
+            });
+        }
+        self.selected_clip_id = None;
+        self.selected_text_clip_id = Some(clip_id);
+    }
 }

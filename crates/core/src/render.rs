@@ -10,7 +10,7 @@ use avbridge::Canvas;
 
 use crate::media::MediaAsset;
 use crate::project::Sequence;
-use crate::timeline::TrackKind;
+use crate::timeline::{TextClip, TrackKind};
 
 /// Target output aspect ratio for a timeline export. `Original` preserves the source
 /// resolution inferred from the first clip; the fixed presets override width/height while
@@ -267,14 +267,19 @@ pub fn resolve_timeline_segments(
 }
 
 /// Renders `segments` (already resolved by [`resolve_timeline_segments`], e.g. from a queued
-/// [`crate::export::ExportJob`]) as one continuous file via `avbridge::encode_timeline_export`.
-/// `on_progress` receives a 0-100 percent, computed off `segments`' own total trimmed
-/// duration, same contract as [`render_export`].
+/// [`crate::export::ExportJob`]) as one continuous file via `avbridge::encode_timeline_export`,
+/// then composites `text_segments` over the result using `avbridge::apply_text_overlays` if any
+/// are present. `on_progress` receives a 0-100 percent, computed off `segments`' own total
+/// trimmed duration, same contract as [`render_export`].
+///
+/// Text overlay errors are logged but do not fail the export — the video is already complete
+/// without the overlays and deleting the caller's file on a font-config issue would be worse.
 pub fn render_export_job(
     segments: &[avbridge::ClipSegment],
     canvas: Canvas,
     output: &Path,
     target_lufs: f32,
+    text_segments: &[avbridge::TextSegment],
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u8),
 ) -> Result<RenderOutcome, RenderError> {
@@ -297,6 +302,10 @@ pub fn render_export_job(
     Ok(match outcome {
         avbridge::EncodeOutcome::Completed => {
             on_progress(100);
+            // Apply text overlays as a post-processing pass if any text clips were placed.
+            if !text_segments.is_empty() {
+                apply_text_overlay_pass(output, canvas, text_segments);
+            }
             RenderOutcome::Completed
         }
         avbridge::EncodeOutcome::Cancelled => RenderOutcome::Cancelled,
@@ -316,7 +325,71 @@ pub fn render_timeline_export(
     on_progress: impl FnMut(u8),
 ) -> Result<RenderOutcome, RenderError> {
     let (segments, canvas) = resolve_timeline_segments(sequence, media_library)?;
-    render_export_job(&segments, canvas, output, target_lufs, cancel, on_progress)
+    let text_segments = resolve_text_segments(sequence);
+    render_export_job(&segments, canvas, output, target_lufs, &text_segments, cancel, on_progress)
+}
+
+/// Applies text overlays to an already-written export file in place. Writes to a temp path
+/// beside `output`, then renames over `output`. Logs and silently skips on any error so a
+/// font-config failure doesn't destroy the already-completed video file.
+fn apply_text_overlay_pass(
+    output: &Path,
+    canvas: Canvas,
+    text_segments: &[avbridge::TextSegment],
+) {
+    let Some(parent) = output.parent() else { return };
+    let Some(stem) = output.file_stem().and_then(|s| s.to_str()) else { return };
+    let tmp = parent.join(format!("{stem}.text_tmp.mp4"));
+
+    match avbridge::apply_text_overlays(
+        output,
+        &tmp,
+        text_segments,
+        canvas.width,
+        canvas.height,
+        canvas.fps_num,
+        canvas.fps_den,
+    ) {
+        Ok(()) => {
+            if let Err(e) = std::fs::rename(&tmp, output) {
+                eprintln!("oca: text overlay rename failed: {e}");
+                let _ = std::fs::remove_file(&tmp);
+            }
+        }
+        Err(e) => {
+            eprintln!("oca: text overlay skipped: {e}");
+            let _ = std::fs::remove_file(&tmp);
+        }
+    }
+}
+
+/// Collects all [`TextClip`]s from `sequence`'s text tracks into [`avbridge::TextSegment`]s,
+/// sorted by `start_secs` ascending. Returns an empty vec if the sequence has no text tracks
+/// or none have any clips. Used to pass text overlays to the post-processing pass after the
+/// main video encode ([`render_export_job`]).
+pub fn resolve_text_segments(sequence: &Sequence) -> Vec<avbridge::TextSegment> {
+    let mut segments: Vec<avbridge::TextSegment> = sequence
+        .timeline
+        .tracks
+        .iter()
+        .filter(|t| t.kind == TrackKind::Text)
+        .flat_map(|t| &t.text_clips)
+        .map(text_clip_to_segment)
+        .collect();
+    segments.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
+    segments
+}
+
+fn text_clip_to_segment(clip: &TextClip) -> avbridge::TextSegment {
+    avbridge::TextSegment {
+        start_secs: clip.start_secs,
+        duration_secs: clip.duration_secs,
+        text: clip.text.clone(),
+        font_size: clip.font_size,
+        color_rgba: clip.color_rgba,
+        pos_x: clip.pos_x,
+        pos_y: clip.pos_y,
+    }
 }
 
 /// Approximates `fps` as a small integer ratio for `avbridge::Canvas` — exact for whole frame

@@ -353,6 +353,10 @@ pub struct OcaApp {
     /// the preview panel; this is a placed [`avcore::timeline::ClipInstance`]). `Delete`
     /// removes whichever clip this points at.
     pub selected_clip_id: Option<u64>,
+    /// The text overlay clip currently selected on a text track, if any. Selecting a text clip
+    /// clears `selected_clip_id` and vice versa — only one kind of clip can be selected at a
+    /// time. The properties panel shows text-clip controls when this is `Some`.
+    pub selected_text_clip_id: Option<u64>,
     /// Horizontal scale of the timeline strip and its ruler, in pixels per second. Adjusted by
     /// `Ctrl` + scroll over the timeline (per `request.md`'s Fase 3 spec) — more zoom for
     /// frame-accurate edits, less to see the whole project at once.
@@ -496,6 +500,7 @@ impl OcaApp {
             next_import_token: 0,
             pending_enrichment: HashMap::new(),
             selected_clip_id: None,
+            selected_text_clip_id: None,
             timeline_px_per_sec: 4.0,
             lib_panel_width: 220.0,
             props_panel_width: 240.0,
