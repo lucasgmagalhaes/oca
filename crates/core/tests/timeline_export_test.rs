@@ -194,3 +194,90 @@ fn cancelling_mid_timeline_export_reports_cancelled() {
 
     let _ = std::fs::remove_file(&output);
 }
+
+#[test]
+fn fade_transition_exports_without_error() {
+    let asset = video_asset(1);
+    let mut c1 = clip(1, 1, 0.0, 0.0, 0.5);
+    c1.transition_in = TransitionType::Fade;
+    c1.transition_duration_secs = 0.3;
+
+    let track = Track {
+        id: 1,
+        name: "V1".to_string(),
+        kind: TrackKind::Video,
+        clips: vec![c1],
+    };
+    let sequence = sequence_with(vec![track]);
+
+    let output = std::env::temp_dir().join("avcore_test_timeline_export_fade.mp4");
+    let cancel = AtomicBool::new(false);
+
+    let outcome =
+        render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_| {}).unwrap();
+
+    assert_eq!(outcome, RenderOutcome::Completed);
+
+    let info = probe_media(&output).unwrap();
+    assert_eq!(info.kind, MediaKind::Video);
+
+    let _ = std::fs::remove_file(&output);
+}
+
+#[test]
+fn slide_transition_exports_without_error() {
+    let asset = video_asset(1);
+    let mut c1 = clip(1, 1, 0.0, 0.0, 0.5);
+    c1.transition_in = TransitionType::Slide;
+    c1.transition_duration_secs = 0.3;
+
+    let track = Track {
+        id: 1,
+        name: "V1".to_string(),
+        kind: TrackKind::Video,
+        clips: vec![c1],
+    };
+    let sequence = sequence_with(vec![track]);
+
+    let output = std::env::temp_dir().join("avcore_test_timeline_export_slide.mp4");
+    let cancel = AtomicBool::new(false);
+
+    let outcome =
+        render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_| {}).unwrap();
+
+    assert_eq!(outcome, RenderOutcome::Completed);
+
+    let info = probe_media(&output).unwrap();
+    assert_eq!(info.kind, MediaKind::Video);
+
+    let _ = std::fs::remove_file(&output);
+}
+
+#[test]
+fn zoom_transition_exports_without_error() {
+    let asset = video_asset(1);
+    let mut c1 = clip(1, 1, 0.0, 0.0, 0.5);
+    c1.transition_in = TransitionType::Zoom;
+    c1.transition_duration_secs = 0.3;
+
+    let track = Track {
+        id: 1,
+        name: "V1".to_string(),
+        kind: TrackKind::Video,
+        clips: vec![c1],
+    };
+    let sequence = sequence_with(vec![track]);
+
+    let output = std::env::temp_dir().join("avcore_test_timeline_export_zoom_transition.mp4");
+    let cancel = AtomicBool::new(false);
+
+    let outcome =
+        render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_| {}).unwrap();
+
+    assert_eq!(outcome, RenderOutcome::Completed);
+
+    let info = probe_media(&output).unwrap();
+    assert_eq!(info.kind, MediaKind::Video);
+
+    let _ = std::fs::remove_file(&output);
+}

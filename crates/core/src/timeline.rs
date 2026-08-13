@@ -46,6 +46,20 @@ pub enum TransitionType {
     Zoom,
 }
 
+impl TransitionType {
+    /// Maps this transition to the integer code used in [`avbridge::ClipSegment::transition_in`]
+    /// and the `OcaClipSegment.transition_in` C field. `None` and `HardCut` both produce `0`
+    /// (no-op filter), since both mean an instant cut at the C level.
+    pub fn to_export_code(self) -> u8 {
+        match self {
+            Self::None | Self::HardCut => 0,
+            Self::Fade => 1,
+            Self::Slide => 2,
+            Self::Zoom => 3,
+        }
+    }
+}
+
 /// One placed instance of a `MediaAsset` on the timeline. `source_in_secs`/`source_out_secs`
 /// mark the trimmed range within the source asset; `start_secs` is its position on the track.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

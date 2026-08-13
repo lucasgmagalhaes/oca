@@ -107,6 +107,8 @@ fn clip(
         speed_factor: 1.0,
         zoom_start: 1.0,
         zoom_end: 1.0,
+        transition_in: 0,
+        transition_duration_secs: 0.3,
     }
 }
 

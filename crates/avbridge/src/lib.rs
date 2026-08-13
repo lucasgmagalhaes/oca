@@ -22,6 +22,8 @@ struct RawClipSegment {
     speed_factor: f32,
     zoom_start: f32,
     zoom_end: f32,
+    transition_in: c_int,
+    transition_duration_secs: f32,
 }
 
 #[repr(C)]
@@ -401,6 +403,14 @@ pub struct ClipSegment {
     pub zoom_start: f32,
     /// See [`ClipSegment::zoom_start`].
     pub zoom_end: f32,
+    /// Transition effect at this clip's entry. `0` = None/HardCut (no effect), `1` = Fade
+    /// (fade in from black), `2` = Slide (reveal from left), `3` = Zoom (scale from 50% to
+    /// 100%). Handled in `bridge.c` by appending an animated avfilter expression after
+    /// `video_filter` and before the final `format=yuv420p` conform step.
+    pub transition_in: u8,
+    /// Duration of [`ClipSegment::transition_in`] in seconds. Ignored when `transition_in` is
+    /// `0`. Converted to a frame count in `bridge.c` using the canvas fps.
+    pub transition_duration_secs: f32,
 }
 
 /// The fixed output frame size/rate every segment in an [`encode_timeline_export`] call is
@@ -469,6 +479,8 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
             speed_factor: seg.speed_factor,
             zoom_start: seg.zoom_start,
             zoom_end: seg.zoom_end,
+            transition_in: seg.transition_in as c_int,
+            transition_duration_secs: seg.transition_duration_secs,
         })
         .collect();
 
