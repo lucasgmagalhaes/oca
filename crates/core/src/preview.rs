@@ -60,33 +60,96 @@ pub struct VideoFrame {
 /// Builds a `gst::Bin` chaining the subset of `clip`'s effects GStreamer can apply live,
 /// suitable for `playbin`'s `video-filter` property — `None` if every covered effect is
 /// neutral (leaves `video-filter` unset). Stage order matches
-/// [`crate::timeline::ClipInstance::video_filter_chain`]'s (crop, then color adjustments, then
-/// the color-filter tint, then blur/sharpen, then pixelize, then shake, then flip) for
+/// [`crate::timeline::ClipInstance::video_filter_chain`]'s, plus the Ken-Burns zoom
+/// (`zoom_start`/`zoom_end`) applied first, ahead of everything else — mirroring bridge.c,
+/// which applies it at the canvas level before the per-clip filter chain for export — for
 /// consistency with what export applies, even though the element set differs (GStreamer
 /// elements here, avfilter there) and the covered subset is narrower (no vignette — no
 /// matching element in this GStreamer install; no chroma key — only meaningful once layering
-/// exists; no gain — preview has no audio route at all yet; no glitch/zoom/transitions —
-/// animated per-frame in export via avfilter's `n` frame-count expressions with no static
-/// element equivalent GStreamer-side; shake gets one, via a pad probe, since videocrop's
-/// left/top/right/bottom properties are settable per-buffer without renegotiating caps).
+/// exists; no gain — preview has no audio route at all yet; no glitch/transitions — animated
+/// per-frame in export via avfilter's `n` frame-count expressions with no static element
+/// equivalent GStreamer-side; shake and zoom get one each, via a pad probe, since videocrop's
+/// left/top/right/bottom properties are settable per-buffer without renegotiating caps — zoom's
+/// probe is keyed off the buffer's own PTS rather than a frame count, since preview has no
+/// fixed canvas fps to convert a frame count against the way export's `n` does).
 ///
 /// `resolution`, if known (`None` for an audio-only source, which shouldn't reach here but is
-/// handled by just skipping the crop/pixelize/shake stages), is the *actual* decoded frame
-/// size — needed since `videocrop`'s properties and the pixelize/shake downscale/upscale
+/// handled by just skipping the zoom/crop/pixelize/shake stages), is the *actual* decoded frame
+/// size — needed since `videocrop`'s properties and the zoom/pixelize/shake downscale/upscale
 /// target sizes are plain pixel counts, and `path` may be a lower-resolution editing proxy
 /// rather than the original asset.
-// TODO: transitions (ClipInstance::transition_in / ClipSegment::transition_in) are not yet
-// covered by preview — the fade/slide/zoom avfilter expressions are built in bridge.c's
-// avbridge_encode_timeline_export and only affect the exported file. Adding them here would
-// require either a GStreamer element equivalent (e.g. `frei0r-filter-cairoimagegraphics` for
-// drawbox, or a custom element) or a manual frame-count-driven property update — the same
-// pad-probe technique shake now uses below would work for the crop/scale-based zoom transition,
-// but fade (alpha ramp) and slide (drawbox wipe) still need their own element equivalents.
+// TODO: transitions (ClipInstance::transition_in / ClipSegment::transition_in — a *different*
+// concept from the zoom_start/zoom_end Ken-Burns field above: an entry animation over the
+// clip's first transition_duration_secs) are not yet covered by preview — the fade/slide/zoom
+// avfilter expressions are built in bridge.c's avbridge_encode_timeline_export and only affect
+// the exported file. Adding them here would require either a GStreamer element equivalent
+// (e.g. `frei0r-filter-cairoimagegraphics` for drawbox, or a custom element) or a manual
+// frame-count-driven property update — the same pad-probe technique shake/zoom use below would
+// work for the crop/scale-based Zoom transition variant, but Fade (alpha ramp) and Slide
+// (drawbox wipe) still need their own element equivalents.
 fn build_video_filter_bin(
     clip: &ClipInstance,
     resolution: Option<(u32, u32)>,
 ) -> Result<Option<gst::Element>, PreviewError> {
     let mut elements: Vec<gst::Element> = Vec::new();
+
+    if let Some((width, height)) = resolution {
+        if (clip.zoom_start - 1.0).abs() > 1e-4 || (clip.zoom_end - 1.0).abs() > 1e-4 {
+            // Ken-Burns zoom sits before video_filter_chain's own stages in export (bridge.c
+            // applies it at the canvas level, ahead of the per-clip filter chain) — mirrored
+            // here by building it first, ahead of the user-crop stage below. Keyed off the
+            // buffer's own PTS (seconds within the *source file*, since ui's preview seeks to
+            // clip.source_in_secs + offset rather than 0) instead of a frame counter — preview
+            // has no fixed canvas fps to convert a frame count against, unlike export.
+            let zoom_start = clip.zoom_start.clamp(0.1, 20.0) as f64;
+            let zoom_end = clip.zoom_end.clamp(0.1, 20.0) as f64;
+            let source_in_secs = clip.source_in_secs;
+            let clip_duration_secs = (clip.source_out_secs - clip.source_in_secs).max(1e-6);
+
+            let zoom_crop = gst::ElementFactory::make("videocrop")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let zoom_crop_for_probe = zoom_crop.clone();
+            let sink_pad = zoom_crop
+                .static_pad("sink")
+                .expect("videocrop always has a sink pad");
+            sink_pad.add_probe(gst::PadProbeType::BUFFER, move |_pad, info| {
+                let secs = info
+                    .buffer()
+                    .and_then(|b| b.pts())
+                    .map(|t| t.seconds_f64())
+                    .unwrap_or(source_in_secs);
+                let frac = ((secs - source_in_secs) / clip_duration_secs).clamp(0.0, 1.0);
+                let zoom = zoom_start + (zoom_end - zoom_start) * frac;
+                let crop_w = (width as f64 / zoom).round().max(2.0);
+                let crop_h = (height as f64 / zoom).round().max(2.0);
+                let side_w = ((width as f64 - crop_w) / 2.0).round().max(0.0) as i32;
+                let side_h = ((height as f64 - crop_h) / 2.0).round().max(0.0) as i32;
+                zoom_crop_for_probe.set_property("left", side_w);
+                zoom_crop_for_probe.set_property("right", side_w);
+                zoom_crop_for_probe.set_property("top", side_h);
+                zoom_crop_for_probe.set_property("bottom", side_h);
+                gst::PadProbeReturn::Ok
+            });
+
+            let upscale = gst::ElementFactory::make("videoscale")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let full_caps = gst::ElementFactory::make("capsfilter")
+                .property(
+                    "caps",
+                    gst::Caps::builder("video/x-raw")
+                        .field("width", width as i32)
+                        .field("height", height as i32)
+                        .build(),
+                )
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            elements.push(zoom_crop);
+            elements.push(upscale);
+            elements.push(full_caps);
+        }
+    }
 
     if let Some((width, height)) = resolution {
         if clip.is_cropped() {

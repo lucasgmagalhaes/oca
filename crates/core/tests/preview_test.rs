@@ -161,6 +161,26 @@ fn a_shaken_clip_still_opens_and_decodes_at_full_size() {
 }
 
 #[test]
+fn a_zoomed_clip_still_opens_and_decodes_at_full_size() {
+    let mut c = clip();
+    c.zoom_start = 1.0;
+    c.zoom_end = 1.5;
+
+    let preview = Preview::open(&fixture("video.mp4"), Some(&c)).unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("a frame should be available right after preroll");
+    // The dynamic videocrop + fixed-size upscale round-trips back to the source size on every
+    // frame — this proves the PTS-keyed pad probe doesn't crash the pipeline or desync caps,
+    // not that pixels are actually zoomed in.
+    assert_eq!((frame.width, frame.height), (320, 240));
+
+    for _ in 0..3 {
+        let _ = preview.current_frame();
+    }
+}
+
+#[test]
 fn a_flipped_clip_still_opens_and_decodes() {
     let mut c = clip();
     c.flipped_h = true;

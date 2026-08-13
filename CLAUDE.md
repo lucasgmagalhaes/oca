@@ -23,8 +23,9 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   zoom, speed_factor, freeze_frame, transitions (fade/slide/zoom entry effects via
   `ClipSegment::transition_in` + `bridge.c` avfilter expressions; HardCut/None are no-ops).
   **Not wired to preview:** transitions (see TODO in `build_video_filter_bin`), freeze_frame,
-  vignette, chroma_key, gain_db, speed, glitch, zoom. pixelize and shake now covered (pixelize:
-  static scale-down/up via `videoscale`; shake: `videocrop` driven per-frame by a pad probe).
+  vignette, chroma_key, gain_db, speed, glitch. pixelize/shake/zoom now covered (pixelize:
+  static scale-down/up via `videoscale`; shake/zoom: `videocrop` driven per-frame by a pad
+  probe, zoom keyed off buffer PTS since preview has no fixed canvas fps).
   **Not wired to export or preview:** layer masks (`mask_shape`).
   **Chroma key caveat:** `colorkey` marks pixels transparent but the final `yuv420p`
   conform drops the alpha plane — keyed color still appears in output despite being in
