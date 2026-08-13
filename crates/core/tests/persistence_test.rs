@@ -82,7 +82,11 @@ fn fixture_project() -> Project {
                     name: "V1".to_string(),
                     kind: TrackKind::Video,
                     clips: vec![clip(1, 1)],
+
                     text_clips: vec![],
+
+                    visible: true,
+
                 }],
             },
         }],

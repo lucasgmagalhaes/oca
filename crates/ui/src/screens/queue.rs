@@ -23,15 +23,19 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let project = app.active_project();
                 let sequence_name = project.sequences[project.active_sequence].name.clone();
-                let resolved = avcore::resolve_timeline_segments(
+                let resolved = avcore::resolve_timeline_segments_multi(
                     &project.sequences[project.active_sequence],
                     &project.media_library,
                 );
-                let size_estimate_label = if let Ok((ref segments, ref canvas)) = resolved {
-                    let duration_secs: f64 = segments
-                        .iter()
-                        .map(|s| (s.source_out_secs - s.source_in_secs) / s.speed_factor as f64)
-                        .sum();
+                let size_estimate_label = if let Ok((ref track_segments, ref canvas)) = resolved {
+                    let duration_secs: f64 = track_segments
+                        .first()
+                        .map(|segs| {
+                            segs.iter()
+                                .map(|s| (s.source_out_secs - s.source_in_secs) / s.speed_factor as f64)
+                                .sum::<f64>()
+                        })
+                        .unwrap_or(0.0);
                     // 192 kbps AAC (matches bridge.c aenc_ctx->bit_rate for timeline export)
                     let bytes = (canvas.bit_rate_bps + 192_000) as f64 * duration_secs / 8.0;
                     Some(format_file_size(bytes))
@@ -43,7 +47,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                     .add_enabled(resolved.is_ok(), add_button)
                     .on_disabled_hover_text(Text::AddExportNeedsClip.tr(locale));
                 if response.clicked() {
-                    if let Ok((segments, canvas)) = resolved {
+                    if let Ok((track_segments, canvas)) = resolved {
                         let (_, target_lufs) = LUFS_PROFILES[app.prefs.lufs_profile];
                         let canvas =
                             avcore::apply_export_aspect_ratio(canvas, app.export_aspect_ratio);
@@ -81,7 +85,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                             if proceed {
                                 app.queue_export(
                                     sequence_name,
-                                    segments,
+                                    track_segments,
                                     text_segments,
                                     canvas,
                                     target_lufs,

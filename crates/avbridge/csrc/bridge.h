@@ -152,6 +152,11 @@ typedef struct {
     /* Duration of the transition_in effect in seconds. Ignored when transition_in is 0.
        Converted to a frame count inside bridge.c using the canvas fps. */
     float transition_duration_secs;
+    /* Start position of this clip on the shared timeline, in seconds.
+       Used by avbridge_encode_timeline_export_multi to determine which overlay tracks are
+       active at any given decoded-frame time. Ignored by avbridge_encode_timeline_export
+       (single-track function concatenates in order, no gaps). */
+    double timeline_start_secs;
 } OcaClipSegment;
 
 /* Renders an ordered sequence of trimmed clips (`segments`, `segment_count` of them) as one
@@ -178,6 +183,19 @@ OcaEncodeStatus avbridge_encode_timeline_export(
     int canvas_fps_num, int canvas_fps_den, int64_t canvas_bit_rate_bps, const char *out_path,
     float target_lufs, OcaProgressCallback progress_cb, void *progress_user_data,
     const uint8_t *cancel);
+
+/* Multi-track overlay compositor: composites n_tracks video tracks into a single output.
+   track_segs[k] points to an array of track_n_segs[k] OcaClipSegment entries for track k.
+   Track 0 is the background (drives the output duration and audio); tracks 1..n_tracks-1 are
+   overlaid on top using avfilter's overlay filter whenever a clip from those tracks is active
+   at the corresponding timeline position (determined by OcaClipSegment::timeline_start_secs).
+   Audio comes from track 0 only; tracks 1+ are video-only contributors to the composite.
+   For n_tracks == 1, delegates to avbridge_encode_timeline_export unchanged. */
+OcaEncodeStatus avbridge_encode_timeline_export_multi(
+    const OcaClipSegment * const *track_segs, const int *track_n_segs, int n_tracks,
+    int canvas_width, int canvas_height, int canvas_fps_num, int canvas_fps_den,
+    int64_t canvas_bit_rate_bps, const char *out_path, float target_lufs,
+    OcaProgressCallback progress_cb, void *progress_user_data, const uint8_t *cancel);
 
 typedef enum {
     OCA_LOUDNESS_OK = 0,

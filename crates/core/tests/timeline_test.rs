@@ -176,7 +176,11 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
                 name: "V1".to_string(),
                 kind: TrackKind::Video,
                 clips: vec![clip(1, 0.0, 0.0, 30.0), clip(2, 30.0, 0.0, 44.0)],
+
                 text_clips: vec![],
+
+                visible: true,
+
             },
             Track {
                 id: 2,
@@ -184,7 +188,11 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
                 kind: TrackKind::Audio,
                 // Shorter overall, so it must not win over the V1 track's later end.
                 clips: vec![clip(3, 0.0, 0.0, 10.0)],
+
                 text_clips: vec![],
+
+                visible: true,
+
             },
         ],
         playhead_secs: 0.0,
@@ -199,7 +207,11 @@ fn track_with(clips: Vec<ClipInstance>) -> Track {
         name: "V1".to_string(),
         kind: TrackKind::Video,
         clips,
+
         text_clips: vec![],
+
+        visible: true,
+
     }
 }
 
@@ -774,14 +786,22 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
             name: "V1".to_string(),
             kind: TrackKind::Video,
             clips: vec![clip(1, 0.0, 0.0, 10.0)],
+
             text_clips: vec![],
+
+            visible: true,
+
         },
         Track {
             id: 2,
             name: "V2".to_string(),
             kind: TrackKind::Video,
             clips: vec![],
+
             text_clips: vec![],
+
+            visible: true,
+
         },
     ]);
 
@@ -800,14 +820,22 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
             name: "V1".to_string(),
             kind: TrackKind::Video,
             clips: vec![clip(1, 0.0, 0.0, 10.0)],
+
             text_clips: vec![],
+
+            visible: true,
+
         },
         Track {
             id: 2,
             name: "A1".to_string(),
             kind: TrackKind::Audio,
             clips: vec![],
+
             text_clips: vec![],
+
+            visible: true,
+
         },
     ]);
 
@@ -825,7 +853,11 @@ fn move_clip_to_track_is_a_no_op_for_an_unknown_target_track() {
         name: "V1".to_string(),
         kind: TrackKind::Video,
         clips: vec![clip(1, 0.0, 0.0, 10.0)],
+
         text_clips: vec![],
+
+        visible: true,
+
     }]);
 
     let moved = timeline.move_clip_to_track(1, 99, 5.0);
@@ -842,14 +874,22 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
             name: "V1".to_string(),
             kind: TrackKind::Video,
             clips: vec![clip(1, 0.0, 0.0, 10.0)],
+
             text_clips: vec![],
+
+            visible: true,
+
         },
         Track {
             id: 2,
             name: "V2".to_string(),
             kind: TrackKind::Video,
             clips: vec![],
+
             text_clips: vec![],
+
+            visible: true,
+
         },
     ]);
 
@@ -937,14 +977,22 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
             name: "V1".to_string(),
             kind: TrackKind::Video,
             clips: vec![clip(1, 0.0, 0.0, 10.0)],
+
             text_clips: vec![],
+
+            visible: true,
+
         },
         Track {
             id: 2,
             name: "A1".to_string(),
             kind: TrackKind::Audio,
             clips: vec![clip(2, 0.0, 0.0, 10.0)],
+
             text_clips: vec![],
+
+            visible: true,
+
         },
     ]);
 
@@ -962,7 +1010,11 @@ fn timeline_clip_mut_returns_none_for_an_unknown_id() {
         name: "V1".to_string(),
         kind: TrackKind::Video,
         clips: vec![clip(1, 0.0, 0.0, 10.0)],
+
         text_clips: vec![],
+
+        visible: true,
+
     }]);
 
     assert!(timeline.clip_mut(99).is_none());

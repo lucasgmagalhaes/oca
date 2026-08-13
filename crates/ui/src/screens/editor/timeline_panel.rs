@@ -96,17 +96,39 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         let mut trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
         let mut clip_drags: Vec<ClipDrag> = Vec::new();
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
+        let mut toggle_track_visibility_requests: Vec<u64> = Vec::new();
         let mut thumbnail_requests: Vec<(u64, i64)> = Vec::new();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for track in &app.active_project().timeline().tracks {
                 ui.horizontal(|ui| {
-                    ui.add_sized(
-                        [TRACK_LABEL_WIDTH, 28.0],
-                        egui::Label::new(
-                            RichText::new(&track.name)
-                                .size(11.0)
-                                .color(theme::TEXT_SECONDARY),
-                        ),
+                    // Track header: visibility toggle + name.
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(TRACK_LABEL_WIDTH, 28.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            let track_id = track.id;
+                            let visible = track.visible;
+                            let eye = if visible { "👁" } else { "—" };
+                            if ui
+                                .small_button(eye)
+                                .on_hover_text(if visible { "Hide track" } else { "Show track" })
+                                .clicked()
+                            {
+                                toggle_track_visibility_requests.push(track_id);
+                            }
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(&track.name)
+                                        .size(11.0)
+                                        .color(if visible {
+                                            theme::TEXT_SECONDARY
+                                        } else {
+                                            theme::TEXT_MUTED
+                                        }),
+                                )
+                                .truncate(),
+                            );
+                        },
                     );
                     let (track_rect, _resp) = ui.allocate_exact_size(
                         egui::vec2(ui.available_width(), 26.0),
@@ -503,6 +525,9 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         }
         if paste_requested {
             app.paste_clip_at_playhead();
+        }
+        for track_id in toggle_track_visibility_requests {
+            app.toggle_track_visibility(track_id);
         }
         for clip_id in delete_requests {
             app.selected_clip_id = Some(clip_id);

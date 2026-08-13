@@ -608,6 +608,10 @@ impl ClipInstance {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
 /// One row of the timeline (e.g. `V1`, `A1`, `A2` in the mockup), holding an ordered list of
 /// clips. Tracks don't overlap-check their own clips — that's an editing-time concern.
 ///
@@ -624,6 +628,11 @@ pub struct Track {
     /// field existed load without error.
     #[serde(default)]
     pub text_clips: Vec<TextClip>,
+    /// Whether this track contributes to export and preview. Toggled from the timeline track
+    /// header. Defaults to `true`; missing in project files saved before this field was added
+    /// deserializes as `true` via the serde default so existing projects are unaffected.
+    #[serde(default = "default_true")]
+    pub visible: bool,
 }
 
 impl Track {
