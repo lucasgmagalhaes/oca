@@ -1,6 +1,6 @@
 use eframe::egui::{self, RichText};
 
-use crate::app::{OcaApp, LUFS_PROFILES};
+use crate::app::{BindableAction, OcaApp, LUFS_PROFILES};
 use crate::components;
 use crate::i18n::{Locale, Text};
 use crate::theme;
@@ -132,35 +132,124 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                     .strong(),
             );
             ui.add_space(6.0);
-            egui::Grid::new("shortcuts_table")
-                .num_columns(2)
-                .spacing(egui::vec2(24.0, 6.0))
-                .striped(false)
-                .show(ui, |ui| {
-                    ui.label(
-                        RichText::new(Text::TableAction.tr(locale))
-                            .color(theme::TEXT_MUTED)
-                            .strong(),
-                    );
-                    ui.label(
-                        RichText::new(Text::TableShortcut.tr(locale))
-                            .color(theme::TEXT_MUTED)
-                            .strong(),
-                    );
-                    ui.end_row();
-
-                    for (action, key) in [
-                        (Text::ShortcutSplit, "S"),
-                        (Text::ShortcutCut, "X"),
-                        (Text::ShortcutPlayPause, Text::KeySpace.tr(locale)),
-                        (Text::ShortcutMarkInOut, "I / O"),
-                        (Text::ShortcutSendToQueue, "Ctrl+E"),
-                    ] {
-                        ui.label(action.tr(locale));
-                        ui.label(RichText::new(key).color(theme::TEXT_MUTED).monospace());
-                        ui.end_row();
-                    }
-                });
+            shortcut_binding_editor(app, ui, locale);
         });
     });
+}
+
+/// Renders the configurable key binding table and handles key capture when the user clicks
+/// "Change" on one of the four bindable actions.
+fn shortcut_binding_editor(app: &mut OcaApp, ui: &mut egui::Ui, locale: Locale) {
+    // When a binding is being captured, intercept the next non-modifier key press.
+    // Escape cancels without changing the binding.
+    if app.binding_capture.is_some() {
+        let result = ui.input(|i| {
+            for &key in egui::Key::ALL {
+                if i.key_pressed(key) {
+                    if key == egui::Key::Escape {
+                        return Some(None);
+                    }
+                    return Some(Some(crate::app::KeyCombo {
+                        ctrl: i.modifiers.ctrl,
+                        shift: i.modifiers.shift,
+                        key_name: key.name().to_string(),
+                    }));
+                }
+            }
+            None
+        });
+        match result {
+            Some(Some(combo)) => {
+                match app.binding_capture.unwrap() {
+                    BindableAction::PlayPause => app.prefs.key_bindings.play_pause = combo,
+                    BindableAction::SplitAtPlayhead => {
+                        app.prefs.key_bindings.split_at_playhead = combo
+                    }
+                    BindableAction::CopyFormatting => {
+                        app.prefs.key_bindings.copy_formatting = combo
+                    }
+                    BindableAction::PasteFormatting => {
+                        app.prefs.key_bindings.paste_formatting = combo
+                    }
+                }
+                app.binding_capture = None;
+            }
+            Some(None) => {
+                app.binding_capture = None;
+            }
+            None => {}
+        }
+    }
+
+    // Pre-compute display strings so we can borrow app freely inside the Grid closure.
+    let rows: [(BindableAction, Text, String); 4] = [
+        (
+            BindableAction::PlayPause,
+            Text::ShortcutPlayPause,
+            app.prefs.key_bindings.play_pause.display(),
+        ),
+        (
+            BindableAction::SplitAtPlayhead,
+            Text::ShortcutSplit,
+            app.prefs.key_bindings.split_at_playhead.display(),
+        ),
+        (
+            BindableAction::CopyFormatting,
+            Text::ShortcutCopyFormatting,
+            app.prefs.key_bindings.copy_formatting.display(),
+        ),
+        (
+            BindableAction::PasteFormatting,
+            Text::ShortcutPasteFormatting,
+            app.prefs.key_bindings.paste_formatting.display(),
+        ),
+    ];
+    let binding_capture = app.binding_capture;
+
+    let mut click_action: Option<BindableAction> = None;
+    let mut cancel = false;
+
+    egui::Grid::new("shortcuts_table")
+        .num_columns(3)
+        .spacing(egui::vec2(24.0, 6.0))
+        .show(ui, |ui| {
+            ui.label(
+                RichText::new(Text::TableAction.tr(locale))
+                    .color(theme::TEXT_MUTED)
+                    .strong(),
+            );
+            ui.label(
+                RichText::new(Text::TableShortcut.tr(locale))
+                    .color(theme::TEXT_MUTED)
+                    .strong(),
+            );
+            ui.label("");
+            ui.end_row();
+
+            for (action, label_text, combo_str) in &rows {
+                ui.label(label_text.tr(locale));
+                if binding_capture == Some(*action) {
+                    ui.label(
+                        RichText::new(Text::BindingPressAnyKey.tr(locale))
+                            .color(theme::ACCENT)
+                            .monospace(),
+                    );
+                    if ui.small_button(Text::CancelJob.tr(locale)).clicked() {
+                        cancel = true;
+                    }
+                } else {
+                    ui.label(RichText::new(combo_str.clone()).color(theme::TEXT_MUTED).monospace());
+                    if ui.small_button(Text::BindingChange.tr(locale)).clicked() {
+                        click_action = Some(*action);
+                    }
+                }
+                ui.end_row();
+            }
+        });
+
+    if cancel {
+        app.binding_capture = None;
+    } else if let Some(a) = click_action {
+        app.binding_capture = Some(a);
+    }
 }

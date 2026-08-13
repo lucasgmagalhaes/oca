@@ -215,11 +215,11 @@ text_catalog! {
     TableAction: pt_br = "Ação", en = "Action";
     TableShortcut: pt_br = "Atalho", en = "Shortcut";
     ShortcutSplit: pt_br = "Dividir clipe (split)", en = "Split clip";
-    ShortcutCut: pt_br = "Cortar", en = "Cut";
     ShortcutPlayPause: pt_br = "Play / Pause", en = "Play / Pause";
-    ShortcutMarkInOut: pt_br = "Marcar entrada / saída", en = "Mark in / out";
-    ShortcutSendToQueue: pt_br = "Enviar para fila de exportação", en = "Send to export queue";
-    KeySpace: pt_br = "Espaço", en = "Space";
+    ShortcutCopyFormatting: pt_br = "Copiar formatação", en = "Copy formatting";
+    ShortcutPasteFormatting: pt_br = "Colar formatação", en = "Paste formatting";
+    BindingPressAnyKey: pt_br = "Pressione uma tecla...", en = "Press any key...";
+    BindingChange: pt_br = "Alterar", en = "Change";
     ExportFileExistsTitle: pt_br = "Arquivo já existe", en = "File already exists";
     ExportFileExistsOverwrite: pt_br = "Sobrescrever", en = "Overwrite";
     AutosaveFound: pt_br = "Foi encontrado um autosave mais recente para este projeto. Deseja restaurá-lo?", en = "A more recent autosave was found for this project. Do you want to restore it?";
