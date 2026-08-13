@@ -142,6 +142,16 @@ typedef struct {
        are clamped to [0.1, 20.0]. No-op when both are 1.0. */
     float zoom_start;
     float zoom_end;
+    /* Transition effect at the start of this clip:
+       0 = None/HardCut (no effect), 1 = Fade (fade in from black), 2 = Slide (reveal from
+       left via an animated drawbox wipe), 3 = Zoom (scale from 50% to 100%).
+       Applied as an animated avfilter expression after the clip's video_filter and before
+       the final format=yuv420p conform, so n=0 at each segment's filter graph start drives
+       the per-frame animation. */
+    int transition_in;
+    /* Duration of the transition_in effect in seconds. Ignored when transition_in is 0.
+       Converted to a frame count inside bridge.c using the canvas fps. */
+    float transition_duration_secs;
 } OcaClipSegment;
 
 /* Renders an ordered sequence of trimmed clips (`segments`, `segment_count` of them) as one

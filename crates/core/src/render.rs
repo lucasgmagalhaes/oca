@@ -244,6 +244,8 @@ pub fn resolve_timeline_segments(
             speed_factor: clip.speed_factor,
             zoom_start: clip.zoom_start,
             zoom_end: clip.zoom_end,
+            transition_in: clip.transition_in.to_export_code(),
+            transition_duration_secs: clip.transition_duration_secs,
         });
     }
     let (width, height, fps) = dimensions_fps.ok_or(RenderError::EmptyTimeline)?;

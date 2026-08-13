@@ -71,6 +71,12 @@ pub struct VideoFrame {
 /// handled by just skipping the crop stage), is the *actual* decoded frame size — needed since
 /// `videocrop`'s properties are plain pixel counts and `path` may be a lower-resolution editing
 /// proxy rather than the original asset.
+// TODO: transitions (ClipInstance::transition_in / ClipSegment::transition_in) are not yet
+// covered by preview — the fade/slide/zoom avfilter expressions are built in bridge.c's
+// avbridge_encode_timeline_export and only affect the exported file. Adding them here would
+// require either a GStreamer element equivalent (e.g. `frei0r-filter-cairoimagegraphics` for
+// drawbox, or a custom element) or a manual frame-count-driven property update, neither of
+// which fits cleanly in this function's current GstBin approach.
 fn build_video_filter_bin(
     clip: &ClipInstance,
     resolution: Option<(u32, u32)>,

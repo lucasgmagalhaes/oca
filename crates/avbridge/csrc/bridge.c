@@ -983,10 +983,12 @@ OcaEncodeStatus avbridge_encode_timeline_export(
 
         /* Per-segment video filter chain: canvas-conform (scale/pad/fps, so every segment
            lands on the same output dimensions/frame rate) + this clip's own effect filters +
-           a final format lock so the encoder always receives yuv420p regardless of what the
-           clip filters produce. Rebuilt every segment since the clip filter differs. */
+           optional entry transition + a final format lock so the encoder always receives
+           yuv420p. Rebuilt every segment since clip filters and transitions differ.
+           The n counter in avfilter resets to 0 at each segment's graph instantiation, which
+           is what drives per-frame transition animation. */
         {
-            char vfilter_descr[2048];
+            char vfilter_descr[3072];
             const char *clip_filter =
                 (seg->video_filter && seg->video_filter[0]) ? seg->video_filter : "";
             char setpts_str[48] = "";
@@ -1023,8 +1025,59 @@ OcaEncodeStatus avbridge_encode_timeline_export(
                              A, B, A, B, A, B, A, B, A, B, A, B);
                 }
             }
-            /* Build the post-fps portion: optional zoom, optional clip_filter, separated by
-               commas only where both neighbours are non-empty. */
+
+            /* Build the transition filter string for this segment's entry effect.
+               All expressions use arithmetic instead of min()/max()/ite() function calls to
+               avoid commas inside option values (which avfilter would misparse as filter
+               separators). The pattern (n<TF)*expr_a + (n>=TF)*expr_b evaluates to expr_a
+               when n < TF and expr_b when n >= TF, since comparison operators return 0 or 1.
+               n resets to 0 at the start of each segment's filter graph, so it counts frames
+               from this clip's first frame. */
+            char transition_str[384] = "";
+            if (seg->transition_in != 0) {
+                double tf = (double)seg->transition_duration_secs
+                            * (double)canvas_fps.num / (double)canvas_fps.den;
+                if (tf < 1.0) tf = 1.0;
+                switch (seg->transition_in) {
+                    case 1: /* Fade: fade in from black over transition_duration_secs. */
+                        snprintf(transition_str, sizeof(transition_str),
+                                 "fade=t=in:st=0:d=%.4f",
+                                 (double)seg->transition_duration_secs);
+                        break;
+                    case 2:
+                        /* Slide: reveal the clip from left to right using an animated drawbox
+                           that covers the frame with black and retreats rightward each frame.
+                           x = n*iw/tf when n < tf (box moves right, revealing clip from left);
+                           x = iw when n >= tf (box fully off-screen, full clip visible).
+                           Arithmetic: (n<tf)*n*iw/tf + (n>=tf)*iw — no commas in expression. */
+                        snprintf(transition_str, sizeof(transition_str),
+                                 "drawbox=x='(n<%g)*n*iw/%g+(n>=%g)*iw'"
+                                 ":y=0:w=iw:h=ih:color=black@1:t=fill",
+                                 tf, tf, tf);
+                        break;
+                    case 3:
+                        /* Zoom: scale from 50%% to 100%% of canvas size over transition_duration_secs,
+                           then pad back to the canvas dimensions with black borders.
+                           Scale factor = 0.5 + 0.5*(n<tf)*n/tf + 0.5*(n>=tf), which is 0.5 at
+                           n=0 and 1.0 at n>=tf. eval=frame is required so scale re-evaluates
+                           the expression for each output frame. After scaling, iw/ih in the pad
+                           expression are the scaled (smaller) dimensions — (W-iw)/2 centres them. */
+                        snprintf(transition_str, sizeof(transition_str),
+                                 "scale=iw*(0.5+0.5*(n<%g)*n/%g+0.5*(n>=%g))"
+                                 ":ih*(0.5+0.5*(n<%g)*n/%g+0.5*(n>=%g))"
+                                 ":eval=frame"
+                                 ",pad=%d:%d:(%d-iw)/2:(%d-ih)/2:black",
+                                 tf, tf, tf, tf, tf, tf,
+                                 canvas_width, canvas_height,
+                                 canvas_width, canvas_height);
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            /* Build the post-fps portion: zoom, clip_filter, and transition, all optional,
+               separated by commas only where both neighbours are non-empty. */
             char post_fps[1600] = "";
             if (zoom_str[0] && clip_filter[0]) {
                 snprintf(post_fps, sizeof(post_fps), "%s,%s", zoom_str, clip_filter);
@@ -1033,12 +1086,20 @@ OcaEncodeStatus avbridge_encode_timeline_export(
             } else if (clip_filter[0]) {
                 snprintf(post_fps, sizeof(post_fps), "%s", clip_filter);
             }
+            char final_chain[2048] = "";
+            if (post_fps[0] && transition_str[0]) {
+                snprintf(final_chain, sizeof(final_chain), "%s,%s", post_fps, transition_str);
+            } else if (post_fps[0]) {
+                snprintf(final_chain, sizeof(final_chain), "%s", post_fps);
+            } else if (transition_str[0]) {
+                snprintf(final_chain, sizeof(final_chain), "%s", transition_str);
+            }
             snprintf(vfilter_descr, sizeof(vfilter_descr),
                      "%sscale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-"
                      "ih)/2,fps=%d/%d%s%s,format=yuv420p",
                      setpts_str, canvas_width, canvas_height, canvas_width, canvas_height,
                      canvas_fps.num, canvas_fps.den,
-                     post_fps[0] ? "," : "", post_fps);
+                     final_chain[0] ? "," : "", final_chain);
             if (init_video_filter_chain(vdec_ctx, vfilter_descr, &vchain) < 0) {
                 status = OCA_ENCODE_ERR_FILTER_GRAPH;
                 goto segment_cleanup;
