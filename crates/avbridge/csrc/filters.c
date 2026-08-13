@@ -1,0 +1,272 @@
+#include "bridge_internal.h"
+
+#include <libavfilter/buffersink.h>
+#include <libavfilter/buffersrc.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/opt.h>
+
+void free_audio_filter_chain(AudioFilterChain *chain) {
+    avfilter_graph_free(&chain->graph);
+    chain->buffersrc_ctx = NULL;
+    chain->buffersink_ctx = NULL;
+}
+
+/* Builds `filter_descr` (e.g. "loudnorm=...,alimiter=..." or just "anull" for a passthrough
+   format-conversion-only chain) between an abuffer source shaped like dec_ctx's decoded audio
+   and an abuffersink constrained to a format `encoder` accepts (so the graph auto-inserts any
+   needed aformat/aresample conversion, per FFmpeg's own transcode_aac.c example) — without
+   this, avcodec_open2() on the encoder can reject whatever raw format the filter chain
+   happens to produce. */
+int init_audio_filter_chain(AVCodecContext *dec_ctx, const AVCodec *encoder,
+                             const char *filter_descr, AudioFilterChain *chain) {
+    char args[512];
+    char chlayout_str[64];
+    const AVFilter *buffersrc = avfilter_get_by_name("abuffer");
+    const AVFilter *buffersink = avfilter_get_by_name("abuffersink");
+    AVFilterInOut *outputs = avfilter_inout_alloc();
+    AVFilterInOut *inputs = avfilter_inout_alloc();
+    int ret;
+
+    chain->buffersrc_ctx = NULL;
+    chain->buffersink_ctx = NULL;
+    chain->graph = avfilter_graph_alloc();
+    if (!outputs || !inputs || !chain->graph) {
+        ret = AVERROR(ENOMEM);
+        goto end;
+    }
+
+    av_channel_layout_describe(&dec_ctx->ch_layout, chlayout_str, sizeof(chlayout_str));
+    snprintf(args, sizeof(args),
+             "time_base=1/%d:sample_rate=%d:sample_fmt=%s:channel_layout=%s",
+             dec_ctx->sample_rate, dec_ctx->sample_rate,
+             av_get_sample_fmt_name(dec_ctx->sample_fmt), chlayout_str);
+
+    ret = avfilter_graph_create_filter(&chain->buffersrc_ctx, buffersrc, "in", args, NULL,
+                                        chain->graph);
+    if (ret < 0) goto end;
+
+    /* abuffersink, built in two steps (alloc, then init) instead of the one-shot
+       avfilter_graph_create_filter(): "sample_fmts" is a pre-init-only option — setting it
+       after the filter is initialized fails with "not a runtime option". */
+    chain->buffersink_ctx = avfilter_graph_alloc_filter(chain->graph, buffersink, "out");
+    if (!chain->buffersink_ctx) {
+        ret = AVERROR(ENOMEM);
+        goto end;
+    }
+
+    /* Constrain the sink to formats/rates `encoder` actually accepts, so the graph inserts
+       any needed aformat/aresample conversion automatically (per FFmpeg's own
+       transcode_aac.c example) instead of avcodec_open2() rejecting whatever the filter
+       chain happens to produce. As of this FFmpeg version these are proper array-typed
+       options set via av_opt_set_array() — the older av_opt_set_bin()-with-a-raw-array
+       idiom ("sample_fmts") is deprecated and, here, silently fails to constrain anything. */
+    {
+        const enum AVSampleFormat *sample_fmts = NULL;
+        int num_sample_fmts = 0;
+        if (avcodec_get_supported_config(NULL, encoder, AV_CODEC_CONFIG_SAMPLE_FORMAT, 0,
+                                          (const void **)&sample_fmts, &num_sample_fmts) == 0 &&
+            sample_fmts && num_sample_fmts > 0) {
+            ret = av_opt_set_array(chain->buffersink_ctx, "sample_formats",
+                                    AV_OPT_SEARCH_CHILDREN, 0, (unsigned)num_sample_fmts,
+                                    AV_OPT_TYPE_SAMPLE_FMT, sample_fmts);
+            if (ret < 0) goto end;
+        }
+    }
+
+    {
+        const int *sample_rates = NULL;
+        int num_sample_rates = 0;
+        if (avcodec_get_supported_config(NULL, encoder, AV_CODEC_CONFIG_SAMPLE_RATE, 0,
+                                          (const void **)&sample_rates, &num_sample_rates) == 0 &&
+            sample_rates && num_sample_rates > 0) {
+            /* Prefer the source's own rate when the encoder already accepts it — negotiation
+               otherwise doesn't necessarily pick the closest/cheapest match from the allowed
+               set, and will happily insert a gratuitous upsample (seen: 44100 -> 96000, the
+               first entry in AAC's supported-rates list) when no rate is preferred. */
+            int source_rate_ok = 0;
+            for (int i = 0; i < num_sample_rates; i++) {
+                if (sample_rates[i] == dec_ctx->sample_rate) {
+                    source_rate_ok = 1;
+                    break;
+                }
+            }
+            if (source_rate_ok) {
+                ret = av_opt_set_array(chain->buffersink_ctx, "samplerates",
+                                        AV_OPT_SEARCH_CHILDREN, 0, 1, AV_OPT_TYPE_INT,
+                                        &dec_ctx->sample_rate);
+            } else {
+                ret = av_opt_set_array(chain->buffersink_ctx, "samplerates",
+                                        AV_OPT_SEARCH_CHILDREN, 0, (unsigned)num_sample_rates,
+                                        AV_OPT_TYPE_INT, sample_rates);
+            }
+            if (ret < 0) goto end;
+        }
+    }
+
+    ret = avfilter_init_str(chain->buffersink_ctx, NULL);
+    if (ret < 0) goto end;
+
+    outputs->name = av_strdup("in");
+    outputs->filter_ctx = chain->buffersrc_ctx;
+    outputs->pad_idx = 0;
+    outputs->next = NULL;
+
+    inputs->name = av_strdup("out");
+    inputs->filter_ctx = chain->buffersink_ctx;
+    inputs->pad_idx = 0;
+    inputs->next = NULL;
+
+    ret = avfilter_graph_parse_ptr(chain->graph, filter_descr, &inputs, &outputs, NULL);
+    if (ret < 0) goto end;
+
+    ret = avfilter_graph_config(chain->graph, NULL);
+
+end:
+    avfilter_inout_free(&inputs);
+    avfilter_inout_free(&outputs);
+    if (ret < 0) {
+        free_audio_filter_chain(chain);
+    }
+    return ret;
+}
+
+/* Drains every packet the encoder has ready and writes it. Pass frame=NULL once, at the end,
+   to flush. */
+int encode_write_packet(AVFormatContext *out_ctx, AVCodecContext *enc_ctx,
+                         AVStream *out_stream, AVFrame *frame, AVPacket *enc_pkt) {
+    int ret = avcodec_send_frame(enc_ctx, frame);
+    if (ret < 0 && ret != AVERROR_EOF) return ret;
+
+    while (1) {
+        ret = avcodec_receive_packet(enc_ctx, enc_pkt);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            return 0;
+        } else if (ret < 0) {
+            return ret;
+        }
+        enc_pkt->stream_index = out_stream->index;
+        av_packet_rescale_ts(enc_pkt, enc_ctx->time_base, out_stream->time_base);
+        ret = av_interleaved_write_frame(out_ctx, enc_pkt);
+        if (ret < 0) return ret;
+    }
+}
+
+/* Pushes one decoded frame through the filter graph and encodes+writes every frame it
+   produces in response (a loudnorm/alimiter chain doesn't emit 1:1 with its input). Pass
+   frame=NULL once, at the end, to flush the filter graph itself. */
+int filter_encode_write_frame(AVFormatContext *out_ctx, AudioFilterChain *chain,
+                               AVCodecContext *enc_ctx, AVStream *out_stream,
+                               AVFrame *frame, AVFrame *filt_frame, AVPacket *enc_pkt) {
+    int ret = av_buffersrc_add_frame(chain->buffersrc_ctx, frame);
+    if (ret < 0) return ret;
+
+    while (1) {
+        ret = av_buffersink_get_frame(chain->buffersink_ctx, filt_frame);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            return 0;
+        } else if (ret < 0) {
+            return ret;
+        }
+        ret = encode_write_packet(out_ctx, enc_ctx, out_stream, filt_frame, enc_pkt);
+        av_frame_unref(filt_frame);
+        if (ret < 0) return ret;
+    }
+}
+
+void free_video_filter_chain(VideoFilterChain *chain) {
+    avfilter_graph_free(&chain->graph);
+    chain->buffersrc_ctx = NULL;
+    chain->buffersink_ctx = NULL;
+}
+
+/* Builds `filter_descr` between a "buffer" source shaped like dec_ctx's decoded video and a
+   plain "buffersink" — unlike init_audio_filter_chain, no encoder-format negotiation is
+   needed here: `filter_descr` itself always ends in an explicit "format=yuv420p" (added by
+   the caller), which pins the sink's output format directly instead of constraining the sink
+   via options. */
+int init_video_filter_chain(AVCodecContext *dec_ctx, const char *filter_descr,
+                             VideoFilterChain *chain) {
+    char args[512];
+    const AVFilter *buffersrc = avfilter_get_by_name("buffer");
+    const AVFilter *buffersink = avfilter_get_by_name("buffersink");
+    AVFilterInOut *outputs = avfilter_inout_alloc();
+    AVFilterInOut *inputs = avfilter_inout_alloc();
+    AVRational sar = dec_ctx->sample_aspect_ratio;
+    int ret;
+
+    if (sar.num <= 0 || sar.den <= 0) {
+        sar = (AVRational){1, 1};
+    }
+
+    chain->buffersrc_ctx = NULL;
+    chain->buffersink_ctx = NULL;
+    chain->graph = avfilter_graph_alloc();
+    if (!outputs || !inputs || !chain->graph) {
+        ret = AVERROR(ENOMEM);
+        goto end;
+    }
+
+    snprintf(args, sizeof(args),
+             "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d", dec_ctx->width,
+             dec_ctx->height, dec_ctx->pix_fmt, dec_ctx->pkt_timebase.num,
+             dec_ctx->pkt_timebase.den, sar.num, sar.den);
+
+    ret = avfilter_graph_create_filter(&chain->buffersrc_ctx, buffersrc, "in", args, NULL,
+                                        chain->graph);
+    if (ret < 0) goto end;
+
+    ret = avfilter_graph_create_filter(&chain->buffersink_ctx, buffersink, "out", NULL, NULL,
+                                        chain->graph);
+    if (ret < 0) goto end;
+
+    outputs->name = av_strdup("in");
+    outputs->filter_ctx = chain->buffersrc_ctx;
+    outputs->pad_idx = 0;
+    outputs->next = NULL;
+
+    inputs->name = av_strdup("out");
+    inputs->filter_ctx = chain->buffersink_ctx;
+    inputs->pad_idx = 0;
+    inputs->next = NULL;
+
+    ret = avfilter_graph_parse_ptr(chain->graph, filter_descr, &inputs, &outputs, NULL);
+    if (ret < 0) goto end;
+
+    ret = avfilter_graph_config(chain->graph, NULL);
+
+end:
+    avfilter_inout_free(&inputs);
+    avfilter_inout_free(&outputs);
+    if (ret < 0) {
+        free_video_filter_chain(chain);
+    }
+    return ret;
+}
+
+/* Pushes one decoded video frame through the filter graph and encodes+writes every frame it
+   produces in response (the canvas-conform stage's `fps` filter doesn't emit 1:1 with its
+   input — it duplicates/drops frames to hit canvas_fps). Every emitted frame gets a fresh
+   sequential pts in `*next_pts` (in venc_ctx's time_base, i.e. one canvas frame) instead of
+   whatever pts the filter graph assigns — same idea as scale_video_frame's, extended across
+   segment boundaries so concatenated segments produce continuous timestamps. Pass frame=NULL
+   once, at the end, to flush the filter graph itself. */
+int filter_encode_write_video_frame(AVFormatContext *out_ctx, VideoFilterChain *chain,
+                                     AVCodecContext *enc_ctx, AVStream *out_stream,
+                                     AVFrame *frame, AVFrame *filt_frame,
+                                     int64_t *next_pts, AVPacket *enc_pkt) {
+    int ret = av_buffersrc_add_frame(chain->buffersrc_ctx, frame);
+    if (ret < 0) return ret;
+
+    while (1) {
+        ret = av_buffersink_get_frame(chain->buffersink_ctx, filt_frame);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            return 0;
+        } else if (ret < 0) {
+            return ret;
+        }
+        filt_frame->pts = (*next_pts)++;
+        ret = encode_write_packet(out_ctx, enc_ctx, out_stream, filt_frame, enc_pkt);
+        av_frame_unref(filt_frame);
+        if (ret < 0) return ret;
+    }
+}

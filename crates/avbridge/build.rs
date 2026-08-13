@@ -1,5 +1,5 @@
 //! Locates FFmpeg (libavformat/libavcodec/libavutil) via the `FFMPEG_DIR` env var
-//! (`FFMPEG_DIR/include`, `FFMPEG_DIR/lib`) and compiles `csrc/bridge.c` against it.
+//! (`FFMPEG_DIR/include`, `FFMPEG_DIR/lib`) and compiles `csrc/*.c` against it.
 //!
 //! On Windows the import libs are copied into OUT_DIR under unique names to avoid the
 //! GStreamer-vs-FFmpeg naming conflict (see comment below).  On macOS/Linux we link
@@ -10,8 +10,7 @@ use std::path::PathBuf;
 
 fn main() {
     println!("cargo:rerun-if-env-changed=FFMPEG_DIR");
-    println!("cargo:rerun-if-changed=csrc/bridge.c");
-    println!("cargo:rerun-if-changed=csrc/bridge.h");
+    println!("cargo:rerun-if-changed=csrc");
 
     let ffmpeg_dir = env::var("FFMPEG_DIR").unwrap_or_else(|_| {
         panic!(
@@ -34,10 +33,15 @@ fn main() {
         );
     }
 
-    cc::Build::new()
-        .file("csrc/bridge.c")
-        .include(&include_dir)
-        .compile("avbridge_c");
+    let mut build = cc::Build::new();
+    build.include(&include_dir);
+    for entry in std::fs::read_dir("csrc").expect("csrc/ directory should exist") {
+        let path = entry.expect("failed to read csrc/ directory entry").path();
+        if path.extension().and_then(|e| e.to_str()) == Some("c") {
+            build.file(path);
+        }
+    }
+    build.compile("avbridge_c");
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let is_windows = target_os == "windows";
