@@ -8,6 +8,12 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # FFmpeg release pinning for supply-chain security. These must be updated together when
+  # upgrading FFmpeg. See .github/FFMPEG_UPDATE.md for detailed instructions.
+  # IMPORTANT: Replace PLACEHOLDER values below with actual checksums before first use.
+  FFMPEG_RELEASE_TAG: "2025-01-15-12-55"
+  FFMPEG_WIN64_SHA256: "PLACEHOLDER_UPDATE_REQUIRED_SEE_FFMPEG_UPDATE_MD"
+  FFMPEG_LINUX64_SHA256: "PLACEHOLDER_UPDATE_REQUIRED_SEE_FFMPEG_UPDATE_MD"
 
 jobs:
   build-and-test-windows:
@@ -46,16 +52,31 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ffmpeg-dev
-          key: ffmpeg-btbn-win64-gpl-shared-master-latest
+          key: ffmpeg-btbn-win64-gpl-shared-${{ env.FFMPEG_RELEASE_TAG }}-${{ env.FFMPEG_WIN64_SHA256 }}
 
-      # BtbN rotates its `latest` release tag on every nightly autobuild; a request landing
-      # mid-rotation can hit the new tag before its assets finish uploading, returning a 404
-      # that clears up within minutes. Retry with backoff instead of failing the whole job.
-      - name: Download FFmpeg dev build (BtbN)
+      # Pin to a specific release and verify SHA256 checksum before extraction to prevent
+      # code execution from tampered native libraries. To update FFmpeg:
+      # 1. Find a release tag at https://github.com/BtbN/FFmpeg-Builds/releases
+      # 2. Download the asset and compute its SHA256:
+      #    Get-FileHash -Algorithm SHA256 ffmpeg-master-latest-win64-gpl-shared.zip
+      # 3. Update FFMPEG_RELEASE_TAG and FFMPEG_WIN64_SHA256 in the env section above
+      # See .github/FFMPEG_UPDATE.md for detailed instructions.
+      - name: Download and verify FFmpeg dev build (BtbN)
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $uri = "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl-shared.zip"
+          $releaseTag = "${{ env.FFMPEG_RELEASE_TAG }}"
+          $expectedSha256 = "${{ env.FFMPEG_WIN64_SHA256 }}"
+          
+          # Fail fast if placeholder values haven't been replaced
+          if ($expectedSha256 -like "*PLACEHOLDER*") {
+            Write-Error "FFMPEG_WIN64_SHA256 contains a placeholder value."
+            Write-Error "Please update the checksums in .github/workflows/ci.yml"
+            Write-Error "See .github/FFMPEG_UPDATE.md for instructions."
+            exit 1
+          }
+          
+          $uri = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$releaseTag/ffmpeg-master-latest-win64-gpl-shared.zip"
           $maxAttempts = 5
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             try {
@@ -68,6 +89,13 @@ jobs:
               Start-Sleep -Seconds $delay
             }
           }
+          $actualSha256 = (Get-FileHash -Algorithm SHA256 ffmpeg.zip).Hash
+          if ($actualSha256 -ne $expectedSha256) {
+            Write-Error "FFmpeg checksum mismatch! Expected: $expectedSha256, Got: $actualSha256"
+            Write-Error "This may indicate a compromised download or an outdated checksum."
+            exit 1
+          }
+          Write-Host "FFmpeg checksum verified: $actualSha256"
           Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg-extracted
           $inner = Get-ChildItem ffmpeg-extracted | Select-Object -First 1
           Move-Item $inner.FullName ffmpeg-dev
@@ -125,14 +153,30 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ffmpeg-dev
-          key: ffmpeg-btbn-linux64-gpl-shared-master-latest
+          key: ffmpeg-btbn-linux64-gpl-shared-${{ env.FFMPEG_RELEASE_TAG }}-${{ env.FFMPEG_LINUX64_SHA256 }}
 
-      # Same retry logic as the Windows job; BtbN Linux tarballs live at the same `latest`
-      # release tag and are subject to the same mid-rotation 404 window.
-      - name: Download FFmpeg dev build (BtbN)
+      # Pin to a specific release and verify SHA256 checksum before extraction to prevent
+      # code execution from tampered native libraries. To update FFmpeg:
+      # 1. Find a release tag at https://github.com/BtbN/FFmpeg-Builds/releases
+      # 2. Download the asset and compute its SHA256:
+      #    sha256sum ffmpeg-master-latest-linux64-gpl-shared.tar.xz
+      # 3. Update FFMPEG_RELEASE_TAG and FFMPEG_LINUX64_SHA256 in the env section above
+      # See .github/FFMPEG_UPDATE.md for detailed instructions.
+      - name: Download and verify FFmpeg dev build (BtbN)
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         run: |
-          uri="https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl-shared.tar.xz"
+          release_tag="${{ env.FFMPEG_RELEASE_TAG }}"
+          expected_sha256="${{ env.FFMPEG_LINUX64_SHA256 }}"
+          
+          # Fail fast if placeholder values haven't been replaced
+          if [[ "$expected_sha256" == *"PLACEHOLDER"* ]]; then
+            echo "FFMPEG_LINUX64_SHA256 contains a placeholder value." >&2
+            echo "Please update the checksums in .github/workflows/ci.yml" >&2
+            echo "See .github/FFMPEG_UPDATE.md for instructions." >&2
+            exit 1
+          fi
+          
+          uri="https://github.com/BtbN/FFmpeg-Builds/releases/download/${release_tag}/ffmpeg-master-latest-linux64-gpl-shared.tar.xz"
           max_attempts=5
           for attempt in $(seq 1 $max_attempts); do
             if curl -fsSL -o ffmpeg.tar.xz "$uri"; then
@@ -146,6 +190,13 @@ jobs:
             echo "Download failed (attempt $attempt/$max_attempts). Retrying in ${delay}s..."
             sleep "$delay"
           done
+          actual_sha256=$(sha256sum ffmpeg.tar.xz | awk '{print $1}')
+          if [ "$actual_sha256" != "$expected_sha256" ]; then
+            echo "FFmpeg checksum mismatch! Expected: $expected_sha256, Got: $actual_sha256" >&2
+            echo "This may indicate a compromised download or an outdated checksum." >&2
+            exit 1
+          fi
+          echo "FFmpeg checksum verified: $actual_sha256"
           tar -xf ffmpeg.tar.xz
           dir=$(find . -maxdepth 1 -name 'ffmpeg-*' -type d | head -1)
           mv "$dir" ffmpeg-dev
