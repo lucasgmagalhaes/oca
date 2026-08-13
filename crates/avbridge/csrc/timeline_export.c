@@ -258,7 +258,11 @@ OcaEncodeStatus avbridge_encode_timeline_export(
            The n counter in avfilter resets to 0 at each segment's graph instantiation, which
            is what drives per-frame transition animation. */
         {
-            char vfilter_descr[3072];
+            /* Generous margins throughout this block: clip_filter (video_filter_chain()'s
+               output, e.g. a RoundedRect mask's geq expression) and the Zoom transition's own
+               geq expression (see case 3 below) can each independently run past a thousand
+               bytes. */
+            char vfilter_descr[16384];
             const char *clip_filter =
                 (seg->video_filter && seg->video_filter[0]) ? seg->video_filter : "";
             char setpts_str[48] = "";
@@ -266,7 +270,7 @@ OcaEncodeStatus avbridge_encode_timeline_export(
                 snprintf(setpts_str, sizeof(setpts_str), "setpts=PTS/%.6f,",
                          (double)seg->speed_factor);
             }
-            char zoom_str[512] = "";
+            char zoom_str[2048] = "";
             float zs = seg->zoom_start > 0.0f ? seg->zoom_start : 1.0f;
             float ze = seg->zoom_end > 0.0f ? seg->zoom_end : 1.0f;
             if (zs < 0.1f) zs = 0.1f;  if (zs > 20.0f) zs = 20.0f;
@@ -283,27 +287,53 @@ OcaEncodeStatus avbridge_encode_timeline_export(
                 double A = zs;
                 double B = ((double)ze - (double)zs) / N;
                 if (fabs(B) < 1e-9) {
+                    /* Static zoom (zoom_start == zoom_end): a plain crop+scale, no frame
+                       variable needed, so none of the animated case's concerns below apply. */
                     snprintf(zoom_str, sizeof(zoom_str),
                              "crop=iw/%.5f:ih/%.5f:iw*(1-1/%.5f)/2:ih*(1-1/%.5f)/2"
                              ",scale=iw*%.5f:ih*%.5f",
                              A, A, A, A, A, A);
                 } else {
+                    /* Animated Ken-Burns zoom. Originally `crop=iw/(A+B*n):...,scale=...` —
+                       neither `crop` nor `scale` here set `eval=frame`, and this FFmpeg build
+                       flatly rejects a frame variable ("n") in a filter's default "init" eval
+                       mode ("Expressions with frame variables 'n', 't', 'pos' are not valid in
+                       init eval_mode") — so any export actually using a non-degenerate zoom
+                       (B != 0) failed outright with OCA_ENCODE_ERR_FILTER_GRAPH. No existing
+                       test caught this: every zoom-bearing fixture in this codebase happens to
+                       use zoom_start == zoom_end (the B == 0 branch above). Reimplemented as a
+                       geq inverse-sample, the same technique the Slide/Zoom transition cases
+                       use (see this function's per-segment transition block) and for the same
+                       reason: letting crop/scale actually renegotiate output size per frame is
+                       what reliably corrupted the heap there, not just a syntax problem. z is
+                       the same A+B*N zoom factor the old crop/scale pair used; (sx,sy) is
+                       (X,Y) mapped back through an inverse zoom around the frame center by z.
+                       The "inside" clamp only matters for a downward zoom (z<1, "zoom out
+                       past 1.0") which the original crop=iw/z formula couldn't represent
+                       either (crop can't grow past its input size) — here it just shows black
+                       padding instead of undefined behavior; it's a no-op multiplier (always 1)
+                       for the far more common z>=1 "push in" case this feature is meant for. */
+                    char z[220], sx[280], sy[280], inside[820];
+                    snprintf(z, sizeof(z), "(%.7f+%.9f*N)", A, B);
+                    snprintf(sx, sizeof(sx), "((X-W/2)/%s+W/2)", z);
+                    snprintf(sy, sizeof(sy), "((Y-H/2)/%s+H/2)", z);
+                    snprintf(inside, sizeof(inside),
+                             "(1-lt(%s,0))*lt(%s,W)*(1-lt(%s,0))*lt(%s,H)", sx, sx, sy, sy);
                     snprintf(zoom_str, sizeof(zoom_str),
-                             "crop=iw/(%.7f+%.9f*n):ih/(%.7f+%.9f*n)"
-                             ":iw*(1-1/(%.7f+%.9f*n))/2:ih*(1-1/(%.7f+%.9f*n))/2"
-                             ",scale=iw*(%.7f+%.9f*n):ih*(%.7f+%.9f*n)",
-                             A, B, A, B, A, B, A, B, A, B, A, B);
+                             "geq=lum='p(%s,%s)*%s'"
+                             ":cb='128+(cb(%s,%s)-128)*%s'"
+                             ":cr='128+(cr(%s,%s)-128)*%s'",
+                             sx, sy, inside, sx, sy, inside, sx, sy, inside);
                 }
             }
 
-            /* Build the transition filter string for this segment's entry effect.
-               All expressions use arithmetic instead of min()/max()/ite() function calls to
-               avoid commas inside option values (which avfilter would misparse as filter
-               separators). The pattern (n<TF)*expr_a + (n>=TF)*expr_b evaluates to expr_a
-               when n < TF and expr_b when n >= TF, since comparison operators return 0 or 1.
-               n resets to 0 at the start of each segment's filter graph, so it counts frames
-               from this clip's first frame. */
-            char transition_str[384] = "";
+            /* Build the transition filter string for this segment's entry effect. A comma is
+               only a filter-chain separator OUTSIDE quotes — every comma below sits inside a
+               single-quoted option value (lum='...', w='...', etc.), so lt()/gte()'s own
+               comma-separated arguments are safe (verified against a real ffmpeg build, not
+               just read off the docs). n/N reset to 0 at the start of each segment's filter
+               graph, so they count frames from this clip's first frame. */
+            char transition_str[2048] = "";
             if (seg->transition_in != 0) {
                 double tf = (double)seg->transition_duration_secs
                             * (double)canvas_fps.num / (double)canvas_fps.den;
@@ -315,32 +345,58 @@ OcaEncodeStatus avbridge_encode_timeline_export(
                                  (double)seg->transition_duration_secs);
                         break;
                     case 2:
-                        /* Slide: reveal the clip from left to right using an animated drawbox
-                           that covers the frame with black and retreats rightward each frame.
-                           x = n*iw/tf when n < tf (box moves right, revealing clip from left);
-                           x = iw when n >= tf (box fully off-screen, full clip visible).
-                           Arithmetic: (n<tf)*n*iw/tf + (n>=tf)*iw — no commas in expression. */
+                        /* Slide: reveal the clip from left to right. Originally an animated
+                           drawbox (covers the frame with black, retreats rightward each frame)
+                           — switched to a geq per-pixel expression because drawbox's x/y don't
+                           expose a frame-count variable in the FFmpeg build this project links
+                           against ("n" evaluates as an undefined constant there), unlike
+                           crop/scale's n or geq's own N. inside is 1 while X sits left of the
+                           reveal edge (min(W,N*W/tf), clamped so it never exceeds the frame),
+                           else 0; luma is zeroed and chroma pinned to neutral (128) outside it,
+                           matching drawbox's opaque black rectangle. */
                         snprintf(transition_str, sizeof(transition_str),
-                                 "drawbox=x='(n<%g)*n*iw/%g+(n>=%g)*iw'"
-                                 ":y=0:w=iw:h=ih:color=black@1:t=fill",
+                                 "geq=lum='p(X,Y)*lt(X,min(W,N*W/%g))'"
+                                 ":cb='128+(cb(X,Y)-128)*lt(X,min(W,N*W/%g))'"
+                                 ":cr='128+(cr(X,Y)-128)*lt(X,min(W,N*W/%g))'",
                                  tf, tf, tf);
                         break;
-                    case 3:
-                        /* Zoom: scale from 50%% to 100%% of canvas size over transition_duration_secs,
-                           then pad back to the canvas dimensions with black borders.
-                           Scale factor = 0.5 + 0.5*(n<tf)*n/tf + 0.5*(n>=tf), which is 0.5 at
-                           n=0 and 1.0 at n>=tf. eval=frame is required so scale re-evaluates
-                           the expression for each output frame. After scaling, iw/ih in the pad
-                           expression are the scaled (smaller) dimensions — (W-iw)/2 centres them. */
+                    case 3: {
+                        /* Zoom: the frame appears to grow from a centered 50%-size box (the
+                           rest padded black) up to filling the whole frame by n>=tf.
+                           Originally `scale=...:eval=frame,pad=...` — actually letting scale
+                           renegotiate its OUTPUT size every frame reliably corrupted the heap
+                           somewhere downstream in the filter graph (STATUS_HEAP_CORRUPTION,
+                           caught by timeline_export_test.rs's
+                           zoom_transition_exports_without_error — a real crash, not just a
+                           parse error). Reimplemented as a geq inverse-sample instead, the same
+                           technique Slide's case above uses: output frame size never changes,
+                           only what each output pixel (X,Y) samples. z is the same 0.5..1.0
+                           growth factor the old scale factor was; (sx,sy) is (X,Y) mapped back
+                           through an inverse zoom-in around the frame center by z — at n=0
+                           (z=0.5) that maps the whole canvas to a region twice the frame's
+                           size, so most (sx,sy) fall outside [0,W)x[0,H) (inside=0, rendered
+                           black — the pad-black-border equivalent); by n>=tf (z=1.0) every
+                           (sx,sy) falls inside 1:1 (inside=1 everywhere, full frame visible).
+                           Built via nested snprintf into scratch buffers, one sub-expression at
+                           a time, rather than one giant format string — much easier to get the
+                           %-substitution counts right, and each sub-expression only needs to
+                           reference tf/z's %g-formatted text once instead of retyping the
+                           argument list at every nesting level. */
+                        char z[160], sx[224], sy[224], inside[768];
+                        snprintf(z, sizeof(z), "(0.5+0.5*lt(N,%g)*N/%g+0.5*gte(N,%g))",
+                                 tf, tf, tf);
+                        snprintf(sx, sizeof(sx), "((X-W/2)/%s+W/2)", z);
+                        snprintf(sy, sizeof(sy), "((Y-H/2)/%s+H/2)", z);
+                        snprintf(inside, sizeof(inside),
+                                 "(1-lt(%s,0))*lt(%s,W)*(1-lt(%s,0))*lt(%s,H)",
+                                 sx, sx, sy, sy);
                         snprintf(transition_str, sizeof(transition_str),
-                                 "scale=iw*(0.5+0.5*(n<%g)*n/%g+0.5*(n>=%g))"
-                                 ":ih*(0.5+0.5*(n<%g)*n/%g+0.5*(n>=%g))"
-                                 ":eval=frame"
-                                 ",pad=%d:%d:(%d-iw)/2:(%d-ih)/2:black",
-                                 tf, tf, tf, tf, tf, tf,
-                                 canvas_width, canvas_height,
-                                 canvas_width, canvas_height);
+                                 "geq=lum='p(%s,%s)*%s'"
+                                 ":cb='128+(cb(%s,%s)-128)*%s'"
+                                 ":cr='128+(cr(%s,%s)-128)*%s'",
+                                 sx, sy, inside, sx, sy, inside, sx, sy, inside);
                         break;
+                    }
                     default:
                         break;
                 }
@@ -348,7 +404,7 @@ OcaEncodeStatus avbridge_encode_timeline_export(
 
             /* Build the post-fps portion: zoom, clip_filter, and transition, all optional,
                separated by commas only where both neighbours are non-empty. */
-            char post_fps[1600] = "";
+            char post_fps[4096] = "";
             if (zoom_str[0] && clip_filter[0]) {
                 snprintf(post_fps, sizeof(post_fps), "%s,%s", zoom_str, clip_filter);
             } else if (zoom_str[0]) {
@@ -356,7 +412,7 @@ OcaEncodeStatus avbridge_encode_timeline_export(
             } else if (clip_filter[0]) {
                 snprintf(post_fps, sizeof(post_fps), "%s", clip_filter);
             }
-            char final_chain[2048] = "";
+            char final_chain[8192] = "";
             if (post_fps[0] && transition_str[0]) {
                 snprintf(final_chain, sizeof(final_chain), "%s,%s", post_fps, transition_str);
             } else if (post_fps[0]) {

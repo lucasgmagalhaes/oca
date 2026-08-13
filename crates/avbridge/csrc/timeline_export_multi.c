@@ -29,66 +29,119 @@
    implementation; additional tracks beyond index 1 are silently ignored.
    ========================================================================= */
 
+void oca_build_kenburns_zoom(const OcaClipSegment *seg, int fps_num, int fps_den,
+                              char *buf, size_t cap) {
+    buf[0] = '\0';
+    float zs = seg->zoom_start > 0.0f ? seg->zoom_start : 1.0f;
+    float ze = seg->zoom_end > 0.0f ? seg->zoom_end : 1.0f;
+    if (zs < 0.1f) zs = 0.1f; if (zs > 20.0f) zs = 20.0f;
+    if (ze < 0.1f) ze = 0.1f; if (ze > 20.0f) ze = 20.0f;
+    if (fabsf(zs - 1.0f) <= 1e-4f && fabsf(ze - 1.0f) <= 1e-4f) {
+        return;
+    }
+
+    AVRational canvas_fps = {fps_num, fps_den};
+    double source_dur = seg->source_out_secs - seg->source_in_secs;
+    double speed = seg->speed_factor > 0.0f ? seg->speed_factor : 1.0f;
+    double timeline_dur = source_dur / speed;
+    double total_frames = timeline_dur * (double)canvas_fps.num / (double)canvas_fps.den;
+    if (total_frames < 1.0) total_frames = 1.0;
+    double N = total_frames - 1.0;
+    if (N < 1.0) N = 1.0;
+    double A = zs, B = ((double)ze - (double)zs) / N;
+
+    if (fabs(B) < 1e-9) {
+        /* Static zoom (zoom_start == zoom_end): a plain crop+scale, no frame variable needed,
+           so none of the animated case's concerns below apply. */
+        snprintf(buf, cap,
+                 "crop=iw/%.5f:ih/%.5f:iw*(1-1/%.5f)/2:ih*(1-1/%.5f)/2,scale=iw*%.5f:ih*%.5f",
+                 A, A, A, A, A, A);
+        return;
+    }
+
+    /* Animated Ken-Burns zoom. Originally `crop=iw/(A+B*n):...,scale=...` — neither `crop` nor
+       `scale` here set `eval=frame`, and this FFmpeg build flatly rejects a frame variable
+       ("n") in a filter's default "init" eval mode ("Expressions with frame variables 'n',
+       't', 'pos' are not valid in init eval_mode") — so any export actually using a
+       non-degenerate zoom (B != 0) failed outright with OCA_ENCODE_ERR_FILTER_GRAPH. No
+       existing test caught this: every zoom-bearing fixture in this codebase happens to use
+       zoom_start == zoom_end (the B == 0 branch above). Reimplemented as a geq inverse-sample,
+       the same technique the Slide/Zoom transition cases use (see
+       avbridge_encode_timeline_export's per-segment transition block) and for the same reason:
+       letting crop/scale actually renegotiate output size per frame is what reliably corrupted
+       the heap there, not just a syntax problem. z is the same A+B*N zoom factor the old
+       crop/scale pair used; (sx,sy) is (X,Y) mapped back through an inverse zoom around the
+       frame center by z. The "inside" clamp only matters for a downward zoom (z<1, "zoom out
+       past 1.0") which the original crop=iw/z formula couldn't represent either (crop can't
+       grow past its input size) — here it just shows black padding instead of undefined
+       behavior; it's a no-op multiplier (always 1) for the far more common z>=1 "push in" case
+       this feature is meant for. */
+    char z[220], sx[280], sy[280], inside[820];
+    snprintf(z, sizeof(z), "(%.7f+%.9f*N)", A, B);
+    snprintf(sx, sizeof(sx), "((X-W/2)/%s+W/2)", z);
+    snprintf(sy, sizeof(sy), "((Y-H/2)/%s+H/2)", z);
+    snprintf(inside, sizeof(inside), "(1-lt(%s,0))*lt(%s,W)*(1-lt(%s,0))*lt(%s,H)",
+             sx, sx, sy, sy);
+    snprintf(buf, cap,
+             "geq=lum='p(%s,%s)*%s'"
+             ":cb='128+(cb(%s,%s)-128)*%s'"
+             ":cr='128+(cr(%s,%s)-128)*%s'",
+             sx, sy, inside, sx, sy, inside, sx, sy, inside);
+}
+
 /* Build the complete single-track video filter string for `seg` — identical logic to
    the inline filter-string block inside avbridge_encode_timeline_export, extracted here
    so the multi-track function can reuse it for single-track fallback intervals. */
 static void oca_build_vfilter_descr(const OcaClipSegment *seg,
                                      int cw, int ch, int fps_num, int fps_den,
                                      char *buf, size_t cap) {
-    AVRational canvas_fps = {fps_num, fps_den};
     const char *cf = (seg->video_filter && seg->video_filter[0]) ? seg->video_filter : "";
     char setpts[48] = "";
     if (fabsf(seg->speed_factor - 1.0f) > 1e-4f && seg->speed_factor > 0.0f)
         snprintf(setpts, sizeof(setpts), "setpts=PTS/%.6f,", (double)seg->speed_factor);
 
-    char zoom[512] = "";
-    float zs = seg->zoom_start > 0.0f ? seg->zoom_start : 1.0f;
-    float ze = seg->zoom_end > 0.0f ? seg->zoom_end : 1.0f;
-    if (zs < 0.1f) zs = 0.1f; if (zs > 20.0f) zs = 20.0f;
-    if (ze < 0.1f) ze = 0.1f; if (ze > 20.0f) ze = 20.0f;
-    if (fabsf(zs - 1.0f) > 1e-4f || fabsf(ze - 1.0f) > 1e-4f) {
-        double sd = seg->source_out_secs - seg->source_in_secs;
-        double sp = seg->speed_factor > 0.0f ? seg->speed_factor : 1.0f;
-        double tf = (sd / sp) * (double)canvas_fps.num / (double)canvas_fps.den;
-        if (tf < 1.0) tf = 1.0;
-        double N = tf - 1.0; if (N < 1.0) N = 1.0;
-        double A = zs, B = ((double)ze - (double)zs) / N;
-        if (fabs(B) < 1e-9)
-            snprintf(zoom, sizeof(zoom),
-                     "crop=iw/%.5f:ih/%.5f:iw*(1-1/%.5f)/2:ih*(1-1/%.5f)/2,scale=iw*%.5f:ih*%.5f",
-                     A, A, A, A, A, A);
-        else
-            snprintf(zoom, sizeof(zoom),
-                     "crop=iw/(%.7f+%.9f*n):ih/(%.7f+%.9f*n)"
-                     ":iw*(1-1/(%.7f+%.9f*n))/2:ih*(1-1/(%.7f+%.9f*n))/2"
-                     ",scale=iw*(%.7f+%.9f*n):ih*(%.7f+%.9f*n)",
-                     A, B, A, B, A, B, A, B, A, B, A, B);
-    }
+    char zoom[2048];
+    oca_build_kenburns_zoom(seg, fps_num, fps_den, zoom, sizeof(zoom));
 
-    char trans[384] = "";
+    char trans[2048] = "";
     if (seg->transition_in != 0) {
         double tf = (double)seg->transition_duration_secs * (double)fps_num / (double)fps_den;
         if (tf < 1.0) tf = 1.0;
         switch (seg->transition_in) {
             case 1: snprintf(trans, sizeof(trans), "fade=t=in:st=0:d=%.4f",
                              (double)seg->transition_duration_secs); break;
+            /* See the matching cases in timeline_export.c's per-segment transition block for
+               why Slide uses geq instead of drawbox, and why Zoom uses a geq inverse-sample
+               instead of a dynamically resizing scale+pad (the latter reliably corrupted the
+               heap when actually run through a real export). */
             case 2: snprintf(trans, sizeof(trans),
-                             "drawbox=x='(n<%g)*n*iw/%g+(n>=%g)*iw':y=0:w=iw:h=ih:color=black@1:t=fill",
+                             "geq=lum='p(X,Y)*lt(X,min(W,N*W/%g))'"
+                             ":cb='128+(cb(X,Y)-128)*lt(X,min(W,N*W/%g))'"
+                             ":cr='128+(cr(X,Y)-128)*lt(X,min(W,N*W/%g))'",
                              tf, tf, tf); break;
-            case 3: snprintf(trans, sizeof(trans),
-                             "scale=iw*(0.5+0.5*(n<%g)*n/%g+0.5*(n>=%g))"
-                             ":ih*(0.5+0.5*(n<%g)*n/%g+0.5*(n>=%g)):eval=frame"
-                             ",pad=%d:%d:(%d-iw)/2:(%d-ih)/2:black",
-                             tf, tf, tf, tf, tf, tf, cw, ch, cw, ch); break;
+            case 3: {
+                char z[160], sx[224], sy[224], inside[768];
+                snprintf(z, sizeof(z), "(0.5+0.5*lt(N,%g)*N/%g+0.5*gte(N,%g))", tf, tf, tf);
+                snprintf(sx, sizeof(sx), "((X-W/2)/%s+W/2)", z);
+                snprintf(sy, sizeof(sy), "((Y-H/2)/%s+H/2)", z);
+                snprintf(inside, sizeof(inside), "(1-lt(%s,0))*lt(%s,W)*(1-lt(%s,0))*lt(%s,H)",
+                         sx, sx, sy, sy);
+                snprintf(trans, sizeof(trans),
+                         "geq=lum='p(%s,%s)*%s'"
+                         ":cb='128+(cb(%s,%s)-128)*%s'"
+                         ":cr='128+(cr(%s,%s)-128)*%s'",
+                         sx, sy, inside, sx, sy, inside, sx, sy, inside);
+                break;
+            }
             default: break;
         }
     }
 
-    char post[1600] = "";
+    char post[4096] = "";
     if (zoom[0] && cf[0])   snprintf(post, sizeof(post), "%s,%s", zoom, cf);
     else if (zoom[0])        snprintf(post, sizeof(post), "%s", zoom);
     else if (cf[0])          snprintf(post, sizeof(post), "%s", cf);
-    char chain[2048] = "";
+    char chain[8192] = "";
     if (post[0] && trans[0]) snprintf(chain, sizeof(chain), "%s,%s", post, trans);
     else if (post[0])         snprintf(chain, sizeof(chain), "%s", post);
     else if (trans[0])        snprintf(chain, sizeof(chain), "%s", trans);
@@ -111,32 +164,10 @@ static void oca_build_overlay_vfilter(const OcaClipSegment *seg,
     if (fabsf(seg->speed_factor - 1.0f) > 1e-4f && seg->speed_factor > 0.0f)
         snprintf(setpts, sizeof(setpts), "setpts=PTS/%.6f,", (double)seg->speed_factor);
 
-    char zoom[512] = "";
-    float zs = seg->zoom_start > 0.0f ? seg->zoom_start : 1.0f;
-    float ze = seg->zoom_end > 0.0f ? seg->zoom_end : 1.0f;
-    if (zs < 0.1f) zs = 0.1f; if (zs > 20.0f) zs = 20.0f;
-    if (ze < 0.1f) ze = 0.1f; if (ze > 20.0f) ze = 20.0f;
-    if (fabsf(zs - 1.0f) > 1e-4f || fabsf(ze - 1.0f) > 1e-4f) {
-        AVRational cfps = {fps_num, fps_den};
-        double sd = seg->source_out_secs - seg->source_in_secs;
-        double sp = seg->speed_factor > 0.0f ? seg->speed_factor : 1.0f;
-        double tf = (sd / sp) * (double)cfps.num / (double)cfps.den;
-        if (tf < 1.0) tf = 1.0;
-        double N = tf - 1.0; if (N < 1.0) N = 1.0;
-        double A = zs, B = ((double)ze - (double)zs) / N;
-        if (fabs(B) < 1e-9)
-            snprintf(zoom, sizeof(zoom),
-                     "crop=iw/%.5f:ih/%.5f:iw*(1-1/%.5f)/2:ih*(1-1/%.5f)/2,scale=iw*%.5f:ih*%.5f",
-                     A, A, A, A, A, A);
-        else
-            snprintf(zoom, sizeof(zoom),
-                     "crop=iw/(%.7f+%.9f*n):ih/(%.7f+%.9f*n)"
-                     ":iw*(1-1/(%.7f+%.9f*n))/2:ih*(1-1/(%.7f+%.9f*n))/2"
-                     ",scale=iw*(%.7f+%.9f*n):ih*(%.7f+%.9f*n)",
-                     A, B, A, B, A, B, A, B, A, B, A, B);
-    }
+    char zoom[2048];
+    oca_build_kenburns_zoom(seg, fps_num, fps_den, zoom, sizeof(zoom));
 
-    char post[2048] = "";
+    char post[4096] = "";
     if (zoom[0] && cf[0])   snprintf(post, sizeof(post), ",%s,%s", zoom, cf);
     else if (zoom[0])        snprintf(post, sizeof(post), ",%s", zoom);
     else if (cf[0])          snprintf(post, sizeof(post), ",%s", cf);
@@ -264,7 +295,10 @@ static int oca_init_overlay_graph(
     ret = avfilter_graph_create_filter(out_sink, bufsink, "snk",  NULL, NULL, *out_graph);
     if (ret < 0) goto fail;
 
-    char fstr[8192];
+    /* f0/f1 (the per-track filter strings passed in) can each run up to their own 8192-byte
+       capacity now (a RoundedRect mask combined with a Ken-Burns zoom on the same clip) —
+       generous margin over the 2x8192 + a short template that implies. */
+    char fstr[20480];
     snprintf(fstr, sizeof(fstr),
              "[in0]%s[v0];[in1]%s[v1];[v0][v1]overlay=0:0,format=yuv420p[out]", f0, f1);
 
@@ -499,7 +533,7 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
                                 status = OCA_ENCODE_ERR_DECODER; av_frame_unref(dec_frame); break;
                             }
 
-                            char f0[4096], f1[4096];
+                            char f0[8192], f1[8192];
                             oca_build_overlay_vfilter(seg0, canvas_width, canvas_height, canvas_fps_num, canvas_fps_den, f0, sizeof(f0));
                             oca_build_overlay_vfilter(s1,   canvas_width, canvas_height, canvas_fps_num, canvas_fps_den, f1, sizeof(f1));
                             if (oca_init_overlay_graph(vdec_ctx0, f0, ov1.vdec_ctx, f1,
@@ -514,7 +548,7 @@ OcaEncodeStatus avbridge_encode_timeline_export_multi(
                             free_video_filter_chain(&vchain);
                             if (ov1.in_ctx) oca_free_overlay_decoder(&ov1);
 
-                            char vfd[3072];
+                            char vfd[16384];
                             oca_build_vfilter_descr(seg0, canvas_width, canvas_height,
                                                      canvas_fps_num, canvas_fps_den, vfd, sizeof(vfd));
                             if (init_video_filter_chain(vdec_ctx0, vfd, &vchain) < 0) {

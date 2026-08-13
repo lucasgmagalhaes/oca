@@ -316,3 +316,42 @@ fn zoom_transition_exports_without_error() {
 
     let _ = std::fs::remove_file(&output);
 }
+
+#[test]
+fn animated_ken_burns_zoom_exports_without_error() {
+    // zoom_start != zoom_end is the B != 0 branch in oca_build_kenburns_zoom — distinct from
+    // (and previously broken independently of) transition_in's Zoom entry effect above: this
+    // one used to fail filter-graph init outright ("Expressions with frame variables 'n', 't',
+    // 'pos' are not valid in init eval_mode"), not just fail to animate, since every other
+    // fixture in this file keeps zoom_start == zoom_end (the safe, degenerate B == 0 case).
+    let asset = video_asset(1);
+    let mut c1 = clip(1, 1, 0.0, 0.0, 0.5);
+    c1.zoom_start = 1.0;
+    c1.zoom_end = 1.5;
+
+    let track = Track {
+        id: 1,
+        name: "V1".to_string(),
+        kind: TrackKind::Video,
+        clips: vec![c1],
+
+        text_clips: vec![],
+
+        visible: true,
+
+    };
+    let sequence = sequence_with(vec![track]);
+
+    let output = std::env::temp_dir().join("avcore_test_timeline_export_ken_burns_zoom.mp4");
+    let cancel = AtomicBool::new(false);
+
+    let outcome =
+        render_timeline_export(&sequence, &[asset], &output, -14.0, &cancel, |_| {}).unwrap();
+
+    assert_eq!(outcome, RenderOutcome::Completed);
+
+    let info = probe_media(&output).unwrap();
+    assert_eq!(info.kind, MediaKind::Video);
+
+    let _ = std::fs::remove_file(&output);
+}

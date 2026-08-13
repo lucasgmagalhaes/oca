@@ -9,6 +9,18 @@
 #include <libavfilter/avfilter.h>
 #include <libavformat/avformat.h>
 
+#include "bridge.h"
+
+/* Builds the animated Ken-Burns zoom filter stage (ClipSegment::zoom_start/zoom_end) into
+   `buf` (capacity `cap`) — empty string if both are ~1.0 (no zoom configured). A geq
+   inverse-sample: `buf`'s caller just splices it into a comma-joined filter chain, no `n`/`N`
+   frame-counter reset concerns beyond the usual "fresh per segment's filter graph" ones.
+   Shared by timeline_export.c and timeline_export_multi.c's two filter-string builders, all
+   three of which need the same fix (see its definition in timeline_export_multi.c for why the
+   original crop/scale-based version reliably failed or crashed instead of animating). */
+void oca_build_kenburns_zoom(const OcaClipSegment *seg, int fps_num, int fps_den,
+                              char *buf, size_t cap);
+
 /* Opens `path` and reads its stream info into a new AVFormatContext.
    Returns 0 on success (caller owns *fmt_ctx_out and must close it),
    -1 if avformat_open_input failed, -2 if avformat_find_stream_info failed

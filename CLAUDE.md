@@ -36,15 +36,38 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   (`avbridge_encode_timeline_export_multi`'s track 1+), since `oca_build_overlay_vfilter` has
   no per-track `format=yuv420p` conform before the `overlay` filter that composites them —
   track 0 (background) and single-track exports still drop the alpha.
-  **Known pre-existing bug (unrelated to the above):** `slide_transition_exports_without_error`
-  and `zoom_transition_exports_without_error` (`crates/core/tests/timeline_export_test.rs`)
-  fail against the currently pinned FFmpeg build — its avfilter eval doesn't accept the bare
-  `<`/`>=` infix comparison operators `bridge.c`'s Slide/Zoom transition expressions rely on
-  (`Undefined constant or missing '(' in 'n>=9)*iw'`). Reproduces identically on a clean
-  checkout (verified via `git stash`) — not introduced by any change in this file's history so
-  far. Needs the same expressions rewritten with `lt()`/`gte()` function calls (confirmed
-  working in this build — see the mask geq expressions above, which use `lte()`/`pow()`/`min()`
-  successfully) instead of bare operators, or a different FFmpeg build.
+  **Fixed:** Slide/Zoom transitions used to fail against the pinned FFmpeg build — two
+  independent bugs, not one. (1) `drawbox`'s `x`/`y` don't expose a frame-count variable in
+  this build at all (`n` is an undefined constant there, regardless of operator syntax) — Slide
+  is now a `geq` per-pixel expression instead (`N` works fine in `geq`). (2) Letting `scale`
+  actually renegotiate its output size every frame (`eval=frame`) reliably corrupted the heap
+  once run through a real export (`STATUS_HEAP_CORRUPTION`, not just a parse error) — Zoom is
+  now a `geq` inverse-sample too (output size never changes; only what each output pixel
+  samples does), the same technique the mask stages above use. Both are implemented in
+  `timeline_export.c`'s per-segment transition block and duplicated in
+  `timeline_export_multi.c`'s `oca_build_vfilter_descr`.
+
+  **Also fixed, found while fixing the above:** the *other* zoom — `ClipInstance::zoom_start`/
+  `zoom_end` (Ken-Burns), unrelated to `transition_in`'s Zoom entry effect — was silently
+  broken for every non-degenerate case (`zoom_start != zoom_end`): its `crop=iw/(A+B*n):...`
+  never set `eval=frame` either, and this FFmpeg build rejects a frame variable outright in a
+  filter's default "init" eval mode, so the export failed with `OCA_ENCODE_ERR_FILTER_GRAPH`
+  every time, not just failed to animate. No test caught it because every zoom-bearing fixture
+  in the test suite happened to use `zoom_start == zoom_end` (the safe, static-crop branch).
+  Fixed the same way, factored into a shared `oca_build_kenburns_zoom()` (declared in
+  `bridge_internal.h`, defined in `timeline_export_multi.c`) since the same fix was needed in
+  three places: `timeline_export.c`'s per-segment block, and both of
+  `timeline_export_multi.c`'s filter-string builders (`oca_build_vfilter_descr`,
+  `oca_build_overlay_vfilter`). **Untested for the multi-track path specifically** —
+  `avbridge_encode_timeline_export_multi` has no Rust integration test coverage at all yet
+  (`crates/core/tests/` has no multi-track fixture), a pre-existing gap this didn't create but
+  didn't close either; the fix there is the same validated geq technique, just duplicated, not
+  independently exercised end-to-end.
+
+  Buffers along all of these paths were bumped generously (up to 20480 bytes at the widest —
+  `oca_init_overlay_graph`'s `fstr`) since a `geq` expression here, or a RoundedRect mask, can
+  each independently run past a thousand bytes, and several of these strings nest more than one
+  of them.
 
 - **Fase 5/6 (partially done):** Aspect ratio selection; prefs + export queue persisted
   to platform JSON (`~/Library/Application Support/oca/` on macOS); recent project list;
