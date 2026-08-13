@@ -58,11 +58,11 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   `bridge_internal.h`, defined in `timeline_export_multi.c`) since the same fix was needed in
   three places: `timeline_export.c`'s per-segment block, and both of
   `timeline_export_multi.c`'s filter-string builders (`oca_build_vfilter_descr`,
-  `oca_build_overlay_vfilter`). **Untested for the multi-track path specifically** —
-  `avbridge_encode_timeline_export_multi` has no Rust integration test coverage at all yet
-  (`crates/core/tests/` has no multi-track fixture), a pre-existing gap this didn't create but
-  didn't close either; the fix there is the same validated geq technique, just duplicated, not
-  independently exercised end-to-end.
+  `oca_build_overlay_vfilter`). **Now covered end-to-end** by
+  `crates/core/tests/timeline_export_multi_test.rs` — exercises the real two-track composite
+  path (`resolve_timeline_segments_multi` + `render_export_job_multi`), including Slide/Zoom
+  transitions, Ken-Burns zoom, and mask_shape all on the overlay track specifically, not just
+  the C string builders in isolation.
 
   Buffers along all of these paths were bumped generously (up to 20480 bytes at the widest —
   `oca_init_overlay_graph`'s `fstr`) since a `geq` expression here, or a RoundedRect mask, can
