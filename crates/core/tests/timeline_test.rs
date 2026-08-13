@@ -117,6 +117,45 @@ fn video_filter_chain_includes_colorkey_when_chroma_keyed() {
 }
 
 #[test]
+fn video_filter_chain_includes_a_circle_mask_when_masked() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.mask_shape = MaskShape::Circle;
+    assert_eq!(
+        c.video_filter_chain(),
+        "format=yuva420p,geq=lum='p(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*lte(pow(X-W/\
+         2,2)+pow(Y-H/2,2),pow(min(W,H)/2,2))'"
+    );
+}
+
+#[test]
+fn video_filter_chain_includes_a_rounded_rect_mask_when_masked() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.mask_shape = MaskShape::RoundedRect;
+    c.mask_corner_radius = 0.3;
+    assert_eq!(
+        c.video_filter_chain(),
+        "format=yuva420p,geq=lum='p(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*lte(sqrt(pow(\
+         max(abs(X-W/2)-(W/2-min(0.3000*min(W,H),min(W,H)/2)),0),2)+pow(max(abs(Y-H/2)-(H/2-min(\
+         0.3000*min(W,H),min(W,H)/2)),0),2))-min(0.3000*min(W,H),min(W,H)/2),0)'"
+    );
+}
+
+#[test]
+fn video_filter_chain_orders_mask_after_chroma_key_before_blur() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.chroma_key_enabled = true;
+    c.chroma_key_color = [0, 255, 0];
+    c.chroma_key_tolerance = 0.4;
+    c.mask_shape = MaskShape::Circle;
+    c.blur_intensity = 0.5;
+    let chain = c.video_filter_chain();
+    let colorkey_pos = chain.find("colorkey").unwrap();
+    let mask_pos = chain.find("geq").unwrap();
+    let blur_pos = chain.find("boxblur").unwrap();
+    assert!(colorkey_pos < mask_pos && mask_pos < blur_pos);
+}
+
+#[test]
 fn video_filter_chain_includes_boxblur_when_blurred() {
     let mut c = clip(1, 0.0, 0.0, 10.0);
     c.blur_intensity = 0.5;

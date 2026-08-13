@@ -19,20 +19,32 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   `ClipInstance::video_filter_chain()` builds per-clip avfilter chains for export;
   `build_video_filter_bin` covers a narrower subset for GStreamer preview.
   Effects wired to export: gain_db, crop, flip, color_filter, vignette,
-  brightness/contrast/saturation, sharpen, chroma_key, blur, pixelize, shake, glitch,
-  zoom, speed_factor, freeze_frame, transitions (fade/slide/zoom entry effects via
+  brightness/contrast/saturation, sharpen, chroma_key, mask_shape, blur, pixelize, shake,
+  glitch, zoom, speed_factor, freeze_frame, transitions (fade/slide/zoom entry effects via
   `ClipSegment::transition_in` + `bridge.c` avfilter expressions; HardCut/None are no-ops).
   **Not wired to preview:** transitions (see TODO in `build_video_filter_bin`), vignette,
-  chroma_key, gain_db, speed, glitch. pixelize/shake/zoom/freeze_frame now covered
+  chroma_key, mask_shape, gain_db, speed, glitch. pixelize/shake/zoom/freeze_frame now covered
   (pixelize: static scale-down/up via `videoscale`; shake/zoom: `videocrop` driven per-frame by
   a pad probe, zoom keyed off buffer PTS since preview has no fixed canvas fps; freeze_frame:
   `ui`'s `OcaApp` keeps the pipeline `Paused` at `source_in_secs` and advances the playhead by
   wall-clock time instead of pipeline position — see `preview_frozen_since`/`frozen_playhead`
   in `crates/ui/src/app/preview.rs`).
-  **Not wired to export or preview:** layer masks (`mask_shape`).
   **Chroma key caveat:** `colorkey` marks pixels transparent but the final `yuv420p`
-  conform drops the alpha plane — keyed color still appears in output despite being in
-  `video_filter_chain()`.
+  conform (on a single/background track) drops the alpha plane — keyed color still appears in
+  output there despite being in `video_filter_chain()`. Same caveat applies to `mask_shape`'s
+  `geq` alpha stage. Both only have a visible effect on a clip placed on an **overlay** track
+  (`avbridge_encode_timeline_export_multi`'s track 1+), since `oca_build_overlay_vfilter` has
+  no per-track `format=yuv420p` conform before the `overlay` filter that composites them —
+  track 0 (background) and single-track exports still drop the alpha.
+  **Known pre-existing bug (unrelated to the above):** `slide_transition_exports_without_error`
+  and `zoom_transition_exports_without_error` (`crates/core/tests/timeline_export_test.rs`)
+  fail against the currently pinned FFmpeg build — its avfilter eval doesn't accept the bare
+  `<`/`>=` infix comparison operators `bridge.c`'s Slide/Zoom transition expressions rely on
+  (`Undefined constant or missing '(' in 'n>=9)*iw'`). Reproduces identically on a clean
+  checkout (verified via `git stash`) — not introduced by any change in this file's history so
+  far. Needs the same expressions rewritten with `lt()`/`gte()` function calls (confirmed
+  working in this build — see the mask geq expressions above, which use `lte()`/`pow()`/`min()`
+  successfully) instead of bare operators, or a different FFmpeg build.
 
 - **Fase 5/6 (partially done):** Aspect ratio selection; prefs + export queue persisted
   to platform JSON (`~/Library/Application Support/oca/` on macOS); recent project list;

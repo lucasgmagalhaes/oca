@@ -399,11 +399,12 @@ impl ClipInstance {
     /// Builds this clip's avfilter chain description for `core::render::render_timeline_export`
     /// — the subset of effect fields expressible as a static per-clip video filter (see
     /// `features/request.md`'s Fase 4 "Efeitos visuais" list): crop, brightness/contrast/
-    /// saturation, the black-and-white/sepia color filter, vignette, sharpen, chroma key, blur,
-    /// and horizontal flip. `gain_db` is audio, not video, and isn't part of this chain.
-    /// `speed_factor` and `zoom_start`/`zoom_end` are handled in `bridge.c` (not here).
-    /// `mask_shape`/`transition_in` each need a materially different mechanism
-    /// (alpha-geometry compositing, cross-clip blending) and aren't covered here yet.
+    /// saturation, the black-and-white/sepia color filter, chroma key, mask shape, blur,
+    /// sharpen, pixelize, shake, glitch, vignette, and horizontal flip. `gain_db` is audio, not
+    /// video, and isn't part of this chain. `speed_factor` and `zoom_start`/`zoom_end` are
+    /// handled in `bridge.c` (not here). `mask_shape`'s alpha only survives to the rendered
+    /// output on an overlay track — see the caveat on its stage below. `transition_in` needs a
+    /// materially different mechanism (cross-clip blending) and isn't covered here yet.
     /// `frozen` also needs a different mechanism (frame duplication) but is covered elsewhere —
     /// see [`ClipInstance::frozen`]'s doc.
     ///
@@ -439,6 +440,47 @@ impl ClipInstance {
                 "colorkey=0x{r:02x}{g:02x}{b:02x}:{:.3}:0.1",
                 self.chroma_key_tolerance
             ));
+        }
+        match self.mask_shape {
+            MaskShape::None => {}
+            MaskShape::Circle | MaskShape::RoundedRect => {
+                // Promotes to an alpha-having pixel format, then geq's per-pixel expression
+                // clips it to the mask shape by zeroing alpha() outside it — multiplying by
+                // (rather than overwriting) the existing alpha(X,Y) so a chroma-keyed clip's
+                // own transparency composes with the mask instead of being clobbered by it.
+                // Note the same caveat as chroma_key's below: the final `format=yuv420p`
+                // conform on a single (non-overlay) track drops this alpha again — the mask
+                // only has a visible effect on a clip placed on an overlay track (see
+                // `oca_build_overlay_vfilter` in bridge.c, which has no such conform between
+                // its two per-track chains and the `overlay` filter that composites them).
+                //
+                // avfilter's filtergraph-level parser only treats a comma as a stage separator
+                // outside quotes — every comma below sits inside the geq option's own `'...'`
+                // quoting, so `pow`/`min`/`max`/`lte`'s comma-separated arguments are safe
+                // (verified against a real ffmpeg build, not just read off the docs).
+                let minwh = "min(W,H)";
+                let alpha_expr = match self.mask_shape {
+                    MaskShape::Circle => format!(
+                        "alpha(X,Y)*lte(pow(X-W/2,2)+pow(Y-H/2,2),pow({minwh}/2,2))"
+                    ),
+                    MaskShape::RoundedRect => {
+                        // Rounded-rect signed-distance field: shrink the half-extents by the
+                        // corner radius, measure how far outside that inner rect (X,Y) falls,
+                        // then subtract the radius back out — <=0 is inside the rounded shape.
+                        let radius = format!(
+                            "min({:.4}*{minwh},{minwh}/2)",
+                            self.mask_corner_radius.clamp(0.0, 1.0)
+                        );
+                        format!(
+                            "alpha(X,Y)*lte(sqrt(pow(max(abs(X-W/2)-(W/2-{radius}),0),2)+pow(max(abs(Y-H/2)-(H/2-{radius}),0),2))-{radius},0)"
+                        )
+                    }
+                    MaskShape::None => unreachable!("outer match already excludes None"),
+                };
+                stages.push(format!(
+                    "format=yuva420p,geq=lum='p(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='{alpha_expr}'"
+                ));
+            }
         }
         if self.blur_intensity > 0.0 {
             stages.push(format!("boxblur={:.2}", self.blur_intensity * 10.0));
