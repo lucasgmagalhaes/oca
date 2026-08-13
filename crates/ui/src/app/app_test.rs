@@ -139,11 +139,11 @@ fn test_job(id: u64, status: ExportJobStatus) -> ExportJob {
     }
 }
 
-fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
+fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (render_tx, render_rx) = mpsc::unbounded_channel();
     let (import_tx, import_rx) = mpsc::unbounded_channel();
     let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
-    OcaApp {
+    App {
         screen: Screen::Home,
         tool: EditorTool::Select,
         locale: Locale::PtBr,

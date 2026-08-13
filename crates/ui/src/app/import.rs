@@ -4,16 +4,16 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 use tokio::sync::mpsc::UnboundedSender;
 
-use super::{ImportEvent, OcaApp, ThumbnailReady, THUMBNAIL_BUCKET_SECS};
+use super::{App, ImportEvent, ThumbnailReady, THUMBNAIL_BUCKET_SECS};
 
-impl OcaApp {
+impl App {
     /// Probes each of `paths` on its own background thread — what "Importar arquivos" does.
     /// Each file becomes usable in the media library as soon as its probe (cheap: container/
     /// stream metadata only, no decode) comes back, the same way other NLEs show an imported
     /// file instantly and refine it afterward; loudness measurement and (for video) proxy
     /// generation, both full decode passes that can take minutes on a multi-GB capture, keep
     /// running in the background past that point and update the asset in place once they
-    /// finish (see [`ImportEvent`]/[`OcaApp::pump_import_queue`]). One thread per file rather
+    /// finish (see [`ImportEvent`]/[`App::pump_import_queue`]). One thread per file rather
     /// than one thread for the whole batch, so a multi-file import isn't serialized behind
     /// its slowest file either. Applied to the target project by id rather than the active
     /// project index, which could change before a slow import finishes.
@@ -34,7 +34,7 @@ impl OcaApp {
     }
 
     /// Applies import progress to its target project's media library as it arrives. Called
-    /// once per frame from [`eframe::App::ui`], same as [`OcaApp::pump_export_queue`].
+    /// once per frame from [`eframe::App::ui`], same as [`App::pump_export_queue`].
     pub(super) fn pump_import_queue(&mut self) {
         while let Ok(event) = self.import_rx.try_recv() {
             match event {
@@ -110,10 +110,10 @@ impl OcaApp {
     /// Requests a poster-frame thumbnail for a timeline clip — what `timeline_panel` calls for
     /// every visible filmstrip tile that doesn't have a texture cached yet (see
     /// `editor.rs::draw_filmstrip`). A no-op if `(asset_id, bucket)` was already requested
-    /// (successfully or not; see [`OcaApp::requested_thumbnails`]). Extraction (open the
+    /// (successfully or not; see [`App::requested_thumbnails`]). Extraction (open the
     /// asset's proxy-or-source file, seek to the bucket's representative time, grab a frame,
     /// downscale) runs on a background thread — the same reasoning as
-    /// [`OcaApp::spawn_import`]: this is FFI/decode work that must not run on the UI thread.
+    /// [`App::spawn_import`]: this is FFI/decode work that must not run on the UI thread.
     pub fn request_thumbnail(&mut self, asset_id: u64, bucket: i64) {
         let key = (asset_id, bucket);
         if self.requested_thumbnails.contains(&key) {
@@ -150,7 +150,7 @@ impl OcaApp {
     }
 
     /// Uploads finished thumbnail extractions as egui textures. Called once per frame from
-    /// [`eframe::App::ui`], same as [`OcaApp::pump_import_queue`].
+    /// [`eframe::App::ui`], same as [`App::pump_import_queue`].
     pub(super) fn pump_thumbnail_queue(&mut self, ctx: &egui::Context) {
         while let Ok(ready) = self.thumbnail_rx.try_recv() {
             let image = egui::ColorImage::from_rgba_unmultiplied(
@@ -172,7 +172,7 @@ impl OcaApp {
 /// are drawn small and tiled, not viewed full-size.
 const THUMBNAIL_MAX_DIM: u32 = 96;
 
-/// Runs on one of [`OcaApp::request_thumbnail`]'s background threads — opens `path`, seeks to
+/// Runs on one of [`App::request_thumbnail`]'s background threads — opens `path`, seeks to
 /// `at_secs`, and grabs the first frame that decodes, downscaled. `None` if the file doesn't
 /// exist, fails to open, or no frame arrives within the poll deadline.
 fn extract_thumbnail(path: &Path, at_secs: f64) -> Option<(u32, u32, Vec<u8>)> {
@@ -220,7 +220,7 @@ fn downscale_rgba(frame: &avcore::preview::VideoFrame, max_dim: u32) -> (u32, u3
     (new_width, new_height, rgba)
 }
 
-/// Runs on one of [`OcaApp::spawn_import`]'s per-file background threads, in two phases.
+/// Runs on one of [`App::spawn_import`]'s per-file background threads, in two phases.
 /// Phase one probes `path` and sends [`ImportEvent::AssetReady`] the moment that (cheap)
 /// call returns — a file that fails to probe sends [`ImportEvent::Failed`] instead and skips
 /// phase two entirely. Phase two measures loudness, (for video) generates an editing proxy,

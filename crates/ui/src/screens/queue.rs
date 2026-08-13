@@ -1,16 +1,16 @@
 use avcore::{self, export::ExportJobStatus};
 use eframe::egui::{self, RichText};
 
-use crate::app::{OcaApp, LUFS_PROFILES};
+use crate::app::{App, LUFS_PROFILES};
 use crate::components;
 use crate::i18n::{self, Text};
 use crate::theme;
 
 /// Renders the Fila screen: the export queue's job list (reorder for queued jobs, cancel for
 /// anything in flight, retry for failures) and the concurrent-worker count. Jobs are rendered
-/// for real on background threads dispatched by [`crate::app::OcaApp`] each frame — see
+/// for real on background threads dispatched by [`crate::app::App`] each frame — see
 /// its `pump_export_queue`.
-pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
+pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(20.0);

@@ -9,9 +9,9 @@ use crate::screens;
 use crate::theme;
 
 use super::export::next_available_path;
-use super::OcaApp;
+use super::App;
 
-impl OcaApp {
+impl App {
     /// Queues a short-lived error message to be shown as a floating overlay at the bottom-right
     /// of the window. Replaces silent `eprintln!` calls for user-facing errors.
     pub fn push_toast(&mut self, message: String) {
@@ -276,7 +276,7 @@ impl OcaApp {
         }
     }
 
-    /// Shows the Overwrite/Rename/Cancel modal when [`OcaApp::pending_export_conflict`] is
+    /// Shows the Overwrite/Rename/Cancel modal when [`App::pending_export_conflict`] is
     /// `Some` — the output path a queued export was about to use already exists on disk.
     /// Overwrite queues it as-is; Rename picks the first free `name (2).mp4`-style sibling via
     /// [`next_available_path`] and queues that instead; Cancel (or Escape) drops the job.

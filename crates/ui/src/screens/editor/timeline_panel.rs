@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use avcore::MediaAsset;
 use eframe::egui::{self, RichText};
 
-use crate::app::{OcaApp, THUMBNAIL_BUCKET_SECS};
+use crate::app::{App, THUMBNAIL_BUCKET_SECS};
 use crate::i18n::Text;
 use crate::theme;
 
-/// Bounds for `OcaApp::timeline_px_per_sec` — tight enough to stay readable, loose enough to
+/// Bounds for `App::timeline_px_per_sec` — tight enough to stay readable, loose enough to
 /// go from several-projects-wide overview down to frame-accurate editing.
 const MIN_PX_PER_SEC: f32 = 0.5;
 const MAX_PX_PER_SEC: f32 = 60.0;
@@ -30,7 +30,7 @@ enum TrimEdge {
     End(f64),
 }
 
-pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
+pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
     crate::components::card_frame().show(ui, |ui| {
         ui.set_height(height - 20.0);
 
@@ -561,7 +561,7 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
         }
         // An asset dragged out of the media library and released somewhere at or below the
         // ruler: whichever track row's Y-range the pointer landed on becomes the preferred
-        // drop target (`OcaApp::add_asset_to_timeline_at` falls back to a matching-kind track
+        // drop target (`App::add_asset_to_timeline_at` falls back to a matching-kind track
         // if that row's kind doesn't match the asset, same as a cross-track clip move). A
         // release above the ruler means the drag never reached the timeline at all, so it's
         // ignored rather than silently appending.
@@ -585,10 +585,10 @@ pub(super) fn timeline_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
 /// Draws one filmstrip tile per column of `clip_rect` (each column's width set by `asset`'s
 /// aspect ratio scaled to the clip's height, same as a single poster frame tiled), each showing
 /// the cached thumbnail texture for whichever [`THUMBNAIL_BUCKET_SECS`]-quantized source-time
-/// bucket that column falls in (`OcaApp::thumbnail_textures`) — distinct buckets read like a
+/// bucket that column falls in (`App::thumbnail_textures`) — distinct buckets read like a
 /// true filmstrip, unlike one poster frame repeated. A column whose bucket has no texture yet
 /// is queued into `thumbnail_requests` (deduplicated against already-pending buckets by
-/// [`OcaApp::request_thumbnail`] once the caller applies it) and left showing the clip's plain
+/// [`App::request_thumbnail`] once the caller applies it) and left showing the clip's plain
 /// background color, already painted underneath by the caller, until it arrives. A no-op if
 /// `asset` has no resolution (audio-only, shouldn't happen for a clip on a video track).
 fn draw_filmstrip(

@@ -2,11 +2,11 @@ use avcore::{ClipInstance, MediaAsset, TrackKind};
 use eframe::egui;
 use tracing::{debug, error, warn};
 
-use super::OcaApp;
+use super::App;
 
 /// Playhead for a frozen clip after `elapsed_secs` of wall-clock playback since
 /// `playhead_at_start`, clamped to the clip's own end (`clip_start_secs + clip_duration_secs`)
-/// — pulled out of [`OcaApp::pump_preview_frame`] as a pure function so the math is unit
+/// — pulled out of [`App::pump_preview_frame`] as a pure function so the math is unit
 /// testable without a live `Preview` pipeline (every other preview test in `app_test.rs` runs
 /// against a nonexistent source path specifically to avoid needing one).
 pub(crate) fn frozen_playhead(
@@ -18,9 +18,9 @@ pub(crate) fn frozen_playhead(
     (playhead_at_start + elapsed_secs).min(clip_start_secs + clip_duration_secs)
 }
 
-impl OcaApp {
+impl App {
     /// Id of the clip covering the active sequence's timeline playhead, if any. Cheaper than
-    /// [`OcaApp::current_preview_clip`] — no clones — used by [`OcaApp::ensure_preview_loaded`]
+    /// [`App::current_preview_clip`] — no clones — used by [`App::ensure_preview_loaded`]
     /// for the early-exit check.
     pub(super) fn current_preview_clip_id(&self) -> Option<u64> {
         let timeline = self.active_project().timeline();
@@ -51,7 +51,7 @@ impl OcaApp {
     }
 
     /// Reopens the preview pipeline whenever the clip covering the timeline playhead
-    /// ([`OcaApp::current_preview_clip`]) differs from the one last opened for
+    /// ([`App::current_preview_clip`]) differs from the one last opened for
     /// (`preview_clip_id`) — called once per frame from the Editor's preview panel, right
     /// before it reads any preview state, so the first paint after the playhead moves onto a
     /// different clip is what actually triggers `Preview::open`. Prefers the editing proxy if
@@ -120,7 +120,7 @@ impl OcaApp {
 
     /// Toggles play/pause on the current preview pipeline. A no-op if nothing is selected or
     /// the pipeline failed to open. A frozen clip's underlying pipeline stays `Paused`
-    /// regardless — only [`OcaApp::preview_frozen_since`] starts/stops, driving the playhead
+    /// regardless — only [`App::preview_frozen_since`] starts/stops, driving the playhead
     /// forward on its own since there's no advancing pipeline position to read for a held
     /// frame.
     pub fn toggle_preview_playback(&mut self) {
@@ -151,7 +151,7 @@ impl OcaApp {
     /// Seeks to `position_secs` (timeline-relative). Takes the fast path — seeking the
     /// already-open pipeline directly — when `position_secs` still falls within the clip it's
     /// currently loaded for; otherwise updates the timeline playhead and lets
-    /// [`OcaApp::ensure_preview_loaded`] open the right clip's pipeline next frame. A no-op if
+    /// [`App::ensure_preview_loaded`] open the right clip's pipeline next frame. A no-op if
     /// nothing is selected or the pipeline failed to open.
     pub fn seek_preview(&mut self, position_secs: f64) {
         let same_clip = self
@@ -175,7 +175,7 @@ impl OcaApp {
     }
 
     /// Whether the clip at the timeline playhead has a live preview pipeline — `false` before
-    /// any clip covers the playhead, before [`OcaApp::ensure_preview_loaded`] has run for it,
+    /// any clip covers the playhead, before [`App::ensure_preview_loaded`] has run for it,
     /// and when it couldn't open one.
     pub fn preview_available(&self) -> bool {
         self.preview.is_some()

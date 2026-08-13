@@ -1,13 +1,13 @@
 use avcore::timeline::{ColorFilter, MaskShape, TransitionType};
 
 use super::{
-    OcaApp, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE, CONTRAST_RANGE,
+    App, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE, CONTRAST_RANGE,
     CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, MASK_CORNER_RADIUS_RANGE,
     PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SHAKE_INTENSITY_RANGE, SHARPEN_RANGE,
     SPEED_FACTOR_RANGE, TRANSITION_DURATION_RANGE, VIGNETTE_INTENSITY_RANGE, ZOOM_RANGE,
 };
 
-impl OcaApp {
+impl App {
     /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::gain_db`], clamped to
     /// [`GAIN_DB_RANGE`] — what dragging the properties panel's gain slider does. A no-op if
     /// nothing is selected.

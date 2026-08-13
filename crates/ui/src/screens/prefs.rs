@@ -1,6 +1,6 @@
 use eframe::egui::{self, RichText};
 
-use crate::app::{BindableAction, OcaApp, LUFS_PROFILES};
+use crate::app::{App, BindableAction, LUFS_PROFILES};
 use crate::components;
 use crate::i18n::{Locale, Text};
 use crate::theme;
@@ -8,7 +8,7 @@ use crate::theme;
 /// Renders the Ajustes screen: language switcher, audio/export/project settings, and the
 /// keyboard shortcut reference table. Settings write straight into `app.prefs`/`app.locale`
 /// and aren't persisted yet — see [`crate::app::PrefsState`].
-pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
+pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(20.0);
@@ -88,6 +88,25 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                 }
             });
             ui.add_space(10.0);
+            ui.label(Text::PrefsGpuEncoder.tr(locale));
+            ui.horizontal(|ui| {
+                use avcore::GpuEncoderPreference as Gpu;
+                for (choice, label) in [
+                    (Gpu::Auto, Text::GpuEncoderAuto),
+                    (Gpu::Cpu, Text::GpuEncoderCpu),
+                    (Gpu::Nvenc, Text::GpuEncoderNvenc),
+                    (Gpu::QuickSync, Text::GpuEncoderQuickSync),
+                    (Gpu::Amf, Text::GpuEncoderAmf),
+                ] {
+                    if ui
+                        .selectable_label(app.prefs.gpu_encoder == choice, label.tr(locale))
+                        .clicked()
+                    {
+                        app.prefs.gpu_encoder = choice;
+                    }
+                }
+            });
+            ui.add_space(10.0);
             ui.label(Text::PrefsOutputFolder.tr(locale));
             ui.horizontal(|ui| {
                 ui.add(
@@ -139,7 +158,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
 
 /// Renders the configurable key binding table and handles key capture when the user clicks
 /// "Change" on one of the four bindable actions.
-fn shortcut_binding_editor(app: &mut OcaApp, ui: &mut egui::Ui, locale: Locale) {
+fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
     // When a binding is being captured, intercept the next non-modifier key press.
     // Escape cancels without changing the binding.
     if app.binding_capture.is_some() {

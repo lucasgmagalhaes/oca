@@ -1,6 +1,6 @@
 use eframe::egui::{self, Color32, RichText};
 
-use crate::app::{OcaApp, Screen};
+use crate::app::{App, Screen};
 use crate::i18n;
 use crate::theme;
 
@@ -12,7 +12,7 @@ const ITEMS: [(Screen, &str); 4] = [
 ];
 
 /// Renders the left icon rail and handles screen-switching clicks.
-pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
+pub fn show(app: &mut App, ui: &mut egui::Ui) {
     egui::Panel::left("nav_rail")
         .resizable(false)
         .exact_size(60.0)
@@ -44,7 +44,7 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
         });
 }
 
-fn rail_button(ui: &mut egui::Ui, app: &mut OcaApp, screen: Screen, icon: &str, label: &str) {
+fn rail_button(ui: &mut egui::Ui, app: &mut App, screen: Screen, icon: &str, label: &str) {
     let active = app.screen == screen;
     let color = if active {
         theme::ACCENT
@@ -91,7 +91,7 @@ fn rail_button(ui: &mut egui::Ui, app: &mut OcaApp, screen: Screen, icon: &str, 
     ui.add_space(2.0);
 }
 
-fn prefs_button(ui: &mut egui::Ui, app: &mut OcaApp, icon: &str, label: &str) {
+fn prefs_button(ui: &mut egui::Ui, app: &mut App, icon: &str, label: &str) {
     let active = app.prefs_open;
     let color = if active {
         theme::ACCENT

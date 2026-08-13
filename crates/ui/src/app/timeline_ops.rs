@@ -1,8 +1,8 @@
 use avcore::timeline::{ClipInstance, TextClip, Timeline, Track, TrackKind};
 
-use super::OcaApp;
+use super::App;
 
-impl OcaApp {
+impl App {
     /// Appends `asset_id` to the timeline as a new, untrimmed clip — what double-clicking an
     /// asset in the media library panel does. Lands on the first track whose kind matches the
     /// asset (video onto video, audio onto audio), auto-creating one (`"V1"`/`"A1"`) if none
@@ -59,7 +59,7 @@ impl OcaApp {
     /// Inserts `asset_id` onto the timeline at `start_secs` — what dropping an asset dragged
     /// out of the media library onto the timeline strip does. Prefers `preferred_track_id` if
     /// it exists and matches the asset's kind (the track row the drop landed on); otherwise
-    /// falls back to the same track-resolution as [`OcaApp::add_asset_to_timeline`] (first
+    /// falls back to the same track-resolution as [`App::add_asset_to_timeline`] (first
     /// existing track of matching kind, auto-created if none exists). A no-op if `asset_id`
     /// isn't in the active project's media library or `start_secs` is negative.
     pub fn add_asset_to_timeline_at(
@@ -199,7 +199,7 @@ impl OcaApp {
     /// Drags `clip_id`'s left edge to `new_start_secs` — what dragging the left handle on a
     /// timeline clip does. A no-op if the clip isn't found or the drag would violate
     /// [`avcore::timeline::ClipInstance::trim_start`]'s bounds (start/source-in going
-    /// negative, or shrinking past [`OcaApp::MIN_TRIM_DURATION_SECS`]).
+    /// negative, or shrinking past [`App::MIN_TRIM_DURATION_SECS`]).
     pub fn trim_clip_start(&mut self, clip_id: u64, new_start_secs: f64) {
         for track in &mut self.active_project_mut().timeline_mut().tracks {
             if let Some(clip) = track.clip_mut(clip_id) {
@@ -256,11 +256,11 @@ impl OcaApp {
         }
     }
 
-    /// [`OcaApp::move_clip`], but if `clip_id` is a composite block member every other clip
+    /// [`App::move_clip`], but if `clip_id` is a composite block member every other clip
     /// sharing its `composite_id` moves by the same delta, on the same track — what dragging a
     /// composite block's body does, so the whole block reads as one clip per `request.md`'s
     /// Fase 3 "blocos compostos" spec. A no-op if `clip_id` isn't found; falls back to a plain
-    /// [`OcaApp::move_clip`] if it isn't a composite member.
+    /// [`App::move_clip`] if it isn't a composite member.
     pub fn move_clip_with_group(&mut self, clip_id: u64, new_start_secs: f64) {
         let found = self
             .active_project()
@@ -303,13 +303,13 @@ impl OcaApp {
         );
     }
 
-    /// Whether a clip is waiting in the clipboard for [`OcaApp::paste_clip_at_playhead`] — lets
+    /// Whether a clip is waiting in the clipboard for [`App::paste_clip_at_playhead`] — lets
     /// the timeline context menu grey out "Colar" instead of pasting nothing.
     pub fn has_clipboard_clip(&self) -> bool {
         self.clipboard_clip.is_some()
     }
 
-    /// Copies `selected_clip_id` (and the track kind it's on) to [`OcaApp::clipboard_clip`] —
+    /// Copies `selected_clip_id` (and the track kind it's on) to [`App::clipboard_clip`] —
     /// what `Ctrl+C`/the timeline context menu's "Copiar" do. A no-op if nothing is selected.
     pub fn copy_selected_clip(&mut self) {
         let Some(clip_id) = self.selected_clip_id else {
@@ -331,16 +331,16 @@ impl OcaApp {
         }
     }
 
-    /// [`OcaApp::copy_selected_clip`] followed by [`OcaApp::delete_selected_clip`] — what
+    /// [`App::copy_selected_clip`] followed by [`App::delete_selected_clip`] — what
     /// `Ctrl+X`/the context menu's "Recortar" do.
     pub fn cut_selected_clip(&mut self) {
         self.copy_selected_clip();
         self.delete_selected_clip();
     }
 
-    /// Pastes [`OcaApp::clipboard_clip`] as a new, freshly-id'd clip at the playhead's current
+    /// Pastes [`App::clipboard_clip`] as a new, freshly-id'd clip at the playhead's current
     /// position on the active sequence — what `Ctrl+V`/the context menu's "Colar" do. Lands on
-    /// a matching-kind track the same way [`OcaApp::add_asset_to_timeline`] does (first
+    /// a matching-kind track the same way [`App::add_asset_to_timeline`] does (first
     /// existing track of that kind, auto-created if none exists); always the playhead, not
     /// wherever the context menu happened to be opened — a known simplification. A no-op if
     /// the clipboard is empty. Works across sequence tabs and even across projects, since
@@ -395,16 +395,16 @@ impl OcaApp {
             });
     }
 
-    /// Adds/removes `clip_id` from [`OcaApp::multi_selected_clip_ids`] — what `Ctrl+click`ing
+    /// Adds/removes `clip_id` from [`App::multi_selected_clip_ids`] — what `Ctrl+click`ing
     /// a timeline clip does, building up a set of candidates for
-    /// [`OcaApp::merge_into_composite`].
+    /// [`App::merge_into_composite`].
     pub fn toggle_multi_select(&mut self, clip_id: u64) {
         if !self.multi_selected_clip_ids.remove(&clip_id) {
             self.multi_selected_clip_ids.insert(clip_id);
         }
     }
 
-    /// Merges every clip in [`OcaApp::multi_selected_clip_ids`] into one composite block —
+    /// Merges every clip in [`App::multi_selected_clip_ids`] into one composite block —
     /// what the toolbar's "Mesclar em bloco composto" button does (per `request.md`'s Fase 3
     /// "blocos compostos" spec). Assigns them all a fresh `composite_id` and clears the
     /// multi-selection. A no-op, leaving the multi-selection untouched so the user can fix
@@ -439,14 +439,14 @@ impl OcaApp {
     }
 
     /// Whether formatting is waiting in the clipboard for
-    /// [`OcaApp::paste_selected_clip_formatting`] — lets the timeline context menu grey out
+    /// [`App::paste_selected_clip_formatting`] — lets the timeline context menu grey out
     /// "Colar formatação" otherwise.
     pub fn has_formatting_clipboard(&self) -> bool {
         self.formatting_clipboard.is_some()
     }
 
     /// Copies `selected_clip_id`'s gain/freeze/speed/crop/mask/flip/color-filter/vignette/
-    /// color-adjustment settings to [`OcaApp::formatting_clipboard`] — what `Ctrl+Shift+C`/the
+    /// color-adjustment settings to [`App::formatting_clipboard`] — what `Ctrl+Shift+C`/the
     /// context menu's "Copiar formatação" do. A no-op if nothing is selected.
     pub fn copy_selected_clip_formatting(&mut self) {
         let Some(clip) = self.selected_clip() else {
@@ -455,7 +455,7 @@ impl OcaApp {
         self.formatting_clipboard = Some(clip.formatting());
     }
 
-    /// Applies [`OcaApp::formatting_clipboard`] onto `selected_clip_id`, without touching any
+    /// Applies [`App::formatting_clipboard`] onto `selected_clip_id`, without touching any
     /// other field (position, trim, composite membership) — what `Ctrl+Shift+V`/the context
     /// menu's "Colar formatação" do. A no-op if nothing is selected or the clipboard is empty.
     pub fn paste_selected_clip_formatting(&mut self) {
@@ -503,8 +503,8 @@ impl OcaApp {
     }
 }
 
-/// Finds the track to place a new clip of `kind` on, for [`OcaApp::add_asset_to_timeline`] and
-/// [`OcaApp::add_asset_to_timeline_at`]: `preferred_track_id` if it exists and matches `kind`,
+/// Finds the track to place a new clip of `kind` on, for [`App::add_asset_to_timeline`] and
+/// [`App::add_asset_to_timeline_at`]: `preferred_track_id` if it exists and matches `kind`,
 /// else the first existing track of that kind, else a newly created `"V1"`/`"A1"` track
 /// appended to `timeline.tracks`. Returns the resolved track's index.
 pub(super) fn resolve_or_create_track(
@@ -562,7 +562,7 @@ pub(super) fn next_clip_id(timeline: &avcore::timeline::Timeline) -> u64 {
     video_audio_max.max(text_max) + 1
 }
 
-impl OcaApp {
+impl App {
     /// Appends a new text track (`TrackKind::Text`) to the active sequence's timeline. The
     /// track is named using [`crate::i18n::Text::DefaultTextTrackName`]. A no-op if the
     /// project has no sequences.

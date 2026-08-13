@@ -4,7 +4,7 @@ mod timeline_panel;
 use avcore::media::format_timecode;
 use eframe::egui::{self, RichText};
 
-use crate::app::{EditorTool, OcaApp};
+use crate::app::{App, EditorTool};
 use crate::components;
 use crate::i18n::Text;
 use crate::theme;
@@ -20,7 +20,7 @@ use crate::theme;
 /// the parent afterwards, not what the child actually paints. Skipping either wrapper
 /// reintroduces the overlapping-text/full-width-panel bugs fixed in this screen — see the
 /// "Add i18n" commit for the concrete symptoms.
-pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
+pub fn show(app: &mut App, ui: &mut egui::Ui) {
     app.ensure_active_project();
 
     // Clone the configurable combos before the first ui.input() call so we can pass them
@@ -203,7 +203,7 @@ fn resizable_divider_horizontal(
     );
 }
 
-fn toolbar(app: &mut OcaApp, ui: &mut egui::Ui) {
+fn toolbar(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     ui.horizontal(|ui| {
         tool_button(
@@ -260,7 +260,7 @@ fn toolbar(app: &mut OcaApp, ui: &mut egui::Ui) {
 /// Row of tabs, one per sequence in the active project (per `request.md`'s Fase 3 "abas de
 /// projeto" spec) — click a tab to switch which sequence's timeline the rest of the Editor
 /// screen shows, or the trailing "+" to append a new empty one and switch to it.
-fn sequence_tab_bar(app: &mut OcaApp, ui: &mut egui::Ui) {
+fn sequence_tab_bar(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     let active_index = app.active_project().active_sequence;
     let mut select_index = None;
@@ -313,7 +313,7 @@ fn sequence_tab_bar(app: &mut OcaApp, ui: &mut egui::Ui) {
 
 /// Saves the active project to its remembered [`avcore::Project::file_path`], or prompts
 /// for a destination (and remembers it for next time) if it doesn't have one yet.
-fn save_active_project(app: &mut OcaApp) {
+fn save_active_project(app: &mut App) {
     let path = match app.active_project().file_path.clone() {
         Some(path) => Some(path),
         None => rfd::FileDialog::new()
@@ -338,7 +338,7 @@ fn save_active_project(app: &mut OcaApp) {
     }
 }
 
-fn tool_button(app: &mut OcaApp, ui: &mut egui::Ui, tool: EditorTool, icon: &str, label: &str) {
+fn tool_button(app: &mut App, ui: &mut egui::Ui, tool: EditorTool, icon: &str, label: &str) {
     let active = app.tool == tool;
     let text = RichText::new(format!("{icon} {label}")).color(if active {
         theme::ACCENT
@@ -350,7 +350,7 @@ fn tool_button(app: &mut OcaApp, ui: &mut egui::Ui, tool: EditorTool, icon: &str
     }
 }
 
-fn media_library_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32) {
+fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32) {
     let mut clicked_id = None;
     let mut add_to_timeline_id = None;
     let mut dropped_asset = None;
@@ -444,7 +444,7 @@ fn media_library_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: 
     }
 }
 
-fn preview_panel(app: &mut OcaApp, ui: &mut egui::Ui, height: f32) {
+fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
     // Lazy: the pipeline for the current selection is opened here, on the first paint of this
     // panel after a selection change — not by `select_asset` itself — so opening a project or
     // launching the app never pays GStreamer's open cost for an asset the Editor screen hasn't

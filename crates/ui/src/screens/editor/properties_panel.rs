@@ -1,7 +1,7 @@
 use eframe::egui::{self, RichText};
 
 use crate::app::{
-    OcaApp, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE, CONTRAST_RANGE,
+    App, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE, CONTRAST_RANGE,
     CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, MASK_CORNER_RADIUS_RANGE,
     PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SHAKE_INTENSITY_RANGE, SHARPEN_RANGE,
     SPEED_FACTOR_RANGE, VIGNETTE_INTENSITY_RANGE,
@@ -10,7 +10,7 @@ use crate::components;
 use crate::i18n::Text;
 use crate::theme;
 
-pub(super) fn properties_panel(app: &mut OcaApp, ui: &mut egui::Ui, width: f32, height: f32) {
+pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32) {
     let locale = app.locale;
     egui::Frame::new()
         .inner_margin(egui::Margin::same(12))
@@ -530,12 +530,7 @@ fn transition_type_label(
 /// Renders the properties panel content for a selected text overlay clip. Shows controls for
 /// text content, font size, RGBA color, X/Y position, start time, and duration. Applies
 /// changes immediately by mutating the clip through the active project's timeline.
-fn text_clip_properties(
-    app: &mut OcaApp,
-    ui: &mut egui::Ui,
-    tc_id: u64,
-    locale: crate::i18n::Locale,
-) {
+fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: crate::i18n::Locale) {
     components::section_label(ui, Text::SelectedTextClip.tr(locale));
 
     // Gather a copy of the current clip values to populate controls without holding a borrow.

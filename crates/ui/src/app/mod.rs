@@ -1,4 +1,4 @@
-//! Application state ([`OcaApp`]) and the top-level `eframe::App` implementation that
+//! Application state ([`App`]) and the top-level `eframe::App` implementation that
 //! drives one frame: pump the background export queue, draw the nav rail and breadcrumb,
 //! then delegate to whichever [`Screen`] is currently active (see [`crate::screens`]).
 
@@ -40,7 +40,7 @@ pub enum Screen {
 /// The editor toolbar's active tool (Selecionar / Aparar). Currently just tracked for the
 /// toolbar's highlight state — Fase 3 wires it up to actual timeline interactions. Splitting
 /// ("Cortar") isn't a persistent mode like these two — it's a one-shot action, performed
-/// directly by [`OcaApp::split_at_playhead`].
+/// directly by [`App::split_at_playhead`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorTool {
     Select,
@@ -127,7 +127,7 @@ impl Default for KeyBindings {
 }
 
 /// User-configurable settings shown on the Ajustes screen. Persisted to a JSON file in the
-/// platform config dir — see [`OcaApp::save_prefs`] / [`load_prefs`].
+/// platform config dir — see [`App::save_prefs`] / [`load_prefs`].
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct PrefsState {
     /// Index into [`LUFS_PROFILES`].
@@ -146,6 +146,11 @@ pub struct PrefsState {
     /// Key bindings for the four configurable editor shortcuts.
     #[serde(default)]
     pub key_bindings: KeyBindings,
+    /// Preferred video encoder for exports — hardware-accelerated (NVENC/Quick Sync/AMF) with
+    /// an automatic CPU (libopenh264) fallback, or a specific choice. See
+    /// [`avcore::GpuEncoderPreference`].
+    #[serde(default)]
+    pub gpu_encoder: avcore::GpuEncoderPreference,
 }
 
 impl Default for PrefsState {
@@ -159,6 +164,7 @@ impl Default for PrefsState {
             recent_project_paths: Vec::new(),
             locale: crate::i18n::Locale::default(),
             key_bindings: KeyBindings::default(),
+            gpu_encoder: avcore::GpuEncoderPreference::default(),
         }
     }
 }
@@ -174,11 +180,11 @@ pub const LUFS_PROFILES: [(&str, f32); 3] = [
 ];
 
 /// Slider bounds for the properties panel's per-block gain control (Fase 4's "ganho de volume
-/// por bloco") — [`OcaApp::set_selected_clip_gain`] clamps to this range.
+/// por bloco") — [`App::set_selected_clip_gain`] clamps to this range.
 pub const GAIN_DB_RANGE: std::ops::RangeInclusive<f32> = -24.0..=24.0;
 
 /// Slider bounds for the properties panel's per-block speed control (Fase 4's "Velocidade") —
-/// [`OcaApp::set_selected_clip_speed`] clamps to this range.
+/// [`App::set_selected_clip_speed`] clamps to this range.
 pub const SPEED_FACTOR_RANGE: std::ops::RangeInclusive<f32> = 0.25..=4.0;
 
 /// Minimum width/height the properties panel's crop controls allow for
@@ -238,7 +244,7 @@ pub const TRANSITION_DURATION_RANGE: std::ops::RangeInclusive<f32> = 0.1..=3.0;
 /// [`avcore::timeline::ClipInstance::zoom_start`]/`zoom_end`).
 pub const ZOOM_RANGE: std::ops::RangeInclusive<f32> = 1.0..=3.0;
 
-/// A message from a background render worker thread (see [`OcaApp::pump_export_queue`])
+/// A message from a background render worker thread (see [`App::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
 /// needed, matching the execution plan's "tokio + canais assíncronos" without pulling egui's
@@ -250,7 +256,7 @@ enum RenderEvent {
     Cancelled { job_id: u64 },
 }
 
-/// A message from a background import worker thread (see [`OcaApp::spawn_import`]) back to
+/// A message from a background import worker thread (see [`App::spawn_import`]) back to
 /// the UI thread. `project_id` (rather than an index into `projects`) is what the result gets
 /// applied to, since the active project can change while a slow import is still running.
 enum ImportEvent {
@@ -277,9 +283,9 @@ enum ImportEvent {
     },
 }
 
-/// A poster frame extracted on a background thread (see [`OcaApp::request_thumbnail`]),
+/// A poster frame extracted on a background thread (see [`App::request_thumbnail`]),
 /// ready to upload as an egui texture. No failure variant — a (asset, bucket) that couldn't be
-/// extracted just never gets a texture; [`OcaApp::requested_thumbnails`] already stops it from
+/// extracted just never gets a texture; [`App::requested_thumbnails`] already stops it from
 /// being retried every frame.
 struct ThumbnailReady {
     asset_id: u64,
@@ -295,8 +301,8 @@ use avcore::ClipFormatting;
 
 /// The whole application's state: which screen is showing, the loaded projects, the export
 /// queue, and user preferences. `eframe` owns one instance of this for the app's lifetime
-/// and calls [`OcaApp::ui`](eframe::App::ui) on it every frame.
-pub struct OcaApp {
+/// and calls [`App::ui`](eframe::App::ui) on it every frame.
+pub struct App {
     pub screen: Screen,
     pub tool: EditorTool,
     pub locale: Locale,
@@ -309,47 +315,47 @@ pub struct OcaApp {
     render_rx: UnboundedReceiver<RenderEvent>,
     /// Cancellation flags for jobs a worker thread is currently rendering, keyed by job id.
     /// A job id present here is the source of truth for "how many workers are busy right
-    /// now" — [`OcaApp::pump_export_queue`] uses its length against `prefs.export_workers`.
+    /// now" — [`App::pump_export_queue`] uses its length against `prefs.export_workers`.
     active_renders: HashMap<u64, Arc<AtomicBool>>,
     /// The GStreamer pipeline for the clip currently covering the active sequence's timeline
     /// playhead, if it could be opened (`None` before any project has a clip at the playhead,
     /// before it's been lazily opened, and when `Preview::open` failed, e.g. a source file
-    /// that's since been moved or deleted — see [`OcaApp::ensure_preview_loaded`]).
+    /// that's since been moved or deleted — see [`App::ensure_preview_loaded`]).
     preview: Option<avcore::preview::Preview>,
-    /// The clip id [`OcaApp::ensure_preview_loaded`] last attempted to open a pipeline for,
+    /// The clip id [`App::ensure_preview_loaded`] last attempted to open a pipeline for,
     /// whether or not it succeeded — lets it tell "already tried and failed for this exact
     /// clip, don't retry every frame" apart from "the playhead moved onto a different clip, try
     /// again".
     preview_clip_id: Option<u64>,
     /// Uploaded from the latest [`avcore::preview::Preview::current_frame`] each frame the
     /// Editor screen is shown; `None` until the first frame decodes. Reset whenever
-    /// [`OcaApp::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
+    /// [`App::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
     /// frame from the previous one never lingers.
     pub preview_texture: Option<egui::TextureHandle>,
     /// Whether the preview pipeline is in `Playing` state. `Preview` has no state getter of
-    /// its own, so the Editor's play/pause button and [`OcaApp::pump_export_queue`]'s repaint
+    /// its own, so the Editor's play/pause button and [`App::pump_export_queue`]'s repaint
     /// cadence both rely on this instead.
     pub preview_playing: bool,
     /// Wall-clock playback start `(Instant, timeline playhead at that instant)` for a frozen
     /// clip — set whenever playback begins while the clip covering the playhead has
     /// `ClipInstance::frozen` set. A frozen clip's pipeline is kept `Paused` at
     /// `source_in_secs` (so it always shows the held anchor frame) rather than actually
-    /// playing, so [`OcaApp::pump_preview_frame`] has no `Preview::position_secs` to derive
+    /// playing, so [`App::pump_preview_frame`] has no `Preview::position_secs` to derive
     /// the advancing playhead from the way it does for a normal clip — this stands in for it.
     /// `None` when nothing is playing or the current clip isn't frozen.
     preview_frozen_since: Option<(std::time::Instant, f64)>,
     import_tx: UnboundedSender<ImportEvent>,
     import_rx: UnboundedReceiver<ImportEvent>,
-    /// How many files a call to [`OcaApp::spawn_import`] haven't been probed yet, in the
+    /// How many files a call to [`App::spawn_import`] haven't been probed yet, in the
     /// background. The Mídia screen shows a busy note while this is nonzero. Reaches zero as
     /// soon as each file's cheap probe comes back and it's added to the library — loudness
     /// measurement and proxy generation keep running after that in the background (see
-    /// [`OcaApp::pending_enrichment`]) without holding this counter up, since the asset is
+    /// [`App::pending_enrichment`]) without holding this counter up, since the asset is
     /// already usable by then.
     pub pending_imports: usize,
-    /// The next id to hand out in [`OcaApp::spawn_import`], one per file in the batch —
+    /// The next id to hand out in [`App::spawn_import`], one per file in the batch —
     /// correlates a file's `ImportEvent::AssetReady` with its later `ImportEvent::Enriched`
-    /// once [`OcaApp::pump_import_queue`] knows the asset's real (project-assigned) id.
+    /// once [`App::pump_import_queue`] knows the asset's real (project-assigned) id.
     next_import_token: u64,
     /// Import tokens awaiting their `ImportEvent::Enriched` (loudness + proxy), mapped to the
     /// asset id they were assigned when their `AssetReady` landed — removed once the
@@ -390,7 +396,7 @@ pub struct OcaApp {
     /// can repeat the same tile a few times in a row instead of showing a unique frame each.
     pub thumbnail_textures: HashMap<(u64, i64), egui::TextureHandle>,
     /// `(asset_id, bucket)` pairs a thumbnail has already been requested for, successfully or
-    /// not — stops [`OcaApp::request_thumbnail`] from spawning a new extraction thread every
+    /// not — stops [`App::request_thumbnail`] from spawning a new extraction thread every
     /// frame for a bucket that's still pending, or that already failed once.
     requested_thumbnails: HashSet<(u64, i64)>,
     /// Set by the media library panel on the frame a dragged asset is released (screen-space
@@ -405,40 +411,40 @@ pub struct OcaApp {
     /// spec) work for free, rather than needing separate cross-tab plumbing.
     clipboard_clip: Option<(avcore::timeline::ClipInstance, avcore::timeline::TrackKind)>,
     /// The last formatting (gain/freeze settings, not the clip itself) copied via
-    /// `Ctrl+Shift+C`/the timeline context menu — [`OcaApp::paste_selected_clip_formatting`]
+    /// `Ctrl+Shift+C`/the timeline context menu — [`App::paste_selected_clip_formatting`]
     /// applies it onto a different block, per `request.md`'s Fase 4 "copiar formatação" spec.
     formatting_clipboard: Option<ClipFormatting>,
-    /// Clip ids picked (via `Ctrl+click`) as candidates for [`OcaApp::merge_into_composite`] —
+    /// Clip ids picked (via `Ctrl+click`) as candidates for [`App::merge_into_composite`] —
     /// separate from `selected_clip_id`, which stays single-target for every other clip
     /// operation (trim, delete, copy, split). Cleared after a successful merge; not otherwise
     /// tied to `selected_clip_id`, so the last-clicked clip can be a multi-select member
     /// without also being "the" selection.
     pub multi_selected_clip_ids: HashSet<u64>,
-    /// Set whenever [`OcaApp::active_project_mut`] is called; cleared after each autosave
-    /// write. Guards [`OcaApp::pump_autosave`] from writing unchanged state to disk.
+    /// Set whenever [`App::active_project_mut`] is called; cleared after each autosave
+    /// write. Guards [`App::pump_autosave`] from writing unchanged state to disk.
     project_dirty: bool,
-    /// Timestamp of the most recent call to [`OcaApp::active_project_mut`] — the debounce
-    /// start for the 2-second idle window in [`OcaApp::pump_autosave`].
+    /// Timestamp of the most recent call to [`App::active_project_mut`] — the debounce
+    /// start for the 2-second idle window in [`App::pump_autosave`].
     last_edit_instant: Option<Instant>,
     /// Timestamp of the last successful autosave write — used to enforce the 30-second
     /// ceiling that forces a save even during continuous editing.
     last_autosave_instant: Option<Instant>,
     /// Short-lived error messages shown as floating overlays at the bottom-right of the window.
-    /// Each entry is `(message, born_at)`; [`OcaApp::show_toasts`] removes entries older than
-    /// 4 seconds each frame. Use [`OcaApp::push_toast`] to add one.
+    /// Each entry is `(message, born_at)`; [`App::show_toasts`] removes entries older than
+    /// 4 seconds each frame. Use [`App::push_toast`] to add one.
     toasts: Vec<(String, Instant)>,
     /// Whether the preferences modal is currently open — toggled by the nav rail's ⚙ button.
     /// Kept separate from `screen` so the modal overlays whatever screen is currently active
     /// rather than replacing it with a dedicated route.
     pub prefs_open: bool,
-    /// The value of `prefs_open` on the previous frame — lets [`OcaApp::ui`] detect the
+    /// The value of `prefs_open` on the previous frame — lets [`App::ui`] detect the
     /// closing edge (true → false) and trigger a prefs save exactly once.
     prev_prefs_open: bool,
     /// Set to the autosave file path when opening a project that has a newer autosave on disk.
-    /// [`OcaApp::pump_autosave_restore`] consumes it to show the restore/discard modal.
+    /// [`App::pump_autosave_restore`] consumes it to show the restore/discard modal.
     autosave_restore_pending: Option<PathBuf>,
     /// `true` when a crash sentinel from a previous session was found at startup — consumed
-    /// by [`OcaApp::ui`] to show a one-time toast, then cleared.
+    /// by [`App::ui`] to show a one-time toast, then cleared.
     crash_detected: bool,
     /// Target aspect ratio selected in the export queue's "Add Export" row. Defaults to
     /// `Original` (source dimensions). Persists between export invocations so the user doesn't
@@ -456,11 +462,11 @@ pub struct OcaApp {
     pub binding_capture: Option<BindableAction>,
     /// Set when "Adicionar exportação" picked an output path that already exists — holds
     /// everything needed to queue the export once the user resolves the conflict via
-    /// [`OcaApp::show_export_conflict_modal`] (Overwrite / Rename / Cancel).
+    /// [`App::show_export_conflict_modal`] (Overwrite / Rename / Cancel).
     pub pending_export_conflict: Option<export::PendingExportConflict>,
 }
 
-impl OcaApp {
+impl App {
     /// Builds the initial app state: applies the theme and starts with an empty project list
     /// and export queue — every project, asset, and job comes from the user via "Novo
     /// projeto"/"Abrir projeto" and real imports, not mock data.
@@ -566,7 +572,7 @@ impl OcaApp {
 
     /// Mutable access to the project currently open in the Editor/Mídia screens — for
     /// imports, edits, and anything else that changes the active project in place. Sets the
-    /// autosave dirty flag so [`OcaApp::pump_autosave`] knows to write the recovery file.
+    /// autosave dirty flag so [`App::pump_autosave`] knows to write the recovery file.
     pub fn active_project_mut(&mut self) -> &mut Project {
         self.project_dirty = true;
         self.last_edit_instant = Some(Instant::now());
@@ -640,9 +646,9 @@ impl OcaApp {
 
     /// Selects `id` as the Editor's active clip and clears out whatever pipeline/texture/
     /// playback state belonged to the previous one — what clicking an asset in the media
-    /// library panel does, and what [`OcaApp::open_project`] uses to select the newly-opened
+    /// library panel does, and what [`App::open_project`] uses to select the newly-opened
     /// project's first asset. `None` clears the selection (empty media library). Does *not*
-    /// itself open a pipeline for the new selection — [`OcaApp::ensure_preview_loaded`] does
+    /// itself open a pipeline for the new selection — [`App::ensure_preview_loaded`] does
     /// that lazily, the next time the Editor's preview panel actually draws, so switching
     /// projects or asking for a project at startup never pays GStreamer's open cost for an
     /// asset nobody's looking at yet.
@@ -773,7 +779,7 @@ impl OcaApp {
 }
 
 /// Returns the path of the crash sentinel file. Its presence at startup means the previous
-/// session exited uncleanly (crash, kill, power loss). Cleared by [`OcaApp::on_exit`].
+/// session exited uncleanly (crash, kill, power loss). Cleared by [`App::on_exit`].
 fn sentinel_path() -> PathBuf {
     prefs_path()
         .parent()
@@ -819,12 +825,12 @@ pub(self) fn prefs_path() -> PathBuf {
 }
 
 /// Source-time width, in seconds, of one filmstrip thumbnail bucket (see
-/// [`OcaApp::thumbnail_textures`]). Fixed rather than zoom-dependent — simpler cache
+/// [`App::thumbnail_textures`]). Fixed rather than zoom-dependent — simpler cache
 /// invalidation (a bucket's key never changes as the user zooms) at the cost of some tiles
 /// repeating when zoomed in past roughly one tile per this many seconds.
 pub const THUMBNAIL_BUCKET_SECS: f64 = 1.0;
 
-impl eframe::App for OcaApp {
+impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.pump_export_queue();
         self.pump_import_queue();

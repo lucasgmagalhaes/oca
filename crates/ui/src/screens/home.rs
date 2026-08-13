@@ -1,13 +1,13 @@
 use eframe::egui::{self, RichText};
 
-use crate::app::OcaApp;
+use crate::app::App;
 use crate::components;
 use crate::i18n::Text;
 use crate::theme;
 
 /// Renders the Início screen: a grid of recent-project cards. Clicking a card opens that
-/// project in the Editor via [`crate::app::OcaApp::open_project`].
-pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
+/// project in the Editor via [`crate::app::App::open_project`].
+pub fn show(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(24.0);
         ui.horizontal(|ui| {

@@ -1,12 +1,12 @@
 use eframe::egui::{self, RichText};
 
-use crate::app::{OcaApp, Screen};
+use crate::app::{App, Screen};
 use crate::i18n::{self, Text};
 use crate::theme;
 
 /// Renders the top breadcrumb bar: app name, current screen title, and (in the Editor) the
 /// active project's name with an "unsaved changes" dot.
-pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
+pub fn show(app: &mut App, ui: &mut egui::Ui) {
     egui::Panel::top("breadcrumb")
         .exact_size(46.0)
         .frame(

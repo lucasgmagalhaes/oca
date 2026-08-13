@@ -5,11 +5,11 @@ use std::sync::Arc;
 use avcore::{Canvas, ClipSegment, ExportJob, ExportJobStatus, RenderOutcome, TextSegment};
 use tracing::{debug, error, info};
 
-use super::{OcaApp, RenderEvent};
+use super::{App, RenderEvent};
 
 /// A ready-to-queue export whose output path collided with an existing file — held until the
-/// user picks Overwrite, Rename, or Cancel in [`OcaApp::show_export_conflict_modal`]. Everything
-/// [`OcaApp::queue_export`] needs is captured here so resolving the conflict is just a matter of
+/// user picks Overwrite, Rename, or Cancel in [`App::show_export_conflict_modal`]. Everything
+/// [`App::queue_export`] needs is captured here so resolving the conflict is just a matter of
 /// picking (or rewriting) `output_path` and calling it.
 pub struct PendingExportConflict {
     pub title: String,
@@ -20,11 +20,11 @@ pub struct PendingExportConflict {
     pub output_path: PathBuf,
 }
 
-impl OcaApp {
+impl App {
     /// Appends a new `Queued` job — what "Adicionar exportação" does, given `track_segments`
     /// and `text_segments` already resolved from the active sequence so this job renders the
     /// timeline as it was at the moment it entered the queue, not whatever it's edited to later.
-    /// Picked up by [`OcaApp::pump_export_queue`] once a worker slot ([`OcaApp::queue_workers`])
+    /// Picked up by [`App::pump_export_queue`] once a worker slot ([`App::queue_workers`])
     /// frees up.
     pub fn queue_export(
         &mut self,
@@ -127,6 +127,7 @@ impl OcaApp {
         let canvas = job.canvas;
         let output_path = PathBuf::from(&job.output_path);
         let target_lufs = job.target_lufs;
+        let gpu_encoder = self.prefs.gpu_encoder;
         job.status = ExportJobStatus::Rendering { percent: 0 };
 
         let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -140,6 +141,7 @@ impl OcaApp {
                 canvas,
                 &output_path,
                 target_lufs,
+                gpu_encoder,
                 &text_segments,
                 &cancel_flag,
                 |percent| {

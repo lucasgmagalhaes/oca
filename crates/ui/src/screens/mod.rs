@@ -1,5 +1,5 @@
 //! One module per screen/chrome piece, each exposing a `show(app, ui)` function that renders
-//! it into the current frame. [`crate::app::OcaApp::ui`] calls `nav_rail` and `breadcrumb`
+//! it into the current frame. [`crate::app::App::ui`] calls `nav_rail` and `breadcrumb`
 //! unconditionally every frame, then dispatches to exactly one of the five screen modules
 //! based on `app.screen`.
 

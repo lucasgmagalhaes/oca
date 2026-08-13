@@ -26,14 +26,14 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   chroma_key, mask_shape, gain_db, speed, glitch. pixelize/shake/zoom/freeze_frame now covered
   (pixelize: static scale-down/up via `videoscale`; shake/zoom: `videocrop` driven per-frame by
   a pad probe, zoom keyed off buffer PTS since preview has no fixed canvas fps; freeze_frame:
-  `ui`'s `OcaApp` keeps the pipeline `Paused` at `source_in_secs` and advances the playhead by
+  `ui`'s `App` keeps the pipeline `Paused` at `source_in_secs` and advances the playhead by
   wall-clock time instead of pipeline position — see `preview_frozen_since`/`frozen_playhead`
   in `crates/ui/src/app/preview.rs`).
   **Chroma key caveat:** `colorkey` marks pixels transparent but the final `yuv420p`
   conform (on a single/background track) drops the alpha plane — keyed color still appears in
   output there despite being in `video_filter_chain()`. Same caveat applies to `mask_shape`'s
   `geq` alpha stage. Both only have a visible effect on a clip placed on an **overlay** track
-  (`avbridge_encode_timeline_export_multi`'s track 1+), since `oca_build_overlay_vfilter` has
+  (`avbridge_encode_timeline_export_multi`'s track 1+), since `build_overlay_vfilter` has
   no per-track `format=yuv420p` conform before the `overlay` filter that composites them —
   track 0 (background) and single-track exports still drop the alpha.
   **Fixed:** Slide/Zoom transitions used to fail against the pinned FFmpeg build — two
@@ -45,27 +45,27 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   now a `geq` inverse-sample too (output size never changes; only what each output pixel
   samples does), the same technique the mask stages above use. Both are implemented in
   `timeline_export.c`'s per-segment transition block and duplicated in
-  `timeline_export_multi.c`'s `oca_build_vfilter_descr`.
+  `timeline_export_multi.c`'s `build_vfilter_descr`.
 
   **Also fixed, found while fixing the above:** the *other* zoom — `ClipInstance::zoom_start`/
   `zoom_end` (Ken-Burns), unrelated to `transition_in`'s Zoom entry effect — was silently
   broken for every non-degenerate case (`zoom_start != zoom_end`): its `crop=iw/(A+B*n):...`
   never set `eval=frame` either, and this FFmpeg build rejects a frame variable outright in a
-  filter's default "init" eval mode, so the export failed with `OCA_ENCODE_ERR_FILTER_GRAPH`
+  filter's default "init" eval mode, so the export failed with `ENCODE_ERR_FILTER_GRAPH`
   every time, not just failed to animate. No test caught it because every zoom-bearing fixture
   in the test suite happened to use `zoom_start == zoom_end` (the safe, static-crop branch).
-  Fixed the same way, factored into a shared `oca_build_kenburns_zoom()` (declared in
+  Fixed the same way, factored into a shared `build_kenburns_zoom()` (declared in
   `bridge_internal.h`, defined in `timeline_export_multi.c`) since the same fix was needed in
   three places: `timeline_export.c`'s per-segment block, and both of
-  `timeline_export_multi.c`'s filter-string builders (`oca_build_vfilter_descr`,
-  `oca_build_overlay_vfilter`). **Now covered end-to-end** by
+  `timeline_export_multi.c`'s filter-string builders (`build_vfilter_descr`,
+  `build_overlay_vfilter`). **Now covered end-to-end** by
   `crates/core/tests/timeline_export_multi_test.rs` — exercises the real two-track composite
   path (`resolve_timeline_segments_multi` + `render_export_job_multi`), including Slide/Zoom
   transitions, Ken-Burns zoom, and mask_shape all on the overlay track specifically, not just
   the C string builders in isolation.
 
   Buffers along all of these paths were bumped generously (up to 20480 bytes at the widest —
-  `oca_init_overlay_graph`'s `fstr`) since a `geq` expression here, or a RoundedRect mask, can
+  `init_overlay_graph`'s `fstr`) since a `geq` expression here, or a RoundedRect mask, can
   each independently run past a thousand bytes, and several of these strings nest more than one
   of them.
 
@@ -77,9 +77,33 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   `crates/ui/src/app/mod.rs`, capture UI in `screens/prefs.rs`, matched in
   `screens/editor/mod.rs` — covers play/pause, split, copy/paste formatting).
   Text overlays, layer masks, transitions, and multi-track compositing (Fase 4 items) are
-  also done — see the Fase 4 section above.
-  **Not yet done:** GPU encode, Whisper subtitles, output-folder overwrite/rename/cancel
-  prompt, export job reordering/pausing.
+  also done — see the Fase 4 section above. Output-folder overwrite/rename/cancel prompt is
+  done (`PendingExportConflict`/`show_export_conflict_modal` in `crates/ui/src/app/`).
+
+  **GPU encode (done, with a known gap):** `avbridge_encode_timeline_export`/`_multi` take a
+  `gpu_encoder_preference` int (`GpuEncoderPreference` in `bridge_internal.h`: AUTO/CPU/NVENC/
+  QUICKSYNC/AMF), threaded from a new `Prefs.gpu_encoder` setting (`screens/prefs.rs`'s
+  "Encode por GPU" row) through `core::render`'s `render_export_job`/`render_export_job_multi`/
+  `render_timeline_export`. `gpu_encoder.c`'s `open_video_encoder()` tries the requested
+  hardware encoder(s) (AUTO tries NVENC, then Quick Sync, then AMF) and falls back to the CPU
+  (libopenh264) encoder if `avcodec_open2` fails for any reason — no compatible GPU/driver, or
+  the encoder rejects the pixel format handed to it. **Known gap, found by empirically running
+  this on a GPU-less dev machine:** every attempt uses `AV_PIX_FMT_YUV420P` (matching what the
+  filter chains already conform to, so no filter-graph changes are needed) — but `h264_qsv`
+  explicitly rejected that format at `avcodec_open2` time (`"Specified pixel format yuv420p is
+  not supported by the h264_qsv encoder"`, wants nv12/qsv instead), which the fallback logic
+  correctly treats as "unavailable" and falls through to CPU. This means on a machine with real
+  Intel Quick Sync hardware, `GPU_ENCODER_QUICKSYNC` would currently still silently fall back to
+  CPU every time rather than actually using the hardware — converting to nv12 (an extra
+  swscale/format-filter stage before `avcodec_send_frame`) isn't implemented. NVENC/AMF didn't
+  reach the pix_fmt check at all on this dev machine (no NVIDIA GPU; no `amfrt64.dll`), so
+  whether they accept yuv420p directly on real hardware is unverified either way. The CPU
+  fallback itself is exercised end-to-end for every preference value
+  (`encode_test.rs`'s `every_gpu_encoder_preference_falls_back_to_a_working_export`) — what's
+  NOT verified anywhere in this codebase is a hardware encoder actually succeeding, since doing
+  so needs real GPU hardware this environment doesn't have.
+
+  **Not yet done:** Whisper subtitles, export job reordering/pausing.
 
 Check `features/request.md` for what's still unbuilt before assuming a feature is live —
 when in doubt, `graphify query`.
@@ -127,7 +151,7 @@ Three-crate split, enforced by dependency direction: `avbridge` → `core` → `
   `loudness`, `proxy`, `waveform`), GStreamer playback pipeline (`preview`), and JSON
   save/load (`persistence`). Locale-neutral — stores enums, never pre-formatted strings.
   No mock/sample data anywhere.
-- **`ui`** — eframe/egui GUI (glow/OpenGL): `app.rs` holds `OcaApp` and mutation methods;
+- **`ui`** — eframe/egui GUI (glow/OpenGL): `app.rs` holds `App` and mutation methods;
   `screens/` has one module per screen; `theme.rs` is the dark/teal palette; **all UI
   strings live in `i18n.rs`** (pt-BR and English) — never hardcode display text.
 

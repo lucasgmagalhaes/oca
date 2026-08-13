@@ -12,7 +12,7 @@ use avcore::project::Recency;
 
 use crate::app::Screen;
 
-/// A language the UI can be displayed in. Stored on [`crate::app::OcaApp`] and switched
+/// A language the UI can be displayed in. Stored on [`crate::app::App`] and switched
 /// at runtime from the Ajustes screen — nothing here requires a restart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -209,6 +209,12 @@ text_catalog! {
     PrefsExport: pt_br = "Exportação", en = "Export";
     PrefsExportWorkers: pt_br = "Workers de exportação em segundo plano", en = "Background export workers";
     PrefsOutputFolder: pt_br = "Pasta de saída padrão", en = "Default output folder";
+    PrefsGpuEncoder: pt_br = "Encode por GPU", en = "GPU encoding";
+    GpuEncoderAuto: pt_br = "Automático", en = "Auto";
+    GpuEncoderCpu: pt_br = "CPU", en = "CPU";
+    GpuEncoderNvenc: pt_br = "NVIDIA (NVENC)", en = "NVIDIA (NVENC)";
+    GpuEncoderQuickSync: pt_br = "Intel (Quick Sync)", en = "Intel (Quick Sync)";
+    GpuEncoderAmf: pt_br = "AMD (AMF)", en = "AMD (AMF)";
     Browse: pt_br = "Procurar", en = "Browse";
     PrefsProject: pt_br = "Projeto", en = "Project";
     PrefsAutosaveInterval: pt_br = "Intervalo de autosave", en = "Autosave interval";

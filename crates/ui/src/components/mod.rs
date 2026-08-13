@@ -1,6 +1,6 @@
 //! Reusable, presentation-only UI building blocks shared across screens: pill "tag" chips,
 //! section headers, card frames, generic enum combo boxes, and the clip-properties "labeled
-//! section" wrapper. None of these read `OcaApp` — callers pass in already-translated text and
+//! section" wrapper. None of these read `App` — callers pass in already-translated text and
 //! own mutable state, which keeps every component free to move, reuse, or swap independent of
 //! app state and of each other.
 
