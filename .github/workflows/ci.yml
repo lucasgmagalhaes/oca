@@ -43,7 +43,7 @@ jobs:
 
       - name: Cache FFmpeg dev build
         id: ffmpeg-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ffmpeg-dev
           key: ffmpeg-btbn-win64-gpl-shared-master-latest
@@ -122,7 +122,7 @@ jobs:
 
       - name: Cache FFmpeg dev build
         id: ffmpeg-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ffmpeg-dev
           key: ffmpeg-btbn-linux64-gpl-shared-master-latest
