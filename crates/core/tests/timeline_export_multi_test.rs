@@ -87,7 +87,10 @@ fn sequence_with(tracks: Vec<Track>) -> Sequence {
     Sequence {
         id: 1,
         name: "Sequence 1".to_string(),
-        timeline: Timeline { tracks, playhead_secs: 0.0 },
+        timeline: Timeline {
+            tracks,
+            playhead_secs: 0.0,
+        },
     }
 }
 
@@ -135,8 +138,7 @@ fn resolve_timeline_segments_multi_skips_hidden_tracks() {
     hidden_overlay.visible = false;
     let sequence = sequence_with(vec![background, hidden_overlay]);
 
-    let (track_segments, _canvas) =
-        resolve_timeline_segments_multi(&sequence, &[asset]).unwrap();
+    let (track_segments, _canvas) = resolve_timeline_segments_multi(&sequence, &[asset]).unwrap();
 
     assert_eq!(track_segments.len(), 1);
 }
@@ -219,12 +221,19 @@ fn overlay_track_mask_shape_composites_without_error() {
 #[test]
 fn cancelling_mid_multi_track_export_reports_cancelled() {
     let asset = video_asset(1);
-    let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5), clip(3, 1, 0.5, 0.0, 1.0)]);
-    let overlay = track(2, "V2", vec![clip(2, 1, 0.0, 0.0, 0.5), clip(4, 1, 0.5, 0.0, 1.0)]);
+    let background = track(
+        1,
+        "V1",
+        vec![clip(1, 1, 0.0, 0.0, 0.5), clip(3, 1, 0.5, 0.0, 1.0)],
+    );
+    let overlay = track(
+        2,
+        "V2",
+        vec![clip(2, 1, 0.0, 0.0, 0.5), clip(4, 1, 0.5, 0.0, 1.0)],
+    );
     let sequence = sequence_with(vec![background, overlay]);
 
-    let (track_segments, canvas) =
-        resolve_timeline_segments_multi(&sequence, &[asset]).unwrap();
+    let (track_segments, canvas) = resolve_timeline_segments_multi(&sequence, &[asset]).unwrap();
     let output = std::env::temp_dir().join("avcore_test_multi_cancelled.mp4");
     let cancel = AtomicBool::new(false);
     let mut calls = 0;

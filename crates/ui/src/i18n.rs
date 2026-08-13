@@ -222,7 +222,10 @@ text_catalog! {
     BindingPressAnyKey: pt_br = "Pressione uma tecla...", en = "Press any key...";
     BindingChange: pt_br = "Alterar", en = "Change";
     ExportFileExistsTitle: pt_br = "Arquivo já existe", en = "File already exists";
+    ExportFileExistsBody: pt_br = "Já existe um arquivo chamado \"{name}\" nesse destino.", en = "A file named \"{name}\" already exists at that destination.";
     ExportFileExistsOverwrite: pt_br = "Sobrescrever", en = "Overwrite";
+    ExportFileExistsRename: pt_br = "Renomear automaticamente", en = "Rename automatically";
+    ExportFileExistsRenamedTo: pt_br = "Novo nome: {name}", en = "New name: {name}";
     AutosaveFound: pt_br = "Foi encontrado um autosave mais recente para este projeto. Deseja restaurá-lo?", en = "A more recent autosave was found for this project. Do you want to restore it?";
     AutosaveRestore: pt_br = "Restaurar autosave", en = "Restore autosave";
     AutosaveDiscard: pt_br = "Descartar", en = "Discard";
@@ -334,7 +337,11 @@ pub fn job_detail_line(locale: Locale, job: &ExportJob) -> String {
                 .segments
                 .iter()
                 .map(|s| {
-                    let speed = if s.speed_factor > 0.0 { s.speed_factor as f64 } else { 1.0 };
+                    let speed = if s.speed_factor > 0.0 {
+                        s.speed_factor as f64
+                    } else {
+                        1.0
+                    };
                     (s.source_out_secs - s.source_in_secs) / speed
                 })
                 .sum();

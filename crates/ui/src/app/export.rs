@@ -2,10 +2,23 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use avcore::{ExportJob, ExportJobStatus, RenderOutcome};
+use avcore::{Canvas, ClipSegment, ExportJob, ExportJobStatus, RenderOutcome, TextSegment};
 use tracing::{debug, error, info};
 
 use super::{OcaApp, RenderEvent};
+
+/// A ready-to-queue export whose output path collided with an existing file — held until the
+/// user picks Overwrite, Rename, or Cancel in [`OcaApp::show_export_conflict_modal`]. Everything
+/// [`OcaApp::queue_export`] needs is captured here so resolving the conflict is just a matter of
+/// picking (or rewriting) `output_path` and calling it.
+pub struct PendingExportConflict {
+    pub title: String,
+    pub track_segments: Vec<Vec<ClipSegment>>,
+    pub text_segments: Vec<TextSegment>,
+    pub canvas: Canvas,
+    pub target_lufs: f32,
+    pub output_path: PathBuf,
+}
 
 impl OcaApp {
     /// Appends a new `Queued` job — what "Adicionar exportação" does, given `track_segments`
@@ -145,6 +158,28 @@ impl OcaApp {
             let _ = tx.send(event);
         });
     }
+}
+
+/// Finds the first `<stem> (2)<ext>`, `<stem> (3)<ext>`, ... sibling of `path` that doesn't
+/// already exist. `path` itself is assumed to exist (that's why the caller is renaming).
+pub(super) fn next_available_path(path: &std::path::Path) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| std::path::Path::new(""));
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let ext = path.extension().map(|e| e.to_string_lossy().into_owned());
+    for n in 2.. {
+        let candidate_name = match &ext {
+            Some(ext) => format!("{stem} ({n}).{ext}"),
+            None => format!("{stem} ({n})"),
+        };
+        let candidate = parent.join(candidate_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!("infinite range always yields a free name eventually")
 }
 
 /// Returns the platform-appropriate path for the oca export queue file, next to `prefs.json`.

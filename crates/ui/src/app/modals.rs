@@ -8,6 +8,7 @@ use crate::i18n::{self, Text};
 use crate::screens;
 use crate::theme;
 
+use super::export::next_available_path;
 use super::OcaApp;
 
 impl OcaApp {
@@ -92,9 +93,8 @@ impl OcaApp {
             ui.add_space(10.0);
             let (_, name_buf, summary_buf) = self.renaming_project.as_mut().unwrap();
             ui.label(i18n::Text::ProjectNameLabel.tr(locale));
-            let name_edit = ui.add(
-                egui::TextEdit::singleline(name_buf).desired_width(f32::INFINITY),
-            );
+            let name_edit =
+                ui.add(egui::TextEdit::singleline(name_buf).desired_width(f32::INFINITY));
             name_edit.request_focus();
             if name_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 confirmed = true;
@@ -133,9 +133,7 @@ impl OcaApp {
                     self.projects[idx].name = name;
                     self.projects[idx].summary = new_summary.trim().to_string();
                     if let Some(path) = self.projects[idx].file_path.clone() {
-                        if let Err(e) =
-                            avcore::save_project_to_file(&self.projects[idx], &path)
-                        {
+                        if let Err(e) = avcore::save_project_to_file(&self.projects[idx], &path) {
                             self.push_toast(format!("Failed to save project settings: {e}"));
                         }
                     }
@@ -165,9 +163,7 @@ impl OcaApp {
             );
             ui.add_space(10.0);
             let buf = &mut self.renaming_sequence.as_mut().unwrap().1;
-            let text_edit = ui.add(
-                egui::TextEdit::singleline(buf).desired_width(f32::INFINITY),
-            );
+            let text_edit = ui.add(egui::TextEdit::singleline(buf).desired_width(f32::INFINITY));
             text_edit.request_focus();
             if text_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 confirmed = true;
@@ -257,9 +253,7 @@ impl OcaApp {
             ui.add_space(12.0);
             ui.horizontal(|ui| {
                 if ui.button(Text::AutosaveRestore.tr(locale)).clicked() {
-                    if let Ok(mut restored) =
-                        avcore::load_project_from_file(&autosave_path)
-                    {
+                    if let Ok(mut restored) = avcore::load_project_from_file(&autosave_path) {
                         let file_path = self.active_project().file_path.clone();
                         let id = self.active_project().id;
                         restored.file_path = file_path;
@@ -279,6 +273,93 @@ impl OcaApp {
         });
         if response.should_close() {
             self.autosave_restore_pending = None;
+        }
+    }
+
+    /// Shows the Overwrite/Rename/Cancel modal when [`OcaApp::pending_export_conflict`] is
+    /// `Some` — the output path a queued export was about to use already exists on disk.
+    /// Overwrite queues it as-is; Rename picks the first free `name (2).mp4`-style sibling via
+    /// [`next_available_path`] and queues that instead; Cancel (or Escape) drops the job.
+    pub(super) fn show_export_conflict_modal(&mut self, ctx: &egui::Context) {
+        let Some(pending) = self.pending_export_conflict.as_ref() else {
+            return;
+        };
+        let locale = self.locale;
+        let filename = pending
+            .output_path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| pending.output_path.display().to_string());
+        let renamed_preview = next_available_path(&pending.output_path);
+        let renamed_filename = renamed_preview
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| renamed_preview.display().to_string());
+
+        let modal = egui::Modal::new(egui::Id::new("export_conflict_modal"));
+        let mut choice: Option<bool> = None; // Some(true) = overwrite, Some(false) = rename
+        let mut cancelled = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(380.0);
+            ui.label(
+                egui::RichText::new(Text::ExportFileExistsTitle.tr(locale))
+                    .size(15.0)
+                    .strong(),
+            );
+            ui.add_space(8.0);
+            ui.label(
+                Text::ExportFileExistsBody
+                    .tr(locale)
+                    .replace("{name}", &filename),
+            );
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(
+                    Text::ExportFileExistsRenamedTo
+                        .tr(locale)
+                        .replace("{name}", &renamed_filename),
+                )
+                .size(11.0)
+                .color(theme::TEXT_MUTED),
+            );
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .button(Text::ExportFileExistsOverwrite.tr(locale))
+                    .clicked()
+                {
+                    choice = Some(true);
+                }
+                if ui.button(Text::ExportFileExistsRename.tr(locale)).clicked() {
+                    choice = Some(false);
+                }
+                if ui.button(Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if response.should_close() || cancelled {
+            self.pending_export_conflict = None;
+            return;
+        }
+        if let Some(overwrite) = choice {
+            let pending = self.pending_export_conflict.take().unwrap();
+            let output_path = if overwrite {
+                pending.output_path
+            } else {
+                next_available_path(&pending.output_path)
+            };
+            self.queue_export(
+                pending.title,
+                pending.track_segments,
+                pending.text_segments,
+                pending.canvas,
+                pending.target_lufs,
+                output_path.display().to_string(),
+            );
         }
     }
 

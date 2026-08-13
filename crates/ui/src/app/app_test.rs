@@ -39,7 +39,6 @@ fn test_track(id: u64, kind: TrackKind, clips: Vec<ClipInstance>) -> Track {
         text_clips: vec![],
 
         visible: true,
-
     }
 }
 
@@ -192,6 +191,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> OcaApp {
         renaming_project: None::<(usize, String, String)>,
         renaming_sequence: None,
         binding_capture: None,
+        pending_export_conflict: None,
     }
 }
 
@@ -2613,4 +2613,70 @@ fn pump_import_queue_drops_a_failed_import_without_panicking() {
 
     assert_eq!(app.pending_imports, 0);
     assert!(app.active_project().media_library.is_empty());
+}
+
+#[test]
+fn next_available_path_picks_the_first_free_numeric_suffix() {
+    let dir = std::env::temp_dir().join("oca_test_next_available_path");
+    let _ = std::fs::create_dir_all(&dir);
+    let base = dir.join("clip.mp4");
+    let taken2 = dir.join("clip (2).mp4");
+    std::fs::write(&base, b"").unwrap();
+    std::fs::write(&taken2, b"").unwrap();
+
+    let result = super::export::next_available_path(&base);
+
+    assert_eq!(result, dir.join("clip (3).mp4"));
+
+    let _ = std::fs::remove_file(&base);
+    let _ = std::fs::remove_file(&taken2);
+}
+
+#[test]
+fn next_available_path_uses_suffix_two_when_only_the_base_name_exists() {
+    let dir = std::env::temp_dir().join("oca_test_next_available_path_2");
+    let _ = std::fs::create_dir_all(&dir);
+    let base = dir.join("clip.mp4");
+    std::fs::write(&base, b"").unwrap();
+
+    let result = super::export::next_available_path(&base);
+
+    assert_eq!(result, dir.join("clip (2).mp4"));
+
+    let _ = std::fs::remove_file(&base);
+}
+
+#[test]
+fn pending_export_conflict_overwrite_queues_with_the_original_path() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let dir = std::env::temp_dir().join("oca_test_export_conflict_overwrite");
+    let _ = std::fs::create_dir_all(&dir);
+    let output = dir.join("out.mp4");
+    std::fs::write(&output, b"").unwrap();
+
+    app.pending_export_conflict = Some(super::export::PendingExportConflict {
+        title: "Export".to_string(),
+        track_segments: Vec::new(),
+        text_segments: vec![],
+        canvas: test_canvas(),
+        target_lufs: -14.0,
+        output_path: output.clone(),
+    });
+
+    // Simulates the modal's Overwrite branch directly — queues with output_path unchanged.
+    let pending = app.pending_export_conflict.take().unwrap();
+    app.queue_export(
+        pending.title,
+        pending.track_segments,
+        pending.text_segments,
+        pending.canvas,
+        pending.target_lufs,
+        pending.output_path.display().to_string(),
+    );
+
+    assert_eq!(app.export_jobs.len(), 1);
+    assert_eq!(app.export_jobs[0].output_path, output.display().to_string());
+    assert!(app.pending_export_conflict.is_none());
+
+    let _ = std::fs::remove_file(&output);
 }

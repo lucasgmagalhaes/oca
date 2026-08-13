@@ -21,7 +21,7 @@ use crate::screens;
 use crate::theme;
 
 mod clip_props;
-mod export;
+pub mod export;
 mod import;
 mod modals;
 mod preview;
@@ -454,6 +454,10 @@ pub struct OcaApp {
     /// When `Some(action)`, the prefs modal is waiting for the next key press to set that
     /// action's binding. Pressing Escape clears it without changing the binding.
     pub binding_capture: Option<BindableAction>,
+    /// Set when "Adicionar exportação" picked an output path that already exists — holds
+    /// everything needed to queue the export once the user resolves the conflict via
+    /// [`OcaApp::show_export_conflict_modal`] (Overwrite / Rename / Cancel).
+    pub pending_export_conflict: Option<export::PendingExportConflict>,
 }
 
 impl OcaApp {
@@ -531,6 +535,7 @@ impl OcaApp {
             autosave_restore_pending: None,
             crash_detected,
             export_aspect_ratio: avcore::ExportAspectRatio::default(),
+            pending_export_conflict: None,
             renaming_project: None,
             renaming_sequence: None,
             binding_capture: None,
@@ -866,6 +871,7 @@ impl eframe::App for OcaApp {
         self.show_prefs_modal(ui.ctx());
         self.show_rename_project_modal(ui.ctx());
         self.show_rename_sequence_modal(ui.ctx());
+        self.show_export_conflict_modal(ui.ctx());
         self.show_toasts(ui.ctx());
     }
 

@@ -32,7 +32,9 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                         .first()
                         .map(|segs| {
                             segs.iter()
-                                .map(|s| (s.source_out_secs - s.source_in_secs) / s.speed_factor as f64)
+                                .map(|s| {
+                                    (s.source_out_secs - s.source_in_secs) / s.speed_factor as f64
+                                })
                                 .sum::<f64>()
                         })
                         .unwrap_or(0.0);
@@ -59,30 +61,20 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                             .add_filter("MP4", &["mp4"])
                             .set_file_name(default_name);
                         if !app.prefs.output_folder.is_empty() {
-                            dialog = dialog
-                                .set_directory(&app.prefs.output_folder);
+                            dialog = dialog.set_directory(&app.prefs.output_folder);
                         }
-                        if let Some(output) = dialog.save_file()
-                        {
-                            let proceed = if output.exists() {
-                                let filename = output
-                                    .file_name()
-                                    .map(|n| n.to_string_lossy().into_owned())
-                                    .unwrap_or_else(|| output.display().to_string());
-                                rfd::MessageDialog::new()
-                                    .set_title(Text::ExportFileExistsTitle.tr(locale))
-                                    .set_description(format!("{filename} already exists."))
-                                    .set_level(rfd::MessageLevel::Warning)
-                                    .set_buttons(rfd::MessageButtons::OkCancelCustom(
-                                        Text::ExportFileExistsOverwrite.tr(locale).to_owned(),
-                                        "Cancel".to_owned(),
-                                    ))
-                                    .show()
-                                    == rfd::MessageDialogResult::Ok
+                        if let Some(output) = dialog.save_file() {
+                            if output.exists() {
+                                app.pending_export_conflict =
+                                    Some(crate::app::export::PendingExportConflict {
+                                        title: sequence_name,
+                                        track_segments,
+                                        text_segments,
+                                        canvas,
+                                        target_lufs,
+                                        output_path: output,
+                                    });
                             } else {
-                                true
-                            };
-                            if proceed {
                                 app.queue_export(
                                     sequence_name,
                                     track_segments,
@@ -111,7 +103,9 @@ pub fn show(app: &mut OcaApp, ui: &mut egui::Ui) {
                     ui.add_space(6.0);
                     ui.label(
                         eframe::egui::RichText::new(
-                            Text::ExportSizeEstimate.tr(locale).replace("{size}", &size_label),
+                            Text::ExportSizeEstimate
+                                .tr(locale)
+                                .replace("{size}", &size_label),
                         )
                         .size(11.0)
                         .color(crate::theme::TEXT_MUTED),

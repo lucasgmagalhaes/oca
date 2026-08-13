@@ -73,9 +73,13 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   to platform JSON (`~/Library/Application Support/oca/` on macOS); recent project list;
   debounced autosave + restore modal; crash detection + panic hook; prefs modal; home
   screen right-click context menu; file size estimate; structured logging; copy formatting
-  (`Ctrl+Shift+C`/`V`).
-  **Not yet done:** GPU encode, configurable key bindings, Whisper subtitles, text
-  overlays, layer masks, transitions, multi-track compositing.
+  (`Ctrl+Shift+C`/`V`); configurable key bindings (`KeyBindings`/`BindableAction` in
+  `crates/ui/src/app/mod.rs`, capture UI in `screens/prefs.rs`, matched in
+  `screens/editor/mod.rs` — covers play/pause, split, copy/paste formatting).
+  Text overlays, layer masks, transitions, and multi-track compositing (Fase 4 items) are
+  also done — see the Fase 4 section above.
+  **Not yet done:** GPU encode, Whisper subtitles, output-folder overwrite/rename/cancel
+  prompt, export job reordering/pausing.
 
 Check `features/request.md` for what's still unbuilt before assuming a feature is live —
 when in doubt, `graphify query`.
