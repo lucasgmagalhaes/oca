@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-and-test:
+  build-and-test-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,3 +97,108 @@ jobs:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
+
+  build-and-test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install GStreamer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libgstreamer-plugins-bad1.0-dev
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache FFmpeg dev build
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg-dev
+          key: ffmpeg-btbn-linux64-gpl-shared-master-latest
+
+      # Same retry logic as the Windows job; BtbN Linux tarballs live at the same `latest`
+      # release tag and are subject to the same mid-rotation 404 window.
+      - name: Download FFmpeg dev build (BtbN)
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: |
+          uri="https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl-shared.tar.xz"
+          max_attempts=5
+          for attempt in $(seq 1 $max_attempts); do
+            if curl -fsSL -o ffmpeg.tar.xz "$uri"; then
+              break
+            fi
+            if [ "$attempt" -eq "$max_attempts" ]; then
+              echo "Download failed after $max_attempts attempts" >&2
+              exit 1
+            fi
+            delay=$((15 * attempt))
+            echo "Download failed (attempt $attempt/$max_attempts). Retrying in ${delay}s..."
+            sleep "$delay"
+          done
+          tar -xf ffmpeg.tar.xz
+          dir=$(find . -maxdepth 1 -name 'ffmpeg-*' -type d | head -1)
+          mv "$dir" ffmpeg-dev
+
+      # FFMPEG_DIR must point at an extracted BtbN build whose include/ and lib/ match
+      # what avbridge/build.rs expects. LD_LIBRARY_PATH lets the test runner find the
+      # shared libs at runtime without a system-wide install.
+      - name: Export FFMPEG_DIR and LD_LIBRARY_PATH
+        run: |
+          echo "FFMPEG_DIR=$(pwd)/ffmpeg-dev" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$(pwd)/ffmpeg-dev/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
+
+      - name: Build
+        run: cargo build --workspace
+
+      - name: Test
+        run: cargo test --workspace
+
+  build-and-test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # Homebrew FFmpeg gives us include/ and lib/ under $(brew --prefix)/opt/ffmpeg, which
+      # is exactly the layout avbridge/build.rs expects from FFMPEG_DIR. Homebrew GStreamer
+      # puts pkg-config files under $(brew --prefix)/lib/pkgconfig, which gstreamer-sys
+      # finds through PKG_CONFIG_PATH. gst-plugins-base provides gstreamer-app and
+      # gstreamer-video (the two extra crates core depends on).
+      - name: Install dependencies
+        run: brew install ffmpeg gstreamer gst-plugins-base gst-plugins-bad
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Export FFMPEG_DIR and PKG_CONFIG_PATH
+        run: |
+          brew_prefix=$(brew --prefix)
+          echo "FFMPEG_DIR=${brew_prefix}/opt/ffmpeg" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=${brew_prefix}/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
+
+      - name: Build
+        run: cargo build --workspace
+
+      - name: Test
+        run: cargo test --workspace
