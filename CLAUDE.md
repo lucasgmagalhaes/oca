@@ -222,10 +222,18 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   full save→persist→apply round trip (including the real JSON shape on disk) was also verified
   by hand against a live running instance, not just the test suite.
 
-  **Not yet done:** the rest of Fase 4's larger CapCut-parity items (video stabilization, AI
-  background removal, auto-reframe, text-to-speech, motion tracking, music/SFX library) —
-  keyframes, LUTs, layer transform (position + resize), and layer templates are done, see
-  above.
+  **Video stabilization (done, export only):** `ClipInstance::stabilization_intensity`
+  (`0.0..=1.0`) folds a `deshake=rx=x:ry=x:edge=mirror` stage into `video_filter_chain`, right
+  after deflicker and before any color/stylistic stage. Uses `libavfilter`'s built-in
+  single-pass `deshake`, not the more capable two-pass `vidstabdetect`/`vidstabtransform` pair
+  (`libvidstab`) — this project's pinned FFmpeg build has `--disable-libvidstab`, confirmed via
+  a real `ffmpeg -buildconf`, not assumed. No GStreamer stabilization element exists on this dev
+  machine's install either (`gst-inspect-1.0`), so export-only, same shape as LUTs. Properties
+  panel gets its own slider (`STABILIZATION_INTENSITY_RANGE`).
+
+  **Not yet done:** the rest of Fase 4's larger CapCut-parity items (AI background removal,
+  auto-reframe, text-to-speech, motion tracking, music/SFX library) — keyframes, LUTs, layer
+  transform (position + resize), layer templates, and video stabilization are done, see above.
 
   **Word-highlight subtitles (done):** true in-place highlighting — the full sentence stays on
   screen, the currently-spoken word lights up in `highlight_color_rgba` exactly where it sits in
