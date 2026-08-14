@@ -222,22 +222,40 @@ pub fn render_export(
 /// Builds `clip`'s combined avfilter `video_filter` string (scale/rotation/opacity keyframe
 /// stages, from [`ClipInstance::keyframe_video_filter_chain`], spliced onto the front of
 /// [`ClipInstance::video_filter_chain`]'s own stages — the same position the old `zoom` stage
-/// used to occupy) plus its `overlay` position expressions (from
-/// [`keyframe::position_overlay_xy_expr`], empty strings when there's nothing to animate).
-/// Shared by [`resolve_timeline_segments`] and [`resolve_timeline_segments_multi`] since both
-/// need identical per-clip resolution.
+/// used to occupy, and [`ClipInstance::layer_scale_x`]/`_y`'s resize stage appended after
+/// everything else — it must be the last geometric transform before compositing, so every
+/// earlier stage still operates at native resolution) plus its `overlay` position expressions
+/// (from [`keyframe::position_overlay_xy_expr`], empty strings when there's nothing to
+/// animate). `is_overlay` gates the resize stage — a single/background track's final
+/// canvas-size conform has no pad/fit step, so appending it there would hand the encoder a
+/// mismatched-resolution frame instead of a smaller picture within the canvas; position/opacity
+/// keyframes have the same overlay-only caveat for a compositing reason instead. Shared by
+/// [`resolve_timeline_segments`] and [`resolve_timeline_segments_multi`] since both need
+/// identical per-clip resolution.
 fn resolve_clip_filters(
     clip: &ClipInstance,
     fps_num: u32,
     fps_den: u32,
     duration_secs: f64,
+    is_overlay: bool,
 ) -> (String, String, String) {
     let base_filter = clip.video_filter_chain();
-    let video_filter = match clip.keyframe_video_filter_chain(fps_num, fps_den, duration_secs) {
+    let mut video_filter = match clip.keyframe_video_filter_chain(fps_num, fps_den, duration_secs) {
         Some(kf) if base_filter.is_empty() => kf,
         Some(kf) => format!("{kf},{base_filter}"),
         None => base_filter,
     };
+    if is_overlay && clip.has_layer_scale() {
+        let resize = format!(
+            "scale=iw*{:.4}:ih*{:.4}",
+            clip.layer_scale_x, clip.layer_scale_y
+        );
+        video_filter = if video_filter.is_empty() {
+            resize
+        } else {
+            format!("{video_filter},{resize}")
+        };
+    }
     let (position_x_expr, position_y_expr) =
         keyframe::position_overlay_xy_expr(&clip.position_keyframes, duration_secs)
             .unwrap_or_default();
@@ -279,7 +297,7 @@ pub fn resolve_timeline_segments(
         let (_, _, fps) = dimensions_fps.expect("just set above if it was None");
         let (fps_num, fps_den) = fps_to_rational(fps);
         let (video_filter, position_x_expr, position_y_expr) =
-            resolve_clip_filters(clip, fps_num, fps_den, duration_secs);
+            resolve_clip_filters(clip, fps_num, fps_den, duration_secs, false);
         segments.push(avbridge::ClipSegment {
             source_path: asset.source_path.clone(),
             source_in_secs: clip.source_in_secs,
@@ -528,6 +546,10 @@ pub fn resolve_timeline_segments_multi(
     let mut canvas: Option<Canvas> = None;
 
     for track in &visible_video_tracks {
+        // Track 0 (background) vs 1+ (overlay) — matches avbridge_encode_timeline_export_multi's
+        // own convention and the same distinction position_keyframes/opacity_keyframes already
+        // rely on: `all_track_segments.len()` is this track's index since it fills in order.
+        let is_overlay = !all_track_segments.is_empty();
         let mut clips: Vec<_> = track.clips.iter().collect();
         clips.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
 
@@ -552,7 +574,7 @@ pub fn resolve_timeline_segments_multi(
             let (_, _, fps) = dimensions_fps.expect("just set above if it was None");
             let (fps_num, fps_den) = fps_to_rational(fps);
             let (video_filter, position_x_expr, position_y_expr) =
-                resolve_clip_filters(clip, fps_num, fps_den, duration_secs);
+                resolve_clip_filters(clip, fps_num, fps_den, duration_secs, is_overlay);
             segments.push(avbridge::ClipSegment {
                 source_path: asset.source_path.clone(),
                 source_in_secs: clip.source_in_secs,

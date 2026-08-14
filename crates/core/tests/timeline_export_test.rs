@@ -61,6 +61,8 @@ fn clip(
         opacity_keyframes: vec![],
         deflicker_enabled: false,
         lut_path: String::new(),
+        layer_scale_x: 1.0,
+        layer_scale_y: 1.0,
     }
 }
 

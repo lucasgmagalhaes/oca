@@ -353,6 +353,25 @@ pub struct ClipInstance {
     /// so older saved projects load with no LUT applied.
     #[serde(default)]
     pub lut_path: String,
+    /// Layer footprint size, as a multiplier of this clip's own native decoded width/height —
+    /// `1.0` (both axes) is native size, unchanged. Independent axes allow a deliberate
+    /// non-uniform stretch, not just uniform scaling, per `request.md`'s Fase 4 "Transformação
+    /// de camadas" spec ("largura, altura... ajustáveis"). A *different* concept from
+    /// [`ClipInstance::scale_keyframes`]'s Ken-Burns zoom, which crops into and rescales back to
+    /// the *same* frame size (a zoom-in-place on the content) — this instead genuinely resizes
+    /// the frame buffer that gets composited, shrinking or growing the clip's on-canvas
+    /// footprint. Wired into export via a `scale=iw*x:ih*y` avfilter stage appended after every
+    /// other per-clip stage (`crate::render::resolve_clip_filters`) — only meaningful on an
+    /// overlay track (track 1+ in `avbridge_encode_timeline_export_multi`): a single/background
+    /// track's final canvas-size conform has no pad/fit step, so shrinking there would produce
+    /// a mismatched-resolution frame rather than a smaller picture with visible canvas around
+    /// it, the same overlay-only caveat `position_keyframes`/`opacity_keyframes` already have,
+    /// just for a correctness reason instead of a compositing one. Not yet wired into live
+    /// preview. `#[serde(default = ..)]` so older saved projects load at native size.
+    #[serde(default = "default_unity_multiplier")]
+    pub layer_scale_x: f32,
+    #[serde(default = "default_unity_multiplier")]
+    pub layer_scale_y: f32,
     /// `true` if temporal luminance-flicker removal is enabled for this block, per
     /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Remoção de flicker") — common in
     /// screen/gameplay captures at certain refresh rates. Wired to export via `video_filter_chain`
@@ -399,6 +418,8 @@ pub struct ClipFormatting {
     pub opacity_keyframes: Vec<Keyframe<f32>>,
     pub deflicker_enabled: bool,
     pub lut_path: String,
+    pub layer_scale_x: f32,
+    pub layer_scale_y: f32,
 }
 
 fn default_speed_factor() -> f32 {
@@ -456,6 +477,12 @@ impl ClipInstance {
     /// `true` if a 3D LUT ([`ClipInstance::lut_path`]) is applied.
     pub fn has_lut(&self) -> bool {
         !self.lut_path.is_empty()
+    }
+
+    /// `true` if this block's layer footprint ([`ClipInstance::layer_scale_x`]/`_y`) differs
+    /// from native size on either axis.
+    pub fn has_layer_scale(&self) -> bool {
+        (self.layer_scale_x - 1.0).abs() > 1e-4 || (self.layer_scale_y - 1.0).abs() > 1e-4
     }
 
     /// `true` if [`ClipInstance::vignette_intensity`] is above zero.
@@ -750,6 +777,8 @@ impl ClipInstance {
             opacity_keyframes: self.opacity_keyframes.clone(),
             deflicker_enabled: self.deflicker_enabled,
             lut_path: self.lut_path.clone(),
+            layer_scale_x: self.layer_scale_x,
+            layer_scale_y: self.layer_scale_y,
         }
     }
 
@@ -788,6 +817,8 @@ impl ClipInstance {
         self.opacity_keyframes = f.opacity_keyframes.clone();
         self.deflicker_enabled = f.deflicker_enabled;
         self.lut_path = f.lut_path.clone();
+        self.layer_scale_x = f.layer_scale_x;
+        self.layer_scale_y = f.layer_scale_y;
     }
 
     /// Drags the clip's right edge to `new_end_secs` (timeline-relative), keeping `start_secs`
@@ -923,6 +954,8 @@ impl Track {
             opacity_keyframes: opacity_second,
             deflicker_enabled: clip.deflicker_enabled,
             lut_path: clip.lut_path.clone(),
+            layer_scale_x: clip.layer_scale_x,
+            layer_scale_y: clip.layer_scale_y,
         };
         clip.source_out_secs = split_source_secs;
         clip.position_keyframes = position_first;

@@ -68,6 +68,8 @@ fn clip(
         opacity_keyframes: vec![],
         deflicker_enabled: false,
         lut_path: String::new(),
+        layer_scale_x: 1.0,
+        layer_scale_y: 1.0,
     }
 }
 
@@ -148,6 +150,36 @@ fn resolve_timeline_segments_multi_skips_hidden_tracks() {
     let (track_segments, _canvas) = resolve_timeline_segments_multi(&sequence, &[asset]).unwrap();
 
     assert_eq!(track_segments.len(), 1);
+}
+
+#[test]
+fn layer_scale_is_appended_to_the_overlay_tracks_video_filter() {
+    let asset = video_asset(1);
+    let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
+    let mut c2 = clip(2, 1, 0.0, 0.0, 0.5);
+    c2.layer_scale_x = 0.5;
+    c2.layer_scale_y = 0.25;
+    let overlay = track(2, "V2", vec![c2]);
+    let sequence = sequence_with(vec![background, overlay]);
+
+    let (track_segments, _canvas) = resolve_timeline_segments_multi(&sequence, &[asset]).unwrap();
+
+    assert!(!track_segments[0][0].video_filter.contains("scale=iw*"));
+    assert!(track_segments[1][0]
+        .video_filter
+        .contains("scale=iw*0.5000:ih*0.2500"));
+}
+
+#[test]
+fn layer_scale_at_native_size_adds_no_filter_stage() {
+    let asset = video_asset(1);
+    let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
+    let overlay = track(2, "V2", vec![clip(2, 1, 0.0, 0.0, 0.5)]);
+    let sequence = sequence_with(vec![background, overlay]);
+
+    let (track_segments, _canvas) = resolve_timeline_segments_multi(&sequence, &[asset]).unwrap();
+
+    assert!(track_segments[1][0].video_filter.is_empty());
 }
 
 #[test]
