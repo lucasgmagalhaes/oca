@@ -185,3 +185,56 @@ def test_dragging_the_preview_layer_moves_it(oca_window):
     # gesture landed on repainted frames both nudge the exact pixel count.
     assert actual_dx > 150 * 0.5, f"layer moved {actual_dx}px right, expected ~150"
     assert actual_dy > 100 * 0.5, f"layer moved {actual_dy}px down, expected ~100"
+
+
+def _drag_resize_handle_once(oca_window, layer_before, window_mid_y):
+    """One attempt at dragging the bottom-right resize handle by (90, 68)px — close to the
+    fixture's own 4:3 aspect so `_find_layer_box`'s aspect filter still matches the box
+    afterward. Returns the layer's rect afterward, or `None` if it couldn't be found again."""
+    handle_x = layer_before.right
+    handle_y = layer_before.bottom
+    grow_dx, grow_dy = 90, 68
+
+    mouse.move(coords=(handle_x, handle_y))
+    time.sleep(0.3)
+    mouse.press(button="left", coords=(handle_x, handle_y))
+    time.sleep(0.3)
+    steps = 10
+    for i in range(1, steps + 1):
+        mouse.move(
+            coords=(
+                handle_x + grow_dx * i // steps,
+                handle_y + grow_dy * i // steps,
+            )
+        )
+        time.sleep(0.3)
+    mouse.release(button="left", coords=(handle_x + grow_dx, handle_y + grow_dy))
+    time.sleep(1)
+    return _find_layer_box(oca_window, window_mid_y)
+
+
+def test_dragging_the_resize_handle_grows_the_layer(oca_window):
+    assert FIXTURE_VIDEO.exists(), f"fixture missing: {FIXTURE_VIDEO}"
+
+    _import_and_add_to_timeline(oca_window)
+    time.sleep(1)
+    _select_the_clip(oca_window)
+
+    window_rect = oca_window.rectangle()
+    window_mid_y = (window_rect.top + window_rect.bottom) // 2
+    layer_before = _find_layer_box(oca_window, window_mid_y)
+    assert layer_before is not None, "preview layer box never appeared after selecting the clip"
+
+    # Same retry rationale as test_dragging_the_preview_layer_moves_it above — a real
+    # regression in ClipInstance::layer_scale_x/_y would fail identically every attempt.
+    layer_after = None
+    for _attempt in range(3):
+        layer_after = _drag_resize_handle_once(oca_window, layer_before, window_mid_y)
+        if layer_after is not None and layer_after.width() != layer_before.width():
+            break
+
+    assert layer_after is not None, "preview layer box disappeared after resizing"
+    grew_w = layer_after.width() - layer_before.width()
+    grew_h = layer_after.height() - layer_before.height()
+    assert grew_w > 90 * 0.5, f"layer grew {grew_w}px wider, expected ~90"
+    assert grew_h > 68 * 0.5, f"layer grew {grew_h}px taller, expected ~68"
