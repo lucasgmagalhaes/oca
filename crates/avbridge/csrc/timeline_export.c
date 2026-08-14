@@ -8,6 +8,7 @@
 #include <libavfilter/buffersink.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/pixdesc.h>
 
 EncodeStatus avbridge_encode_timeline_export(
     const ClipSegment *segments, int segment_count, int canvas_width, int canvas_height,
@@ -42,12 +43,17 @@ EncodeStatus avbridge_encode_timeline_export(
     }
 
     /* Video encoder for the whole timeline's canvas — hardware-accelerated per
-       gpu_encoder_preference with a CPU (libopenh264) fallback, see open_video_encoder. */
+       gpu_encoder_preference with a CPU (libopenh264) fallback, see open_video_encoder.
+       venc_pix_fmt is whichever pixel format the opened encoder actually wants (yuv420p, or
+       nv12 for h264_qsv) — the per-segment filter graph below must conform to it. */
+    enum AVPixelFormat venc_pix_fmt = AV_PIX_FMT_YUV420P;
+    const char *venc_pix_fmt_name = "yuv420p";
     {
         int global_header = (out_ctx->oformat->flags & AVFMT_GLOBALHEADER) != 0;
         venc_ctx = open_video_encoder((GpuEncoderPreference)gpu_encoder_preference,
                                            canvas_width, canvas_height, canvas_fps,
-                                           canvas_bit_rate_bps, global_header, NULL);
+                                           canvas_bit_rate_bps, global_header, NULL,
+                                           &venc_pix_fmt);
         if (!venc_ctx) {
             status = ENCODE_ERR_ENCODER;
             goto cleanup;
@@ -59,6 +65,10 @@ EncodeStatus avbridge_encode_timeline_export(
             goto cleanup;
         }
         video_out_stream->time_base = venc_ctx->time_base;
+        const char *name = av_get_pix_fmt_name(venc_pix_fmt);
+        if (name) {
+            venc_pix_fmt_name = name;
+        }
     }
 
     pkt = av_packet_alloc();
@@ -404,10 +414,10 @@ EncodeStatus avbridge_encode_timeline_export(
             }
             snprintf(vfilter_descr, sizeof(vfilter_descr),
                      "%sscale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-"
-                     "ih)/2,fps=%d/%d%s%s,format=yuv420p",
+                     "ih)/2,fps=%d/%d%s%s,format=%s",
                      setpts_str, canvas_width, canvas_height, canvas_width, canvas_height,
                      canvas_fps.num, canvas_fps.den,
-                     final_chain[0] ? "," : "", final_chain);
+                     final_chain[0] ? "," : "", final_chain, venc_pix_fmt_name);
             if (init_video_filter_chain(vdec_ctx, vfilter_descr, &vchain) < 0) {
                 status = ENCODE_ERR_FILTER_GRAPH;
                 goto segment_cleanup;

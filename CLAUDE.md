@@ -82,28 +82,39 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   also done — see the Fase 4 section above. Output-folder overwrite/rename/cancel prompt is
   done (`PendingExportConflict`/`show_export_conflict_modal` in `crates/ui/src/app/`).
 
-  **GPU encode (done, with a known gap):** `avbridge_encode_timeline_export`/`_multi` take a
-  `gpu_encoder_preference` int (`GpuEncoderPreference` in `bridge_internal.h`: AUTO/CPU/NVENC/
-  QUICKSYNC/AMF), threaded from a new `Prefs.gpu_encoder` setting (`screens/prefs.rs`'s
-  "Encode por GPU" row) through `core::render`'s `render_export_job`/`render_export_job_multi`/
-  `render_timeline_export`. `gpu_encoder.c`'s `open_video_encoder()` tries the requested
-  hardware encoder(s) (AUTO tries NVENC, then Quick Sync, then AMF) and falls back to the CPU
-  (libopenh264) encoder if `avcodec_open2` fails for any reason — no compatible GPU/driver, or
-  the encoder rejects the pixel format handed to it. **Known gap, found by empirically running
-  this on a GPU-less dev machine:** every attempt uses `AV_PIX_FMT_YUV420P` (matching what the
-  filter chains already conform to, so no filter-graph changes are needed) — but `h264_qsv`
-  explicitly rejected that format at `avcodec_open2` time (`"Specified pixel format yuv420p is
-  not supported by the h264_qsv encoder"`, wants nv12/qsv instead), which the fallback logic
-  correctly treats as "unavailable" and falls through to CPU. This means on a machine with real
-  Intel Quick Sync hardware, `GPU_ENCODER_QUICKSYNC` would currently still silently fall back to
-  CPU every time rather than actually using the hardware — converting to nv12 (an extra
-  swscale/format-filter stage before `avcodec_send_frame`) isn't implemented. NVENC/AMF didn't
-  reach the pix_fmt check at all on this dev machine (no NVIDIA GPU; no `amfrt64.dll`), so
-  whether they accept yuv420p directly on real hardware is unverified either way. The CPU
-  fallback itself is exercised end-to-end for every preference value
-  (`encode_test.rs`'s `every_gpu_encoder_preference_falls_back_to_a_working_export`) — what's
-  NOT verified anywhere in this codebase is a hardware encoder actually succeeding, since doing
-  so needs real GPU hardware this environment doesn't have.
+  **GPU encode (done, including the Quick Sync pixel-format fix; hardware success still
+  unverified):** `avbridge_encode_timeline_export`/`_multi` take a `gpu_encoder_preference` int
+  (`GpuEncoderPreference` in `bridge_internal.h`: AUTO/CPU/NVENC/QUICKSYNC/AMF), threaded from
+  a new `Prefs.gpu_encoder` setting (`screens/prefs.rs`'s "Encode por GPU" row) through
+  `core::render`'s `render_export_job`/`render_export_job_multi`/`render_timeline_export`.
+  `gpu_encoder.c`'s `open_video_encoder()` tries the requested hardware encoder(s) (AUTO tries
+  NVENC, then Quick Sync, then AMF) and falls back to the CPU (libopenh264) encoder if
+  `avcodec_open2` fails for any reason. **Previously a known gap, now fixed:** every attempt
+  used to hardcode `AV_PIX_FMT_YUV420P` regardless of encoder — but `h264_qsv` explicitly
+  rejects that format (`"Specified pixel format yuv420p is not supported by the h264_qsv
+  encoder"`, wants nv12/qsv instead), which the fallback logic couldn't distinguish from "no
+  GPU/driver present", so `GPU_ENCODER_QUICKSYNC` silently fell back to CPU every time even on
+  real Quick Sync hardware. `gpu_encoder.c`'s new `pix_fmt_for_encoder_name()` now requests
+  `AV_PIX_FMT_NV12` specifically for `h264_qsv` (every other encoder keeps yuv420p, unchanged);
+  `open_video_encoder()` reports back via a new `out_pix_fmt` out-param which format the opened
+  encoder actually wants, and both `timeline_export.c` and `timeline_export_multi.c` thread that
+  into their filter graphs' final `format=...` stage (previously a hardcoded `format=yuv420p`
+  literal in three places) so the frames reaching the encoder already match. NVENC/AMF are
+  unchanged (still yuv420p) since neither has been observed to reach the pix_fmt check on any
+  dev machine so far (no NVIDIA GPU; no `amfrt64.dll`) — whether they'd accept yuv420p directly
+  on real hardware remains unverified either way, same as before.
+  **Still unverified:** fixing the format mismatch doesn't by itself prove `h264_qsv`
+  successfully encodes on real Quick Sync hardware — no machine with that hardware has run this
+  code yet. Worse, the current dev machine's Homebrew FFmpeg build doesn't even have
+  `libopenh264` or `h264_qsv` compiled in at all (`ffmpeg -encoders` lists neither — only
+  `libx264`/`libx264rgb`/`h264_videotoolbox`), so `open_video_encoder()` can't open *any*
+  encoder here right now, including the CPU fallback — every test that reaches
+  `avcodec_open2`/`avcodec_send_frame` (`encode_test.rs`'s
+  `every_gpu_encoder_preference_falls_back_to_a_working_export` and most of the rest of that
+  file, plus `timeline_export_multi_test.rs`'s encode-path tests, plus `core`'s
+  `generates_a_real_downscaled_proxy`) currently fails with `EncodeError::Encoder` on this
+  machine specifically, confirmed identical on `main` before this fix — a pre-existing FFmpeg
+  build gap, not something introduced by this change or a regression to fix as part of it.
 
   Export job reordering is done (move up/down buttons on Queued jobs, `screens/queue.rs`);
   pausing an in-flight render is a deliberate non-goal, not a gap — `ffmpeg` has no notion of

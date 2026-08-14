@@ -9,6 +9,7 @@
 #include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/pixdesc.h>
 
 /* =========================================================================
    avbridge_encode_timeline_export_multi — multi-track overlay compositor.
@@ -94,6 +95,7 @@ void build_kenburns_zoom(const ClipSegment *seg, int fps_num, int fps_den,
    so the multi-track function can reuse it for single-track fallback intervals. */
 static void build_vfilter_descr(const ClipSegment *seg,
                                      int cw, int ch, int fps_num, int fps_den,
+                                     const char *pix_fmt_name,
                                      char *buf, size_t cap) {
     const char *cf = (seg->video_filter && seg->video_filter[0]) ? seg->video_filter : "";
     char setpts[48] = "";
@@ -148,8 +150,8 @@ static void build_vfilter_descr(const ClipSegment *seg,
 
     snprintf(buf, cap,
              "%sscale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,"
-             "fps=%d/%d%s%s,format=yuv420p",
-             setpts, cw, ch, cw, ch, fps_num, fps_den, chain[0] ? "," : "", chain);
+             "fps=%d/%d%s%s,format=%s",
+             setpts, cw, ch, cw, ch, fps_num, fps_den, chain[0] ? "," : "", chain, pix_fmt_name);
 }
 
 /* Build the per-track filter string for use INSIDE an overlay graph — same as
@@ -259,11 +261,14 @@ static int advance_overlay_decoder(OverlayDecoder *d, const ClipSegment *seg,
 }
 
 /* Build and configure a 2-input overlay AVFilterGraph:
-   [in0]<f0>[v0];[in1]<f1>[v1];[v0][v1]overlay=0:0,format=yuv420p[out]
-   Caller owns the returned graph + contexts; free with avfilter_graph_free(). */
+   [in0]<f0>[v0];[in1]<f1>[v1];[v0][v1]overlay=0:0,format=<pix_fmt_name>[out]
+   pix_fmt_name must match whatever the video encoder that will consume this graph's output was
+   actually opened with (see open_video_encoder's out_pix_fmt) — yuv420p for most encoders, nv12
+   for h264_qsv. Caller owns the returned graph + contexts; free with avfilter_graph_free(). */
 static int init_overlay_graph(
     AVCodecContext *vdec0, const char *f0,
     AVCodecContext *vdec1, const char *f1,
+    const char *pix_fmt_name,
     AVFilterGraph **out_graph,
     AVFilterContext **out_src0, AVFilterContext **out_src1,
     AVFilterContext **out_sink)
@@ -300,7 +305,7 @@ static int init_overlay_graph(
        generous margin over the 2x8192 + a short template that implies. */
     char fstr[20480];
     snprintf(fstr, sizeof(fstr),
-             "[in0]%s[v0];[in1]%s[v1];[v0][v1]overlay=0:0,format=yuv420p[out]", f0, f1);
+             "[in0]%s[v0];[in1]%s[v1];[v0][v1]overlay=0:0,format=%s[out]", f0, f1, pix_fmt_name);
 
     AVFilterInOut *outs0 = avfilter_inout_alloc();
     AVFilterInOut *outs1 = avfilter_inout_alloc();
@@ -365,18 +370,27 @@ EncodeStatus avbridge_encode_timeline_export_multi(
     avformat_alloc_output_context2(&out_ctx, NULL, NULL, out_path);
     if (!out_ctx) return ENCODE_ERR_ALLOC_OUTPUT;
 
-    /* Video encoder — same hardware-with-CPU-fallback setup as the single-track function. */
+    /* Video encoder — same hardware-with-CPU-fallback setup as the single-track function.
+       venc_pix_fmt is whichever pixel format the opened encoder actually wants (yuv420p, or
+       nv12 for h264_qsv) — every filter graph built below must conform to it. */
+    enum AVPixelFormat venc_pix_fmt = AV_PIX_FMT_YUV420P;
+    const char *venc_pix_fmt_name = "yuv420p";
     {
         int global_header = (out_ctx->oformat->flags & AVFMT_GLOBALHEADER) != 0;
         venc_ctx = open_video_encoder((GpuEncoderPreference)gpu_encoder_preference,
                                            canvas_width, canvas_height, canvas_fps,
-                                           canvas_bit_rate_bps, global_header, NULL);
+                                           canvas_bit_rate_bps, global_header, NULL,
+                                           &venc_pix_fmt);
         if (!venc_ctx) { status = ENCODE_ERR_ENCODER; goto cleanup; }
         vout_stream = avformat_new_stream(out_ctx, NULL);
         if (!vout_stream || avcodec_parameters_from_context(vout_stream->codecpar, venc_ctx) < 0) {
             status = ENCODE_ERR_NEW_STREAM; goto cleanup;
         }
         vout_stream->time_base = venc_ctx->time_base;
+        const char *name = av_get_pix_fmt_name(venc_pix_fmt);
+        if (name) {
+            venc_pix_fmt_name = name;
+        }
     }
 
     pkt = av_packet_alloc(); t1_pkt = av_packet_alloc();
@@ -532,6 +546,7 @@ EncodeStatus avbridge_encode_timeline_export_multi(
                             build_overlay_vfilter(seg0, canvas_width, canvas_height, canvas_fps_num, canvas_fps_den, f0, sizeof(f0));
                             build_overlay_vfilter(s1,   canvas_width, canvas_height, canvas_fps_num, canvas_fps_den, f1, sizeof(f1));
                             if (init_overlay_graph(vdec_ctx0, f0, ov1.vdec_ctx, f1,
+                                                        venc_pix_fmt_name,
                                                         &ov_graph, &ov_src0, &ov_src1, &ov_sink) < 0) {
                                 status = ENCODE_ERR_FILTER_GRAPH; av_frame_unref(dec_frame); break;
                             }
@@ -545,7 +560,8 @@ EncodeStatus avbridge_encode_timeline_export_multi(
 
                             char vfd[16384];
                             build_vfilter_descr(seg0, canvas_width, canvas_height,
-                                                     canvas_fps_num, canvas_fps_den, vfd, sizeof(vfd));
+                                                     canvas_fps_num, canvas_fps_den,
+                                                     venc_pix_fmt_name, vfd, sizeof(vfd));
                             if (init_video_filter_chain(vdec_ctx0, vfd, &vchain) < 0) {
                                 status = ENCODE_ERR_FILTER_GRAPH; av_frame_unref(dec_frame); break;
                             }
