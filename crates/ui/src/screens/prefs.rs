@@ -120,20 +120,50 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.add_space(10.0);
             ui.label(Text::PrefsWhisperModelPath.tr(locale));
-            ui.horizontal(|ui| {
-                ui.add(
-                    egui::TextEdit::singleline(&mut app.prefs.whisper_model_path)
-                        .desired_width(400.0),
-                );
-                if ui.button(Text::Browse.tr(locale)).clicked() {
-                    if let Some(file) = rfd::FileDialog::new()
-                        .add_filter("GGML model", &["bin"])
-                        .pick_file()
-                    {
-                        app.prefs.whisper_model_path = file.display().to_string();
+            if let Some((downloaded, total)) = app.model_download_progress {
+                ui.horizontal(|ui| {
+                    if total > 0 {
+                        ui.add(
+                            egui::ProgressBar::new(downloaded as f32 / total as f32)
+                                .desired_width(300.0)
+                                .show_percentage(),
+                        );
+                    } else {
+                        ui.add(
+                            egui::ProgressBar::new(0.0)
+                                .desired_width(300.0)
+                                .text(format!("{:.1} MB", downloaded as f64 / 1_048_576.0)),
+                        );
                     }
-                }
-            });
+                    if ui.button(Text::CancelJob.tr(locale)).clicked() {
+                        app.request_cancel_model_download();
+                    }
+                });
+            } else {
+                ui.horizontal(|ui| {
+                    for size in avcore::WhisperModelSize::ALL {
+                        let label = format!("{} (~{} MB)", size_label(size), size.approx_size_mb());
+                        if ui.button(label).clicked() {
+                            app.spawn_download_whisper_model(size);
+                        }
+                    }
+                });
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut app.prefs.whisper_model_path)
+                            .desired_width(400.0),
+                    );
+                    if ui.button(Text::Browse.tr(locale)).clicked() {
+                        if let Some(file) = rfd::FileDialog::new()
+                            .add_filter("GGML model", &["bin"])
+                            .pick_file()
+                        {
+                            app.prefs.whisper_model_path = file.display().to_string();
+                        }
+                    }
+                });
+            }
         });
         ui.add_space(14.0);
 
@@ -290,5 +320,13 @@ fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
         app.binding_capture = None;
     } else if let Some(a) = click_action {
         app.binding_capture = Some(a);
+    }
+}
+
+fn size_label(size: avcore::WhisperModelSize) -> &'static str {
+    match size {
+        avcore::WhisperModelSize::Tiny => "Tiny",
+        avcore::WhisperModelSize::Base => "Base",
+        avcore::WhisperModelSize::Small => "Small",
     }
 }

@@ -28,6 +28,10 @@ whisper-rs = "0.16"
 # so per-word highlight overlays can be positioned to land exactly on top of the word they
 # highlight. No C toolchain involved, unlike whisper-rs.
 fontdue = "0.9"
+# Blocking HTTP client for downloading Whisper GGML model files on demand — rustls (pure Rust)
+# TLS backend, no OpenSSL/C toolchain. Verified against a real huggingface.co download before
+# depending on it (got a real 200 with the exact known Content-Length back).
+ureq = "2"
 
 [dev-dependencies]
 criterion = "0.8.2"

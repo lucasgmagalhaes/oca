@@ -137,9 +137,15 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   avbridge call) and runs it through a local Whisper model (`whisper-rs`, CPU-only default
   features) to produce timestamped segments. The Mídia screen's "Transcrever" button runs it in
   the background (`ui/src/app/transcribe.rs`) and drops the result as `TextClip`s onto the
-  active sequence's Text track, anchored at the playhead. The model itself isn't bundled —
-  Preferences has a "Modelo Whisper" field pointing at a local GGML file (e.g. `ggml-base.bin`
-  from huggingface.co/ggerganov/whisper.cpp); empty means the feature is unconfigured.
+  active sequence's Text track, anchored at the playhead. The model itself isn't bundled with
+  the installer yet (Fase 8's "Modelo do Whisper... incluídos no instalador" is unbuilt) — but
+  Preferences can fetch one on demand now: `avcore::model_download` (new, `ureq` with rustls,
+  no C toolchain) streams a tiny/base/small GGML file from huggingface.co/ggerganov/whisper.cpp
+  straight to `<prefs dir>/models/`, `ui/src/app/model_download.rs` runs it on a background
+  thread (progress bar + cancel in Preferences, same spawn/channel/pump shape as
+  `spawn_transcribe`), and `prefs.whisper_model_path` is set automatically on completion — no
+  separate "now go find the file" step. Manual path entry (browse to an already-downloaded
+  model) still works too, for an offline setup or a custom model.
   **Fixed a real upstream bug rather than working around it:** `whisper-rs` 0.16.0's
   `set_abort_callback_safe` has broken trampoline codegen (casts its double-boxed
   `Box<dyn FnMut() -> bool>` back to the *original* closure type instead of the box type,

@@ -145,6 +145,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (import_tx, import_rx) = mpsc::unbounded_channel();
     let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
     let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
+    let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
     App {
         screen: Screen::Home,
         tool: EditorTool::Select,
@@ -170,6 +171,10 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         transcribe_tx,
         transcribe_rx,
         transcribing_asset_id: None,
+        model_download_tx,
+        model_download_rx,
+        model_download_progress: None,
+        cancel_model_download: None,
         selected_clip_id: None,
         selected_text_clip_id: None,
         timeline_px_per_sec: 4.0,

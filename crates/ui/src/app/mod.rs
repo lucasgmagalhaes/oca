@@ -24,6 +24,7 @@ mod clip_props;
 pub mod export;
 mod import;
 mod modals;
+mod model_download;
 mod preview;
 mod timeline_ops;
 mod transcribe;
@@ -304,6 +305,15 @@ enum TranscribeEvent {
     },
 }
 
+/// A message from a background model-download worker thread (see
+/// [`App::spawn_download_whisper_model`]) back to the UI thread.
+enum ModelDownloadEvent {
+    Progress { downloaded: u64, total: u64 },
+    Done { path: PathBuf },
+    Cancelled,
+    Failed { message: String },
+}
+
 /// A poster frame extracted on a background thread (see [`App::request_thumbnail`]),
 /// ready to upload as an egui texture. No failure variant — a (asset, bucket) that couldn't be
 /// extracted just never gets a texture; [`App::requested_thumbnails`] already stops it from
@@ -389,6 +399,14 @@ pub struct App {
     /// one transcription runs at a time (unlike imports, which are per-file parallel). The
     /// Mídia screen shows a busy state on that asset's card while this is `Some`.
     pub transcribing_asset_id: Option<u64>,
+    model_download_tx: UnboundedSender<ModelDownloadEvent>,
+    model_download_rx: UnboundedReceiver<ModelDownloadEvent>,
+    /// `Some((downloaded_bytes, total_bytes))` while a Whisper model download is running —
+    /// `total_bytes` is `0` if the server didn't report a `Content-Length` yet. `None` when no
+    /// download is in flight. Preferences shows a progress bar in place of the size picker
+    /// while this is `Some`.
+    pub model_download_progress: Option<(u64, u64)>,
+    cancel_model_download: Option<Arc<AtomicBool>>,
     /// The timeline clip currently highlighted in the Editor's timeline strip, if any — a
     /// separate concept from `selected_asset_id` (that's the media-library selection driving
     /// the preview panel; this is a placed [`avcore::timeline::ClipInstance`]). `Delete`
@@ -524,6 +542,7 @@ impl App {
         let (import_tx, import_rx) = mpsc::unbounded_channel();
         let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
         let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
+        let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
         Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
@@ -549,6 +568,10 @@ impl App {
             transcribe_tx,
             transcribe_rx,
             transcribing_asset_id: None,
+            model_download_tx,
+            model_download_rx,
+            model_download_progress: None,
+            cancel_model_download: None,
             selected_clip_id: None,
             selected_text_clip_id: None,
             timeline_px_per_sec: 4.0,
@@ -818,6 +841,15 @@ fn sentinel_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("oca.running"))
 }
 
+/// Directory downloaded Whisper models are saved into — next to `prefs.json`, same convention
+/// as [`sentinel_path`]/`queue_path`.
+pub(self) fn models_dir() -> PathBuf {
+    prefs_path()
+        .parent()
+        .map(|d| d.join("models"))
+        .unwrap_or_else(|| PathBuf::from("models"))
+}
+
 /// Loads [`PrefsState`] from the platform config file, falling back to the default if the file
 /// is absent or cannot be parsed.
 pub fn load_prefs() -> PrefsState {
@@ -866,6 +898,7 @@ impl eframe::App for App {
         self.pump_export_queue();
         self.pump_import_queue();
         self.pump_transcribe();
+        self.pump_model_download();
         self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());
         self.pump_autosave();

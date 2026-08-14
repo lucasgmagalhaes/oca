@@ -12,6 +12,7 @@
 pub mod export;
 pub mod loudness;
 pub mod media;
+pub mod model_download;
 pub mod persistence;
 pub mod preview;
 pub mod probe;
@@ -27,6 +28,9 @@ pub use avbridge::{Canvas, ClipSegment, GpuEncoderPreference, TextSegment};
 pub use export::{ExportJob, ExportJobStatus};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
+pub use model_download::{
+    download_whisper_model, DownloadError, DownloadOutcome, WhisperModelSize,
+};
 pub use persistence::{load_project_from_file, save_project_to_file, PersistError};
 pub use preview::{Preview, PreviewError};
 pub use probe::{probe_media, ProbeError, ProbedMedia};
