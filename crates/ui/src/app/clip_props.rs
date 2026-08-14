@@ -3,9 +3,10 @@ use avcore::{Keyframe, Position};
 
 use super::{
     App, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE, CONTRAST_RANGE,
-    CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, MASK_CORNER_RADIUS_RANGE,
-    PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SCALE_RANGE, SHAKE_INTENSITY_RANGE, SHARPEN_RANGE,
-    SPEED_FACTOR_RANGE, TRANSITION_DURATION_RANGE, VIGNETTE_INTENSITY_RANGE,
+    CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, LAYER_SCALE_RANGE,
+    MASK_CORNER_RADIUS_RANGE, PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SCALE_RANGE,
+    SHAKE_INTENSITY_RANGE, SHARPEN_RANGE, SPEED_FACTOR_RANGE, TRANSITION_DURATION_RANGE,
+    VIGNETTE_INTENSITY_RANGE,
 };
 
 impl App {
@@ -90,6 +91,20 @@ impl App {
     /// string clears the LUT. A no-op if nothing is selected.
     pub fn set_selected_clip_lut(&mut self, lut_path: String) {
         self.with_selected_clip_mut(|clip| clip.lut_path = lut_path);
+    }
+
+    /// Sets `selected_clip_id`'s layer footprint size
+    /// ([`avcore::timeline::ClipInstance::layer_scale_x`]/`_y`, each independently clamped to
+    /// [`LAYER_SCALE_RANGE`]) — what dragging the properties panel's width/height sliders, or a
+    /// corner resize handle on the preview panel's layer box, does. A no-op if nothing is
+    /// selected.
+    pub fn set_selected_clip_layer_scale(&mut self, scale_x: f32, scale_y: f32) {
+        let scale_x = scale_x.clamp(*LAYER_SCALE_RANGE.start(), *LAYER_SCALE_RANGE.end());
+        let scale_y = scale_y.clamp(*LAYER_SCALE_RANGE.start(), *LAYER_SCALE_RANGE.end());
+        self.with_selected_clip_mut(|clip| {
+            clip.layer_scale_x = scale_x;
+            clip.layer_scale_y = scale_y;
+        });
     }
 
     /// Sets `selected_clip_id`'s vignette strength

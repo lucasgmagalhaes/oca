@@ -57,6 +57,8 @@ impl App {
                 opacity_keyframes: vec![],
                 deflicker_enabled: false,
                 lut_path: String::new(),
+                layer_scale_x: 1.0,
+                layer_scale_y: 1.0,
             });
     }
 
@@ -121,6 +123,8 @@ impl App {
                 opacity_keyframes: vec![],
                 deflicker_enabled: false,
                 lut_path: String::new(),
+                layer_scale_x: 1.0,
+                layer_scale_y: 1.0,
             });
     }
 
@@ -404,6 +408,8 @@ impl App {
                 opacity_keyframes: copied.opacity_keyframes,
                 deflicker_enabled: copied.deflicker_enabled,
                 lut_path: copied.lut_path,
+                layer_scale_x: copied.layer_scale_x,
+                layer_scale_y: copied.layer_scale_y,
             });
     }
 

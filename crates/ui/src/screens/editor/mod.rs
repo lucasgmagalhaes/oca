@@ -523,13 +523,15 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
 /// (`crate::keyframe::position_overlay_xy_expr`, canvas-fraction offset from the top-left
 /// default) — dragging writes exactly what export reads, no separate UI-only representation.
 ///
-/// Layer *size* isn't editable here yet — the overlay avfilter chain
-/// (`timeline_export_multi.c`'s `build_vfilter_descr`) has no width/height stage independent of
-/// `scale_keyframes` (which zooms into the clip's own frame, a different thing from resizing its
-/// footprint on the canvas), so the drawn layer box uses a fixed fraction of the canvas as a
-/// stand-in size rather than a real, editable dimension. `Some(_)` in
-/// `preview_panel`'s match already guarantees `app.preview_texture` is set, but this re-checks
-/// (and bails) rather than trust that invariant across the borrow-splitting clone below.
+/// Layer *size* (`ClipInstance::layer_scale_x`/`_y`) is a multiplier on top of a fixed
+/// stand-in baseline footprint (40% of the canvas's shorter side) rather than a real pixel
+/// dimension — this panel doesn't know the clip's actual export-time decoded resolution (the
+/// preview texture may be a lower-res editing proxy), so it can't draw the box at its true
+/// composited size. Dragging the bottom-right handle still writes the real multiplier
+/// `set_selected_clip_layer_scale` reads at export, same "editable but visually approximate"
+/// shape as most of this panel. `Some(_)` in `preview_panel`'s match already guarantees
+/// `app.preview_texture` is set, but this re-checks (and bails) rather than trust that
+/// invariant across the borrow-splitting clone below.
 fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
     let Some(texture) = app.preview_texture.clone() else {
         return;
@@ -559,24 +561,32 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
         egui::StrokeKind::Inside,
     );
 
-    // Fixed stand-in footprint (40% of the canvas's shorter side, clipped to the canvas width) —
-    // see this function's doc comment on why size isn't editable yet.
-    let mut layer_h = canvas_rect.height().min(canvas_rect.width()) * 0.4;
-    let mut layer_w = layer_h * tex_aspect;
-    if layer_w > canvas_rect.width() {
-        layer_w = canvas_rect.width();
-        layer_h = layer_w / tex_aspect;
+    // Fixed stand-in baseline (40% of the canvas's shorter side, clipped to the canvas width) —
+    // see this function's doc comment on why this is a multiplier applied to a stand-in size
+    // rather than a real pixel dimension.
+    let mut base_h = canvas_rect.height().min(canvas_rect.width()) * 0.4;
+    let mut base_w = base_h * tex_aspect;
+    if base_w > canvas_rect.width() {
+        base_w = canvas_rect.width();
+        base_h = base_w / tex_aspect;
     }
 
-    let position_keyframes = app
-        .selected_clip()
+    let selected_clip = app.selected_clip();
+    let position_keyframes = selected_clip
         .map(|c| c.position_keyframes.clone())
         .unwrap_or_default();
+    let (layer_scale_x, layer_scale_y) = selected_clip
+        .map(|c| (c.layer_scale_x, c.layer_scale_y))
+        .unwrap_or((1.0, 1.0));
+    let resizable = selected_clip.is_some();
     let draggable = position_keyframes.len() <= 1;
     let current = position_keyframes
         .first()
         .map(|k| k.value)
         .unwrap_or(avcore::Position { x: 0.0, y: 0.0 });
+
+    let layer_w = base_w * layer_scale_x;
+    let layer_h = base_h * layer_scale_y;
 
     let layer_min = canvas_rect.min
         + egui::vec2(
@@ -633,5 +643,30 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
             egui::FontId::proportional(10.0),
             theme::TEXT_MUTED,
         );
+    }
+
+    if resizable {
+        const HANDLE_SIZE: f32 = 10.0;
+        let handle_rect =
+            egui::Rect::from_center_size(layer_rect.right_bottom(), egui::Vec2::splat(HANDLE_SIZE));
+        let resize_resp = ui.interact(
+            handle_rect,
+            ui.id().with("preview_layer_resize"),
+            egui::Sense::drag(),
+        );
+        ui.painter().rect_filled(handle_rect, 2, theme::ACCENT_2);
+        if resize_resp.dragged() {
+            let delta = resize_resp.drag_delta();
+            let new_layer_w = (layer_w + delta.x).max(4.0);
+            let new_layer_h = (layer_h + delta.y).max(4.0);
+            app.set_selected_clip_layer_scale(
+                layer_scale_x * (new_layer_w / layer_w.max(1.0)),
+                layer_scale_y * (new_layer_h / layer_h.max(1.0)),
+            );
+        }
+        if resize_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
+        }
+        resize_resp.on_hover_text(Text::LayerTransformResizeHint.tr(locale));
     }
 }

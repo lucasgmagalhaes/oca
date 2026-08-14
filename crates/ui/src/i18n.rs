@@ -132,6 +132,10 @@ text_catalog! {
     PropLut: pt_br = "LUT 3D", en = "3D LUT";
     LutExportNote: pt_br = "aplicado na exportação via lut3d — sem suporte no preview ao vivo (nenhum elemento de LUT disponível na instalação do GStreamer).", en = "applied on export via lut3d — no live preview support (no LUT element available in the GStreamer install).";
     ClearLut: pt_br = "Remover", en = "Clear";
+    PropLayerSize: pt_br = "Tamanho da camada", en = "Layer size";
+    LayerSizeExportNote: pt_br = "redimensiona a camada no canvas — só tem efeito em faixas de overlay.", en = "resizes the layer on the canvas — only has an effect on overlay tracks.";
+    PropLayerWidth: pt_br = "Largura", en = "Width";
+    PropLayerHeight: pt_br = "Altura", en = "Height";
     PropVignette: pt_br = "Vinheta", en = "Vignette";
     VignetteExportNote: pt_br = "mostra só uma borda escurecida no bloco por enquanto — preview e export ainda não aplicam a vinheta.", en = "only shows a darkened border on the block for now — preview and export don't apply the vignette yet.";
     PropColorAdjust: pt_br = "Cor", en = "Color";
@@ -169,6 +173,7 @@ text_catalog! {
     KeyframeY: pt_br = "y", en = "y";
     LayerTransformDragHint: pt_br = "Arraste para posicionar a camada — efeito visível só em faixas de overlay.", en = "Drag to position the layer — only visible on overlay tracks.";
     LayerTransformAnimatedHint: pt_br = "Posição animada — edite pela lista de keyframes.", en = "Position is animated — edit via the keyframe list.";
+    LayerTransformResizeHint: pt_br = "Arraste para redimensionar a camada — efeito visível só em faixas de overlay.", en = "Drag to resize the layer — only visible on overlay tracks.";
     PositionExportNote: pt_br = "aplicado na exportação apenas em clipes de faixa de sobreposição; sem efeito no preview ao vivo ainda.", en = "applied on export only for overlay-track clips; no live preview effect yet.";
     ScaleExportNote: pt_br = "aplicado na exportação e no preview ao vivo.", en = "applied on export and live preview.";
     RotationExportNote: pt_br = "aplicado na exportação; sem efeito no preview ao vivo ainda.", en = "applied on export; no live preview effect yet.";

@@ -2,9 +2,9 @@ use eframe::egui::{self, RichText};
 
 use crate::app::{
     App, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE, CONTRAST_RANGE,
-    CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, MASK_CORNER_RADIUS_RANGE,
-    PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SHAKE_INTENSITY_RANGE, SHARPEN_RANGE,
-    SPEED_FACTOR_RANGE, VIGNETTE_INTENSITY_RANGE,
+    CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, LAYER_SCALE_RANGE,
+    MASK_CORNER_RADIUS_RANGE, PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SHAKE_INTENSITY_RANGE,
+    SHARPEN_RANGE, SPEED_FACTOR_RANGE, VIGNETTE_INTENSITY_RANGE,
 };
 use crate::components;
 use crate::i18n::Text;
@@ -101,6 +101,8 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let mut flipped_h = clip.flipped_h;
                     let mut color_filter = clip.color_filter;
                     let mut lut_path = clip.lut_path.clone();
+                    let (mut layer_scale_x, mut layer_scale_y) =
+                        (clip.layer_scale_x, clip.layer_scale_y);
                     let mut vignette_intensity = clip.vignette_intensity;
                     let (mut brightness, mut contrast, mut saturation) =
                         (clip.brightness, clip.contrast, clip.saturation);
@@ -334,6 +336,30 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         );
                         if lut_changed {
                             app.set_selected_clip_lut(lut_path);
+                        }
+
+                        let layer_size_changed = components::property_section(
+                            ui,
+                            Text::PropLayerSize.tr(locale),
+                            Text::LayerSizeExportNote.tr(locale),
+                            |ui| {
+                                let mut changed = ui
+                                    .add(
+                                        egui::Slider::new(&mut layer_scale_x, LAYER_SCALE_RANGE)
+                                            .text(Text::PropLayerWidth.tr(locale)),
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .add(
+                                        egui::Slider::new(&mut layer_scale_y, LAYER_SCALE_RANGE)
+                                            .text(Text::PropLayerHeight.tr(locale)),
+                                    )
+                                    .changed();
+                                changed
+                            },
+                        );
+                        if layer_size_changed {
+                            app.set_selected_clip_layer_scale(layer_scale_x, layer_scale_y);
                         }
 
                         if components::property_section(
