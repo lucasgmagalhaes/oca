@@ -68,12 +68,14 @@ pub struct VideoFrame {
 /// narrower (no vignette — no matching element in this GStreamer install; no chroma key — only
 /// meaningful once layering exists; no gain — preview has no audio route at all yet; no
 /// glitch/transitions — animated per-frame in export via avfilter's `n` frame-count expressions
-/// with no static element equivalent GStreamer-side; rotation/position/opacity keyframes aren't
-/// wired to preview yet either, only scale is — see `keyframe` module docs; shake and scale get
-/// one each, via a pad probe, since videocrop's left/top/right/bottom properties are settable
-/// per-buffer without renegotiating caps — scale's probe is keyed off the buffer's own PTS
-/// rather than a frame count, since preview has no fixed canvas fps to convert a frame count
-/// against the way export's `N` does).
+/// with no static element equivalent GStreamer-side; position keyframes aren't wired to preview
+/// — they need a compositing (`overlay`) stage, which this single-clip pipeline doesn't have,
+/// the same reason position has no visible effect on a single/background track in export either
+/// — see `keyframe` module docs; scale/rotation/opacity each get a pad probe re-evaluating
+/// `evaluate_keyframes` per buffer (`rotate`'s `angle` property and `alpha`'s `alpha` property
+/// are both settable per-buffer the same way `videocrop`'s edges are), keyed off the buffer's
+/// own PTS rather than a frame count, since preview has no fixed canvas fps to convert a frame
+/// count against the way export's `N` does).
 ///
 /// `resolution`, if known (`None` for an audio-only source, which shouldn't reach here but is
 /// handled by just skipping the zoom/crop/pixelize/shake stages), is the *actual* decoded frame
@@ -90,10 +92,10 @@ pub struct VideoFrame {
 // work for the crop/scale-based Zoom transition variant, but Fade (alpha ramp) and Slide
 // (drawbox wipe) still need their own element equivalents.
 //
-// TODO: rotation/position/opacity keyframes aren't wired to preview yet, only scale is (see
-// crate::keyframe module docs) — each would need its own GStreamer element (videoflip/videobox
-// don't take a rotate-by-arbitrary-angle-per-frame property the way videocrop's left/top/right/
-// bottom do; a custom element or a different technique would be needed).
+// TODO: position keyframes aren't wired to preview (see crate::keyframe module docs) — unlike
+// rotation/opacity below, position needs a compositing (`overlay`) stage that this single-clip
+// pipeline doesn't have at all; adding it would mean building out multi-track preview
+// compositing first, not just picking a GStreamer element.
 fn build_video_filter_bin(
     clip: &ClipInstance,
     resolution: Option<(u32, u32)>,
@@ -160,6 +162,67 @@ fn build_video_filter_bin(
             elements.push(upscale);
             elements.push(full_caps);
         }
+    }
+
+    if clip.has_rotation_keyframes() {
+        // Mirrors export's rotation_filter_angle_expr: keyed off elapsed seconds within the
+        // source file (clip.source_in_secs + offset), same PTS-based fraction the scale probe
+        // above uses, since preview has no fixed canvas fps to convert a frame count against.
+        let rotation_keyframes = clip.rotation_keyframes.clone();
+        let source_in_secs = clip.source_in_secs;
+        let clip_duration_secs = (clip.source_out_secs - clip.source_in_secs).max(1e-6);
+
+        let rotate = gst::ElementFactory::make("rotate")
+            .build()
+            .map_err(PreviewError::CreateElement)?;
+        let rotate_for_probe = rotate.clone();
+        let sink_pad = rotate
+            .static_pad("sink")
+            .expect("rotate always has a sink pad");
+        sink_pad.add_probe(gst::PadProbeType::BUFFER, move |_pad, info| {
+            let secs = info
+                .buffer()
+                .and_then(|b| b.pts())
+                .map(|t| t.seconds_f64())
+                .unwrap_or(source_in_secs);
+            let frac = ((secs - source_in_secs) / clip_duration_secs).clamp(0.0, 1.0) as f32;
+            let angle_deg = crate::keyframe::evaluate_keyframes(&rotation_keyframes, frac, 0.0);
+            rotate_for_probe.set_property("angle", angle_deg.to_radians() as f64);
+            gst::PadProbeReturn::Ok
+        });
+        elements.push(rotate);
+    }
+
+    if clip.has_opacity_keyframes() {
+        // "alpha" (gst-plugins-good) sets a uniform per-buffer alpha on its output — the RGBA
+        // path is already forced by the AppSink's fixed caps in Preview::open, and egui draws
+        // ColorImage::from_rgba_unmultiplied with alpha blending, so a reduced alpha here is
+        // actually visible in the preview (unlike position, which would need a compositing
+        // stage this single-clip pipeline doesn't have).
+        let opacity_keyframes = clip.opacity_keyframes.clone();
+        let source_in_secs = clip.source_in_secs;
+        let clip_duration_secs = (clip.source_out_secs - clip.source_in_secs).max(1e-6);
+
+        let alpha = gst::ElementFactory::make("alpha")
+            .property_from_str("method", "set")
+            .build()
+            .map_err(PreviewError::CreateElement)?;
+        let alpha_for_probe = alpha.clone();
+        let sink_pad = alpha
+            .static_pad("sink")
+            .expect("alpha always has a sink pad");
+        sink_pad.add_probe(gst::PadProbeType::BUFFER, move |_pad, info| {
+            let secs = info
+                .buffer()
+                .and_then(|b| b.pts())
+                .map(|t| t.seconds_f64())
+                .unwrap_or(source_in_secs);
+            let frac = ((secs - source_in_secs) / clip_duration_secs).clamp(0.0, 1.0) as f32;
+            let a = crate::keyframe::evaluate_keyframes(&opacity_keyframes, frac, 1.0).clamp(0.0, 1.0);
+            alpha_for_probe.set_property("alpha", a as f64);
+            gst::PadProbeReturn::Ok
+        });
+        elements.push(alpha);
     }
 
     if let Some((width, height)) = resolution {

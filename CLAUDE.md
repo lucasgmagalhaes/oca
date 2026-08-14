@@ -96,10 +96,21 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   composes correctly with an existing mask/chroma-key alpha instead of clobbering it) and
   therefore has the same overlay-track-only caveat mask_shape/chroma_key already have; position
   has the same caveat for the same reason (no compositing stage on a single/background track).
-  **Not yet done:** live GStreamer preview — only scale keyframes are wired into preview
-  (`preview.rs`'s existing Ken-Burns pad-probe now reads `scale_keyframes` via
-  `evaluate_keyframes` instead of the old two fixed endpoints, so it already supports arbitrary
-  keyframe counts for free); rotation/position/opacity have no preview element yet. Also not
+  **Live GStreamer preview (scale/rotation/opacity done, position not):** `preview.rs`'s
+  `build_video_filter_bin` now wires three of the four keyframed properties in — scale's
+  existing Ken-Burns pad-probe reads `scale_keyframes` via `evaluate_keyframes` instead of the
+  old two fixed endpoints (so it already supports arbitrary keyframe counts for free); rotation
+  and opacity each get their own pad probe the same way (`gst-plugins-good`'s `rotate` element,
+  `angle` property in radians; `alpha` element with `method=set`, `alpha` property `0.0..=1.0`
+  — both confirmed against a real `gst-inspect-1.0` on the pinned GStreamer install, not
+  guessed, given this codebase's history of exactly that kind of assumption failing silently),
+  both keyed off the buffer's own PTS like scale's probe rather than a frame count. Opacity is
+  actually visible despite the AppSink always requesting RGBA output — egui's
+  `ColorImage::from_rgba_unmultiplied` alpha-blends against whatever's behind it. Position
+  keyframes are **not** wired and can't be with the current architecture: `overlay`'s
+  compositing stage doesn't exist in this single-clip `playbin` pipeline at all — position would
+  need multi-track preview compositing built first, not just a new GStreamer element (see
+  `preview.rs::build_video_filter_bin`'s doc comment). Also not
   done: visual keyframe markers on the timeline clip block itself (properties-panel list editing
   only this pass — add/edit/delete rows, no on-timeline handles). **Verification caveat:**
   rotation/position's `t`/`if`/`between` usage is new territory for this codebase (only `geq`'s
