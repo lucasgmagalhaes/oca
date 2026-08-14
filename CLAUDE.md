@@ -187,17 +187,28 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   (`crate::keyframe::position_overlay_xy_expr`), so what you drag is exactly what export reads,
   no separate UI-only representation to keep in sync. Read-only (with a hint label) once
   position has 2+ keyframes, to avoid ambiguity about which keyframe a drag would target.
-  **Size is not editable** — the overlay avfilter chain (`timeline_export_multi.c`'s
-  `build_vfilter_descr`) has no width/height stage independent of `scale_keyframes` (which
-  zooms into the clip's own frame, a different thing from resizing its footprint on the
-  canvas); the drawn layer box uses a fixed stand-in fraction of the canvas rather than a real
-  dimension. Adding real resize needs a new `layer_width`/`layer_height`-style field plus a new
-  `scale=w:h` avfilter stage before `overlay` — a backend change, not just a UI one — and is the
-  natural next slice of this feature.
+  **Layer resize (done):** `ClipInstance::layer_scale_x`/`_y` (default `1.0` = native size)
+  multiply the clip's own decoded width/height, appended as the *last* stage in
+  `crate::render::resolve_clip_filters`'s avfilter chain (`scale=iw*x:ih*y`, after every other
+  per-clip stage so they still operate at native resolution first) — gated by a new
+  `is_overlay` bool threaded from track index in `resolve_timeline_segments_multi` (0 =
+  background, 1+ = overlay) and hardcoded `false` in single-track `resolve_timeline_segments`,
+  the same overlay-only caveat position/opacity keyframes already have, just for a correctness
+  reason (a background track's canvas-size conform has no pad/fit step, so resizing there would
+  hand the encoder a mismatched-resolution frame) rather than a compositing one. A distinct
+  concept from `scale_keyframes`' Ken-Burns zoom, which crops into and rescales back to the
+  *same* frame size rather than genuinely resizing the composited footprint.
+  Properties panel gets width/height sliders (`LAYER_SCALE_RANGE`, `0.1..=3.0` — a footprint can
+  shrink well below native size unlike the Ken-Burns zoom's `SCALE_RANGE`); the preview panel's
+  layer box gets a bottom-right corner drag handle scaling proportionally to the box's current
+  stand-in size (still a fixed fraction of the canvas, not a real pixel dimension — same
+  approximation position dragging already has, see `layer_transform_preview`'s doc comment).
+  Both e2e-tested (`e2e/test_layer_transform.py`) driving the real app.
 
-  **Not yet done:** the rest of Fase 4's larger CapCut-parity items (layer templates, layer
-  resize, video stabilization, AI background removal, auto-reframe, text-to-speech, motion
-  tracking, music/SFX library) — keyframes, LUTs, and layer position are done, see above.
+  **Not yet done:** the rest of Fase 4's larger CapCut-parity items (layer templates, video
+  stabilization, AI background removal, auto-reframe, text-to-speech, motion tracking,
+  music/SFX library) — keyframes, LUTs, and layer transform (position + resize) are done, see
+  above.
 
   **Word-highlight subtitles (done):** true in-place highlighting — the full sentence stays on
   screen, the currently-spoken word lights up in `highlight_color_rgba` exactly where it sits in
