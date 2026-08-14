@@ -385,6 +385,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 theme::TEXT_PRIMARY,
                             );
                         }
+                        draw_keyframe_markers(painter, clip_rect, clip);
                         if app.multi_selected_clip_ids.contains(&clip.id) {
                             painter.rect_stroke(
                                 clip_rect,
@@ -731,6 +732,51 @@ fn draw_waveform(
             ],
             egui::Stroke::new(1.0, color),
         );
+    }
+}
+
+/// Small diamond marker for every distinct `time_fraction` used across `clip`'s four keyframe
+/// lists (position/scale/rotation/opacity — see [`avcore::keyframe`]), along the clip block's
+/// bottom edge. Read-only: this pass covers visibility only, not on-timeline add/drag/delete —
+/// editing keyframes still goes through the properties panel's list editor. A no-op if the clip
+/// has no keyframes on any property (the common case).
+fn draw_keyframe_markers(
+    painter: &egui::Painter,
+    clip_rect: egui::Rect,
+    clip: &avcore::timeline::ClipInstance,
+) {
+    if !clip.has_position_keyframes()
+        && !clip.has_scale_keyframes()
+        && !clip.has_rotation_keyframes()
+        && !clip.has_opacity_keyframes()
+    {
+        return;
+    }
+    let mut fractions: Vec<f32> = clip
+        .position_keyframes
+        .iter()
+        .map(|k| k.time_fraction)
+        .chain(clip.scale_keyframes.iter().map(|k| k.time_fraction))
+        .chain(clip.rotation_keyframes.iter().map(|k| k.time_fraction))
+        .chain(clip.opacity_keyframes.iter().map(|k| k.time_fraction))
+        .collect();
+    fractions.sort_by(|a, b| a.total_cmp(b));
+    fractions.dedup_by(|a, b| (*a - *b).abs() < 1e-3);
+
+    let y = clip_rect.bottom() - 5.0;
+    let r = 3.0;
+    for frac in fractions {
+        let x = clip_rect.left() + frac.clamp(0.0, 1.0) * clip_rect.width();
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                egui::pos2(x, y - r),
+                egui::pos2(x + r, y),
+                egui::pos2(x, y + r),
+                egui::pos2(x - r, y),
+            ],
+            theme::ACCENT_2,
+            egui::Stroke::new(1.0, theme::TEXT_PRIMARY.gamma_multiply(0.6)),
+        ));
     }
 }
 
