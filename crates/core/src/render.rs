@@ -45,17 +45,29 @@ impl ExportAspectRatio {
             ExportAspectRatio::Square => "1:1",
         }
     }
+
+    /// This ratio's target width/height, or `fallback` for [`ExportAspectRatio::Original`]
+    /// (which has no fixed dimensions of its own — it keeps whatever the source/canvas already
+    /// is). Shares the same numbers as [`apply_export_aspect_ratio`]; `ui`'s preview panel uses
+    /// this to size its canvas-space layer-transform overlay to the same aspect ratio export
+    /// will actually use, without duplicating the width/height table.
+    pub fn dims_or(self, fallback: (u32, u32)) -> (u32, u32) {
+        match self {
+            ExportAspectRatio::Original => fallback,
+            ExportAspectRatio::Landscape => (1920, 1080),
+            ExportAspectRatio::Portrait => (1080, 1920),
+            ExportAspectRatio::Square => (1080, 1080),
+        }
+    }
 }
 
 /// Overrides `canvas` width/height to match `ratio`, keeping fps and bitrate unchanged.
 /// Returns `canvas` unmodified when `ratio` is [`ExportAspectRatio::Original`].
 pub fn apply_export_aspect_ratio(canvas: Canvas, ratio: ExportAspectRatio) -> Canvas {
-    let (width, height) = match ratio {
-        ExportAspectRatio::Original => return canvas,
-        ExportAspectRatio::Landscape => (1920, 1080),
-        ExportAspectRatio::Portrait => (1080, 1920),
-        ExportAspectRatio::Square => (1080, 1080),
-    };
+    if ratio == ExportAspectRatio::Original {
+        return canvas;
+    }
+    let (width, height) = ratio.dims_or((canvas.width, canvas.height));
     Canvas {
         width,
         height,
