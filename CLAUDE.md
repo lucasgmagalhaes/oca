@@ -110,9 +110,11 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   keyframes are **not** wired and can't be with the current architecture: `overlay`'s
   compositing stage doesn't exist in this single-clip `playbin` pipeline at all — position would
   need multi-track preview compositing built first, not just a new GStreamer element (see
-  `preview.rs::build_video_filter_bin`'s doc comment). Also not
-  done: visual keyframe markers on the timeline clip block itself (properties-panel list editing
-  only this pass — add/edit/delete rows, no on-timeline handles). **Verification caveat:**
+  `preview.rs::build_video_filter_bin`'s doc comment). **Visual keyframe markers on the timeline
+  clip block (done):** `timeline_panel.rs`'s `draw_keyframe_markers` draws a small diamond per
+  distinct `time_fraction` across a clip's four keyframe lists along the block's bottom edge —
+  read-only, editing still goes through the properties panel's list editor (add/edit/delete
+  rows); no on-timeline add/drag/delete handles yet. **Verification caveat:**
   rotation/position's `t`/`if`/`between` usage is new territory for this codebase (only `geq`'s
   per-pixel language had been exercised here before) and, like the GPU encoder fix above, this
   dev machine's FFmpeg build can't actually open any encoder right now — so the new
