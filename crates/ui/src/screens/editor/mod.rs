@@ -232,6 +232,20 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         {
             app.merge_into_composite();
         }
+        if ui
+            .add_enabled(
+                !app.multi_selected_clip_ids.is_empty(),
+                egui::Button::new(Text::SaveAsTemplate.tr(locale)),
+            )
+            .on_hover_text(Text::SaveAsTemplateHint.tr(locale))
+            .clicked()
+        {
+            app.begin_save_layer_template();
+        }
+        if ui.button(Text::Templates.tr(locale)).clicked() {
+            app.layer_templates_menu_open = true;
+        }
+        ui.separator();
         if ui.button(Text::AddVideoTrack.tr(locale)).clicked() {
             app.add_video_track();
         }

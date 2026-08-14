@@ -195,6 +195,22 @@ text_catalog! {
     AddSequenceTab: pt_br = "＋", en = "＋";
     MergeIntoComposite: pt_br = "⛓ Mesclar em bloco", en = "⛓ Merge into block";
     MergeIntoCompositeHint: pt_br = "Ctrl+clique em 2+ clipes na timeline pra selecionar, depois mescle num bloco composto", en = "Ctrl+click 2+ clips on the timeline to pick them, then merge into a composite block";
+    SaveAsTemplate: pt_br = "🗂 Salvar como template", en = "🗂 Save as template";
+    SaveAsTemplateHint: pt_br = "Ctrl+clique 1+ clipe na timeline, depois salve o grupo como template reaproveitável", en = "Ctrl+click 1+ clip on the timeline, then save the group as a reusable template";
+    Templates: pt_br = "📋 Templates", en = "📋 Templates";
+    SaveTemplateTitle: pt_br = "Salvar template", en = "Save template";
+    TemplateNameLabel: pt_br = "Nome do template", en = "Template name";
+    SaveTemplateConfirm: pt_br = "Salvar", en = "Save";
+    NoSavedTemplates: pt_br = "Nenhum template salvo ainda.", en = "No saved templates yet.";
+    ApplyTemplate: pt_br = "Aplicar", en = "Apply";
+    DeleteTemplate: pt_br = "🗑", en = "🗑";
+    ApplyTemplateTitle: pt_br = "Aplicar template", en = "Apply template";
+    ApplyTemplateLayerLabel: pt_br = "Camada", en = "Layer";
+    ApplyTemplatePickAsset: pt_br = "Escolha um arquivo…", en = "Pick a file…";
+    ApplyTemplateConfirm: pt_br = "Criar camadas", en = "Create layers";
+    TrackKindVideo: pt_br = "Vídeo", en = "Video";
+    TrackKindAudio: pt_br = "Áudio", en = "Audio";
+    TrackKindText: pt_br = "Texto", en = "Text";
     PreviewUnavailable: pt_br = "Pré-visualização indisponível", en = "Preview unavailable";
 
     LibraryTitle: pt_br = "Biblioteca de mídia", en = "Media library";

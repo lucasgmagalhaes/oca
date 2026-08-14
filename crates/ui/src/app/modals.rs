@@ -371,6 +371,223 @@ impl App {
             self.autosave_restore_pending = Some(autosave_path);
         }
     }
+
+    /// Shows the "save as template" naming modal when [`App::saving_layer_template`] is
+    /// `Some`. Commits via [`App::commit_save_layer_template`] on Enter or the Save button
+    /// (a no-op, leaving the modal open, while the name is blank); discards on Escape/Cancel.
+    pub(super) fn show_save_layer_template_modal(&mut self, ctx: &egui::Context) {
+        if self.saving_layer_template.is_none() {
+            return;
+        }
+        let locale = self.locale;
+        let modal = egui::Modal::new(egui::Id::new("save_layer_template_modal"));
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(320.0);
+            ui.label(
+                egui::RichText::new(Text::SaveTemplateTitle.tr(locale))
+                    .size(15.0)
+                    .strong(),
+            );
+            ui.add_space(10.0);
+            ui.label(Text::TemplateNameLabel.tr(locale));
+            let buf = &mut self.saving_layer_template.as_mut().unwrap().1;
+            let name_edit = ui.add(egui::TextEdit::singleline(buf).desired_width(f32::INFINITY));
+            name_edit.request_focus();
+            if name_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                confirmed = true;
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                let name_blank = self
+                    .saving_layer_template
+                    .as_ref()
+                    .is_some_and(|(_, n)| n.trim().is_empty());
+                if ui
+                    .add_enabled(
+                        !name_blank,
+                        egui::Button::new(Text::SaveTemplateConfirm.tr(locale)),
+                    )
+                    .clicked()
+                {
+                    confirmed = true;
+                }
+                if ui.button(Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if response.should_close() || cancelled {
+            self.saving_layer_template = None;
+            return;
+        }
+        if confirmed {
+            self.commit_save_layer_template();
+        }
+    }
+
+    /// Shows the saved-templates list popup when [`App::layer_templates_menu_open`] is set —
+    /// picking "Aplicar" on a row opens the apply-template modal ([`App::begin_apply_layer_template`])
+    /// and closes this one; "🗑" deletes that entry immediately.
+    pub(super) fn show_layer_templates_menu(&mut self, ctx: &egui::Context) {
+        if !self.layer_templates_menu_open {
+            return;
+        }
+        let locale = self.locale;
+        let modal = egui::Modal::new(egui::Id::new("layer_templates_menu"));
+        let mut apply_index = None;
+        let mut delete_index = None;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(320.0);
+            ui.label(
+                egui::RichText::new(Text::Templates.tr(locale))
+                    .size(15.0)
+                    .strong(),
+            );
+            ui.add_space(10.0);
+            if self.prefs.saved_layer_templates.is_empty() {
+                ui.label(
+                    egui::RichText::new(Text::NoSavedTemplates.tr(locale)).color(theme::TEXT_MUTED),
+                );
+            }
+            for (index, template) in self.prefs.saved_layer_templates.iter().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.label(&template.name);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button(Text::DeleteTemplate.tr(locale)).clicked() {
+                            delete_index = Some(index);
+                        }
+                        if ui.button(Text::ApplyTemplate.tr(locale)).clicked() {
+                            apply_index = Some(index);
+                        }
+                    });
+                });
+            }
+            ui.add_space(10.0);
+            if ui.button(Text::CancelJob.tr(locale)).clicked() {
+                self.layer_templates_menu_open = false;
+            }
+        });
+        if response.should_close() {
+            self.layer_templates_menu_open = false;
+        }
+        if let Some(index) = delete_index {
+            self.delete_layer_template(index);
+        }
+        if let Some(index) = apply_index {
+            self.begin_apply_layer_template(index);
+        }
+    }
+
+    /// Shows the apply-template modal when [`App::applying_layer_template`] is `Some` — one
+    /// asset dropdown per saved layer, filtered to media-library assets of that layer's own
+    /// [`avcore::timeline::TrackKind`]. "Criar camadas" is only enabled once every slot has a
+    /// pick; confirming calls [`App::confirm_apply_layer_template`].
+    pub(super) fn show_apply_layer_template_modal(&mut self, ctx: &egui::Context) {
+        let Some((template_index, _)) = self.applying_layer_template.as_ref() else {
+            return;
+        };
+        let Some(template) = self
+            .prefs
+            .saved_layer_templates
+            .get(*template_index)
+            .cloned()
+        else {
+            self.applying_layer_template = None;
+            return;
+        };
+        let locale = self.locale;
+        let media_library = self.active_project().media_library.clone();
+        let modal = egui::Modal::new(egui::Id::new("apply_layer_template_modal"));
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.label(
+                egui::RichText::new(format!(
+                    "{}: {}",
+                    Text::ApplyTemplateTitle.tr(locale),
+                    template.name
+                ))
+                .size(15.0)
+                .strong(),
+            );
+            ui.add_space(10.0);
+            let layer_asset_ids = &mut self.applying_layer_template.as_mut().unwrap().1;
+            for (index, (kind, _formatting)) in template.layers.iter().enumerate() {
+                let kind_label = match kind {
+                    avcore::timeline::TrackKind::Video => Text::TrackKindVideo.tr(locale),
+                    avcore::timeline::TrackKind::Audio => Text::TrackKindAudio.tr(locale),
+                    avcore::timeline::TrackKind::Text => Text::TrackKindText.tr(locale),
+                };
+                ui.label(format!(
+                    "{} {} ({kind_label})",
+                    Text::ApplyTemplateLayerLabel.tr(locale),
+                    index + 1
+                ));
+                let selected_name = layer_asset_ids[index]
+                    .and_then(|id| media_library.iter().find(|a| a.id == id))
+                    .map(|a| a.file_name.clone())
+                    .unwrap_or_else(|| Text::ApplyTemplatePickAsset.tr(locale).to_string());
+                egui::ComboBox::from_id_salt(("apply_template_layer_asset", index))
+                    .selected_text(selected_name)
+                    .show_ui(ui, |ui| {
+                        for asset in media_library
+                            .iter()
+                            .filter(|a| media_kind_matches(a.kind, *kind))
+                        {
+                            ui.selectable_value(
+                                &mut layer_asset_ids[index],
+                                Some(asset.id),
+                                &asset.file_name,
+                            );
+                        }
+                    });
+                ui.add_space(6.0);
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                let all_picked = layer_asset_ids.iter().all(|a| a.is_some());
+                if ui
+                    .add_enabled(
+                        all_picked,
+                        egui::Button::new(Text::ApplyTemplateConfirm.tr(locale)),
+                    )
+                    .clicked()
+                {
+                    confirmed = true;
+                }
+                if ui.button(Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if response.should_close() || cancelled {
+            self.applying_layer_template = None;
+            return;
+        }
+        if confirmed {
+            self.confirm_apply_layer_template();
+        }
+    }
+}
+
+/// `true` if a media asset of `kind` belongs on a track of `track_kind` — video assets on video
+/// tracks, audio on audio (text tracks never take a media asset directly, so always `false`
+/// there).
+fn media_kind_matches(kind: avcore::MediaKind, track_kind: avcore::timeline::TrackKind) -> bool {
+    matches!(
+        (kind, track_kind),
+        (avcore::MediaKind::Video, avcore::timeline::TrackKind::Video)
+            | (avcore::MediaKind::Audio, avcore::timeline::TrackKind::Audio)
+    )
 }
 
 /// Returns `true` if `autosave_path` exists and has a modification time strictly newer than
