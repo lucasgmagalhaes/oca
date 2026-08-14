@@ -33,6 +33,42 @@ pub struct TextClip {
     pub pos_x: f32,
     /// Vertical anchor as a 0.0–1.0 fraction of the canvas height (0.0 = top edge).
     pub pos_y: f32,
+    /// Per-word timestamps within this clip's own text, `start_secs`/`end_secs` relative to
+    /// this clip's *own* start (not the timeline) — per `request.md`'s Fase 4 "Legenda com
+    /// destaque de palavra (estilo shorts)". Populated when this clip was generated from
+    /// [`crate::transcribe::transcribe`]'s word-level output (`ui`'s "Transcrever" flow); empty
+    /// for a manually-typed text block, which has no per-word timing to highlight against.
+    /// `#[serde(default)]` so older saved projects load with no word highlighting.
+    #[serde(default)]
+    pub words: Vec<WordTiming>,
+    /// Whether [`TextClip::words`] should be rendered as in-place word highlighting
+    /// (`resolve_text_segments` emits one highlighted overlay per word, on top of the base
+    /// text) rather than as plain static text. Meaningless while `words` is empty.
+    /// `#[serde(default)]` so older saved projects load with highlighting off.
+    #[serde(default)]
+    pub highlight_enabled: bool,
+    /// Color a word is drawn in while it's the one being spoken, `[r, g, b, a]` — meaningless
+    /// while `highlight_enabled` is `false`. `#[serde(default = ..)]` so older saved projects
+    /// load at a reasonable default (bright yellow, matching the popular shorts-caption look)
+    /// rather than an invisible/transparent black.
+    #[serde(default = "default_highlight_color")]
+    pub highlight_color_rgba: [u8; 4],
+}
+
+/// One word within a [`TextClip`]'s [`TextClip::words`] — see
+/// [`crate::transcribe::TranscribeWord`], which this mirrors (kept as a separate type since
+/// `core::transcribe`'s output is a transient transcription result, not project-saved state).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WordTiming {
+    pub text: String,
+    /// Relative to the owning [`TextClip::start_secs`], not the timeline.
+    pub start_secs: f64,
+    /// Relative to the owning [`TextClip::start_secs`], not the timeline.
+    pub end_secs: f64,
+}
+
+fn default_highlight_color() -> [u8; 4] {
+    [255, 220, 0, 255]
 }
 
 /// Layer mask shape for a block, per `request.md`'s Fase 4 "Máscaras" spec — clips a layer to a

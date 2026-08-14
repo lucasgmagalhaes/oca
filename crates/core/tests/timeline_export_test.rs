@@ -4,7 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use avcore::project::Sequence;
 use avcore::render::{render_timeline_export, RenderError, RenderOutcome};
 use avcore::timeline::{
-    ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
+    ClipInstance, ColorFilter, MaskShape, TextClip, Timeline, Track, TrackKind, TransitionType,
+    WordTiming,
 };
 use avcore::{probe_media, MediaAsset, MediaKind};
 
@@ -270,6 +271,74 @@ fn deflicker_exports_without_error() {
     let sequence = sequence_with(vec![track]);
 
     let output = std::env::temp_dir().join("avcore_test_timeline_export_deflicker.mp4");
+    let cancel = AtomicBool::new(false);
+
+    let outcome = render_timeline_export(
+        &sequence,
+        &[asset],
+        &output,
+        -14.0,
+        avcore::GpuEncoderPreference::Auto,
+        &cancel,
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(outcome, RenderOutcome::Completed);
+
+    let info = probe_media(&output).unwrap();
+    assert_eq!(info.kind, MediaKind::Video);
+
+    let _ = std::fs::remove_file(&output);
+}
+
+#[test]
+fn word_highlight_text_overlay_exports_without_error() {
+    let asset = video_asset(1);
+    let video_track = Track {
+        id: 1,
+        name: "V1".to_string(),
+        kind: TrackKind::Video,
+        clips: vec![clip(1, 1, 0.0, 0.0, 0.5)],
+
+        text_clips: vec![],
+
+        visible: true,
+    };
+    let text_track = Track {
+        id: 2,
+        name: "Legendas".to_string(),
+        kind: TrackKind::Text,
+        clips: vec![],
+        text_clips: vec![TextClip {
+            id: 1,
+            start_secs: 0.0,
+            duration_secs: 0.4,
+            text: "Hello World".to_string(),
+            font_size: 48.0,
+            color_rgba: [255, 255, 255, 255],
+            pos_x: 0.1,
+            pos_y: 0.85,
+            words: vec![
+                WordTiming {
+                    text: "Hello".to_string(),
+                    start_secs: 0.0,
+                    end_secs: 0.2,
+                },
+                WordTiming {
+                    text: "World".to_string(),
+                    start_secs: 0.2,
+                    end_secs: 0.4,
+                },
+            ],
+            highlight_enabled: true,
+            highlight_color_rgba: [255, 220, 0, 255],
+        }],
+        visible: true,
+    };
+    let sequence = sequence_with(vec![video_track, text_track]);
+
+    let output = std::env::temp_dir().join("avcore_test_timeline_export_word_highlight.mp4");
     let cancel = AtomicBool::new(false);
 
     let outcome = render_timeline_export(

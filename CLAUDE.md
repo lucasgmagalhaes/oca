@@ -108,9 +108,28 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   Export job reordering is done (move up/down buttons on Queued jobs, `screens/queue.rs`);
   pausing an in-flight render is a deliberate non-goal, not a gap — `ffmpeg` has no notion of
   pausing mid-render (see `pump_export_queue`'s doc comment), so a Rendering job only offers
-  Cancel. **Not yet done:** the rest of Fase 4's larger CapCut-parity items (word-highlight
-  subtitles, layer templates, keyframes, layer transform, video stabilization, AI background
-  removal, auto-reframe, LUTs, text-to-speech, motion tracking, music/SFX library).
+  Cancel. **Not yet done:** the rest of Fase 4's larger CapCut-parity items (layer templates,
+  keyframes, layer transform, video stabilization, AI background removal, auto-reframe, LUTs,
+  text-to-speech, motion tracking, music/SFX library).
+
+  **Word-highlight subtitles (done):** true in-place highlighting — the full sentence stays on
+  screen, the currently-spoken word lights up in `highlight_color_rgba` exactly where it sits in
+  the line — per `request.md`'s "Legenda com destaque de palavra (estilo shorts)". Three new
+  pieces: (1) `transcribe()` requests `set_token_timestamps(true)` and `collect_words()` groups
+  whisper.cpp's per-token timestamps into per-word ones (a word can be several tokens, e.g.
+  "run"+"ning"; whisper.cpp marks a new word by prefixing its first token's text with a space).
+  (2) `core::text_metrics` (new module, pure-Rust `fontdue`, no C toolchain) measures each
+  word's pixel advance width at the same font `avbridge_apply_text_overlays`'s `drawtext`
+  renders with, to position highlight overlays precisely on top of the plain word underneath —
+  verified against a real `drawtext` render before trusting it (fontdue's advance width and
+  FreeType's ink bounding box differed by exactly the expected right-side-bearing amount, not
+  approximately). (3) `resolve_text_segments` (now takes `canvas_width` to convert pixel
+  offsets to the `0.0..=1.0` fraction `TextSegment::pos_x` expects) expands a highlighted
+  `TextClip` into a base segment (full sentence, full duration) plus one short segment per word
+  (just that word, in the highlight color, only for its own speaking window) — reuses the
+  existing multi-`drawtext` overlay pipeline unchanged, no C changes needed. Known limitation:
+  single-line only — a caption long enough to wrap in `drawtext` gets every highlight positioned
+  as if still on one line, landing wrong past the wrap point.
 
   **Whisper subtitles (done, one known limitation):** `avcore::transcribe::transcribe()`
   decodes a source's audio to 16kHz mono float PCM via a new `avbridge` function

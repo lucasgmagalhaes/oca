@@ -55,6 +55,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             avcore::apply_export_aspect_ratio(canvas, app.export_aspect_ratio);
                         let text_segments = avcore::resolve_text_segments(
                             &app.active_project().sequences[app.active_project().active_sequence],
+                            canvas.width,
                         );
                         let default_name = format!("{sequence_name}_export.mp4");
                         let mut dialog = rfd::FileDialog::new()

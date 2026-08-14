@@ -612,6 +612,38 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
         }
     });
 
+    // Word-highlight (only meaningful for a clip generated from transcription, which is the
+    // only path that populates `words` — a manually-typed block has no per-word timing to
+    // highlight against).
+    if !tc.words.is_empty() {
+        ui.horizontal(|ui| {
+            if ui
+                .checkbox(
+                    &mut tc.highlight_enabled,
+                    Text::PropTextHighlightEnabled.tr(locale),
+                )
+                .changed()
+            {
+                changed = true;
+            }
+            let mut highlight_color = egui::Color32::from_rgba_premultiplied(
+                tc.highlight_color_rgba[0],
+                tc.highlight_color_rgba[1],
+                tc.highlight_color_rgba[2],
+                tc.highlight_color_rgba[3],
+            );
+            if ui.color_edit_button_srgba(&mut highlight_color).changed() {
+                tc.highlight_color_rgba = [
+                    highlight_color.r(),
+                    highlight_color.g(),
+                    highlight_color.b(),
+                    highlight_color.a(),
+                ];
+                changed = true;
+            }
+        });
+    }
+
     // Position
     ui.label(
         RichText::new(Text::PropTextPosX.tr(locale))

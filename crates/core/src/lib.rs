@@ -18,6 +18,7 @@ pub mod probe;
 pub mod project;
 pub mod proxy;
 pub mod render;
+pub mod text_metrics;
 pub mod timeline;
 pub mod transcribe;
 pub mod waveform;

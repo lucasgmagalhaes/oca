@@ -2727,3 +2727,56 @@ fn pending_export_conflict_overwrite_queues_with_the_original_path() {
 
     let _ = std::fs::remove_file(&output);
 }
+
+#[test]
+fn pump_transcribe_creates_a_text_track_with_rebased_word_timings() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.active_project_mut().timeline_mut().playhead_secs = 5.0;
+
+    let segments = vec![avcore::transcribe::TranscribeSegment {
+        start_secs: 100.0,
+        end_secs: 101.0,
+        text: "Hello World".to_string(),
+        words: vec![
+            avcore::transcribe::TranscribeWord {
+                text: "Hello".to_string(),
+                start_secs: 100.0,
+                end_secs: 100.5,
+            },
+            avcore::transcribe::TranscribeWord {
+                text: "World".to_string(),
+                start_secs: 100.5,
+                end_secs: 101.0,
+            },
+        ],
+    }];
+    app.transcribe_tx
+        .send(TranscribeEvent::Done {
+            asset_id: 1,
+            segments,
+        })
+        .unwrap();
+
+    app.pump_transcribe();
+
+    let text_track = app
+        .active_project()
+        .timeline()
+        .tracks
+        .iter()
+        .find(|t| t.kind == TrackKind::Text)
+        .expect("no text track created");
+    assert_eq!(text_track.text_clips.len(), 1);
+    let tc = &text_track.text_clips[0];
+    // Anchored at the playhead (5.0) plus the segment's own start_secs (100.0) - apply_
+    // transcription preserves each segment's offset from the playhead rather than resetting
+    // every segment to start exactly at it (see its doc comment).
+    assert_eq!(tc.start_secs, 105.0);
+    assert!(tc.highlight_enabled);
+    assert_eq!(tc.words.len(), 2);
+    // Rebased relative to the clip's own start, not the segment's absolute 100.0.
+    assert_eq!(tc.words[0].start_secs, 0.0);
+    assert_eq!(tc.words[0].end_secs, 0.5);
+    assert_eq!(tc.words[1].start_secs, 0.5);
+    assert_eq!(tc.words[1].end_secs, 1.0);
+}

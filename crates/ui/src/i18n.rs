@@ -261,6 +261,7 @@ text_catalog! {
     PropTextContent: pt_br = "Texto", en = "Text";
     PropTextFontSize: pt_br = "Tamanho da fonte", en = "Font size";
     PropTextColor: pt_br = "Cor do texto", en = "Text color";
+    PropTextHighlightEnabled: pt_br = "Destacar palavra falada", en = "Highlight spoken word";
     PropTextPosX: pt_br = "Posição X", en = "Position X";
     PropTextPosY: pt_br = "Posição Y", en = "Position Y";
     PropTextDuration: pt_br = "Duração (s)", en = "Duration (s)";

@@ -343,7 +343,7 @@ pub fn render_timeline_export(
     on_progress: impl FnMut(u8),
 ) -> Result<RenderOutcome, RenderError> {
     let (segments, canvas) = resolve_timeline_segments(sequence, media_library)?;
-    let text_segments = resolve_text_segments(sequence);
+    let text_segments = resolve_text_segments(sequence, canvas.width);
     render_export_job(
         &segments,
         canvas,
@@ -394,21 +394,37 @@ fn apply_text_overlay_pass(output: &Path, canvas: Canvas, text_segments: &[avbri
 /// sorted by `start_secs` ascending. Returns an empty vec if the sequence has no text tracks
 /// or none have any clips. Used to pass text overlays to the post-processing pass after the
 /// main video encode ([`render_export_job`]).
-pub fn resolve_text_segments(sequence: &Sequence) -> Vec<avbridge::TextSegment> {
+///
+/// `canvas_width` (pixels) converts word-highlight pixel offsets (from
+/// `text_metrics::word_x_offsets_px`) into the `0.0..=1.0` fraction [`avbridge::TextSegment`]'s
+/// `pos_x` expects — see [`text_clip_to_segments`].
+pub fn resolve_text_segments(sequence: &Sequence, canvas_width: u32) -> Vec<avbridge::TextSegment> {
     let mut segments: Vec<avbridge::TextSegment> = sequence
         .timeline
         .tracks
         .iter()
         .filter(|t| t.kind == TrackKind::Text)
         .flat_map(|t| &t.text_clips)
-        .map(text_clip_to_segment)
+        .flat_map(|clip| text_clip_to_segments(clip, canvas_width))
         .collect();
     segments.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
     segments
 }
 
-fn text_clip_to_segment(clip: &TextClip) -> avbridge::TextSegment {
-    avbridge::TextSegment {
+/// Expands one [`TextClip`] into one or more [`avbridge::TextSegment`]s. A plain clip (no words,
+/// or `highlight_enabled` off) is exactly the one segment it's always been. A word-highlight
+/// clip becomes a base segment (the full text, in `color_rgba`, for the clip's whole duration —
+/// so something is always on screen even between words / before the first word starts) plus one
+/// short segment per word (just that word's text, in `highlight_color_rgba`, only for that
+/// word's own `[start_secs, end_secs)`), each positioned via `text_metrics::word_x_offsets_px`
+/// so it lands exactly on top of the matching word in the base text underneath it.
+///
+/// Known limitation: this only positions words along a single line — a caption long enough to
+/// wrap in `drawtext` would have every highlight overlay computed as if the whole sentence were
+/// still on one line, landing in the wrong place past the wrap point. Fine for the short
+/// shorts-style captions this feature targets; not a general multi-line layout engine.
+fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<avbridge::TextSegment> {
+    let base = avbridge::TextSegment {
         start_secs: clip.start_secs,
         duration_secs: clip.duration_secs,
         text: clip.text.clone(),
@@ -416,7 +432,28 @@ fn text_clip_to_segment(clip: &TextClip) -> avbridge::TextSegment {
         color_rgba: clip.color_rgba,
         pos_x: clip.pos_x,
         pos_y: clip.pos_y,
+    };
+    if !clip.highlight_enabled || clip.words.is_empty() || canvas_width == 0 {
+        return vec![base];
     }
+
+    let words: Vec<&str> = clip.words.iter().map(|w| w.text.as_str()).collect();
+    let offsets_px = crate::text_metrics::word_x_offsets_px(&words, clip.font_size);
+
+    let mut segments = Vec::with_capacity(1 + clip.words.len());
+    segments.push(base);
+    for (word, offset_px) in clip.words.iter().zip(offsets_px) {
+        segments.push(avbridge::TextSegment {
+            start_secs: clip.start_secs + word.start_secs,
+            duration_secs: (word.end_secs - word.start_secs).max(0.05),
+            text: word.text.clone(),
+            font_size: clip.font_size,
+            color_rgba: clip.highlight_color_rgba,
+            pos_x: clip.pos_x + offset_px / canvas_width as f32,
+            pos_y: clip.pos_y,
+        });
+    }
+    segments
 }
 
 /// Resolves all visible video tracks in `sequence` into per-track segment lists, suitable for

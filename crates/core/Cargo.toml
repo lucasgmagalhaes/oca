@@ -23,6 +23,11 @@ serde_json = "1.0.151"
 # time (bindgen dependency) and outside a %TEMP%-rooted build dir on Windows (MSVC's FileTracker
 # refuses FTK1011 there) — see CLAUDE.md.
 whisper-rs = "0.16"
+# Pure-Rust font metrics (advance widths) for word-highlight subtitles — measures each word's
+# pixel width at the same font/size `avbridge_apply_text_overlays`'s drawtext filters render at,
+# so per-word highlight overlays can be positioned to land exactly on top of the word they
+# highlight. No C toolchain involved, unlike whisper-rs.
+fontdue = "0.9"
 
 [dev-dependencies]
 criterion = "0.8.2"

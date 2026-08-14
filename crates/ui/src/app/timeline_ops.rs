@@ -616,6 +616,9 @@ impl App {
                 color_rgba: [255, 255, 255, 255],
                 pos_x: 0.1,
                 pos_y: 0.85,
+                words: Vec::new(),
+                highlight_enabled: false,
+                highlight_color_rgba: [255, 220, 0, 255],
             });
         }
         self.selected_clip_id = None;

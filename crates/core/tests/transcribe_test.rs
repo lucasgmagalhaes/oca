@@ -42,6 +42,13 @@ fn transcribes_real_audio_and_returns_at_least_one_segment() {
         assert!(seg.start_secs >= 0.0);
         assert!(seg.end_secs >= seg.start_secs);
         assert!(!seg.text.is_empty());
+        // Word-highlight subtitles depend on every segment having usable per-word timing.
+        assert!(!seg.words.is_empty(), "segment {seg:?} has no words");
+        for word in &seg.words {
+            assert!(!word.text.trim().is_empty());
+            assert!(word.start_secs >= 0.0);
+            assert!(word.end_secs >= word.start_secs);
+        }
     }
 }
 

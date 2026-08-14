@@ -104,6 +104,20 @@ impl App {
             return;
         };
         for (id, seg) in (first_id..).zip(segments) {
+            // seg.words' start_secs/end_secs are relative to the segment itself (same origin as
+            // seg.start_secs, both ultimately anchored to source audio time zero) - TextClip::
+            // words wants them relative to the *clip's* start_secs, so subtract seg.start_secs
+            // to rebase.
+            let words = seg
+                .words
+                .into_iter()
+                .map(|w| avcore::timeline::WordTiming {
+                    text: w.text,
+                    start_secs: w.start_secs - seg.start_secs,
+                    end_secs: w.end_secs - seg.start_secs,
+                })
+                .collect::<Vec<_>>();
+            let highlight_enabled = !words.is_empty();
             track.text_clips.push(avcore::TextClip {
                 id,
                 start_secs: playhead_secs + seg.start_secs,
@@ -113,6 +127,9 @@ impl App {
                 color_rgba: [255, 255, 255, 255],
                 pos_x: 0.1,
                 pos_y: 0.85,
+                words,
+                highlight_enabled,
+                highlight_color_rgba: [255, 220, 0, 255],
             });
         }
     }

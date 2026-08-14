@@ -16,11 +16,28 @@ use std::sync::Arc;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 /// One transcribed segment: a `[start_secs, end_secs)` time range plus its recognized text.
+/// `words` breaks that same text down further, one entry per word with its own tighter time
+/// range — see [`TranscribeWord`] — for word-highlight subtitles (Fase 4's "Legenda com
+/// destaque de palavra"). Empty if word-level timestamps couldn't be extracted for this segment
+/// (shouldn't normally happen — [`transcribe`] always requests token timestamps — but a
+/// segment with only special/filtered tokens has nothing to group into words).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TranscribeSegment {
     pub start_secs: f64,
     pub end_secs: f64,
     pub text: String,
+    pub words: Vec<TranscribeWord>,
+}
+
+/// One word within a [`TranscribeSegment`], with its own `[start_secs, end_secs)` — whisper.cpp
+/// gives timestamps per *token*, not per word (a word can be multiple tokens, e.g. "running" as
+/// "run" + "ning"); [`collect_segments`] groups tokens into words by whitespace boundaries and
+/// takes the first token's start / last token's end as the word's own range.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TranscribeWord {
+    pub text: String,
+    pub start_secs: f64,
+    pub end_secs: f64,
 }
 
 #[derive(Debug)]
@@ -139,6 +156,7 @@ pub fn transcribe(
     params.set_print_progress(false);
     params.set_print_realtime(false);
     params.set_print_timestamps(false);
+    params.set_token_timestamps(true);
     params.set_progress_callback_safe(on_progress);
 
     let cancel_for_abort = Arc::clone(cancel);
@@ -191,7 +209,57 @@ fn collect_segments(state: &whisper_rs::WhisperState) -> Vec<TranscribeSegment> 
             start_secs: segment.start_timestamp() as f64 * 0.01,
             end_secs: segment.end_timestamp() as f64 * 0.01,
             text,
+            words: collect_words(&segment),
         });
     }
     segments
+}
+
+/// Groups `segment`'s per-token timestamps into per-word timestamps. whisper.cpp marks a new
+/// word by prefixing its first token's text with a space (e.g. "Hello world" tokenizes as
+/// `["Hello", " world"]` — the *second* word carries the leading space, not the first); a word
+/// can span multiple tokens with no leading space of their own (e.g. "running" as `["run",
+/// "ning"]`), which get appended onto the word already being built rather than starting a new
+/// one. Special/control tokens (`[_BEG_]`, `[_TT_50]`, etc. — bracketed, not real transcribed
+/// text) are dropped rather than becoming garbage "words".
+fn collect_words(segment: &whisper_rs::WhisperSegment) -> Vec<TranscribeWord> {
+    let mut words = Vec::new();
+    let mut current: Option<TranscribeWord> = None;
+
+    for t in 0..segment.n_tokens() {
+        let Some(token) = segment.get_token(t) else {
+            continue;
+        };
+        let Ok(raw_text) = token.to_str() else {
+            continue;
+        };
+        if raw_text.trim().starts_with('[') {
+            continue;
+        }
+        let data = token.token_data();
+        let start_secs = data.t0 as f64 * 0.01;
+        let end_secs = data.t1 as f64 * 0.01;
+
+        if raw_text.starts_with(' ') || current.is_none() {
+            if let Some(word) = current.take() {
+                if !word.text.is_empty() {
+                    words.push(word);
+                }
+            }
+            current = Some(TranscribeWord {
+                text: raw_text.trim_start().to_string(),
+                start_secs,
+                end_secs,
+            });
+        } else if let Some(word) = current.as_mut() {
+            word.text.push_str(raw_text);
+            word.end_secs = end_secs;
+        }
+    }
+    if let Some(word) = current.take() {
+        if !word.text.is_empty() {
+            words.push(word);
+        }
+    }
+    words
 }
