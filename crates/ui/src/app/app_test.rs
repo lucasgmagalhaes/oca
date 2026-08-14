@@ -75,8 +75,10 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         pixelize_intensity: 0.0,
         transition_in: avcore::timeline::TransitionType::None,
         transition_duration_secs: 0.5,
-        zoom_start: 1.0,
-        zoom_end: 1.0,
+        position_keyframes: vec![],
+        scale_keyframes: vec![],
+        rotation_keyframes: vec![],
+        opacity_keyframes: vec![],
         deflicker_enabled: false,
     }
 }
@@ -1871,7 +1873,7 @@ fn set_selected_clip_transition_is_a_no_op_when_nothing_is_selected() {
 }
 
 #[test]
-fn set_selected_clip_zoom_updates_the_selected_clip() {
+fn set_selected_clip_scale_keyframes_updates_the_selected_clip() {
     let mut app = test_app(
         vec![test_project_with_tracks(
             1,
@@ -1885,15 +1887,36 @@ fn set_selected_clip_zoom_updates_the_selected_clip() {
     );
     app.selected_clip_id = Some(2);
 
-    app.set_selected_clip_zoom(1.5, 2.5);
+    app.set_selected_clip_scale_keyframes(vec![
+        avcore::Keyframe {
+            time_fraction: 0.0,
+            value: 1.5,
+        },
+        avcore::Keyframe {
+            time_fraction: 1.0,
+            value: 2.5,
+        },
+    ]);
 
     let clips = &app.active_project().timeline().tracks[0].clips;
-    assert_eq!((clips[0].zoom_start, clips[0].zoom_end), (1.0, 1.0));
-    assert_eq!((clips[1].zoom_start, clips[1].zoom_end), (1.5, 2.5));
+    assert!(clips[0].scale_keyframes.is_empty());
+    assert_eq!(
+        clips[1].scale_keyframes,
+        vec![
+            avcore::Keyframe {
+                time_fraction: 0.0,
+                value: 1.5
+            },
+            avcore::Keyframe {
+                time_fraction: 1.0,
+                value: 2.5
+            },
+        ]
+    );
 }
 
 #[test]
-fn set_selected_clip_zoom_clamps_each_field_independently() {
+fn set_selected_clip_scale_keyframes_clamps_each_value_independently() {
     let mut app = test_app(
         vec![test_project_with_tracks(
             1,
@@ -1907,20 +1930,35 @@ fn set_selected_clip_zoom_clamps_each_field_independently() {
     );
     app.selected_clip_id = Some(1);
 
-    app.set_selected_clip_zoom(0.0, 5.0);
+    app.set_selected_clip_scale_keyframes(vec![
+        avcore::Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        avcore::Keyframe {
+            time_fraction: 1.0,
+            value: 5.0,
+        },
+    ]);
 
     let clips = &app.active_project().timeline().tracks[0].clips;
     assert_eq!(
-        (clips[0].zoom_start, clips[0].zoom_end),
-        (
-            *crate::app::ZOOM_RANGE.start(),
-            *crate::app::ZOOM_RANGE.end()
-        )
+        clips[0].scale_keyframes,
+        vec![
+            avcore::Keyframe {
+                time_fraction: 0.0,
+                value: *crate::app::SCALE_RANGE.start(),
+            },
+            avcore::Keyframe {
+                time_fraction: 1.0,
+                value: *crate::app::SCALE_RANGE.end(),
+            },
+        ]
     );
 }
 
 #[test]
-fn set_selected_clip_zoom_is_a_no_op_when_nothing_is_selected() {
+fn set_selected_clip_scale_keyframes_is_a_no_op_when_nothing_is_selected() {
     let mut app = test_app(
         vec![test_project_with_tracks(
             1,
@@ -1933,10 +1971,19 @@ fn set_selected_clip_zoom_is_a_no_op_when_nothing_is_selected() {
         Vec::new(),
     );
 
-    app.set_selected_clip_zoom(1.5, 2.5);
+    app.set_selected_clip_scale_keyframes(vec![
+        avcore::Keyframe {
+            time_fraction: 0.0,
+            value: 1.5,
+        },
+        avcore::Keyframe {
+            time_fraction: 1.0,
+            value: 2.5,
+        },
+    ]);
 
     let clips = &app.active_project().timeline().tracks[0].clips;
-    assert_eq!((clips[0].zoom_start, clips[0].zoom_end), (1.0, 1.0));
+    assert!(clips[0].scale_keyframes.is_empty());
 }
 
 #[test]
@@ -2232,7 +2279,16 @@ fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_posit
     app.set_selected_clip_glitch(0.3);
     app.set_selected_clip_pixelize(0.4);
     app.set_selected_clip_transition(avcore::timeline::TransitionType::Fade, 1.2);
-    app.set_selected_clip_zoom(1.5, 2.5);
+    app.set_selected_clip_scale_keyframes(vec![
+        avcore::Keyframe {
+            time_fraction: 0.0,
+            value: 1.5,
+        },
+        avcore::Keyframe {
+            time_fraction: 1.0,
+            value: 2.5,
+        },
+    ]);
     app.copy_selected_clip_formatting();
 
     app.selected_clip_id = Some(2);
@@ -2278,7 +2334,19 @@ fn paste_selected_clip_formatting_applies_gain_and_frozen_without_touching_posit
         avcore::timeline::TransitionType::Fade
     );
     assert_eq!(clips[1].transition_duration_secs, 1.2);
-    assert_eq!((clips[1].zoom_start, clips[1].zoom_end), (1.5, 2.5));
+    assert_eq!(
+        clips[1].scale_keyframes,
+        vec![
+            avcore::Keyframe {
+                time_fraction: 0.0,
+                value: 1.5
+            },
+            avcore::Keyframe {
+                time_fraction: 1.0,
+                value: 2.5
+            },
+        ]
+    );
     assert_eq!(clips[1].start_secs, 10.0); // position untouched
     assert_eq!(clips[1].source_out_secs, 20.0); // trim untouched
 }
@@ -2408,7 +2476,16 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
     app.set_selected_clip_glitch(0.3);
     app.set_selected_clip_pixelize(0.4);
     app.set_selected_clip_transition(avcore::timeline::TransitionType::Slide, 0.9);
-    app.set_selected_clip_zoom(1.5, 2.5);
+    app.set_selected_clip_scale_keyframes(vec![
+        avcore::Keyframe {
+            time_fraction: 0.0,
+            value: 1.5,
+        },
+        avcore::Keyframe {
+            time_fraction: 1.0,
+            value: 2.5,
+        },
+    ]);
     app.copy_selected_clip();
     app.active_project_mut().timeline_mut().playhead_secs = 30.0;
 
@@ -2458,7 +2535,19 @@ fn paste_clip_at_playhead_appends_a_fresh_clip_with_the_copied_trim_range() {
         avcore::timeline::TransitionType::Slide
     ); // so does the transition.
     assert_eq!(pasted.transition_duration_secs, 0.9);
-    assert_eq!((pasted.zoom_start, pasted.zoom_end), (1.5, 2.5)); // so does zoom.
+    assert_eq!(
+        pasted.scale_keyframes,
+        vec![
+            avcore::Keyframe {
+                time_fraction: 0.0,
+                value: 1.5
+            },
+            avcore::Keyframe {
+                time_fraction: 1.0,
+                value: 2.5
+            },
+        ]
+    ); // so do scale keyframes.
 }
 
 #[test]

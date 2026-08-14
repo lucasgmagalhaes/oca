@@ -71,6 +71,45 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   each independently run past a thousand bytes, and several of these strings nest more than one
   of them.
 
+  **General keyframe system (done, export only):** `crate::keyframe` (new module) — position,
+  scale, rotation, and opacity can each be animated by a list of `Keyframe<T>` points
+  (`ClipInstance::position_keyframes`/`scale_keyframes`/`rotation_keyframes`/
+  `opacity_keyframes`), piecewise-linearly interpolated between the two points surrounding a
+  given `time_fraction` (`evaluate_keyframes`) — per `request.md`'s Fase 4 "Keyframes" spec.
+  Replaces `zoom_start`/`zoom_end` (a 2-keyframe `scale_keyframes` list reproduces the same
+  Ken-Burns behavior as a degenerate case; splitting a keyframed clip now properly rescales and
+  inserts a continuity-preserving boundary point via `split_keyframes_at`, fixing a real gap the
+  old zoom split behavior had — it used to just copy the same two values onto both halves
+  unscaled). **Architecture:** since `avbridge::ClipSegment` crosses the Rust→C FFI boundary as
+  a `#[repr(C)]` struct, a `Vec<Keyframe<T>>` can't be a field on it directly — instead, the
+  piecewise avfilter expression for each property is built in Rust
+  (`ClipInstance::keyframe_video_filter_chain` for scale/rotation/opacity, folded onto the front
+  of `video_filter`; `keyframe::position_overlay_xy_expr` for position, threaded into
+  `init_overlay_graph`'s `overlay=x:y` as two new `ClipSegment` string fields) and passed across
+  FFI as a plain string, the same way `video_filter` already was — no new C functions,
+  `build_kenburns_zoom` and its 3 call sites are deleted outright. Scale/opacity use `N`
+  (frame count, matching the existing `geq`-based zoom/mask convention); rotation/position use
+  `t` (seconds) since `rotate`/`overlay` are evaluated through FFmpeg's general per-option
+  expression framework, not `geq`'s per-pixel one — confirmed via `ffmpeg -h filter=rotate`/
+  `-h filter=overlay` on the pinned build, not guessed. Opacity reuses `mask_shape`'s exact
+  existing alpha-composition pattern (`format=yuva420p,geq=...:a='alpha(X,Y)*<ramp>'`, so it
+  composes correctly with an existing mask/chroma-key alpha instead of clobbering it) and
+  therefore has the same overlay-track-only caveat mask_shape/chroma_key already have; position
+  has the same caveat for the same reason (no compositing stage on a single/background track).
+  **Not yet done:** live GStreamer preview — only scale keyframes are wired into preview
+  (`preview.rs`'s existing Ken-Burns pad-probe now reads `scale_keyframes` via
+  `evaluate_keyframes` instead of the old two fixed endpoints, so it already supports arbitrary
+  keyframe counts for free); rotation/position/opacity have no preview element yet. Also not
+  done: visual keyframe markers on the timeline clip block itself (properties-panel list editing
+  only this pass — add/edit/delete rows, no on-timeline handles). **Verification caveat:**
+  rotation/position's `t`/`if`/`between` usage is new territory for this codebase (only `geq`'s
+  per-pixel language had been exercised here before) and, like the GPU encoder fix above, this
+  dev machine's FFmpeg build can't actually open any encoder right now — so the new
+  `animated_*_keyframes_*_without_error` tests (`timeline_export_test.rs`,
+  `timeline_export_multi_test.rs`) fail with `EncodeError::Encoder` here the same as every other
+  encode-path test, and the filter-graph correctness of rotation/position specifically has not
+  been empirically confirmed against a real render on any machine yet.
+
 - **Fase 5/6 (partially done):** Aspect ratio selection; prefs + export queue persisted
   to platform JSON (`~/Library/Application Support/oca/` on macOS); recent project list;
   debounced autosave + restore modal; crash detection + panic hook; prefs modal; home
@@ -120,8 +159,8 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   pausing an in-flight render is a deliberate non-goal, not a gap — `ffmpeg` has no notion of
   pausing mid-render (see `pump_export_queue`'s doc comment), so a Rendering job only offers
   Cancel. **Not yet done:** the rest of Fase 4's larger CapCut-parity items (layer templates,
-  keyframes, layer transform, video stabilization, AI background removal, auto-reframe, LUTs,
-  text-to-speech, motion tracking, music/SFX library).
+  layer transform, video stabilization, AI background removal, auto-reframe, LUTs,
+  text-to-speech, motion tracking, music/SFX library) — keyframes are done, see above.
 
   **Word-highlight subtitles (done):** true in-place highlighting — the full sentence stays on
   screen, the currently-spoken word lights up in `highlight_color_rgba` exactly where it sits in

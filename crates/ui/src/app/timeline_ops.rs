@@ -51,8 +51,10 @@ impl App {
                 pixelize_intensity: 0.0,
                 transition_in: avcore::timeline::TransitionType::None,
                 transition_duration_secs: 0.5,
-                zoom_start: 1.0,
-                zoom_end: 1.0,
+                position_keyframes: vec![],
+                scale_keyframes: vec![],
+                rotation_keyframes: vec![],
+                opacity_keyframes: vec![],
                 deflicker_enabled: false,
             });
     }
@@ -112,8 +114,10 @@ impl App {
                 pixelize_intensity: 0.0,
                 transition_in: avcore::timeline::TransitionType::None,
                 transition_duration_secs: 0.5,
-                zoom_start: 1.0,
-                zoom_end: 1.0,
+                position_keyframes: vec![],
+                scale_keyframes: vec![],
+                rotation_keyframes: vec![],
+                opacity_keyframes: vec![],
                 deflicker_enabled: false,
             });
     }
@@ -392,8 +396,10 @@ impl App {
                 pixelize_intensity: copied.pixelize_intensity,
                 transition_in: copied.transition_in,
                 transition_duration_secs: copied.transition_duration_secs,
-                zoom_start: copied.zoom_start,
-                zoom_end: copied.zoom_end,
+                position_keyframes: copied.position_keyframes,
+                scale_keyframes: copied.scale_keyframes,
+                rotation_keyframes: copied.rotation_keyframes,
+                opacity_keyframes: copied.opacity_keyframes,
                 deflicker_enabled: copied.deflicker_enabled,
             });
     }
@@ -462,7 +468,7 @@ impl App {
     /// other field (position, trim, composite membership) — what `Ctrl+Shift+V`/the context
     /// menu's "Colar formatação" do. A no-op if nothing is selected or the clipboard is empty.
     pub fn paste_selected_clip_formatting(&mut self) {
-        let Some(formatting) = self.formatting_clipboard else {
+        let Some(formatting) = self.formatting_clipboard.clone() else {
             return;
         };
         self.with_selected_clip_mut(|clip| clip.apply_formatting(&formatting));

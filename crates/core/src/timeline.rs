@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::keyframe::{self, Keyframe, Position};
+
 /// What a [`Track`] carries. Determines how the timeline widget renders its clips
 /// (thumbnails for video, waveforms for audio) and which asset kind can be dropped onto it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -308,20 +310,37 @@ pub struct ClipInstance {
     /// reasonable default duration.
     #[serde(default = "default_transition_duration")]
     pub transition_duration_secs: f32,
-    /// Zoom/scale multiplier at this block's first frame, per `request.md`'s Fase 4 "Efeitos
-    /// visuais" spec ("Zoom (punch-in / ken burns)"). Linearly interpolated from
-    /// [`ClipInstance::zoom_start`] to [`ClipInstance::zoom_end`] across the block's displayed
-    /// duration — a per-clip approximation of the punch-in/ken-burns effect, not a general
-    /// keyframe system (that's future work). `1.0` is unity (no zoom). Currently has no visible
-    /// effect anywhere (`ui`'s properties panel just exposes the two sliders); doesn't yet
-    /// affect preview playback or export — the same kind of gap as [`ClipInstance::gain_db`].
-    /// `#[serde(default = ..)]` so older saved projects load unzoomed.
-    #[serde(default = "default_unity_multiplier")]
-    pub zoom_start: f32,
-    /// Zoom/scale multiplier at this block's last frame — see [`ClipInstance::zoom_start`].
-    /// `#[serde(default = ..)]` so older saved projects load unzoomed.
-    #[serde(default = "default_unity_multiplier")]
-    pub zoom_end: f32,
+    /// General keyframe animation for this block's position (translate offset, normalized as a
+    /// fraction of canvas width/height), per `features/request.md`'s Fase 4 "Keyframes" spec.
+    /// Empty = no offset. Wired into export (`crate::keyframe::position_overlay_xy_expr`) —
+    /// only has a visible effect on an overlay-track clip, since a single/background track has
+    /// no compositing stage to translate into (same caveat as `chroma_key_enabled`'s alpha).
+    /// Not yet wired into live preview. `#[serde(default)]` so older saved projects (or a
+    /// project saved before this field existed) load with no position animation.
+    #[serde(default)]
+    pub position_keyframes: Vec<Keyframe<Position>>,
+    /// General keyframe animation for this block's scale, per `features/request.md`'s Fase 4
+    /// "Keyframes" spec — supersedes the old two-endpoint `zoom_start`/`zoom_end` Ken-Burns
+    /// fields (a 2-keyframe list reproduces that same behavior as a degenerate case). Empty =
+    /// no scaling (`1.0`). Wired into export (`crate::keyframe::scale_filter_expr`); not yet
+    /// wired into live preview. `#[serde(default)]` so older saved projects load unscaled — a
+    /// project that had real `zoom_start`/`zoom_end` values loses that animation on load, since
+    /// this field replaces rather than migrates it (no back-compat promised for this format).
+    #[serde(default)]
+    pub scale_keyframes: Vec<Keyframe<f32>>,
+    /// General keyframe animation for this block's rotation, in degrees, per
+    /// `features/request.md`'s Fase 4 "Keyframes" spec. Empty = no rotation (`0.0`). Wired into
+    /// export (`crate::keyframe::rotation_filter_angle_expr`); not yet wired into live preview.
+    /// `#[serde(default)]` so older saved projects load unrotated.
+    #[serde(default)]
+    pub rotation_keyframes: Vec<Keyframe<f32>>,
+    /// General keyframe animation for this block's opacity, `0.0..=1.0`, per
+    /// `features/request.md`'s Fase 4 "Keyframes" spec. Empty = fully opaque (`1.0`). Wired into
+    /// export (`crate::keyframe::opacity_alpha_ramp_expr`) — only has a visible effect on an
+    /// overlay-track clip, same caveat as position above. Not yet wired into live preview.
+    /// `#[serde(default)]` so older saved projects load fully opaque.
+    #[serde(default)]
+    pub opacity_keyframes: Vec<Keyframe<f32>>,
     /// `true` if temporal luminance-flicker removal is enabled for this block, per
     /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Remoção de flicker") — common in
     /// screen/gameplay captures at certain refresh rates. Wired to export via `video_filter_chain`
@@ -335,7 +354,7 @@ pub struct ClipInstance {
 /// The rendering/display settings of a [`ClipInstance`] that can be copied onto a different
 /// block without touching its structural fields (`id`, `asset_id`, start/trim, composite
 /// membership). Used by `ui`'s "copiar formatação" feature (`Ctrl+Shift+C`/`V`).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ClipFormatting {
     pub gain_db: f32,
     pub frozen: bool,
@@ -362,8 +381,10 @@ pub struct ClipFormatting {
     pub pixelize_intensity: f32,
     pub transition_in: TransitionType,
     pub transition_duration_secs: f32,
-    pub zoom_start: f32,
-    pub zoom_end: f32,
+    pub position_keyframes: Vec<Keyframe<Position>>,
+    pub scale_keyframes: Vec<Keyframe<f32>>,
+    pub rotation_keyframes: Vec<Keyframe<f32>>,
+    pub opacity_keyframes: Vec<Keyframe<f32>>,
     pub deflicker_enabled: bool,
 }
 
@@ -435,10 +456,69 @@ impl ClipInstance {
         self.transition_in != TransitionType::None
     }
 
-    /// `true` if this block's zoom isn't unity at either end
-    /// ([`ClipInstance::zoom_start`]/[`ClipInstance::zoom_end`]).
-    pub fn is_zoomed(&self) -> bool {
-        self.zoom_start != 1.0 || self.zoom_end != 1.0
+    /// `true` if this block has any position keyframes.
+    pub fn has_position_keyframes(&self) -> bool {
+        !self.position_keyframes.is_empty()
+    }
+
+    /// `true` if this block has any scale keyframes (the general-keyframe replacement for the
+    /// old `is_zoomed`).
+    pub fn has_scale_keyframes(&self) -> bool {
+        !self.scale_keyframes.is_empty()
+    }
+
+    /// `true` if this block has any rotation keyframes.
+    pub fn has_rotation_keyframes(&self) -> bool {
+        !self.rotation_keyframes.is_empty()
+    }
+
+    /// `true` if this block has any opacity keyframes.
+    pub fn has_opacity_keyframes(&self) -> bool {
+        !self.opacity_keyframes.is_empty()
+    }
+
+    /// Builds this clip's scale/rotation/opacity keyframe avfilter fragment, spliced into the
+    /// per-clip chain before [`ClipInstance::video_filter_chain`]'s own stages — the same
+    /// position the old `zoom` stage used to occupy. `None` if none of the three are animated.
+    /// Position keyframes aren't part of this — they apply to the *overlay* compositing stage,
+    /// not a per-clip filter (see [`keyframe::position_overlay_xy_expr`] and `crate::render`).
+    pub fn keyframe_video_filter_chain(
+        &self,
+        fps_num: u32,
+        fps_den: u32,
+        timeline_duration_secs: f64,
+    ) -> Option<String> {
+        let mut stages = Vec::new();
+        if let Some(scale) = keyframe::scale_filter_expr(
+            &self.scale_keyframes,
+            fps_num,
+            fps_den,
+            timeline_duration_secs,
+        ) {
+            stages.push(scale);
+        }
+        if let Some(angle_expr) =
+            keyframe::rotation_filter_angle_expr(&self.rotation_keyframes, timeline_duration_secs)
+        {
+            stages.push(format!(
+                "rotate=angle='{angle_expr}':ow=rotw('{angle_expr}'):oh=roth('{angle_expr}')"
+            ));
+        }
+        if let Some(alpha_expr) = keyframe::opacity_alpha_ramp_expr(
+            &self.opacity_keyframes,
+            fps_num,
+            fps_den,
+            timeline_duration_secs,
+        ) {
+            stages.push(format!(
+                "format=yuva420p,geq=lum='p(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*({alpha_expr})'"
+            ));
+        }
+        if stages.is_empty() {
+            None
+        } else {
+            Some(stages.join(","))
+        }
     }
 
     /// Builds this clip's avfilter chain description for `core::render::render_timeline_export`
@@ -637,8 +717,10 @@ impl ClipInstance {
             pixelize_intensity: self.pixelize_intensity,
             transition_in: self.transition_in,
             transition_duration_secs: self.transition_duration_secs,
-            zoom_start: self.zoom_start,
-            zoom_end: self.zoom_end,
+            position_keyframes: self.position_keyframes.clone(),
+            scale_keyframes: self.scale_keyframes.clone(),
+            rotation_keyframes: self.rotation_keyframes.clone(),
+            opacity_keyframes: self.opacity_keyframes.clone(),
             deflicker_enabled: self.deflicker_enabled,
         }
     }
@@ -672,8 +754,10 @@ impl ClipInstance {
         self.pixelize_intensity = f.pixelize_intensity;
         self.transition_in = f.transition_in;
         self.transition_duration_secs = f.transition_duration_secs;
-        self.zoom_start = f.zoom_start;
-        self.zoom_end = f.zoom_end;
+        self.position_keyframes = f.position_keyframes.clone();
+        self.scale_keyframes = f.scale_keyframes.clone();
+        self.rotation_keyframes = f.rotation_keyframes.clone();
+        self.opacity_keyframes = f.opacity_keyframes.clone();
         self.deflicker_enabled = f.deflicker_enabled;
     }
 
@@ -754,6 +838,18 @@ impl Track {
         let clip = &mut self.clips[index];
         let split_source_secs =
             clip.source_in_secs + (at_secs - clip.start_secs) * clip.speed_factor as f64;
+        let split_frac = ((at_secs - clip.start_secs) / clip.duration_secs()) as f32;
+        let (position_first, position_second) = keyframe::split_keyframes_at(
+            &clip.position_keyframes,
+            split_frac,
+            Position { x: 0.0, y: 0.0 },
+        );
+        let (scale_first, scale_second) =
+            keyframe::split_keyframes_at(&clip.scale_keyframes, split_frac, 1.0);
+        let (rotation_first, rotation_second) =
+            keyframe::split_keyframes_at(&clip.rotation_keyframes, split_frac, 0.0);
+        let (opacity_first, opacity_second) =
+            keyframe::split_keyframes_at(&clip.opacity_keyframes, split_frac, 1.0);
         let second_half = ClipInstance {
             id: new_clip_id,
             asset_id: clip.asset_id,
@@ -792,11 +888,17 @@ impl Track {
             // casing it.
             transition_in: clip.transition_in,
             transition_duration_secs: clip.transition_duration_secs,
-            zoom_start: clip.zoom_start,
-            zoom_end: clip.zoom_end,
+            position_keyframes: position_second,
+            scale_keyframes: scale_second,
+            rotation_keyframes: rotation_second,
+            opacity_keyframes: opacity_second,
             deflicker_enabled: clip.deflicker_enabled,
         };
         clip.source_out_secs = split_source_secs;
+        clip.position_keyframes = position_first;
+        clip.scale_keyframes = scale_first;
+        clip.rotation_keyframes = rotation_first;
+        clip.opacity_keyframes = opacity_first;
 
         self.clips.insert(index + 1, second_half);
         true

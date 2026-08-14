@@ -123,7 +123,10 @@ typedef struct {
     float gain_db;
     /* Pre-built avfilter chain description (e.g. "eq=brightness=0.1,hflip"), UTF-8,
        NUL-terminated. Empty string ("") means no clip-specific video effect — the segment
-       still goes through the canvas-conform (scale/pad/fps) stage and gets re-encoded. */
+       still goes through the canvas-conform (scale/pad/fps) stage and gets re-encoded. Any
+       scale/rotation/opacity keyframe animation (crate::keyframe module) is already spliced
+       onto the front of this string by Rust (ClipInstance::keyframe_video_filter_chain) — C
+       just splices the whole thing in at one point, same as before. */
     const char *video_filter;
     /* Nonzero holds the first decoded video frame at/after source_in_secs for this segment's
        whole trimmed duration (source_out_secs - source_in_secs) instead of playing through the
@@ -136,12 +139,15 @@ typedef struct {
        atempo filter in the shared audio graph. Values are clamped to [0.5, 100.0] for the
        audio side (atempo's supported range); video setpts handles any positive value. */
     float speed_factor;
-    /* Ken-burns zoom: linear interpolation from zoom_start to zoom_end over the clip's
-       output duration. 1.0 is no zoom; 1.5 shows the center 67% of the frame scaled to full
-       size. Applied via an animated crop+scale stage after the fps conform step. Both values
-       are clamped to [0.1, 20.0]. No-op when both are 1.0. */
-    float zoom_start;
-    float zoom_end;
+    /* Overlay-compositor x/y position expressions (avfilter expression syntax, e.g.
+       "(0.25)*main_w"), UTF-8, NUL-terminated — built in Rust from this clip's position
+       keyframes (crate::keyframe::position_overlay_xy_expr). Empty string ("") means no
+       offset. Only consulted by avbridge_encode_timeline_export_multi's overlay path (a
+       single/background-track clip has no compositing stage to apply this to) — ignored by
+       avbridge_encode_timeline_export. Scale/rotation/opacity keyframes don't need their own
+       fields here — they're already folded into video_filter above, built the same way. */
+    const char *position_x_expr;
+    const char *position_y_expr;
     /* Transition effect at the start of this clip:
        0 = None/HardCut (no effect), 1 = Fade (fade in from black), 2 = Slide (reveal from
        left via an animated drawbox wipe), 3 = Zoom (scale from 50% to 100%).

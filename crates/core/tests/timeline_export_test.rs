@@ -7,6 +7,7 @@ use avcore::timeline::{
     ClipInstance, ColorFilter, MaskShape, TextClip, Timeline, Track, TrackKind, TransitionType,
     WordTiming,
 };
+use avcore::Keyframe;
 use avcore::{probe_media, MediaAsset, MediaKind};
 
 fn fixture(name: &str) -> PathBuf {
@@ -54,8 +55,10 @@ fn clip(
         pixelize_intensity: 0.0,
         transition_in: TransitionType::None,
         transition_duration_secs: 0.5,
-        zoom_start: 1.0,
-        zoom_end: 1.0,
+        position_keyframes: vec![],
+        scale_keyframes: vec![],
+        rotation_keyframes: vec![],
+        opacity_keyframes: vec![],
         deflicker_enabled: false,
     }
 }
@@ -484,16 +487,26 @@ fn zoom_transition_exports_without_error() {
 }
 
 #[test]
-fn animated_ken_burns_zoom_exports_without_error() {
-    // zoom_start != zoom_end is the B != 0 branch in build_kenburns_zoom — distinct from
-    // (and previously broken independently of) transition_in's Zoom entry effect above: this
-    // one used to fail filter-graph init outright ("Expressions with frame variables 'n', 't',
-    // 'pos' are not valid in init eval_mode"), not just fail to animate, since every other
-    // fixture in this file keeps zoom_start == zoom_end (the safe, degenerate B == 0 case).
+fn animated_scale_keyframes_export_without_error() {
+    // Two keyframes (1.0 -> 1.5) is the multi-point-piecewise, non-degenerate branch of
+    // scale_filter_expr — the direct descendant of the old animated Ken-Burns zoom test: a
+    // single-keyframe-equivalent (zoom_start == zoom_end) case used to be (and still is,
+    // covered by every other fixture in this file which leaves scale_keyframes empty) the
+    // "safe" static-crop branch; the truly animated geq expression is what previously failed
+    // filter-graph init outright ("Expressions with frame variables 'n', 't', 'pos' are not
+    // valid in init eval_mode") before being reimplemented as a geq inverse-sample.
     let asset = video_asset(1);
     let mut c1 = clip(1, 1, 0.0, 0.0, 0.5);
-    c1.zoom_start = 1.0;
-    c1.zoom_end = 1.5;
+    c1.scale_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 1.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 1.5,
+        },
+    ];
 
     let track = Track {
         id: 1,
@@ -508,6 +521,55 @@ fn animated_ken_burns_zoom_exports_without_error() {
     let sequence = sequence_with(vec![track]);
 
     let output = std::env::temp_dir().join("avcore_test_timeline_export_ken_burns_zoom.mp4");
+    let cancel = AtomicBool::new(false);
+
+    let outcome = render_timeline_export(
+        &sequence,
+        &[asset],
+        &output,
+        -14.0,
+        avcore::GpuEncoderPreference::Auto,
+        &cancel,
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(outcome, RenderOutcome::Completed);
+
+    let info = probe_media(&output).unwrap();
+    assert_eq!(info.kind, MediaKind::Video);
+
+    let _ = std::fs::remove_file(&output);
+}
+
+#[test]
+fn animated_rotation_keyframes_export_without_error() {
+    let asset = video_asset(1);
+    let mut c1 = clip(1, 1, 0.0, 0.0, 0.5);
+    c1.rotation_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 30.0,
+        },
+    ];
+
+    let track = Track {
+        id: 1,
+        name: "V1".to_string(),
+        kind: TrackKind::Video,
+        clips: vec![c1],
+
+        text_clips: vec![],
+
+        visible: true,
+    };
+    let sequence = sequence_with(vec![track]);
+
+    let output = std::env::temp_dir().join("avcore_test_timeline_export_rotation.mp4");
     let cancel = AtomicBool::new(false);
 
     let outcome = render_timeline_export(

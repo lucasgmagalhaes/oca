@@ -42,8 +42,10 @@ fn clip() -> ClipInstance {
         pixelize_intensity: 0.0,
         transition_in: TransitionType::None,
         transition_duration_secs: 0.5,
-        zoom_start: 1.0,
-        zoom_end: 1.0,
+        position_keyframes: vec![],
+        scale_keyframes: vec![],
+        rotation_keyframes: vec![],
+        opacity_keyframes: vec![],
         deflicker_enabled: false,
     }
 }
@@ -164,8 +166,16 @@ fn a_shaken_clip_still_opens_and_decodes_at_full_size() {
 #[test]
 fn a_zoomed_clip_still_opens_and_decodes_at_full_size() {
     let mut c = clip();
-    c.zoom_start = 1.0;
-    c.zoom_end = 1.5;
+    c.scale_keyframes = vec![
+        avcore::Keyframe {
+            time_fraction: 0.0,
+            value: 1.0,
+        },
+        avcore::Keyframe {
+            time_fraction: 1.0,
+            value: 1.5,
+        },
+    ];
 
     let preview = Preview::open(&fixture("video.mp4"), Some(&c)).unwrap();
     let frame = preview

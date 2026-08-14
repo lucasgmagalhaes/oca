@@ -8,9 +8,10 @@ use std::sync::atomic::AtomicBool;
 
 use avbridge::Canvas;
 
+use crate::keyframe;
 use crate::media::MediaAsset;
 use crate::project::Sequence;
-use crate::timeline::{TextClip, TrackKind};
+use crate::timeline::{ClipInstance, TextClip, TrackKind};
 
 /// Target output aspect ratio for a timeline export. `Original` preserves the source
 /// resolution inferred from the first clip; the fixed presets override width/height while
@@ -206,6 +207,31 @@ pub fn render_export(
 /// closest equivalent for a multi-clip timeline. Only the video track's clips' own embedded
 /// audio is included — separate audio-only tracks aren't mixed in.
 ///
+/// Builds `clip`'s combined avfilter `video_filter` string (scale/rotation/opacity keyframe
+/// stages, from [`ClipInstance::keyframe_video_filter_chain`], spliced onto the front of
+/// [`ClipInstance::video_filter_chain`]'s own stages — the same position the old `zoom` stage
+/// used to occupy) plus its `overlay` position expressions (from
+/// [`keyframe::position_overlay_xy_expr`], empty strings when there's nothing to animate).
+/// Shared by [`resolve_timeline_segments`] and [`resolve_timeline_segments_multi`] since both
+/// need identical per-clip resolution.
+fn resolve_clip_filters(
+    clip: &ClipInstance,
+    fps_num: u32,
+    fps_den: u32,
+    duration_secs: f64,
+) -> (String, String, String) {
+    let base_filter = clip.video_filter_chain();
+    let video_filter = match clip.keyframe_video_filter_chain(fps_num, fps_den, duration_secs) {
+        Some(kf) if base_filter.is_empty() => kf,
+        Some(kf) => format!("{kf},{base_filter}"),
+        None => base_filter,
+    };
+    let (position_x_expr, position_y_expr) =
+        keyframe::position_overlay_xy_expr(&clip.position_keyframes, duration_secs)
+            .unwrap_or_default();
+    (video_filter, position_x_expr, position_y_expr)
+}
+
 /// Fails with [`RenderError::EmptyTimeline`] if the sequence has no video track with at least
 /// one clip, [`RenderError::MissingAsset`] if a clip's `asset_id` isn't in `media_library`.
 pub fn resolve_timeline_segments(
@@ -238,16 +264,20 @@ pub fn resolve_timeline_segments(
         let duration_secs = clip.duration_secs();
         total_duration_secs += duration_secs;
         weighted_bitrate_bps_secs += asset.source_bitrate_mbps as f64 * 1_000_000.0 * duration_secs;
+        let (_, _, fps) = dimensions_fps.expect("just set above if it was None");
+        let (fps_num, fps_den) = fps_to_rational(fps);
+        let (video_filter, position_x_expr, position_y_expr) =
+            resolve_clip_filters(clip, fps_num, fps_den, duration_secs);
         segments.push(avbridge::ClipSegment {
             source_path: asset.source_path.clone(),
             source_in_secs: clip.source_in_secs,
             source_out_secs: clip.source_out_secs,
             gain_db: clip.gain_db,
-            video_filter: clip.video_filter_chain(),
+            video_filter,
             frozen: clip.frozen,
             speed_factor: clip.speed_factor,
-            zoom_start: clip.zoom_start,
-            zoom_end: clip.zoom_end,
+            position_x_expr,
+            position_y_expr,
             transition_in: clip.transition_in.to_export_code(),
             transition_duration_secs: clip.transition_duration_secs,
             timeline_start_secs: clip.start_secs,
@@ -507,16 +537,20 @@ pub fn resolve_timeline_segments_multi(
             total_duration_secs += duration_secs;
             weighted_bitrate_bps_secs +=
                 asset.source_bitrate_mbps as f64 * 1_000_000.0 * duration_secs;
+            let (_, _, fps) = dimensions_fps.expect("just set above if it was None");
+            let (fps_num, fps_den) = fps_to_rational(fps);
+            let (video_filter, position_x_expr, position_y_expr) =
+                resolve_clip_filters(clip, fps_num, fps_den, duration_secs);
             segments.push(avbridge::ClipSegment {
                 source_path: asset.source_path.clone(),
                 source_in_secs: clip.source_in_secs,
                 source_out_secs: clip.source_out_secs,
                 gain_db: clip.gain_db,
-                video_filter: clip.video_filter_chain(),
+                video_filter,
                 frozen: clip.frozen,
                 speed_factor: clip.speed_factor,
-                zoom_start: clip.zoom_start,
-                zoom_end: clip.zoom_end,
+                position_x_expr,
+                position_y_expr,
                 transition_in: clip.transition_in.to_export_code(),
                 transition_duration_secs: clip.transition_duration_secs,
                 timeline_start_secs: clip.start_secs,

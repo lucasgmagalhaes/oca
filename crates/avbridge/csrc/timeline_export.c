@@ -262,63 +262,6 @@ EncodeStatus avbridge_encode_timeline_export(
                 snprintf(setpts_str, sizeof(setpts_str), "setpts=PTS/%.6f,",
                          (double)seg->speed_factor);
             }
-            char zoom_str[2048] = "";
-            float zs = seg->zoom_start > 0.0f ? seg->zoom_start : 1.0f;
-            float ze = seg->zoom_end > 0.0f ? seg->zoom_end : 1.0f;
-            if (zs < 0.1f) zs = 0.1f;  if (zs > 20.0f) zs = 20.0f;
-            if (ze < 0.1f) ze = 0.1f;  if (ze > 20.0f) ze = 20.0f;
-            if (fabsf(zs - 1.0f) > 1e-4f || fabsf(ze - 1.0f) > 1e-4f) {
-                double source_dur = seg->source_out_secs - seg->source_in_secs;
-                double speed = seg->speed_factor > 0.0f ? seg->speed_factor : 1.0f;
-                double timeline_dur = source_dur / speed;
-                double total_frames =
-                    timeline_dur * (double)canvas_fps.num / (double)canvas_fps.den;
-                if (total_frames < 1.0) total_frames = 1.0;
-                double N = total_frames - 1.0;
-                if (N < 1.0) N = 1.0;
-                double A = zs;
-                double B = ((double)ze - (double)zs) / N;
-                if (fabs(B) < 1e-9) {
-                    /* Static zoom (zoom_start == zoom_end): a plain crop+scale, no frame
-                       variable needed, so none of the animated case's concerns below apply. */
-                    snprintf(zoom_str, sizeof(zoom_str),
-                             "crop=iw/%.5f:ih/%.5f:iw*(1-1/%.5f)/2:ih*(1-1/%.5f)/2"
-                             ",scale=iw*%.5f:ih*%.5f",
-                             A, A, A, A, A, A);
-                } else {
-                    /* Animated Ken-Burns zoom. Originally `crop=iw/(A+B*n):...,scale=...` —
-                       neither `crop` nor `scale` here set `eval=frame`, and this FFmpeg build
-                       flatly rejects a frame variable ("n") in a filter's default "init" eval
-                       mode ("Expressions with frame variables 'n', 't', 'pos' are not valid in
-                       init eval_mode") — so any export actually using a non-degenerate zoom
-                       (B != 0) failed outright with ENCODE_ERR_FILTER_GRAPH. No existing
-                       test caught this: every zoom-bearing fixture in this codebase happens to
-                       use zoom_start == zoom_end (the B == 0 branch above). Reimplemented as a
-                       geq inverse-sample, the same technique the Slide/Zoom transition cases
-                       use (see this function's per-segment transition block) and for the same
-                       reason: letting crop/scale actually renegotiate output size per frame is
-                       what reliably corrupted the heap there, not just a syntax problem. z is
-                       the same A+B*N zoom factor the old crop/scale pair used; (sx,sy) is
-                       (X,Y) mapped back through an inverse zoom around the frame center by z.
-                       The "inside" clamp only matters for a downward zoom (z<1, "zoom out
-                       past 1.0") which the original crop=iw/z formula couldn't represent
-                       either (crop can't grow past its input size) — here it just shows black
-                       padding instead of undefined behavior; it's a no-op multiplier (always 1)
-                       for the far more common z>=1 "push in" case this feature is meant for. */
-                    char z[220], sx[280], sy[280], inside[820];
-                    snprintf(z, sizeof(z), "(%.7f+%.9f*N)", A, B);
-                    snprintf(sx, sizeof(sx), "((X-W/2)/%s+W/2)", z);
-                    snprintf(sy, sizeof(sy), "((Y-H/2)/%s+H/2)", z);
-                    snprintf(inside, sizeof(inside),
-                             "(1-lt(%s,0))*lt(%s,W)*(1-lt(%s,0))*lt(%s,H)", sx, sx, sy, sy);
-                    snprintf(zoom_str, sizeof(zoom_str),
-                             "geq=lum='p(%s,%s)*%s'"
-                             ":cb='128+(cb(%s,%s)-128)*%s'"
-                             ":cr='128+(cr(%s,%s)-128)*%s'",
-                             sx, sy, inside, sx, sy, inside, sx, sy, inside);
-                }
-            }
-
             /* Build the transition filter string for this segment's entry effect. A comma is
                only a filter-chain separator OUTSIDE quotes — every comma below sits inside a
                single-quoted option value (lum='...', w='...', etc.), so lt()/gte()'s own
@@ -394,16 +337,11 @@ EncodeStatus avbridge_encode_timeline_export(
                 }
             }
 
-            /* Build the post-fps portion: zoom, clip_filter, and transition, all optional,
-               separated by commas only where both neighbours are non-empty. */
-            char post_fps[4096] = "";
-            if (zoom_str[0] && clip_filter[0]) {
-                snprintf(post_fps, sizeof(post_fps), "%s,%s", zoom_str, clip_filter);
-            } else if (zoom_str[0]) {
-                snprintf(post_fps, sizeof(post_fps), "%s", zoom_str);
-            } else if (clip_filter[0]) {
-                snprintf(post_fps, sizeof(post_fps), "%s", clip_filter);
-            }
+            /* Build the post-fps portion: clip_filter (which already has any scale/rotation/
+               opacity keyframe stages spliced onto its front — see
+               ClipInstance::keyframe_video_filter_chain) and transition, optional, separated by
+               a comma only where both are non-empty. */
+            const char *post_fps = clip_filter;
             char final_chain[8192] = "";
             if (post_fps[0] && transition_str[0]) {
                 snprintf(final_chain, sizeof(final_chain), "%s,%s", post_fps, transition_str);

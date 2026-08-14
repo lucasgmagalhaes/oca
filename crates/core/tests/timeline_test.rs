@@ -2,6 +2,7 @@ use avcore::timeline::{
     ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
 };
 use avcore::ClipFormatting;
+use avcore::{Keyframe, Position};
 
 fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> ClipInstance {
     ClipInstance {
@@ -36,8 +37,10 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         pixelize_intensity: 0.0,
         transition_in: TransitionType::None,
         transition_duration_secs: 0.5,
-        zoom_start: 1.0,
-        zoom_end: 1.0,
+        position_keyframes: vec![],
+        scale_keyframes: vec![],
+        rotation_keyframes: vec![],
+        opacity_keyframes: vec![],
         deflicker_enabled: false,
     }
 }
@@ -683,25 +686,64 @@ fn split_clip_at_keeps_transition_on_both_halves() {
 }
 
 #[test]
-fn new_clip_defaults_to_unity_zoom() {
+fn new_clip_defaults_to_no_keyframes() {
     let c = clip(1, 0.0, 0.0, 10.0);
-    assert_eq!((c.zoom_start, c.zoom_end), (1.0, 1.0));
-    assert!(!c.is_zoomed());
+    assert!(c.position_keyframes.is_empty());
+    assert!(c.scale_keyframes.is_empty());
+    assert!(c.rotation_keyframes.is_empty());
+    assert!(c.opacity_keyframes.is_empty());
+    assert!(!c.has_scale_keyframes());
 }
 
 #[test]
-fn split_clip_at_keeps_zoom_on_both_halves() {
+fn split_clip_at_rescales_scale_keyframes_onto_both_halves() {
+    // scale_keyframes spans the whole clip (1.0 -> 2.5); splitting at the midpoint should
+    // rescale each half's keyframes to its own 0.0..=1.0 range and insert a synthetic
+    // boundary keyframe (the interpolated value at the split point) on both halves, so the
+    // animation has no jump at the cut — replacing the old zoom_start/zoom_end behavior this
+    // is based on, which used to just copy the same two values onto both halves unscaled.
     let mut clip = clip(1, 10.0, 0.0, 20.0);
-    clip.zoom_start = 1.0;
-    clip.zoom_end = 2.5;
+    clip.scale_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 1.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 2.5,
+        },
+    ];
     let mut track = track_with(vec![clip]);
 
     let split = track.split_clip_at(20.0, 99);
 
     assert!(split);
-    for half in &track.clips {
-        assert_eq!((half.zoom_start, half.zoom_end), (1.0, 2.5));
-    }
+    assert_eq!(
+        track.clips[0].scale_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: 1.0
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: 1.75
+            },
+        ]
+    );
+    assert_eq!(
+        track.clips[1].scale_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: 1.75
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: 2.5
+            },
+        ]
+    );
 }
 
 #[test]
@@ -1001,8 +1043,28 @@ fn formatting_roundtrip_preserves_all_fields() {
     c.pixelize_intensity = 0.15;
     c.transition_in = TransitionType::Fade;
     c.transition_duration_secs = 1.0;
-    c.zoom_start = 1.2;
-    c.zoom_end = 1.8;
+    c.position_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: Position { x: 0.1, y: -0.2 },
+    }];
+    c.scale_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 1.2,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 1.8,
+        },
+    ];
+    c.rotation_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 15.0,
+    }];
+    c.opacity_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.6,
+    }];
     c.deflicker_enabled = true;
 
     let fmt = c.formatting();

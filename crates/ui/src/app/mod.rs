@@ -249,9 +249,9 @@ pub const PIXELIZE_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 /// visuais", [`avcore::timeline::ClipInstance::transition_duration_secs`]).
 pub const TRANSITION_DURATION_RANGE: std::ops::RangeInclusive<f32> = 0.1..=3.0;
 
-/// Slider bounds for the properties panel's zoom controls (Fase 4's "Efeitos visuais",
-/// [`avcore::timeline::ClipInstance::zoom_start`]/`zoom_end`).
-pub const ZOOM_RANGE: std::ops::RangeInclusive<f32> = 1.0..=3.0;
+/// Slider bounds for the properties panel's scale-keyframe controls (Fase 4's "Keyframes",
+/// [`avcore::timeline::ClipInstance::scale_keyframes`]).
+pub const SCALE_RANGE: std::ops::RangeInclusive<f32> = 1.0..=3.0;
 
 /// A message from a background render worker thread (see [`App::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely

@@ -60,18 +60,20 @@ pub struct VideoFrame {
 /// Builds a `gst::Bin` chaining the subset of `clip`'s effects GStreamer can apply live,
 /// suitable for `playbin`'s `video-filter` property — `None` if every covered effect is
 /// neutral (leaves `video-filter` unset). Stage order matches
-/// [`crate::timeline::ClipInstance::video_filter_chain`]'s, plus the Ken-Burns zoom
-/// (`zoom_start`/`zoom_end`) applied first, ahead of everything else — mirroring bridge.c,
-/// which applies it at the canvas level before the per-clip filter chain for export — for
-/// consistency with what export applies, even though the element set differs (GStreamer
-/// elements here, avfilter there) and the covered subset is narrower (no vignette — no
-/// matching element in this GStreamer install; no chroma key — only meaningful once layering
-/// exists; no gain — preview has no audio route at all yet; no glitch/transitions — animated
-/// per-frame in export via avfilter's `n` frame-count expressions with no static element
-/// equivalent GStreamer-side; shake and zoom get one each, via a pad probe, since videocrop's
-/// left/top/right/bottom properties are settable per-buffer without renegotiating caps — zoom's
-/// probe is keyed off the buffer's own PTS rather than a frame count, since preview has no
-/// fixed canvas fps to convert a frame count against the way export's `n` does).
+/// [`crate::timeline::ClipInstance::video_filter_chain`]'s, plus scale keyframes
+/// (`ClipInstance::scale_keyframes`) applied first, ahead of everything else — mirroring
+/// `ClipInstance::keyframe_video_filter_chain`, which applies it at the canvas level before the
+/// per-clip filter chain for export — for consistency with what export applies, even though the
+/// element set differs (GStreamer elements here, avfilter there) and the covered subset is
+/// narrower (no vignette — no matching element in this GStreamer install; no chroma key — only
+/// meaningful once layering exists; no gain — preview has no audio route at all yet; no
+/// glitch/transitions — animated per-frame in export via avfilter's `n` frame-count expressions
+/// with no static element equivalent GStreamer-side; rotation/position/opacity keyframes aren't
+/// wired to preview yet either, only scale is — see `keyframe` module docs; shake and scale get
+/// one each, via a pad probe, since videocrop's left/top/right/bottom properties are settable
+/// per-buffer without renegotiating caps — scale's probe is keyed off the buffer's own PTS
+/// rather than a frame count, since preview has no fixed canvas fps to convert a frame count
+/// against the way export's `N` does).
 ///
 /// `resolution`, if known (`None` for an audio-only source, which shouldn't reach here but is
 /// handled by just skipping the zoom/crop/pixelize/shake stages), is the *actual* decoded frame
@@ -79,14 +81,19 @@ pub struct VideoFrame {
 /// target sizes are plain pixel counts, and `path` may be a lower-resolution editing proxy
 /// rather than the original asset.
 // TODO: transitions (ClipInstance::transition_in / ClipSegment::transition_in — a *different*
-// concept from the zoom_start/zoom_end Ken-Burns field above: an entry animation over the
+// concept from the scale_keyframes Ken-Burns-style animation above: an entry animation over the
 // clip's first transition_duration_secs) are not yet covered by preview — the fade/slide/zoom
 // avfilter expressions are built in bridge.c's avbridge_encode_timeline_export and only affect
 // the exported file. Adding them here would require either a GStreamer element equivalent
 // (e.g. `frei0r-filter-cairoimagegraphics` for drawbox, or a custom element) or a manual
-// frame-count-driven property update — the same pad-probe technique shake/zoom use below would
+// frame-count-driven property update — the same pad-probe technique shake/scale use below would
 // work for the crop/scale-based Zoom transition variant, but Fade (alpha ramp) and Slide
 // (drawbox wipe) still need their own element equivalents.
+//
+// TODO: rotation/position/opacity keyframes aren't wired to preview yet, only scale is (see
+// crate::keyframe module docs) — each would need its own GStreamer element (videoflip/videobox
+// don't take a rotate-by-arbitrary-angle-per-frame property the way videocrop's left/top/right/
+// bottom do; a custom element or a different technique would be needed).
 fn build_video_filter_bin(
     clip: &ClipInstance,
     resolution: Option<(u32, u32)>,
@@ -94,15 +101,18 @@ fn build_video_filter_bin(
     let mut elements: Vec<gst::Element> = Vec::new();
 
     if let Some((width, height)) = resolution {
-        if (clip.zoom_start - 1.0).abs() > 1e-4 || (clip.zoom_end - 1.0).abs() > 1e-4 {
-            // Ken-Burns zoom sits before video_filter_chain's own stages in export (bridge.c
-            // applies it at the canvas level, ahead of the per-clip filter chain) — mirrored
-            // here by building it first, ahead of the user-crop stage below. Keyed off the
-            // buffer's own PTS (seconds within the *source file*, since ui's preview seeks to
-            // clip.source_in_secs + offset rather than 0) instead of a frame counter — preview
-            // has no fixed canvas fps to convert a frame count against, unlike export.
-            let zoom_start = clip.zoom_start.clamp(0.1, 20.0) as f64;
-            let zoom_end = clip.zoom_end.clamp(0.1, 20.0) as f64;
+        if clip.has_scale_keyframes() {
+            // Scale keyframes sit before video_filter_chain's own stages in export (see
+            // ClipInstance::keyframe_video_filter_chain, applied at the canvas level ahead of
+            // the per-clip filter chain) — mirrored here by building it first, ahead of the
+            // user-crop stage below. Keyed off the buffer's own PTS (seconds within the *source
+            // file*, since ui's preview seeks to clip.source_in_secs + offset rather than 0)
+            // instead of a frame counter — preview has no fixed canvas fps to convert a frame
+            // count against, unlike export. evaluate_keyframes is the same piecewise-linear
+            // interpolation export's scale_filter_expr compiles into an avfilter expression —
+            // this reuses it directly instead of duplicating the math, and naturally supports
+            // any number of keyframes (not just the old zoom_start/zoom_end two-point case).
+            let scale_keyframes = clip.scale_keyframes.clone();
             let source_in_secs = clip.source_in_secs;
             let clip_duration_secs = (clip.source_out_secs - clip.source_in_secs).max(1e-6);
 
@@ -119,8 +129,9 @@ fn build_video_filter_bin(
                     .and_then(|b| b.pts())
                     .map(|t| t.seconds_f64())
                     .unwrap_or(source_in_secs);
-                let frac = ((secs - source_in_secs) / clip_duration_secs).clamp(0.0, 1.0);
-                let zoom = zoom_start + (zoom_end - zoom_start) * frac;
+                let frac = ((secs - source_in_secs) / clip_duration_secs).clamp(0.0, 1.0) as f32;
+                let zoom = crate::keyframe::evaluate_keyframes(&scale_keyframes, frac, 1.0)
+                    .clamp(0.1, 20.0) as f64;
                 let crop_w = (width as f64 / zoom).round().max(2.0);
                 let crop_h = (height as f64 / zoom).round().max(2.0);
                 let side_w = ((width as f64 - crop_w) / 2.0).round().max(0.0) as i32;

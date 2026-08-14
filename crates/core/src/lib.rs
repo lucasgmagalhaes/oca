@@ -1,15 +1,17 @@
 //! `core` — the UI-agnostic engine crate for oca.
 //!
 //! Holds the project/timeline/media data model (see [`project`], [`timeline`], [`media`],
-//! [`export`]), the `ffprobe`/`ffmpeg` wrappers that populate that model from real files
-//! ([`probe`], [`loudness`]), lightweight editing proxies ([`proxy`]), the normalized-export
-//! renderer ([`render`]), a GStreamer-based playback pipeline ([`preview`]), and `.ocproj`
-//! save/load — gzip-compressed MessagePack ([`persistence`]).
+//! [`export`]), the general keyframe-animation system ([`keyframe`]), the `ffprobe`/`ffmpeg`
+//! wrappers that populate that model from real files ([`probe`], [`loudness`]), lightweight
+//! editing proxies ([`proxy`]), the normalized-export renderer ([`render`]), a GStreamer-based
+//! playback pipeline ([`preview`]), and `.ocproj` save/load — gzip-compressed MessagePack
+//! ([`persistence`]).
 //!
 //! Nothing in this crate depends on `egui` or any GUI toolkit — `ui` is the only
 //! consumer, and it owns all presentation/formatting concerns (see its `i18n` module).
 
 pub mod export;
+pub mod keyframe;
 pub mod loudness;
 pub mod media;
 pub mod model_download;
@@ -26,6 +28,7 @@ pub mod waveform;
 
 pub use avbridge::{Canvas, ClipSegment, GpuEncoderPreference, TextSegment};
 pub use export::{ExportJob, ExportJobStatus};
+pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
 pub use model_download::{

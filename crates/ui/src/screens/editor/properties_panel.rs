@@ -113,7 +113,13 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let mut pixelize_intensity = clip.pixelize_intensity;
                     let mut transition_in = clip.transition_in;
                     let mut transition_duration_secs = clip.transition_duration_secs;
-                    let (mut zoom_start, mut zoom_end) = (clip.zoom_start, clip.zoom_end);
+                    // Cloned out up front (like every other field above) rather than read from
+                    // `clip` later, so this immutable borrow of `app` doesn't need to stay alive
+                    // across the `app.set_selected_clip_*` mutable calls further down.
+                    let position_keyframes = clip.position_keyframes.clone();
+                    let scale_keyframes = clip.scale_keyframes.clone();
+                    let rotation_keyframes = clip.rotation_keyframes.clone();
+                    let opacity_keyframes = clip.opacity_keyframes.clone();
                     if components::property_section(
                         ui,
                         Text::PropGain.tr(locale),
@@ -478,32 +484,190 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                             );
                         }
 
+                        let mut new_position_keyframes = None;
                         if components::property_section(
                             ui,
-                            Text::PropZoom.tr(locale),
-                            Text::ZoomExportNote.tr(locale),
+                            Text::PropPositionKeyframes.tr(locale),
+                            Text::PositionExportNote.tr(locale),
                             |ui| {
-                                let mut changed = ui
-                                    .add(
-                                        egui::Slider::new(&mut zoom_start, crate::app::ZOOM_RANGE)
-                                            .text(Text::PropZoomStart.tr(locale)),
-                                    )
-                                    .changed();
-                                changed |= ui
-                                    .add(
-                                        egui::Slider::new(&mut zoom_end, crate::app::ZOOM_RANGE)
-                                            .text(Text::PropZoomEnd.tr(locale)),
-                                    )
-                                    .changed();
-                                changed
+                                new_position_keyframes =
+                                    position_keyframe_editor(ui, &position_keyframes, locale);
+                                new_position_keyframes.is_some()
                             },
                         ) {
-                            app.set_selected_clip_zoom(zoom_start, zoom_end);
+                            if let Some(kfs) = new_position_keyframes {
+                                app.set_selected_clip_position_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_scale_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropScaleKeyframes.tr(locale),
+                            Text::ScaleExportNote.tr(locale),
+                            |ui| {
+                                new_scale_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &scale_keyframes,
+                                    crate::app::SCALE_RANGE,
+                                    1.0,
+                                    locale,
+                                );
+                                new_scale_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_scale_keyframes {
+                                app.set_selected_clip_scale_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_rotation_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropRotationKeyframes.tr(locale),
+                            Text::RotationExportNote.tr(locale),
+                            |ui| {
+                                new_rotation_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &rotation_keyframes,
+                                    -180.0..=180.0,
+                                    0.0,
+                                    locale,
+                                );
+                                new_rotation_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_rotation_keyframes {
+                                app.set_selected_clip_rotation_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_opacity_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropOpacityKeyframes.tr(locale),
+                            Text::OpacityExportNote.tr(locale),
+                            |ui| {
+                                new_opacity_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &opacity_keyframes,
+                                    0.0..=1.0,
+                                    1.0,
+                                    locale,
+                                );
+                                new_opacity_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_opacity_keyframes {
+                                app.set_selected_clip_opacity_keyframes(kfs);
+                            }
                         }
                     }
                 }
             });
         });
+}
+
+/// Renders an editable list of `(time_fraction, value)` keyframe rows plus an "add at 1.0"
+/// button and a per-row delete button — the shared UI shape for scale/rotation/opacity
+/// keyframes (position needs its own two-value-per-row variant, see
+/// [`position_keyframe_editor`]). Returns `Some(new_list)` if the user added, removed, or
+/// edited a row this frame, `None` otherwise — the caller only calls the corresponding
+/// `app.set_selected_clip_*_keyframes` setter when this is `Some`, matching every other
+/// property section's "only write back on change" convention.
+fn f32_keyframe_editor(
+    ui: &mut egui::Ui,
+    keyframes: &[avcore::Keyframe<f32>],
+    value_range: std::ops::RangeInclusive<f32>,
+    default_value: f32,
+    locale: crate::i18n::Locale,
+) -> Option<Vec<avcore::Keyframe<f32>>> {
+    let mut list = keyframes.to_vec();
+    let mut changed = false;
+    let mut remove_index = None;
+    for (i, kf) in list.iter_mut().enumerate() {
+        ui.horizontal(|ui| {
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut kf.time_fraction, 0.0..=1.0)
+                        .text(Text::KeyframeTime.tr(locale)),
+                )
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut kf.value, value_range.clone()))
+                .changed();
+            if ui.small_button("🗑").clicked() {
+                remove_index = Some(i);
+            }
+        });
+    }
+    if let Some(i) = remove_index {
+        list.remove(i);
+        changed = true;
+    }
+    if ui.button(Text::AddKeyframe.tr(locale)).clicked() {
+        list.push(avcore::Keyframe {
+            time_fraction: 1.0,
+            value: default_value,
+        });
+        changed = true;
+    }
+    if changed {
+        Some(list)
+    } else {
+        None
+    }
+}
+
+/// Position-keyframe counterpart of [`f32_keyframe_editor`] — each row edits `time_fraction`
+/// plus both `x`/`y` components of the same [`avcore::Position`].
+fn position_keyframe_editor(
+    ui: &mut egui::Ui,
+    keyframes: &[avcore::Keyframe<avcore::Position>],
+    locale: crate::i18n::Locale,
+) -> Option<Vec<avcore::Keyframe<avcore::Position>>> {
+    let mut list = keyframes.to_vec();
+    let mut changed = false;
+    let mut remove_index = None;
+    for (i, kf) in list.iter_mut().enumerate() {
+        ui.horizontal(|ui| {
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut kf.time_fraction, 0.0..=1.0)
+                        .text(Text::KeyframeTime.tr(locale)),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut kf.value.x, -1.0..=1.0).text(Text::KeyframeX.tr(locale)),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut kf.value.y, -1.0..=1.0).text(Text::KeyframeY.tr(locale)),
+                )
+                .changed();
+            if ui.small_button("🗑").clicked() {
+                remove_index = Some(i);
+            }
+        });
+    }
+    if let Some(i) = remove_index {
+        list.remove(i);
+        changed = true;
+    }
+    if ui.button(Text::AddKeyframe.tr(locale)).clicked() {
+        list.push(avcore::Keyframe {
+            time_fraction: 1.0,
+            value: avcore::Position { x: 0.0, y: 0.0 },
+        });
+        changed = true;
+    }
+    if changed {
+        Some(list)
+    } else {
+        None
+    }
 }
 
 fn mask_shape_label(shape: avcore::timeline::MaskShape, locale: crate::i18n::Locale) -> String {

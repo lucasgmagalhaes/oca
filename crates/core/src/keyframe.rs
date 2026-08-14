@@ -1,0 +1,379 @@
+//! A general keyframe system: position, scale, rotation, and opacity can each be animated by
+//! a list of time-anchored points on a [`crate::timeline::ClipInstance`], with the value
+//! interpolated automatically between them — per `features/request.md`'s Fase 4 "Keyframes"
+//! spec. Replaces the old `ClipInstance::zoom_start`/`zoom_end` two-endpoint special case (its
+//! own doc comment already called itself "not a general keyframe system, that's future work") —
+//! a 2-point [`Keyframe<f32>`] list on [`crate::timeline::ClipInstance::scale_keyframes`]
+//! reproduces the same Ken-Burns behavior as a degenerate case.
+//!
+//! This pass wires keyframes into **export** only (single-track and multi-track/overlay avfilter
+//! compilation below) — live GStreamer preview isn't animated yet, the same "export first,
+//! preview wired later" shape several other effects in this codebase already have.
+//! Position/opacity only have a visible effect on an **overlay-track** clip, not a
+//! single/background track — the background track's final `format=yuv420p` conform drops the
+//! alpha plane they need, the same pre-existing caveat `mask_shape`/`chroma_key` already have.
+
+use serde::{Deserialize, Serialize};
+
+/// A single time-value point in a keyframed property animation. `time_fraction` is relative to
+/// the clip's own current playable duration (`0.0` = clip start, `1.0` = clip end), not
+/// absolute source or timeline time — so a keyframe stays meaningful (e.g. "80% through this
+/// clip") across trim edits without needing to be rescaled by every edit that changes the
+/// clip's boundaries. Matches the normalized `0.0..=1.0` convention already used elsewhere in
+/// this codebase (`ClipInstance::crop_x`/`crop_y`, `TextClip::pos_x`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Keyframe<T> {
+    pub time_fraction: f32,
+    pub value: T,
+}
+
+/// A normalized (fraction of canvas width/height) 2D offset, for position keyframes — named
+/// fields rather than a tuple so `.ocproj`'s MessagePack struct-map encoding keeps them
+/// self-describing, consistent with every other field in this codebase.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Position {
+    pub x: f32,
+    pub y: f32,
+}
+
+/// Linear interpolation between two values of the same type, at `t` (`0.0..=1.0`).
+pub trait Lerp {
+    fn lerp(self, other: Self, t: f32) -> Self;
+}
+
+impl Lerp for f32 {
+    fn lerp(self, other: f32, t: f32) -> f32 {
+        self + (other - self) * t
+    }
+}
+
+impl Lerp for Position {
+    fn lerp(self, other: Position, t: f32) -> Position {
+        Position {
+            x: self.x.lerp(other.x, t),
+            y: self.y.lerp(other.y, t),
+        }
+    }
+}
+
+/// Evaluates a piecewise-linear keyframe animation at `time_fraction` (`0.0..=1.0`): 0
+/// keyframes -> `default`; 1 keyframe -> that constant value regardless of its own
+/// `time_fraction`; 2+ -> linear interpolation between the two keyframes surrounding
+/// `time_fraction`, holding the nearest endpoint's value outside the keyframed range. Assumes
+/// `keyframes` is sorted ascending by `time_fraction` — callers/mutators are responsible for
+/// that, the same way this codebase keeps invariants at the mutation site rather than
+/// re-checking on every read.
+pub fn evaluate_keyframes<T: Lerp + Copy>(
+    keyframes: &[Keyframe<T>],
+    time_fraction: f32,
+    default: T,
+) -> T {
+    match keyframes.len() {
+        0 => default,
+        1 => keyframes[0].value,
+        _ => {
+            let last = keyframes.len() - 1;
+            if time_fraction <= keyframes[0].time_fraction {
+                return keyframes[0].value;
+            }
+            if time_fraction >= keyframes[last].time_fraction {
+                return keyframes[last].value;
+            }
+            for w in keyframes.windows(2) {
+                let (a, b) = (w[0], w[1]);
+                if time_fraction >= a.time_fraction && time_fraction <= b.time_fraction {
+                    let span = b.time_fraction - a.time_fraction;
+                    let t = if span > 1e-6 {
+                        (time_fraction - a.time_fraction) / span
+                    } else {
+                        0.0
+                    };
+                    return a.value.lerp(b.value, t);
+                }
+            }
+            keyframes[last].value
+        }
+    }
+}
+
+/// Splits a keyframe list at `frac` (relative to the *original* clip's duration) into two
+/// lists, each rescaled to `0.0..=1.0` over its own half's new duration, with a synthetic point
+/// inserted at the split boundary on both halves (interpolated via [`evaluate_keyframes`]) so
+/// the animation has no visual jump right at the cut. Fixes a real gap the old
+/// `zoom_start`/`zoom_end` split behavior had (`Track::split_clip_at` used to copy the same
+/// `zoom_start`/`zoom_end` onto both halves unscaled) — this does it properly instead of
+/// carrying that bug forward into the new fields. Returns `(vec![], vec![])` if `keyframes` is
+/// empty (nothing to split).
+pub fn split_keyframes_at<T: Lerp + Copy>(
+    keyframes: &[Keyframe<T>],
+    frac: f32,
+    default: T,
+) -> (Vec<Keyframe<T>>, Vec<Keyframe<T>>) {
+    if keyframes.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    let frac = frac.clamp(0.0, 1.0);
+    let boundary_value = evaluate_keyframes(keyframes, frac, default);
+
+    let mut first: Vec<Keyframe<T>> = keyframes
+        .iter()
+        .filter(|k| k.time_fraction < frac)
+        .map(|k| Keyframe {
+            time_fraction: if frac > 1e-6 {
+                (k.time_fraction / frac).min(1.0)
+            } else {
+                0.0
+            },
+            value: k.value,
+        })
+        .collect();
+    first.push(Keyframe {
+        time_fraction: 1.0,
+        value: boundary_value,
+    });
+
+    let remaining_span = 1.0 - frac;
+    let mut second: Vec<Keyframe<T>> = keyframes
+        .iter()
+        .filter(|k| k.time_fraction > frac)
+        .map(|k| Keyframe {
+            time_fraction: if remaining_span > 1e-6 {
+                ((k.time_fraction - frac) / remaining_span).clamp(0.0, 1.0)
+            } else {
+                1.0
+            },
+            value: k.value,
+        })
+        .collect();
+    second.insert(
+        0,
+        Keyframe {
+            time_fraction: 0.0,
+            value: boundary_value,
+        },
+    );
+
+    (first, second)
+}
+
+/// Builds a nested `if(between(<var>,p0,p1), v0+slope*(<var>-p0), ...)` expression evaluating a
+/// piecewise-linear ramp across `sorted` keyframes' (already-`xform`-ed) values, along an axis
+/// measured in `<var>`'s units (frame count for `N`, seconds for `t`) from `0` to `axis_length`.
+/// `sorted` must have at least 2 entries and be sorted ascending by `time_fraction`, and must
+/// not be empty — callers are expected to have already handled the 0/1-keyframe fast paths.
+fn piecewise_expr(
+    sorted: &[Keyframe<f32>],
+    axis_length: f64,
+    var: &str,
+    xform: impl Fn(f32) -> f32,
+) -> String {
+    let point_at = |frac: f32| (frac.clamp(0.0, 1.0) as f64 * axis_length) as f32;
+    let last_value = xform(sorted[sorted.len() - 1].value);
+    let mut expr = format!("{last_value:.7}");
+    for w in sorted.windows(2).rev() {
+        let (a, b) = (w[0], w[1]);
+        let pa = point_at(a.time_fraction);
+        let pb = point_at(b.time_fraction);
+        let span = (pb - pa).max(1e-6);
+        let av = xform(a.value);
+        let slope = (xform(b.value) - av) / span;
+        expr = format!(
+            "if(between({var},{pa:.6},{pb:.6}),({av:.7}+{slope:.9}*({var}-{pa:.6})),{expr})"
+        );
+    }
+    let first_point = point_at(sorted[0].time_fraction);
+    let first_value = xform(sorted[0].value);
+    format!("if(lt({var},{first_point:.6}),{first_value:.7},{expr})")
+}
+
+/// Sorts a copy of `keyframes` by `time_fraction`, and reports whether every (transformed)
+/// value is close enough to `default_xformed` that there's nothing worth animating.
+fn sorted_and_all_default(
+    keyframes: &[Keyframe<f32>],
+    xform: impl Fn(f32) -> f32,
+    default_xformed: f32,
+) -> (Vec<Keyframe<f32>>, bool) {
+    let mut sorted = keyframes.to_vec();
+    sorted.sort_by(|a, b| a.time_fraction.total_cmp(&b.time_fraction));
+    let all_default = sorted
+        .iter()
+        .all(|k| (xform(k.value) - default_xformed).abs() <= 1e-4);
+    (sorted, all_default)
+}
+
+const KENBURNS_MIN_SCALE: f32 = 0.1;
+const KENBURNS_MAX_SCALE: f32 = 20.0;
+
+fn clamp_scale(v: f32) -> f32 {
+    v.clamp(KENBURNS_MIN_SCALE, KENBURNS_MAX_SCALE)
+}
+
+/// Builds the scale-keyframe avfilter fragment — a `geq` per-pixel inverse-sample, generalizing
+/// `zoom_start`/`zoom_end`'s old `A + B*N` linear-ramp math (chosen over `crop`/`scale` with
+/// `eval=frame` specifically because that combination corrupted the heap in a real export, see
+/// CLAUDE.md) to piecewise-linear interpolation across N keyframes. Returns `None` if there's
+/// nothing to animate (0 keyframes, or every keyframe at unity scale). A single non-unity
+/// keyframe produces a plain static `crop`+`scale` pair (no frame variable needed), matching
+/// `zoom_start == zoom_end`'s old fast path exactly.
+pub fn scale_filter_expr(
+    keyframes: &[Keyframe<f32>],
+    fps_num: u32,
+    fps_den: u32,
+    timeline_duration_secs: f64,
+) -> Option<String> {
+    if keyframes.is_empty() {
+        return None;
+    }
+    if keyframes.len() == 1 {
+        let a = clamp_scale(keyframes[0].value);
+        if (a - 1.0).abs() <= 1e-4 {
+            return None;
+        }
+        return Some(format!(
+            "crop=iw/{a:.5}:ih/{a:.5}:iw*(1-1/{a:.5})/2:ih*(1-1/{a:.5})/2,scale=iw*{a:.5}:ih*{a:.5}"
+        ));
+    }
+
+    let (sorted, all_default) = sorted_and_all_default(keyframes, clamp_scale, 1.0);
+    if all_default {
+        return None;
+    }
+
+    let total_frames = (timeline_duration_secs * fps_num as f64 / fps_den.max(1) as f64).max(1.0);
+    let n_last = (total_frames - 1.0).max(1.0);
+
+    let z = piecewise_expr(&sorted, n_last, "N", clamp_scale);
+    let sx = format!("((X-W/2)/({z})+W/2)");
+    let sy = format!("((Y-H/2)/({z})+H/2)");
+    let inside = format!("(1-lt({sx},0))*lt({sx},W)*(1-lt({sy},0))*lt({sy},H)");
+    Some(format!(
+        "geq=lum='p({sx},{sy})*{inside}':cb='128+(cb({sx},{sy})-128)*{inside}':cr='128+(cr({sx},{sy})-128)*{inside}'"
+    ))
+}
+
+/// Builds the rotation-keyframe angle expression, in radians (as `rotate`'s `angle` option
+/// expects — confirmed via `ffmpeg -h filter=rotate` on the pinned FFmpeg build), keyed off `t`
+/// (elapsed seconds) since `rotate` is evaluated through FFmpeg's general per-option expression
+/// framework, not `geq`'s per-pixel one. Returns `None` if there's nothing to animate (0
+/// keyframes, or every keyframe at 0 degrees).
+pub fn rotation_filter_angle_expr(
+    keyframes: &[Keyframe<f32>],
+    timeline_duration_secs: f64,
+) -> Option<String> {
+    if keyframes.is_empty() {
+        return None;
+    }
+    let to_radians = |deg: f32| deg.to_radians();
+    if keyframes.len() == 1 {
+        let rad = to_radians(keyframes[0].value);
+        return if rad.abs() <= 1e-4 {
+            None
+        } else {
+            Some(format!("{rad:.7}"))
+        };
+    }
+    let (sorted, all_default) = sorted_and_all_default(keyframes, to_radians, 0.0);
+    if all_default {
+        return None;
+    }
+    Some(piecewise_expr(
+        &sorted,
+        timeline_duration_secs,
+        "t",
+        to_radians,
+    ))
+}
+
+/// Builds the opacity-keyframe alpha expression (a bare `0.0..=1.0` ramp, *not* yet multiplied
+/// by any incoming `alpha(X,Y)` — the caller composes that, matching `mask_shape`'s existing
+/// alpha-composition convention in `ClipInstance::video_filter_chain`), keyed off `N` like
+/// scale since this is meant to sit inside the same `geq` stage. Returns `None` if there's
+/// nothing to animate (0 keyframes, or every keyframe fully opaque).
+pub fn opacity_alpha_ramp_expr(
+    keyframes: &[Keyframe<f32>],
+    fps_num: u32,
+    fps_den: u32,
+    timeline_duration_secs: f64,
+) -> Option<String> {
+    if keyframes.is_empty() {
+        return None;
+    }
+    let clamp_opacity = |v: f32| v.clamp(0.0, 1.0);
+    if keyframes.len() == 1 {
+        let a = clamp_opacity(keyframes[0].value);
+        return if (a - 1.0).abs() <= 1e-4 {
+            None
+        } else {
+            Some(format!("{a:.7}"))
+        };
+    }
+    let (sorted, all_default) = sorted_and_all_default(keyframes, clamp_opacity, 1.0);
+    if all_default {
+        return None;
+    }
+    let total_frames = (timeline_duration_secs * fps_num as f64 / fps_den.max(1) as f64).max(1.0);
+    let n_last = (total_frames - 1.0).max(1.0);
+    Some(piecewise_expr(&sorted, n_last, "N", clamp_opacity))
+}
+
+/// Builds the `overlay` filter's `x`/`y` expression fragments for this clip's position
+/// keyframes, in canvas-fraction units multiplied by `overlay`'s own `main_w`/`main_h`
+/// variables (its documented, standard names for the compositing base's width/height) so no
+/// canvas size needs to be threaded in here — keyed off `t` like rotation. Returns `None`
+/// (meaning "no offset", `overlay`'s own `x=0:y=0` default) if there's nothing to animate.
+/// Only meaningful on an overlay-track clip (see module docs) — a single/background track has
+/// no compositing stage to apply this to.
+pub fn position_overlay_xy_expr(
+    keyframes: &[Keyframe<Position>],
+    timeline_duration_secs: f64,
+) -> Option<(String, String)> {
+    if keyframes.is_empty() {
+        return None;
+    }
+    let xs: Vec<Keyframe<f32>> = keyframes
+        .iter()
+        .map(|k| Keyframe {
+            time_fraction: k.time_fraction,
+            value: k.value.x,
+        })
+        .collect();
+    let ys: Vec<Keyframe<f32>> = keyframes
+        .iter()
+        .map(|k| Keyframe {
+            time_fraction: k.time_fraction,
+            value: k.value.y,
+        })
+        .collect();
+    let identity = |v: f32| v;
+    let build_axis = |axis: &[Keyframe<f32>], var: &str| -> Option<String> {
+        if axis.len() == 1 {
+            let v = axis[0].value;
+            return if v.abs() <= 1e-4 {
+                None
+            } else {
+                Some(format!("({v:.7})*{var}"))
+            };
+        }
+        let (sorted, all_default) = sorted_and_all_default(axis, identity, 0.0);
+        if all_default {
+            return None;
+        }
+        Some(format!(
+            "({})*{var}",
+            piecewise_expr(&sorted, timeline_duration_secs, "t", identity)
+        ))
+    };
+    let x_expr = build_axis(&xs, "main_w");
+    let y_expr = build_axis(&ys, "main_h");
+    if x_expr.is_none() && y_expr.is_none() {
+        return None;
+    }
+    Some((
+        x_expr.unwrap_or_else(|| "0".to_string()),
+        y_expr.unwrap_or_else(|| "0".to_string()),
+    ))
+}
+
+#[cfg(test)]
+#[path = "keyframe/keyframe_test.rs"]
+mod tests;

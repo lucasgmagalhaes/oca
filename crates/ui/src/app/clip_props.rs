@@ -1,10 +1,11 @@
 use avcore::timeline::{ColorFilter, MaskShape, TransitionType};
+use avcore::{Keyframe, Position};
 
 use super::{
     App, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE, CONTRAST_RANGE,
     CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, MASK_CORNER_RADIUS_RANGE,
-    PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SHAKE_INTENSITY_RANGE, SHARPEN_RANGE,
-    SPEED_FACTOR_RANGE, TRANSITION_DURATION_RANGE, VIGNETTE_INTENSITY_RANGE, ZOOM_RANGE,
+    PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SCALE_RANGE, SHAKE_INTENSITY_RANGE, SHARPEN_RANGE,
+    SPEED_FACTOR_RANGE, TRANSITION_DURATION_RANGE, VIGNETTE_INTENSITY_RANGE,
 };
 
 impl App {
@@ -189,16 +190,41 @@ impl App {
         });
     }
 
-    /// Sets `selected_clip_id`'s zoom ([`avcore::timeline::ClipInstance::zoom_start`]/
-    /// `zoom_end`), each independently clamped to [`ZOOM_RANGE`] — what dragging the properties
-    /// panel's zoom sliders does. A no-op if nothing is selected.
-    pub fn set_selected_clip_zoom(&mut self, zoom_start: f32, zoom_end: f32) {
-        let zoom_start = zoom_start.clamp(*ZOOM_RANGE.start(), *ZOOM_RANGE.end());
-        let zoom_end = zoom_end.clamp(*ZOOM_RANGE.start(), *ZOOM_RANGE.end());
-        self.with_selected_clip_mut(|clip| {
-            clip.zoom_start = zoom_start;
-            clip.zoom_end = zoom_end;
-        });
+    /// Replaces `selected_clip_id`'s position keyframes
+    /// ([`avcore::timeline::ClipInstance::position_keyframes`]) wholesale — the properties
+    /// panel clones the current list out, lets the user add/remove/edit rows locally, and
+    /// calls this once with the edited list on any change (the same whole-list writeback shape
+    /// `TextClip` editing already uses). A no-op if nothing is selected.
+    pub fn set_selected_clip_position_keyframes(&mut self, keyframes: Vec<Keyframe<Position>>) {
+        self.with_selected_clip_mut(|clip| clip.position_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s scale keyframes
+    /// ([`avcore::timeline::ClipInstance::scale_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_position_keyframes`]. Values are clamped to [`SCALE_RANGE`],
+    /// matching the old `zoom_start`/`zoom_end` sliders this field replaces.
+    pub fn set_selected_clip_scale_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf.value.clamp(*SCALE_RANGE.start(), *SCALE_RANGE.end());
+        }
+        self.with_selected_clip_mut(|clip| clip.scale_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s rotation keyframes
+    /// ([`avcore::timeline::ClipInstance::rotation_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_position_keyframes`].
+    pub fn set_selected_clip_rotation_keyframes(&mut self, keyframes: Vec<Keyframe<f32>>) {
+        self.with_selected_clip_mut(|clip| clip.rotation_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s opacity keyframes
+    /// ([`avcore::timeline::ClipInstance::opacity_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_position_keyframes`]. Values are clamped to `0.0..=1.0`.
+    pub fn set_selected_clip_opacity_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf.value.clamp(0.0, 1.0);
+        }
+        self.with_selected_clip_mut(|clip| clip.opacity_keyframes = keyframes);
     }
 
     /// Sets `selected_clip_id`'s brightness/contrast/saturation

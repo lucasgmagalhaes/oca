@@ -15,6 +15,7 @@ use avcore::timeline::{
 };
 use avcore::GpuEncoderPreference;
 use avcore::{probe_media, MediaAsset};
+use avcore::{Keyframe, Position};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -61,8 +62,10 @@ fn clip(
         pixelize_intensity: 0.0,
         transition_in: TransitionType::None,
         transition_duration_secs: 0.5,
-        zoom_start: 1.0,
-        zoom_end: 1.0,
+        position_keyframes: vec![],
+        scale_keyframes: vec![],
+        rotation_keyframes: vec![],
+        opacity_keyframes: vec![],
         deflicker_enabled: false,
     }
 }
@@ -185,12 +188,20 @@ fn overlay_track_zoom_transition_composites_without_error() {
 }
 
 #[test]
-fn overlay_track_animated_ken_burns_zoom_composites_without_error() {
+fn overlay_track_animated_scale_keyframes_composites_without_error() {
     let asset = video_asset(1);
     let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
     let mut c2 = clip(2, 1, 0.0, 0.0, 0.5);
-    c2.zoom_start = 1.0;
-    c2.zoom_end = 1.5;
+    c2.scale_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 1.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 1.5,
+        },
+    ];
     let overlay = track(2, "V2", vec![c2]);
     let sequence = sequence_with(vec![background, overlay]);
 
@@ -198,6 +209,87 @@ fn overlay_track_animated_ken_burns_zoom_composites_without_error() {
         &sequence,
         std::slice::from_ref(&asset),
         "avcore_test_multi_overlay_ken_burns.mp4",
+    );
+
+    assert_eq!(outcome, RenderOutcome::Completed);
+}
+
+#[test]
+fn overlay_track_animated_position_keyframes_composites_without_error() {
+    let asset = video_asset(1);
+    let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
+    let mut c2 = clip(2, 1, 0.0, 0.0, 0.5);
+    c2.position_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: Position { x: 0.0, y: 0.0 },
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: Position { x: 0.25, y: 0.1 },
+        },
+    ];
+    let overlay = track(2, "V2", vec![c2]);
+    let sequence = sequence_with(vec![background, overlay]);
+
+    let outcome = render_multi(
+        &sequence,
+        std::slice::from_ref(&asset),
+        "avcore_test_multi_overlay_position.mp4",
+    );
+
+    assert_eq!(outcome, RenderOutcome::Completed);
+}
+
+#[test]
+fn overlay_track_animated_opacity_keyframes_composites_without_error() {
+    let asset = video_asset(1);
+    let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
+    let mut c2 = clip(2, 1, 0.0, 0.0, 0.5);
+    c2.opacity_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.2,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 1.0,
+        },
+    ];
+    let overlay = track(2, "V2", vec![c2]);
+    let sequence = sequence_with(vec![background, overlay]);
+
+    let outcome = render_multi(
+        &sequence,
+        std::slice::from_ref(&asset),
+        "avcore_test_multi_overlay_opacity.mp4",
+    );
+
+    assert_eq!(outcome, RenderOutcome::Completed);
+}
+
+#[test]
+fn overlay_track_animated_rotation_keyframes_composites_without_error() {
+    let asset = video_asset(1);
+    let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
+    let mut c2 = clip(2, 1, 0.0, 0.0, 0.5);
+    c2.rotation_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 45.0,
+        },
+    ];
+    let overlay = track(2, "V2", vec![c2]);
+    let sequence = sequence_with(vec![background, overlay]);
+
+    let outcome = render_multi(
+        &sequence,
+        std::slice::from_ref(&asset),
+        "avcore_test_multi_overlay_rotation.mp4",
     );
 
     assert_eq!(outcome, RenderOutcome::Completed);

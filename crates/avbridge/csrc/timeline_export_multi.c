@@ -30,66 +30,6 @@
    implementation; additional tracks beyond index 1 are silently ignored.
    ========================================================================= */
 
-void build_kenburns_zoom(const ClipSegment *seg, int fps_num, int fps_den,
-                              char *buf, size_t cap) {
-    buf[0] = '\0';
-    float zs = seg->zoom_start > 0.0f ? seg->zoom_start : 1.0f;
-    float ze = seg->zoom_end > 0.0f ? seg->zoom_end : 1.0f;
-    if (zs < 0.1f) zs = 0.1f; if (zs > 20.0f) zs = 20.0f;
-    if (ze < 0.1f) ze = 0.1f; if (ze > 20.0f) ze = 20.0f;
-    if (fabsf(zs - 1.0f) <= 1e-4f && fabsf(ze - 1.0f) <= 1e-4f) {
-        return;
-    }
-
-    AVRational canvas_fps = {fps_num, fps_den};
-    double source_dur = seg->source_out_secs - seg->source_in_secs;
-    double speed = seg->speed_factor > 0.0f ? seg->speed_factor : 1.0f;
-    double timeline_dur = source_dur / speed;
-    double total_frames = timeline_dur * (double)canvas_fps.num / (double)canvas_fps.den;
-    if (total_frames < 1.0) total_frames = 1.0;
-    double N = total_frames - 1.0;
-    if (N < 1.0) N = 1.0;
-    double A = zs, B = ((double)ze - (double)zs) / N;
-
-    if (fabs(B) < 1e-9) {
-        /* Static zoom (zoom_start == zoom_end): a plain crop+scale, no frame variable needed,
-           so none of the animated case's concerns below apply. */
-        snprintf(buf, cap,
-                 "crop=iw/%.5f:ih/%.5f:iw*(1-1/%.5f)/2:ih*(1-1/%.5f)/2,scale=iw*%.5f:ih*%.5f",
-                 A, A, A, A, A, A);
-        return;
-    }
-
-    /* Animated Ken-Burns zoom. Originally `crop=iw/(A+B*n):...,scale=...` — neither `crop` nor
-       `scale` here set `eval=frame`, and this FFmpeg build flatly rejects a frame variable
-       ("n") in a filter's default "init" eval mode ("Expressions with frame variables 'n',
-       't', 'pos' are not valid in init eval_mode") — so any export actually using a
-       non-degenerate zoom (B != 0) failed outright with ENCODE_ERR_FILTER_GRAPH. No
-       existing test caught this: every zoom-bearing fixture in this codebase happens to use
-       zoom_start == zoom_end (the B == 0 branch above). Reimplemented as a geq inverse-sample,
-       the same technique the Slide/Zoom transition cases use (see
-       avbridge_encode_timeline_export's per-segment transition block) and for the same reason:
-       letting crop/scale actually renegotiate output size per frame is what reliably corrupted
-       the heap there, not just a syntax problem. z is the same A+B*N zoom factor the old
-       crop/scale pair used; (sx,sy) is (X,Y) mapped back through an inverse zoom around the
-       frame center by z. The "inside" clamp only matters for a downward zoom (z<1, "zoom out
-       past 1.0") which the original crop=iw/z formula couldn't represent either (crop can't
-       grow past its input size) — here it just shows black padding instead of undefined
-       behavior; it's a no-op multiplier (always 1) for the far more common z>=1 "push in" case
-       this feature is meant for. */
-    char z[220], sx[280], sy[280], inside[820];
-    snprintf(z, sizeof(z), "(%.7f+%.9f*N)", A, B);
-    snprintf(sx, sizeof(sx), "((X-W/2)/%s+W/2)", z);
-    snprintf(sy, sizeof(sy), "((Y-H/2)/%s+H/2)", z);
-    snprintf(inside, sizeof(inside), "(1-lt(%s,0))*lt(%s,W)*(1-lt(%s,0))*lt(%s,H)",
-             sx, sx, sy, sy);
-    snprintf(buf, cap,
-             "geq=lum='p(%s,%s)*%s'"
-             ":cb='128+(cb(%s,%s)-128)*%s'"
-             ":cr='128+(cr(%s,%s)-128)*%s'",
-             sx, sy, inside, sx, sy, inside, sx, sy, inside);
-}
-
 /* Build the complete single-track video filter string for `seg` — identical logic to
    the inline filter-string block inside avbridge_encode_timeline_export, extracted here
    so the multi-track function can reuse it for single-track fallback intervals. */
@@ -101,9 +41,6 @@ static void build_vfilter_descr(const ClipSegment *seg,
     char setpts[48] = "";
     if (fabsf(seg->speed_factor - 1.0f) > 1e-4f && seg->speed_factor > 0.0f)
         snprintf(setpts, sizeof(setpts), "setpts=PTS/%.6f,", (double)seg->speed_factor);
-
-    char zoom[2048];
-    build_kenburns_zoom(seg, fps_num, fps_den, zoom, sizeof(zoom));
 
     char trans[2048] = "";
     if (seg->transition_in != 0) {
@@ -139,10 +76,7 @@ static void build_vfilter_descr(const ClipSegment *seg,
         }
     }
 
-    char post[4096] = "";
-    if (zoom[0] && cf[0])   snprintf(post, sizeof(post), "%s,%s", zoom, cf);
-    else if (zoom[0])        snprintf(post, sizeof(post), "%s", zoom);
-    else if (cf[0])          snprintf(post, sizeof(post), "%s", cf);
+    const char *post = cf;
     char chain[8192] = "";
     if (post[0] && trans[0]) snprintf(chain, sizeof(chain), "%s,%s", post, trans);
     else if (post[0])         snprintf(chain, sizeof(chain), "%s", post);
@@ -166,13 +100,8 @@ static void build_overlay_vfilter(const ClipSegment *seg,
     if (fabsf(seg->speed_factor - 1.0f) > 1e-4f && seg->speed_factor > 0.0f)
         snprintf(setpts, sizeof(setpts), "setpts=PTS/%.6f,", (double)seg->speed_factor);
 
-    char zoom[2048];
-    build_kenburns_zoom(seg, fps_num, fps_den, zoom, sizeof(zoom));
-
     char post[4096] = "";
-    if (zoom[0] && cf[0])   snprintf(post, sizeof(post), ",%s,%s", zoom, cf);
-    else if (zoom[0])        snprintf(post, sizeof(post), ",%s", zoom);
-    else if (cf[0])          snprintf(post, sizeof(post), ",%s", cf);
+    if (cf[0]) snprintf(post, sizeof(post), ",%s", cf);
 
     snprintf(buf, cap,
              "%sscale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,"
@@ -269,6 +198,7 @@ static int init_overlay_graph(
     AVCodecContext *vdec0, const char *f0,
     AVCodecContext *vdec1, const char *f1,
     const char *pix_fmt_name,
+    const char *pos_x_expr, const char *pos_y_expr,
     AVFilterGraph **out_graph,
     AVFilterContext **out_src0, AVFilterContext **out_src1,
     AVFilterContext **out_sink)
@@ -301,11 +231,16 @@ static int init_overlay_graph(
     if (ret < 0) goto fail;
 
     /* f0/f1 (the per-track filter strings passed in) can each run up to their own 8192-byte
-       capacity now (a RoundedRect mask combined with a Ken-Burns zoom on the same clip) —
-       generous margin over the 2x8192 + a short template that implies. */
+       capacity now (a RoundedRect mask combined with a scale-keyframe animation on the same
+       clip) — generous margin over the 2x8192 + a short template that implies. pos_x_expr/
+       pos_y_expr come from the overlaid clip's (s1's, not the background's) position keyframes
+       (crate::keyframe::position_overlay_xy_expr) — "0" (overlay's own default) when empty. */
+    const char *px = (pos_x_expr && pos_x_expr[0]) ? pos_x_expr : "0";
+    const char *py = (pos_y_expr && pos_y_expr[0]) ? pos_y_expr : "0";
     char fstr[20480];
     snprintf(fstr, sizeof(fstr),
-             "[in0]%s[v0];[in1]%s[v1];[v0][v1]overlay=0:0,format=%s[out]", f0, f1, pix_fmt_name);
+             "[in0]%s[v0];[in1]%s[v1];[v0][v1]overlay=x='%s':y='%s',format=%s[out]",
+             f0, f1, px, py, pix_fmt_name);
 
     AVFilterInOut *outs0 = avfilter_inout_alloc();
     AVFilterInOut *outs1 = avfilter_inout_alloc();
@@ -547,6 +482,7 @@ EncodeStatus avbridge_encode_timeline_export_multi(
                             build_overlay_vfilter(s1,   canvas_width, canvas_height, canvas_fps_num, canvas_fps_den, f1, sizeof(f1));
                             if (init_overlay_graph(vdec_ctx0, f0, ov1.vdec_ctx, f1,
                                                         venc_pix_fmt_name,
+                                                        s1->position_x_expr, s1->position_y_expr,
                                                         &ov_graph, &ov_src0, &ov_src1, &ov_sink) < 0) {
                                 status = ENCODE_ERR_FILTER_GRAPH; av_frame_unref(dec_frame); break;
                             }

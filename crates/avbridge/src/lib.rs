@@ -21,8 +21,8 @@ struct RawClipSegment {
     video_filter: *const c_char,
     frozen: c_int,
     speed_factor: f32,
-    zoom_start: f32,
-    zoom_end: f32,
+    position_x_expr: *const c_char,
+    position_y_expr: *const c_char,
     transition_in: c_int,
     transition_duration_secs: f32,
     /// Start position of this clip on the shared timeline in seconds. Used by
@@ -450,12 +450,14 @@ pub struct ClipSegment {
     /// conform stage (video) and an `atempo=speed` command in the shared audio
     /// filter graph. Audio is clamped to `[0.5, 100.0]` (atempo's range).
     pub speed_factor: f32,
-    /// Ken-burns zoom: linearly interpolated from `zoom_start` to `zoom_end` over the clip's
-    /// output duration. `1.0` is no zoom. Handled in `bridge.c` via an animated crop+scale
-    /// filter after the canvas fps conform step.
-    pub zoom_start: f32,
-    /// See [`ClipSegment::zoom_start`].
-    pub zoom_end: f32,
+    /// Overlay-compositor `x`/`y` position expressions (avfilter expression syntax), built in
+    /// Rust from this clip's position keyframes (`core::keyframe::position_overlay_xy_expr`).
+    /// Empty string = no offset. Only consulted by `encode_timeline_export_multi`'s overlay
+    /// path — a single/background-track clip has no compositing stage to apply this to.
+    /// Scale/rotation/opacity keyframes don't have their own fields here — they're already
+    /// folded into `video_filter`, built the same way.
+    pub position_x_expr: String,
+    pub position_y_expr: String,
     /// Transition effect at this clip's entry. `0` = None/HardCut (no effect), `1` = Fade
     /// (fade in from black), `2` = Slide (reveal from left), `3` = Zoom (scale from 50% to
     /// 100%). Handled in `bridge.c` by appending an animated avfilter expression after
@@ -549,6 +551,8 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
 
     let mut c_paths = Vec::with_capacity(segments.len());
     let mut c_filters = Vec::with_capacity(segments.len());
+    let mut c_pos_x = Vec::with_capacity(segments.len());
+    let mut c_pos_y = Vec::with_capacity(segments.len());
     for seg in segments {
         c_paths.push(
             CString::new(seg.source_path.to_string_lossy().as_bytes())
@@ -556,12 +560,18 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
         );
         c_filters
             .push(CString::new(seg.video_filter.as_bytes()).map_err(EncodeError::InvalidPath)?);
+        c_pos_x
+            .push(CString::new(seg.position_x_expr.as_bytes()).map_err(EncodeError::InvalidPath)?);
+        c_pos_y
+            .push(CString::new(seg.position_y_expr.as_bytes()).map_err(EncodeError::InvalidPath)?);
     }
     let raw_segments: Vec<RawClipSegment> = segments
         .iter()
         .zip(c_paths.iter())
         .zip(c_filters.iter())
-        .map(|((seg, path), filt)| RawClipSegment {
+        .zip(c_pos_x.iter())
+        .zip(c_pos_y.iter())
+        .map(|((((seg, path), filt), pos_x), pos_y)| RawClipSegment {
             source_path: path.as_ptr(),
             source_in_secs: seg.source_in_secs,
             source_out_secs: seg.source_out_secs,
@@ -569,8 +579,8 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
             video_filter: filt.as_ptr(),
             frozen: seg.frozen as c_int,
             speed_factor: seg.speed_factor,
-            zoom_start: seg.zoom_start,
-            zoom_end: seg.zoom_end,
+            position_x_expr: pos_x.as_ptr(),
+            position_y_expr: pos_y.as_ptr(),
             transition_in: seg.transition_in as c_int,
             transition_duration_secs: seg.transition_duration_secs,
             timeline_start_secs: seg.timeline_start_secs,
@@ -662,10 +672,14 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
     // Build CString storage and RawClipSegment vecs for each track.
     let mut per_track_paths: Vec<Vec<CString>> = Vec::with_capacity(tracks.len());
     let mut per_track_filts: Vec<Vec<CString>> = Vec::with_capacity(tracks.len());
+    let mut per_track_pos_x: Vec<Vec<CString>> = Vec::with_capacity(tracks.len());
+    let mut per_track_pos_y: Vec<Vec<CString>> = Vec::with_capacity(tracks.len());
     let mut per_track_raw: Vec<Vec<RawClipSegment>> = Vec::with_capacity(tracks.len());
     for segs in tracks {
         let mut paths = Vec::with_capacity(segs.len());
         let mut filts = Vec::with_capacity(segs.len());
+        let mut pos_xs = Vec::with_capacity(segs.len());
+        let mut pos_ys = Vec::with_capacity(segs.len());
         for seg in segs {
             paths.push(
                 CString::new(seg.source_path.to_string_lossy().as_bytes())
@@ -673,12 +687,20 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
             );
             filts
                 .push(CString::new(seg.video_filter.as_bytes()).map_err(EncodeError::InvalidPath)?);
+            pos_xs.push(
+                CString::new(seg.position_x_expr.as_bytes()).map_err(EncodeError::InvalidPath)?,
+            );
+            pos_ys.push(
+                CString::new(seg.position_y_expr.as_bytes()).map_err(EncodeError::InvalidPath)?,
+            );
         }
         let raw: Vec<RawClipSegment> = segs
             .iter()
             .zip(paths.iter())
             .zip(filts.iter())
-            .map(|((seg, path), filt)| RawClipSegment {
+            .zip(pos_xs.iter())
+            .zip(pos_ys.iter())
+            .map(|((((seg, path), filt), pos_x), pos_y)| RawClipSegment {
                 source_path: path.as_ptr(),
                 source_in_secs: seg.source_in_secs,
                 source_out_secs: seg.source_out_secs,
@@ -686,8 +708,8 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
                 video_filter: filt.as_ptr(),
                 frozen: seg.frozen as c_int,
                 speed_factor: seg.speed_factor,
-                zoom_start: seg.zoom_start,
-                zoom_end: seg.zoom_end,
+                position_x_expr: pos_x.as_ptr(),
+                position_y_expr: pos_y.as_ptr(),
                 transition_in: seg.transition_in as c_int,
                 transition_duration_secs: seg.transition_duration_secs,
                 timeline_start_secs: seg.timeline_start_secs,
@@ -695,6 +717,8 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
             .collect();
         per_track_paths.push(paths);
         per_track_filts.push(filts);
+        per_track_pos_x.push(pos_xs);
+        per_track_pos_y.push(pos_ys);
         per_track_raw.push(raw);
     }
 
