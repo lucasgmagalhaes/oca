@@ -458,29 +458,23 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             .show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.set_min_height(height - 40.0);
-                ui.centered_and_justified(|ui| match &app.preview_texture {
-                    Some(texture) => {
-                        let tex_size = texture.size_vec2();
-                        let aspect = tex_size.x / tex_size.y;
-                        let mut size = ui.available_size();
-                        if size.x / size.y > aspect {
-                            size.x = size.y * aspect;
-                        } else {
-                            size.y = size.x / aspect;
-                        }
-                        ui.add(egui::Image::new(texture).fit_to_exact_size(size));
-                    }
+                match &app.preview_texture {
+                    Some(_) => layer_transform_preview(app, ui),
                     None if app.preview_clip_present() && !app.preview_available() => {
-                        ui.label(
-                            RichText::new(Text::PreviewUnavailable.tr(locale))
-                                .size(13.0)
-                                .color(theme::TEXT_MUTED),
-                        );
+                        ui.centered_and_justified(|ui| {
+                            ui.label(
+                                RichText::new(Text::PreviewUnavailable.tr(locale))
+                                    .size(13.0)
+                                    .color(theme::TEXT_MUTED),
+                            );
+                        });
                     }
                     None => {
-                        ui.label(RichText::new("▶").size(48.0).color(theme::TEXT_MUTED));
+                        ui.centered_and_justified(|ui| {
+                            ui.label(RichText::new("▶").size(48.0).color(theme::TEXT_MUTED));
+                        });
                     }
-                });
+                };
             });
         let timeline_duration = app.active_project().timeline().duration_secs();
         ui.horizontal(|ui| {
@@ -518,4 +512,126 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             }
         }
     });
+}
+
+/// Draws the selected clip's video inside a canvas-space box sized to `app.export_aspect_ratio`
+/// (the same target dimensions export will actually use, via
+/// [`avcore::ExportAspectRatio::dims_or`]) and, when its position isn't already animated
+/// (`position_keyframes.len() <= 1`, the "static transform" case — see `request.md`'s Fase 4
+/// "Transformação de camadas" spec), lets the user drag it to set a single position keyframe.
+/// This maps directly onto `overlay=x:y`'s own coordinate space
+/// (`crate::keyframe::position_overlay_xy_expr`, canvas-fraction offset from the top-left
+/// default) — dragging writes exactly what export reads, no separate UI-only representation.
+///
+/// Layer *size* isn't editable here yet — the overlay avfilter chain
+/// (`timeline_export_multi.c`'s `build_vfilter_descr`) has no width/height stage independent of
+/// `scale_keyframes` (which zooms into the clip's own frame, a different thing from resizing its
+/// footprint on the canvas), so the drawn layer box uses a fixed fraction of the canvas as a
+/// stand-in size rather than a real, editable dimension. `Some(_)` in
+/// `preview_panel`'s match already guarantees `app.preview_texture` is set, but this re-checks
+/// (and bails) rather than trust that invariant across the borrow-splitting clone below.
+fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
+    let Some(texture) = app.preview_texture.clone() else {
+        return;
+    };
+    let locale = app.locale;
+    let tex_size = texture.size_vec2();
+    let tex_aspect = tex_size.x / tex_size.y;
+
+    let (canvas_w, canvas_h) = app
+        .export_aspect_ratio
+        .dims_or((tex_size.x as u32, tex_size.y as u32));
+    let canvas_aspect = canvas_w as f32 / canvas_h.max(1) as f32;
+
+    let avail_rect = ui.available_rect_before_wrap();
+    let mut canvas_size = avail_rect.size();
+    if canvas_size.x / canvas_size.y > canvas_aspect {
+        canvas_size.x = canvas_size.y * canvas_aspect;
+    } else {
+        canvas_size.y = canvas_size.x / canvas_aspect;
+    }
+    let canvas_rect = egui::Rect::from_center_size(avail_rect.center(), canvas_size);
+    ui.allocate_rect(canvas_rect, egui::Sense::hover());
+    ui.painter().rect_stroke(
+        canvas_rect,
+        0,
+        egui::Stroke::new(1.0, theme::BORDER),
+        egui::StrokeKind::Inside,
+    );
+
+    // Fixed stand-in footprint (40% of the canvas's shorter side, clipped to the canvas width) —
+    // see this function's doc comment on why size isn't editable yet.
+    let mut layer_h = canvas_rect.height().min(canvas_rect.width()) * 0.4;
+    let mut layer_w = layer_h * tex_aspect;
+    if layer_w > canvas_rect.width() {
+        layer_w = canvas_rect.width();
+        layer_h = layer_w / tex_aspect;
+    }
+
+    let position_keyframes = app
+        .selected_clip()
+        .map(|c| c.position_keyframes.clone())
+        .unwrap_or_default();
+    let draggable = position_keyframes.len() <= 1;
+    let current = position_keyframes
+        .first()
+        .map(|k| k.value)
+        .unwrap_or(avcore::Position { x: 0.0, y: 0.0 });
+
+    let layer_min = canvas_rect.min
+        + egui::vec2(
+            current.x * canvas_rect.width(),
+            current.y * canvas_rect.height(),
+        );
+    let layer_rect = egui::Rect::from_min_size(layer_min, egui::vec2(layer_w, layer_h));
+
+    ui.painter().image(
+        texture.id(),
+        layer_rect,
+        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
+
+    let border_color = if draggable {
+        theme::ACCENT_2
+    } else {
+        theme::TEXT_MUTED
+    };
+    ui.painter().rect_stroke(
+        layer_rect,
+        0,
+        egui::Stroke::new(1.5, border_color),
+        egui::StrokeKind::Outside,
+    );
+
+    if draggable {
+        let resp = ui.interact(
+            layer_rect,
+            ui.id().with("preview_layer_transform"),
+            egui::Sense::drag(),
+        );
+        if resp.dragged() {
+            let delta = resp.drag_delta();
+            let new_pos = avcore::Position {
+                x: current.x + delta.x / canvas_rect.width().max(1.0),
+                y: current.y + delta.y / canvas_rect.height().max(1.0),
+            };
+            app.set_selected_clip_position_keyframes(vec![avcore::Keyframe {
+                time_fraction: 0.0,
+                value: new_pos,
+            }]);
+        }
+        if resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+        }
+        resp.on_hover_text(Text::LayerTransformDragHint.tr(locale));
+    } else {
+        ui.painter().text(
+            layer_rect.center_bottom() + egui::vec2(0.0, 4.0),
+            egui::Align2::CENTER_TOP,
+            Text::LayerTransformAnimatedHint.tr(locale),
+            egui::FontId::proportional(10.0),
+            theme::TEXT_MUTED,
+        );
+    }
 }

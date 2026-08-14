@@ -167,6 +167,8 @@ text_catalog! {
     KeyframeTime: pt_br = "t", en = "t";
     KeyframeX: pt_br = "x", en = "x";
     KeyframeY: pt_br = "y", en = "y";
+    LayerTransformDragHint: pt_br = "Arraste para posicionar a camada — efeito visível só em faixas de overlay.", en = "Drag to position the layer — only visible on overlay tracks.";
+    LayerTransformAnimatedHint: pt_br = "Posição animada — edite pela lista de keyframes.", en = "Position is animated — edit via the keyframe list.";
     PositionExportNote: pt_br = "aplicado na exportação apenas em clipes de faixa de sobreposição; sem efeito no preview ao vivo ainda.", en = "applied on export only for overlay-track clips; no live preview effect yet.";
     ScaleExportNote: pt_br = "aplicado na exportação e no preview ao vivo.", en = "applied on export and live preview.";
     RotationExportNote: pt_br = "aplicado na exportação; sem efeito no preview ao vivo ainda.", en = "applied on export; no live preview effect yet.";
