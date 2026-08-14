@@ -45,6 +45,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         lut_path: String::new(),
         layer_scale_x: 1.0,
         layer_scale_y: 1.0,
+        stabilization_intensity: 0.0,
     }
 }
 
@@ -229,6 +230,44 @@ fn video_filter_chain_orders_deflicker_after_crop_before_color() {
         "crop=iw*0.5:ih*1:iw*0:ih*0,deflicker=mode=am:size=5,\
          colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:0"
     );
+}
+
+#[test]
+fn video_filter_chain_includes_deshake_when_stabilized() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.stabilization_intensity = 0.0;
+    assert_eq!(c.video_filter_chain(), "");
+    c.stabilization_intensity = 1.0;
+    assert_eq!(c.video_filter_chain(), "deshake=rx=64:ry=64:edge=mirror");
+}
+
+#[test]
+fn video_filter_chain_scales_stabilization_radius_with_intensity() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.stabilization_intensity = 0.5;
+    assert_eq!(c.video_filter_chain(), "deshake=rx=34:ry=34:edge=mirror");
+}
+
+#[test]
+fn video_filter_chain_orders_stabilization_after_deflicker_before_color() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.deflicker_enabled = true;
+    c.stabilization_intensity = 1.0;
+    c.color_filter = ColorFilter::Sepia;
+    let chain = c.video_filter_chain();
+    let deflicker_pos = chain.find("deflicker").unwrap();
+    let deshake_pos = chain.find("deshake").unwrap();
+    let color_pos = chain.find("colorchannelmixer").unwrap();
+    assert!(deflicker_pos < deshake_pos && deshake_pos < color_pos);
+}
+
+#[test]
+fn split_clip_at_keeps_stabilization_on_both_halves() {
+    let mut t = track_with(vec![clip(1, 0.0, 0.0, 10.0)]);
+    t.clips[0].stabilization_intensity = 0.75;
+    t.split_clip_at(4.0, 2);
+    assert_eq!(t.clips[0].stabilization_intensity, 0.75);
+    assert_eq!(t.clips[1].stabilization_intensity, 0.75);
 }
 
 #[test]

@@ -74,6 +74,7 @@ fn clip(id: u64, asset_id: u64) -> ClipInstance {
         lut_path: String::new(),
         layer_scale_x: 1.0,
         layer_scale_y: 1.0,
+        stabilization_intensity: 0.0,
     }
 }
 

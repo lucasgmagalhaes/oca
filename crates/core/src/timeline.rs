@@ -380,6 +380,19 @@ pub struct ClipInstance {
     /// projects load with it off.
     #[serde(default)]
     pub deflicker_enabled: bool,
+    /// Video stabilization strength for this block, `0.0..=1.0` (`0.0` is off) — per
+    /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Estabilização de vídeo"), the deliberate
+    /// opposite of [`ClipInstance::shake_intensity`] (which adds tremido on purpose; this
+    /// removes it from footage that already has it). Wired into export via `video_filter_chain`'s
+    /// `deshake` stage — `libavfilter`'s built-in single-pass stabilizer, not the more capable
+    /// two-pass `vidstabdetect`/`vidstabtransform` pair (`libvidstab`), which this project's
+    /// pinned FFmpeg build doesn't have compiled in (confirmed via a real `ffmpeg -buildconf`,
+    /// not assumed — it explicitly lists `--disable-libvidstab`). No GStreamer element for this
+    /// exists on this dev machine's install either (confirmed via `gst-inspect-1.0`, same as
+    /// `lut_path`'s caveat), so this is export-only, same shape as LUTs. `#[serde(default)]` so
+    /// older saved projects load unstabilized.
+    #[serde(default)]
+    pub stabilization_intensity: f32,
 }
 
 /// The rendering/display settings of a [`ClipInstance`] that can be copied onto a different
@@ -424,6 +437,7 @@ pub struct ClipFormatting {
     pub lut_path: String,
     pub layer_scale_x: f32,
     pub layer_scale_y: f32,
+    pub stabilization_intensity: f32,
 }
 
 /// A named, reusable group of layers (per `request.md`'s Fase 4 "Templates de grupo de
@@ -503,6 +517,11 @@ impl ClipInstance {
     /// from native size on either axis.
     pub fn has_layer_scale(&self) -> bool {
         (self.layer_scale_x - 1.0).abs() > 1e-4 || (self.layer_scale_y - 1.0).abs() > 1e-4
+    }
+
+    /// `true` if [`ClipInstance::stabilization_intensity`] is above zero.
+    pub fn has_stabilization(&self) -> bool {
+        self.stabilization_intensity > 0.0
     }
 
     /// `true` if [`ClipInstance::vignette_intensity`] is above zero.
@@ -616,6 +635,16 @@ impl ClipInstance {
             // defaults) — smooths out frame-to-frame luminance variation from screen/gameplay
             // capture at certain refresh rates, before any other stage reshapes that luminance.
             stages.push("deflicker=mode=am:size=5".to_string());
+        }
+        if self.has_stabilization() {
+            // rx/ry (search radius in pixels, deshake's valid range 0..64) scale with
+            // intensity rather than a fixed radius — a small radius only corrects gentle
+            // handheld wobble, a large one can also absorb bigger jolts, at the cost of more
+            // aggressive cropping into the frame at the edges (deshake's own trade-off, not
+            // something this stage compensates for). Runs right after deflicker, before any
+            // color/stylistic stage reshapes the pixel data motion estimation reads.
+            let radius = (4.0 + self.stabilization_intensity.clamp(0.0, 1.0) * 60.0).round() as i32;
+            stages.push(format!("deshake=rx={radius}:ry={radius}:edge=mirror"));
         }
         if self.brightness != 0.0 || self.contrast != 1.0 || self.saturation != 1.0 {
             stages.push(format!(
@@ -799,6 +828,7 @@ impl ClipInstance {
             lut_path: self.lut_path.clone(),
             layer_scale_x: self.layer_scale_x,
             layer_scale_y: self.layer_scale_y,
+            stabilization_intensity: self.stabilization_intensity,
         }
     }
 
@@ -839,6 +869,7 @@ impl ClipInstance {
         self.lut_path = f.lut_path.clone();
         self.layer_scale_x = f.layer_scale_x;
         self.layer_scale_y = f.layer_scale_y;
+        self.stabilization_intensity = f.stabilization_intensity;
     }
 
     /// Drags the clip's right edge to `new_end_secs` (timeline-relative), keeping `start_secs`
@@ -976,6 +1007,7 @@ impl Track {
             lut_path: clip.lut_path.clone(),
             layer_scale_x: clip.layer_scale_x,
             layer_scale_y: clip.layer_scale_y,
+            stabilization_intensity: clip.stabilization_intensity,
         };
         clip.source_out_secs = split_source_secs;
         clip.position_keyframes = position_first;

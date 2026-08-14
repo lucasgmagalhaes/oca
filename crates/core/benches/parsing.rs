@@ -109,6 +109,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 lut_path: String::new(),
                 layer_scale_x: 1.0,
                 layer_scale_y: 1.0,
+                stabilization_intensity: 0.0,
             })
             .collect(),
         text_clips: vec![],
