@@ -22,6 +22,13 @@ impl App {
         self.with_selected_clip_mut(|clip| clip.frozen = frozen);
     }
 
+    /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::deflicker_enabled`] — what
+    /// checking the properties panel's "Remover flicker" box does. A no-op if nothing is
+    /// selected.
+    pub fn set_selected_clip_deflicker(&mut self, deflicker_enabled: bool) {
+        self.with_selected_clip_mut(|clip| clip.deflicker_enabled = deflicker_enabled);
+    }
+
     /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::speed_factor`], clamped to
     /// [`SPEED_FACTOR_RANGE`] — what dragging the properties panel's speed slider does. A no-op
     /// if nothing is selected.

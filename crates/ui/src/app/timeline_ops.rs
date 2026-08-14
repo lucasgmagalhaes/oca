@@ -53,6 +53,7 @@ impl App {
                 transition_duration_secs: 0.5,
                 zoom_start: 1.0,
                 zoom_end: 1.0,
+                deflicker_enabled: false,
             });
     }
 
@@ -113,6 +114,7 @@ impl App {
                 transition_duration_secs: 0.5,
                 zoom_start: 1.0,
                 zoom_end: 1.0,
+                deflicker_enabled: false,
             });
     }
 
@@ -392,6 +394,7 @@ impl App {
                 transition_duration_secs: copied.transition_duration_secs,
                 zoom_start: copied.zoom_start,
                 zoom_end: copied.zoom_end,
+                deflicker_enabled: copied.deflicker_enabled,
             });
     }
 

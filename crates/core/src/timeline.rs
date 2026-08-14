@@ -286,6 +286,14 @@ pub struct ClipInstance {
     /// `#[serde(default = ..)]` so older saved projects load unzoomed.
     #[serde(default = "default_unity_multiplier")]
     pub zoom_end: f32,
+    /// `true` if temporal luminance-flicker removal is enabled for this block, per
+    /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Remoção de flicker") — common in
+    /// screen/gameplay captures at certain refresh rates. Wired to export via `video_filter_chain`
+    /// (`deflicker`); no equivalent stage in `core::preview`'s `build_video_filter_bin` yet, the
+    /// same preview gap several other effects here have. `#[serde(default)]` so older saved
+    /// projects load with it off.
+    #[serde(default)]
+    pub deflicker_enabled: bool,
 }
 
 /// The rendering/display settings of a [`ClipInstance`] that can be copied onto a different
@@ -320,6 +328,7 @@ pub struct ClipFormatting {
     pub transition_duration_secs: f32,
     pub zoom_start: f32,
     pub zoom_end: f32,
+    pub deflicker_enabled: bool,
 }
 
 fn default_speed_factor() -> f32 {
@@ -398,9 +407,9 @@ impl ClipInstance {
 
     /// Builds this clip's avfilter chain description for `core::render::render_timeline_export`
     /// — the subset of effect fields expressible as a static per-clip video filter (see
-    /// `features/request.md`'s Fase 4 "Efeitos visuais" list): crop, brightness/contrast/
-    /// saturation, the black-and-white/sepia color filter, chroma key, mask shape, blur,
-    /// sharpen, pixelize, shake, glitch, vignette, and horizontal flip. `gain_db` is audio, not
+    /// `features/request.md`'s Fase 4 "Efeitos visuais" list): crop, deflicker, brightness/
+    /// contrast/saturation, the black-and-white/sepia color filter, chroma key, mask shape,
+    /// blur, sharpen, pixelize, shake, glitch, vignette, and horizontal flip. `gain_db` is audio, not
     /// video, and isn't part of this chain. `speed_factor` and `zoom_start`/`zoom_end` are
     /// handled in `bridge.c` (not here). `mask_shape`'s alpha only survives to the rendered
     /// output on an overlay track — see the caveat on its stage below. `transition_in` needs a
@@ -420,6 +429,12 @@ impl ClipInstance {
                 "crop=iw*{}:ih*{}:iw*{}:ih*{}",
                 self.crop_w, self.crop_h, self.crop_x, self.crop_y
             ));
+        }
+        if self.deflicker_enabled {
+            // Arithmetic-mean mode over a 5-frame temporal window (both FFmpeg's own
+            // defaults) — smooths out frame-to-frame luminance variation from screen/gameplay
+            // capture at certain refresh rates, before any other stage reshapes that luminance.
+            stages.push("deflicker=mode=am:size=5".to_string());
         }
         if self.brightness != 0.0 || self.contrast != 1.0 || self.saturation != 1.0 {
             stages.push(format!(
@@ -588,6 +603,7 @@ impl ClipInstance {
             transition_duration_secs: self.transition_duration_secs,
             zoom_start: self.zoom_start,
             zoom_end: self.zoom_end,
+            deflicker_enabled: self.deflicker_enabled,
         }
     }
 
@@ -622,6 +638,7 @@ impl ClipInstance {
         self.transition_duration_secs = f.transition_duration_secs;
         self.zoom_start = f.zoom_start;
         self.zoom_end = f.zoom_end;
+        self.deflicker_enabled = f.deflicker_enabled;
     }
 
     /// Drags the clip's right edge to `new_end_secs` (timeline-relative), keeping `start_secs`
@@ -741,6 +758,7 @@ impl Track {
             transition_duration_secs: clip.transition_duration_secs,
             zoom_start: clip.zoom_start,
             zoom_end: clip.zoom_end,
+            deflicker_enabled: clip.deflicker_enabled,
         };
         clip.source_out_secs = split_source_secs;
 

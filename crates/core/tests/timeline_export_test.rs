@@ -55,6 +55,7 @@ fn clip(
         transition_duration_secs: 0.5,
         zoom_start: 1.0,
         zoom_end: 1.0,
+        deflicker_enabled: false,
     }
 }
 
@@ -246,6 +247,46 @@ fn cancelling_mid_timeline_export_reports_cancelled() {
     .unwrap();
 
     assert_eq!(outcome, RenderOutcome::Cancelled);
+
+    let _ = std::fs::remove_file(&output);
+}
+
+#[test]
+fn deflicker_exports_without_error() {
+    let asset = video_asset(1);
+    let mut c1 = clip(1, 1, 0.0, 0.0, 0.5);
+    c1.deflicker_enabled = true;
+
+    let track = Track {
+        id: 1,
+        name: "V1".to_string(),
+        kind: TrackKind::Video,
+        clips: vec![c1],
+
+        text_clips: vec![],
+
+        visible: true,
+    };
+    let sequence = sequence_with(vec![track]);
+
+    let output = std::env::temp_dir().join("avcore_test_timeline_export_deflicker.mp4");
+    let cancel = AtomicBool::new(false);
+
+    let outcome = render_timeline_export(
+        &sequence,
+        &[asset],
+        &output,
+        -14.0,
+        avcore::GpuEncoderPreference::Auto,
+        &cancel,
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(outcome, RenderOutcome::Completed);
+
+    let info = probe_media(&output).unwrap();
+    assert_eq!(info.kind, MediaKind::Video);
 
     let _ = std::fs::remove_file(&output);
 }

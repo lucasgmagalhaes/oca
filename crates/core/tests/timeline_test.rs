@@ -38,6 +38,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         transition_duration_secs: 0.5,
         zoom_start: 1.0,
         zoom_end: 1.0,
+        deflicker_enabled: false,
     }
 }
 
@@ -160,6 +161,26 @@ fn video_filter_chain_includes_boxblur_when_blurred() {
     let mut c = clip(1, 0.0, 0.0, 10.0);
     c.blur_intensity = 0.5;
     assert_eq!(c.video_filter_chain(), "boxblur=5.00");
+}
+
+#[test]
+fn video_filter_chain_includes_deflicker_when_enabled() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.deflicker_enabled = true;
+    assert_eq!(c.video_filter_chain(), "deflicker=mode=am:size=5");
+}
+
+#[test]
+fn video_filter_chain_orders_deflicker_after_crop_before_color() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.deflicker_enabled = true;
+    c.crop_w = 0.5;
+    c.color_filter = ColorFilter::Sepia;
+    assert_eq!(
+        c.video_filter_chain(),
+        "crop=iw*0.5:ih*1:iw*0:ih*0,deflicker=mode=am:size=5,\
+         colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:0"
+    );
 }
 
 #[test]
@@ -600,6 +621,19 @@ fn new_clip_defaults_to_no_other_effects() {
 }
 
 #[test]
+fn split_clip_at_keeps_deflicker_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.deflicker_enabled = true;
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    assert!(track.clips[0].deflicker_enabled);
+    assert!(track.clips[1].deflicker_enabled);
+}
+
+#[test]
 fn split_clip_at_keeps_other_effects_on_both_halves() {
     let mut clip = clip(1, 10.0, 0.0, 20.0);
     clip.blur_intensity = 0.1;
@@ -969,6 +1003,7 @@ fn formatting_roundtrip_preserves_all_fields() {
     c.transition_duration_secs = 1.0;
     c.zoom_start = 1.2;
     c.zoom_end = 1.8;
+    c.deflicker_enabled = true;
 
     let fmt = c.formatting();
 

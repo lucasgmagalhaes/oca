@@ -92,6 +92,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                 if let Some(clip) = app.selected_clip() {
                     let mut gain_db = clip.gain_db;
                     let mut frozen = clip.frozen;
+                    let mut deflicker_enabled = clip.deflicker_enabled;
                     let mut speed_factor = clip.speed_factor;
                     let (mut crop_x, mut crop_y, mut crop_w, mut crop_h) =
                         (clip.crop_x, clip.crop_y, clip.crop_w, clip.crop_h);
@@ -140,6 +141,18 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         )
                     {
                         app.set_selected_clip_frozen(frozen);
+                    }
+
+                    // Deflicker only makes sense for a video block, same reasoning as "Congelar".
+                    if app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Video)
+                        && components::property_toggle(
+                            ui,
+                            Text::PropDeflicker.tr(locale),
+                            Text::DeflickerExportNote.tr(locale),
+                            &mut deflicker_enabled,
+                        )
+                    {
+                        app.set_selected_clip_deflicker(deflicker_enabled);
                     }
 
                     if components::property_section(

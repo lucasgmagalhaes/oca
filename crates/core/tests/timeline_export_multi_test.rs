@@ -63,6 +63,7 @@ fn clip(
         transition_duration_secs: 0.5,
         zoom_start: 1.0,
         zoom_end: 1.0,
+        deflicker_enabled: false,
     }
 }
 

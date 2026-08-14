@@ -77,6 +77,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         transition_duration_secs: 0.5,
         zoom_start: 1.0,
         zoom_end: 1.0,
+        deflicker_enabled: false,
     }
 }
 
@@ -1197,6 +1198,48 @@ fn set_selected_clip_gain_is_a_no_op_when_nothing_is_selected() {
 
     let clips = &app.active_project().timeline().tracks[0].clips;
     assert_eq!(clips[0].gain_db, 0.0);
+}
+
+#[test]
+fn set_selected_clip_deflicker_updates_the_selected_clip() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(2);
+
+    app.set_selected_clip_deflicker(true);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert!(!clips[0].deflicker_enabled);
+    assert!(clips[1].deflicker_enabled);
+}
+
+#[test]
+fn set_selected_clip_deflicker_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.set_selected_clip_deflicker(true);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert!(!clips[0].deflicker_enabled);
 }
 
 #[test]

@@ -109,6 +109,8 @@ text_catalog! {
     GainExportNote: pt_br = "afeta só a waveform por enquanto — export ainda não mixa a timeline.", en = "affects only the waveform for now — export doesn't mix the timeline yet.";
     PropFreeze: pt_br = "❄ Congelar quadro", en = "❄ Freeze frame";
     FreezeExportNote: pt_br = "afeta só a timeline por enquanto — preview e export ainda tocam a fonte normalmente.", en = "affects only the timeline for now — preview and export still play the source normally.";
+    PropDeflicker: pt_br = "✨ Remover flicker", en = "✨ Remove flicker";
+    DeflickerExportNote: pt_br = "aplicado no export — preview ainda não mostra.", en = "applied on export — preview doesn't show it yet.";
     PropSpeed: pt_br = "Velocidade", en = "Speed";
     SpeedExportNote: pt_br = "mostra só um selo no bloco por enquanto — ainda não reamostra áudio nem muda a duração na timeline.", en = "only shows a badge on the block for now — doesn't resample audio or change the timeline duration yet.";
     PropCrop: pt_br = "Recorte (x, y, largura, altura)", en = "Crop (x, y, width, height)";

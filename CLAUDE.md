@@ -20,10 +20,12 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   `build_video_filter_bin` covers a narrower subset for GStreamer preview.
   Effects wired to export: gain_db, crop, flip, color_filter, vignette,
   brightness/contrast/saturation, sharpen, chroma_key, mask_shape, blur, pixelize, shake,
-  glitch, zoom, speed_factor, freeze_frame, transitions (fade/slide/zoom entry effects via
-  `ClipSegment::transition_in` + `bridge.c` avfilter expressions; HardCut/None are no-ops).
+  glitch, zoom, speed_factor, freeze_frame, deflicker (`ClipInstance::deflicker_enabled` ->
+  `deflicker=mode=am:size=5`, applied right after crop before any color/style stage), transitions
+  (fade/slide/zoom entry effects via `ClipSegment::transition_in` + `bridge.c` avfilter
+  expressions; HardCut/None are no-ops).
   **Not wired to preview:** transitions (see TODO in `build_video_filter_bin`), vignette,
-  chroma_key, mask_shape, gain_db, speed, glitch. pixelize/shake/zoom/freeze_frame now covered
+  chroma_key, mask_shape, gain_db, speed, glitch, deflicker. pixelize/shake/zoom/freeze_frame now covered
   (pixelize: static scale-down/up via `videoscale`; shake/zoom: `videocrop` driven per-frame by
   a pad probe, zoom keyed off buffer PTS since preview has no fixed canvas fps; freeze_frame:
   `ui`'s `App` keeps the pipeline `Paused` at `source_in_secs` and advances the playhead by
@@ -103,7 +105,12 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   NOT verified anywhere in this codebase is a hardware encoder actually succeeding, since doing
   so needs real GPU hardware this environment doesn't have.
 
-  **Not yet done:** export job reordering/pausing.
+  Export job reordering is done (move up/down buttons on Queued jobs, `screens/queue.rs`);
+  pausing an in-flight render is a deliberate non-goal, not a gap — `ffmpeg` has no notion of
+  pausing mid-render (see `pump_export_queue`'s doc comment), so a Rendering job only offers
+  Cancel. **Not yet done:** the rest of Fase 4's larger CapCut-parity items (word-highlight
+  subtitles, layer templates, keyframes, layer transform, video stabilization, AI background
+  removal, auto-reframe, LUTs, text-to-speech, motion tracking, music/SFX library).
 
   **Whisper subtitles (done, one known limitation):** `avcore::transcribe::transcribe()`
   decodes a source's audio to 16kHz mono float PCM via a new `avbridge` function
