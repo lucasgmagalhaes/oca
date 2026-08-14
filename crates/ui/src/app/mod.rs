@@ -26,6 +26,7 @@ mod import;
 mod modals;
 mod preview;
 mod timeline_ops;
+mod transcribe;
 
 /// Which of the app's five top-level views is currently showing. Drives both the central
 /// panel content and which nav-rail button is highlighted.
@@ -151,6 +152,12 @@ pub struct PrefsState {
     /// [`avcore::GpuEncoderPreference`].
     #[serde(default)]
     pub gpu_encoder: avcore::GpuEncoderPreference,
+    /// Path to a local GGML Whisper model file (e.g. `ggml-base.bin`) for automatic
+    /// transcription ([`App::spawn_transcribe`]). Empty when not configured — the model isn't
+    /// bundled with the app (see `avcore::transcribe`'s module docs), so this is a one-time
+    /// manual setup step in Preferences.
+    #[serde(default)]
+    pub whisper_model_path: String,
 }
 
 impl Default for PrefsState {
@@ -165,6 +172,7 @@ impl Default for PrefsState {
             locale: crate::i18n::Locale::default(),
             key_bindings: KeyBindings::default(),
             gpu_encoder: avcore::GpuEncoderPreference::default(),
+            whisper_model_path: String::new(),
         }
     }
 }
@@ -283,6 +291,19 @@ enum ImportEvent {
     },
 }
 
+/// A message from a background transcription worker thread (see [`App::spawn_transcribe`])
+/// back to the UI thread.
+enum TranscribeEvent {
+    Done {
+        asset_id: u64,
+        segments: Vec<avcore::TranscribeSegment>,
+    },
+    Failed {
+        asset_id: u64,
+        message: String,
+    },
+}
+
 /// A poster frame extracted on a background thread (see [`App::request_thumbnail`]),
 /// ready to upload as an egui texture. No failure variant — a (asset, bucket) that couldn't be
 /// extracted just never gets a texture; [`App::requested_thumbnails`] already stops it from
@@ -362,6 +383,12 @@ pub struct App {
     /// enrichment arrives and gets applied, or left dangling harmlessly if the asset is gone
     /// by then (media library has no delete yet, so that can't currently happen).
     pending_enrichment: HashMap<u64, u64>,
+    transcribe_tx: UnboundedSender<TranscribeEvent>,
+    transcribe_rx: UnboundedReceiver<TranscribeEvent>,
+    /// The media asset id a background transcription is currently running for, if any — only
+    /// one transcription runs at a time (unlike imports, which are per-file parallel). The
+    /// Mídia screen shows a busy state on that asset's card while this is `Some`.
+    pub transcribing_asset_id: Option<u64>,
     /// The timeline clip currently highlighted in the Editor's timeline strip, if any — a
     /// separate concept from `selected_asset_id` (that's the media-library selection driving
     /// the preview panel; this is a placed [`avcore::timeline::ClipInstance`]). `Delete`
@@ -496,6 +523,7 @@ impl App {
         let (render_tx, render_rx) = mpsc::unbounded_channel();
         let (import_tx, import_rx) = mpsc::unbounded_channel();
         let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
+        let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
         Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
@@ -518,6 +546,9 @@ impl App {
             pending_imports: 0,
             next_import_token: 0,
             pending_enrichment: HashMap::new(),
+            transcribe_tx,
+            transcribe_rx,
+            transcribing_asset_id: None,
             selected_clip_id: None,
             selected_text_clip_id: None,
             timeline_px_per_sec: 4.0,
@@ -834,6 +865,7 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.pump_export_queue();
         self.pump_import_queue();
+        self.pump_transcribe();
         self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());
         self.pump_autosave();

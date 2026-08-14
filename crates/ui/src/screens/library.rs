@@ -10,6 +10,7 @@ use crate::theme;
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     app.ensure_active_project();
     let locale = app.locale;
+    let mut transcribe_clicked: Option<u64> = None;
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(20.0);
         ui.horizontal(|ui| {
@@ -96,6 +97,19 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                         .size(10.5)
                                         .color(theme::TEXT_MUTED),
                                 );
+                                ui.add_space(4.0);
+                                if app.transcribing_asset_id == Some(asset.id) {
+                                    ui.label(
+                                        RichText::new(Text::TranscribeInProgress.tr(locale))
+                                            .size(10.5)
+                                            .color(theme::TEXT_MUTED),
+                                    );
+                                } else if ui
+                                    .small_button(Text::TranscribeAction.tr(locale))
+                                    .clicked()
+                                {
+                                    transcribe_clicked = Some(asset.id);
+                                }
                             });
                         });
                     col += 1;
@@ -105,6 +119,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     }
                 }
             });
+
+        if let Some(asset_id) = transcribe_clicked {
+            app.spawn_transcribe(asset_id);
+        }
 
         if app.active_project().media_library.is_empty() {
             ui.add_space(20.0);

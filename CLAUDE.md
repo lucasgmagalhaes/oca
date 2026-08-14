@@ -103,7 +103,24 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   NOT verified anywhere in this codebase is a hardware encoder actually succeeding, since doing
   so needs real GPU hardware this environment doesn't have.
 
-  **Not yet done:** Whisper subtitles, export job reordering/pausing.
+  **Not yet done:** export job reordering/pausing.
+
+  **Whisper subtitles (done, one known limitation):** `avcore::transcribe::transcribe()`
+  decodes a source's audio to 16kHz mono float PCM via a new `avbridge` function
+  (`extract_pcm_16k_mono` / `pcm_extract.c`, same no-subprocess FFI approach as every other
+  avbridge call) and runs it through a local Whisper model (`whisper-rs`, CPU-only default
+  features) to produce timestamped segments. The Mídia screen's "Transcrever" button runs it in
+  the background (`ui/src/app/transcribe.rs`) and drops the result as `TextClip`s onto the
+  active sequence's Text track, anchored at the playhead. The model itself isn't bundled —
+  Preferences has a "Modelo Whisper" field pointing at a local GGML file (e.g. `ggml-base.bin`
+  from huggingface.co/ggerganov/whisper.cpp); empty means the feature is unconfigured.
+  **Known limitation, a real upstream bug, not a design choice:** `whisper-rs` 0.16.0's
+  `set_abort_callback_safe` has broken trampoline codegen (casts its double-boxed
+  `Box<dyn FnMut() -> bool>` back to the *original* closure type instead of the box type,
+  unlike `set_progress_callback_safe`'s correct version) — confirmed by empirical reproduction
+  (any capturing closure, even a plain `bool`, makes whisper.cpp abort on the first internal
+  check). `transcribe()` doesn't use it; cancellation only works before inference starts, not
+  mid-run — see `transcribe.rs`'s doc comment for the full trace.
 
 Check `features/request.md` for what's still unbuilt before assuming a feature is live —
 when in doubt, `graphify query`.
@@ -112,7 +129,9 @@ when in doubt, `graphify query`.
 
 Requires Rust (stable) via rustup. `avbridge` needs `FFMPEG_DIR` set to an FFmpeg dev
 build (`include/`+`lib/`); its DLLs must be on `PATH` at runtime. `core`'s `preview`
-module needs GStreamer discoverable via `PKG_CONFIG_PATH`.
+module needs GStreamer discoverable via `PKG_CONFIG_PATH`. `core`'s `whisper-rs` dependency
+needs `LIBCLANG_PATH` pointing at a libclang install (bindgen) and a build directory that
+isn't under `%TEMP%` on Windows (MSVC's FileTracker fails there — `FTK1011`).
 
 **Do not remove `avbridge/build.rs`'s import-lib-renaming step.** GStreamer bundles its
 own FFmpeg (gst-libav) with identically named import libs — `build.rs` copies them into

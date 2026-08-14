@@ -182,6 +182,11 @@ text_catalog! {
     Importing: pt_br = "Importando arquivos…", en = "Importing files…";
     LibraryEmpty: pt_br = "Nenhum arquivo importado neste projeto ainda.", en = "No files imported into this project yet.";
     ProxyReady: pt_br = "Proxy 540p", en = "540p proxy";
+    TranscribeAction: pt_br = "Transcrever", en = "Transcribe";
+    TranscribeInProgress: pt_br = "Transcrevendo...", en = "Transcribing...";
+    TranscribeNoModelConfigured: pt_br = "Configure o modelo Whisper em Ajustes antes de transcrever.", en = "Set up the Whisper model in Preferences before transcribing.";
+    TranscribeNoSpeechFound: pt_br = "Nenhuma fala reconhecida no áudio.", en = "No speech recognized in the audio.";
+    PrefsWhisperModelPath: pt_br = "Modelo Whisper (legendas automáticas)", en = "Whisper model (automatic subtitles)";
 
     QueueTitle: pt_br = "Fila de exportação", en = "Export queue";
     AddExport: pt_br = "＋ Adicionar exportação", en = "＋ Add export";

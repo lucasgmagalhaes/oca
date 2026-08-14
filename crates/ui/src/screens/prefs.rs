@@ -118,6 +118,22 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     }
                 }
             });
+            ui.add_space(10.0);
+            ui.label(Text::PrefsWhisperModelPath.tr(locale));
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut app.prefs.whisper_model_path)
+                        .desired_width(400.0),
+                );
+                if ui.button(Text::Browse.tr(locale)).clicked() {
+                    if let Some(file) = rfd::FileDialog::new()
+                        .add_filter("GGML model", &["bin"])
+                        .pick_file()
+                    {
+                        app.prefs.whisper_model_path = file.display().to_string();
+                    }
+                }
+            });
         });
         ui.add_space(14.0);
 

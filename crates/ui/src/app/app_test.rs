@@ -143,6 +143,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (render_tx, render_rx) = mpsc::unbounded_channel();
     let (import_tx, import_rx) = mpsc::unbounded_channel();
     let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
+    let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
     App {
         screen: Screen::Home,
         tool: EditorTool::Select,
@@ -165,6 +166,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         pending_imports: 0,
         next_import_token: 0,
         pending_enrichment: HashMap::new(),
+        transcribe_tx,
+        transcribe_rx,
+        transcribing_asset_id: None,
         selected_clip_id: None,
         selected_text_clip_id: None,
         timeline_px_per_sec: 4.0,
