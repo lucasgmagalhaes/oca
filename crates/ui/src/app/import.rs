@@ -65,6 +65,15 @@ impl App {
                     asset.id = next_id;
                     project.media_library.push(asset);
                     self.pending_enrichment.insert(import_token, next_id);
+                    // Set by `App::add_sound_library_track_to_timeline` for a Music & SFX
+                    // track that wasn't already in the library — only honored if the active
+                    // project is still the one this asset landed in, in case it changed while
+                    // the import was in flight.
+                    if self.auto_add_to_timeline.remove(&import_token)
+                        && self.active_project().id == project_id
+                    {
+                        self.add_asset_to_timeline(next_id);
+                    }
                 }
                 ImportEvent::Enriched {
                     project_id,
@@ -227,7 +236,7 @@ fn downscale_rgba(frame: &avcore::preview::VideoFrame, max_dim: u32) -> (u32, u3
 /// and computes a waveform peak table, then sends [`ImportEvent::Enriched`] with whatever came
 /// of it; a step that fails just leaves that one field `None` — the asset was already fully
 /// usable from phase one, just not as light to scrub, loudness-tagged, or waveform-drawn yet.
-fn import_one(
+pub(super) fn import_one(
     path: &Path,
     project_id: u64,
     import_token: u64,

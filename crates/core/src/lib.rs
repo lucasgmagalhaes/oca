@@ -4,8 +4,8 @@
 //! [`export`]), the general keyframe-animation system ([`keyframe`]), the `ffprobe`/`ffmpeg`
 //! wrappers that populate that model from real files ([`probe`], [`loudness`]), lightweight
 //! editing proxies ([`proxy`]), the normalized-export renderer ([`render`]), a GStreamer-based
-//! playback pipeline ([`preview`]), and `.ocproj` save/load — gzip-compressed MessagePack
-//! ([`persistence`]).
+//! playback pipeline ([`preview`]), a local music/SFX catalog ([`sound_library`]), and
+//! `.ocproj` save/load — gzip-compressed MessagePack ([`persistence`]).
 //!
 //! Nothing in this crate depends on `egui` or any GUI toolkit — `ui` is the only
 //! consumer, and it owns all presentation/formatting concerns (see its `i18n` module).
@@ -21,6 +21,7 @@ pub mod probe;
 pub mod project;
 pub mod proxy;
 pub mod render;
+pub mod sound_library;
 pub mod text_metrics;
 pub mod timeline;
 pub mod transcribe;
@@ -46,6 +47,7 @@ pub use render::{
     render_timeline_export, resolve_text_segments, resolve_timeline_segments,
     resolve_timeline_segments_multi, ExportAspectRatio, RenderError, RenderOutcome,
 };
+pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
 pub use timeline::{
     ClipFormatting, ClipInstance, LayerTemplate, TextClip, Timeline, Track, TrackKind,
 };

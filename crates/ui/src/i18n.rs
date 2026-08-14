@@ -70,12 +70,14 @@ text_catalog! {
     NavHome: pt_br = "Início", en = "Home";
     NavEditor: pt_br = "Editor", en = "Editor";
     NavLibrary: pt_br = "Mídia", en = "Media";
+    NavSoundLibrary: pt_br = "Música/SFX", en = "Music/SFX";
     NavQueue: pt_br = "Fila", en = "Queue";
     NavPrefs: pt_br = "Ajustes", en = "Settings";
 
     ScreenTitleHome: pt_br = "Início", en = "Home";
     ScreenTitleEditor: pt_br = "Editor", en = "Editor";
     ScreenTitleLibrary: pt_br = "Mídia", en = "Media";
+    ScreenTitleSoundLibrary: pt_br = "Música e efeitos sonoros", en = "Music & sound effects";
     ScreenTitleQueue: pt_br = "Fila de exportação", en = "Export queue";
     UnsavedChanges: pt_br = "Alterações não salvas", en = "Unsaved changes";
 
@@ -225,6 +227,15 @@ text_catalog! {
     TranscribeNoModelConfigured: pt_br = "Configure o modelo Whisper em Ajustes antes de transcrever.", en = "Set up the Whisper model in Preferences before transcribing.";
     TranscribeNoSpeechFound: pt_br = "Nenhuma fala reconhecida no áudio.", en = "No speech recognized in the audio.";
     PrefsWhisperModelPath: pt_br = "Modelo Whisper (legendas automáticas)", en = "Whisper model (automatic subtitles)";
+    PrefsSoundLibraryPath: pt_br = "Pasta da biblioteca de música/SFX", en = "Music/SFX library folder";
+
+    SoundLibraryTitle: pt_br = "Música e efeitos sonoros", en = "Music & sound effects";
+    SoundLibraryRescan: pt_br = "⟳ Atualizar", en = "⟳ Rescan";
+    SoundLibraryMusic: pt_br = "Música", en = "Music";
+    SoundLibrarySfx: pt_br = "Efeitos sonoros", en = "Sound effects";
+    SoundLibraryAddToTimeline: pt_br = "+ Adicionar à timeline", en = "+ Add to timeline";
+    SoundLibraryNoFolderConfigured: pt_br = "Nenhuma pasta configurada. Escolha uma pasta com subpastas \"music\"/\"sfx\" em Ajustes.", en = "No folder configured. Pick a folder with \"music\"/\"sfx\" subfolders in Preferences.";
+    SoundLibraryEmpty: pt_br = "Nenhuma faixa encontrada. Adicione arquivos de áudio nas subpastas \"music\"/\"sfx\" da pasta configurada.", en = "No tracks found. Add audio files to the configured folder's \"music\"/\"sfx\" subfolders.";
 
     QueueTitle: pt_br = "Fila de exportação", en = "Export queue";
     AddExport: pt_br = "＋ Adicionar exportação", en = "＋ Add export";
@@ -312,6 +323,7 @@ pub fn screen_title(locale: Locale, screen: Screen) -> &'static str {
         Screen::Home => Text::ScreenTitleHome.tr(locale),
         Screen::Editor => Text::ScreenTitleEditor.tr(locale),
         Screen::Library => Text::ScreenTitleLibrary.tr(locale),
+        Screen::SoundLibrary => Text::ScreenTitleSoundLibrary.tr(locale),
         Screen::Queue => Text::ScreenTitleQueue.tr(locale),
     }
 }
@@ -322,6 +334,7 @@ pub fn nav_label(locale: Locale, screen: Screen) -> &'static str {
         Screen::Home => Text::NavHome.tr(locale),
         Screen::Editor => Text::NavEditor.tr(locale),
         Screen::Library => Text::NavLibrary.tr(locale),
+        Screen::SoundLibrary => Text::NavSoundLibrary.tr(locale),
         Screen::Queue => Text::NavQueue.tr(locale),
     }
 }

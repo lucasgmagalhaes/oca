@@ -231,9 +231,31 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   machine's install either (`gst-inspect-1.0`), so export-only, same shape as LUTs. Properties
   panel gets its own slider (`STABILIZATION_INTENSITY_RANGE`).
 
+  **Music/SFX library (done, plumbing only — no bundled tracks):** a new "Música/SFX" nav-rail
+  screen (`ui/src/screens/sound_library.rs`) lists audio files scanned from a user-configured
+  folder (`Prefs.sound_library_path`, set via Preferences' own browse-folder row) — no music or
+  SFX ships bundled with the app itself. `avcore::sound_library::scan_library_dir` looks for a
+  `music/` and/or `sfx/` subfolder inside that root, probes each audio file found there for its
+  duration (`probe_media`, cheap — no decode), and returns them grouped by category; a missing
+  subfolder or an unprobeable file is silently skipped rather than erroring, so the screen just
+  starts empty until the user drops real royalty-free files in. Scanning runs on a background
+  thread (`App::rescan_sound_library`/`pump_sound_library_queue`, same shape as `spawn_import`),
+  triggered at startup if a path is already configured, whenever it's changed in Preferences, or
+  via the screen's own "Atualizar" button. Clicking "Adicionar à timeline" on a track
+  (`App::add_sound_library_track_to_timeline`) reuses the existing asset if that exact path was
+  already imported into the active project, otherwise imports it fresh
+  (`import::import_one`, exposed as `pub(super)` for this) and — new — marks its import token in
+  `App::auto_add_to_timeline` so `pump_import_queue`'s `AssetReady` arm appends it to the
+  timeline the moment the (cheap) probe lands, without waiting for the slower loudness/waveform
+  enrichment pass. `crates/core/tests/sound_library_test.rs` covers the scan (empty root, mixed
+  music/sfx + a non-audio file correctly ignored, missing root folder) against the real
+  `audio.m4a` fixture — this one needs no encoder, so unlike most of this session's other work
+  it actually passes on this dev machine's FFmpeg build.
+
   **Not yet done:** the rest of Fase 4's larger CapCut-parity items (AI background removal,
-  auto-reframe, text-to-speech, motion tracking, music/SFX library) — keyframes, LUTs, layer
-  transform (position + resize), layer templates, and video stabilization are done, see above.
+  auto-reframe, text-to-speech, motion tracking) — keyframes, LUTs, layer transform (position +
+  resize), layer templates, video stabilization, and a music/SFX library (scanning/UI only, no
+  bundled content) are done, see above.
 
   **Word-highlight subtitles (done):** true in-place highlighting — the full sentence stays on
   screen, the currently-spoken word lights up in `highlight_color_rgba` exactly where it sits in

@@ -27,6 +27,7 @@ mod layer_templates;
 mod modals;
 mod model_download;
 mod preview;
+mod sound_library;
 mod timeline_ops;
 mod transcribe;
 
@@ -37,6 +38,7 @@ pub enum Screen {
     Home,
     Editor,
     Library,
+    SoundLibrary,
     Queue,
 }
 
@@ -165,6 +167,13 @@ pub struct PrefsState {
     /// (position/scale/crop/effects per layer) to fresh footage across different shorts.
     #[serde(default)]
     pub saved_layer_templates: Vec<avcore::timeline::LayerTemplate>,
+    /// Folder scanned for the Music & SFX screen's local catalog (see
+    /// [`avcore::sound_library::scan_library_dir`]) — expects a `music/` and/or `sfx/`
+    /// subfolder inside it. Empty when not configured yet; no bundled tracks ship with the app
+    /// (see `avcore::sound_library`'s module docs), so this is a one-time manual setup step,
+    /// the same shape as `whisper_model_path` above.
+    #[serde(default)]
+    pub sound_library_path: String,
 }
 
 impl Default for PrefsState {
@@ -181,6 +190,7 @@ impl Default for PrefsState {
             gpu_encoder: avcore::GpuEncoderPreference::default(),
             whisper_model_path: String::new(),
             saved_layer_templates: Vec::new(),
+            sound_library_path: String::new(),
         }
     }
 }
@@ -410,6 +420,17 @@ pub struct App {
     /// enrichment arrives and gets applied, or left dangling harmlessly if the asset is gone
     /// by then (media library has no delete yet, so that can't currently happen).
     pending_enrichment: HashMap<u64, u64>,
+    /// Import tokens whose asset should be appended to the timeline the moment its
+    /// `ImportEvent::AssetReady` lands (see [`App::pump_import_queue`]) — used by
+    /// [`App::add_sound_library_track_to_timeline`]'s one-click "add to timeline" for a Music &
+    /// SFX track that hasn't been imported into the active project yet.
+    auto_add_to_timeline: HashSet<u64>,
+    /// Tracks found by the last scan of `prefs.sound_library_path` (see
+    /// [`App::rescan_sound_library`]) — not persisted, recomputed from disk whenever the Music
+    /// & SFX screen is opened or the configured folder changes.
+    pub sound_library_tracks: Vec<avcore::sound_library::LibraryTrack>,
+    sound_library_tx: UnboundedSender<Vec<avcore::sound_library::LibraryTrack>>,
+    sound_library_rx: UnboundedReceiver<Vec<avcore::sound_library::LibraryTrack>>,
     transcribe_tx: UnboundedSender<TranscribeEvent>,
     transcribe_rx: UnboundedReceiver<TranscribeEvent>,
     /// The media asset id a background transcription is currently running for, if any — only
@@ -575,7 +596,8 @@ impl App {
         let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
         let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
         let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
-        Self {
+        let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
+        let mut app = Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
             locale: prefs.locale,
@@ -597,6 +619,10 @@ impl App {
             pending_imports: 0,
             next_import_token: 0,
             pending_enrichment: HashMap::new(),
+            auto_add_to_timeline: HashSet::new(),
+            sound_library_tracks: Vec::new(),
+            sound_library_tx,
+            sound_library_rx,
             transcribe_tx,
             transcribe_rx,
             transcribing_asset_id: None,
@@ -634,7 +660,11 @@ impl App {
             applying_layer_template: None,
             layer_templates_menu_open: false,
             binding_capture: None,
+        };
+        if !app.prefs.sound_library_path.is_empty() {
+            app.rescan_sound_library();
         }
+        app
     }
 
     /// The project currently open in the Editor/Mídia screens.
@@ -932,6 +962,7 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.pump_export_queue();
         self.pump_import_queue();
+        self.pump_sound_library_queue();
         self.pump_transcribe();
         self.pump_model_download();
         self.pump_thumbnail_queue(ui.ctx());
@@ -972,6 +1003,7 @@ impl eframe::App for App {
             Screen::Home => screens::home::show(self, ui),
             Screen::Editor => screens::editor::show(self, ui),
             Screen::Library => screens::library::show(self, ui),
+            Screen::SoundLibrary => screens::sound_library::show(self, ui),
             Screen::Queue => screens::queue::show(self, ui),
         });
         self.show_prefs_modal(ui.ctx());

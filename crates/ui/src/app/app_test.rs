@@ -152,6 +152,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
     let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
     let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
+    let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
     App {
         screen: Screen::Home,
         tool: EditorTool::Select,
@@ -174,6 +175,10 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         pending_imports: 0,
         next_import_token: 0,
         pending_enrichment: HashMap::new(),
+        auto_add_to_timeline: HashSet::new(),
+        sound_library_tracks: Vec::new(),
+        sound_library_tx,
+        sound_library_rx,
         transcribe_tx,
         transcribe_rx,
         transcribing_asset_id: None,

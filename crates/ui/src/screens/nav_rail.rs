@@ -4,10 +4,11 @@ use crate::app::{App, Screen};
 use crate::i18n;
 use crate::theme;
 
-const ITEMS: [(Screen, &str); 4] = [
+const ITEMS: [(Screen, &str); 5] = [
     (Screen::Home, "⌂"),
     (Screen::Editor, "✂"),
     (Screen::Library, "▤"),
+    (Screen::SoundLibrary, "♫"),
     (Screen::Queue, "≡"),
 ];
 

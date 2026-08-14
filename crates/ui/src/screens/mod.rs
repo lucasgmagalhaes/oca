@@ -17,3 +17,6 @@ pub mod nav_rail;
 pub mod prefs;
 /// The Fila screen: the export queue's job list and worker-count control.
 pub mod queue;
+/// The Música/SFX screen: a local catalog of music/SFX tracks, scanned from a user-configured
+/// folder, addable to the timeline directly.
+pub mod sound_library;

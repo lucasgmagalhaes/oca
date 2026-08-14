@@ -164,6 +164,20 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     }
                 });
             }
+            ui.add_space(10.0);
+            ui.label(Text::PrefsSoundLibraryPath.tr(locale));
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut app.prefs.sound_library_path)
+                        .desired_width(400.0),
+                );
+                if ui.button(Text::Browse.tr(locale)).clicked() {
+                    if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                        app.prefs.sound_library_path = folder.display().to_string();
+                        app.rescan_sound_library();
+                    }
+                }
+            });
         });
         ui.add_space(14.0);
 
