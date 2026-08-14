@@ -130,7 +130,7 @@ impl App {
 
     /// Looks up `asset_id` in the active project's media library and returns its track kind
     /// and duration, or `None` if it isn't there.
-    fn asset_kind_and_duration(&self, asset_id: u64) -> Option<(TrackKind, f64)> {
+    pub(super) fn asset_kind_and_duration(&self, asset_id: u64) -> Option<(TrackKind, f64)> {
         let asset = self
             .active_project()
             .media_library
@@ -494,21 +494,7 @@ impl App {
     /// visible and starts empty; the user drags clips onto it from the media library.
     pub fn add_video_track(&mut self) {
         let timeline = self.active_project_mut().timeline_mut();
-        let video_count = timeline
-            .tracks
-            .iter()
-            .filter(|t| t.kind == TrackKind::Video)
-            .count();
-        let track_id = timeline.tracks.iter().map(|t| t.id).max().unwrap_or(0) + 1;
-        let name = format!("V{}", video_count + 1);
-        timeline.tracks.push(avcore::timeline::Track {
-            id: track_id,
-            name,
-            kind: TrackKind::Video,
-            clips: Vec::new(),
-            text_clips: Vec::new(),
-            visible: true,
-        });
+        create_new_track(timeline, TrackKind::Video);
     }
 
     /// Toggles the `visible` flag on the track with `track_id` in the active sequence. A no-op
@@ -519,6 +505,34 @@ impl App {
             track.visible = !track.visible;
         }
     }
+}
+
+/// Appends a brand-new, always-fresh empty track of `kind` to `timeline` — unlike
+/// [`resolve_or_create_track`], this never reuses an existing track, since callers that need
+/// this (layer templates applying several layers of the same kind, e.g. two video layers) need
+/// each layer on its own track regardless of what's already there. Name is `V<n>`/`A<n>`/`T<n>`
+/// where `n` is one past the count of existing tracks of that kind — so a timeline with one
+/// video track "V1" gets a second track "V2". Returns the new track's index.
+pub(super) fn create_new_track(
+    timeline: &mut avcore::timeline::Timeline,
+    kind: TrackKind,
+) -> usize {
+    let count = timeline.tracks.iter().filter(|t| t.kind == kind).count();
+    let track_id = timeline.tracks.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+    let prefix = match kind {
+        TrackKind::Video => "V",
+        TrackKind::Audio => "A",
+        TrackKind::Text => "T",
+    };
+    timeline.tracks.push(avcore::timeline::Track {
+        id: track_id,
+        name: format!("{prefix}{}", count + 1),
+        kind,
+        clips: Vec::new(),
+        text_clips: Vec::new(),
+        visible: true,
+    });
+    timeline.tracks.len() - 1
 }
 
 /// Finds the track to place a new clip of `kind` on, for [`App::add_asset_to_timeline`] and

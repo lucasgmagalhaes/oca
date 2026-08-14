@@ -23,6 +23,7 @@ use crate::theme;
 mod clip_props;
 pub mod export;
 mod import;
+mod layer_templates;
 mod modals;
 mod model_download;
 mod preview;
@@ -159,6 +160,11 @@ pub struct PrefsState {
     /// manual setup step in Preferences.
     #[serde(default)]
     pub whisper_model_path: String,
+    /// Saved layer-group templates (`request.md`'s Fase 4 "Templates de grupo de camadas") —
+    /// app-wide, not per-project, since the whole point is reapplying the same layer group
+    /// (position/scale/crop/effects per layer) to fresh footage across different shorts.
+    #[serde(default)]
+    pub saved_layer_templates: Vec<avcore::timeline::LayerTemplate>,
 }
 
 impl Default for PrefsState {
@@ -174,6 +180,7 @@ impl Default for PrefsState {
             key_bindings: KeyBindings::default(),
             gpu_encoder: avcore::GpuEncoderPreference::default(),
             whisper_model_path: String::new(),
+            saved_layer_templates: Vec::new(),
         }
     }
 }
@@ -508,6 +515,21 @@ pub struct App {
     /// When `Some((seq_index, buf))`, a rename modal is shown for the active project's
     /// `sequences[seq_index]`. Committed on Enter/confirm, discarded on Escape/cancel.
     pub renaming_sequence: Option<(usize, String)>,
+    /// A snapshot of `multi_selected_clip_ids`' per-layer `(TrackKind, ClipFormatting)`, plus a
+    /// name buffer, staged while the "save as template" naming modal is open — captured at
+    /// click time (`App::begin_save_layer_template`) so a selection change while the modal is
+    /// open can't retroactively change what gets saved. `None` when the modal is closed.
+    pub saving_layer_template: Option<(
+        Vec<(avcore::timeline::TrackKind, avcore::ClipFormatting)>,
+        String,
+    )>,
+    /// `Some((template_index, layer_asset_ids))` while the "apply template" modal is open —
+    /// `layer_asset_ids[i]` is the media-library asset id chosen for
+    /// `prefs.saved_layer_templates[template_index].layers[i]`, `None` until the user picks one
+    /// from that layer's dropdown. `None` when the modal is closed.
+    pub applying_layer_template: Option<(usize, Vec<Option<u64>>)>,
+    /// Whether the toolbar's "Templates" list popup (pick one to apply, or delete it) is open.
+    pub layer_templates_menu_open: bool,
     /// When `Some(action)`, the prefs modal is waiting for the next key press to set that
     /// action's binding. Pressing Escape clears it without changing the binding.
     pub binding_capture: Option<BindableAction>,
@@ -604,6 +626,9 @@ impl App {
             pending_export_conflict: None,
             renaming_project: None,
             renaming_sequence: None,
+            saving_layer_template: None,
+            applying_layer_template: None,
+            layer_templates_menu_open: false,
             binding_capture: None,
         }
     }
@@ -949,6 +974,9 @@ impl eframe::App for App {
         self.show_rename_project_modal(ui.ctx());
         self.show_rename_sequence_modal(ui.ctx());
         self.show_export_conflict_modal(ui.ctx());
+        self.show_save_layer_template_modal(ui.ctx());
+        self.show_layer_templates_menu(ui.ctx());
+        self.show_apply_layer_template_modal(ui.ctx());
         self.show_toasts(ui.ctx());
     }
 

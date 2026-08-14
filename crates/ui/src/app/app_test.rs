@@ -205,6 +205,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         export_aspect_ratio: avcore::ExportAspectRatio::default(),
         renaming_project: None::<(usize, String, String)>,
         renaming_sequence: None,
+        saving_layer_template: None,
+        applying_layer_template: None,
+        layer_templates_menu_open: false,
         binding_capture: None,
         pending_export_conflict: None,
     }
@@ -2876,4 +2879,206 @@ fn pump_transcribe_creates_a_text_track_with_rebased_word_timings() {
     assert_eq!(tc.words[0].end_secs, 0.5);
     assert_eq!(tc.words[1].start_secs, 0.5);
     assert_eq!(tc.words[1].end_secs, 1.0);
+}
+
+#[test]
+fn begin_save_layer_template_is_a_no_op_when_nothing_is_multi_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.begin_save_layer_template();
+
+    assert!(app.saving_layer_template.is_none());
+}
+
+#[test]
+fn begin_save_layer_template_snapshots_the_multi_selection_ordered_by_track_then_start() {
+    let mut c1 = test_clip(1, 5.0, 0.0, 10.0);
+    c1.gain_db = 3.0;
+    let mut c2 = test_clip(2, 0.0, 0.0, 10.0);
+    c2.gain_db = -3.0;
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![
+                test_track(1, TrackKind::Video, vec![c1, c2]),
+                test_track(2, TrackKind::Audio, vec![test_clip(3, 0.0, 0.0, 5.0)]),
+            ],
+        )],
+        Vec::new(),
+    );
+    app.multi_selected_clip_ids.insert(1);
+    app.multi_selected_clip_ids.insert(2);
+
+    app.begin_save_layer_template();
+
+    let (layers, name) = app.saving_layer_template.expect("should be staged");
+    assert_eq!(name, "");
+    assert_eq!(layers.len(), 2);
+    // clip 2 (start_secs 0.0) sorts before clip 1 (start_secs 5.0) on the same track.
+    assert_eq!(layers[0].0, TrackKind::Video);
+    assert_eq!(layers[0].1.gain_db, -3.0);
+    assert_eq!(layers[1].1.gain_db, 3.0);
+}
+
+#[test]
+fn commit_save_layer_template_is_a_no_op_when_the_name_is_blank() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.saving_layer_template = Some((
+        vec![(TrackKind::Video, test_clip(1, 0.0, 0.0, 1.0).formatting())],
+        "   ".to_string(),
+    ));
+
+    app.commit_save_layer_template();
+
+    assert!(app.saving_layer_template.is_some());
+    assert!(app.prefs.saved_layer_templates.is_empty());
+}
+
+#[test]
+fn commit_save_layer_template_pushes_a_named_template_and_clears_the_pending_state() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let layers = vec![(TrackKind::Video, test_clip(1, 0.0, 0.0, 1.0).formatting())];
+    app.saving_layer_template = Some((layers, "Webcam corner".to_string()));
+
+    app.commit_save_layer_template();
+
+    assert!(app.saving_layer_template.is_none());
+    assert_eq!(app.prefs.saved_layer_templates.len(), 1);
+    assert_eq!(app.prefs.saved_layer_templates[0].name, "Webcam corner");
+}
+
+#[test]
+fn delete_layer_template_removes_the_entry_at_index() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.prefs.saved_layer_templates = vec![
+        avcore::LayerTemplate {
+            name: "A".to_string(),
+            layers: vec![],
+        },
+        avcore::LayerTemplate {
+            name: "B".to_string(),
+            layers: vec![],
+        },
+    ];
+
+    app.delete_layer_template(0);
+
+    assert_eq!(app.prefs.saved_layer_templates.len(), 1);
+    assert_eq!(app.prefs.saved_layer_templates[0].name, "B");
+}
+
+#[test]
+fn delete_layer_template_is_a_no_op_for_an_out_of_range_index() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.prefs.saved_layer_templates = vec![avcore::LayerTemplate {
+        name: "A".to_string(),
+        layers: vec![],
+    }];
+
+    app.delete_layer_template(5);
+
+    assert_eq!(app.prefs.saved_layer_templates.len(), 1);
+}
+
+#[test]
+fn begin_apply_layer_template_stages_one_empty_slot_per_layer() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.prefs.saved_layer_templates = vec![avcore::LayerTemplate {
+        name: "Group".to_string(),
+        layers: vec![
+            (TrackKind::Video, test_clip(1, 0.0, 0.0, 1.0).formatting()),
+            (TrackKind::Audio, test_clip(2, 0.0, 0.0, 1.0).formatting()),
+        ],
+    }];
+    app.layer_templates_menu_open = true;
+
+    app.begin_apply_layer_template(0);
+
+    let (index, slots) = app.applying_layer_template.expect("should be staged");
+    assert_eq!(index, 0);
+    assert_eq!(slots, vec![None, None]);
+    assert!(!app.layer_templates_menu_open);
+}
+
+#[test]
+fn confirm_apply_layer_template_creates_one_clip_per_filled_layer_with_its_formatting() {
+    let mut styled = test_clip(99, 0.0, 0.0, 1.0);
+    styled.gain_db = 6.0;
+    styled.flipped_h = true;
+    let mut project = test_project(1, vec![test_asset(1), test_asset(2)]);
+    project.timeline_mut().tracks = vec![];
+    project.timeline_mut().playhead_secs = 2.5;
+    let mut app = test_app(vec![project], Vec::new());
+    app.prefs.saved_layer_templates = vec![avcore::LayerTemplate {
+        name: "Group".to_string(),
+        layers: vec![(TrackKind::Video, styled.formatting())],
+    }];
+    app.applying_layer_template = Some((0, vec![Some(1)]));
+
+    app.confirm_apply_layer_template();
+
+    assert!(app.applying_layer_template.is_none());
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks.len(), 1);
+    let track = &timeline.tracks[0];
+    assert_eq!(track.kind, TrackKind::Video);
+    assert_eq!(track.clips.len(), 1);
+    let clip = &track.clips[0];
+    assert_eq!(clip.asset_id, 1);
+    assert_eq!(clip.start_secs, 2.5);
+    assert_eq!(clip.gain_db, 6.0);
+    assert!(clip.flipped_h);
+}
+
+#[test]
+fn confirm_apply_layer_template_puts_each_layer_on_its_own_new_track() {
+    let mut project = test_project(1, vec![test_asset(1), test_asset(1)]);
+    project.timeline_mut().tracks = vec![];
+    let mut app = test_app(vec![project], Vec::new());
+    app.prefs.saved_layer_templates = vec![avcore::LayerTemplate {
+        name: "Two video layers".to_string(),
+        layers: vec![
+            (TrackKind::Video, test_clip(1, 0.0, 0.0, 1.0).formatting()),
+            (TrackKind::Video, test_clip(2, 0.0, 0.0, 1.0).formatting()),
+        ],
+    }];
+    app.applying_layer_template = Some((0, vec![Some(1), Some(1)]));
+
+    app.confirm_apply_layer_template();
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks.len(), 2);
+    assert_eq!(timeline.tracks[0].clips.len(), 1);
+    assert_eq!(timeline.tracks[1].clips.len(), 1);
+}
+
+#[test]
+fn confirm_apply_layer_template_skips_layers_left_without_an_asset() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![];
+    let mut app = test_app(vec![project], Vec::new());
+    app.prefs.saved_layer_templates = vec![avcore::LayerTemplate {
+        name: "Group".to_string(),
+        layers: vec![
+            (TrackKind::Video, test_clip(1, 0.0, 0.0, 1.0).formatting()),
+            (TrackKind::Video, test_clip(2, 0.0, 0.0, 1.0).formatting()),
+        ],
+    }];
+    app.applying_layer_template = Some((0, vec![Some(1), None]));
+
+    app.confirm_apply_layer_template();
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks.len(), 1);
+    assert_eq!(timeline.tracks[0].clips.len(), 1);
 }
