@@ -127,16 +127,10 @@ fn transcribe_one(
 ) {
     let cancel = Arc::new(AtomicBool::new(false));
     match avcore::transcribe(source_path, model_path, None, &cancel, |_percent| {}) {
-        Ok(TranscribeOutcome::Completed(segments)) => {
+        // spawn_transcribe never cancels, so Cancelled is unreachable in practice here - but
+        // still applies whatever partial segments came back rather than silently dropping them.
+        Ok(TranscribeOutcome::Completed(segments) | TranscribeOutcome::Cancelled(segments)) => {
             let _ = tx.send(TranscribeEvent::Done { asset_id, segments });
-        }
-        Ok(TranscribeOutcome::Cancelled) => {
-            // spawn_transcribe never sets cancel - unreachable in practice, but handled rather
-            // than silently dropped.
-            let _ = tx.send(TranscribeEvent::Done {
-                asset_id,
-                segments: Vec::new(),
-            });
         }
         Err(e) => {
             let _ = tx.send(TranscribeEvent::Failed {

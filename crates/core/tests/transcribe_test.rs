@@ -21,6 +21,12 @@ fn model_path() -> Option<PathBuf> {
 
 #[test]
 fn transcribes_real_audio_and_returns_at_least_one_segment() {
+    // Also the regression test for the whisper-rs set_abort_callback_safe bug transcribe.rs
+    // works around (see its doc comment): cancel is false throughout, so a correctly-behaving
+    // abort_trampoline must return false every time it's polled and let this run to
+    // completion. The original buggy version made whisper.cpp abort unconditionally on the
+    // very first check regardless of what the closure returned, which turned this exact case
+    // into a Err(Inference) instead of Ok(Completed(_)) - this test would have caught it.
     let Some(model) = model_path() else {
         eprintln!("skipping: WHISPER_MODEL_PATH not set");
         return;
@@ -53,7 +59,7 @@ fn cancelling_before_the_call_skips_inference_entirely() {
     )
     .unwrap();
 
-    assert_eq!(outcome, TranscribeOutcome::Cancelled);
+    assert_eq!(outcome, TranscribeOutcome::Cancelled(Vec::new()));
 }
 
 #[test]

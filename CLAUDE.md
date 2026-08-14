@@ -114,13 +114,20 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   active sequence's Text track, anchored at the playhead. The model itself isn't bundled —
   Preferences has a "Modelo Whisper" field pointing at a local GGML file (e.g. `ggml-base.bin`
   from huggingface.co/ggerganov/whisper.cpp); empty means the feature is unconfigured.
-  **Known limitation, a real upstream bug, not a design choice:** `whisper-rs` 0.16.0's
+  **Fixed a real upstream bug rather than working around it:** `whisper-rs` 0.16.0's
   `set_abort_callback_safe` has broken trampoline codegen (casts its double-boxed
   `Box<dyn FnMut() -> bool>` back to the *original* closure type instead of the box type,
   unlike `set_progress_callback_safe`'s correct version) — confirmed by empirical reproduction
-  (any capturing closure, even a plain `bool`, makes whisper.cpp abort on the first internal
-  check). `transcribe()` doesn't use it; cancellation only works before inference starts, not
-  mid-run — see `transcribe.rs`'s doc comment for the full trace.
+  (any capturing closure, even a plain `bool`, made whisper.cpp abort on the first internal
+  check regardless of what it returned). `transcribe()` bypasses only that one broken method,
+  using `FullParams`'s raw `unsafe fn set_abort_callback`/`set_abort_callback_user_data` with
+  its own correctly-typed trampoline (`transcribe.rs`'s `abort_trampoline`, doc comment has the
+  full trace) — not a fork of the crate, just the same double-box construction paired with a
+  matching generic. Mid-run cancellation works end-to-end (`TranscribeOutcome::Cancelled`
+  carries whatever segments were already committed before the abort); whisper.cpp's return
+  code doesn't distinguish "aborted via callback" from a genuine encode/decode failure, so
+  `transcribe()` checks `cancel` itself after `state.full()` returns rather than trusting
+  which `Result` variant came back once cancellation was requested.
 
 Check `features/request.md` for what's still unbuilt before assuming a feature is live —
 when in doubt, `graphify query`.
