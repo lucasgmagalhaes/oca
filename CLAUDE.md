@@ -171,9 +171,15 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   Export job reordering is done (move up/down buttons on Queued jobs, `screens/queue.rs`);
   pausing an in-flight render is a deliberate non-goal, not a gap — `ffmpeg` has no notion of
   pausing mid-render (see `pump_export_queue`'s doc comment), so a Rendering job only offers
-  Cancel. **Not yet done:** the rest of Fase 4's larger CapCut-parity items (layer templates,
-  layer transform, video stabilization, AI background removal, auto-reframe, LUTs,
-  text-to-speech, motion tracking, music/SFX library) — keyframes are done, see above.
+  Cancel. **3D LUTs (done, export only):** `ClipInstance::lut_path` (empty = disabled) folds a
+  `lut3d` avfilter stage into `video_filter_chain`, positioned after `color_filter`/before
+  chroma key; the properties panel's LUT section browses for a `.cube` file the same way
+  Preferences already browses for the Whisper model path (`rfd::FileDialog`). No preview
+  element — `gst-inspect-1.0` on the pinned GStreamer install turned up nothing LUT-shaped
+  (`lut3d`/`gllut3d`/cube-file), confirmed rather than assumed. **Not yet done:** the rest of
+  Fase 4's larger CapCut-parity items (layer templates, layer transform, video stabilization, AI
+  background removal, auto-reframe, text-to-speech, motion tracking, music/SFX library) —
+  keyframes and LUTs are done, see above.
 
   **Word-highlight subtitles (done):** true in-place highlighting — the full sentence stays on
   screen, the currently-spoken word lights up in `highlight_color_rgba` exactly where it sits in
