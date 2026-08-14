@@ -266,6 +266,10 @@ pub const SCALE_RANGE: std::ops::RangeInclusive<f32> = 1.0..=3.0;
 /// below native size (e.g. a small webcam corner) as well as grow.
 pub const LAYER_SCALE_RANGE: std::ops::RangeInclusive<f32> = 0.1..=3.0;
 
+/// Slider bounds for the properties panel's video-stabilization control
+/// ([`avcore::timeline::ClipInstance::stabilization_intensity`]).
+pub const STABILIZATION_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
+
 /// A message from a background render worker thread (see [`App::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime

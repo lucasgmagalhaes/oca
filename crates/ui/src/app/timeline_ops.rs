@@ -59,6 +59,7 @@ impl App {
                 lut_path: String::new(),
                 layer_scale_x: 1.0,
                 layer_scale_y: 1.0,
+                stabilization_intensity: 0.0,
             });
     }
 
@@ -125,6 +126,7 @@ impl App {
                 lut_path: String::new(),
                 layer_scale_x: 1.0,
                 layer_scale_y: 1.0,
+                stabilization_intensity: 0.0,
             });
     }
 
@@ -410,6 +412,7 @@ impl App {
                 lut_path: copied.lut_path,
                 layer_scale_x: copied.layer_scale_x,
                 layer_scale_y: copied.layer_scale_y,
+                stabilization_intensity: copied.stabilization_intensity,
             });
     }
 

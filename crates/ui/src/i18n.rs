@@ -155,6 +155,8 @@ text_catalog! {
     PropGlitch: pt_br = "Glitch", en = "Glitch";
     PropPixelize: pt_br = "Pixelizar", en = "Pixelize";
     OtherEffectsExportNote: pt_br = "ainda não têm efeito visível em lugar nenhum — preview e export ignoram esses valores por enquanto.", en = "have no visible effect anywhere yet — preview and export ignore these values for now.";
+    PropStabilization: pt_br = "🎥 Estabilização", en = "🎥 Stabilization";
+    StabilizationExportNote: pt_br = "aplicado na exportação via deshake — sem suporte no preview ao vivo (nenhum elemento de estabilização disponível na instalação do GStreamer).", en = "applied on export via deshake — no live preview support (no stabilization element available in the GStreamer install).";
     PropTransition: pt_br = "Transição", en = "Transition";
     TransitionNone: pt_br = "Nenhuma", en = "None";
     TransitionFade: pt_br = "Fade", en = "Fade";

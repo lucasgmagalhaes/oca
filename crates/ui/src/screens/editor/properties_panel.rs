@@ -4,7 +4,7 @@ use crate::app::{
     App, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE, CONTRAST_RANGE,
     CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, LAYER_SCALE_RANGE,
     MASK_CORNER_RADIUS_RANGE, PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SHAKE_INTENSITY_RANGE,
-    SHARPEN_RANGE, SPEED_FACTOR_RANGE, VIGNETTE_INTENSITY_RANGE,
+    SHARPEN_RANGE, SPEED_FACTOR_RANGE, STABILIZATION_INTENSITY_RANGE, VIGNETTE_INTENSITY_RANGE,
 };
 use crate::components;
 use crate::i18n::Text;
@@ -114,6 +114,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let mut shake_intensity = clip.shake_intensity;
                     let mut glitch_intensity = clip.glitch_intensity;
                     let mut pixelize_intensity = clip.pixelize_intensity;
+                    let mut stabilization_intensity = clip.stabilization_intensity;
                     let mut transition_in = clip.transition_in;
                     let mut transition_duration_secs = clip.transition_duration_secs;
                     // Cloned out up front (like every other field above) rather than read from
@@ -509,6 +510,25 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                             app.set_selected_clip_shake(shake_intensity);
                             app.set_selected_clip_glitch(glitch_intensity);
                             app.set_selected_clip_pixelize(pixelize_intensity);
+                        }
+
+                        let stabilization_changed = components::property_section(
+                            ui,
+                            Text::PropStabilization.tr(locale),
+                            Text::StabilizationExportNote.tr(locale),
+                            |ui| {
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut stabilization_intensity,
+                                        STABILIZATION_INTENSITY_RANGE,
+                                    )
+                                    .fixed_decimals(2),
+                                )
+                                .changed()
+                            },
+                        );
+                        if stabilization_changed {
+                            app.set_selected_clip_stabilization(stabilization_intensity);
                         }
 
                         let transition_changed = components::property_section(

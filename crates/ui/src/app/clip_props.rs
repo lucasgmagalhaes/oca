@@ -5,8 +5,8 @@ use super::{
     App, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE, CONTRAST_RANGE,
     CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, LAYER_SCALE_RANGE,
     MASK_CORNER_RADIUS_RANGE, PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SCALE_RANGE,
-    SHAKE_INTENSITY_RANGE, SHARPEN_RANGE, SPEED_FACTOR_RANGE, TRANSITION_DURATION_RANGE,
-    VIGNETTE_INTENSITY_RANGE,
+    SHAKE_INTENSITY_RANGE, SHARPEN_RANGE, SPEED_FACTOR_RANGE, STABILIZATION_INTENSITY_RANGE,
+    TRANSITION_DURATION_RANGE, VIGNETTE_INTENSITY_RANGE,
 };
 
 impl App {
@@ -105,6 +105,18 @@ impl App {
             clip.layer_scale_x = scale_x;
             clip.layer_scale_y = scale_y;
         });
+    }
+
+    /// Sets `selected_clip_id`'s video-stabilization strength
+    /// ([`avcore::timeline::ClipInstance::stabilization_intensity`], clamped to
+    /// [`STABILIZATION_INTENSITY_RANGE`]) — what dragging the properties panel's stabilization
+    /// slider does. A no-op if nothing is selected.
+    pub fn set_selected_clip_stabilization(&mut self, stabilization_intensity: f32) {
+        let stabilization_intensity = stabilization_intensity.clamp(
+            *STABILIZATION_INTENSITY_RANGE.start(),
+            *STABILIZATION_INTENSITY_RANGE.end(),
+        );
+        self.with_selected_clip_mut(|clip| clip.stabilization_intensity = stabilization_intensity);
     }
 
     /// Sets `selected_clip_id`'s vignette strength
