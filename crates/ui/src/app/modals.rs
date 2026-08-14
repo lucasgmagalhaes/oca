@@ -199,11 +199,11 @@ impl App {
         }
     }
 
-    /// Writes the active project to a `<name>.autosave.json` recovery file next to the project's
-    /// own save file, subject to a 2-second idle debounce and a 30-second forced-save ceiling.
-    /// Skips silently if the project has never been saved (no `file_path` yet) or hasn't changed.
-    /// Serializes on the calling thread (fast, in-memory) then writes on a background thread so
-    /// the UI never blocks on file I/O.
+    /// Writes the active project to a `<name>.autosave.ocproj` recovery file next to the
+    /// project's own save file, subject to a 2-second idle debounce and a 30-second forced-save
+    /// ceiling. Skips silently if the project has never been saved (no `file_path` yet) or
+    /// hasn't changed. Serializes on the calling thread (fast, in-memory) then writes on a
+    /// background thread so the UI never blocks on file I/O.
     pub(super) fn pump_autosave(&mut self) {
         if !self.project_dirty || self.projects.is_empty() {
             return;
@@ -223,16 +223,16 @@ impl App {
         if !debounce_done && !ceiling_hit {
             return;
         }
-        let json = match avcore::persistence::to_json(self.active_project()) {
-            Ok(s) => s,
+        let bytes = match avcore::persistence::to_ocproj_bytes(self.active_project()) {
+            Ok(b) => b,
             Err(_) => return,
         };
-        let autosave_path = file_path.with_extension("autosave.json");
+        let autosave_path = file_path.with_extension("autosave.ocproj");
         debug!(path = %autosave_path.display(), "writing autosave");
         self.project_dirty = false;
         self.last_autosave_instant = Some(now);
         std::thread::spawn(move || {
-            if let Err(e) = std::fs::write(&autosave_path, json.as_bytes()) {
+            if let Err(e) = std::fs::write(&autosave_path, &bytes) {
                 error!(path = %autosave_path.display(), error = %e, "autosave write failed");
             }
         });
@@ -364,9 +364,9 @@ impl App {
     }
 
     /// Flags that a project with `file_path` should offer autosave restoration on open, if
-    /// `<file_path>.autosave.json` exists and is newer than the project file itself.
+    /// `<file_path>.autosave.ocproj` exists and is newer than the project file itself.
     pub fn check_autosave_on_open(&mut self, file_path: &Path) {
-        let autosave_path = file_path.with_extension("autosave.json");
+        let autosave_path = file_path.with_extension("autosave.ocproj");
         if autosave_is_newer(&autosave_path, file_path) {
             self.autosave_restore_pending = Some(autosave_path);
         }

@@ -29,7 +29,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 }
                 if ui.button(Text::OpenProject.tr(app.locale)).clicked() {
                     if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("JSON", &["json"])
+                        .add_filter("oca project", &["ocproj"])
                         .pick_file()
                     {
                         match avcore::load_project_from_file(&path) {

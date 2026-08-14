@@ -206,9 +206,10 @@ Three-crate split, enforced by dependency direction: `avbridge` → `core` → `
   libavutil, called via FFI. Exposes probing, timeline export rendering, loudness
   measurement, proxy generation, and waveform extraction.
 - **`core`** — project/timeline/media data model plus wrappers (`probe`, `render`,
-  `loudness`, `proxy`, `waveform`), GStreamer playback pipeline (`preview`), and JSON
-  save/load (`persistence`). Locale-neutral — stores enums, never pre-formatted strings.
-  No mock/sample data anywhere.
+  `loudness`, `proxy`, `waveform`), GStreamer playback pipeline (`preview`), and `.ocproj`
+  save/load (`persistence`) — gzip-compressed MessagePack (struct-map mode, so
+  `#[serde(default)]` still lets an older-saved project load after a new field is added).
+  Locale-neutral — stores enums, never pre-formatted strings. No mock/sample data anywhere.
 - **`ui`** — eframe/egui GUI (glow/OpenGL): `app.rs` holds `App` and mutation methods;
   `screens/` has one module per screen; `theme.rs` is the dark/teal palette; **all UI
   strings live in `i18n.rs`** (pt-BR and English) — never hardcode display text.

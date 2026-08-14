@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use avcore::loudness::parse_loudnorm_stderr;
-use avcore::persistence::{from_json, to_json};
+use avcore::persistence::{from_ocproj_bytes, to_ocproj_bytes};
 use avcore::timeline::{
     ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
 };
@@ -103,9 +103,11 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 transition_duration_secs: 0.5,
                 zoom_start: 1.0,
                 zoom_end: 1.0,
+                deflicker_enabled: false,
             })
             .collect(),
         text_clips: vec![],
+        visible: true,
     };
 
     Project {
@@ -137,19 +139,21 @@ fn bench_parse_loudnorm_stderr(c: &mut Criterion) {
     });
 }
 
-fn bench_project_json_round_trip(c: &mut Criterion) {
+fn bench_project_ocproj_round_trip(c: &mut Criterion) {
     let mut group = c.benchmark_group("persistence");
 
     for clip_count in [10usize, 200, 1000] {
         let project = large_project(50, clip_count);
-        let json = to_json(&project).unwrap();
+        let bytes = to_ocproj_bytes(&project).unwrap();
 
-        group.bench_function(format!("to_json/{clip_count}_clips_per_track"), |b| {
-            b.iter(|| to_json(black_box(&project)).unwrap())
-        });
-        group.bench_function(format!("from_json/{clip_count}_clips_per_track"), |b| {
-            b.iter(|| from_json(black_box(&json)).unwrap())
-        });
+        group.bench_function(
+            format!("to_ocproj_bytes/{clip_count}_clips_per_track"),
+            |b| b.iter(|| to_ocproj_bytes(black_box(&project)).unwrap()),
+        );
+        group.bench_function(
+            format!("from_ocproj_bytes/{clip_count}_clips_per_track"),
+            |b| b.iter(|| from_ocproj_bytes(black_box(&bytes)).unwrap()),
+        );
     }
 
     group.finish();
@@ -171,7 +175,7 @@ fn bench_timeline_duration(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_parse_loudnorm_stderr,
-    bench_project_json_round_trip,
+    bench_project_ocproj_round_trip,
     bench_timeline_duration,
 );
 criterion_main!(benches);

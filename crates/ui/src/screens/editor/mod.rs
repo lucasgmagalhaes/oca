@@ -317,8 +317,8 @@ fn save_active_project(app: &mut App) {
     let path = match app.active_project().file_path.clone() {
         Some(path) => Some(path),
         None => rfd::FileDialog::new()
-            .add_filter("JSON", &["json"])
-            .set_file_name(format!("{}.json", app.active_project().name))
+            .add_filter("oca project", &["ocproj"])
+            .set_file_name(format!("{}.ocproj", app.active_project().name))
             .save_file(),
     };
     let Some(path) = path else { return };

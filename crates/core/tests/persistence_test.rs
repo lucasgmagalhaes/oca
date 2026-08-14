@@ -2,12 +2,36 @@ use std::fs;
 use std::path::PathBuf;
 
 use avcore::persistence::{
-    from_json, load_project_from_file, save_project_to_file, to_json, PersistError,
+    from_ocproj_bytes, load_project_from_file, save_project_to_file, to_ocproj_bytes, PersistError,
 };
 use avcore::timeline::{
     ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
 };
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency, Sequence};
+
+/// Looks up `key` in a MessagePack struct-map value, panicking if `value` isn't a map or
+/// doesn't have that key. `rmpv::Value` only exposes read-only indexing/`as_map`, so mutating
+/// a nested field means walking the map ourselves.
+fn as_map_field_mut<'a>(value: &'a mut rmpv::Value, key: &str) -> &'a mut rmpv::Value {
+    match value {
+        rmpv::Value::Map(pairs) => {
+            &mut pairs
+                .iter_mut()
+                .find(|(k, _)| k.as_str() == Some(key))
+                .unwrap_or_else(|| panic!("missing key {key:?}"))
+                .1
+        }
+        _ => panic!("expected a map looking up {key:?}"),
+    }
+}
+
+/// Same as [`as_map_field_mut`], but expects the field's value to be an array.
+fn as_array_field_mut<'a>(value: &'a mut rmpv::Value, key: &str) -> &'a mut Vec<rmpv::Value> {
+    match as_map_field_mut(value, key) {
+        rmpv::Value::Array(items) => items,
+        _ => panic!("expected {key:?} to be an array"),
+    }
+}
 
 fn clip(id: u64, asset_id: u64) -> ClipInstance {
     ClipInstance {
@@ -116,29 +140,57 @@ fn empty_project() -> Project {
 }
 
 #[test]
-fn round_trips_a_project_through_json() {
+fn round_trips_a_project_through_ocproj() {
     let original = fixture_project();
-    let json = to_json(&original).unwrap();
-    let restored = from_json(&json).unwrap();
+    let bytes = to_ocproj_bytes(&original).unwrap();
+    let restored = from_ocproj_bytes(&bytes).unwrap();
     assert_eq!(original, restored);
 }
 
+/// Proves struct-map mode's field-level defaulting actually works end to end — not just that
+/// `gain_db` has a default value in isolation. Decodes the real `.ocproj` MessagePack payload
+/// as a generic value, removes the `gain_db` key the same way the old JSON test removed it from
+/// a `serde_json::Value`, re-encodes, and confirms `from_ocproj_bytes` still loads it (at unity
+/// gain) instead of erroring out on the "missing" field.
 #[test]
 fn projects_saved_before_per_block_gain_load_at_unity_gain() {
     let original = fixture_project();
-    let mut value: serde_json::Value = serde_json::from_str(&to_json(&original).unwrap()).unwrap();
-    for track in value["sequences"]
-        .as_array_mut()
-        .unwrap()
-        .iter_mut()
-        .flat_map(|sequence| sequence["timeline"]["tracks"].as_array_mut().unwrap())
-    {
-        for clip in track["clips"].as_array_mut().unwrap() {
-            clip.as_object_mut().unwrap().remove("gain_db");
+    let bytes = to_ocproj_bytes(&original).unwrap();
+
+    // Peel off the [MAGIC][version] header and gunzip to get the raw MessagePack bytes.
+    let header_len = 5;
+    let mut msgpack = Vec::new();
+    std::io::Read::read_to_end(
+        &mut flate2::read::GzDecoder::new(&bytes[header_len..]),
+        &mut msgpack,
+    )
+    .unwrap();
+
+    let mut value = rmpv::decode::read_value(&mut &msgpack[..]).unwrap();
+    let sequences = as_array_field_mut(&mut value, "sequences");
+    for sequence in sequences {
+        let timeline = as_map_field_mut(sequence, "timeline");
+        let tracks = as_array_field_mut(timeline, "tracks");
+        for track in tracks {
+            let clips = as_array_field_mut(track, "clips");
+            for clip in clips {
+                if let rmpv::Value::Map(pairs) = clip {
+                    pairs.retain(|(key, _)| key.as_str() != Some("gain_db"));
+                }
+            }
         }
     }
 
-    let restored = from_json(&serde_json::to_string(&value).unwrap()).unwrap();
+    let mut edited_msgpack = Vec::new();
+    rmpv::encode::write_value(&mut edited_msgpack, &value).unwrap();
+
+    let mut edited_bytes = Vec::new();
+    edited_bytes.extend_from_slice(&bytes[..header_len]);
+    let mut encoder = flate2::write::GzEncoder::new(&mut edited_bytes, flate2::Compression::fast());
+    std::io::Write::write_all(&mut encoder, &edited_msgpack).unwrap();
+    encoder.finish().unwrap();
+
+    let restored = from_ocproj_bytes(&edited_bytes).unwrap();
 
     assert!(restored
         .sequences
@@ -153,29 +205,42 @@ fn round_trips_a_project_with_an_empty_timeline_and_library() {
     let original = empty_project();
     assert!(original.media_library.is_empty());
     assert!(original.timeline().tracks.is_empty());
-    let json = to_json(&original).unwrap();
-    let restored = from_json(&json).unwrap();
+    let bytes = to_ocproj_bytes(&original).unwrap();
+    let restored = from_ocproj_bytes(&bytes).unwrap();
     assert_eq!(original, restored);
 }
 
 #[test]
-fn from_json_rejects_malformed_input() {
-    assert!(from_json("not json").is_err());
+fn from_ocproj_bytes_rejects_malformed_input() {
+    assert!(matches!(
+        from_ocproj_bytes(b"not an ocproj file"),
+        Err(PersistError::Corrupt(_))
+    ));
 }
 
 #[test]
-fn file_path_is_not_part_of_the_serialized_json() {
+fn from_ocproj_bytes_rejects_an_unsupported_version() {
+    let original = fixture_project();
+    let mut bytes = to_ocproj_bytes(&original).unwrap();
+    bytes[4] = 99;
+    assert!(matches!(
+        from_ocproj_bytes(&bytes),
+        Err(PersistError::Corrupt(_))
+    ));
+}
+
+#[test]
+fn file_path_is_not_part_of_the_serialized_bytes() {
     let mut project = fixture_project();
-    project.file_path = Some("/tmp/whatever.json".into());
-    let json = to_json(&project).unwrap();
-    assert!(!json.contains("whatever.json"));
-    assert!(!json.contains("file_path"));
+    project.file_path = Some("/tmp/whatever.ocproj".into());
+    let bytes = to_ocproj_bytes(&project).unwrap();
+    assert!(!bytes.windows(b"whatever".len()).any(|w| w == b"whatever"));
 }
 
 #[test]
 fn save_then_load_round_trips_through_a_real_file() {
     let original = fixture_project();
-    let path = std::env::temp_dir().join(format!("oca_persist_test_{}.json", original.id));
+    let path = std::env::temp_dir().join(format!("oca_persist_test_{}.ocproj", original.id));
 
     save_project_to_file(&original, &path).unwrap();
     let loaded = load_project_from_file(&path).unwrap();
@@ -186,7 +251,7 @@ fn save_then_load_round_trips_through_a_real_file() {
 
 #[test]
 fn load_project_from_file_errors_on_a_missing_file() {
-    let path = std::env::temp_dir().join("oca_persist_test_does_not_exist.json");
+    let path = std::env::temp_dir().join("oca_persist_test_does_not_exist.ocproj");
     assert!(matches!(
         load_project_from_file(&path),
         Err(PersistError::Io(_))
