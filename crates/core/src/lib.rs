@@ -46,6 +46,8 @@ pub use render::{
     render_timeline_export, resolve_text_segments, resolve_timeline_segments,
     resolve_timeline_segments_multi, ExportAspectRatio, RenderError, RenderOutcome,
 };
-pub use timeline::{ClipFormatting, ClipInstance, TextClip, Timeline, Track, TrackKind};
+pub use timeline::{
+    ClipFormatting, ClipInstance, LayerTemplate, TextClip, Timeline, Track, TrackKind,
+};
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};

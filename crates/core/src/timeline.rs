@@ -384,8 +384,12 @@ pub struct ClipInstance {
 
 /// The rendering/display settings of a [`ClipInstance`] that can be copied onto a different
 /// block without touching its structural fields (`id`, `asset_id`, start/trim, composite
-/// membership). Used by `ui`'s "copiar formatação" feature (`Ctrl+Shift+C`/`V`).
-#[derive(Debug, Clone, PartialEq)]
+/// membership). Used by `ui`'s "copiar formatação" feature (`Ctrl+Shift+C`/`V`) and by its
+/// layer-template feature (`request.md`'s Fase 4 "Templates de grupo de camadas") — a saved
+/// template is a named `Vec<(TrackKind, ClipFormatting)>` persisted to `ui`'s `PrefsState`,
+/// hence `Serialize`/`Deserialize` here (every field type already round-trips through
+/// `.ocproj`'s project persistence via `ClipInstance` itself, so this is no new surface).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClipFormatting {
     pub gain_db: f32,
     pub frozen: bool,
@@ -420,6 +424,22 @@ pub struct ClipFormatting {
     pub lut_path: String,
     pub layer_scale_x: f32,
     pub layer_scale_y: f32,
+}
+
+/// A named, reusable group of layers (per `request.md`'s Fase 4 "Templates de grupo de
+/// camadas" spec, e.g. "webcam recortada + fundo com blur + jogo centralizado") — each entry
+/// pairs a [`TrackKind`] with the [`ClipFormatting`] to apply to whatever source clip the user
+/// picks for that layer when the template is applied. Order matters (it's the layer stacking
+/// order the template was saved with) but nothing else about the *source* clips (asset,
+/// timing, track identity) is captured — those are supplied fresh each time the template is
+/// applied, which is the whole point: reapply the same look to different footage without
+/// reconfiguring effect-by-effect. Persisted in `ui`'s `PrefsState` (app-wide, not per-project,
+/// since a template is meant to be reused across projects/shorts), not `.ocproj` — plain
+/// top-level `Vec<LayerTemplate>` there, not nested in `Project`/`Sequence`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LayerTemplate {
+    pub name: String,
+    pub layers: Vec<(TrackKind, ClipFormatting)>,
 }
 
 fn default_speed_factor() -> f32 {
