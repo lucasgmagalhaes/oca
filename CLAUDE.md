@@ -176,10 +176,28 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   chroma key; the properties panel's LUT section browses for a `.cube` file the same way
   Preferences already browses for the Whisper model path (`rfd::FileDialog`). No preview
   element — `gst-inspect-1.0` on the pinned GStreamer install turned up nothing LUT-shaped
-  (`lut3d`/`gllut3d`/cube-file), confirmed rather than assumed. **Not yet done:** the rest of
-  Fase 4's larger CapCut-parity items (layer templates, layer transform, video stabilization, AI
-  background removal, auto-reframe, text-to-speech, motion tracking, music/SFX library) —
-  keyframes and LUTs are done, see above.
+  (`lut3d`/`gllut3d`/cube-file), confirmed rather than assumed.
+
+  **Layer transform (position-only, done):** the Editor screen's preview panel
+  (`layer_transform_preview` in `crates/ui/src/screens/editor/mod.rs`) draws the selected clip
+  inside a canvas-space box sized to `app.export_aspect_ratio` (`ExportAspectRatio::dims_or`,
+  same target dimensions export uses) and, while position isn't already animated
+  (`position_keyframes.len() <= 1`), lets you drag it to set a single position keyframe — this
+  maps directly onto `overlay=x:y`'s own canvas-fraction coordinate space
+  (`crate::keyframe::position_overlay_xy_expr`), so what you drag is exactly what export reads,
+  no separate UI-only representation to keep in sync. Read-only (with a hint label) once
+  position has 2+ keyframes, to avoid ambiguity about which keyframe a drag would target.
+  **Size is not editable** — the overlay avfilter chain (`timeline_export_multi.c`'s
+  `build_vfilter_descr`) has no width/height stage independent of `scale_keyframes` (which
+  zooms into the clip's own frame, a different thing from resizing its footprint on the
+  canvas); the drawn layer box uses a fixed stand-in fraction of the canvas rather than a real
+  dimension. Adding real resize needs a new `layer_width`/`layer_height`-style field plus a new
+  `scale=w:h` avfilter stage before `overlay` — a backend change, not just a UI one — and is the
+  natural next slice of this feature.
+
+  **Not yet done:** the rest of Fase 4's larger CapCut-parity items (layer templates, layer
+  resize, video stabilization, AI background removal, auto-reframe, text-to-speech, motion
+  tracking, music/SFX library) — keyframes, LUTs, and layer position are done, see above.
 
   **Word-highlight subtitles (done):** true in-place highlighting — the full sentence stays on
   screen, the currently-spoken word lights up in `highlight_color_rgba` exactly where it sits in
