@@ -570,7 +570,7 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/mod.rs": {
-    "mtime": 1786730317.0378556,
+    "mtime": 1786732838.4011335,
     "ast_hash": "b096593d75145e96ef704e7dd1cdd6fb",
     "semantic_hash": ""
   },
@@ -580,7 +580,7 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel.rs": {
-    "mtime": 1786729321.2254233,
+    "mtime": 1786732842.7036586,
     "ast_hash": "c5f0c45029f7596acddaa6f430e1109d",
     "semantic_hash": ""
   },
@@ -602,6 +602,11 @@
   "logo.png": {
     "mtime": 1786729147.4426534,
     "ast_hash": "a44cbb25f518ef103213108a550a2587",
+    "semantic_hash": ""
+  },
+  "e2e/test_layer_transform.py": {
+    "mtime": 1786733630.2719252,
+    "ast_hash": "08c99831f8e03cd0b2eb64d3fc66691d",
     "semantic_hash": ""
   }
 }
