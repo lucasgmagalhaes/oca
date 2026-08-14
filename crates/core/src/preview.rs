@@ -218,7 +218,8 @@ fn build_video_filter_bin(
                 .map(|t| t.seconds_f64())
                 .unwrap_or(source_in_secs);
             let frac = ((secs - source_in_secs) / clip_duration_secs).clamp(0.0, 1.0) as f32;
-            let a = crate::keyframe::evaluate_keyframes(&opacity_keyframes, frac, 1.0).clamp(0.0, 1.0);
+            let a =
+                crate::keyframe::evaluate_keyframes(&opacity_keyframes, frac, 1.0).clamp(0.0, 1.0);
             alpha_for_probe.set_property("alpha", a as f64);
             gst::PadProbeReturn::Ok
         });
