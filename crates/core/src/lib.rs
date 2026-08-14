@@ -19,6 +19,7 @@ pub mod project;
 pub mod proxy;
 pub mod render;
 pub mod timeline;
+pub mod transcribe;
 pub mod waveform;
 
 pub use avbridge::{Canvas, ClipSegment, GpuEncoderPreference, TextSegment};
@@ -36,4 +37,5 @@ pub use render::{
     resolve_timeline_segments_multi, ExportAspectRatio, RenderError, RenderOutcome,
 };
 pub use timeline::{ClipFormatting, ClipInstance, TextClip, Timeline, Track, TrackKind};
+pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};

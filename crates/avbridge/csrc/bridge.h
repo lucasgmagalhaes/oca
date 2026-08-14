@@ -344,4 +344,34 @@ TextOverlayStatus avbridge_apply_text_overlays(
     int canvas_width, int canvas_height,
     int canvas_fps_num, int canvas_fps_den);
 
+typedef enum {
+    PCM_OK = 0,
+    PCM_ERR_OPEN_INPUT = 1,
+    PCM_ERR_STREAM_INFO = 2,
+    /* The input has no audio stream to decode. */
+    PCM_ERR_NO_AUDIO_STREAM = 3,
+    /* Couldn't find/open the audio decoder. */
+    PCM_ERR_DECODER = 4,
+    /* Couldn't build the resample/mono-downmix filter graph. */
+    PCM_ERR_FILTER_GRAPH = 5,
+    /* A decode/filter call failed mid-stream (not at setup). */
+    PCM_ERR_PIPELINE = 6,
+} PcmStatus;
+
+/* Decodes `in_path`'s first audio stream to 16kHz mono 32-bit float PCM samples — the exact
+   input format whisper.cpp (via the `whisper-rs` crate) requires. Equivalent to
+   `ffmpeg -i in_path -af "aresample=16000,aformat=sample_fmts=flt:channel_layouts=mono" -f f32le -`.
+
+   On success, `*out_samples` points to a buffer of `*out_sample_count` floats, allocated with
+   malloc() and owned by the caller — free it with `avbridge_free_pcm_buffer()`, not `free()`
+   directly (keeps the allocator paired with whichever C runtime avbridge itself was linked
+   against). Both out-params are left untouched on any non-OK status.
+   Fails with `PCM_ERR_NO_AUDIO_STREAM` if `in_path` has no audio stream. */
+PcmStatus avbridge_extract_pcm_16k_mono(const char *in_path, float **out_samples,
+                                             int64_t *out_sample_count);
+
+/* Frees a buffer previously returned via `avbridge_extract_pcm_16k_mono`'s `out_samples`.
+   Safe to call with `samples == NULL` (no-op). */
+void avbridge_free_pcm_buffer(float *samples);
+
 #endif
