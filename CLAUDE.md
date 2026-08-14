@@ -205,9 +205,26 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   approximation position dragging already has, see `layer_transform_preview`'s doc comment).
   Both e2e-tested (`e2e/test_layer_transform.py`) driving the real app.
 
-  **Not yet done:** the rest of Fase 4's larger CapCut-parity items (layer templates, video
-  stabilization, AI background removal, auto-reframe, text-to-speech, motion tracking,
-  music/SFX library) — keyframes, LUTs, and layer transform (position + resize) are done, see
+  **Layer templates (done):** `avcore::LayerTemplate { name, layers: Vec<(TrackKind,
+  ClipFormatting)> }` (`ClipFormatting` now `Serialize`/`Deserialize` — every field type already
+  round-trips through `.ocproj` via `ClipInstance`, so no new surface) persisted app-wide in
+  `ui`'s `PrefsState.saved_layer_templates`, not per-project — the point is reapplying the same
+  layer group (e.g. "webcam recortada + fundo com blur + jogo centralizado") across different
+  shorts. `App::begin_save_layer_template` snapshots `multi_selected_clip_ids`' per-layer
+  `(TrackKind, ClipFormatting)`, ordered by track then start time; the toolbar's "Salvar como
+  template" button (enabled once 1+ clip is Ctrl+click multi-selected) opens a naming modal that
+  commits it. "Templates" opens a saved-templates list (Aplicar/delete per row); applying opens a
+  modal with one asset dropdown per saved layer, filtered to media-library assets of that
+  layer's own `TrackKind` — confirming creates one clip per filled layer on a brand-new track
+  each (`timeline_ops::create_new_track`, generalized from the old `add_video_track` so a
+  multi-video-layer template doesn't collapse its layers onto one track) at the current
+  playhead, with that layer's saved formatting applied. 10 unit tests in `app_test.rs`; the
+  full save→persist→apply round trip (including the real JSON shape on disk) was also verified
+  by hand against a live running instance, not just the test suite.
+
+  **Not yet done:** the rest of Fase 4's larger CapCut-parity items (video stabilization, AI
+  background removal, auto-reframe, text-to-speech, motion tracking, music/SFX library) —
+  keyframes, LUTs, layer transform (position + resize), and layer templates are done, see
   above.
 
   **Word-highlight subtitles (done):** true in-place highlighting — the full sentence stays on
