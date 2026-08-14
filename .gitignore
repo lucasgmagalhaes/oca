@@ -4,3 +4,4 @@ graphify-out/cost.json
 e2e/.pytest_cache
 e2e/__pycache__
 .claude/worktrees/
+/whisper_models/
