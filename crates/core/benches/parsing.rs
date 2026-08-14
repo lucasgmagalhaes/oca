@@ -106,6 +106,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 rotation_keyframes: vec![],
                 opacity_keyframes: vec![],
                 deflicker_enabled: false,
+                lut_path: String::new(),
             })
             .collect(),
         text_clips: vec![],

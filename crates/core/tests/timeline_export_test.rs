@@ -60,6 +60,7 @@ fn clip(
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
         deflicker_enabled: false,
+        lut_path: String::new(),
     }
 }
 

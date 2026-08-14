@@ -341,6 +341,18 @@ pub struct ClipInstance {
     /// `#[serde(default)]` so older saved projects load fully opaque.
     #[serde(default)]
     pub opacity_keyframes: Vec<Keyframe<f32>>,
+    /// Path to a `.cube` 3D LUT file applied to this block's color grading, per `request.md`'s
+    /// Fase 4 "Filtros de cor e LUTs" spec. Empty string = no LUT (the FFI-friendly analog of
+    /// `Option<PathBuf>` this codebase already uses for other optional string fields, since a
+    /// plain `String` round-trips through `.ocproj`'s MessagePack struct-map encoding without
+    /// needing an `Option` variant on the wire). Wired into export via `video_filter_chain`'s
+    /// `lut3d` stage; no equivalent GStreamer element exists on this dev machine's install (no
+    /// `lut3d`/`gllut3d`/cube-file element turned up in a real `gst-inspect-1.0` listing), so
+    /// preview has no LUT stage — the same "export only" gap several other effects here have,
+    /// just for a different reason (missing element, not "not wired yet"). `#[serde(default)]`
+    /// so older saved projects load with no LUT applied.
+    #[serde(default)]
+    pub lut_path: String,
     /// `true` if temporal luminance-flicker removal is enabled for this block, per
     /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Remoção de flicker") — common in
     /// screen/gameplay captures at certain refresh rates. Wired to export via `video_filter_chain`
@@ -386,6 +398,7 @@ pub struct ClipFormatting {
     pub rotation_keyframes: Vec<Keyframe<f32>>,
     pub opacity_keyframes: Vec<Keyframe<f32>>,
     pub deflicker_enabled: bool,
+    pub lut_path: String,
 }
 
 fn default_speed_factor() -> f32 {
@@ -438,6 +451,11 @@ impl ClipInstance {
     /// `true` if a color filter ([`ClipInstance::color_filter`]) is applied.
     pub fn is_color_filtered(&self) -> bool {
         self.color_filter != ColorFilter::None
+    }
+
+    /// `true` if a 3D LUT ([`ClipInstance::lut_path`]) is applied.
+    pub fn has_lut(&self) -> bool {
+        !self.lut_path.is_empty()
     }
 
     /// `true` if [`ClipInstance::vignette_intensity`] is above zero.
@@ -564,6 +582,15 @@ impl ClipInstance {
             ColorFilter::Sepia => stages.push(
                 "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:0".to_string(),
             ),
+        }
+        if self.has_lut() {
+            // Forward slashes even on Windows sidesteps avfilter's own backslash-escaping rules
+            // inside a quoted option value (ffmpeg accepts `/`-separated paths on any platform);
+            // a literal single quote in the path (the one character `'...'` quoting can't pass
+            // through unescaped) is escaped avfilter-style, matching text_overlay.c's existing
+            // `drawtext=fontfile='%s'` convention for embedding a file path into a filter option.
+            let escaped = self.lut_path.replace('\\', "/").replace('\'', "'\\''");
+            stages.push(format!("lut3d=file='{escaped}'"));
         }
         if self.is_chroma_keyed() {
             let [r, g, b] = self.chroma_key_color;
@@ -722,6 +749,7 @@ impl ClipInstance {
             rotation_keyframes: self.rotation_keyframes.clone(),
             opacity_keyframes: self.opacity_keyframes.clone(),
             deflicker_enabled: self.deflicker_enabled,
+            lut_path: self.lut_path.clone(),
         }
     }
 
@@ -759,6 +787,7 @@ impl ClipInstance {
         self.rotation_keyframes = f.rotation_keyframes.clone();
         self.opacity_keyframes = f.opacity_keyframes.clone();
         self.deflicker_enabled = f.deflicker_enabled;
+        self.lut_path = f.lut_path.clone();
     }
 
     /// Drags the clip's right edge to `new_end_secs` (timeline-relative), keeping `start_secs`
@@ -893,6 +922,7 @@ impl Track {
             rotation_keyframes: rotation_second,
             opacity_keyframes: opacity_second,
             deflicker_enabled: clip.deflicker_enabled,
+            lut_path: clip.lut_path.clone(),
         };
         clip.source_out_secs = split_source_secs;
         clip.position_keyframes = position_first;

@@ -42,6 +42,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
         deflicker_enabled: false,
+        lut_path: String::new(),
     }
 }
 
@@ -118,6 +119,48 @@ fn video_filter_chain_includes_colorkey_when_chroma_keyed() {
     c.chroma_key_color = [0, 255, 0];
     c.chroma_key_tolerance = 0.4;
     assert_eq!(c.video_filter_chain(), "colorkey=0x00ff00:0.400:0.1");
+}
+
+#[test]
+fn video_filter_chain_includes_lut3d_when_a_lut_is_set() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.lut_path = "C:/luts/cinematic.cube".to_string();
+    assert_eq!(
+        c.video_filter_chain(),
+        "lut3d=file='C:/luts/cinematic.cube'"
+    );
+}
+
+#[test]
+fn video_filter_chain_escapes_backslashes_and_quotes_in_the_lut_path() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.lut_path = r"C:\luts\bob's cube.cube".to_string();
+    assert_eq!(
+        c.video_filter_chain(),
+        "lut3d=file='C:/luts/bob'\\''s cube.cube'"
+    );
+}
+
+#[test]
+fn video_filter_chain_orders_lut_after_color_filter_before_chroma_key() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.color_filter = ColorFilter::Sepia;
+    c.lut_path = "cinematic.cube".to_string();
+    c.chroma_key_enabled = true;
+    let chain = c.video_filter_chain();
+    let color_pos = chain.find("colorchannelmixer").unwrap();
+    let lut_pos = chain.find("lut3d").unwrap();
+    let colorkey_pos = chain.find("colorkey").unwrap();
+    assert!(color_pos < lut_pos && lut_pos < colorkey_pos);
+}
+
+#[test]
+fn split_clip_at_keeps_lut_on_both_halves() {
+    let mut t = track_with(vec![clip(1, 0.0, 0.0, 10.0)]);
+    t.clips[0].lut_path = "cinematic.cube".to_string();
+    t.split_clip_at(4.0, 2);
+    assert_eq!(t.clips[0].lut_path, "cinematic.cube");
+    assert_eq!(t.clips[1].lut_path, "cinematic.cube");
 }
 
 #[test]

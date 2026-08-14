@@ -71,6 +71,7 @@ fn clip(id: u64, asset_id: u64) -> ClipInstance {
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
         deflicker_enabled: false,
+        lut_path: String::new(),
     }
 }
 
