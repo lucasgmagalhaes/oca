@@ -129,6 +129,9 @@ text_catalog! {
     ColorFilterBlackAndWhite: pt_br = "Preto e branco", en = "Black and white";
     ColorFilterSepia: pt_br = "Sépia", en = "Sepia";
     ColorFilterExportNote: pt_br = "mostra só uma prévia tintada no bloco por enquanto — preview e export ainda mostram as cores originais.", en = "only shows a tinted preview on the block for now — preview and export still show the original colors.";
+    PropLut: pt_br = "LUT 3D", en = "3D LUT";
+    LutExportNote: pt_br = "aplicado na exportação via lut3d — sem suporte no preview ao vivo (nenhum elemento de LUT disponível na instalação do GStreamer).", en = "applied on export via lut3d — no live preview support (no LUT element available in the GStreamer install).";
+    ClearLut: pt_br = "Remover", en = "Clear";
     PropVignette: pt_br = "Vinheta", en = "Vignette";
     VignetteExportNote: pt_br = "mostra só uma borda escurecida no bloco por enquanto — preview e export ainda não aplicam a vinheta.", en = "only shows a darkened border on the block for now — preview and export don't apply the vignette yet.";
     PropColorAdjust: pt_br = "Cor", en = "Color";

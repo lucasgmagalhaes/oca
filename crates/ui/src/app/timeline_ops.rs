@@ -56,6 +56,7 @@ impl App {
                 rotation_keyframes: vec![],
                 opacity_keyframes: vec![],
                 deflicker_enabled: false,
+                lut_path: String::new(),
             });
     }
 
@@ -119,6 +120,7 @@ impl App {
                 rotation_keyframes: vec![],
                 opacity_keyframes: vec![],
                 deflicker_enabled: false,
+                lut_path: String::new(),
             });
     }
 
@@ -401,6 +403,7 @@ impl App {
                 rotation_keyframes: copied.rotation_keyframes,
                 opacity_keyframes: copied.opacity_keyframes,
                 deflicker_enabled: copied.deflicker_enabled,
+                lut_path: copied.lut_path,
             });
     }
 

@@ -85,6 +85,13 @@ impl App {
         self.with_selected_clip_mut(|clip| clip.color_filter = color_filter);
     }
 
+    /// Sets `selected_clip_id`'s 3D LUT path ([`avcore::timeline::ClipInstance::lut_path`]) —
+    /// what browsing for a `.cube` file or picking a preset in the properties panel does. Empty
+    /// string clears the LUT. A no-op if nothing is selected.
+    pub fn set_selected_clip_lut(&mut self, lut_path: String) {
+        self.with_selected_clip_mut(|clip| clip.lut_path = lut_path);
+    }
+
     /// Sets `selected_clip_id`'s vignette strength
     /// ([`avcore::timeline::ClipInstance::vignette_intensity`], clamped to
     /// [`VIGNETTE_INTENSITY_RANGE`]) — what dragging the properties panel's vignette slider

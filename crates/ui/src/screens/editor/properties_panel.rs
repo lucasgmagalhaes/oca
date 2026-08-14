@@ -100,6 +100,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let mut mask_corner_radius = clip.mask_corner_radius;
                     let mut flipped_h = clip.flipped_h;
                     let mut color_filter = clip.color_filter;
+                    let mut lut_path = clip.lut_path.clone();
                     let mut vignette_intensity = clip.vignette_intensity;
                     let (mut brightness, mut contrast, mut saturation) =
                         (clip.brightness, clip.contrast, clip.saturation);
@@ -294,6 +295,45 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         );
                         if color_filter_changed {
                             app.set_selected_clip_color_filter(color_filter);
+                        }
+
+                        let lut_changed = components::property_section(
+                            ui,
+                            Text::PropLut.tr(locale),
+                            Text::LutExportNote.tr(locale),
+                            |ui| {
+                                let mut changed = false;
+                                ui.horizontal(|ui| {
+                                    let name = std::path::Path::new(&lut_path)
+                                        .file_name()
+                                        .map(|n| n.to_string_lossy().to_string())
+                                        .unwrap_or_default();
+                                    ui.label(
+                                        RichText::new(if name.is_empty() { "—" } else { &name })
+                                            .size(11.0)
+                                            .color(theme::TEXT_SECONDARY),
+                                    );
+                                    if ui.button(Text::Browse.tr(locale)).clicked() {
+                                        if let Some(file) = rfd::FileDialog::new()
+                                            .add_filter("3D LUT", &["cube"])
+                                            .pick_file()
+                                        {
+                                            lut_path = file.display().to_string();
+                                            changed = true;
+                                        }
+                                    }
+                                    if !lut_path.is_empty()
+                                        && ui.button(Text::ClearLut.tr(locale)).clicked()
+                                    {
+                                        lut_path.clear();
+                                        changed = true;
+                                    }
+                                });
+                                changed
+                            },
+                        );
+                        if lut_changed {
+                            app.set_selected_clip_lut(lut_path);
                         }
 
                         if components::property_section(

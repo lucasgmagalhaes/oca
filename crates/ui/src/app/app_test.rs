@@ -80,6 +80,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
         deflicker_enabled: false,
+        lut_path: String::new(),
     }
 }
 
