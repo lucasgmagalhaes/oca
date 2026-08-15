@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "crates/core/benches/parsing.rs": {
-    "mtime": 1786736351.0180268,
-    "ast_hash": "626cbdb518c496f5a7e23794b09165cd",
+    "mtime": 1786792623.8940308,
+    "ast_hash": "6029742445d1453bd55204ba44291ceb",
     "semantic_hash": ""
   },
   "crates/core/src/export.rs": {
@@ -60,8 +60,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/persistence.rs": {
-    "mtime": 1786728887.2897677,
-    "ast_hash": "6a3cb6dff20ba24e71674af6ab06ecf4",
+    "mtime": 1786792573.5430596,
+    "ast_hash": "f2980468f980292496d2d082f504d823",
     "semantic_hash": ""
   },
   "crates/core/src/preview.rs": {
@@ -115,8 +115,8 @@
     "semantic_hash": ""
   },
   "crates/core/tests/persistence_test.rs": {
-    "mtime": 1786736210.1792784,
-    "ast_hash": "24c22c8871fd0a5a460e5d8394e7c684",
+    "mtime": 1786792609.1991632,
+    "ast_hash": "e7a76eefd03129659ea7b71937ab1f84",
     "semantic_hash": ""
   },
   "crates/core/tests/preview_test.rs": {
@@ -210,8 +210,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786790936.934721,
-    "ast_hash": "304a9aa20622dbe7af7c81a9080830e8",
+    "mtime": 1786792331.8405955,
+    "ast_hash": "59cc69c6a4b0299dc3a961638158ebc6",
     "semantic_hash": ""
   },
   "README.md": {
@@ -530,8 +530,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/export.rs": {
-    "mtime": 1786647220.2004075,
-    "ast_hash": "72cf3da3a7c9053c87e38fd743f15763",
+    "mtime": 1786792688.8408513,
+    "ast_hash": "68b62b5ed9d031ec1174e21e93a23113",
     "semantic_hash": ""
   },
   "crates/ui/src/app/import.rs": {
@@ -540,8 +540,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1786792224.476284,
-    "ast_hash": "a67d82246fab09e4095e79db9e99901a",
+    "mtime": 1786792693.9335947,
+    "ast_hash": "ca28d8723b302808992fc8557c96d76c",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
@@ -647,6 +647,11 @@
   "crates/ui/src/app/auto_reframe.rs": {
     "mtime": 1786792115.4235115,
     "ast_hash": "08d07e858ccf3fb21fd44283a3ec9372",
+    "semantic_hash": ""
+  },
+  "e2e/test_auto_reframe.py": {
+    "mtime": 1786792852.377159,
+    "ast_hash": "e4b6e9be90d7d346eecf0525f1150e6b",
     "semantic_hash": ""
   }
 }
