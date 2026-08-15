@@ -152,6 +152,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
     let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
     let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
+    let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
     let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
     let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
     App {
@@ -186,6 +187,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         auto_reframe_tx,
         auto_reframe_rx,
         auto_reframing_clip_id: None,
+        motion_tracking_tx,
+        motion_tracking_rx,
+        motion_tracking_clip_id: None,
         model_download_tx,
         model_download_rx,
         model_download_progress: None,

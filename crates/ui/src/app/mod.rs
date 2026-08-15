@@ -27,6 +27,7 @@ mod import;
 mod layer_templates;
 mod modals;
 mod model_download;
+mod motion_tracking;
 mod preview;
 mod sound_library;
 mod timeline_ops;
@@ -364,6 +365,15 @@ enum AutoReframeEvent {
     },
 }
 
+/// A message from a background motion-tracking worker thread (see
+/// [`App::spawn_motion_track_selected_clip`]) back to the UI thread.
+enum MotionTrackEvent {
+    Done {
+        clip_id: u64,
+        keyframes: Vec<avcore::Keyframe<avcore::Position>>,
+    },
+}
+
 /// A message from a background model-download worker thread (see
 /// [`App::spawn_download_whisper_model`]/[`App::spawn_download_reframe_model`]) back to the UI
 /// thread. Only one download can run at a time ([`App::cancel_model_download`] gates that), so
@@ -476,6 +486,11 @@ pub struct App {
     /// The timeline clip id a background auto-reframe run is currently computing a crop for, if
     /// any — only one runs at a time, same shape as `transcribing_asset_id`.
     pub auto_reframing_clip_id: Option<u64>,
+    motion_tracking_tx: UnboundedSender<MotionTrackEvent>,
+    motion_tracking_rx: UnboundedReceiver<MotionTrackEvent>,
+    /// The timeline clip id a background motion-tracking run is currently tracking, if any —
+    /// only one runs at a time, same shape as `auto_reframing_clip_id`.
+    pub motion_tracking_clip_id: Option<u64>,
     model_download_tx: UnboundedSender<ModelDownloadEvent>,
     model_download_rx: UnboundedReceiver<ModelDownloadEvent>,
     /// `Some((downloaded_bytes, total_bytes))` while a model download is running —
@@ -639,6 +654,7 @@ impl App {
         let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
         let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
         let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
+        let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
         let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
         let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
         let mut app = Self {
@@ -673,6 +689,9 @@ impl App {
             auto_reframe_tx,
             auto_reframe_rx,
             auto_reframing_clip_id: None,
+            motion_tracking_tx,
+            motion_tracking_rx,
+            motion_tracking_clip_id: None,
             model_download_tx,
             model_download_rx,
             model_download_progress: None,
@@ -1008,6 +1027,7 @@ impl eframe::App for App {
         self.pump_sound_library_queue();
         self.pump_transcribe();
         self.pump_auto_reframe();
+        self.pump_motion_tracking();
         self.pump_model_download();
         self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());

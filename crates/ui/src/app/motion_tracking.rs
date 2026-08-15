@@ -1,0 +1,142 @@
+use std::path::Path;
+use std::time::{Duration, Instant};
+
+use avcore::{Keyframe, Position};
+
+use super::{App, MotionTrackEvent};
+
+/// Frames sampled per second of the clip's own trimmed source duration — dense enough to follow
+/// ordinary motion, coarse enough that a several-second clip still tracks in roughly a second or
+/// two on a background thread. Capped by [`MAX_SAMPLES`] regardless of duration.
+const SAMPLES_PER_SEC: f64 = 4.0;
+/// Upper bound on sampled frames, regardless of `SAMPLES_PER_SEC * duration` — bounds worst-case
+/// decode time for a very long clip.
+const MAX_SAMPLES: usize = 60;
+
+impl App {
+    /// Runs motion tracking against `selected_clip_id` on a background thread — what the
+    /// properties panel's "Rastrear movimento" button does. Tracks a region centered on the
+    /// middle of the frame (no dedicated region-of-interest picker yet — see
+    /// `avcore::motion_tracking`'s module docs) across the clip's own trimmed source duration,
+    /// then rewrites `position_keyframes` as that motion applied on top of whatever single
+    /// position (or the default centered-at-origin placement) was already set. A no-op if
+    /// nothing is selected or a run is already in flight.
+    pub fn spawn_motion_track_selected_clip(&mut self) {
+        if self.motion_tracking_clip_id.is_some() {
+            return;
+        }
+        let Some(clip) = self.selected_clip() else {
+            return;
+        };
+        let clip_id = clip.id;
+        let asset_id = clip.asset_id;
+        let source_in_secs = clip.source_in_secs;
+        let source_out_secs = clip.source_out_secs;
+        let base_position = clip
+            .position_keyframes
+            .first()
+            .map(|k| k.value)
+            .unwrap_or(Position { x: 0.0, y: 0.0 });
+        let Some(asset) = self
+            .active_project()
+            .media_library
+            .iter()
+            .find(|a| a.id == asset_id)
+        else {
+            return;
+        };
+        let source_path = asset.source_path.clone();
+
+        self.motion_tracking_clip_id = Some(clip_id);
+        let tx = self.motion_tracking_tx.clone();
+        std::thread::spawn(move || {
+            let keyframes =
+                motion_track_one(&source_path, source_in_secs, source_out_secs, base_position);
+            let _ = tx.send(MotionTrackEvent::Done { clip_id, keyframes });
+        });
+    }
+
+    /// Applies a finished motion-tracking run to the timeline. Called once per frame from
+    /// [`eframe::App::ui`], same as [`App::pump_auto_reframe`].
+    pub(super) fn pump_motion_tracking(&mut self) {
+        while let Ok(event) = self.motion_tracking_rx.try_recv() {
+            match event {
+                MotionTrackEvent::Done { clip_id, keyframes } => {
+                    self.motion_tracking_clip_id = None;
+                    if keyframes.is_empty() {
+                        self.push_toast(
+                            crate::i18n::Text::MotionTrackNoFramesDecoded
+                                .tr(self.locale)
+                                .to_string(),
+                        );
+                        continue;
+                    }
+                    if self.selected_clip_id == Some(clip_id) {
+                        self.set_selected_clip_position_keyframes(keyframes);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Runs on [`App::spawn_motion_track_selected_clip`]'s background thread — decodes frames
+/// sampled across `[source_in_secs, source_out_secs)`, tracks a centered region across them, and
+/// converts the result into a `position_keyframes` list. Returns an empty `Vec` if fewer than 2
+/// frames could be decoded (nothing meaningful to track — [`App::pump_motion_tracking`] leaves
+/// the clip's existing keyframes untouched in that case rather than replacing them with a
+/// single-point "animation").
+fn motion_track_one(
+    source_path: &Path,
+    source_in_secs: f64,
+    source_out_secs: f64,
+    base_position: Position,
+) -> Vec<Keyframe<Position>> {
+    let duration = (source_out_secs - source_in_secs).max(0.0);
+    if duration <= 0.0 {
+        return Vec::new();
+    }
+    let sample_count = ((duration * SAMPLES_PER_SEC).round() as usize).clamp(2, MAX_SAMPLES);
+    let sample_times: Vec<f64> = (0..sample_count)
+        .map(|i| source_in_secs + duration * (i as f64 / (sample_count - 1) as f64))
+        .collect();
+
+    let Some(preview) = avcore::preview::Preview::open(source_path, None).ok() else {
+        return Vec::new();
+    };
+
+    // (time_fraction, gray frame) — only for samples that actually decoded within the
+    // deadline, so a dropped frame just shrinks the keyframe list rather than desyncing the
+    // remaining ones' timing (using each decoded frame's own real timestamp, not its index,
+    // keeps that correct even when some samples are skipped).
+    let mut decoded = Vec::with_capacity(sample_times.len());
+    for &t in &sample_times {
+        let _ = preview.seek(t.max(0.0));
+        let deadline = Instant::now() + Duration::from_millis(800);
+        let frame = loop {
+            if let Some(f) = preview.current_frame() {
+                break Some(f);
+            }
+            if Instant::now() >= deadline {
+                break None;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let Some(frame) = frame else {
+            continue;
+        };
+        let time_fraction = ((t - source_in_secs) / duration) as f32;
+        decoded.push((
+            time_fraction,
+            avcore::rgba_to_gray(&frame.rgba, frame.width, frame.height),
+        ));
+    }
+
+    if decoded.len() < 2 {
+        return Vec::new();
+    }
+
+    let (time_fractions, frames): (Vec<f32>, Vec<avcore::GrayFrame>) = decoded.into_iter().unzip();
+    let tracked = avcore::track_region(&frames, 0.5, 0.5, 0.2, 0.08);
+    avcore::tracked_positions_to_keyframes(&tracked, &time_fractions, base_position)
+}
