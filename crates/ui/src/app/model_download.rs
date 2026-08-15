@@ -1,9 +1,11 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use avcore::model_download::{download_whisper_model, DownloadOutcome, WhisperModelSize};
+use avcore::model_download::{
+    download_reframe_model, download_whisper_model, DownloadOutcome, WhisperModelSize,
+};
 
-use super::{models_dir, App, ModelDownloadEvent};
+use super::{models_dir, App, ModelDownloadEvent, ModelKind};
 
 impl App {
     /// Downloads `size`'s GGML model on a background thread — what Preferences' model-size
@@ -15,6 +17,7 @@ impl App {
             return;
         }
         self.model_download_progress = Some((0, 0));
+        self.model_download_kind = Some(ModelKind::Whisper);
         let cancel = Arc::new(AtomicBool::new(false));
         self.cancel_model_download = Some(Arc::clone(&cancel));
 
@@ -25,7 +28,43 @@ impl App {
                 let _ = tx.send(ModelDownloadEvent::Progress { downloaded, total });
             });
             let event = match result {
-                Ok(DownloadOutcome::Completed(path)) => ModelDownloadEvent::Done { path },
+                Ok(DownloadOutcome::Completed(path)) => ModelDownloadEvent::Done {
+                    kind: ModelKind::Whisper,
+                    path,
+                },
+                Ok(DownloadOutcome::Cancelled) => ModelDownloadEvent::Cancelled,
+                Err(e) => ModelDownloadEvent::Failed {
+                    message: e.to_string(),
+                },
+            };
+            let _ = tx.send(event);
+        });
+    }
+
+    /// Downloads the UltraFace auto-reframe model on a background thread — what Preferences'
+    /// "Baixar modelo" button (auto-reframe section) does. Same shape as
+    /// [`App::spawn_download_whisper_model`], just a single fixed model rather than a size
+    /// picker. A no-op if a download is already running.
+    pub fn spawn_download_reframe_model(&mut self) {
+        if self.cancel_model_download.is_some() {
+            return;
+        }
+        self.model_download_progress = Some((0, 0));
+        self.model_download_kind = Some(ModelKind::Reframe);
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.cancel_model_download = Some(Arc::clone(&cancel));
+
+        let dest_dir = models_dir();
+        let tx = self.model_download_tx.clone();
+        std::thread::spawn(move || {
+            let result = download_reframe_model(&dest_dir, &cancel, |downloaded, total| {
+                let _ = tx.send(ModelDownloadEvent::Progress { downloaded, total });
+            });
+            let event = match result {
+                Ok(DownloadOutcome::Completed(path)) => ModelDownloadEvent::Done {
+                    kind: ModelKind::Reframe,
+                    path,
+                },
                 Ok(DownloadOutcome::Cancelled) => ModelDownloadEvent::Cancelled,
                 Err(e) => ModelDownloadEvent::Failed {
                     message: e.to_string(),
@@ -51,21 +90,31 @@ impl App {
                 ModelDownloadEvent::Progress { downloaded, total } => {
                     self.model_download_progress = Some((downloaded, total));
                 }
-                ModelDownloadEvent::Done { path } => {
+                ModelDownloadEvent::Done { kind, path } => {
                     self.model_download_progress = None;
+                    self.model_download_kind = None;
                     self.cancel_model_download = None;
-                    tracing::info!(path = %path.display(), "whisper model download complete");
-                    self.prefs.whisper_model_path = path.display().to_string();
+                    tracing::info!(path = %path.display(), kind = ?kind, "model download complete");
+                    match kind {
+                        ModelKind::Whisper => {
+                            self.prefs.whisper_model_path = path.display().to_string()
+                        }
+                        ModelKind::Reframe => {
+                            self.prefs.reframe_model_path = path.display().to_string()
+                        }
+                    }
                     self.save_prefs();
                 }
                 ModelDownloadEvent::Cancelled => {
                     self.model_download_progress = None;
+                    self.model_download_kind = None;
                     self.cancel_model_download = None;
                 }
                 ModelDownloadEvent::Failed { message } => {
                     self.model_download_progress = None;
+                    self.model_download_kind = None;
                     self.cancel_model_download = None;
-                    tracing::error!(error = %message, "whisper model download failed");
+                    tracing::error!(error = %message, "model download failed");
                     self.push_toast(format!("Model download failed: {message}"));
                 }
             }
