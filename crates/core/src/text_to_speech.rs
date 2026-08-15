@@ -133,9 +133,21 @@ fn split_phoneme_symbols(ipa: &str) -> Vec<String> {
 /// A symbol with no entry in `phoneme_id_map` (after substitution) is silently skipped — same
 /// behavior as the reference implementation (unknown/untrainable symbols, e.g. some punctuation).
 pub fn phonemes_to_ids(ipa: &str, config: &PiperVoiceConfig) -> Vec<i64> {
-    let bos = config.phoneme_id_map.get(BOS_SYMBOL).cloned().unwrap_or_default();
-    let eos = config.phoneme_id_map.get(EOS_SYMBOL).cloned().unwrap_or_default();
-    let pad = config.phoneme_id_map.get(PAD_SYMBOL).cloned().unwrap_or_default();
+    let bos = config
+        .phoneme_id_map
+        .get(BOS_SYMBOL)
+        .cloned()
+        .unwrap_or_default();
+    let eos = config
+        .phoneme_id_map
+        .get(EOS_SYMBOL)
+        .cloned()
+        .unwrap_or_default();
+    let pad = config
+        .phoneme_id_map
+        .get(PAD_SYMBOL)
+        .cloned()
+        .unwrap_or_default();
 
     let mut ids = bos;
     for symbol in split_phoneme_symbols(ipa) {
@@ -186,9 +198,10 @@ pub fn synthesize(
         }
         let ids_len = ids.len();
 
-        let input = Value::from_array(([1, ids_len], ids)).map_err(|e| TtsError::Onnx(e.to_string()))?;
-        let input_lengths =
-            Value::from_array(([1], vec![ids_len as i64])).map_err(|e| TtsError::Onnx(e.to_string()))?;
+        let input =
+            Value::from_array(([1, ids_len], ids)).map_err(|e| TtsError::Onnx(e.to_string()))?;
+        let input_lengths = Value::from_array(([1], vec![ids_len as i64]))
+            .map_err(|e| TtsError::Onnx(e.to_string()))?;
         let scales = Value::from_array((
             [3],
             vec![
@@ -205,11 +218,14 @@ pub fn synthesize(
             ("scales", scales.into_dyn()),
         ];
         if config.num_speakers > 1 {
-            let sid = Value::from_array(([1], vec![0i64])).map_err(|e| TtsError::Onnx(e.to_string()))?;
+            let sid =
+                Value::from_array(([1], vec![0i64])).map_err(|e| TtsError::Onnx(e.to_string()))?;
             inputs.push(("sid", sid.into_dyn()));
         }
 
-        let outputs = session.run(inputs).map_err(|e| TtsError::Onnx(e.to_string()))?;
+        let outputs = session
+            .run(inputs)
+            .map_err(|e| TtsError::Onnx(e.to_string()))?;
         let (_name, value) = outputs
             .iter()
             .next()
@@ -238,14 +254,17 @@ pub fn write_wav(out_path: &Path, sample_rate: u32, samples: &[f32]) -> Result<(
         bits_per_sample: 16,
         sample_format: hound::SampleFormat::Int,
     };
-    let mut writer = hound::WavWriter::create(out_path, spec).map_err(|e| TtsError::Io(io_from_hound(e)))?;
+    let mut writer =
+        hound::WavWriter::create(out_path, spec).map_err(|e| TtsError::Io(io_from_hound(e)))?;
     for &s in samples {
         let clamped = s.clamp(-1.0, 1.0);
         writer
             .write_sample((clamped * i16::MAX as f32) as i16)
             .map_err(|e| TtsError::Io(io_from_hound(e)))?;
     }
-    writer.finalize().map_err(|e| TtsError::Io(io_from_hound(e)))?;
+    writer
+        .finalize()
+        .map_err(|e| TtsError::Io(io_from_hound(e)))?;
     Ok(())
 }
 

@@ -41,8 +41,9 @@ pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
 pub use model_download::{
-    download_background_removal_model, download_reframe_model, download_whisper_model,
-    BackgroundRemovalModel, DownloadError, DownloadOutcome, ReframeModel, WhisperModelSize,
+    download_background_removal_model, download_reframe_model, download_tts_voice,
+    download_whisper_model, BackgroundRemovalModel, DownloadError, DownloadOutcome, ReframeModel,
+    TtsVoice, WhisperModelSize,
 };
 pub use motion_tracking::{
     rgba_to_gray, track_region, tracked_positions_to_keyframes, GrayFrame, TrackedPosition,

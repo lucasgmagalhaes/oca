@@ -25,6 +25,16 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         app.spawn_import(paths);
                     }
                 }
+                if ui.button(Text::TtsButton.tr(locale)).clicked() {
+                    app.open_tts_modal();
+                }
+                if app.tts_generating {
+                    ui.label(
+                        RichText::new(Text::TtsGenerating.tr(locale))
+                            .size(12.0)
+                            .color(theme::TEXT_MUTED),
+                    );
+                }
                 if app.pending_imports > 0 {
                     ui.label(
                         RichText::new(Text::Importing.tr(locale))

@@ -30,6 +30,7 @@ mod model_download;
 mod motion_tracking;
 mod preview;
 mod sound_library;
+mod text_to_speech;
 mod timeline_ops;
 mod transcribe;
 
@@ -177,6 +178,13 @@ pub struct PrefsState {
     /// `avcore::background_removal`'s module docs for why it isn't bundled yet).
     #[serde(default)]
     pub background_removal_model_path: String,
+    /// Path to a local Piper voice `.onnx` model file for text-to-speech
+    /// (`avcore::text_to_speech::synthesize`). Its `.onnx.json` config sidecar is expected right
+    /// next to it (`<this path>.json`), same layout `avcore::download_tts_voice` downloads into.
+    /// Empty when not configured — same one-time manual setup step as the other model paths
+    /// above (see `avcore::text_to_speech`'s module docs for why it isn't bundled yet).
+    #[serde(default)]
+    pub tts_model_path: String,
     /// Saved layer-group templates (`request.md`'s Fase 4 "Templates de grupo de camadas") —
     /// app-wide, not per-project, since the whole point is reapplying the same layer group
     /// (position/scale/crop/effects per layer) to fresh footage across different shorts.
@@ -206,6 +214,7 @@ impl Default for PrefsState {
             whisper_model_path: String::new(),
             reframe_model_path: String::new(),
             background_removal_model_path: String::new(),
+            tts_model_path: String::new(),
             saved_layer_templates: Vec::new(),
             sound_library_path: String::new(),
         }
@@ -356,6 +365,7 @@ pub(crate) enum ModelKind {
     Whisper,
     Reframe,
     BackgroundRemoval,
+    Tts,
 }
 
 /// A message from a background auto-reframe worker thread (see
@@ -380,6 +390,13 @@ enum MotionTrackEvent {
         clip_id: u64,
         keyframes: Vec<avcore::Keyframe<avcore::Position>>,
     },
+}
+
+/// A message from a background text-to-speech worker thread (see
+/// [`App::spawn_generate_tts`]) back to the UI thread.
+enum TtsEvent {
+    Done { wav_path: PathBuf },
+    Failed { message: String },
 }
 
 /// A message from a background model-download worker thread (see
@@ -499,6 +516,14 @@ pub struct App {
     /// The timeline clip id a background motion-tracking run is currently tracking, if any —
     /// only one runs at a time, same shape as `auto_reframing_clip_id`.
     pub motion_tracking_clip_id: Option<u64>,
+    tts_tx: UnboundedSender<TtsEvent>,
+    tts_rx: UnboundedReceiver<TtsEvent>,
+    /// `Some(text)` while the "Texto-pra-fala" modal is open — the text buffer being edited.
+    /// `None` when the modal is closed.
+    pub tts_modal_text: Option<String>,
+    /// `true` while a background TTS synthesis run is in flight — only one at a time, same
+    /// shape as `transcribing_asset_id`.
+    pub tts_generating: bool,
     model_download_tx: UnboundedSender<ModelDownloadEvent>,
     model_download_rx: UnboundedReceiver<ModelDownloadEvent>,
     /// `Some((downloaded_bytes, total_bytes))` while a model download is running —
@@ -663,6 +688,7 @@ impl App {
         let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
         let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
         let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
+        let (tts_tx, tts_rx) = mpsc::unbounded_channel();
         let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
         let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
         let mut app = Self {
@@ -700,6 +726,10 @@ impl App {
             motion_tracking_tx,
             motion_tracking_rx,
             motion_tracking_clip_id: None,
+            tts_tx,
+            tts_rx,
+            tts_modal_text: None,
+            tts_generating: false,
             model_download_tx,
             model_download_rx,
             model_download_progress: None,
@@ -982,6 +1012,16 @@ pub(self) fn models_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("models"))
 }
 
+/// Where [`App::spawn_generate_tts`] writes its synthesized WAV files before importing them —
+/// same platform-config-dir shape as [`models_dir`], a sibling `tts_output/` folder rather than
+/// a per-project location, since the text that produced a given clip has no other home either.
+pub(self) fn tts_output_dir() -> PathBuf {
+    prefs_path()
+        .parent()
+        .map(|d| d.join("tts_output"))
+        .unwrap_or_else(|| PathBuf::from("tts_output"))
+}
+
 /// Loads [`PrefsState`] from the platform config file, falling back to the default if the file
 /// is absent or cannot be parsed.
 pub fn load_prefs() -> PrefsState {
@@ -1036,6 +1076,7 @@ impl eframe::App for App {
         self.pump_transcribe();
         self.pump_auto_reframe();
         self.pump_motion_tracking();
+        self.pump_text_to_speech();
         self.pump_model_download();
         self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());
@@ -1085,6 +1126,7 @@ impl eframe::App for App {
         self.show_save_layer_template_modal(ui.ctx());
         self.show_layer_templates_menu(ui.ctx());
         self.show_apply_layer_template_modal(ui.ctx());
+        self.show_tts_modal(ui.ctx());
         self.show_toasts(ui.ctx());
     }
 

@@ -75,7 +75,11 @@ fn find_espeak_data_source(profile_dir: &Path) -> Option<PathBuf> {
         if !name.starts_with("espeak-rs-sys-") {
             continue;
         }
-        let candidate = entry.path().join("out").join("espeak-ng").join("espeak-ng-data");
+        let candidate = entry
+            .path()
+            .join("out")
+            .join("espeak-ng")
+            .join("espeak-ng-data");
         if candidate.is_dir() {
             return Some(candidate);
         }

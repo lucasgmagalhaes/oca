@@ -2,8 +2,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use avcore::model_download::{
-    download_background_removal_model, download_reframe_model, download_whisper_model,
-    DownloadOutcome, WhisperModelSize,
+    download_background_removal_model, download_reframe_model, download_tts_voice,
+    download_whisper_model, DownloadOutcome, WhisperModelSize,
 };
 
 use super::{models_dir, App, ModelDownloadEvent, ModelKind};
@@ -108,6 +108,38 @@ impl App {
         });
     }
 
+    /// Downloads the Piper pt_BR text-to-speech voice on a background thread — what
+    /// Preferences' "Baixar modelo" button (text-to-speech section) does. Same shape as
+    /// [`App::spawn_download_reframe_model`]. A no-op if a download is already running.
+    pub fn spawn_download_tts_voice(&mut self) {
+        if self.cancel_model_download.is_some() {
+            return;
+        }
+        self.model_download_progress = Some((0, 0));
+        self.model_download_kind = Some(ModelKind::Tts);
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.cancel_model_download = Some(Arc::clone(&cancel));
+
+        let dest_dir = models_dir();
+        let tx = self.model_download_tx.clone();
+        std::thread::spawn(move || {
+            let result = download_tts_voice(&dest_dir, &cancel, |downloaded, total| {
+                let _ = tx.send(ModelDownloadEvent::Progress { downloaded, total });
+            });
+            let event = match result {
+                Ok(DownloadOutcome::Completed(path)) => ModelDownloadEvent::Done {
+                    kind: ModelKind::Tts,
+                    path,
+                },
+                Ok(DownloadOutcome::Cancelled) => ModelDownloadEvent::Cancelled,
+                Err(e) => ModelDownloadEvent::Failed {
+                    message: e.to_string(),
+                },
+            };
+            let _ = tx.send(event);
+        });
+    }
+
     /// Cancels the in-flight model download, if any — what Preferences' Cancel button (shown
     /// only while a download is running) does. A no-op if nothing is downloading.
     pub fn request_cancel_model_download(&mut self) {
@@ -139,6 +171,7 @@ impl App {
                         ModelKind::BackgroundRemoval => {
                             self.prefs.background_removal_model_path = path.display().to_string()
                         }
+                        ModelKind::Tts => self.prefs.tts_model_path = path.display().to_string(),
                     }
                     self.save_prefs();
                 }

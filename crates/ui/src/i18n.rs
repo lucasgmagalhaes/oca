@@ -155,6 +155,14 @@ text_catalog! {
     BackgroundRemovalExportNote: pt_br = "detecção por IA já roda de verdade (MODNet via ONNX), mas ainda não gera a máscara nem afeta preview ou exportação — só marca o bloco por enquanto.", en = "the AI detection itself already runs for real (MODNet via ONNX), but doesn't generate the matte or affect preview/export yet — only marks the block for now.";
     DownloadBackgroundRemovalModel: pt_br = "Baixar modelo de remoção de fundo", en = "Download background removal model";
     PrefsBackgroundRemovalModelPath: pt_br = "Caminho do modelo de remoção de fundo", en = "Background removal model path";
+    TtsButton: pt_br = "🔊 Texto-pra-fala", en = "🔊 Text-to-speech";
+    TtsModalTitle: pt_br = "Texto-pra-fala", en = "Text-to-speech";
+    TtsGenerate: pt_br = "Gerar", en = "Generate";
+    TtsNoModelConfigured: pt_br = "Nenhum modelo de voz configurado — baixe um em Ajustes primeiro.", en = "No voice model configured — download one in Preferences first.";
+    TtsGenerationFailed: pt_br = "Falha ao gerar narração", en = "Narration generation failed";
+    TtsGenerating: pt_br = "Gerando narração…", en = "Generating narration…";
+    DownloadTtsVoice: pt_br = "Baixar voz de texto-pra-fala", en = "Download text-to-speech voice";
+    PrefsTtsModelPath: pt_br = "Caminho do modelo de texto-pra-fala", en = "Text-to-speech model path";
     PropOtherEffects: pt_br = "Outros efeitos", en = "Other effects";
     PropBlur: pt_br = "Blur", en = "Blur";
     PropShake: pt_br = "Tremido", en = "Shake";

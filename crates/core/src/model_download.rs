@@ -157,6 +157,65 @@ pub fn download_background_removal_model(
     )
 }
 
+/// The Piper voice [`crate::text_to_speech`] uses for text-to-speech — a Brazilian Portuguese
+/// voice (`rhasspy/piper-voices`, MIT), matching this app's pt-BR-first audience (the
+/// PacoPaçoca channel). Two files instead of [`ReframeModel`]/[`BackgroundRemovalModel`]'s one:
+/// the `.onnx` model itself and its `.onnx.json` sidecar config (phoneme ID map, sample rate,
+/// espeak voice code — see [`crate::text_to_speech::PiperVoiceConfig`]). Only one voice exists
+/// today, same reasoning as [`ReframeModel`] having no size/quality picker yet.
+pub struct TtsVoice;
+
+impl TtsVoice {
+    pub const MODEL_FILENAME: &'static str = "pt_BR-faber-medium.onnx";
+    pub const CONFIG_FILENAME: &'static str = "pt_BR-faber-medium.onnx.json";
+    pub const APPROX_SIZE_MB: u32 = 63;
+
+    /// Verified as real files (not Git LFS/Xet pointer stubs) via a direct request before
+    /// depending on these URLs, same discipline as every other model download here — the
+    /// `.onnx` came back with a real ~63MB `Content-Length`, the `.onnx.json` with real JSON
+    /// matching [`crate::text_to_speech::PiperVoiceConfig`]'s schema.
+    fn model_url() -> String {
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx".to_string()
+    }
+
+    fn config_url() -> String {
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json".to_string()
+    }
+}
+
+/// Downloads both of [`TtsVoice`]'s files into `dest_dir` (created if it doesn't exist) — the
+/// small `.onnx.json` config first (no progress reporting, negligible size), then the `.onnx`
+/// model with real progress via `on_progress`. Returns the model file's path on success (its
+/// config sits alongside it as `<model path>.json`, same directory). Checking `cancel` between
+/// the two downloads (not just within each) so a cancel during the config download doesn't
+/// still kick off the much larger model download.
+pub fn download_tts_voice(
+    dest_dir: &Path,
+    cancel: &AtomicBool,
+    on_progress: impl FnMut(u64, u64),
+) -> Result<DownloadOutcome, DownloadError> {
+    match download_file(
+        &TtsVoice::config_url(),
+        TtsVoice::CONFIG_FILENAME,
+        dest_dir,
+        cancel,
+        |_, _| {},
+    )? {
+        DownloadOutcome::Cancelled => return Ok(DownloadOutcome::Cancelled),
+        DownloadOutcome::Completed(_) => {}
+    }
+    if cancel.load(Ordering::Relaxed) {
+        return Ok(DownloadOutcome::Cancelled);
+    }
+    download_file(
+        &TtsVoice::model_url(),
+        TtsVoice::MODEL_FILENAME,
+        dest_dir,
+        cancel,
+        on_progress,
+    )
+}
+
 /// Streams `url`'s body into `<dest_dir>/<filename>.part`, renaming to the final
 /// `<dest_dir>/<filename>` only once the whole body has arrived — a reader that opens the final
 /// path mid-download (or after a cancelled/failed one) never sees a truncated file.

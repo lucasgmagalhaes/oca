@@ -95,7 +95,19 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   compositing — `src0`/`src1` in that file — so this reuses an existing pattern rather than
   inventing one).
 
-  **Not yet done (Fase 4):** text-to-speech.
+  **Text-to-speech (done, real end-to-end):** `avcore::text_to_speech` — `espeak-rs`
+  (statically-linked espeak-ng, no runtime DLL; `core/build.rs` copies its `espeak-ng-data`
+  next to the workspace's build output, since `espeak-rs` looks for that directory name next
+  to the running executable) phonemizes typed text, then a Piper VITS ONNX model
+  (`rhasspy/piper-voices`' pt_BR `faber` voice, MIT) synthesizes it — Piper's phoneme-ID scheme
+  (BOS/EOS/interspersed-PAD) and ONNX I/O contract (`input`/`input_lengths`/`scales` ->
+  `output`) confirmed against a real downloaded voice, not guessed. **Confirmed working
+  end-to-end** on this dev machine: real synthesis of a Portuguese sentence produced a WAV with
+  real (non-silent, non-garbage) audio content. Model isn't bundled yet —
+  `avcore::download_tts_voice` fetches both the `.onnx` and its `.onnx.json` sidecar on demand.
+  UI: Mídia screen's "Texto-pra-fala" button opens a text modal; "Gerar" synthesizes on a
+  background thread and imports the resulting WAV through the exact same pipeline as a
+  drag-and-drop import ([`App::spawn_import`]) — no separate asset-creation path needed.
 
 - **Fase 5/6 — partially done.** Aspect ratio selection; prefs (`prefs.oc` — same
   gzip-compressed MessagePack framing `.ocproj` uses, via `avcore::to_ocproj_bytes`/

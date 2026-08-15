@@ -430,6 +430,72 @@ impl App {
         }
     }
 
+    /// Shows the "Texto-pra-fala" modal when [`App::tts_modal_text`] is `Some`. "Gerar" starts
+    /// the background synthesis ([`App::spawn_generate_tts`]) and closes the modal immediately
+    /// (a no-op, leaving the modal open, while the buffer is blank or no voice model is
+    /// configured); Escape/Cancel discards without generating anything.
+    pub(super) fn show_tts_modal(&mut self, ctx: &egui::Context) {
+        if self.tts_modal_text.is_none() {
+            return;
+        }
+        let locale = self.locale;
+        let model_configured = !self.prefs.tts_model_path.is_empty();
+        let modal = egui::Modal::new(egui::Id::new("tts_modal"));
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(420.0);
+            ui.label(
+                egui::RichText::new(Text::TtsModalTitle.tr(locale))
+                    .size(15.0)
+                    .strong(),
+            );
+            ui.add_space(10.0);
+            if !model_configured {
+                ui.label(
+                    egui::RichText::new(Text::TtsNoModelConfigured.tr(locale))
+                        .color(theme::TEXT_MUTED),
+                );
+                ui.add_space(10.0);
+            }
+            let buf = self.tts_modal_text.as_mut().unwrap();
+            ui.add(
+                egui::TextEdit::multiline(buf)
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(4),
+            );
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                let text_blank = self
+                    .tts_modal_text
+                    .as_ref()
+                    .is_some_and(|t| t.trim().is_empty());
+                if ui
+                    .add_enabled(
+                        model_configured && !text_blank,
+                        egui::Button::new(Text::TtsGenerate.tr(locale)),
+                    )
+                    .clicked()
+                {
+                    confirmed = true;
+                }
+                if ui.button(Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if response.should_close() || cancelled {
+            self.tts_modal_text = None;
+            return;
+        }
+        if confirmed {
+            self.spawn_generate_tts();
+        }
+    }
+
     /// Shows the saved-templates list popup when [`App::layer_templates_menu_open`] is set —
     /// picking "Aplicar" on a row opens the apply-template modal ([`App::begin_apply_layer_template`])
     /// and closes this one; "🗑" deletes that entry immediately.

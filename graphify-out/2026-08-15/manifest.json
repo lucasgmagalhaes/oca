@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/lib.rs": {
-    "mtime": 1786797082.4969854,
-    "ast_hash": "01ac49912957900140e841ab2654840e",
+    "mtime": 1786798727.8513317,
+    "ast_hash": "803432d8567ee0c7dfe049f10c1e0070",
     "semantic_hash": ""
   },
   "crates/core/src/loudness.rs": {
@@ -677,6 +677,21 @@
   "crates/core/src/background_removal/background_removal_test.rs": {
     "mtime": 1786797140.901519,
     "ast_hash": "65f65e7e5a136b8286ca84e6819a1280",
+    "semantic_hash": ""
+  },
+  "crates/core/build.rs": {
+    "mtime": 1786798654.3960874,
+    "ast_hash": "88271652e7ee993537893fd9c53278b0",
+    "semantic_hash": ""
+  },
+  "crates/core/src/text_to_speech.rs": {
+    "mtime": 1786798691.2421734,
+    "ast_hash": "d289d956f0494881f947ae42e4728684",
+    "semantic_hash": ""
+  },
+  "crates/core/src/text_to_speech/text_to_speech_test.rs": {
+    "mtime": 1786798962.5332098,
+    "ast_hash": "6d93fcd3ad1794daf8eb39d698d6f762",
     "semantic_hash": ""
   }
 }
