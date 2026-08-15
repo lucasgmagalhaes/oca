@@ -184,7 +184,7 @@ pub(super) fn next_available_path(path: &std::path::Path) -> PathBuf {
     unreachable!("infinite range always yields a free name eventually")
 }
 
-/// Returns the platform-appropriate path for the oca export queue file, next to `prefs.json`.
+/// Returns the platform-appropriate path for the oca export queue file, next to `prefs.oc`.
 fn queue_path() -> std::path::PathBuf {
     super::prefs_path()
         .parent()

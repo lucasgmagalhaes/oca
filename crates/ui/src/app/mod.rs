@@ -132,9 +132,10 @@ impl Default for KeyBindings {
     }
 }
 
-/// User-configurable settings shown on the Ajustes screen. Persisted to a JSON file in the
-/// platform config dir — see [`App::save_prefs`] / [`load_prefs`].
-#[derive(serde::Serialize, serde::Deserialize)]
+/// User-configurable settings shown on the Ajustes screen. Persisted to `prefs.oc` (the same
+/// binary framing as a `.ocproj` project) in the platform config dir — see [`App::save_prefs`] /
+/// [`load_prefs`].
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrefsState {
     /// Index into [`LUFS_PROFILES`].
     pub lufs_profile: usize,
@@ -910,24 +911,16 @@ impl App {
     /// the preferences modal closes or a project is opened. Prunes `recent_project_paths`
     /// entries whose files no longer exist before serializing.
     pub fn save_prefs(&self) {
-        let mut prefs_snapshot = serde_json::to_value(&self.prefs).unwrap_or_default();
+        let mut prefs_snapshot = self.prefs.clone();
         // Always capture the live locale (app.locale may differ from prefs.locale if the user
         // changed it this session without having previously saved).
-        if let Ok(locale_val) = serde_json::to_value(self.locale) {
-            prefs_snapshot["locale"] = locale_val;
-        }
+        prefs_snapshot.locale = self.locale;
         // Prune stale recents (moved/deleted files) so the list stays clean.
-        if let Some(arr) = prefs_snapshot
-            .get_mut("recent_project_paths")
-            .and_then(|v| v.as_array_mut())
-        {
-            arr.retain(|v| {
-                v.as_str()
-                    .map(|p| std::path::Path::new(p).exists())
-                    .unwrap_or(false)
-            });
-        }
-        let Ok(json) = serde_json::to_string_pretty(&prefs_snapshot) else {
+        prefs_snapshot
+            .recent_project_paths
+            .retain(|p| std::path::Path::new(p).exists());
+
+        let Ok(bytes) = avcore::to_ocproj_bytes(&prefs_snapshot) else {
             return;
         };
         let path = prefs_path();
@@ -935,7 +928,7 @@ impl App {
             if let Some(dir) = path.parent() {
                 let _ = std::fs::create_dir_all(dir);
             }
-            if let Err(e) = std::fs::write(&path, json.as_bytes()) {
+            if let Err(e) = std::fs::write(&path, &bytes) {
                 tracing::error!(path = %path.display(), error = %e, "failed to write prefs");
             } else {
                 tracing::debug!(path = %path.display(), "prefs saved");
@@ -953,7 +946,7 @@ fn sentinel_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("oca.running"))
 }
 
-/// Directory downloaded Whisper models are saved into — next to `prefs.json`, same convention
+/// Directory downloaded Whisper models are saved into — next to `prefs.oc`, same convention
 /// as [`sentinel_path`]/`queue_path`.
 pub(self) fn models_dir() -> PathBuf {
     prefs_path()
@@ -969,34 +962,37 @@ pub fn load_prefs() -> PrefsState {
     let Ok(bytes) = std::fs::read(&path) else {
         return PrefsState::default();
     };
-    serde_json::from_slice(&bytes).unwrap_or_default()
+    avcore::from_ocproj_bytes(&bytes).unwrap_or_default()
 }
 
-/// Returns the platform-appropriate path for the oca preferences file.
+/// Returns the platform-appropriate path for the oca preferences file — `.oc`, the same
+/// gzip-compressed MessagePack framing as a `.ocproj` project (see
+/// [`avcore::persistence::to_ocproj_bytes`]/[`avcore::persistence::from_ocproj_bytes`]), not
+/// JSON.
 ///
-/// - macOS:   `~/Library/Application Support/oca/prefs.json`
-/// - Windows: `%APPDATA%\oca\prefs.json`
-/// - Linux:   `~/.config/oca/prefs.json`
+/// - macOS:   `~/Library/Application Support/oca/prefs.oc`
+/// - Windows: `%APPDATA%\oca\prefs.oc`
+/// - Linux:   `~/.config/oca/prefs.oc`
 pub(self) fn prefs_path() -> PathBuf {
     #[cfg(target_os = "macos")]
     {
         if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join("Library/Application Support/oca/prefs.json");
+            return PathBuf::from(home).join("Library/Application Support/oca/prefs.oc");
         }
     }
     #[cfg(target_os = "windows")]
     {
         if let Ok(appdata) = std::env::var("APPDATA") {
-            return PathBuf::from(appdata).join("oca\\prefs.json");
+            return PathBuf::from(appdata).join("oca\\prefs.oc");
         }
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join(".config/oca/prefs.json");
+            return PathBuf::from(home).join(".config/oca/prefs.oc");
         }
     }
-    PathBuf::from("prefs.json")
+    PathBuf::from("prefs.oc")
 }
 
 /// Source-time width, in seconds, of one filmstrip thumbnail bucket (see
