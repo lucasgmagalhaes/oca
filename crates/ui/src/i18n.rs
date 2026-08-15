@@ -228,6 +228,13 @@ text_catalog! {
     TranscribeNoSpeechFound: pt_br = "Nenhuma fala reconhecida no áudio.", en = "No speech recognized in the audio.";
     PrefsWhisperModelPath: pt_br = "Modelo Whisper (legendas automáticas)", en = "Whisper model (automatic subtitles)";
     PrefsSoundLibraryPath: pt_br = "Pasta da biblioteca de música/SFX", en = "Music/SFX library folder";
+    PrefsReframeModelPath: pt_br = "Modelo de reenquadramento automático", en = "Auto-reframe model";
+    DownloadReframeModel: pt_br = "Baixar modelo (≈2 MB)", en = "Download model (≈2 MB)";
+
+    AutoReframeAction: pt_br = "Reenquadramento automático", en = "Auto-reframe";
+    AutoReframeInProgress: pt_br = "Reenquadrando...", en = "Reframing...";
+    AutoReframeNoModelConfigured: pt_br = "Configure o modelo de reenquadramento em Ajustes antes de usar.", en = "Set up the auto-reframe model in Preferences before using this.";
+    AutoReframeNoSubjectFound: pt_br = "Nenhum rosto detectado — recorte centralizado aplicado.", en = "No face detected — applied a centered crop instead.";
 
     SoundLibraryTitle: pt_br = "Música e efeitos sonoros", en = "Music & sound effects";
     SoundLibraryRescan: pt_br = "⟳ Atualizar", en = "⟳ Rescan";
