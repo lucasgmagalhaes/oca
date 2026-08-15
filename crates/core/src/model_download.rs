@@ -1,9 +1,10 @@
-//! Downloads a local GGML Whisper model on demand — closes the gap where `transcribe()`
-//! (see [`crate::transcribe`]) needs a model file the app never had any way to actually obtain.
-//! Fase 8's packaging plan calls for bundling the model inside the installer eventually
-//! ("Modelo do Whisper... incluídos no instalador"); until that's built, this is how a fresh
-//! install gets one — a one-time download the user (or `ui`'s "Transcrever" flow) triggers,
-//! not a build-time or install-time step.
+//! Downloads model files on demand — closes the gap where `transcribe()` (see
+//! [`crate::transcribe`]) and `auto_reframe` (see [`crate::auto_reframe`]) each need a model
+//! file the app never had any way to actually obtain. Fase 8's packaging plan calls for
+//! bundling these inside the installer eventually ("Modelo do Whisper... incluídos no
+//! instalador", "ONNX Runtime... empacotados junto"); until that's built, this is how a fresh
+//! install gets one — a one-time download the user (or `ui`'s "Transcrever"/"Reenquadramento
+//! automático" flows) triggers, not a build-time or install-time step.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -78,27 +79,71 @@ impl std::fmt::Display for DownloadError {
 
 impl std::error::Error for DownloadError {}
 
-/// Downloads `size`'s GGML model file into `dest_dir` (created if it doesn't exist), streaming
-/// straight to `<dest_dir>/<filename>.part` and renaming to the final `<dest_dir>/<filename>`
-/// only once the whole body has arrived — a reader that opens the final path mid-download (or
-/// after a cancelled/failed one) never sees a truncated file.
+/// Downloads `size`'s GGML model file into `dest_dir` (created if it doesn't exist).
+/// See [`download_file`] for the streaming/cancellation/atomicity details this wraps.
+pub fn download_whisper_model(
+    size: WhisperModelSize,
+    dest_dir: &Path,
+    cancel: &AtomicBool,
+    on_progress: impl FnMut(u64, u64),
+) -> Result<DownloadOutcome, DownloadError> {
+    download_file(&size.url(), size.filename(), dest_dir, cancel, on_progress)
+}
+
+/// The UltraFace face-detection model [`crate::auto_reframe`] uses to locate the main subject
+/// for auto-reframe. Only one variant exists today — a fixed struct rather than an enum since
+/// a size/quality picker (like [`WhisperModelSize`]'s) isn't needed until a second model shows up.
+pub struct ReframeModel;
+
+impl ReframeModel {
+    pub const FILENAME: &'static str = "version-RFB-320_simplified.onnx";
+    pub const APPROX_SIZE_MB: u32 = 2;
+
+    /// `Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB` (MIT) — verified as a real ~1.1MB
+    /// ONNX file (not a Git LFS pointer stub) via a direct `HEAD` request before depending on
+    /// this URL, same discipline as the Whisper model download.
+    fn url() -> String {
+        "https://raw.githubusercontent.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB/master/models/onnx/version-RFB-320_simplified.onnx".to_string()
+    }
+}
+
+/// Downloads the UltraFace ONNX model into `dest_dir` (created if it doesn't exist).
+/// See [`download_file`] for the streaming/cancellation/atomicity details this wraps.
+pub fn download_reframe_model(
+    dest_dir: &Path,
+    cancel: &AtomicBool,
+    on_progress: impl FnMut(u64, u64),
+) -> Result<DownloadOutcome, DownloadError> {
+    download_file(
+        &ReframeModel::url(),
+        ReframeModel::FILENAME,
+        dest_dir,
+        cancel,
+        on_progress,
+    )
+}
+
+/// Streams `url`'s body into `<dest_dir>/<filename>.part`, renaming to the final
+/// `<dest_dir>/<filename>` only once the whole body has arrived — a reader that opens the final
+/// path mid-download (or after a cancelled/failed one) never sees a truncated file.
 ///
 /// Calls `on_progress(bytes_downloaded, total_bytes)` as data arrives; `total_bytes` is `0` if
 /// the server didn't send a `Content-Length` (caller should treat that as "unknown", not "done").
 /// Checks `cancel` between chunks — if set, stops, deletes the partial `.part` file, and returns
 /// `Ok(DownloadOutcome::Cancelled)` rather than treating the cancellation as a failure (same
 /// convention as [`crate::render::render_export`]/[`crate::transcribe::transcribe`]).
-pub fn download_whisper_model(
-    size: WhisperModelSize,
+fn download_file(
+    url: &str,
+    filename: &str,
     dest_dir: &Path,
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u64, u64),
 ) -> Result<DownloadOutcome, DownloadError> {
     std::fs::create_dir_all(dest_dir).map_err(DownloadError::Io)?;
-    let final_path = dest_dir.join(size.filename());
-    let tmp_path = dest_dir.join(format!("{}.part", size.filename()));
+    let final_path = dest_dir.join(filename);
+    let tmp_path = dest_dir.join(format!("{filename}.part"));
 
-    let response = ureq::get(&size.url())
+    let response = ureq::get(url)
         .call()
         .map_err(|e| DownloadError::Request(e.to_string()))?;
     let total: u64 = response
