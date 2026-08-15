@@ -70,7 +70,12 @@ impl App {
         let current = self.current_preview_clip();
         self.preview = None;
         self.preview_texture = None;
-        self.preview_clip_id = current_clip_id;
+        // Not `current_clip_id` — that only checks the track/playhead, not whether the clip's
+        // asset actually resolves in the media library. `preview_clip_present()` (and the
+        // Editor's "preview unavailable" vs. plain placeholder choice) needs to tell "a clip is
+        // here but its pipeline failed to open" apart from "there's nothing to preview at all",
+        // and an unresolvable asset is the latter, not the former.
+        self.preview_clip_id = current.as_ref().map(|(clip, _)| clip.id);
 
         let Some((clip, asset)) = current else {
             self.preview_playing = false;

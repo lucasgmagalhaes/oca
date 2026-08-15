@@ -675,7 +675,7 @@ fn ensure_preview_loaded_is_a_no_op_with_no_video_track() {
 }
 
 #[test]
-fn ensure_preview_loaded_marks_a_clip_present_even_when_its_file_is_missing() {
+fn ensure_preview_loaded_does_not_mark_a_clip_present_when_its_asset_is_missing() {
     let mut app = test_app(
         vec![test_project_with_tracks(
             1,
