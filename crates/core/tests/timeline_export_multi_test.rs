@@ -118,6 +118,7 @@ fn render_multi(sequence: &Sequence, assets: &[MediaAsset], output_name: &str) -
         -14.0,
         GpuEncoderPreference::Auto,
         &[],
+        &[],
         &cancel,
         |_| {},
     )
@@ -376,6 +377,7 @@ fn cancelling_mid_multi_track_export_reports_cancelled() {
         &output,
         -14.0,
         GpuEncoderPreference::Auto,
+        &[],
         &[],
         &cancel,
         |_percent| {

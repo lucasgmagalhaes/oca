@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{Canvas, ClipSegment, TextSegment};
+use crate::{Canvas, ClipSegment, ShapeSegment, TextSegment};
 
 /// A queued render's lifecycle. `Rendering`/`Paused` carry a snapshot progress percentage;
 /// the queue itself (Fase 4) will drive these via the background worker channel.
@@ -30,6 +30,11 @@ pub struct ExportJob {
     /// `#[serde(default)]` keeps existing saved queues (without this field) loading correctly.
     #[serde(default)]
     pub text_segments: Vec<TextSegment>,
+    /// Shape overlay clips snapshotted from the sequence's shape tracks at queue time — same
+    /// reasoning as `text_segments`. `#[serde(default)]` keeps existing saved queues (without
+    /// this field) loading correctly.
+    #[serde(default)]
+    pub shape_segments: Vec<ShapeSegment>,
     /// One inner `Vec<ClipSegment>` per visible video track, as returned by
     /// [`crate::render::resolve_timeline_segments_multi`].  Empty when the job was queued
     /// before multi-track support (those jobs fall back to [`ExportJob::segments`]).

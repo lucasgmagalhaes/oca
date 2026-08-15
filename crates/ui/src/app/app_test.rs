@@ -139,6 +139,7 @@ fn test_job(id: u64, status: ExportJobStatus) -> ExportJob {
         segments: Vec::new(),
 
         text_segments: vec![],
+        shape_segments: vec![],
 
         track_segments: Vec::new(),
 
@@ -433,6 +434,7 @@ fn queue_export_appends_a_queued_job_with_the_next_id() {
         "Export".to_string(),
         Vec::new(),
         vec![],
+        vec![],
         test_canvas(),
         -14.0,
         "out.mp4".to_string(),
@@ -451,6 +453,7 @@ fn queue_export_starts_at_one_when_no_jobs_exist() {
     app.queue_export(
         "Export".to_string(),
         Vec::new(),
+        vec![],
         vec![],
         test_canvas(),
         -14.0,
@@ -2828,6 +2831,7 @@ fn pending_export_conflict_overwrite_queues_with_the_original_path() {
         title: "Export".to_string(),
         track_segments: Vec::new(),
         text_segments: vec![],
+        shape_segments: vec![],
         canvas: test_canvas(),
         target_lufs: -14.0,
         output_path: output.clone(),
@@ -2839,6 +2843,7 @@ fn pending_export_conflict_overwrite_queues_with_the_original_path() {
         pending.title,
         pending.track_segments,
         pending.text_segments,
+        pending.shape_segments,
         pending.canvas,
         pending.target_lufs,
         pending.output_path.display().to_string(),

@@ -90,6 +90,7 @@ fn job(status: ExportJobStatus) -> ExportJob {
         segments: Vec::new(),
 
         text_segments: vec![],
+        shape_segments: vec![],
 
         track_segments: Vec::new(),
 

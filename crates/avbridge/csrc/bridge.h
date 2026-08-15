@@ -350,6 +350,30 @@ TextOverlayStatus avbridge_apply_text_overlays(
     int canvas_width, int canvas_height,
     int canvas_fps_num, int canvas_fps_den);
 
+/* One geometric shape to composite over an already-rendered export video. `filter_desc` is a
+   *complete*, ready-to-chain avfilter node description (a `geq=lum=...:cb=...:cr=...:enable=
+   between(t,start,end)` string) built in Rust — see `avcore::shape_render`, which is where the
+   actual per-shape-kind geometry (rectangle/ellipse/triangle/trapezoid/arrow/custom polygon,
+   rotation, outline thickness) lives, the same "Rust builds the filter string, C just chains
+   it" split `ClipInstance::video_filter_chain` already uses for the main export path. This
+   keeps shape_overlay.c a thin, shape-kind-agnostic chainer, same reasoning as `TextSegment`
+   already being pre-formatted before crossing the FFI boundary. */
+typedef struct {
+    /* UTF-8, NUL-terminated. Must not be NULL. A single `geq=...` filter node description, no
+       trailing/leading comma. */
+    const char *filter_desc;
+} ShapeSegment;
+
+/* Same shape as [`avbridge_apply_text_overlays`] (same TextOverlayStatus return codes, same
+   decode/filter/re-encode-video + stream-copy-audio approach), but chains each segment's
+   pre-built `geq` filter node instead of building a `drawtext` chain itself. Returns
+   TEXT_OVERLAY_OK immediately if segment_count <= 0 without touching any files. */
+TextOverlayStatus avbridge_apply_shape_overlays(
+    const char *in_path, const char *out_path,
+    const ShapeSegment *segments, int segment_count,
+    int canvas_width, int canvas_height,
+    int canvas_fps_num, int canvas_fps_den);
+
 typedef enum {
     PCM_OK = 0,
     PCM_ERR_OPEN_INPUT = 1,

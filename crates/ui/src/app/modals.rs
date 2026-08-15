@@ -356,6 +356,7 @@ impl App {
                 pending.title,
                 pending.track_segments,
                 pending.text_segments,
+                pending.shape_segments,
                 pending.canvas,
                 pending.target_lufs,
                 output_path.display().to_string(),

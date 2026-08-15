@@ -11,7 +11,7 @@ use avbridge::Canvas;
 use crate::keyframe;
 use crate::media::MediaAsset;
 use crate::project::Sequence;
-use crate::timeline::{ClipInstance, TextClip, TrackKind};
+use crate::timeline::{ClipInstance, ShapeClip, TextClip, TrackKind};
 
 /// Target output aspect ratio for a timeline export. `Original` preserves the source
 /// resolution inferred from the first clip; the fixed presets override width/height while
@@ -346,6 +346,7 @@ pub fn render_export_job(
     target_lufs: f32,
     gpu_encoder: avbridge::GpuEncoderPreference,
     text_segments: &[avbridge::TextSegment],
+    shape_segments: &[avbridge::ShapeSegment],
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u8),
 ) -> Result<RenderOutcome, RenderError> {
@@ -379,9 +380,15 @@ pub fn render_export_job(
     Ok(match outcome {
         avbridge::EncodeOutcome::Completed => {
             on_progress(100);
-            // Apply text overlays as a post-processing pass if any text clips were placed.
+            // Apply text/shape overlays as post-processing passes if any were placed. Shapes
+            // after text so a highlight box can sit visually above a caption if the user
+            // stacks them at the same position — an arbitrary but consistent choice, same as
+            // any other z-order tie-break.
             if !text_segments.is_empty() {
                 apply_text_overlay_pass(output, canvas, text_segments);
+            }
+            if !shape_segments.is_empty() {
+                apply_shape_overlay_pass(output, canvas, shape_segments);
             }
             RenderOutcome::Completed
         }
@@ -404,6 +411,7 @@ pub fn render_timeline_export(
 ) -> Result<RenderOutcome, RenderError> {
     let (segments, canvas) = resolve_timeline_segments(sequence, media_library)?;
     let text_segments = resolve_text_segments(sequence, canvas.width);
+    let shape_segments = resolve_shape_segments(sequence, canvas.width, canvas.height);
     render_export_job(
         &segments,
         canvas,
@@ -411,6 +419,7 @@ pub fn render_timeline_export(
         target_lufs,
         gpu_encoder,
         &text_segments,
+        &shape_segments,
         cancel,
         on_progress,
     )
@@ -445,6 +454,43 @@ fn apply_text_overlay_pass(output: &Path, canvas: Canvas, text_segments: &[avbri
         }
         Err(e) => {
             eprintln!("oca: text overlay skipped: {e}");
+            let _ = std::fs::remove_file(&tmp);
+        }
+    }
+}
+
+/// Applies shape overlays to an already-written export file in place — same "temp path, rename
+/// over `output`, log-and-skip on error" shape as [`apply_text_overlay_pass`].
+fn apply_shape_overlay_pass(
+    output: &Path,
+    canvas: Canvas,
+    shape_segments: &[avbridge::ShapeSegment],
+) {
+    let Some(parent) = output.parent() else {
+        return;
+    };
+    let Some(stem) = output.file_stem().and_then(|s| s.to_str()) else {
+        return;
+    };
+    let tmp = parent.join(format!("{stem}.shape_tmp.mp4"));
+
+    match avbridge::apply_shape_overlays(
+        output,
+        &tmp,
+        shape_segments,
+        canvas.width,
+        canvas.height,
+        canvas.fps_num,
+        canvas.fps_den,
+    ) {
+        Ok(()) => {
+            if let Err(e) = std::fs::rename(&tmp, output) {
+                eprintln!("oca: shape overlay rename failed: {e}");
+                let _ = std::fs::remove_file(&tmp);
+            }
+        }
+        Err(e) => {
+            eprintln!("oca: shape overlay skipped: {e}");
             let _ = std::fs::remove_file(&tmp);
         }
     }
@@ -514,6 +560,56 @@ fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<avbridge::Te
         });
     }
     segments
+}
+
+/// Collects all [`ShapeClip`]s from `sequence`'s shape tracks into [`avbridge::ShapeSegment`]s
+/// (each already a complete `geq` filter node, via
+/// `crate::shape_render::build_shape_filter_desc`), sorted by `start_secs` ascending. Returns
+/// an empty vec if the sequence has no shape tracks or none have any clips. Same role as
+/// [`resolve_text_segments`], one post-processing pass earlier/later in the chain (see
+/// [`render_export_job`]).
+pub fn resolve_shape_segments(
+    sequence: &Sequence,
+    canvas_width: u32,
+    canvas_height: u32,
+) -> Vec<avbridge::ShapeSegment> {
+    let mut clips: Vec<&ShapeClip> = sequence
+        .timeline
+        .tracks
+        .iter()
+        .filter(|t| t.kind == TrackKind::Shape)
+        .flat_map(|t| &t.shape_clips)
+        .collect();
+    clips.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
+    clips
+        .into_iter()
+        .map(|clip| shape_clip_to_segment(clip, canvas_width, canvas_height))
+        .collect()
+}
+
+/// Converts one [`ShapeClip`] into its [`avbridge::ShapeSegment`] — the actual geometry/color/
+/// rotation math lives in [`crate::shape_render::build_shape_filter_desc`], this just adapts
+/// field names/types across that boundary.
+fn shape_clip_to_segment(
+    clip: &ShapeClip,
+    canvas_width: u32,
+    canvas_height: u32,
+) -> avbridge::ShapeSegment {
+    let filter_desc = crate::shape_render::build_shape_filter_desc(&crate::ShapeRenderInput {
+        shape_kind: &clip.shape_kind,
+        center_x: clip.center_x,
+        center_y: clip.center_y,
+        width: clip.width,
+        height: clip.height,
+        rotation_deg: clip.rotation_deg,
+        color_rgba: clip.color_rgba,
+        stroke_thickness_px: clip.stroke_thickness_px,
+        start_secs: clip.start_secs,
+        duration_secs: clip.duration_secs,
+        canvas_width,
+        canvas_height,
+    });
+    avbridge::ShapeSegment { filter_desc }
 }
 
 /// Resolves all visible video tracks in `sequence` into per-track segment lists, suitable for
@@ -633,6 +729,7 @@ pub fn render_export_job_multi(
     target_lufs: f32,
     gpu_encoder: avbridge::GpuEncoderPreference,
     text_segments: &[avbridge::TextSegment],
+    shape_segments: &[avbridge::ShapeSegment],
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u8),
 ) -> Result<RenderOutcome, RenderError> {
@@ -647,6 +744,7 @@ pub fn render_export_job_multi(
             target_lufs,
             gpu_encoder,
             text_segments,
+            shape_segments,
             cancel,
             on_progress,
         );
@@ -685,6 +783,9 @@ pub fn render_export_job_multi(
             on_progress(100);
             if !text_segments.is_empty() {
                 apply_text_overlay_pass(output, canvas, text_segments);
+            }
+            if !shape_segments.is_empty() {
+                apply_shape_overlay_pass(output, canvas, shape_segments);
             }
             RenderOutcome::Completed
         }

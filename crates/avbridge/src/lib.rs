@@ -47,6 +47,11 @@ struct RawTextSegment {
 }
 
 #[repr(C)]
+struct RawShapeSegment {
+    filter_desc: *const c_char,
+}
+
+#[repr(C)]
 struct RawProbeInfo {
     has_video: c_int,
     duration_secs: f64,
@@ -122,6 +127,16 @@ unsafe extern "C" {
         in_path: *const c_char,
         out_path: *const c_char,
         segments: *const RawTextSegment,
+        segment_count: c_int,
+        canvas_width: c_int,
+        canvas_height: c_int,
+        canvas_fps_num: c_int,
+        canvas_fps_den: c_int,
+    ) -> c_int;
+    fn avbridge_apply_shape_overlays(
+        in_path: *const c_char,
+        out_path: *const c_char,
+        segments: *const RawShapeSegment,
         segment_count: c_int,
         canvas_width: c_int,
         canvas_height: c_int,
@@ -1105,6 +1120,75 @@ pub fn apply_text_overlays(
     // contiguous Vec<RawTextSegment> with segment_count entries, never mutated during the call.
     let status = unsafe {
         avbridge_apply_text_overlays(
+            c_in.as_ptr(),
+            c_out.as_ptr(),
+            raw_segments.as_ptr(),
+            raw_segments.len() as c_int,
+            canvas_width as c_int,
+            canvas_height as c_int,
+            fps_num as c_int,
+            fps_den as c_int,
+        )
+    };
+
+    match status {
+        0 => Ok(()),
+        1 => Err(TextOverlayError::OpenInput),
+        2 => Err(TextOverlayError::AllocOutput),
+        3 => Err(TextOverlayError::FilterGraph),
+        4 => Err(TextOverlayError::Pipeline),
+        other => Err(TextOverlayError::Unknown(other)),
+    }
+}
+
+/// One geometric shape to composite over an exported video via `avbridge_apply_shape_overlays`.
+/// `filter_desc` is a complete, ready-to-chain `geq=...` avfilter node description — see
+/// `avcore::shape_render::build_shape_filter_desc`, which builds it (the actual shape geometry/
+/// color/rotation math lives there, not here or in the C function this crosses into).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ShapeSegment {
+    pub filter_desc: String,
+}
+
+/// Same shape as [`apply_text_overlays`] (same [`TextOverlayError`] variants, same "opens
+/// `in_path`, writes the composited result to `out_path`" contract), but chains each segment's
+/// pre-built `geq` filter node instead of building a `drawtext` chain. A no-op (`Ok(())`
+/// immediately) when `segments` is empty.
+pub fn apply_shape_overlays(
+    in_path: &Path,
+    out_path: &Path,
+    segments: &[ShapeSegment],
+    canvas_width: u32,
+    canvas_height: u32,
+    fps_num: u32,
+    fps_den: u32,
+) -> Result<(), TextOverlayError> {
+    if segments.is_empty() {
+        return Ok(());
+    }
+
+    let c_in = CString::new(in_path.to_string_lossy().as_bytes())
+        .map_err(TextOverlayError::InvalidPath)?;
+    let c_out = CString::new(out_path.to_string_lossy().as_bytes())
+        .map_err(TextOverlayError::InvalidPath)?;
+
+    let mut c_descs: Vec<CString> = Vec::with_capacity(segments.len());
+    for seg in segments {
+        c_descs
+            .push(CString::new(seg.filter_desc.as_bytes()).map_err(TextOverlayError::InvalidPath)?);
+    }
+
+    let raw_segments: Vec<RawShapeSegment> = c_descs
+        .iter()
+        .map(|desc| RawShapeSegment {
+            filter_desc: desc.as_ptr(),
+        })
+        .collect();
+
+    // SAFETY: same reasoning as apply_text_overlays — c_in/c_out/raw_segments' filter_desc
+    // pointers (from c_descs) are valid NUL-terminated C strings held alive for the full call.
+    let status = unsafe {
+        avbridge_apply_shape_overlays(
             c_in.as_ptr(),
             c_out.as_ptr(),
             raw_segments.as_ptr(),

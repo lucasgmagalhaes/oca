@@ -24,6 +24,7 @@ pub mod probe;
 pub mod project;
 pub mod proxy;
 pub mod render;
+pub mod shape_render;
 pub mod sound_library;
 pub mod text_metrics;
 pub mod text_to_speech;
@@ -34,7 +35,7 @@ pub mod waveform;
 pub use auto_reframe::{
     compute_reframe_crop, detect_faces, main_subject_center, CropRect, FaceBox, ReframeError,
 };
-pub use avbridge::{Canvas, ClipSegment, GpuEncoderPreference, TextSegment};
+pub use avbridge::{Canvas, ClipSegment, GpuEncoderPreference, ShapeSegment, TextSegment};
 pub use background_removal::{segment_person, SegmentError};
 pub use export::{ExportJob, ExportJobStatus};
 pub use keyframe::{Keyframe, Position};
@@ -57,15 +58,18 @@ pub use project::{Project, Recency, Sequence};
 pub use proxy::{ensure_proxy, ProxyError};
 pub use render::{
     apply_export_aspect_ratio, render_export, render_export_job, render_export_job_multi,
-    render_timeline_export, resolve_text_segments, resolve_timeline_segments,
-    resolve_timeline_segments_multi, ExportAspectRatio, RenderError, RenderOutcome,
+    render_timeline_export, resolve_shape_segments, resolve_text_segments,
+    resolve_timeline_segments, resolve_timeline_segments_multi, ExportAspectRatio, RenderError,
+    RenderOutcome,
 };
+pub use shape_render::{build_shape_filter_desc, point_in_polygon, ShapeRenderInput};
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
 pub use text_to_speech::{
     load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
 };
 pub use timeline::{
-    ClipFormatting, ClipInstance, LayerTemplate, TextClip, Timeline, Track, TrackKind,
+    ClipFormatting, ClipInstance, LayerTemplate, ShapeClip, ShapeKind, TextClip, Timeline, Track,
+    TrackKind,
 };
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};

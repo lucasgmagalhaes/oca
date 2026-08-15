@@ -53,9 +53,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         let (_, target_lufs) = LUFS_PROFILES[app.prefs.lufs_profile];
                         let canvas =
                             avcore::apply_export_aspect_ratio(canvas, app.export_aspect_ratio);
-                        let text_segments = avcore::resolve_text_segments(
-                            &app.active_project().sequences[app.active_project().active_sequence],
+                        let active_sequence =
+                            &app.active_project().sequences[app.active_project().active_sequence];
+                        let text_segments =
+                            avcore::resolve_text_segments(active_sequence, canvas.width);
+                        let shape_segments = avcore::resolve_shape_segments(
+                            active_sequence,
                             canvas.width,
+                            canvas.height,
                         );
                         let default_name = format!("{sequence_name}_export.mp4");
                         let mut dialog = rfd::FileDialog::new()
@@ -71,6 +76,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                         title: sequence_name,
                                         track_segments,
                                         text_segments,
+                                        shape_segments,
                                         canvas,
                                         target_lufs,
                                         output_path: output,
@@ -80,6 +86,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                     sequence_name,
                                     track_segments,
                                     text_segments,
+                                    shape_segments,
                                     canvas,
                                     target_lufs,
                                     output.display().to_string(),

@@ -2,7 +2,9 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use avcore::{Canvas, ClipSegment, ExportJob, ExportJobStatus, RenderOutcome, TextSegment};
+use avcore::{
+    Canvas, ClipSegment, ExportJob, ExportJobStatus, RenderOutcome, ShapeSegment, TextSegment,
+};
 use tracing::{debug, error, info};
 
 use super::{App, RenderEvent};
@@ -15,6 +17,7 @@ pub struct PendingExportConflict {
     pub title: String,
     pub track_segments: Vec<Vec<ClipSegment>>,
     pub text_segments: Vec<TextSegment>,
+    pub shape_segments: Vec<ShapeSegment>,
     pub canvas: Canvas,
     pub target_lufs: f32,
     pub output_path: PathBuf,
@@ -31,6 +34,7 @@ impl App {
         title: String,
         track_segments: Vec<Vec<avcore::ClipSegment>>,
         text_segments: Vec<avcore::TextSegment>,
+        shape_segments: Vec<avcore::ShapeSegment>,
         canvas: avcore::Canvas,
         target_lufs: f32,
         output_path: String,
@@ -45,6 +49,7 @@ impl App {
             title,
             segments,
             text_segments,
+            shape_segments,
             track_segments,
             canvas,
             target_lufs,
@@ -117,6 +122,7 @@ impl App {
 
         let job_id = job.id;
         let text_segments = job.text_segments.clone();
+        let shape_segments = job.shape_segments.clone();
         // Prefer multi-track snapshot; fall back to legacy single-track `segments` field for
         // jobs persisted before multi-track support was added.
         let track_segments: Vec<Vec<avcore::ClipSegment>> = if !job.track_segments.is_empty() {
@@ -143,6 +149,7 @@ impl App {
                 target_lufs,
                 gpu_encoder,
                 &text_segments,
+                &shape_segments,
                 &cancel_flag,
                 |percent| {
                     let _ = tx.send(RenderEvent::Progress { job_id, percent });

@@ -77,23 +77,75 @@ fn default_highlight_color() -> [u8; 4] {
     [255, 220, 0, 255]
 }
 
-/// Which geometric primitive a [`ShapeClip`] draws. Only these two — `request.md`'s "geometric
-/// forms" ask doesn't name a fixed set, and a rectangle/ellipse pair (rendered via a rotated
-/// per-pixel `geq` test, see `avbridge::apply_shape_overlays`) covers the common highlight-box/
-/// circle-badge graphic-element use case without an arbitrary-polygon renderer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+/// Which geometric primitive a [`ShapeClip`] draws. `Polygon` covers every straight-edged
+/// preset `request.md`'s "geometric forms" ask names (rectangle, square, triangle, trapezoid,
+/// arrow) plus a user-drawn custom shape — all just a list of vertices in the shape's own
+/// `-0.5..=0.5` local unit square, tested for point-in-polygon via ray casting (handles
+/// concave outlines like the arrow's, not just convex ones) — see [`ShapeKind::rectangle`] etc.
+/// for the fixed presets and `avcore::shape_render` for the rendering math. `Ellipse` (also
+/// used for a locked-aspect "circle") gets its own variant since a quadratic in/out test is far
+/// cheaper than ray-casting an approximated polygon would be.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ShapeKind {
-    #[default]
-    Rectangle,
     Ellipse,
+    /// Vertices in order (clockwise or counter-clockwise, either works for the ray-casting
+    /// test), each roughly `-0.5..=0.5` — the shape's own local unit square before it's scaled
+    /// by [`ShapeClip::width`]/[`ShapeClip::height`], rotated, and translated to
+    /// [`ShapeClip::center_x`]/[`ShapeClip::center_y`]. `request.md`'s "opção de desenhar uma
+    /// forma personalizada" (custom shape) is this same variant with user-placed vertices —
+    /// the data model supports it; the interactive vertex-editing UI to populate it by hand
+    /// doesn't exist yet (a real, separate follow-up, not a small addition — same class of gap
+    /// as `MaskShape::None`'s doc comment already flags for a custom mask shape).
+    Polygon(Vec<(f32, f32)>),
+}
+
+impl Default for ShapeKind {
+    fn default() -> Self {
+        Self::rectangle()
+    }
+}
+
+impl ShapeKind {
+    pub fn rectangle() -> Self {
+        Self::Polygon(vec![(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)])
+    }
+
+    /// Same vertices as [`Self::rectangle`] — "square" is a UI-level aspect lock (equal
+    /// `width`/`height` on the [`ShapeClip`]), not a different shape.
+    pub fn square() -> Self {
+        Self::rectangle()
+    }
+
+    pub fn triangle() -> Self {
+        Self::Polygon(vec![(0.0, -0.5), (0.5, 0.5), (-0.5, 0.5)])
+    }
+
+    /// Narrower top edge than bottom, per the conventional trapezoid look.
+    pub fn trapezoid() -> Self {
+        Self::Polygon(vec![(-0.25, -0.5), (0.25, -0.5), (0.5, 0.5), (-0.5, 0.5)])
+    }
+
+    /// A right-pointing arrow: a thin shaft plus a wide triangular head, as one seven-vertex
+    /// concave polygon (correct under ray casting, unlike a convex-only in/out test).
+    pub fn arrow() -> Self {
+        Self::Polygon(vec![
+            (-0.5, -0.15),
+            (0.1, -0.15),
+            (0.1, -0.35),
+            (0.5, 0.0),
+            (0.1, 0.35),
+            (0.1, 0.15),
+            (-0.5, 0.15),
+        ])
+    }
 }
 
 /// One placed geometric shape on a [`Track`] whose [`TrackKind`] is [`TrackKind::Shape`].
 /// Rendered the same way [`TextClip`] is — a `geq`-based post-processing pass after the main
-/// timeline encode, see `avbridge::apply_shape_overlays`.
+/// timeline encode, see `avcore::shape_render`/`avbridge::apply_shape_overlays`.
 ///
 /// Preview is not yet implemented, same gap as [`TextClip`]'s.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShapeClip {
     pub id: u64,
     /// Start time on the timeline, in seconds.
