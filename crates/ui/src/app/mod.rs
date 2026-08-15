@@ -171,6 +171,12 @@ pub struct PrefsState {
     /// docs for why it isn't bundled yet).
     #[serde(default)]
     pub reframe_model_path: String,
+    /// Path to a local MODNet ONNX model file for AI background removal
+    /// (`avcore::background_removal::segment_person`). Empty when not configured — same
+    /// one-time manual setup step as `whisper_model_path`/`reframe_model_path` above (see
+    /// `avcore::background_removal`'s module docs for why it isn't bundled yet).
+    #[serde(default)]
+    pub background_removal_model_path: String,
     /// Saved layer-group templates (`request.md`'s Fase 4 "Templates de grupo de camadas") —
     /// app-wide, not per-project, since the whole point is reapplying the same layer group
     /// (position/scale/crop/effects per layer) to fresh footage across different shorts.
@@ -199,6 +205,7 @@ impl Default for PrefsState {
             gpu_encoder: avcore::GpuEncoderPreference::default(),
             whisper_model_path: String::new(),
             reframe_model_path: String::new(),
+            background_removal_model_path: String::new(),
             saved_layer_templates: Vec::new(),
             sound_library_path: String::new(),
         }
@@ -348,6 +355,7 @@ enum TranscribeEvent {
 pub(crate) enum ModelKind {
     Whisper,
     Reframe,
+    BackgroundRemoval,
 }
 
 /// A message from a background auto-reframe worker thread (see

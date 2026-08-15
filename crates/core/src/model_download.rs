@@ -123,6 +123,40 @@ pub fn download_reframe_model(
     )
 }
 
+/// The MODNet portrait-matting model [`crate::background_removal`] uses for AI background
+/// removal. Only one variant exists today, same reasoning as [`ReframeModel`].
+pub struct BackgroundRemovalModel;
+
+impl BackgroundRemovalModel {
+    pub const FILENAME: &'static str = "modnet_photographic.onnx";
+    pub const APPROX_SIZE_MB: u32 = 25;
+
+    /// `yakhyo/modnet` (Apache-2.0) — ONNX export of `ZHKKKe/MODNet`'s "photographic" weights.
+    /// Verified as a real ~25MB ONNX file via a direct `HEAD` request (following the GitHub
+    /// release-asset redirect) before depending on this URL, same discipline as the Whisper and
+    /// UltraFace model downloads.
+    fn url() -> String {
+        "https://github.com/yakhyo/modnet/releases/download/weights/modnet_photographic.onnx"
+            .to_string()
+    }
+}
+
+/// Downloads the MODNet ONNX model into `dest_dir` (created if it doesn't exist). See
+/// [`download_file`] for the streaming/cancellation/atomicity details this wraps.
+pub fn download_background_removal_model(
+    dest_dir: &Path,
+    cancel: &AtomicBool,
+    on_progress: impl FnMut(u64, u64),
+) -> Result<DownloadOutcome, DownloadError> {
+    download_file(
+        &BackgroundRemovalModel::url(),
+        BackgroundRemovalModel::FILENAME,
+        dest_dir,
+        cancel,
+        on_progress,
+    )
+}
+
 /// Streams `url`'s body into `<dest_dir>/<filename>.part`, renaming to the final
 /// `<dest_dir>/<filename>` only once the whole body has arrived — a reader that opens the final
 /// path mid-download (or after a cancelled/failed one) never sees a truncated file.

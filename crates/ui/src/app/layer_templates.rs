@@ -160,6 +160,8 @@ impl App {
                     layer_scale_x: 1.0,
                     layer_scale_y: 1.0,
                     stabilization_intensity: 0.0,
+                    background_removal_enabled: false,
+                    background_removal_mask_path: String::new(),
                 });
             timeline.tracks[track_index]
                 .clips

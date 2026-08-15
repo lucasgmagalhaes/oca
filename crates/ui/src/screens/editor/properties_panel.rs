@@ -110,6 +110,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let mut chroma_key_enabled = clip.chroma_key_enabled;
                     let mut chroma_key_color = clip.chroma_key_color;
                     let mut chroma_key_tolerance = clip.chroma_key_tolerance;
+                    let mut background_removal_enabled = clip.background_removal_enabled;
                     let mut blur_intensity = clip.blur_intensity;
                     let mut shake_intensity = clip.shake_intensity;
                     let mut glitch_intensity = clip.glitch_intensity;
@@ -474,6 +475,20 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                 chroma_key_color,
                                 chroma_key_tolerance,
                             );
+                        }
+
+                        if components::property_block(
+                            ui,
+                            Text::BackgroundRemovalExportNote.tr(locale),
+                            |ui| {
+                                ui.checkbox(
+                                    &mut background_removal_enabled,
+                                    Text::PropBackgroundRemoval.tr(locale),
+                                )
+                                .changed()
+                            },
+                        ) {
+                            app.set_selected_clip_background_removal(background_removal_enabled);
                         }
 
                         if components::property_section(

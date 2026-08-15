@@ -11,6 +11,7 @@
 //! consumer, and it owns all presentation/formatting concerns (see its `i18n` module).
 
 pub mod auto_reframe;
+pub mod background_removal;
 pub mod export;
 pub mod keyframe;
 pub mod loudness;
@@ -33,13 +34,14 @@ pub use auto_reframe::{
     compute_reframe_crop, detect_faces, main_subject_center, CropRect, FaceBox, ReframeError,
 };
 pub use avbridge::{Canvas, ClipSegment, GpuEncoderPreference, TextSegment};
+pub use background_removal::{segment_person, SegmentError};
 pub use export::{ExportJob, ExportJobStatus};
 pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
 pub use model_download::{
-    download_reframe_model, download_whisper_model, DownloadError, DownloadOutcome, ReframeModel,
-    WhisperModelSize,
+    download_background_removal_model, download_reframe_model, download_whisper_model,
+    BackgroundRemovalModel, DownloadError, DownloadOutcome, ReframeModel, WhisperModelSize,
 };
 pub use motion_tracking::{
     rgba_to_gray, track_region, tracked_positions_to_keyframes, GrayFrame, TrackedPosition,

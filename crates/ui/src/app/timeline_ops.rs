@@ -60,6 +60,8 @@ impl App {
                 layer_scale_x: 1.0,
                 layer_scale_y: 1.0,
                 stabilization_intensity: 0.0,
+                background_removal_enabled: false,
+                background_removal_mask_path: String::new(),
             });
     }
 
@@ -127,6 +129,8 @@ impl App {
                 layer_scale_x: 1.0,
                 layer_scale_y: 1.0,
                 stabilization_intensity: 0.0,
+                background_removal_enabled: false,
+                background_removal_mask_path: String::new(),
             });
     }
 
@@ -413,6 +417,11 @@ impl App {
                 layer_scale_x: copied.layer_scale_x,
                 layer_scale_y: copied.layer_scale_y,
                 stabilization_intensity: copied.stabilization_intensity,
+                // A pasted clip keeps the same source_in_secs/source_out_secs as the copied
+                // original, so a matte generated for that exact range (unlike a split's halves,
+                // whose ranges change) is still valid to carry over.
+                background_removal_enabled: copied.background_removal_enabled,
+                background_removal_mask_path: copied.background_removal_mask_path,
             });
     }
 

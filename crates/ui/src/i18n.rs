@@ -151,6 +151,10 @@ text_catalog! {
     ChromaKeyColor: pt_br = "Cor:", en = "Color:";
     ChromaKeyTolerance: pt_br = "Tolerância", en = "Tolerance";
     ChromaKeyExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda não removem o fundo.", en = "only shows a badge on the block for now — preview and export don't remove the background yet.";
+    PropBackgroundRemoval: pt_br = "🤖 Remoção de fundo (IA)", en = "🤖 Background removal (AI)";
+    BackgroundRemovalExportNote: pt_br = "detecção por IA já roda de verdade (MODNet via ONNX), mas ainda não gera a máscara nem afeta preview ou exportação — só marca o bloco por enquanto.", en = "the AI detection itself already runs for real (MODNet via ONNX), but doesn't generate the matte or affect preview/export yet — only marks the block for now.";
+    DownloadBackgroundRemovalModel: pt_br = "Baixar modelo de remoção de fundo", en = "Download background removal model";
+    PrefsBackgroundRemovalModelPath: pt_br = "Caminho do modelo de remoção de fundo", en = "Background removal model path";
     PropOtherEffects: pt_br = "Outros efeitos", en = "Other effects";
     PropBlur: pt_br = "Blur", en = "Blur";
     PropShake: pt_br = "Tremido", en = "Shake";

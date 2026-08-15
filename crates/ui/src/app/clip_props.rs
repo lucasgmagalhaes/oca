@@ -31,6 +31,17 @@ impl App {
         self.with_selected_clip_mut(|clip| clip.deflicker_enabled = deflicker_enabled);
     }
 
+    /// Sets `selected_clip_id`'s
+    /// [`avcore::timeline::ClipInstance::background_removal_enabled`] — what checking the
+    /// properties panel's "Remover fundo (IA)" box does. A no-op if nothing is selected. See
+    /// that field's doc comment for the current export-wiring gap — toggling this doesn't yet
+    /// change the exported/previewed video.
+    pub fn set_selected_clip_background_removal(&mut self, background_removal_enabled: bool) {
+        self.with_selected_clip_mut(|clip| {
+            clip.background_removal_enabled = background_removal_enabled
+        });
+    }
+
     /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::speed_factor`], clamped to
     /// [`SPEED_FACTOR_RANGE`] — what dragging the properties panel's speed slider does. A no-op
     /// if nothing is selected.

@@ -393,6 +393,26 @@ pub struct ClipInstance {
     /// older saved projects load unstabilized.
     #[serde(default)]
     pub stabilization_intensity: f32,
+    /// `true` once [`ClipInstance::background_removal_mask_path`] holds a matte generated for
+    /// this exact clip — per `request.md`'s Fase 4 "Remoção de fundo por IA" spec. Not a plain
+    /// style toggle like the effect fields above: the matte in `background_removal_mask_path`
+    /// is generated per-clip (tied to this instance's own `source_in_secs`/`source_out_secs`
+    /// range, see `crate::background_removal`), so this field is deliberately excluded from
+    /// [`ClipFormatting`] — pasting it onto a different block would point that block at another
+    /// clip's matte video. **Not yet wired into `video_filter_chain`/preview**: computing the
+    /// matte (`crate::background_removal::segment_person`, confirmed working end-to-end) and
+    /// muxing it into a real alpha channel via `alphamerge` are two separate pipeline stages,
+    /// and only the first exists yet — same "field is real, export wiring is a later commit" gap
+    /// `gain_db`/`blur_intensity` shipped with before they were wired up. `#[serde(default)]` so
+    /// older saved projects load with it off.
+    #[serde(default)]
+    pub background_removal_enabled: bool,
+    /// Path to the grayscale alpha-matte video [`ui`'s "Remover fundo (IA)" flow generates for
+    /// this clip — meaningless while [`ClipInstance::background_removal_enabled`] is `false`.
+    /// Empty string = not yet generated. `#[serde(default)]` so older saved projects load with
+    /// no matte.
+    #[serde(default)]
+    pub background_removal_mask_path: String,
 }
 
 /// The rendering/display settings of a [`ClipInstance`] that can be copied onto a different
@@ -1008,12 +1028,22 @@ impl Track {
             layer_scale_x: clip.layer_scale_x,
             layer_scale_y: clip.layer_scale_y,
             stabilization_intensity: clip.stabilization_intensity,
+            // Not carried over: the matte at `clip.background_removal_mask_path` (if any) was
+            // generated for the pre-split `source_in_secs..source_out_secs` range, which no
+            // longer matches either half after the split — a stale matte pointing at the wrong
+            // frame range, silently wrong. `false`/empty until re-generated for this half.
+            background_removal_enabled: false,
+            background_removal_mask_path: String::new(),
         };
         clip.source_out_secs = split_source_secs;
         clip.position_keyframes = position_first;
         clip.scale_keyframes = scale_first;
         clip.rotation_keyframes = rotation_first;
         clip.opacity_keyframes = opacity_first;
+        // Same staleness reasoning as the second half above — the original clip's own trimmed
+        // range changed too.
+        clip.background_removal_enabled = false;
+        clip.background_removal_mask_path = String::new();
 
         self.clips.insert(index + 1, second_half);
         true

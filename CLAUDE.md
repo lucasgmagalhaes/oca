@@ -77,7 +77,25 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   button always tracks a region centered on the frame — no way to pick a different region yet
   (a real gap for an off-center subject).
 
-  **Not yet done (Fase 4):** AI background removal, text-to-speech.
+  **AI background removal (ONNX inference done, export/preview wiring not started):**
+  `avcore::background_removal::segment_person` runs MODNet (`ZHKKKe/MODNet`, ONNX export by
+  `yakhyo/modnet`, Apache-2.0) against one decoded frame, returning a per-pixel alpha matte.
+  Model isn't bundled yet — `avcore::model_download::download_background_removal_model`
+  fetches it on demand, same shape as the Whisper/reframe model downloads. **Confirmed working
+  end-to-end** on this dev machine: real inference against the downloaded model succeeded on a
+  synthetic frame. `ClipInstance::background_removal_enabled`/`background_removal_mask_path`
+  exist and have a properties-panel checkbox, but unlike auto-reframe/motion-tracking there's
+  no background job wired up yet to actually generate a matte file, and no `alphamerge`-based
+  compositing stage in the export pipeline to consume one — same "field is real, only a UI
+  toggle for now" gap `gain_db`/`blur_intensity` shipped with before their own wiring landed.
+  Next step: an avbridge function that encodes Rust-supplied raw frames into a plain
+  grayscale-as-luma H.264 video (reusing the already-working `libopenh264` encoder, no new
+  alpha-codec requirement), then a per-clip second filtergraph input + `alphamerge` in
+  `timeline_export_multi.c` (which already builds two-input filtergraphs for overlay-track
+  compositing — `src0`/`src1` in that file — so this reuses an existing pattern rather than
+  inventing one).
+
+  **Not yet done (Fase 4):** text-to-speech.
 
 - **Fase 5/6 — partially done.** Aspect ratio selection; prefs (`prefs.oc` — same
   gzip-compressed MessagePack framing `.ocproj` uses, via `avcore::to_ocproj_bytes`/
