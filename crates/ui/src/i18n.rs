@@ -236,6 +236,10 @@ text_catalog! {
     AutoReframeNoModelConfigured: pt_br = "Configure o modelo de reenquadramento em Ajustes antes de usar.", en = "Set up the auto-reframe model in Preferences before using this.";
     AutoReframeNoSubjectFound: pt_br = "Nenhum rosto detectado — recorte centralizado aplicado.", en = "No face detected — applied a centered crop instead.";
 
+    MotionTrackAction: pt_br = "Rastrear movimento", en = "Track motion";
+    MotionTrackInProgress: pt_br = "Rastreando...", en = "Tracking...";
+    MotionTrackNoFramesDecoded: pt_br = "Não foi possível decodificar quadros suficientes para rastrear.", en = "Couldn't decode enough frames to track.";
+
     SoundLibraryTitle: pt_br = "Música e efeitos sonoros", en = "Music & sound effects";
     SoundLibraryRescan: pt_br = "⟳ Atualizar", en = "⟳ Rescan";
     SoundLibraryMusic: pt_br = "Música", en = "Music";

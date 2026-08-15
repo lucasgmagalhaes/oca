@@ -599,6 +599,20 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                 app.set_selected_clip_position_keyframes(kfs);
                             }
                         }
+                        {
+                            let tracking = app.motion_tracking_clip_id.is_some();
+                            let label = if tracking {
+                                Text::MotionTrackInProgress.tr(locale)
+                            } else {
+                                Text::MotionTrackAction.tr(locale)
+                            };
+                            if ui
+                                .add_enabled(!tracking, egui::Button::new(label))
+                                .clicked()
+                            {
+                                app.spawn_motion_track_selected_clip();
+                            }
+                        }
 
                         let mut new_scale_keyframes = None;
                         if components::property_section(
