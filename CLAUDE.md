@@ -252,9 +252,35 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   `audio.m4a` fixture — this one needs no encoder, so unlike most of this session's other work
   it actually passes on this dev machine's FFmpeg build.
 
+  **Auto-reframe (done, static crop only — not animated):** `avcore::auto_reframe` per
+  `request.md`'s "Reenquadramento automático" — reuses `ClipInstance`'s existing static
+  `crop_x`/`crop_y`/`crop_w`/`crop_h` (no new keyframe track) rather than animating the crop
+  over time, matching the spec's own wording ("ao trocar a proporção... a IA recentraliza...
+  com opção de ajuste manual por cima" — a one-shot recenter, then the existing crop
+  controls are the "manual adjustment"). `compute_reframe_crop()` is pure geometry (fits the
+  target aspect ratio inside the source frame at maximal size, centered on a subject point,
+  clamped in-bounds) — fully unit tested, no ONNX involved. `detect_faces()` runs UltraFace
+  `version-RFB-320` (`Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB`, MIT) via the `ort`
+  crate (`download-binaries` feature — fetches a prebuilt ONNX Runtime `.dll` at build time);
+  input/output tensor shapes and the `(pixel-127)/128` normalization come from the model's own
+  published spec. The model itself isn't bundled with the installer yet (Fase 8's "ONNX
+  Runtime... empacotados junto" is unbuilt) — `avcore::model_download::download_reframe_model`
+  fetches it on demand into `<prefs dir>/models/`, same shape as the Whisper model download
+  (`model_download.rs`'s `download_file()` helper is now shared by both, refactored out of what
+  used to be `download_whisper_model`-only code). `ui`'s properties panel gets a "Reenquadramento
+  automático" button next to crop reset (`App::spawn_auto_reframe_selected_clip`, background
+  thread, same shape as `spawn_transcribe`) — decodes one frame at the clip's trim midpoint,
+  detects a face, and applies the resulting crop; falls back to a centered crop with a toast if
+  no face is found, since `crop_x`/etc. have no "unset" state to fall back to instead. Preferences
+  gets a model path/download row mirroring the Whisper one, sharing one download slot/progress
+  bar (`ModelKind` on `ModelDownloadEvent::Done` routes a finished download to the right
+  `prefs` field/section). **Unverified:** no machine this was developed on has actually run `ort`
+  against the model end-to-end (no ONNX Runtime binary confirmed working here beyond `cargo
+  check`/the pure-geometry unit tests) — same caveat class as this codebase's GPU encoder support.
+
   **Not yet done:** the rest of Fase 4's larger CapCut-parity items (AI background removal,
-  auto-reframe, text-to-speech, motion tracking) — keyframes, LUTs, layer transform (position +
-  resize), layer templates, video stabilization, and a music/SFX library (scanning/UI only, no
+  text-to-speech, motion tracking) — keyframes, LUTs, layer transform (position + resize), layer
+  templates, video stabilization, auto-reframe, and a music/SFX library (scanning/UI only, no
   bundled content) are done, see above.
 
   **Word-highlight subtitles (done):** true in-place highlighting — the full sentence stays on
