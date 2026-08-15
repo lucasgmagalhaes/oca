@@ -109,6 +109,22 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   background thread and imports the resulting WAV through the exact same pipeline as a
   drag-and-drop import ([`App::spawn_import`]) — no separate asset-creation path needed.
 
+  **Geometric shapes (data model + export rendering done, UI controls not started):**
+  `TrackKind::Shape`/`ShapeClip` — rectangle/square, ellipse/circle, triangle, trapezoid,
+  arrow presets (`ShapeKind::rectangle()` etc.), plus a `Polygon(Vec<(f32,f32)>)` variant that
+  also covers `request.md`'s "forma personalizada" (custom shape) ask, data-model-only for now
+  (no vertex-editing UI yet — a real, separate follow-up). `avcore::shape_render` builds a
+  `geq` avfilter node per shape (rotation via a per-pixel coordinate rotation, ellipse via a
+  quadratic test, every straight-edged shape via ray-casting point-in-polygon — correct for the
+  arrow's concave notches), applied as a post-processing pass
+  (`avbridge::apply_shape_overlays`) the same way text overlays already are. **Confirmed
+  working for real**, not just parse-checked: rendered the generated filter against a synthetic
+  frame and visually verified correct position/rotation/color, including catching two real bugs
+  (RGB not converted to YCbCr; yuv420p chroma-subsampled coordinates not matching luma's) before
+  they shipped. **Not yet done:** any UI to actually place/resize/color/rotate a shape clip on
+  the timeline (no track-creation button, no properties-panel controls, no preview) — export
+  wiring exists and works, but nothing in `ui` creates a `ShapeClip` yet.
+
 - **Fase 5/6 — partially done.** Aspect ratio selection; prefs (`prefs.oc` — same
   gzip-compressed MessagePack framing `.ocproj` uses, via `avcore::to_ocproj_bytes`/
   `from_ocproj_bytes` generalized to any `Serialize`/`DeserializeOwned` value) + export queue
