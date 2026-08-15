@@ -16,6 +16,7 @@ pub mod keyframe;
 pub mod loudness;
 pub mod media;
 pub mod model_download;
+pub mod motion_tracking;
 pub mod persistence;
 pub mod preview;
 pub mod probe;
@@ -39,6 +40,9 @@ pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
 pub use model_download::{
     download_reframe_model, download_whisper_model, DownloadError, DownloadOutcome, ReframeModel,
     WhisperModelSize,
+};
+pub use motion_tracking::{
+    rgba_to_gray, track_region, tracked_positions_to_keyframes, GrayFrame, TrackedPosition,
 };
 pub use persistence::{
     from_ocproj_bytes, load_project_from_file, save_project_to_file, to_ocproj_bytes, PersistError,
