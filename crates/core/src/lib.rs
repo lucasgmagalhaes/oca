@@ -26,6 +26,7 @@ pub mod proxy;
 pub mod render;
 pub mod sound_library;
 pub mod text_metrics;
+pub mod text_to_speech;
 pub mod timeline;
 pub mod transcribe;
 pub mod waveform;
@@ -59,6 +60,9 @@ pub use render::{
     resolve_timeline_segments_multi, ExportAspectRatio, RenderError, RenderOutcome,
 };
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
+pub use text_to_speech::{
+    load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
+};
 pub use timeline::{
     ClipFormatting, ClipInstance, LayerTemplate, TextClip, Timeline, Track, TrackKind,
 };
