@@ -20,6 +20,7 @@ use crate::i18n::{Locale, Text};
 use crate::screens;
 use crate::theme;
 
+mod auto_reframe;
 mod clip_props;
 pub mod export;
 mod import;
@@ -162,6 +163,12 @@ pub struct PrefsState {
     /// manual setup step in Preferences.
     #[serde(default)]
     pub whisper_model_path: String,
+    /// Path to a local UltraFace ONNX model file for auto-reframe
+    /// ([`App::spawn_auto_reframe_selected_clip`]). Empty when not configured — same one-time
+    /// manual setup step as `whisper_model_path` above (see `avcore::auto_reframe`'s module
+    /// docs for why it isn't bundled yet).
+    #[serde(default)]
+    pub reframe_model_path: String,
     /// Saved layer-group templates (`request.md`'s Fase 4 "Templates de grupo de camadas") —
     /// app-wide, not per-project, since the whole point is reapplying the same layer group
     /// (position/scale/crop/effects per layer) to fresh footage across different shorts.
@@ -189,6 +196,7 @@ impl Default for PrefsState {
             key_bindings: KeyBindings::default(),
             gpu_encoder: avcore::GpuEncoderPreference::default(),
             whisper_model_path: String::new(),
+            reframe_model_path: String::new(),
             saved_layer_templates: Vec::new(),
             sound_library_path: String::new(),
         }
@@ -332,11 +340,36 @@ enum TranscribeEvent {
     },
 }
 
+/// Which model a [`ModelDownloadEvent::Done`] belongs to — [`App::pump_model_download`] routes
+/// the finished path to the matching `prefs` field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ModelKind {
+    Whisper,
+    Reframe,
+}
+
+/// A message from a background auto-reframe worker thread (see
+/// [`App::spawn_auto_reframe_selected_clip`]) back to the UI thread.
+enum AutoReframeEvent {
+    Done {
+        clip_id: u64,
+        crop: avcore::CropRect,
+        /// Whether a face was actually detected — `false` means [`avcore::compute_reframe_crop`]
+        /// fell back to a plain center crop, worth telling the user about.
+        subject_found: bool,
+    },
+    Failed {
+        message: String,
+    },
+}
+
 /// A message from a background model-download worker thread (see
-/// [`App::spawn_download_whisper_model`]) back to the UI thread.
+/// [`App::spawn_download_whisper_model`]/[`App::spawn_download_reframe_model`]) back to the UI
+/// thread. Only one download can run at a time ([`App::cancel_model_download`] gates that), so
+/// a single shared channel/progress state covers every downloadable model.
 enum ModelDownloadEvent {
     Progress { downloaded: u64, total: u64 },
-    Done { path: PathBuf },
+    Done { kind: ModelKind, path: PathBuf },
     Cancelled,
     Failed { message: String },
 }
@@ -437,13 +470,22 @@ pub struct App {
     /// one transcription runs at a time (unlike imports, which are per-file parallel). The
     /// Mídia screen shows a busy state on that asset's card while this is `Some`.
     pub transcribing_asset_id: Option<u64>,
+    auto_reframe_tx: UnboundedSender<AutoReframeEvent>,
+    auto_reframe_rx: UnboundedReceiver<AutoReframeEvent>,
+    /// The timeline clip id a background auto-reframe run is currently computing a crop for, if
+    /// any — only one runs at a time, same shape as `transcribing_asset_id`.
+    pub auto_reframing_clip_id: Option<u64>,
     model_download_tx: UnboundedSender<ModelDownloadEvent>,
     model_download_rx: UnboundedReceiver<ModelDownloadEvent>,
-    /// `Some((downloaded_bytes, total_bytes))` while a Whisper model download is running —
+    /// `Some((downloaded_bytes, total_bytes))` while a model download is running —
     /// `total_bytes` is `0` if the server didn't report a `Content-Length` yet. `None` when no
     /// download is in flight. Preferences shows a progress bar in place of the size picker
     /// while this is `Some`.
     pub model_download_progress: Option<(u64, u64)>,
+    /// Which model `model_download_progress` belongs to — since only one download runs at a
+    /// time, Preferences uses this to show the progress bar in the right section (Whisper's or
+    /// auto-reframe's) instead of both.
+    pub(crate) model_download_kind: Option<ModelKind>,
     cancel_model_download: Option<Arc<AtomicBool>>,
     /// The timeline clip currently highlighted in the Editor's timeline strip, if any — a
     /// separate concept from `selected_asset_id` (that's the media-library selection driving
@@ -595,6 +637,7 @@ impl App {
         let (import_tx, import_rx) = mpsc::unbounded_channel();
         let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
         let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
+        let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
         let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
         let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
         let mut app = Self {
@@ -626,9 +669,13 @@ impl App {
             transcribe_tx,
             transcribe_rx,
             transcribing_asset_id: None,
+            auto_reframe_tx,
+            auto_reframe_rx,
+            auto_reframing_clip_id: None,
             model_download_tx,
             model_download_rx,
             model_download_progress: None,
+            model_download_kind: None,
             cancel_model_download: None,
             selected_clip_id: None,
             selected_text_clip_id: None,
@@ -964,6 +1011,7 @@ impl eframe::App for App {
         self.pump_import_queue();
         self.pump_sound_library_queue();
         self.pump_transcribe();
+        self.pump_auto_reframe();
         self.pump_model_download();
         self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());
