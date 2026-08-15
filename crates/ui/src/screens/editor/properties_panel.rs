@@ -228,9 +228,23 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                 if crop_changed {
                                     app.set_selected_clip_crop(crop_x, crop_y, crop_w, crop_h);
                                 }
-                                if ui.button(Text::CropReset.tr(locale)).clicked() {
-                                    app.set_selected_clip_crop(0.0, 0.0, 1.0, 1.0);
-                                }
+                                ui.horizontal(|ui| {
+                                    if ui.button(Text::CropReset.tr(locale)).clicked() {
+                                        app.set_selected_clip_crop(0.0, 0.0, 1.0, 1.0);
+                                    }
+                                    let reframing = app.auto_reframing_clip_id.is_some();
+                                    let label = if reframing {
+                                        Text::AutoReframeInProgress.tr(locale)
+                                    } else {
+                                        Text::AutoReframeAction.tr(locale)
+                                    };
+                                    if ui
+                                        .add_enabled(!reframing, egui::Button::new(label))
+                                        .clicked()
+                                    {
+                                        app.spawn_auto_reframe_selected_clip();
+                                    }
+                                });
                                 crop_changed
                             },
                         );

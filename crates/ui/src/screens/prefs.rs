@@ -120,7 +120,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.add_space(10.0);
             ui.label(Text::PrefsWhisperModelPath.tr(locale));
-            if let Some((downloaded, total)) = app.model_download_progress {
+            if app.model_download_kind == Some(crate::app::ModelKind::Whisper) {
+                let (downloaded, total) = app.model_download_progress.unwrap_or((0, 0));
                 ui.horizontal(|ui| {
                     if total > 0 {
                         ui.add(
@@ -178,6 +179,50 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     }
                 }
             });
+            ui.add_space(10.0);
+            ui.label(Text::PrefsReframeModelPath.tr(locale));
+            if app.model_download_kind == Some(crate::app::ModelKind::Reframe) {
+                let (downloaded, total) = app.model_download_progress.unwrap_or((0, 0));
+                ui.horizontal(|ui| {
+                    if total > 0 {
+                        ui.add(
+                            egui::ProgressBar::new(downloaded as f32 / total as f32)
+                                .desired_width(300.0)
+                                .show_percentage(),
+                        );
+                    } else {
+                        ui.add(
+                            egui::ProgressBar::new(0.0)
+                                .desired_width(300.0)
+                                .text(format!("{:.1} MB", downloaded as f64 / 1_048_576.0)),
+                        );
+                    }
+                    if ui.button(Text::CancelJob.tr(locale)).clicked() {
+                        app.request_cancel_model_download();
+                    }
+                });
+            } else {
+                ui.horizontal(|ui| {
+                    if ui.button(Text::DownloadReframeModel.tr(locale)).clicked() {
+                        app.spawn_download_reframe_model();
+                    }
+                });
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut app.prefs.reframe_model_path)
+                            .desired_width(400.0),
+                    );
+                    if ui.button(Text::Browse.tr(locale)).clicked() {
+                        if let Some(file) = rfd::FileDialog::new()
+                            .add_filter("ONNX model", &["onnx"])
+                            .pick_file()
+                        {
+                            app.prefs.reframe_model_path = file.display().to_string();
+                        }
+                    }
+                });
+            }
         });
         ui.add_space(14.0);
 
