@@ -123,8 +123,11 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   encode-path test, and the filter-graph correctness of rotation/position specifically has not
   been empirically confirmed against a real render on any machine yet.
 
-- **Fase 5/6 (partially done):** Aspect ratio selection; prefs + export queue persisted
-  to platform JSON (`~/Library/Application Support/oca/` on macOS); recent project list;
+- **Fase 5/6 (partially done):** Aspect ratio selection; prefs (`prefs.oc` — the same
+  gzip-compressed MessagePack framing `.ocproj` uses, via `avcore::to_ocproj_bytes`/
+  `from_ocproj_bytes` generalized to any `Serialize`/`DeserializeOwned` value, not JSON as
+  before) + export queue (still JSON, `queue.json` — unchanged) persisted to the platform config
+  dir (`~/Library/Application Support/oca/` on macOS); recent project list;
   debounced autosave + restore modal; crash detection + panic hook; prefs modal; home
   screen right-click context menu; file size estimate; structured logging; copy formatting
   (`Ctrl+Shift+C`/`V`); configurable key bindings (`KeyBindings`/`BindableAction` in
@@ -274,13 +277,42 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   no face is found, since `crop_x`/etc. have no "unset" state to fall back to instead. Preferences
   gets a model path/download row mirroring the Whisper one, sharing one download slot/progress
   bar (`ModelKind` on `ModelDownloadEvent::Done` routes a finished download to the right
-  `prefs` field/section). **Unverified:** no machine this was developed on has actually run `ort`
-  against the model end-to-end (no ONNX Runtime binary confirmed working here beyond `cargo
-  check`/the pure-geometry unit tests) — same caveat class as this codebase's GPU encoder support.
+  `prefs` field/section). **Now confirmed working end-to-end on this dev machine** (previously
+  documented here as unverified): `ort`'s `download-binaries` feature statically links
+  `onnxruntime` into the binary (not a runtime `.dll` as first assumed — confirmed via the real
+  `ort-sys` build script output, `cargo:rustc-link-lib=static=onnxruntime`) and a real inference
+  pass against the downloaded UltraFace model succeeded against the `core` test fixture video
+  (0 faces found, as expected — that fixture has no real face in it; the fallback centered-crop
+  math ran correctly). The real `ui.exe` GUI path (clicking the actual button) is still
+  unconfirmed — every attempt to launch `target/debug/ui.exe` from this dev environment's
+  Python (a Microsoft Store/MSIX-packaged interpreter) dies with `STATUS_DLL_NOT_FOUND`, while
+  launching the identical binary directly from PowerShell works fine (a real "oca" window opens)
+  — an environment quirk of that specific Python install, not a bug in this feature; reproduces
+  identically on `e2e/test_navigation.py`, a pre-existing test unrelated to this change.
+  `e2e/test_auto_reframe.py` (skipped if no model is downloaded) covers the real button click
+  once that environment issue is worked around.
+
+  **Motion tracking (done, single centered region, no ROI picker yet):** `avcore::motion_tracking`
+  per `request.md`'s "Motion tracking" — plain fixed-template block matching (full search within
+  a radius each sampled frame, sum-of-absolute-differences against the *first* frame's template,
+  not re-templated each step so it doesn't drift), no ML model, no new dependency. Deliberately
+  reuses the general keyframe system already built for Fase 4's "Keyframes" item rather than
+  inventing a separate animation mechanism: `tracked_positions_to_keyframes()` converts the
+  tracked path into a `position_keyframes` delta from the first tracked frame, added onto
+  whatever fixed position was already set — the layer rides along with the tracked motion while
+  keeping its initial on-canvas placement (not snapping to the tracked point's raw source-frame
+  coordinates, which live in the wrong coordinate space for a canvas position). `track_region()`
+  and `tracked_positions_to_keyframes()` are both pure and fully unit tested against synthetic
+  frames (a textured block moving in a straight line, a still block, edge clamping) — no video
+  decode needed for correctness. `ui`'s "Rastrear movimento" button
+  (`App::spawn_motion_track_selected_clip`, next to the position keyframe editor) tracks a region
+  centered on the middle of the frame across the clip's own trimmed source duration (4
+  samples/sec, capped at 60) — no way to pick a different region to track yet, a real gap for a
+  subject that isn't centered.
 
   **Not yet done:** the rest of Fase 4's larger CapCut-parity items (AI background removal,
-  text-to-speech, motion tracking) — keyframes, LUTs, layer transform (position + resize), layer
-  templates, video stabilization, auto-reframe, and a music/SFX library (scanning/UI only, no
+  text-to-speech) — keyframes, LUTs, layer transform (position + resize), layer templates, video
+  stabilization, auto-reframe, motion tracking, and a music/SFX library (scanning/UI only, no
   bundled content) are done, see above.
 
   **Word-highlight subtitles (done):** true in-place highlighting — the full sentence stays on
