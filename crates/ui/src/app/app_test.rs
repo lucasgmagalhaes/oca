@@ -37,6 +37,7 @@ fn test_track(id: u64, kind: TrackKind, clips: Vec<ClipInstance>) -> Track {
         clips,
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     }

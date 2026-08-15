@@ -111,6 +111,7 @@ fn sequence_with_text_track(clip: TextClip) -> Sequence {
                 kind: TrackKind::Text,
                 clips: vec![],
                 text_clips: vec![clip],
+                shape_clips: vec![],
                 visible: true,
             }],
             playhead_secs: 0.0,

@@ -327,6 +327,7 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
                 clips: vec![clip(1, 0.0, 0.0, 30.0), clip(2, 30.0, 0.0, 44.0)],
 
                 text_clips: vec![],
+                shape_clips: vec![],
 
                 visible: true,
             },
@@ -338,6 +339,7 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
                 clips: vec![clip(3, 0.0, 0.0, 10.0)],
 
                 text_clips: vec![],
+                shape_clips: vec![],
 
                 visible: true,
             },
@@ -356,6 +358,7 @@ fn track_with(clips: Vec<ClipInstance>) -> Track {
         clips,
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     }
@@ -986,6 +989,7 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
             clips: vec![clip(1, 0.0, 0.0, 10.0)],
 
             text_clips: vec![],
+            shape_clips: vec![],
 
             visible: true,
         },
@@ -996,6 +1000,7 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
             clips: vec![],
 
             text_clips: vec![],
+            shape_clips: vec![],
 
             visible: true,
         },
@@ -1018,6 +1023,7 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
             clips: vec![clip(1, 0.0, 0.0, 10.0)],
 
             text_clips: vec![],
+            shape_clips: vec![],
 
             visible: true,
         },
@@ -1028,6 +1034,7 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
             clips: vec![],
 
             text_clips: vec![],
+            shape_clips: vec![],
 
             visible: true,
         },
@@ -1049,6 +1056,7 @@ fn move_clip_to_track_is_a_no_op_for_an_unknown_target_track() {
         clips: vec![clip(1, 0.0, 0.0, 10.0)],
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     }]);
@@ -1069,6 +1077,7 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
             clips: vec![clip(1, 0.0, 0.0, 10.0)],
 
             text_clips: vec![],
+            shape_clips: vec![],
 
             visible: true,
         },
@@ -1079,6 +1088,7 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
             clips: vec![],
 
             text_clips: vec![],
+            shape_clips: vec![],
 
             visible: true,
         },
@@ -1191,6 +1201,7 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
             clips: vec![clip(1, 0.0, 0.0, 10.0)],
 
             text_clips: vec![],
+            shape_clips: vec![],
 
             visible: true,
         },
@@ -1201,6 +1212,7 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
             clips: vec![clip(2, 0.0, 0.0, 10.0)],
 
             text_clips: vec![],
+            shape_clips: vec![],
 
             visible: true,
         },
@@ -1222,6 +1234,7 @@ fn timeline_clip_mut_returns_none_for_an_unknown_id() {
         clips: vec![clip(1, 0.0, 0.0, 10.0)],
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     }]);

@@ -227,6 +227,7 @@ text_catalog! {
     TrackKindVideo: pt_br = "Vídeo", en = "Video";
     TrackKindAudio: pt_br = "Áudio", en = "Audio";
     TrackKindText: pt_br = "Texto", en = "Text";
+    TrackKindShape: pt_br = "Forma", en = "Shape";
     PreviewUnavailable: pt_br = "Pré-visualização indisponível", en = "Preview unavailable";
 
     LibraryTitle: pt_br = "Biblioteca de mídia", en = "Media library";

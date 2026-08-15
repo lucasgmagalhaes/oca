@@ -115,6 +115,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
             })
             .collect(),
         text_clips: vec![],
+        shape_clips: vec![],
         visible: true,
     };
 

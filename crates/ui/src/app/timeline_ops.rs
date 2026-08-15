@@ -535,6 +535,7 @@ pub(super) fn create_new_track(
         TrackKind::Video => "V",
         TrackKind::Audio => "A",
         TrackKind::Text => "T",
+        TrackKind::Shape => "S",
     };
     timeline.tracks.push(avcore::timeline::Track {
         id: track_id,
@@ -542,6 +543,7 @@ pub(super) fn create_new_track(
         kind,
         clips: Vec::new(),
         text_clips: Vec::new(),
+        shape_clips: Vec::new(),
         visible: true,
     });
     timeline.tracks.len() - 1
@@ -573,6 +575,7 @@ pub(super) fn resolve_or_create_track(
         TrackKind::Video => "V1",
         TrackKind::Audio => "A1",
         TrackKind::Text => "T1",
+        TrackKind::Shape => "S1",
     };
     timeline.tracks.push(avcore::timeline::Track {
         id: track_id,
@@ -580,6 +583,7 @@ pub(super) fn resolve_or_create_track(
         kind,
         clips: Vec::new(),
         text_clips: Vec::new(),
+        shape_clips: Vec::new(),
         visible: true,
     });
     timeline.tracks.len() - 1
@@ -627,6 +631,7 @@ impl App {
                 kind: TrackKind::Text,
                 clips: Vec::new(),
                 text_clips: Vec::new(),
+                shape_clips: Vec::new(),
                 visible: true,
             });
     }

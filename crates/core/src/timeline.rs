@@ -11,6 +11,10 @@ pub enum TrackKind {
     /// A text-overlay track: holds [`TextClip`]s rendered as drawtext overlays on export.
     /// No media assets are placed here — only `text_clips`.
     Text,
+    /// A shape-overlay track: holds [`ShapeClip`]s (rectangles/ellipses — per `request.md`'s
+    /// Fase 4 "Efeitos visuais" umbrella, a graphic-element counterpart to text overlays). No
+    /// media assets are placed here — only `shape_clips`.
+    Shape,
 }
 
 /// One placed text overlay on a [`Track`] whose [`TrackKind`] is [`TrackKind::Text`].
@@ -71,6 +75,47 @@ pub struct WordTiming {
 
 fn default_highlight_color() -> [u8; 4] {
     [255, 220, 0, 255]
+}
+
+/// Which geometric primitive a [`ShapeClip`] draws. Only these two — `request.md`'s "geometric
+/// forms" ask doesn't name a fixed set, and a rectangle/ellipse pair (rendered via a rotated
+/// per-pixel `geq` test, see `avbridge::apply_shape_overlays`) covers the common highlight-box/
+/// circle-badge graphic-element use case without an arbitrary-polygon renderer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ShapeKind {
+    #[default]
+    Rectangle,
+    Ellipse,
+}
+
+/// One placed geometric shape on a [`Track`] whose [`TrackKind`] is [`TrackKind::Shape`].
+/// Rendered the same way [`TextClip`] is — a `geq`-based post-processing pass after the main
+/// timeline encode, see `avbridge::apply_shape_overlays`.
+///
+/// Preview is not yet implemented, same gap as [`TextClip`]'s.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ShapeClip {
+    pub id: u64,
+    /// Start time on the timeline, in seconds.
+    pub start_secs: f64,
+    /// How long the shape stays visible, in seconds.
+    pub duration_secs: f64,
+    pub shape_kind: ShapeKind,
+    /// Center, as a `0.0..=1.0` fraction of canvas width/height.
+    pub center_x: f32,
+    pub center_y: f32,
+    /// Size, as a `0.0..=1.0` fraction of canvas width/height — what dragging a resize handle
+    /// changes.
+    pub width: f32,
+    pub height: f32,
+    /// Clockwise rotation around the shape's own center, in degrees.
+    pub rotation_deg: f32,
+    /// RGBA fill/stroke color: `[r, g, b, a]`, each 0–255. Alpha 255 = fully opaque.
+    pub color_rgba: [u8; 4],
+    /// Outline thickness in pixels. `0.0` = filled shape; `> 0.0` = outline only, that thick
+    /// (clamped to the shape's own half-extent, so a thickness larger than the shape still
+    /// renders as filled rather than vanishing).
+    pub stroke_thickness_px: f32,
 }
 
 /// Layer mask shape for a block, per `request.md`'s Fase 4 "Máscaras" spec — clips a layer to a
@@ -938,6 +983,11 @@ pub struct Track {
     /// field existed load without error.
     #[serde(default)]
     pub text_clips: Vec<TextClip>,
+    /// Shape overlays on this track. Only populated when `kind == TrackKind::Shape`; always
+    /// empty for other track kinds. `#[serde(default)]` so projects saved before this field
+    /// existed load without error.
+    #[serde(default)]
+    pub shape_clips: Vec<ShapeClip>,
     /// Whether this track contributes to export and preview. Toggled from the timeline track
     /// header. Defaults to `true`; missing in project files saved before this field was added
     /// deserializes as `true` via the serde default so existing projects are unaffected.

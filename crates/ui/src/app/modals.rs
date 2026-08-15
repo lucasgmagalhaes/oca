@@ -589,6 +589,7 @@ impl App {
                     avcore::timeline::TrackKind::Video => Text::TrackKindVideo.tr(locale),
                     avcore::timeline::TrackKind::Audio => Text::TrackKindAudio.tr(locale),
                     avcore::timeline::TrackKind::Text => Text::TrackKindText.tr(locale),
+                    avcore::timeline::TrackKind::Shape => Text::TrackKindShape.tr(locale),
                 };
                 ui.label(format!(
                     "{} {} ({kind_label})",

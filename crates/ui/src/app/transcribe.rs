@@ -95,6 +95,7 @@ impl App {
                     kind: TrackKind::Text,
                     clips: Vec::new(),
                     text_clips: Vec::new(),
+                    shape_clips: Vec::new(),
                     visible: true,
                 });
                 id

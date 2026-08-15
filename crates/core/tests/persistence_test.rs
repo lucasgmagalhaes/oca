@@ -117,6 +117,7 @@ fn fixture_project() -> Project {
                     clips: vec![clip(1, 1)],
 
                     text_clips: vec![],
+                    shape_clips: vec![],
 
                     visible: true,
                 }],

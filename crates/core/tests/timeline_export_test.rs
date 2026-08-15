@@ -102,6 +102,7 @@ fn renders_two_clips_with_different_effects_as_one_concatenated_export() {
         clips: vec![c2, c1], // deliberately out of start_secs order
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     };
@@ -144,6 +145,7 @@ fn frozen_clip_still_exports_its_full_timeline_duration() {
         clips: vec![c1],
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     };
@@ -200,6 +202,7 @@ fn rejects_a_clip_with_a_missing_asset() {
         clips: vec![clip(1, 999, 0.0, 0.0, 0.3)],
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     };
@@ -232,6 +235,7 @@ fn cancelling_mid_timeline_export_reports_cancelled() {
         clips: vec![clip(1, 1, 0.0, 0.0, 0.3), clip(2, 1, 0.3, 0.3, 0.6)],
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     };
@@ -274,6 +278,7 @@ fn deflicker_exports_without_error() {
         clips: vec![c1],
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     };
@@ -311,6 +316,7 @@ fn word_highlight_text_overlay_exports_without_error() {
         clips: vec![clip(1, 1, 0.0, 0.0, 0.5)],
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     };
@@ -343,6 +349,7 @@ fn word_highlight_text_overlay_exports_without_error() {
             highlight_enabled: true,
             highlight_color_rgba: [255, 220, 0, 255],
         }],
+        shape_clips: vec![],
         visible: true,
     };
     let sequence = sequence_with(vec![video_track, text_track]);
@@ -383,6 +390,7 @@ fn fade_transition_exports_without_error() {
         clips: vec![c1],
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     };
@@ -424,6 +432,7 @@ fn slide_transition_exports_without_error() {
         clips: vec![c1],
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     };
@@ -465,6 +474,7 @@ fn zoom_transition_exports_without_error() {
         clips: vec![c1],
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     };
@@ -521,6 +531,7 @@ fn animated_scale_keyframes_export_without_error() {
         clips: vec![c1],
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     };
@@ -570,6 +581,7 @@ fn animated_rotation_keyframes_export_without_error() {
         clips: vec![c1],
 
         text_clips: vec![],
+        shape_clips: vec![],
 
         visible: true,
     };

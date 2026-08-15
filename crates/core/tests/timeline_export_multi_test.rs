@@ -90,6 +90,7 @@ fn track(id: u64, name: &str, clips: Vec<ClipInstance>) -> Track {
         kind: TrackKind::Video,
         clips,
         text_clips: vec![],
+        shape_clips: vec![],
         visible: true,
     }
 }

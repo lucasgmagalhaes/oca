@@ -149,9 +149,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             (avcore::timeline::TrackKind::Audio, _) => {
                                 theme::ACCENT.gamma_multiply(0.5)
                             }
-                            // Text tracks carry text_clips, not clips — this arm satisfies
-                            // exhaustiveness but is never reached at runtime.
+                            // Text/Shape tracks carry text_clips/shape_clips, not clips — these
+                            // arms satisfy exhaustiveness but are never reached at runtime.
                             (avcore::timeline::TrackKind::Text, _) => theme::SURFACE_2,
+                            (avcore::timeline::TrackKind::Shape, _) => theme::SURFACE_2,
                         };
 
                         // Narrow strips at each edge, on top of the body's click zone, so a
