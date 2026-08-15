@@ -158,7 +158,7 @@ fn bench_project_ocproj_round_trip(c: &mut Criterion) {
         );
         group.bench_function(
             format!("from_ocproj_bytes/{clip_count}_clips_per_track"),
-            |b| b.iter(|| from_ocproj_bytes(black_box(&bytes)).unwrap()),
+            |b| b.iter(|| from_ocproj_bytes::<Project>(black_box(&bytes)).unwrap()),
         );
     }
 

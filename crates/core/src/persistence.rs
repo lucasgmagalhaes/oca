@@ -1,11 +1,12 @@
-//! Saves/loads a [`Project`] as `.ocproj` — a custom binary format: a small magic/version
-//! header, then gzip-compressed MessagePack (struct-map mode). Struct-map mode keeps field
-//! names in the encoded bytes (unlike MessagePack's default compact/array mode), so
-//! `#[serde(default)]` on a field added after a project was last saved still works the same
-//! way it did for JSON — nearly every past feature in this codebase relies on that to let
-//! older saved projects keep loading. The actual (de)serialization is a pure function
-//! ([`to_ocproj_bytes`]/[`from_ocproj_bytes`]), and the file-touching wrappers
-//! ([`save_project_to_file`]/[`load_project_from_file`]) are thin shells around it.
+//! Saves/loads any `Serialize + DeserializeOwned` value using the `.ocproj` binary format: a
+//! small magic/version header, then gzip-compressed MessagePack (struct-map mode). Struct-map
+//! mode keeps field names in the encoded bytes (unlike MessagePack's default compact/array
+//! mode), so `#[serde(default)]` on a field added after a value was last saved still works the
+//! same way it did for JSON — nearly every past feature in this codebase relies on that to let
+//! an older saved [`Project`] keep loading. The (de)serialization core
+//! ([`to_ocproj_bytes`]/[`from_ocproj_bytes`]) is generic — `ui`'s `PrefsState` reuses the exact
+//! same framing for its own `prefs.oc`, not just `Project`. [`save_project_to_file`]/
+//! [`load_project_from_file`] are thin `Project`-specific file-touching shells around it.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -14,6 +15,7 @@ use std::path::Path;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::project::Project;
@@ -48,11 +50,13 @@ impl std::fmt::Display for PersistError {
 
 impl std::error::Error for PersistError {}
 
-/// Serializes `project` to the `.ocproj` byte layout: `MAGIC` + version byte, then a gzip
-/// stream wrapping MessagePack (struct-map) bytes.
-pub fn to_ocproj_bytes(project: &Project) -> Result<Vec<u8>, PersistError> {
+/// Serializes `value` to the `.ocproj` byte layout: `MAGIC` + version byte, then a gzip
+/// stream wrapping MessagePack (struct-map) bytes. Generic over any `Serialize` value — not
+/// just [`Project`] — so a second value type (e.g. `ui`'s `PrefsState`) can share the exact
+/// same binary framing without duplicating the encode/decode logic.
+pub fn to_ocproj_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, PersistError> {
     let mut msgpack = Vec::new();
-    project
+    value
         .serialize(&mut rmp_serde::Serializer::new(&mut msgpack).with_struct_map())
         .map_err(PersistError::Encode)?;
 
@@ -65,8 +69,8 @@ pub fn to_ocproj_bytes(project: &Project) -> Result<Vec<u8>, PersistError> {
     Ok(out)
 }
 
-/// Parses a project previously produced by [`to_ocproj_bytes`].
-pub fn from_ocproj_bytes(bytes: &[u8]) -> Result<Project, PersistError> {
+/// Parses a value previously produced by [`to_ocproj_bytes`].
+pub fn from_ocproj_bytes<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, PersistError> {
     if bytes.len() < MAGIC.len() + 1 || &bytes[..MAGIC.len()] != MAGIC {
         return Err(PersistError::Corrupt("bad magic bytes"));
     }

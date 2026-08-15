@@ -196,7 +196,7 @@ fn projects_saved_before_per_block_gain_load_at_unity_gain() {
     std::io::Write::write_all(&mut encoder, &edited_msgpack).unwrap();
     encoder.finish().unwrap();
 
-    let restored = from_ocproj_bytes(&edited_bytes).unwrap();
+    let restored: Project = from_ocproj_bytes(&edited_bytes).unwrap();
 
     assert!(restored
         .sequences
@@ -219,7 +219,7 @@ fn round_trips_a_project_with_an_empty_timeline_and_library() {
 #[test]
 fn from_ocproj_bytes_rejects_malformed_input() {
     assert!(matches!(
-        from_ocproj_bytes(b"not an ocproj file"),
+        from_ocproj_bytes::<Project>(b"not an ocproj file"),
         Err(PersistError::Corrupt(_))
     ));
 }
@@ -230,7 +230,7 @@ fn from_ocproj_bytes_rejects_an_unsupported_version() {
     let mut bytes = to_ocproj_bytes(&original).unwrap();
     bytes[4] = 99;
     assert!(matches!(
-        from_ocproj_bytes(&bytes),
+        from_ocproj_bytes::<Project>(&bytes),
         Err(PersistError::Corrupt(_))
     ));
 }
