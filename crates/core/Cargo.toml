@@ -38,6 +38,11 @@ fontdue = "0.9"
 # TLS backend, no OpenSSL/C toolchain. Verified against a real huggingface.co download before
 # depending on it (got a real 200 with the exact known Content-Length back).
 ureq = "2"
+# ONNX Runtime bindings for auto-reframe's face-detection model (see `auto_reframe`).
+# `download-binaries` fetches a prebuilt ONNX Runtime dynamic library at build time — same
+# "not bundled in the installer yet" gap the Whisper model has, see `request.md`'s Fase 8
+# packaging plan ("ONNX Runtime... empacotados junto").
+ort = { version = "2.0.0-rc.13", features = ["download-binaries"] }
 
 [dev-dependencies]
 criterion = "0.8.2"

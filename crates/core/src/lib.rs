@@ -10,6 +10,7 @@
 //! Nothing in this crate depends on `egui` or any GUI toolkit — `ui` is the only
 //! consumer, and it owns all presentation/formatting concerns (see its `i18n` module).
 
+pub mod auto_reframe;
 pub mod export;
 pub mod keyframe;
 pub mod loudness;
@@ -27,13 +28,17 @@ pub mod timeline;
 pub mod transcribe;
 pub mod waveform;
 
+pub use auto_reframe::{
+    compute_reframe_crop, detect_faces, main_subject_center, CropRect, FaceBox, ReframeError,
+};
 pub use avbridge::{Canvas, ClipSegment, GpuEncoderPreference, TextSegment};
 pub use export::{ExportJob, ExportJobStatus};
 pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
 pub use model_download::{
-    download_whisper_model, DownloadError, DownloadOutcome, WhisperModelSize,
+    download_reframe_model, download_whisper_model, DownloadError, DownloadOutcome, ReframeModel,
+    WhisperModelSize,
 };
 pub use persistence::{
     from_ocproj_bytes, load_project_from_file, save_project_to_file, to_ocproj_bytes, PersistError,
