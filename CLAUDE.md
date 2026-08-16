@@ -251,6 +251,11 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   standalone exactly as before. `App::clipboard_clip`'s type changed from a single
   `ClipInstance` to `Vec<ClipInstance>` accordingly.
 
+  **Timeline context menu now offers "Mesclar em bloco composto"** — Fase 3's context-menu spec
+  lists it among the actions the right-click menu should mirror from the toolbar, but it was
+  toolbar-only until now. Enabled under the same condition as the toolbar button
+  (`App::multi_selected_clip_ids.len() >= 2`); calls the same `App::merge_into_composite`.
+
   **GPU encode — hardware success unverified.** `gpu_encoder.c`'s `open_video_encoder()`
   tries NVENC/Quick Sync/AMF per `Prefs.gpu_encoder`, falling back to CPU (libopenh264) on
   failure; `h264_qsv` correctly requests NV12 (not the yuv420p every other encoder uses) via
