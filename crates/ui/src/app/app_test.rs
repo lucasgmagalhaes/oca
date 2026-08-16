@@ -2166,6 +2166,114 @@ fn set_selected_clip_scale_keyframes_is_a_no_op_when_nothing_is_selected() {
 }
 
 #[test]
+fn add_opacity_marker_at_playhead_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.active_project_mut().timeline_mut().playhead_secs = 4.0;
+
+    app.add_opacity_marker_at_playhead();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert!(clips[0].opacity_keyframes.is_empty());
+}
+
+#[test]
+fn add_opacity_marker_at_playhead_is_a_no_op_outside_the_clips_own_span() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.active_project_mut().timeline_mut().playhead_secs = 15.0; // past the clip's 10s span.
+
+    app.add_opacity_marker_at_playhead();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert!(clips[0].opacity_keyframes.is_empty());
+}
+
+#[test]
+fn add_opacity_marker_at_playhead_defaults_to_fully_opaque_with_no_existing_keyframes() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.active_project_mut().timeline_mut().playhead_secs = 4.0; // 4s into a 10s clip -> 0.4.
+
+    app.add_opacity_marker_at_playhead();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].opacity_keyframes.len(), 1);
+    let added = clips[0].opacity_keyframes[0];
+    assert!((added.time_fraction - 0.4).abs() < 1e-6);
+    assert_eq!(added.value, 1.0);
+}
+
+#[test]
+fn add_opacity_marker_at_playhead_preserves_the_currently_interpolated_value() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.set_selected_clip_opacity_keyframes(vec![
+        avcore::Keyframe {
+            time_fraction: 0.0,
+            value: 0.2,
+        },
+        avcore::Keyframe {
+            time_fraction: 1.0,
+            value: 1.0,
+        },
+    ]);
+    app.active_project_mut().timeline_mut().playhead_secs = 5.0; // halfway -> time_fraction 0.5.
+
+    app.add_opacity_marker_at_playhead();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].opacity_keyframes.len(), 3);
+    let added = clips[0]
+        .opacity_keyframes
+        .iter()
+        .find(|kf| (kf.time_fraction - 0.5).abs() < 1e-6)
+        .expect("the new marker at time_fraction 0.5");
+    // Halfway between 0.2 and 1.0 is 0.6 - adding the marker shouldn't itself change the
+    // clip's current opacity.
+    assert!((added.value - 0.6).abs() < 1e-6);
+}
+
+#[test]
 fn set_selected_clip_chroma_key_updates_the_selected_clip() {
     let mut app = test_app(
         vec![test_project_with_tracks(
