@@ -6,8 +6,8 @@ use crate::i18n::{Locale, Text};
 use crate::theme;
 
 /// Renders the Ajustes screen: language switcher, audio/export/project settings, and the
-/// keyboard shortcut reference table. Settings write straight into `app.prefs`/`app.locale`
-/// and aren't persisted yet — see [`crate::app::PrefsState`].
+/// keyboard shortcut reference table. Settings write straight into `app.prefs`/`app.locale`,
+/// persisted to disk via `App::save_prefs` — see [`crate::app::PrefsState`].
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {
@@ -103,6 +103,23 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         .clicked()
                     {
                         app.prefs.gpu_encoder = choice;
+                    }
+                }
+            });
+            ui.add_space(10.0);
+            ui.label(Text::PrefsPreviewQuality.tr(locale));
+            ui.horizontal(|ui| {
+                use avcore::PreviewQuality as Quality;
+                for (choice, label) in [
+                    (Quality::Low, Text::PreviewQualityLow),
+                    (Quality::Medium, Text::PreviewQualityMedium),
+                    (Quality::High, Text::PreviewQualityHigh),
+                ] {
+                    if ui
+                        .selectable_label(app.prefs.preview_quality == choice, label.tr(locale))
+                        .clicked()
+                    {
+                        app.prefs.preview_quality = choice;
                     }
                 }
             });

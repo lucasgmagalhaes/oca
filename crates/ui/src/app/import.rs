@@ -20,6 +20,7 @@ impl App {
     pub fn spawn_import(&mut self, paths: Vec<PathBuf>) {
         let project_id = self.active_project().id;
         let proxy_dir = avcore::proxy::cache_dir_for_project(self.active_project());
+        let preview_quality = self.prefs.preview_quality;
         self.pending_imports += paths.len();
 
         for path in paths {
@@ -28,7 +29,14 @@ impl App {
             let tx = self.import_tx.clone();
             let proxy_dir = proxy_dir.clone();
             std::thread::spawn(move || {
-                import_one(&path, project_id, import_token, &proxy_dir, &tx);
+                import_one(
+                    &path,
+                    project_id,
+                    import_token,
+                    &proxy_dir,
+                    preview_quality,
+                    &tx,
+                );
             });
         }
     }
@@ -241,6 +249,7 @@ pub(super) fn import_one(
     project_id: u64,
     import_token: u64,
     proxy_dir: &Path,
+    preview_quality: avcore::PreviewQuality,
     tx: &UnboundedSender<ImportEvent>,
 ) {
     let probed = match avcore::probe_media(path) {
@@ -274,7 +283,7 @@ pub(super) fn import_one(
         }
     };
     let proxy_path = if kind == avcore::MediaKind::Video {
-        match avcore::ensure_proxy(path, proxy_dir) {
+        match avcore::ensure_proxy(path, proxy_dir, preview_quality) {
             Ok(proxy_path) => Some(proxy_path),
             Err(e) => {
                 eprintln!("failed to generate proxy for {}: {e}", path.display());

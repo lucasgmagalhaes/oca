@@ -198,6 +198,12 @@ pub struct PrefsState {
     /// the same shape as `whisper_model_path` above.
     #[serde(default)]
     pub sound_library_path: String,
+    /// Editing-proxy/preview resolution (`request.md`'s Fase 7 "Qualidade do preview
+    /// selecionável"), applied by [`App::spawn_import`] to every proxy generated from then on
+    /// — see [`avcore::PreviewQuality`]. Changing it doesn't retroactively regenerate proxies
+    /// for assets already imported; only newly imported files pick up the new setting.
+    #[serde(default)]
+    pub preview_quality: avcore::PreviewQuality,
 }
 
 impl Default for PrefsState {
@@ -218,6 +224,7 @@ impl Default for PrefsState {
             tts_model_path: String::new(),
             saved_layer_templates: Vec::new(),
             sound_library_path: String::new(),
+            preview_quality: avcore::PreviewQuality::default(),
         }
     }
 }

@@ -67,7 +67,14 @@ impl App {
         // empty proxy dir is safe here — it's simply never touched for this file.
         let proxy_dir = std::path::PathBuf::new();
         std::thread::spawn(move || {
-            super::import::import_one(&path, project_id, import_token, &proxy_dir, &tx);
+            super::import::import_one(
+                &path,
+                project_id,
+                import_token,
+                &proxy_dir,
+                avcore::PreviewQuality::default(),
+                &tx,
+            );
         });
     }
 }
