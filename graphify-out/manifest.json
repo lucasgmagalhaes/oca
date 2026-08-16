@@ -1,9 +1,4 @@
 {
-  "Watch-Gameplay.ps1": {
-    "mtime": 1786325145.6634898,
-    "ast_hash": "37a97997f87249a47dbe233a04ee00f7",
-    "semantic_hash": ""
-  },
   "crates/avbridge/build.rs": {
     "mtime": 1786646301.442253,
     "ast_hash": "586a5ce9fe5c24fd9fc09c3cc4dfcd16",
@@ -40,8 +35,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/lib.rs": {
-    "mtime": 1786919570.0323813,
-    "ast_hash": "2a435a693ea4be2cd03c04730c7d7346",
+    "mtime": 1786921345.2588716,
+    "ast_hash": "54840295d419b4834313585b64ee8f79",
     "semantic_hash": ""
   },
   "crates/core/src/loudness.rs": {
@@ -65,8 +60,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/preview.rs": {
-    "mtime": 1786729770.5590186,
-    "ast_hash": "d7ecd5f722bcb30c1957579327f36527",
+    "mtime": 1786920856.9107735,
+    "ast_hash": "7b111c3460b5140c14c15d68503f821c",
     "semantic_hash": ""
   },
   "crates/core/src/probe.rs": {
@@ -120,8 +115,8 @@
     "semantic_hash": ""
   },
   "crates/core/tests/preview_test.rs": {
-    "mtime": 1786797336.9666479,
-    "ast_hash": "84ffa8893d596a9b478ce9ef4c1d4550",
+    "mtime": 1786921123.5430522,
+    "ast_hash": "c89cfd4252ffbf01a2d43816ec07fb6b",
     "semantic_hash": ""
   },
   "crates/core/tests/probe_test.rs": {
@@ -145,13 +140,13 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1786920641.3909533,
-    "ast_hash": "b2bd02642c70581dd687f724161fee55",
+    "mtime": 1786921812.64736,
+    "ast_hash": "270c52d051e6893d94e69feb1f54a45a",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1786920423.5289612,
-    "ast_hash": "469ae7daa09561a7050acd289fd867b2",
+    "mtime": 1786921600.3768303,
+    "ast_hash": "1b6a64bfb6b7a93e56b334bca998eb22",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -175,8 +170,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/library.rs": {
-    "mtime": 1786799346.225644,
-    "ast_hash": "5eb17e4f5a73f2880838180fe06d723f",
+    "mtime": 1786921648.5890398,
+    "ast_hash": "b7d5f6690a8371cb5e3a11bd204f84b3",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/mod.rs": {
@@ -210,8 +205,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786920514.6770263,
-    "ast_hash": "2cbb2c9f655909fa0c52298d30f93c27",
+    "mtime": 1786922927.593129,
+    "ast_hash": "f42c7db9a9270e8670f3c7c384a86426",
     "semantic_hash": ""
   },
   "README.md": {
@@ -540,13 +535,13 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1786920400.101981,
-    "ast_hash": "e497ef1cf2cc8505f08559d437af1b2b",
+    "mtime": 1786921638.9529145,
+    "ast_hash": "1ae973a5089fc3b2fa9e12148673535b",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
-    "mtime": 1786801768.8257256,
-    "ast_hash": "33ad897795e18ea5b9d0bb0a723b0000",
+    "mtime": 1786921622.5514991,
+    "ast_hash": "12098cfc3ea29bb5842505f39895d6cc",
     "semantic_hash": ""
   },
   "crates/ui/src/app/model_download.rs": {
@@ -555,8 +550,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/preview.rs": {
-    "mtime": 1786920053.140522,
-    "ast_hash": "7f4b9455d43d0d6321adbf4d8cf03b37",
+    "mtime": 1786920881.9547386,
+    "ast_hash": "170186d81b9a8ee001978e3298c495ca",
     "semantic_hash": ""
   },
   "crates/ui/src/app/timeline_ops.rs": {
@@ -767,6 +762,31 @@
   "crates/ui/src/app/update_check.rs": {
     "mtime": 1786919570.136904,
     "ast_hash": "b6653df54a2e1ef36a1d526341980c3e",
+    "semantic_hash": ""
+  },
+  "crates/core/src/youtube_download.rs": {
+    "mtime": 1786922848.112432,
+    "ast_hash": "f1fe69f93fefab13c2edeafe67a4b916",
+    "semantic_hash": ""
+  },
+  "crates/ui/src/app/youtube_download.rs": {
+    "mtime": 1786922760.513142,
+    "ast_hash": "c9ce7c679827f929fae1045e0f2b2581",
+    "semantic_hash": ""
+  },
+  "scripts/Watch-Gameplay.ps1": {
+    "mtime": 1786325145.6634898,
+    "ast_hash": "37a97997f87249a47dbe233a04ee00f7",
+    "semantic_hash": ""
+  },
+  "scripts/yt2mp3.sh": {
+    "mtime": 1786920801.8734767,
+    "ast_hash": "afa299af81acb489ccdd417b66a1fbe5",
+    "semantic_hash": ""
+  },
+  "scripts/yt2mp4.sh": {
+    "mtime": 1786922249.1745093,
+    "ast_hash": "5d1e666e78e3431e2f3395904564ea39",
     "semantic_hash": ""
   }
 }
