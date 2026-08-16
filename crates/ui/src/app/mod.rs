@@ -214,10 +214,36 @@ pub struct PrefsState {
     /// and toggleable in Preferences either way.
     #[serde(default = "default_telemetry_enabled")]
     pub telemetry_enabled: bool,
+    /// Persisted Editor panel layout — `request.md`'s Fase 3 "Painéis de UI redimensionáveis"
+    /// explicitly asks for this to survive restarts ("layout salvo por projeto ou por
+    /// usuário"); this is the per-user half, the simpler of the two to wire up since it reuses
+    /// `PrefsState`'s existing save/load machinery rather than touching the `.ocproj` project
+    /// format. `App::lib_panel_width`/`props_panel_width`/`timeline_height` are the live,
+    /// actively-dragged values during a session; `App::save_prefs` copies them in here at save
+    /// time (same technique it already uses for `locale`), and `App::new` seeds the live
+    /// fields from these at startup.
+    #[serde(default = "default_lib_panel_width")]
+    pub lib_panel_width: f32,
+    #[serde(default = "default_props_panel_width")]
+    pub props_panel_width: f32,
+    #[serde(default = "default_timeline_height")]
+    pub timeline_height: f32,
 }
 
 fn default_telemetry_enabled() -> bool {
     true
+}
+
+fn default_lib_panel_width() -> f32 {
+    220.0
+}
+
+fn default_props_panel_width() -> f32 {
+    240.0
+}
+
+fn default_timeline_height() -> f32 {
+    190.0
 }
 
 impl Default for PrefsState {
@@ -240,6 +266,9 @@ impl Default for PrefsState {
             sound_library_path: String::new(),
             preview_quality: avcore::PreviewQuality::default(),
             telemetry_enabled: true,
+            lib_panel_width: default_lib_panel_width(),
+            props_panel_width: default_props_panel_width(),
+            timeline_height: default_timeline_height(),
         }
     }
 }
@@ -674,14 +703,15 @@ pub struct App {
     pub timeline_px_per_sec: f32,
     /// Width, in points, of the Editor's media-library column — dragged via the divider
     /// between it and the preview column (`editor.rs::resizable_divider`). Clamped to the
-    /// window's current size every frame (`editor.rs::show`), not persisted across restarts —
-    /// a known simplification short of `request.md`'s "layout salvo por projeto ou por
-    /// usuário" (per-project/per-user persistence isn't wired up yet).
+    /// window's current size every frame (`editor.rs::show`). Seeded from
+    /// `PrefsState::lib_panel_width` at startup and captured back into it by
+    /// `App::prefs_snapshot` on save — the per-user half of `request.md`'s "layout salvo por
+    /// projeto ou por usuário" (per-project persistence isn't wired up).
     pub lib_panel_width: f32,
     /// Same idea as `lib_panel_width`, for the clip-properties column on the right.
     pub props_panel_width: f32,
     /// Height, in points, of the timeline strip — dragged via the horizontal divider above it.
-    /// Same persistence caveat as `lib_panel_width`.
+    /// Same persistence shape as `lib_panel_width`.
     pub timeline_height: f32,
     thumbnail_tx: UnboundedSender<ThumbnailReady>,
     thumbnail_rx: UnboundedReceiver<ThumbnailReady>,
@@ -801,6 +831,10 @@ impl App {
         // Write the sentinel — deleted on clean exit via on_exit(). Survives a crash.
         let _ = std::fs::write(&sentinel, b"");
         let prefs = load_prefs();
+        // Captured before `prefs` itself is moved into the struct literal below.
+        let lib_panel_width = prefs.lib_panel_width;
+        let props_panel_width = prefs.props_panel_width;
+        let timeline_height = prefs.timeline_height;
         // Reload projects from the last session. Failures (moved/deleted files) are silently
         // skipped — the missing path will be pruned from recents next time prefs are saved.
         let projects: Vec<avcore::Project> = prefs
@@ -886,9 +920,9 @@ impl App {
             selected_shape_clip_id: None,
             drawing_shape_points: None,
             timeline_px_per_sec: 4.0,
-            lib_panel_width: 220.0,
-            props_panel_width: 240.0,
-            timeline_height: 190.0,
+            lib_panel_width,
+            props_panel_width,
+            timeline_height,
             thumbnail_tx,
             thumbnail_rx,
             thumbnail_textures: HashMap::new(),
@@ -1116,19 +1150,32 @@ impl App {
         }
     }
 
-    /// Serializes `prefs` to the platform config file on a background thread. Called whenever
-    /// the preferences modal closes or a project is opened. Prunes `recent_project_paths`
-    /// entries whose files no longer exist before serializing.
-    pub fn save_prefs(&self) {
+    /// Builds the snapshot [`App::save_prefs`]/[`App::save_prefs_sync`] persist — clones
+    /// `self.prefs` and copies in whatever live `App` state is meant to survive a restart but
+    /// isn't edited through the Preferences modal itself (locale, Editor panel/timeline
+    /// layout), then prunes `recent_project_paths` entries whose files no longer exist.
+    fn prefs_snapshot(&self) -> PrefsState {
         let mut prefs_snapshot = self.prefs.clone();
         // Always capture the live locale (app.locale may differ from prefs.locale if the user
         // changed it this session without having previously saved).
         prefs_snapshot.locale = self.locale;
+        // Editor panel/timeline layout (request.md's Fase 3 "layout salvo por... usuário") —
+        // dragged live via the resizable dividers, with no save trigger of their own short of
+        // this snapshot being taken.
+        prefs_snapshot.lib_panel_width = self.lib_panel_width;
+        prefs_snapshot.props_panel_width = self.props_panel_width;
+        prefs_snapshot.timeline_height = self.timeline_height;
         // Prune stale recents (moved/deleted files) so the list stays clean.
         prefs_snapshot
             .recent_project_paths
             .retain(|p| std::path::Path::new(p).exists());
+        prefs_snapshot
+    }
 
+    /// Serializes `prefs` to the platform config file on a background thread. Called whenever
+    /// the preferences modal closes or a project is opened/removed.
+    pub fn save_prefs(&self) {
+        let prefs_snapshot = self.prefs_snapshot();
         let Ok(bytes) = avcore::to_ocproj_bytes(&prefs_snapshot) else {
             return;
         };
@@ -1143,6 +1190,27 @@ impl App {
                 tracing::debug!(path = %path.display(), "prefs saved");
             }
         });
+    }
+
+    /// Synchronous twin of [`App::save_prefs`], only for [`eframe::App::on_exit`] — a
+    /// background thread's write has no guarantee of completing before the process actually
+    /// exits right after `on_exit` returns (nothing joins it), so panel-size/layout changes
+    /// made this session, which have no other save trigger short of opening Preferences, would
+    /// otherwise silently fail to persist on a normal quit. The prefs file is small (a gzip+
+    /// MessagePack blob, not project media), so blocking briefly during an already-in-progress
+    /// shutdown is an acceptable tradeoff for actually guaranteeing the write happens.
+    fn save_prefs_sync(&self) {
+        let prefs_snapshot = self.prefs_snapshot();
+        let Ok(bytes) = avcore::to_ocproj_bytes(&prefs_snapshot) else {
+            return;
+        };
+        let path = prefs_path();
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Err(e) = std::fs::write(&path, &bytes) {
+            tracing::error!(path = %path.display(), error = %e, "failed to write prefs (sync, on exit)");
+        }
     }
 }
 
@@ -1286,6 +1354,9 @@ impl eframe::App for App {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Persist synchronously — see save_prefs_sync's doc comment on why the normal
+        // background-thread save_prefs can't be trusted to finish before the process exits.
+        self.save_prefs_sync();
         // Clean exit — remove the crash sentinel so the next launch doesn't think we crashed.
         let _ = std::fs::remove_file(sentinel_path());
         tracing::info!("clean exit — crash sentinel removed");
