@@ -318,6 +318,25 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   beyond that, same "implemented carefully, not run for real" caveat this file already carries
   for a few other network/hardware-dependent features.
 
+- **Custom title bar (ad hoc, not from `request.md`).** `main.rs`'s `NativeOptions` now sets
+  `.with_decorations(false)` — no OS window chrome. `screens::breadcrumb::show` (still the
+  topmost `Panel::top`, now doubling as oca's own title bar) draws the window's drag-to-move
+  region (double-click toggles maximize/restore) and hand-painted minimize/maximize/close
+  buttons in the app's own theme colors, alongside its existing app-name/screen/project
+  breadcrumb content. `screens::breadcrumb::handle_resize_borders`, called first thing in
+  `App::ui` before any panel narrows the root `Ui`, replaces the OS's own edge/corner resize
+  handles — covers south/west/east and the two bottom corners only, not the top edge/corners
+  (those overlap the title bar's own drag region horizontally, so a north-facing resize zone
+  there would fight it for the same pointer input; the accepted tradeoff is no straight-up-edge
+  resize, only via the other three edges/corners). **Verification caveat:** window dragging/
+  resizing/minimize/maximize/close all go through `egui::ViewportCommand`s this sandbox has no
+  way to exercise (no display, no windowing system) — every API used was cross-checked against
+  the vendored `egui`/`eframe` 0.36.1 source (exact method/variant names, not guessed), but the
+  actual OS-level behavior (especially `StartDrag`/`BeginResize` under Wayland, which winit
+  itself only supports on a best-effort basis) is unverified beyond that. E2E tests that assume
+  OS-native title bar buttons exist via UI Automation would also need updating — not checked
+  here, no Windows build available in this sandbox.
+
 Check `features/request.md` for what's still unbuilt before assuming a feature is live —
 when in doubt, `graphify query`.
 
