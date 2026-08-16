@@ -29,6 +29,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let split_combo = app.prefs.key_bindings.split_at_playhead.clone();
     let copy_fmt_combo = app.prefs.key_bindings.copy_formatting.clone();
     let paste_fmt_combo = app.prefs.key_bindings.paste_formatting.clone();
+    let add_opacity_marker_combo = app.prefs.key_bindings.add_opacity_marker.clone();
 
     let ctrl_s_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S));
     if ctrl_s_pressed {
@@ -69,6 +70,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let play_pause_pressed = ui.input(|i| play_pause_combo.matches(i));
     if play_pause_pressed {
         app.toggle_preview_playback();
+    }
+    let add_opacity_marker_pressed = ui.input(|i| add_opacity_marker_combo.matches(i));
+    if add_opacity_marker_pressed {
+        app.add_opacity_marker_at_playhead();
     }
 
     ui.vertical(|ui| {

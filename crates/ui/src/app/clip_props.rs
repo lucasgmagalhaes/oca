@@ -281,6 +281,41 @@ impl App {
         self.with_selected_clip_mut(|clip| clip.opacity_keyframes = keyframes);
     }
 
+    /// Adds one opacity keyframe at the current timeline playhead position, for the selected
+    /// clip — what `Ctrl+O` (`request.md`'s Fase 6 key binding spec, "adicionar marcador de
+    /// opacidade") does. The new marker's value is the clip's own current effective opacity at
+    /// that instant (`avcore::keyframe::evaluate_keyframes` against a time-sorted copy of the
+    /// existing keyframes — the properties panel's own list editor doesn't keep
+    /// `opacity_keyframes` sorted as stored, so evaluating needs its own sorted copy), so
+    /// placing the marker doesn't itself change how the clip looks; only moving it afterward
+    /// does. A no-op if nothing is selected or the playhead isn't within the selected clip's
+    /// own timeline span.
+    pub fn add_opacity_marker_at_playhead(&mut self) {
+        let playhead_secs = self.active_project().timeline().playhead_secs;
+        let Some(clip) = self.selected_clip() else {
+            return;
+        };
+        let duration_secs = clip.duration_secs();
+        if duration_secs <= 0.0 {
+            return;
+        }
+        let time_fraction = ((playhead_secs - clip.start_secs) / duration_secs) as f32;
+        if !(0.0..=1.0).contains(&time_fraction) {
+            return;
+        }
+
+        let mut sorted = clip.opacity_keyframes.clone();
+        sorted.sort_by(|a, b| a.time_fraction.total_cmp(&b.time_fraction));
+        let value = avcore::keyframe::evaluate_keyframes(&sorted, time_fraction, 1.0);
+
+        let mut keyframes = clip.opacity_keyframes.clone();
+        keyframes.push(Keyframe {
+            time_fraction,
+            value,
+        });
+        self.set_selected_clip_opacity_keyframes(keyframes);
+    }
+
     /// Sets `selected_clip_id`'s brightness/contrast/saturation
     /// ([`avcore::timeline::ClipInstance::brightness`]/`contrast`/`saturation`), each
     /// independently clamped to its own range ([`BRIGHTNESS_RANGE`]/[`CONTRAST_RANGE`]/

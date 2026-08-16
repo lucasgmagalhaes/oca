@@ -324,6 +324,7 @@ text_catalog! {
     ShortcutPlayPause: pt_br = "Play / Pause", en = "Play / Pause";
     ShortcutCopyFormatting: pt_br = "Copiar formatação", en = "Copy formatting";
     ShortcutPasteFormatting: pt_br = "Colar formatação", en = "Paste formatting";
+    ShortcutAddOpacityMarker: pt_br = "Adicionar marcador de opacidade", en = "Add opacity marker";
     BindingPressAnyKey: pt_br = "Pressione uma tecla...", en = "Press any key...";
     BindingChange: pt_br = "Alterar", en = "Change";
     ExportFileExistsTitle: pt_br = "Arquivo já existe", en = "File already exists";

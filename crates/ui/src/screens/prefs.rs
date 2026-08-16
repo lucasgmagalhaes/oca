@@ -375,7 +375,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 }
 
 /// Renders the configurable key binding table and handles key capture when the user clicks
-/// "Change" on one of the four bindable actions.
+/// "Change" on one of the five bindable actions.
 fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
     // When a binding is being captured, intercept the next non-modifier key press.
     // Escape cancels without changing the binding.
@@ -408,6 +408,9 @@ fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
                     BindableAction::PasteFormatting => {
                         app.prefs.key_bindings.paste_formatting = combo
                     }
+                    BindableAction::AddOpacityMarker => {
+                        app.prefs.key_bindings.add_opacity_marker = combo
+                    }
                 }
                 app.binding_capture = None;
             }
@@ -419,7 +422,7 @@ fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
     }
 
     // Pre-compute display strings so we can borrow app freely inside the Grid closure.
-    let rows: [(BindableAction, Text, String); 4] = [
+    let rows: [(BindableAction, Text, String); 5] = [
         (
             BindableAction::PlayPause,
             Text::ShortcutPlayPause,
@@ -439,6 +442,11 @@ fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
             BindableAction::PasteFormatting,
             Text::ShortcutPasteFormatting,
             app.prefs.key_bindings.paste_formatting.display(),
+        ),
+        (
+            BindableAction::AddOpacityMarker,
+            Text::ShortcutAddOpacityMarker,
+            app.prefs.key_bindings.add_opacity_marker.display(),
         ),
     ];
     let binding_capture = app.binding_capture;

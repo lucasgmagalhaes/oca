@@ -98,9 +98,10 @@ pub enum BindableAction {
     SplitAtPlayhead,
     CopyFormatting,
     PasteFormatting,
+    AddOpacityMarker,
 }
 
-/// User-configurable key bindings for the four main editor shortcuts. Persisted as part of
+/// User-configurable key bindings for the five main editor shortcuts. Persisted as part of
 /// [`PrefsState`] so changes survive restarts.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct KeyBindings {
@@ -108,6 +109,12 @@ pub struct KeyBindings {
     pub split_at_playhead: KeyCombo,
     pub copy_formatting: KeyCombo,
     pub paste_formatting: KeyCombo,
+    /// `Ctrl+O` by default, per `request.md`'s Fase 6 key binding spec ("adicionar marcador de
+    /// opacidade") — see [`App::add_opacity_marker_at_playhead`]. Added after the other four,
+    /// so `#[serde(default)]` keeps an older saved `prefs.oc` (with no such key at all in its
+    /// serialized `KeyBindings`) loading correctly instead of failing outright.
+    #[serde(default = "default_add_opacity_marker_binding")]
+    pub add_opacity_marker: KeyCombo,
 }
 
 impl Default for KeyBindings {
@@ -133,7 +140,16 @@ impl Default for KeyBindings {
                 shift: true,
                 key_name: "V".to_string(),
             },
+            add_opacity_marker: default_add_opacity_marker_binding(),
         }
+    }
+}
+
+fn default_add_opacity_marker_binding() -> KeyCombo {
+    KeyCombo {
+        ctrl: true,
+        shift: false,
+        key_name: "O".to_string(),
     }
 }
 
