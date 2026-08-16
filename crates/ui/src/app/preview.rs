@@ -106,8 +106,9 @@ impl App {
                         .preview_playing
                         .then_some((std::time::Instant::now(), playhead));
                 } else {
-                    let offset = clip.source_in_secs + (playhead - clip.start_secs);
-                    if let Err(e) = preview.seek(offset) {
+                    let speed = clip.speed_factor.max(0.01) as f64;
+                    let offset = clip.source_in_secs + (playhead - clip.start_secs) * speed;
+                    if let Err(e) = preview.seek_with_rate(offset, speed) {
                         warn!(error = %e, "failed to seek newly opened preview");
                     }
                     self.preview_frozen_since = None;
@@ -206,8 +207,9 @@ impl App {
 
         match (&self.preview, same_clip) {
             (Some(preview), Some(clip)) => {
-                let offset = clip.source_in_secs + (position_secs - clip.start_secs);
-                if let Err(e) = preview.seek(offset) {
+                let speed = clip.speed_factor.max(0.01) as f64;
+                let offset = clip.source_in_secs + (position_secs - clip.start_secs) * speed;
+                if let Err(e) = preview.seek_with_rate(offset, speed) {
                     warn!(error = %e, "failed to seek preview");
                 }
                 self.active_project_mut().timeline_mut().playhead_secs = position_secs;
@@ -298,7 +300,8 @@ impl App {
             if position >= clip.source_out_secs {
                 clip.start_secs + clip.duration_secs()
             } else {
-                clip.start_secs + (position - clip.source_in_secs)
+                let speed = clip.speed_factor.max(0.01) as f64;
+                clip.start_secs + (position - clip.source_in_secs) / speed
             }
         };
         self.active_project_mut().timeline_mut().playhead_secs = new_playhead;
