@@ -54,42 +54,46 @@ pub struct TrackedPosition {
     pub center_y_frac: f32,
 }
 
-fn extract_patch(frame: &GrayFrame, x0: i32, y0: i32, size: i32) -> Vec<u8> {
-    let mut patch = vec![0u8; (size * size) as usize];
-    for row in 0..size {
+fn extract_patch(frame: &GrayFrame, x0: i32, y0: i32, width: i32, height: i32) -> Vec<u8> {
+    let mut patch = vec![0u8; (width * height) as usize];
+    for row in 0..height {
         let src_row = ((y0 + row) as u32 * frame.width) as usize;
         let src_start = src_row + x0 as usize;
-        let dst_start = (row * size) as usize;
-        patch[dst_start..dst_start + size as usize]
-            .copy_from_slice(&frame.data[src_start..src_start + size as usize]);
+        let dst_start = (row * width) as usize;
+        patch[dst_start..dst_start + width as usize]
+            .copy_from_slice(&frame.data[src_start..src_start + width as usize]);
     }
     patch
 }
 
-/// Sum of absolute differences between `template` and the `size`x`size` block of `frame`
+/// Sum of absolute differences between `template` and the `width`x`height` block of `frame`
 /// starting at `(x0, y0)` — lower is a better match. Caller guarantees the block fits inside
 /// `frame` (checked by [`track_region`] before calling this).
-fn sad(template: &[u8], frame: &GrayFrame, x0: i32, y0: i32, size: i32) -> i64 {
+fn sad(template: &[u8], frame: &GrayFrame, x0: i32, y0: i32, width: i32, height: i32) -> i64 {
     let mut total: i64 = 0;
-    for row in 0..size {
+    for row in 0..height {
         let src_row = ((y0 + row) as u32 * frame.width) as usize;
         let src_start = src_row + x0 as usize;
-        let tpl_start = (row * size) as usize;
-        for col in 0..size as usize {
+        let tpl_start = (row * width) as usize;
+        for col in 0..width as usize {
             total += (template[tpl_start + col] as i64 - frame.data[src_start + col] as i64).abs();
         }
     }
     total
 }
 
-/// Tracks a square region across `frames`, starting centered at
+/// Tracks a rectangular region across `frames`, starting centered at
 /// `(initial_center_x_frac, initial_center_y_frac)` (a fraction of the first frame's size) in
-/// `frames[0]`. `template_size_frac` sets the tracked block's side length as a fraction of the
-/// frame's shorter dimension; `search_radius_frac` bounds how far (as the same fraction) the
-/// block is allowed to move between consecutive frames — a full search within that radius, by
-/// sum-of-absolute-differences against the *original* frame-0 template (not re-templated each
-/// step, so tracking doesn't drift from accumulating small per-step errors, at the cost of
-/// losing the subject if its appearance changes too much).
+/// `frames[0]`. `template_width_frac`/`template_height_frac` set the tracked block's width/
+/// height independently (both as a fraction of the frame's shorter dimension, so a `1.0` value
+/// on either axis still means "as big as the shorter side" — matching the old single-scalar
+/// `template_size_frac`'s convention exactly when both are equal, e.g. `track_region(...,
+/// 0.2, 0.2, ...)` behaves identically to the old `track_region(..., 0.2, ...)`);
+/// `search_radius_frac` bounds how far (as the same fraction) the block is allowed to move
+/// between consecutive frames — a full search within that radius, by sum-of-absolute-
+/// differences against the *original* frame-0 template (not re-templated each step, so
+/// tracking doesn't drift from accumulating small per-step errors, at the cost of losing the
+/// subject if its appearance changes too much).
 ///
 /// Returns one [`TrackedPosition`] per input frame, `frames[0]`'s being exactly the requested
 /// initial center (clamped so the template fits inside the frame). Empty input returns empty
@@ -99,7 +103,8 @@ pub fn track_region(
     frames: &[GrayFrame],
     initial_center_x_frac: f32,
     initial_center_y_frac: f32,
-    template_size_frac: f32,
+    template_width_frac: f32,
+    template_height_frac: f32,
     search_radius_frac: f32,
 ) -> Vec<TrackedPosition> {
     let Some(first) = frames.first() else {
@@ -107,15 +112,17 @@ pub fn track_region(
     };
     let (w, h) = (first.width as i32, first.height as i32);
     let short_side = w.min(h);
-    let size = ((template_size_frac * short_side as f32).round() as i32).clamp(4, short_side);
-    let half = size / 2;
+    let width = ((template_width_frac * short_side as f32).round() as i32).clamp(4, w);
+    let height = ((template_height_frac * short_side as f32).round() as i32).clamp(4, h);
+    let half_w = width / 2;
+    let half_h = height / 2;
 
     let mut cx = (initial_center_x_frac * w as f32).round() as i32;
     let mut cy = (initial_center_y_frac * h as f32).round() as i32;
-    cx = cx.clamp(half, w - size + half);
-    cy = cy.clamp(half, h - size + half);
+    cx = cx.clamp(half_w, w - width + half_w);
+    cy = cy.clamp(half_h, h - height + half_h);
 
-    let template = extract_patch(first, cx - half, cy - half, size);
+    let template = extract_patch(first, cx - half_w, cy - half_h, width, height);
     let search_radius = ((search_radius_frac * short_side as f32).round() as i32).max(1);
 
     let mut results = Vec::with_capacity(frames.len());
@@ -133,11 +140,11 @@ pub fn track_region(
             for dx in -search_radius..=search_radius {
                 let px = cx + dx;
                 let py = cy + dy;
-                let (x0, y0) = (px - half, py - half);
-                if x0 < 0 || y0 < 0 || x0 + size > fw || y0 + size > fh {
+                let (x0, y0) = (px - half_w, py - half_h);
+                if x0 < 0 || y0 < 0 || x0 + width > fw || y0 + height > fh {
                     continue;
                 }
-                let score = sad(&template, frame, x0, y0, size);
+                let score = sad(&template, frame, x0, y0, width, height);
                 if score < best_score {
                     best_score = score;
                     best_x = px;

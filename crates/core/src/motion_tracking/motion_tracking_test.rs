@@ -40,6 +40,7 @@ fn tracks_a_block_moving_in_a_straight_line() {
         20.0 / FRAME_W as f32,
         20.0 / FRAME_H as f32,
         0.2,
+        0.2,
         0.1,
     );
 
@@ -77,6 +78,7 @@ fn tracks_a_block_starting_from_an_off_center_region() {
         8.0 / FRAME_W as f32,
         8.0 / FRAME_H as f32,
         0.2,
+        0.2,
         0.15,
     );
 
@@ -106,6 +108,7 @@ fn stays_put_when_the_block_does_not_move() {
         36.0 / FRAME_W as f32,
         26.0 / FRAME_H as f32,
         0.2,
+        0.2,
         0.1,
     );
 
@@ -117,13 +120,13 @@ fn stays_put_when_the_block_does_not_move() {
 
 #[test]
 fn empty_frames_produce_no_tracked_positions() {
-    assert!(track_region(&[], 0.5, 0.5, 0.2, 0.1).is_empty());
+    assert!(track_region(&[], 0.5, 0.5, 0.2, 0.2, 0.1).is_empty());
 }
 
 #[test]
 fn a_single_frame_produces_one_clamped_position() {
     let frame = frame_with_block(30, 20, 0);
-    let tracked = track_region(&[frame], 0.5, 0.5, 0.2, 0.1);
+    let tracked = track_region(&[frame], 0.5, 0.5, 0.2, 0.2, 0.1);
     assert_eq!(tracked.len(), 1);
 }
 
@@ -132,7 +135,7 @@ fn initial_center_near_the_edge_is_clamped_so_the_template_fits() {
     let frames = vec![frame_with_block(0, 0, 0)];
     // Requesting a center right at the corner (0,0) — the template must still fit inside the
     // frame, so the actual tracked center should be pulled inward, not sit at the edge.
-    let tracked = track_region(&frames, 0.0, 0.0, 0.2, 0.1);
+    let tracked = track_region(&frames, 0.0, 0.0, 0.2, 0.2, 0.1);
     assert_eq!(tracked.len(), 1);
     assert!(tracked[0].center_x_frac > 0.0);
     assert!(tracked[0].center_y_frac > 0.0);
