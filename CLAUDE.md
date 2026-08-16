@@ -32,10 +32,28 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   opacity via `Keyframe<T>` lists — see below), layer transform (position drag + resize),
   layer templates, auto-reframe, motion tracking.
 
-  **Wired to preview:** scale/rotation/opacity keyframes, pixelize/shake/zoom/freeze_frame.
-  **Not wired to preview:** transitions, vignette, chroma_key, mask_shape, gain_db, speed,
+  **Wired to preview:** scale/rotation/opacity keyframes, pixelize/shake/zoom/freeze_frame,
+  speed. **Not wired to preview:** transitions, vignette, chroma_key, mask_shape, gain_db,
   glitch, deflicker, LUTs, stabilization, position keyframes (needs multi-track preview
   compositing that doesn't exist yet — single-clip `playbin` pipeline has no `overlay` stage).
+
+  **Speed (`speed_factor`) now honored in preview, not just export.** Previously the
+  timeline-to-source offset math in `ui::app::preview` (`ensure_preview_loaded`'s initial
+  seek, `seek_preview`'s fast path, `pump_preview_frame`'s reverse position-to-playhead
+  mapping) ignored `speed_factor` entirely — scrubbing or playing a sped-up/slowed-down clip
+  showed the wrong source frame and, during real-time playback, always played at 1x
+  regardless of the clip's own speed. `avcore::preview::Preview::seek_with_rate` (new,
+  alongside the existing plain `seek`) uses GStreamer's full rate-seek (`Element::seek` with a
+  `rate` argument, not `seek_simple`) so the pipeline itself decodes at the adjusted rate —
+  the rate sticks across a later plain `play()`/`pause()` until the next seek changes it,
+  same as GStreamer's own semantics. The three call sites now multiply/divide by
+  `clip.speed_factor.max(0.01)` consistently with `ClipInstance::split_clip_at`'s existing
+  `source_in_secs + offset * speed_factor` convention (`timeline.rs`), and pass that same
+  factor as `seek_with_rate`'s rate. **Known gap:** the rate is only re-applied on a seek, so
+  dragging the properties panel's speed slider while a clip is already playing without
+  scrubbing won't retroactively change the pipeline's live rate until the next seek — same
+  "picked up on next seek/reload, not live-patched" shape as this codebase's other preview
+  properties.
 
   **Alpha/overlay-track caveat (applies to chroma_key, mask_shape, position/opacity
   keyframes, layer resize):** these only have a visible effect on a clip placed on an
@@ -371,6 +389,49 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   itself only supports on a best-effort basis) is unverified beyond that. E2E tests that assume
   OS-native title bar buttons exist via UI Automation would also need updating — not checked
   here, no Windows build available in this sandbox.
+
+- **YouTube download modal (ad hoc, not from `request.md`).** The Mídia screen's "⭳ Baixar do
+  YouTube" button (`screens::library::show`) opens a modal (`App::open_youtube_modal`,
+  `App::show_youtube_download_modal` in `app/modals.rs`) to download a video as MP4 (with a
+  360p/480p/720p/1080p/Best height picker) or MP3 (128/192/320 kbps), importing the result into
+  the active project's media library on completion the same way any other file drop is
+  (`App::spawn_import`, via `App::pump_youtube_download`) — same overall shape as the "Texto-
+  pra-fala" modal, except this one stays open across submit to show a progress bar and a
+  Cancel button rather than closing immediately, since a video download can run far longer than
+  TTS synthesis.
+
+  **`avcore::youtube_download` embeds a Python interpreter (`pyo3`, `auto-initialize` feature)
+  and calls yt-dlp's own Python library API (`yt_dlp.YoutubeDL`) directly** — no subprocess,
+  no parsing human-readable progress text off stdout, per explicit user direction over an
+  initial subprocess-based version. This is a materially heavier dependency than anything else
+  in this codebase: every other native tool (FFmpeg, GStreamer, Whisper, Piper, ONNX Runtime)
+  is a linked C/C++ library or a spawned executable; this is a whole embedded CPython
+  interpreter dynamically linked against `libpython`/`python3*.dll` at **build time**, needing
+  that same (or ABI-compatible) Python runtime present at **launch time** — if the target
+  machine has no matching Python installed, `ui.exe` itself fails to start (a missing shared-
+  library load), not just this one feature, unlike a missing subprocess binary which would have
+  failed this feature alone, gracefully. `yt_dlp` (`pip install yt-dlp`) additionally needs to
+  be importable in that interpreter. **Fase 8's "motores embutidos no instalador" plan does not
+  yet account for bundling a Python runtime at all** — a real, currently-unresolved packaging
+  gap. A progress-hook closure (`pyo3::types::PyCFunction::new_closure`) reads yt-dlp's
+  `progress_hooks` dict (`status`/`downloaded_bytes`/`total_bytes`) each callback and computes
+  the `0.0..=1.0` fraction `ui` reads for its progress bar; cancellation raises
+  `yt_dlp.utils.DownloadCancelled` from inside that same hook. The final output path is read
+  from `info['requested_downloads'][0]['filepath']` — the same field yt-dlp's own CLI `--print
+  after_move:filepath` resolves to, populated only after any post-processing (merge, audio
+  extraction) has produced the truly final file.
+
+  **Verification caveat:** the `pyo3`/`yt_dlp` API usage (`Python::attach`,
+  `PyCFunction::new_closure`, `PyDictMethods::set_item`, `PyAnyMethods::call`/`call_method`,
+  `progress_hooks`' dict shape, `DownloadCancelled`) was checked against pyo3 0.29.2's real
+  published docs and yt-dlp's own `YoutubeDL.py` source rather than guessed, and the crate
+  builds and links cleanly on this dev machine (confirming a compatible Python was
+  discoverable at build time here) — but has not been exercised against a real download on any
+  machine, no Python environment with `yt_dlp` installed was available to actually run it. One
+  assumption in particular is unconfirmed against real yt-dlp behavior: that raising
+  `DownloadCancelled` from a `progress_hooks` callback (rather than from `match_filter`, its
+  one documented use in the reviewed source) actually aborts `extract_info()` cleanly rather
+  than being swallowed or mishandled.
 
 Check `features/request.md` for what's still unbuilt before assuming a feature is live —
 when in doubt, `graphify query`.
