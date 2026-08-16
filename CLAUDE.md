@@ -300,9 +300,12 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   `PREVIEW_FRAME_TELEMETRY_INTERVAL` — recording every frame would flood the file). A
   `PrefsState::telemetry_enabled` toggle (Ajustes screen's Project card, on by default) gates
   `record_telemetry` itself, so disabling it stops collection outright rather than just hiding
-  a report. **Not yet done:** CPU/RAM/GPU resource-usage sampling (`request.md`'s full
-  wishlist) — no `sysinfo`-style dependency is wired in, only the event-shaped metrics above;
-  and no rotation/pruning of `telemetry.jsonl` (unbounded growth over a long-lived install).
+  a report. `record_event` now rotates `telemetry.jsonl` to a `.1`-suffixed backup once it
+  crosses 10 MiB (`avcore::telemetry::rotate_if_oversized`, size-based rather than Fase 6's
+  daily rotation since this crate has no date/time dependency) — bounds long-lived-install disk
+  usage to roughly the cap times two. **Not yet done:** CPU/RAM/GPU resource-usage sampling
+  (`request.md`'s full wishlist) — no `sysinfo`-style dependency is wired in, only the
+  event-shaped metrics above.
 
   **Not yet done (rest of Fase 7):** hardware-accelerated preview decode and an explicit
   lazy-frame-loading layer. Release binary stripping is done — `[profile.release]` has
