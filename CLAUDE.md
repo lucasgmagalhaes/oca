@@ -77,15 +77,17 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   starting region (`tracks_a_block_starting_from_an_off_center_region`) so a future regression
   that silently re-hardcodes the center back to `(0.5, 0.5)` gets caught. `ui`'s "Rastrear
   movimento" button no longer always tracks a region centered on the frame — the properties
-  panel now has region controls (center X/Y drag values, size/search-radius sliders, a
-  "Centralizar região" reset button) right above it, defaulting to the old centered-region
-  values but user-editable before clicking the button. `App::motion_track_center_x`/`_y`/
-  `_size`/`_search_radius` are plain, non-persisted session state (a one-shot tracking job's
-  input, not a durable clip property like `crop_x/y` — only the job's *output*
+  panel now has region controls (center X/Y drag values, independent width/height/search-radius
+  sliders, a "Centralizar região" reset button) right above it, defaulting to the old centered-
+  square-region values but user-editable before clicking the button. `App::motion_track_center_x`/
+  `_y`/`_width`/`_height`/`_search_radius` are plain, non-persisted session state (a one-shot
+  tracking job's input, not a durable clip property like `crop_x/y` — only the job's *output*
   `position_keyframes` is saved), read once at click time by
-  `App::spawn_motion_track_selected_clip` and threaded through to `avcore::track_region`. No
-  drag-on-preview picker yet (numeric entry only) — `avcore::track_region` still only supports
-  a square region (`template_size_frac` is one scalar), not an independent width/height.
+  `App::spawn_motion_track_selected_clip` and threaded through to `avcore::track_region`, which
+  now takes `template_width_frac`/`template_height_frac` independently (previously one
+  `template_size_frac` scalar, forcing a square region) — each clamps to its own frame
+  dimension (width to the frame's width, height to its height) rather than both to the shorter
+  side. No drag-on-preview picker yet — numeric entry only.
 
   **AI background removal (inference, matte generation, and export wiring all done —
   preview still not):** `avcore::background_removal::segment_person` runs MODNet
