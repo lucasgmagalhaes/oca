@@ -236,10 +236,32 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   `proxy_path_for` bakes the height into the filename (`{stem}_proxy_{height}p.mp4`)
   specifically so switching the preference can't collide with or silently keep serving a
   stale-resolution proxy under the old path — the tradeoff is no retroactive regeneration: an
-  asset imported before the change keeps its existing proxy until re-imported. **Not yet
-  done:** hardware-accelerated preview decode, an explicit lazy-frame-loading layer, release
-  binary stripping (`[profile.release]` has `opt-level = 3`/`lto = true` but no `strip`), and
-  runtime telemetry collection.
+  asset imported before the change keeps its existing proxy until re-imported.
+
+  **Runtime telemetry (event-shaped metrics only — CPU/RAM/GPU sampling not done).**
+  `avcore::telemetry` — `TelemetryEvent` (`ImportCompleted`/`ExportCompleted`/
+  `PreviewFrameTime`/`Error`) appended as JSON lines via `record_event`, no rotation yet, plain
+  on-device file (matches `request.md`'s "fica no dispositivo por padrão" — never sent
+  anywhere). `ui`'s `App::record_telemetry` sends to a dedicated background writer thread
+  (`telemetry::spawn_telemetry_writer`, spawned once in `App::new`) that owns the only
+  receiver and appends to `telemetry.jsonl` next to `platform_log_dir()` — the same directory
+  Fase 6's rolling daily `tracing` log already writes into. Wired at three points: import
+  duration (`import_one` times itself, `pump_import_queue` records `ImportCompleted` on
+  `Enriched` and an `Error` event on `Failed`), export duration (the render-worker thread times
+  itself around `render_export_job_multi`; `output_duration_secs` is the exported timeline's
+  own footage length, re-derived from track 0's resolved `ClipSegment`s — a different quantity
+  from the wall-clock encode time `duration_ms` measures), and preview frame time (sampled from
+  `ctx.input(|i| i.unstable_dt)` while `preview_playing`, throttled to once per
+  `PREVIEW_FRAME_TELEMETRY_INTERVAL` — recording every frame would flood the file). A
+  `PrefsState::telemetry_enabled` toggle (Ajustes screen's Project card, on by default) gates
+  `record_telemetry` itself, so disabling it stops collection outright rather than just hiding
+  a report. **Not yet done:** CPU/RAM/GPU resource-usage sampling (`request.md`'s full
+  wishlist) — no `sysinfo`-style dependency is wired in, only the event-shaped metrics above;
+  and no rotation/pruning of `telemetry.jsonl` (unbounded growth over a long-lived install).
+
+  **Not yet done (rest of Fase 7):** hardware-accelerated preview decode, an explicit
+  lazy-frame-loading layer, and release binary stripping (`[profile.release]` has
+  `opt-level = 3`/`lto = true` but no `strip`).
 
 Check `features/request.md` for what's still unbuilt before assuming a feature is live —
 when in doubt, `graphify query`.
