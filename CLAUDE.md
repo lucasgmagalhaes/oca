@@ -311,6 +311,12 @@ Test placement: `core` and `avbridge` have `[lib]` targets → integration tests
 - Do not guess APIs, versions, flags, or package names. Verify by reading code or docs.
 - Write all code and commit messages in English.
 - Commit using Conventional Commits format (`feat:`, `fix:`, `refactor:`, etc.).
+- Keep commits small and split by crate/layer — never bundle `avbridge` (C/FFI), `core`, `ui`,
+  and test changes for one feature into a single commit. Commit each layer separately, in
+  dependency order (`avbridge` → `core` → `ui` → tests), even when they land in the same
+  session for the same feature. A commit that only adds/changes tests for already-committed
+  code gets its own `test:`-prefixed commit rather than being folded into the `feat:` commit
+  it covers.
 
 ## graphify
 
