@@ -159,6 +159,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
     let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
     let (tts_tx, tts_rx) = mpsc::unbounded_channel();
+    let (youtube_download_tx, youtube_download_rx) = mpsc::unbounded_channel();
     let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
     let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
     let (telemetry_tx, _telemetry_rx) = mpsc::unbounded_channel();
@@ -215,6 +216,16 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         tts_rx,
         tts_modal_text: None,
         tts_generating: false,
+        youtube_download_tx,
+        youtube_download_rx,
+        youtube_modal_url: None,
+        youtube_modal_format: crate::app::YoutubeFormatChoice::Mp4,
+        youtube_modal_mp4_quality: avcore::Mp4Quality::P720,
+        youtube_modal_mp3_bitrate: avcore::Mp3Bitrate::K192,
+        youtube_downloading: false,
+        youtube_download_progress: 0.0,
+        youtube_download_error: None,
+        youtube_download_cancel: None,
         model_download_tx,
         model_download_rx,
         model_download_progress: None,
@@ -1538,6 +1549,90 @@ fn spawn_motion_track_selected_clip_is_a_no_op_while_a_run_is_already_in_flight(
 
     // Stays pinned to the already-running clip's id, not overwritten by this second call.
     assert_eq!(app.motion_tracking_clip_id, Some(99));
+}
+
+#[test]
+fn open_youtube_modal_starts_with_an_empty_url() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.open_youtube_modal();
+
+    assert_eq!(app.youtube_modal_url, Some(String::new()));
+}
+
+#[test]
+fn open_youtube_modal_is_a_no_op_while_already_open() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.youtube_modal_url = Some("https://example.com/x".to_string());
+
+    app.open_youtube_modal();
+
+    assert_eq!(
+        app.youtube_modal_url,
+        Some("https://example.com/x".to_string())
+    );
+}
+
+#[test]
+fn open_youtube_modal_is_a_no_op_while_downloading() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.youtube_downloading = true;
+
+    app.open_youtube_modal();
+
+    assert_eq!(app.youtube_modal_url, None);
+}
+
+#[test]
+fn spawn_youtube_download_is_a_no_op_with_a_blank_url() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.youtube_modal_url = Some("   ".to_string());
+
+    app.spawn_youtube_download();
+
+    assert!(!app.youtube_downloading);
+}
+
+#[test]
+fn spawn_youtube_download_is_a_no_op_while_already_downloading() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.youtube_modal_url = Some("https://example.com/x".to_string());
+    app.youtube_downloading = true;
+    app.youtube_download_progress = 0.4;
+
+    app.spawn_youtube_download();
+
+    // Progress isn't reset by this second, ignored call.
+    assert_eq!(app.youtube_download_progress, 0.4);
+}
+
+#[test]
+fn close_youtube_modal_is_a_no_op_while_downloading() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.youtube_modal_url = Some("https://example.com/x".to_string());
+    app.youtube_downloading = true;
+
+    app.close_youtube_modal();
+
+    assert!(app.youtube_modal_url.is_some());
+}
+
+#[test]
+fn close_youtube_modal_clears_the_url_when_idle() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.youtube_modal_url = Some("https://example.com/x".to_string());
+
+    app.close_youtube_modal();
+
+    assert_eq!(app.youtube_modal_url, None);
+}
+
+#[test]
+fn request_cancel_youtube_download_is_a_no_op_when_nothing_is_downloading() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    // Just needs to not panic without a live download.
+    app.request_cancel_youtube_download();
 }
 
 #[test]
