@@ -278,6 +278,29 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   lazy-frame-loading layer. Release binary stripping is done — `[profile.release]` has
   `strip = true` alongside `opt-level = 3`/`lto = true`.
 
+- **Fase 8 — barely started (auto-update check-and-notify only).** `avcore::update_check` —
+  `fetch_latest_release` hits GitHub's `repos/lucasgmagalhaes/oca/releases/latest` API
+  (`ureq::get` + manual `serde_json::from_str`, not `ureq`'s own `into_json` — that's gated
+  behind a `json` feature this crate doesn't enable); `is_newer` does a pure, panic-free
+  dotted-version comparison, fully unit tested. `ui`'s `App::spawn_update_check` runs this once
+  on startup on a background thread (silent on any failure — offline, rate-limited, no releases
+  published yet — this is a best-effort courtesy notice, never something that should alarm the
+  user), and `App::available_update` (surfaced via a small banner + GitHub link on the Home
+  screen) is only ever set when a real newer version is found. **Scoped down from
+  `request.md`'s full ask:** only the "consulta a última release... e avisa" half is done —
+  actually downloading and applying the update ("baixar e aplicar") isn't implemented; the
+  banner just links to the release's GitHub page for a manual download. **Not started at all:**
+  installers/packaging for Windows/Linux, bundled engines (FFmpeg/GStreamer/Whisper/TTS/ONNX
+  Runtime), VAAPI GPU encode on Linux, configurable install location. **Verification caveat:**
+  this dev environment's outbound network proxy blocks direct calls to `api.github.com`
+  (returns its own "GitHub access is not enabled for this session" error, not a real GitHub
+  response), so `fetch_latest_release` itself could not be exercised against the real API here
+  — every `ureq` call it makes mirrors `model_download.rs`'s already-working
+  `download_whisper_model` pattern exactly (`ureq::get(url).set(...).call()`), and the JSON
+  shape/User-Agent-header requirement match GitHub's documented API, but this is unverified
+  beyond that, same "implemented carefully, not run for real" caveat this file already carries
+  for a few other network/hardware-dependent features.
+
 Check `features/request.md` for what's still unbuilt before assuming a feature is live —
 when in doubt, `graphify query`.
 
