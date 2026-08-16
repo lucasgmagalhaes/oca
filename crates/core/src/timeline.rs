@@ -421,22 +421,28 @@ pub struct ClipInstance {
     /// General keyframe animation for this block's scale, per `features/request.md`'s Fase 4
     /// "Keyframes" spec — supersedes the old two-endpoint `zoom_start`/`zoom_end` Ken-Burns
     /// fields (a 2-keyframe list reproduces that same behavior as a degenerate case). Empty =
-    /// no scaling (`1.0`). Wired into export (`crate::keyframe::scale_filter_expr`); not yet
-    /// wired into live preview. `#[serde(default)]` so older saved projects load unscaled — a
-    /// project that had real `zoom_start`/`zoom_end` values loses that animation on load, since
-    /// this field replaces rather than migrates it (no back-compat promised for this format).
+    /// no scaling (`1.0`). Wired into export (`crate::keyframe::scale_filter_expr`) and into
+    /// live preview (`core::preview::build_video_filter_bin`'s `videocrop`+`videoscale`+
+    /// `capsfilter` chain, re-evaluated per buffer off its own PTS). `#[serde(default)]` so
+    /// older saved projects load unscaled — a project that had real `zoom_start`/`zoom_end`
+    /// values loses that animation on load, since this field replaces rather than migrates it
+    /// (no back-compat promised for this format).
     #[serde(default)]
     pub scale_keyframes: Vec<Keyframe<f32>>,
     /// General keyframe animation for this block's rotation, in degrees, per
     /// `features/request.md`'s Fase 4 "Keyframes" spec. Empty = no rotation (`0.0`). Wired into
-    /// export (`crate::keyframe::rotation_filter_angle_expr`); not yet wired into live preview.
-    /// `#[serde(default)]` so older saved projects load unrotated.
+    /// export (`crate::keyframe::rotation_filter_angle_expr`) and into live preview
+    /// (`core::preview::build_video_filter_bin`'s `rotate` element, its `angle` property
+    /// re-evaluated per buffer). `#[serde(default)]` so older saved projects load unrotated.
     #[serde(default)]
     pub rotation_keyframes: Vec<Keyframe<f32>>,
     /// General keyframe animation for this block's opacity, `0.0..=1.0`, per
     /// `features/request.md`'s Fase 4 "Keyframes" spec. Empty = fully opaque (`1.0`). Wired into
     /// export (`crate::keyframe::opacity_alpha_ramp_expr`) — only has a visible effect on an
-    /// overlay-track clip, same caveat as position above. Not yet wired into live preview.
+    /// overlay-track clip at export time, same caveat as position above — and into live preview
+    /// too (`core::preview::build_video_filter_bin`'s `alpha` element), where it's visible on
+    /// any clip regardless of track, since the preview's fixed RGBA output already supports
+    /// alpha blending directly rather than needing export's overlay-compositing stage.
     /// `#[serde(default)]` so older saved projects load fully opaque.
     #[serde(default)]
     pub opacity_keyframes: Vec<Keyframe<f32>>,
