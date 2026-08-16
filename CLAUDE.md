@@ -259,9 +259,9 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   wishlist) — no `sysinfo`-style dependency is wired in, only the event-shaped metrics above;
   and no rotation/pruning of `telemetry.jsonl` (unbounded growth over a long-lived install).
 
-  **Not yet done (rest of Fase 7):** hardware-accelerated preview decode, an explicit
-  lazy-frame-loading layer, and release binary stripping (`[profile.release]` has
-  `opt-level = 3`/`lto = true` but no `strip`).
+  **Not yet done (rest of Fase 7):** hardware-accelerated preview decode and an explicit
+  lazy-frame-loading layer. Release binary stripping is done — `[profile.release]` has
+  `strip = true` alongside `opt-level = 3`/`lto = true`.
 
 Check `features/request.md` for what's still unbuilt before assuming a feature is live —
 when in doubt, `graphify query`.
