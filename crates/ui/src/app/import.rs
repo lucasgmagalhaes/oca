@@ -285,7 +285,7 @@ pub(super) fn import_one(
     let loudness = match avcore::measure_loudness(path) {
         Ok(metrics) => Some(metrics),
         Err(e) => {
-            eprintln!("failed to measure loudness for {}: {e}", path.display());
+            tracing::warn!(path = %path.display(), error = %e, "failed to measure loudness");
             None
         }
     };
@@ -293,7 +293,7 @@ pub(super) fn import_one(
         match avcore::ensure_proxy(path, proxy_dir, preview_quality) {
             Ok(proxy_path) => Some(proxy_path),
             Err(e) => {
-                eprintln!("failed to generate proxy for {}: {e}", path.display());
+                tracing::warn!(path = %path.display(), error = %e, "failed to generate proxy");
                 None
             }
         }
@@ -303,7 +303,7 @@ pub(super) fn import_one(
     let waveform_peaks = match avcore::generate_waveform(path) {
         Ok(peaks) => Some(peaks),
         Err(e) => {
-            eprintln!("failed to compute waveform for {}: {e}", path.display());
+            tracing::warn!(path = %path.display(), error = %e, "failed to compute waveform");
             None
         }
     };
