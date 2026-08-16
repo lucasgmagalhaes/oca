@@ -34,6 +34,7 @@ pub mod timeline;
 pub mod transcribe;
 pub mod update_check;
 pub mod waveform;
+pub mod youtube_download;
 
 pub use auto_reframe::{
     compute_reframe_crop, detect_faces, main_subject_center, CropRect, FaceBox, ReframeError,
@@ -79,3 +80,7 @@ pub use timeline::{
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
 pub use update_check::{fetch_latest_release, is_newer, LatestRelease, UpdateCheckError};
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};
+pub use youtube_download::{
+    download_youtube, is_yt_dlp_available, Mp3Bitrate, Mp4Quality, YoutubeDownloadError,
+    YoutubeDownloadTarget,
+};

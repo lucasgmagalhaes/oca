@@ -48,6 +48,17 @@ ureq = "2"
 # "not bundled in the installer yet" gap the Whisper model has, see `request.md`'s Fase 8
 # packaging plan ("ONNX Runtime... empacotados junto").
 ort = { version = "2.0.0-rc.13", features = ["download-binaries"] }
+# YouTube download (`youtube_download`): embeds a Python interpreter and calls yt-dlp's Python
+# library API directly (no subprocess, no stdout scraping) — `auto-initialize` lets
+# `Python::attach` start the interpreter on first use instead of requiring an explicit
+# `pyo3::prepare_freethreaded_python()` call (needed since this binary embeds Python rather
+# than being a Python-extension-module built *by* Python, the usual pyo3 use case). **Real
+# runtime dependency, unlike anything else in this crate:** needs a Python 3 installation
+# discoverable at build time (dynamically linked against its `libpython`/`python3*.dll`) *and*
+# at runtime, with the `yt_dlp` package importable in that same interpreter (`pip install
+# yt-dlp`) — see `youtube_download.rs`'s module doc for the packaging implications this adds
+# on top of Fase 8's existing bundled-engines list.
+pyo3 = { version = "0.29", features = ["auto-initialize"] }
 # Text-to-speech (`text_to_speech`): espeak-ng phonemization for Piper voice models. Builds
 # espeak-ng from vendored C source via cmake (needs CMake + LIBCLANG_PATH — bindgen — on the
 # build machine, same class of requirement as whisper-rs), statically linked (no runtime DLL).
