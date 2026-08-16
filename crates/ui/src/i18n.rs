@@ -273,6 +273,10 @@ text_catalog! {
     PropMotionTrackHeight: pt_br = "Altura", en = "Height";
     PropMotionTrackSearchRadius: pt_br = "Raio de busca", en = "Search radius";
     MotionTrackRegionReset: pt_br = "Centralizar região", en = "Center region";
+    MotionTrackRegionPick: pt_br = "🎯 Selecionar na prévia", en = "🎯 Pick in preview";
+    MotionTrackRegionPickActive: pt_br = "🎯 Selecionando… (Esc p/ sair)", en = "🎯 Selecting… (Esc to exit)";
+    MotionTrackRegionPickNeedsPreview: pt_br = "Carregue um clipe no preview antes de selecionar a região", en = "Load a clip in the preview before selecting the region";
+    MotionTrackRegionPickHint: pt_br = "Arraste o bloco para mover · alça no canto redimensiona · Esc sai", en = "Drag the block to move it · corner handle resizes · Esc exits";
 
     SoundLibraryTitle: pt_br = "Música e efeitos sonoros", en = "Music & sound effects";
     SoundLibraryRescan: pt_br = "⟳ Atualizar", en = "⟳ Rescan";

@@ -91,7 +91,18 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   now takes `template_width_frac`/`template_height_frac` independently (previously one
   `template_size_frac` scalar, forcing a square region) — each clamps to its own frame
   dimension (width to the frame's width, height to its height) rather than both to the shorter
-  side. No drag-on-preview picker yet — numeric entry only.
+  side. **Drag-on-preview picker now exists** alongside the numeric entry: the properties
+  panel's "🎯 Selecionar na prévia" button (`App::start_picking_motion_track_region`, a no-op
+  toasting `MotionTrackRegionPickNeedsPreview` without a loaded preview frame, same precondition
+  shape as `App::start_drawing_custom_shape`) sets `App::picking_motion_track_region`, which
+  `screens::editor::layer_transform_preview` checks before its usual layer drag/resize handling
+  — when set, `draw_motion_track_region_picker` takes over the preview's already-computed
+  texture rect instead: drag the region body to move it (writes `motion_track_center_x`/`_y`
+  directly), drag its corner handle to resize (writes `motion_track_width`/`_height`, clamped to
+  `MOTION_TRACK_SIZE_RANGE`), Esc exits back to the numeric-only view. Converts between the
+  region's "fraction of the source frame's shorter side" convention and the preview's on-screen
+  rect, which can have a different aspect ratio than the source frame whenever
+  `layer_scale_x != layer_scale_y`.
 
   **AI background removal (inference, matte generation, and export wiring all done —
   preview still not):** `avcore::background_removal::segment_person` runs MODNet

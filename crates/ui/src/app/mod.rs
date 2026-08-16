@@ -674,6 +674,13 @@ pub struct App {
     /// fraction of the frame's shorter dimension — `avcore::track_region`'s
     /// `search_radius_frac`. Same non-persistence rationale as `motion_track_center_x`/`_y`.
     pub motion_track_search_radius: f32,
+    /// Whether the Editor preview panel is currently showing the motion-tracking region
+    /// picker (drag the tracked block's body to move it, its corner handle to resize it,
+    /// directly on the preview frame) instead of its usual layer position/resize handling —
+    /// see [`screens::editor::draw_motion_track_region_picker`]. Toggled by the properties
+    /// panel's "pick in preview" button, next to the numeric region controls; Escape exits.
+    /// Session-only, like the `motion_track_*` fields it edits.
+    pub picking_motion_track_region: bool,
     matte_generation_tx: UnboundedSender<MatteGenerationEvent>,
     matte_generation_rx: UnboundedReceiver<MatteGenerationEvent>,
     /// The timeline clip id a background AI-background-removal matte-generation run is
@@ -937,6 +944,7 @@ impl App {
             motion_track_width: 0.2,
             motion_track_height: 0.2,
             motion_track_search_radius: 0.08,
+            picking_motion_track_region: false,
             matte_generation_tx,
             matte_generation_rx,
             matte_generating_clip_id: None,

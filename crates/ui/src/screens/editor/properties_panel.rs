@@ -667,6 +667,24 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                                 app.motion_track_center_y = 0.5;
                                             }
                                         });
+                                        let pick_label = if app.picking_motion_track_region {
+                                            Text::MotionTrackRegionPickActive.tr(locale)
+                                        } else {
+                                            Text::MotionTrackRegionPick.tr(locale)
+                                        };
+                                        if ui.button(pick_label).clicked() {
+                                            if app.picking_motion_track_region {
+                                                app.stop_picking_motion_track_region();
+                                            } else if app.preview_texture.is_some() {
+                                                app.start_picking_motion_track_region();
+                                            } else {
+                                                app.push_toast(
+                                                    Text::MotionTrackRegionPickNeedsPreview
+                                                        .tr(locale)
+                                                        .to_string(),
+                                                );
+                                            }
+                                        }
                                         ui.add(
                                             egui::Slider::new(
                                                 &mut app.motion_track_width,

@@ -4,7 +4,7 @@ mod timeline_panel;
 use avcore::media::format_timecode;
 use eframe::egui::{self, RichText};
 
-use crate::app::{App, EditorTool};
+use crate::app::{App, EditorTool, MOTION_TRACK_SIZE_RANGE};
 use crate::components;
 use crate::i18n::Text;
 use crate::theme;
@@ -831,6 +831,11 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
         egui::StrokeKind::Outside,
     );
 
+    if app.picking_motion_track_region {
+        draw_motion_track_region_picker(app, ui, layer_rect, tex_size);
+        return;
+    }
+
     if draggable {
         let resp = ui.interact(
             layer_rect,
@@ -951,5 +956,103 @@ fn draw_custom_shape_surface(app: &mut App, ui: &mut egui::Ui, canvas_rect: egui
         app.cancel_drawing_custom_shape();
     } else if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
         app.finish_drawing_custom_shape();
+    }
+}
+
+/// Drag-to-select surface for the motion-tracking region — active whenever
+/// `app.picking_motion_track_region` is set (see [`App::start_picking_motion_track_region`]).
+/// Takes over `layer_rect` (the preview's already-computed texture rect — see
+/// [`layer_transform_preview`]) in place of its usual layer drag/resize handling, mutually
+/// exclusive with it the same way [`draw_custom_shape_surface`] is.
+///
+/// `layer_rect` spans the full source frame at UV `0.0..=1.0` on both axes (however the layer
+/// itself is currently positioned/scaled on an overlay track), so a fraction of `layer_rect`
+/// maps directly to `motion_track_center_x`/`_y`'s own "fraction of source frame" convention.
+/// `motion_track_width`/`_height` are each a fraction of the source frame's *shorter*
+/// dimension (`avcore::track_region`'s convention) rather than of `layer_rect` itself, so the
+/// on-screen region rect additionally scales by `layer_rect`'s per-axis stretch relative to
+/// `tex_size` — `layer_rect`'s aspect only matches `tex_size`'s when `layer_scale_x` equals
+/// `layer_scale_y`, otherwise the two diverge and this conversion keeps the drawn region
+/// faithful to what `avcore::track_region` will actually sample.
+fn draw_motion_track_region_picker(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    layer_rect: egui::Rect,
+    tex_size: egui::Vec2,
+) {
+    let locale = app.locale;
+    let short_side = tex_size.x.min(tex_size.y).max(1.0);
+    let scale = egui::vec2(
+        layer_rect.width() / tex_size.x.max(1.0),
+        layer_rect.height() / tex_size.y.max(1.0),
+    );
+
+    let center_px = layer_rect.min
+        + egui::vec2(
+            app.motion_track_center_x * layer_rect.width(),
+            app.motion_track_center_y * layer_rect.height(),
+        );
+    let size_px = egui::vec2(
+        app.motion_track_width * short_side * scale.x,
+        app.motion_track_height * short_side * scale.y,
+    );
+    let region_rect = egui::Rect::from_center_size(center_px, size_px);
+
+    ui.painter().rect_stroke(
+        region_rect,
+        0,
+        egui::Stroke::new(1.5, theme::ACCENT_2),
+        egui::StrokeKind::Outside,
+    );
+
+    let body_resp = ui.interact(
+        region_rect,
+        ui.id().with("motion_track_region_body"),
+        egui::Sense::drag(),
+    );
+    if body_resp.dragged() {
+        let delta = body_resp.drag_delta();
+        app.motion_track_center_x =
+            (app.motion_track_center_x + delta.x / layer_rect.width().max(1.0)).clamp(0.0, 1.0);
+        app.motion_track_center_y =
+            (app.motion_track_center_y + delta.y / layer_rect.height().max(1.0)).clamp(0.0, 1.0);
+    }
+    if body_resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+    }
+
+    const HANDLE_SIZE: f32 = 10.0;
+    let handle_rect =
+        egui::Rect::from_center_size(region_rect.right_bottom(), egui::Vec2::splat(HANDLE_SIZE));
+    ui.painter().rect_filled(handle_rect, 2, theme::ACCENT_2);
+    let resize_resp = ui.interact(
+        handle_rect,
+        ui.id().with("motion_track_region_resize"),
+        egui::Sense::drag(),
+    );
+    if resize_resp.dragged() {
+        let delta = resize_resp.drag_delta();
+        let new_width_px = (size_px.x + delta.x).max(4.0);
+        let new_height_px = (size_px.y + delta.y).max(4.0);
+        app.motion_track_width = (new_width_px / (short_side * scale.x).max(0.001)).clamp(
+            *MOTION_TRACK_SIZE_RANGE.start(),
+            *MOTION_TRACK_SIZE_RANGE.end(),
+        );
+        app.motion_track_height = (new_height_px / (short_side * scale.y).max(0.001)).clamp(
+            *MOTION_TRACK_SIZE_RANGE.start(),
+            *MOTION_TRACK_SIZE_RANGE.end(),
+        );
+    }
+
+    ui.painter().text(
+        layer_rect.center_bottom() + egui::vec2(0.0, -6.0),
+        egui::Align2::CENTER_BOTTOM,
+        Text::MotionTrackRegionPickHint.tr(locale),
+        egui::FontId::proportional(11.0),
+        theme::TEXT_SECONDARY,
+    );
+
+    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        app.stop_picking_motion_track_region();
     }
 }

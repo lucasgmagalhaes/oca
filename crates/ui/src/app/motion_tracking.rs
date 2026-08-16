@@ -14,6 +14,22 @@ const SAMPLES_PER_SEC: f64 = 4.0;
 const MAX_SAMPLES: usize = 60;
 
 impl App {
+    /// Enters the preview panel's drag-to-select motion-tracking region picker (see
+    /// [`crate::screens::editor::draw_motion_track_region_picker`]) — a no-op if no preview
+    /// frame is loaded, since the picker needs the preview's texture/aspect to draw against;
+    /// callers should toast [`crate::i18n::Text::MotionTrackRegionPickNeedsPreview`] instead in
+    /// that case, same as [`App::start_drawing_custom_shape`]'s precondition.
+    pub fn start_picking_motion_track_region(&mut self) {
+        if self.preview_texture.is_none() {
+            return;
+        }
+        self.picking_motion_track_region = true;
+    }
+
+    pub fn stop_picking_motion_track_region(&mut self) {
+        self.picking_motion_track_region = false;
+    }
+
     /// Runs motion tracking against `selected_clip_id` on a background thread — what the
     /// properties panel's "Rastrear movimento" button does. Tracks the region set by
     /// `motion_track_center_x`/`_y`/`motion_track_width`/`_height`/`motion_track_search_radius`
