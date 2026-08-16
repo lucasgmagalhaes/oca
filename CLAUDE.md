@@ -232,7 +232,14 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   prompt; word-highlight subtitles (single-line only — a caption that wraps in `drawtext`
   gets every highlight positioned as if still on one line); Whisper subtitles (model fetched
   on demand via `avcore::model_download`, not bundled); music/SFX library scanning (no
-  bundled content, points at a user-configured folder).
+  bundled content, points at a user-configured folder); per-user Editor panel layout
+  (`PrefsState::lib_panel_width`/`props_panel_width`/`timeline_height`, the per-user half of
+  Fase 3's "layout salvo por projeto ou por usuário" — per-project persistence would need
+  `.ocproj` schema changes and isn't wired up). `App::save_prefs`'s background-thread write has
+  a synchronous twin, `App::save_prefs_sync`, called from `on_exit` specifically — a spawned
+  thread has no guarantee of finishing before the process actually exits, so a live-session-only
+  change like a dragged panel width (no save trigger short of opening Preferences otherwise)
+  needs a save that's guaranteed to complete before shutdown, not just kicked off.
 
   **GPU encode — hardware success unverified.** `gpu_encoder.c`'s `open_video_encoder()`
   tries NVENC/Quick Sync/AMF per `Prefs.gpu_encoder`, falling back to CPU (libopenh264) on
