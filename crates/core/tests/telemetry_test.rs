@@ -70,3 +70,50 @@ fn record_event_creates_missing_parent_directories() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn record_event_rotates_an_oversized_file_to_a_backup() {
+    let dir = std::env::temp_dir().join("oca_telemetry_test_rotation");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("telemetry.jsonl");
+    let backup_path = dir.join("telemetry.jsonl.1");
+
+    // One byte past the private ROTATE_AT_BYTES threshold (10 MiB) - rotation itself never
+    // parses the file's contents, so filler bytes are fine.
+    let oversized = vec![b'x'; 10 * 1024 * 1024 + 1];
+    fs::write(&path, &oversized).unwrap();
+
+    record_event(&path, &TelemetryEvent::ImportCompleted { duration_ms: 1 }).unwrap();
+
+    assert!(backup_path.exists());
+    assert_eq!(
+        fs::metadata(&backup_path).unwrap().len(),
+        oversized.len() as u64
+    );
+    let new_contents = fs::read_to_string(&path).unwrap();
+    let lines: Vec<&str> = new_contents.lines().collect();
+    assert_eq!(lines.len(), 1);
+    assert!(lines[0].contains("\"event\":\"import_completed\""));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn record_event_does_not_rotate_a_file_under_the_threshold() {
+    let dir = std::env::temp_dir().join("oca_telemetry_test_no_rotation");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("telemetry.jsonl");
+    let backup_path = dir.join("telemetry.jsonl.1");
+    fs::write(&path, b"pre-existing line\n").unwrap();
+
+    record_event(&path, &TelemetryEvent::ImportCompleted { duration_ms: 1 }).unwrap();
+
+    assert!(!backup_path.exists());
+    let contents = fs::read_to_string(&path).unwrap();
+    assert_eq!(contents.lines().count(), 2);
+    assert!(contents.starts_with("pre-existing line"));
+
+    let _ = fs::remove_dir_all(&dir);
+}
