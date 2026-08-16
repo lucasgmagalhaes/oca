@@ -100,6 +100,62 @@ fn tracks_a_block_starting_from_an_off_center_region() {
 }
 
 #[test]
+fn tracks_a_non_square_block_with_independent_width_and_height() {
+    // width_frac=0.4 (24px) height_frac=0.3 (18px) on a 60px short side — both comfortably
+    // larger than BLOCK_SIZE (12px) so the whole textured block stays inside the template
+    // regardless of its rectangular (non-square) shape.
+    let start = (20 - BLOCK_SIZE / 2, 20 - BLOCK_SIZE / 2);
+    let frames: Vec<GrayFrame> = (0..5)
+        .map(|i| frame_with_block(start.0 + i * 2, start.1 + i, 0))
+        .collect();
+
+    let tracked = track_region(
+        &frames,
+        20.0 / FRAME_W as f32,
+        20.0 / FRAME_H as f32,
+        0.4,
+        0.3,
+        0.1,
+    );
+
+    assert_eq!(tracked.len(), 5);
+    for (i, t) in tracked.iter().enumerate() {
+        let expected_cx = 20.0 + (i as f32) * 2.0;
+        let expected_cy = 20.0 + (i as f32) * 1.0;
+        let got_cx = t.center_x_frac * FRAME_W as f32;
+        let got_cy = t.center_y_frac * FRAME_H as f32;
+        assert!(
+            (got_cx - expected_cx).abs() <= 1.0,
+            "frame {i}: expected cx {expected_cx}, got {got_cx}"
+        );
+        assert!(
+            (got_cy - expected_cy).abs() <= 1.0,
+            "frame {i}: expected cy {expected_cy}, got {got_cy}"
+        );
+    }
+}
+
+#[test]
+fn template_width_and_height_clamp_independently_to_each_frame_dimension() {
+    // Requests a template wider than the frame's short side (1.5 * 60 = 90px, clamped to the
+    // frame's own 80px width) but a modest height (0.2 * 60 = 12px, well under the 60px
+    // height) — regression coverage for clamping width to the frame's own width and height to
+    // the frame's own height independently, not both to min(width, height) the way the old
+    // single-scalar template_size_frac did.
+    let frame = frame_with_block(30, 20, 0);
+
+    let tracked = track_region(&[frame], 0.0, 0.5, 1.5, 0.2, 0.1);
+
+    assert_eq!(tracked.len(), 1);
+    // Template width clamped to the full 80px frame width leaves no horizontal room to move —
+    // the center lands dead in the middle (0.5), not wherever a (buggy) 60px clamp would have
+    // allowed.
+    assert!((tracked[0].center_x_frac - 0.5).abs() < 1e-4);
+    // Height wasn't anywhere near its own clamp limit, so the requested center is untouched.
+    assert!((tracked[0].center_y_frac - 0.5).abs() < 1e-4);
+}
+
+#[test]
 fn stays_put_when_the_block_does_not_move() {
     let frames: Vec<GrayFrame> = (0..3).map(|_| frame_with_block(30, 20, 0)).collect();
 
