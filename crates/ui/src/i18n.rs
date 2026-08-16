@@ -356,6 +356,9 @@ text_catalog! {
     AddShapeTrack: pt_br = "S+ Forma", en = "S+ Shape";
     DefaultShapeTrackName: pt_br = "Forma", en = "Shape";
     AddShapeClip: pt_br = "+ Adicionar forma", en = "+ Add shape";
+    DrawCustomShape: pt_br = "✎ Desenhar forma", en = "✎ Draw shape";
+    ShapeDrawHint: pt_br = "Clique no preview para adicionar pontos (mín. 3) · Enter conclui · Esc cancela", en = "Click the preview to add points (min. 3) · Enter finishes · Esc cancels";
+    ShapeDrawNeedsPreview: pt_br = "Carregue um clipe no preview antes de desenhar uma forma", en = "Load a clip in the preview before drawing a shape";
     SelectedShapeClip: pt_br = "Forma geométrica", en = "Geometric shape";
     NoShapeClipSelected: pt_br = "Nenhuma forma selecionada", en = "No shape selected";
     PropShapeKind: pt_br = "Tipo", en = "Kind";

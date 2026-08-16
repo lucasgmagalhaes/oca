@@ -731,4 +731,90 @@ impl App {
         self.selected_text_clip_id = None;
         self.selected_shape_clip_id = Some(clip_id);
     }
+
+    /// Enters "draw a custom shape" mode — `request.md`'s Fase 4 "forma personalizada" ask,
+    /// the one gap the fixed-preset shapes above don't cover. What the toolbar's "Desenhar
+    /// forma" button does: clears any in-progress drawing and starts a fresh, empty point
+    /// list. The preview panel (`screens::editor::layer_transform_preview`) reads
+    /// [`App::drawing_shape_points`] each frame while it's `Some` and switches into a
+    /// click-to-place-vertex mode instead of its usual layer drag/resize handling; see that
+    /// function's doc comment for why a loaded preview frame is a precondition. Overwrites
+    /// (does not append to) any drawing already in progress.
+    pub fn start_drawing_custom_shape(&mut self) {
+        self.drawing_shape_points = Some(Vec::new());
+    }
+
+    /// Discards the in-progress custom-shape drawing without creating a clip — what pressing
+    /// Escape while drawing does.
+    pub fn cancel_drawing_custom_shape(&mut self) {
+        self.drawing_shape_points = None;
+    }
+
+    /// Appends one clicked point (canvas-fraction coordinates — same space as
+    /// [`ShapeClip::center_x`]/`_y`, clamped to `0.0..=1.0`) to the in-progress custom shape.
+    /// A no-op if [`App::start_drawing_custom_shape`] hasn't been called (or the drawing was
+    /// already finished/cancelled) — lets the preview panel call this unconditionally on every
+    /// click without checking the mode itself first.
+    pub fn push_drawing_shape_point(&mut self, x: f32, y: f32) {
+        if let Some(points) = self.drawing_shape_points.as_mut() {
+            points.push((x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)));
+        }
+    }
+
+    /// Finishes the in-progress custom-shape drawing — what pressing Enter with at least 3
+    /// points placed does. A no-op (drawing mode stays active) if fewer than 3 points have
+    /// been placed yet, since a polygon needs at least a triangle.
+    ///
+    /// The clicked points are absolute canvas-fraction coordinates; [`ShapeKind::Polygon`]
+    /// stores vertices relative to the shape's own local unit square instead (see that
+    /// variant's doc comment), so this derives a bounding box across all clicked points,
+    /// centers/sizes the new [`ShapeClip`] on it, and re-expresses each point as an offset
+    /// from that box's center divided by its width/height. `rotation_deg` starts at `0.0` (the
+    /// shape is drawn axis-aligned to how it was clicked) — the properties panel's existing
+    /// rotation control still applies afterward, same as any other shape.
+    pub fn finish_drawing_custom_shape(&mut self) {
+        let Some(points) = self.drawing_shape_points.as_ref() else {
+            return;
+        };
+        if points.len() < 3 {
+            return;
+        }
+        let points = self.drawing_shape_points.take().unwrap();
+
+        let min_x = points.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
+        let max_x = points.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max);
+        let min_y = points.iter().map(|p| p.1).fold(f32::INFINITY, f32::min);
+        let max_y = points.iter().map(|p| p.1).fold(f32::NEG_INFINITY, f32::max);
+        let center_x = (min_x + max_x) / 2.0;
+        let center_y = (min_y + max_y) / 2.0;
+        // Floors the bounding box away from zero so near-collinear clicks (e.g. three points
+        // almost in a vertical line) can't produce a divide-by-zero below.
+        let width = (max_x - min_x).max(0.02);
+        let height = (max_y - min_y).max(0.02);
+        let local_vertices: Vec<(f32, f32)> = points
+            .iter()
+            .map(|&(x, y)| ((x - center_x) / width, (y - center_y) / height))
+            .collect();
+
+        let playhead_secs = self.active_project().timeline().playhead_secs;
+        let timeline = self.active_project_mut().timeline_mut();
+        let track_index = resolve_or_create_track(timeline, TrackKind::Shape, None);
+        let clip_id = next_clip_id(timeline);
+        timeline.tracks[track_index].shape_clips.push(ShapeClip {
+            id: clip_id,
+            start_secs: playhead_secs,
+            duration_secs: 3.0,
+            shape_kind: ShapeKind::Polygon(local_vertices),
+            center_x,
+            center_y,
+            width,
+            height,
+            rotation_deg: 0.0,
+            color_rgba: [255, 255, 255, 255],
+            stroke_thickness_px: 0.0,
+        });
+        self.selected_clip_id = None;
+        self.selected_text_clip_id = None;
+        self.selected_shape_clip_id = Some(clip_id);
+    }
 }

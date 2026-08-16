@@ -260,6 +260,13 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         if ui.button(Text::AddShapeClip.tr(locale)).clicked() {
             app.add_shape_clip();
         }
+        if ui.button(Text::DrawCustomShape.tr(locale)).clicked() {
+            if app.preview_texture.is_some() {
+                app.start_drawing_custom_shape();
+            } else {
+                app.push_toast(Text::ShapeDrawNeedsPreview.tr(locale).to_string());
+            }
+        }
         ui.separator();
         let _ = ui.button("↺");
         let _ = ui.button("↻");
@@ -582,6 +589,11 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
         egui::StrokeKind::Inside,
     );
 
+    if app.drawing_shape_points.is_some() {
+        draw_custom_shape_surface(app, ui, canvas_rect);
+        return;
+    }
+
     // Fixed stand-in baseline (40% of the canvas's shorter side, clipped to the canvas width) —
     // see this function's doc comment on why this is a multiplier applied to a stand-in size
     // rather than a real pixel dimension.
@@ -689,5 +701,71 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
         }
         resize_resp.on_hover_text(Text::LayerTransformResizeHint.tr(locale));
+    }
+}
+
+/// Click-to-place-vertex surface for `request.md`'s Fase 4 "forma personalizada" — active
+/// whenever `app.drawing_shape_points` is `Some` (see [`App::start_drawing_custom_shape`]).
+/// Takes over `canvas_rect` entirely in place of [`layer_transform_preview`]'s usual layer
+/// drag/resize handling for the duration of the drawing; the two modes are mutually exclusive.
+///
+/// Each click on `canvas_rect` appends one point in canvas-fraction coordinates (the same
+/// space [`avcore::timeline::ShapeClip::center_x`]/`_y` use) via
+/// [`App::push_drawing_shape_point`]. Placed points are drawn as small filled dots connected by
+/// straight lines, plus a lighter closing segment back to the first point once there are
+/// enough to see the shape taking form. Enter finishes (a no-op below 3 points — the drawing
+/// stays active); Escape cancels outright.
+fn draw_custom_shape_surface(app: &mut App, ui: &mut egui::Ui, canvas_rect: egui::Rect) {
+    let locale = app.locale;
+    let to_screen = |p: (f32, f32)| {
+        canvas_rect.min + egui::vec2(p.0 * canvas_rect.width(), p.1 * canvas_rect.height())
+    };
+
+    let click_resp = ui.interact(
+        canvas_rect,
+        ui.id().with("shape_draw_surface"),
+        egui::Sense::click(),
+    );
+    if click_resp.clicked() {
+        if let Some(pos) = click_resp.interact_pointer_pos() {
+            let frac_x = (pos.x - canvas_rect.min.x) / canvas_rect.width().max(1.0);
+            let frac_y = (pos.y - canvas_rect.min.y) / canvas_rect.height().max(1.0);
+            app.push_drawing_shape_point(frac_x, frac_y);
+        }
+    }
+    if click_resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+    }
+
+    let points = app.drawing_shape_points.clone().unwrap_or_default();
+    let screen_points: Vec<egui::Pos2> = points.iter().copied().map(to_screen).collect();
+    for &p in &screen_points {
+        ui.painter().circle_filled(p, 4.0, theme::ACCENT);
+    }
+    if screen_points.len() >= 2 {
+        ui.painter().add(egui::Shape::line(
+            screen_points.clone(),
+            egui::Stroke::new(1.5, theme::ACCENT),
+        ));
+    }
+    if screen_points.len() >= 3 {
+        ui.painter().line_segment(
+            [screen_points[screen_points.len() - 1], screen_points[0]],
+            egui::Stroke::new(1.0, theme::TEXT_MUTED),
+        );
+    }
+
+    ui.painter().text(
+        canvas_rect.center_bottom() + egui::vec2(0.0, -6.0),
+        egui::Align2::CENTER_BOTTOM,
+        Text::ShapeDrawHint.tr(locale),
+        egui::FontId::proportional(11.0),
+        theme::TEXT_SECONDARY,
+    );
+
+    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        app.cancel_drawing_custom_shape();
+    } else if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+        app.finish_drawing_custom_shape();
     }
 }
