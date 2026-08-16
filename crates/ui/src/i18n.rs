@@ -103,6 +103,9 @@ text_catalog! {
     ToolCut: pt_br = "Cortar / Split", en = "Cut / Split";
     ToolTrim: pt_br = "Aparar", en = "Trim";
     Export: pt_br = "⭳ Exportar", en = "⭳ Export";
+    ExportSrt: pt_br = "Exportar .srt", en = "Export .srt";
+    ExportSrtHint: pt_br = "Salva as legendas da timeline como um arquivo .srt separado.", en = "Saves the timeline's subtitles as a separate .srt file.";
+    ExportSrtEmpty: pt_br = "Nenhuma legenda na timeline para exportar.", en = "No subtitles on the timeline to export.";
     MediaLibrary: pt_br = "Biblioteca de mídia", en = "Media library";
     SelectedClip: pt_br = "Clipe selecionado", en = "Selected clip";
     NoClipSelected: pt_br = "Nenhum clipe selecionado", en = "No clip selected";

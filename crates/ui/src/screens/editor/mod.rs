@@ -286,6 +286,13 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             {
                 save_active_project(app);
             }
+            if ui
+                .button(Text::ExportSrt.tr(locale))
+                .on_hover_text(Text::ExportSrtHint.tr(locale))
+                .clicked()
+            {
+                export_srt_for_active_sequence(app);
+            }
         });
     });
 }
@@ -368,6 +375,37 @@ fn save_active_project(app: &mut App) {
             app.save_prefs();
         }
         Err(e) => app.push_toast(format!("Failed to save project: {e}")),
+    }
+}
+
+/// Prompts for a destination and writes the active sequence's text-track captions out as a
+/// standalone `.srt` file (`request.md`'s "arquivo `.srt` separado" half of the subtitle
+/// export ask — the embedded `drawtext` half already happens on every normal export). Doesn't
+/// remember the chosen path the way project saves do — each export is a one-off action, not an
+/// ongoing document with its own save location.
+fn export_srt_for_active_sequence(app: &mut App) {
+    let locale = app.locale;
+    let sequence = &app.active_project().sequences[app.active_project().active_sequence];
+    let srt = avcore::export_srt(&sequence.timeline);
+    let default_name = format!("{}.srt", sequence.name);
+    if srt.is_empty() {
+        app.push_toast(Text::ExportSrtEmpty.tr(locale).to_string());
+        return;
+    }
+
+    let mut dialog = rfd::FileDialog::new()
+        .add_filter("SubRip", &["srt"])
+        .set_file_name(default_name);
+    if !app.prefs.output_folder.is_empty() {
+        dialog = dialog.set_directory(&app.prefs.output_folder);
+    }
+    let Some(path) = dialog.save_file() else {
+        return;
+    };
+
+    match std::fs::write(&path, srt) {
+        Ok(()) => tracing::info!(path = %path.display(), "subtitles exported"),
+        Err(e) => app.push_toast(format!("Failed to export subtitles: {e}")),
     }
 }
 
