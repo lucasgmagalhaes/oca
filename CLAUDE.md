@@ -256,6 +256,14 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   toolbar-only until now. Enabled under the same condition as the toolbar button
   (`App::multi_selected_clip_ids.len() >= 2`); calls the same `App::merge_into_composite`.
 
+  **`Ctrl+O` now adds an opacity marker.** Fase 6's key binding spec lists this shortcut
+  explicitly, but no such action existed anywhere — `KeyBindings` had no field for it and
+  `BindableAction` had no variant. `App::add_opacity_marker_at_playhead` (fifth entry in both,
+  rebindable in Preferences same as the other four) adds one opacity keyframe at the playhead's
+  position within the selected clip's own span, with a value equal to the clip's current
+  effective opacity there (via `avcore::keyframe::evaluate_keyframes`) so placing the marker
+  never itself changes how the clip looks — only moving it afterward does.
+
   **GPU encode — hardware success unverified.** `gpu_encoder.c`'s `open_video_encoder()`
   tries NVENC/Quick Sync/AMF per `Prefs.gpu_encoder`, falling back to CPU (libopenh264) on
   failure; `h264_qsv` correctly requests NV12 (not the yuv420p every other encoder uses) via
