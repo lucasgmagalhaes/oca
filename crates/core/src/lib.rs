@@ -26,6 +26,7 @@ pub mod proxy;
 pub mod render;
 pub mod shape_render;
 pub mod sound_library;
+pub mod telemetry;
 pub mod text_metrics;
 pub mod text_to_speech;
 pub mod timeline;
@@ -64,6 +65,7 @@ pub use render::{
 };
 pub use shape_render::{build_shape_filter_desc, point_in_polygon, ShapeRenderInput};
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
+pub use telemetry::{record_event, TelemetryError, TelemetryEvent};
 pub use text_to_speech::{
     load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
 };
