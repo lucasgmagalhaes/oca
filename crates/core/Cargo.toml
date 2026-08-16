@@ -18,6 +18,11 @@ gstreamer-app = "0.25.2"
 gstreamer-video = "0.25.3"
 avbridge = { path = "../avbridge" }
 serde = { version = "1", features = ["derive"] }
+# Structured logging facade — just the macros (`warn!`/`error!`/...), no subscriber. Events
+# emitted here flow into whatever global subscriber `ui`'s `main.rs::init_logging` installs
+# (tracing's subscriber is process-global, not per-crate), same rolling daily log file every
+# other logged event already goes to. Version pinned to match `ui/Cargo.toml`'s.
+tracing = "0.1"
 serde_json = "1.0.151"
 # .ocproj project file format: MessagePack in struct-map mode (keeps field names, unlike
 # rmp-serde's default compact/array mode) so `#[serde(default)]` keeps working for a field

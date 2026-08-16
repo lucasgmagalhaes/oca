@@ -452,12 +452,12 @@ fn apply_text_overlay_pass(output: &Path, canvas: Canvas, text_segments: &[avbri
     ) {
         Ok(()) => {
             if let Err(e) = std::fs::rename(&tmp, output) {
-                eprintln!("oca: text overlay rename failed: {e}");
+                tracing::error!(error = %e, output = %output.display(), "text overlay rename failed");
                 let _ = std::fs::remove_file(&tmp);
             }
         }
         Err(e) => {
-            eprintln!("oca: text overlay skipped: {e}");
+            tracing::error!(error = %e, output = %output.display(), "text overlay skipped");
             let _ = std::fs::remove_file(&tmp);
         }
     }
@@ -489,12 +489,12 @@ fn apply_shape_overlay_pass(
     ) {
         Ok(()) => {
             if let Err(e) = std::fs::rename(&tmp, output) {
-                eprintln!("oca: shape overlay rename failed: {e}");
+                tracing::error!(error = %e, output = %output.display(), "shape overlay rename failed");
                 let _ = std::fs::remove_file(&tmp);
             }
         }
         Err(e) => {
-            eprintln!("oca: shape overlay skipped: {e}");
+            tracing::error!(error = %e, output = %output.display(), "shape overlay skipped");
             let _ = std::fs::remove_file(&tmp);
         }
     }
