@@ -175,8 +175,8 @@ EncodeStatus avbridge_encode_timeline_export(
                this graph — the value here is just segment 0's own gain, applied the same way
                right after setup below. */
             snprintf(afilter_descr, sizeof(afilter_descr),
-                     "atempo@tempo=1.0,volume@vol=0dB,loudnorm=I=%.1f:TP=-1.0:LRA=11,alimiter="
-                     "limit=0.95:attack=5:release=50",
+                     "atempo@tempo=1.0,volume@vol=0dB,afftdn,loudnorm=I=%.1f:TP=-1.0:LRA=11,"
+                     "alimiter=limit=0.95:attack=5:release=50",
                      (double)target_lufs);
             if (init_audio_filter_chain(adec_ctx, aencoder, afilter_descr, &achain) < 0) {
                 status = ENCODE_ERR_FILTER_GRAPH;

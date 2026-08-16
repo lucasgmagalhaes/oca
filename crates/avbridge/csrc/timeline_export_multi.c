@@ -438,7 +438,7 @@ EncodeStatus avbridge_encode_timeline_export_multi(
             if (!ae) { status = ENCODE_ERR_ENCODER; goto seg_cleanup; }
             char afd[256];
             snprintf(afd, sizeof(afd),
-                     "atempo@tempo=1.0,volume@vol=0dB,loudnorm=I=%.1f:TP=-1.0:LRA=11,"
+                     "atempo@tempo=1.0,volume@vol=0dB,afftdn,loudnorm=I=%.1f:TP=-1.0:LRA=11,"
                      "alimiter=limit=0.95:attack=5:release=50", (double)target_lufs);
             if (init_audio_filter_chain(adec_ctx0, ae, afd, &achain) < 0) { status = ENCODE_ERR_FILTER_GRAPH; goto seg_cleanup; }
             aenc_ctx = avcodec_alloc_context3(ae);

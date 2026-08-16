@@ -79,7 +79,7 @@ EncodeStatus avbridge_encode_export(const char *in_path, const char *out_path,
     {
         char filter_descr[256];
         snprintf(filter_descr, sizeof(filter_descr),
-                 "loudnorm=I=%.1f:TP=-1.0:LRA=11,alimiter=limit=0.95:attack=5:release=50",
+                 "afftdn,loudnorm=I=%.1f:TP=-1.0:LRA=11,alimiter=limit=0.95:attack=5:release=50",
                  (double)target_lufs);
         if (init_audio_filter_chain(dec_ctx, encoder, filter_descr, &chain) < 0) {
             status = ENCODE_ERR_FILTER_GRAPH;
