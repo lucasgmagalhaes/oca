@@ -465,9 +465,11 @@ impl App {
         }
     }
 
-    /// Merges every clip in [`App::multi_selected_clip_ids`] into one composite block —
-    /// what the toolbar's "Mesclar em bloco composto" button does (per `request.md`'s Fase 3
-    /// "blocos compostos" spec). Assigns them all a fresh `composite_id` and clears the
+    /// Merges every clip in [`App::multi_selected_clip_ids`] into one composite block — what
+    /// the toolbar's "Mesclar em bloco composto" button and the timeline context menu's
+    /// matching entry both do (per `request.md`'s Fase 3 "blocos compostos" spec, and its
+    /// context-menu spec listing this among the actions it should offer too). Assigns them all
+    /// a fresh `composite_id` and clears the
     /// multi-selection. A no-op, leaving the multi-selection untouched so the user can fix
     /// their pick, if fewer than two ids were selected or they aren't all on the same track —
     /// composite blocks don't span tracks yet.

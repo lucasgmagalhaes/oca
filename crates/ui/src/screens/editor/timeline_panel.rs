@@ -82,6 +82,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let playhead_secs = app.active_project().timeline().playhead_secs;
         let has_clipboard_clip = app.has_clipboard_clip();
         let has_formatting_clipboard = app.has_formatting_clipboard();
+        let multi_selected_count = app.multi_selected_clip_ids.len();
         let mut clicked_clip_id = None;
         let mut clicked_text_clip_id: Option<u64> = None;
         let mut clicked_shape_clip_id: Option<u64> = None;
@@ -94,6 +95,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut paste_formatting_requests: Vec<u64> = Vec::new();
         let mut multi_select_requests: Vec<u64> = Vec::new();
         let mut paste_requested = false;
+        let mut merge_into_composite_requested = false;
         let mut split_at_playhead_requested = false;
         let mut trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
         let mut clip_drags: Vec<ClipDrag> = Vec::new();
@@ -204,6 +206,21 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 .clicked()
                             {
                                 paste_requested = true;
+                                ui.close();
+                            }
+                            ui.separator();
+                            // Same enablement as the toolbar's "Mesclar em bloco composto"
+                            // button — needs at least two clips ctrl-clicked into a
+                            // multi-selection first; this just gives the context menu (per
+                            // request.md's Fase 3 spec) the same action, not a new one.
+                            if ui
+                                .add_enabled(
+                                    multi_selected_count >= 2,
+                                    egui::Button::new(Text::MergeIntoComposite.tr(locale)),
+                                )
+                                .clicked()
+                            {
+                                merge_into_composite_requested = true;
                                 ui.close();
                             }
                             ui.separator();
@@ -582,6 +599,9 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         if paste_requested {
             app.paste_clip_at_playhead();
+        }
+        if merge_into_composite_requested {
+            app.merge_into_composite();
         }
         for track_id in toggle_track_visibility_requests {
             app.toggle_track_visibility(track_id);
