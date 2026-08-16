@@ -2773,6 +2773,100 @@ fn cut_selected_clip_copies_then_removes_the_clip() {
 }
 
 #[test]
+fn copy_selected_clip_captures_every_member_of_a_composite_group() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 5.0), test_clip(2, 5.0, 0.0, 5.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.multi_selected_clip_ids = HashSet::from([1, 2]);
+    app.merge_into_composite();
+    app.selected_clip_id = Some(1);
+
+    app.copy_selected_clip();
+
+    let (copied, _kind) = app.clipboard_clip.as_ref().unwrap();
+    assert_eq!(copied.len(), 2);
+    let mut copied_ids: Vec<u64> = copied.iter().map(|c| c.id).collect();
+    copied_ids.sort();
+    assert_eq!(copied_ids, vec![1, 2]);
+}
+
+#[test]
+fn paste_clip_at_playhead_pastes_a_composite_group_as_one_block() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 5.0), test_clip(2, 5.0, 0.0, 5.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.multi_selected_clip_ids = HashSet::from([1, 2]);
+    app.merge_into_composite();
+    app.selected_clip_id = Some(1);
+    app.copy_selected_clip();
+    app.active_project_mut().timeline_mut().playhead_secs = 100.0;
+
+    app.paste_clip_at_playhead();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips.len(), 4);
+    let pasted: Vec<_> = clips.iter().filter(|c| c.id != 1 && c.id != 2).collect();
+    assert_eq!(pasted.len(), 2);
+    // The two originals started at 0.0 and 5.0 (a 5s relative offset) - that offset survives
+    // the paste, anchored at the new playhead instead of at 0.0.
+    let mut pasted_starts: Vec<f64> = pasted.iter().map(|c| c.start_secs).collect();
+    pasted_starts.sort_by(f64::total_cmp);
+    assert_eq!(pasted_starts, vec![100.0, 105.0]);
+    // Fresh ids, distinct from both the originals and each other.
+    assert_ne!(pasted[0].id, pasted[1].id);
+    assert!(pasted[0].id != 1 && pasted[0].id != 2);
+    // Both pasted clips share one new composite_id, distinct from the original group's.
+    let original_group = app.active_project().timeline().tracks[0]
+        .clips
+        .iter()
+        .find(|c| c.id == 1)
+        .unwrap()
+        .composite_id;
+    assert!(pasted[0].composite_id.is_some());
+    assert_eq!(pasted[0].composite_id, pasted[1].composite_id);
+    assert_ne!(pasted[0].composite_id, original_group);
+}
+
+#[test]
+fn paste_clip_at_playhead_keeps_a_lone_copied_clip_standalone() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 5.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.copy_selected_clip();
+    app.active_project_mut().timeline_mut().playhead_secs = 20.0;
+
+    app.paste_clip_at_playhead();
+
+    let pasted = &app.active_project().timeline().tracks[0].clips[1];
+    assert_eq!(pasted.composite_id, None);
+}
+
+#[test]
 fn delete_selected_clip_is_a_no_op_when_nothing_is_selected() {
     let mut app = test_app(
         vec![test_project_with_tracks(
