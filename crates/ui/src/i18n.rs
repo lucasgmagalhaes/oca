@@ -83,6 +83,8 @@ text_catalog! {
 
     HomeTitle: pt_br = "Projetos recentes", en = "Recent projects";
     HomeSubtitle: pt_br = "Continue de onde parou ou comece um projeto novo.", en = "Continue where you left off or start a new project.";
+    UpdateAvailable: pt_br = "Nova versão disponível:", en = "New version available:";
+    UpdateAvailableLink: pt_br = "Ver no GitHub →", en = "View on GitHub →";
     NewProject: pt_br = "＋ Novo projeto", en = "＋ New project";
     OpenProject: pt_br = "Abrir projeto…", en = "Open project…";
     UntitledProject: pt_br = "Projeto sem título", en = "Untitled project";

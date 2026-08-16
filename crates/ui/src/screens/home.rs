@@ -44,6 +44,20 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 }
             });
         });
+
+        if let Some(update) = app.available_update.clone() {
+            ui.add_space(10.0);
+            components::card_frame().show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!(
+                        "{} {}",
+                        Text::UpdateAvailable.tr(app.locale),
+                        update.version
+                    )));
+                    ui.hyperlink_to(Text::UpdateAvailableLink.tr(app.locale), &update.html_url);
+                });
+            });
+        }
         ui.add_space(20.0);
 
         let card_width = 280.0;

@@ -35,6 +35,7 @@ mod telemetry;
 mod text_to_speech;
 mod timeline_ops;
 mod transcribe;
+mod update_check;
 
 /// Which of the app's five top-level views is currently showing. Drives both the central
 /// panel content and which nav-rail button is highlighted.
@@ -452,6 +453,22 @@ enum MatteGenerationEvent {
     Failed { message: String },
 }
 
+/// A message from the background update-check thread (see [`App::spawn_update_check`]) back to
+/// the UI thread. Only sent when a newer version actually exists — a check that fails outright
+/// or finds nothing newer sends nothing at all, since there's no user-facing state change
+/// either way.
+enum UpdateCheckEvent {
+    NewerVersionAvailable { version: String, html_url: String },
+}
+
+/// A GitHub release newer than the running build, surfaced by [`App::pump_update_check`] as
+/// [`App::available_update`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AvailableUpdate {
+    pub version: String,
+    pub html_url: String,
+}
+
 /// A message from a background text-to-speech worker thread (see
 /// [`App::spawn_generate_tts`]) back to the UI thread.
 enum TtsEvent {
@@ -755,6 +772,15 @@ pub struct App {
     /// When `Some(action)`, the prefs modal is waiting for the next key press to set that
     /// action's binding. Pressing Escape clears it without changing the binding.
     pub binding_capture: Option<BindableAction>,
+    update_check_tx: UnboundedSender<UpdateCheckEvent>,
+    update_check_rx: UnboundedReceiver<UpdateCheckEvent>,
+    /// Set once [`App::spawn_update_check`]'s background check finds a GitHub release newer
+    /// than `CARGO_PKG_VERSION` — `None` otherwise, including while the check is still in
+    /// flight or failed outright (offline, no releases published yet). The Home screen shows a
+    /// small banner linking to `html_url` when this is `Some`. Fase 8's "Versão e auto-update"
+    /// scoped down to check-and-notify — see `avcore::update_check`'s module doc comment for
+    /// why downloading/applying the update itself isn't covered.
+    pub available_update: Option<AvailableUpdate>,
     /// Set when "Adicionar exportação" picked an output path that already exists — holds
     /// everything needed to queue the export once the user resolves the conflict via
     /// [`App::show_export_conflict_modal`] (Overwrite / Rename / Cancel).
@@ -800,6 +826,7 @@ impl App {
         let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
         let (telemetry_tx, telemetry_rx) = mpsc::unbounded_channel();
         telemetry::spawn_telemetry_writer(telemetry_rx, telemetry::telemetry_path());
+        let (update_check_tx, update_check_rx) = mpsc::unbounded_channel();
         let mut app = Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
@@ -886,10 +913,14 @@ impl App {
             applying_layer_template: None,
             layer_templates_menu_open: false,
             binding_capture: None,
+            update_check_tx,
+            update_check_rx,
+            available_update: None,
         };
         if !app.prefs.sound_library_path.is_empty() {
             app.rescan_sound_library();
         }
+        app.spawn_update_check();
         app
     }
 
@@ -1200,6 +1231,7 @@ impl eframe::App for App {
         self.pump_matte_generation();
         self.pump_text_to_speech();
         self.pump_model_download();
+        self.pump_update_check();
         self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());
         self.pump_autosave();
