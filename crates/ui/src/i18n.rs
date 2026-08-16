@@ -370,6 +370,9 @@ text_catalog! {
     PropShapeDuration: pt_br = "Duração (s)", en = "Duration (s)";
     PropShapeStart: pt_br = "Início (s)", en = "Start (s)";
     ShapeExportNote: pt_br = "renderizado via geq no export — preview não suportado ainda.", en = "rendered via geq on export — preview not supported yet.";
+    PropShapeVertices: pt_br = "Vértices", en = "Vertices";
+    ShapeVerticesHint: pt_br = "arraste os valores X/Y para desenhar uma forma personalizada — funciona em qualquer predefinição, já que todas são polígonos por baixo dos panos (exceto elipse/círculo).", en = "drag the X/Y values to draw a custom shape — works on any preset, since they're all polygons underneath (except ellipse/circle).";
+    ShapeAddVertex: pt_br = "+ Adicionar vértice", en = "+ Add vertex";
 }
 
 /// The breadcrumb's title for `screen` (e.g. `Screen::Queue` -> "Fila de exportação" — longer

@@ -868,6 +868,61 @@ fn position_keyframe_editor(
     }
 }
 
+/// Vertex-list counterpart of [`f32_keyframe_editor`]/[`position_keyframe_editor`] — each row
+/// edits one `(x, y)` vertex of a [`avcore::timeline::ShapeKind::Polygon`], in the shape's own
+/// local unit square (see that variant's doc comment). Refuses to remove the third-to-last
+/// vertex (a polygon needs at least 3 to stay a real shape) rather than letting the list
+/// collapse to something degenerate.
+fn polygon_vertex_editor(
+    ui: &mut egui::Ui,
+    vertices: &[(f32, f32)],
+    locale: crate::i18n::Locale,
+) -> Option<Vec<(f32, f32)>> {
+    let mut list = vertices.to_vec();
+    let count = list.len();
+    let mut changed = false;
+    let mut remove_index = None;
+    for (i, v) in list.iter_mut().enumerate() {
+        ui.horizontal(|ui| {
+            changed |= ui
+                .add(
+                    egui::DragValue::new(&mut v.0)
+                        .speed(0.01)
+                        .range(-2.0..=2.0)
+                        .prefix("x "),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::DragValue::new(&mut v.1)
+                        .speed(0.01)
+                        .range(-2.0..=2.0)
+                        .prefix("y "),
+                )
+                .changed();
+            if count > 3 && ui.small_button("🗑").clicked() {
+                remove_index = Some(i);
+            }
+        });
+    }
+    if let Some(i) = remove_index {
+        list.remove(i);
+        changed = true;
+    }
+    if ui.button(Text::ShapeAddVertex.tr(locale)).clicked() {
+        // Offset from the last vertex rather than stacking exactly on top of it, so the new
+        // point is easy to spot and drag into place.
+        let (last_x, last_y) = list.last().copied().unwrap_or((0.0, 0.0));
+        list.push((last_x + 0.1, last_y + 0.1));
+        changed = true;
+    }
+    if changed {
+        Some(list)
+    } else {
+        None
+    }
+}
+
 fn mask_shape_label(shape: avcore::timeline::MaskShape, locale: crate::i18n::Locale) -> String {
     match shape {
         avcore::timeline::MaskShape::None => Text::MaskNone.tr(locale).to_string(),
@@ -1197,6 +1252,31 @@ fn shape_clip_properties(
         changed = true;
     }
     ui.add_space(4.0);
+
+    // Vertex editor — every preset except Ellipse is already a Polygon under the hood (see
+    // ShapeKind::rectangle() etc.), so this lets the user hand-edit any of them into a custom
+    // shape, not just a dedicated "Custom" starting point.
+    let polygon_vertices = match &sc.shape_kind {
+        avcore::timeline::ShapeKind::Polygon(vertices) => Some(vertices.clone()),
+        avcore::timeline::ShapeKind::Ellipse => None,
+    };
+    if let Some(vertices) = polygon_vertices {
+        let mut new_vertices = None;
+        if components::property_section(
+            ui,
+            Text::PropShapeVertices.tr(locale),
+            Text::ShapeVerticesHint.tr(locale),
+            |ui| {
+                new_vertices = polygon_vertex_editor(ui, &vertices, locale);
+                new_vertices.is_some()
+            },
+        ) {
+            if let Some(v) = new_vertices {
+                sc.shape_kind = avcore::timeline::ShapeKind::Polygon(v);
+                changed = true;
+            }
+        }
+    }
 
     // Color picker (RGBA — alpha controlled via the color picker's alpha channel).
     ui.horizontal(|ui| {
