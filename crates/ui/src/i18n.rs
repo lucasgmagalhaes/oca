@@ -242,6 +242,8 @@ text_catalog! {
     TrackKindText: pt_br = "Texto", en = "Text";
     TrackKindShape: pt_br = "Forma", en = "Shape";
     PreviewUnavailable: pt_br = "Pré-visualização indisponível", en = "Preview unavailable";
+    EnterFullscreenPreview: pt_br = "Tela cheia", en = "Fullscreen";
+    ExitFullscreenPreview: pt_br = "Sair da tela cheia", en = "Exit fullscreen";
 
     LibraryTitle: pt_br = "Biblioteca de mídia", en = "Media library";
     ImportFiles: pt_br = "⭱ Importar arquivos", en = "⭱ Import files";

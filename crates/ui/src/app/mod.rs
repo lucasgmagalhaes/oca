@@ -601,6 +601,16 @@ pub struct App {
     /// the advancing playhead from the way it does for a normal clip — this stands in for it.
     /// `None` when nothing is playing or the current clip isn't frozen.
     preview_frozen_since: Option<(std::time::Instant, f64)>,
+    /// Whether the Editor's preview panel is currently rendered as a fullscreen overlay
+    /// (covers the whole window, replacing the nav rail/breadcrumb/normal screen for that
+    /// frame — see `impl eframe::App for App`'s early-return branch). Toggled by the preview
+    /// panel's fullscreen button and cleared by Esc or the overlay's own exit button.
+    pub fullscreen_preview: bool,
+    /// Wall-clock time the pointer last moved (or a click/drag occurred) while
+    /// [`App::fullscreen_preview`] is active — the fullscreen overlay's playback controls
+    /// fade out [`FULLSCREEN_CONTROLS_IDLE_SECS`] after this and reappear immediately on the
+    /// next pointer movement. `None` right after entering fullscreen so controls start visible.
+    fullscreen_controls_last_moved: Option<std::time::Instant>,
     import_tx: UnboundedSender<ImportEvent>,
     import_rx: UnboundedReceiver<ImportEvent>,
     /// How many files a call to [`App::spawn_import`] haven't been probed yet, in the
@@ -902,6 +912,8 @@ impl App {
             preview_texture: None,
             preview_playing: false,
             preview_frozen_since: None,
+            fullscreen_preview: false,
+            fullscreen_controls_last_moved: None,
             import_tx,
             import_rx,
             pending_imports: 0,
@@ -1343,6 +1355,11 @@ impl eframe::App for App {
             self.sample_preview_frame_telemetry(ui.ctx());
         } else {
             ui.ctx().request_repaint_after(Duration::from_millis(200));
+        }
+
+        if self.fullscreen_preview {
+            screens::editor::fullscreen_preview_overlay(self, ui);
+            return;
         }
 
         // Must run before any panel narrows `ui`'s rect — see its own doc comment.
