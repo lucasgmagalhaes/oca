@@ -12,9 +12,17 @@
 
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+
+/// Above this size, [`record_event`] rotates the file to a `.1`-suffixed backup (replacing any
+/// previous one) before appending further — bounds total disk usage to roughly this size times
+/// two (the live file plus one backup) for an install that runs for a very long time. Simple
+/// size-based rotation rather than the daily rotation Fase 6's `tracing` log uses, since this
+/// crate has no date/time dependency to compute calendar boundaries with, and a plain size cap
+/// needs none.
+const ROTATE_AT_BYTES: u64 = 10 * 1024 * 1024;
 
 /// One structured usage or error event, appended as a single JSON-lines record by
 /// [`record_event`]. `#[serde(tag = "event")]` makes each line self-describing without a
@@ -73,13 +81,14 @@ struct TelemetryRecord<'a> {
 }
 
 /// Appends one [`TelemetryEvent`] as a single JSON line to `telemetry_path`, creating the file
-/// (and any missing parent directories) if it doesn't exist yet. Never truncates or rewrites
-/// existing lines — this is a plain append-only log, with no rotation yet (a known gap; see
-/// this module's doc comment).
+/// (and any missing parent directories) if it doesn't exist yet, rotating it first via
+/// [`rotate_if_oversized`] if it's grown past [`ROTATE_AT_BYTES`]. Never truncates or rewrites
+/// existing lines otherwise — still a plain append-only log within one rotation.
 pub fn record_event(telemetry_path: &Path, event: &TelemetryEvent) -> Result<(), TelemetryError> {
     if let Some(parent) = telemetry_path.parent() {
         std::fs::create_dir_all(parent).map_err(TelemetryError::Io)?;
     }
+    rotate_if_oversized(telemetry_path);
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -93,4 +102,21 @@ pub fn record_event(telemetry_path: &Path, event: &TelemetryEvent) -> Result<(),
         .map_err(TelemetryError::Io)?;
     writeln!(file, "{line}").map_err(TelemetryError::Io)?;
     Ok(())
+}
+
+/// Renames `telemetry_path` to a `.1`-suffixed backup (replacing any previous one via
+/// `fs::rename`'s own overwrite-on-rename behavior) if it exists and is at least
+/// [`ROTATE_AT_BYTES`] large. Best-effort: a missing file, or a rename that fails (e.g. no
+/// permission), is silently treated as "nothing to rotate" — [`record_event`] must still be
+/// able to append a record either way, rotation is a bonus, not a precondition.
+fn rotate_if_oversized(telemetry_path: &Path) {
+    let Ok(metadata) = std::fs::metadata(telemetry_path) else {
+        return;
+    };
+    if metadata.len() < ROTATE_AT_BYTES {
+        return;
+    }
+    let mut backup_name = telemetry_path.as_os_str().to_os_string();
+    backup_name.push(".1");
+    let _ = std::fs::rename(telemetry_path, PathBuf::from(backup_name));
 }
