@@ -241,6 +241,16 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   change like a dragged panel width (no save trigger short of opening Preferences otherwise)
   needs a save that's guaranteed to complete before shutdown, not just kicked off.
 
+  **Copy/paste now preserves composite block membership.** `App::copy_selected_clip` used to
+  capture only the one clicked clip even when it was a composite block member, so pasting always
+  produced a standalone clip — short of Fase 3's "reutilizado ... como se fosse um clipe só"
+  spec, since a pasted "block" wasn't actually a block anymore. It now captures every clip
+  sharing the selected clip's `composite_id` too; `App::paste_clip_at_playhead` pastes the whole
+  group back as one unit (each clip keeping its original offset relative to the earliest one,
+  anchored at the playhead, all sharing one fresh `composite_id`) — a lone copied clip stays
+  standalone exactly as before. `App::clipboard_clip`'s type changed from a single
+  `ClipInstance` to `Vec<ClipInstance>` accordingly.
+
   **GPU encode — hardware success unverified.** `gpu_encoder.c`'s `open_video_encoder()`
   tries NVENC/Quick Sync/AMF per `Prefs.gpu_encoder`, falling back to CPU (libopenh264) on
   failure; `h264_qsv` correctly requests NV12 (not the yuv420p every other encoder uses) via
