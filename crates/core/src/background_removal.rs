@@ -4,9 +4,13 @@
 //! formula FFmpeg's filter graph can evaluate directly), a neural matte can't be expressed as an
 //! avfilter string — [`segment_person`] runs the model against one decoded frame in Rust and
 //! returns a plain alpha buffer; turning a whole clip's worth of per-frame mattes into an actual
-//! exported/previewed alpha channel is a separate, not-yet-built pipeline stage (see
-//! `crate::timeline::ClipInstance::background_removal_enabled`'s doc comment for the current
-//! wiring gap, same shape as `gain_db`/`blur_intensity` before they got wired to export).
+//! alpha channel needed its own pipeline stage, built separately from this module: `ui`'s "Gerar
+//! máscara" flow (`App::spawn_generate_matte_for_selected_clip`) samples frames across the
+//! clip's trim range, runs [`segment_person`] on each, and encodes the mattes into a small H.264
+//! video via [`encode_matte_video`], which export then composites in via an `alphamerge` stage
+//! (see `crate::timeline::ClipInstance::background_removal_enabled`'s doc comment for the exact
+//! export wiring). **Not yet wired into preview** — the same gap `mask_shape`/`chroma_key`
+//! compositing has there.
 //!
 //! **Model:** MODNet (`ZHKKKe/MODNet`, "photographic" weights ported to ONNX by
 //! `yakhyo/modnet`, Apache-2.0), downloaded on demand via
