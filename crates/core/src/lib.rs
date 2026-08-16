@@ -31,6 +31,7 @@ pub mod text_metrics;
 pub mod text_to_speech;
 pub mod timeline;
 pub mod transcribe;
+pub mod update_check;
 pub mod waveform;
 
 pub use auto_reframe::{
@@ -74,4 +75,5 @@ pub use timeline::{
     TrackKind,
 };
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
+pub use update_check::{fetch_latest_release, is_newer, LatestRelease, UpdateCheckError};
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};
