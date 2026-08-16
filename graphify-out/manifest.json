@@ -145,13 +145,13 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1786919570.0592275,
-    "ast_hash": "8f1b7fa588849a103ef00db781d5b7ec",
+    "mtime": 1786920641.3909533,
+    "ast_hash": "b2bd02642c70581dd687f724161fee55",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1786919850.284328,
-    "ast_hash": "fdabd3730175aaa44c3f969c4b5e8f7a",
+    "mtime": 1786920423.5289612,
+    "ast_hash": "469ae7daa09561a7050acd289fd867b2",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -210,8 +210,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786919569.9841318,
-    "ast_hash": "01aa8463d8d693f35724779316f43c8f",
+    "mtime": 1786920514.6770263,
+    "ast_hash": "2cbb2c9f655909fa0c52298d30f93c27",
     "semantic_hash": ""
   },
   "README.md": {
@@ -540,8 +540,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1786920033.656278,
-    "ast_hash": "ce0cda7e85ca0c9a994cb179fac47366",
+    "mtime": 1786920400.101981,
+    "ast_hash": "e497ef1cf2cc8505f08559d437af1b2b",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
@@ -570,13 +570,13 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/mod.rs": {
-    "mtime": 1786920053.1856408,
-    "ast_hash": "e7b1a758b080a7bbbbc7ebe091b268ca",
+    "mtime": 1786920488.8640275,
+    "ast_hash": "155abafb066aa0e60d482b9d3a3d9484",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/properties_panel.rs": {
-    "mtime": 1786919570.140606,
-    "ast_hash": "0ec399e2be050adfc491f889e2495b07",
+    "mtime": 1786920429.7653847,
+    "ast_hash": "0a08b9604bec3eb0965813c769da3f88",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel.rs": {
@@ -665,8 +665,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/motion_tracking.rs": {
-    "mtime": 1786919570.0693972,
-    "ast_hash": "b2e6cc22cd80e271fa6df322c95ee488",
+    "mtime": 1786920408.7183776,
+    "ast_hash": "9a5388baca595a69e57ac0102cce4395",
     "semantic_hash": ""
   },
   "crates/core/src/background_removal.rs": {
