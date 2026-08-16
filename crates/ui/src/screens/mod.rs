@@ -3,7 +3,9 @@
 //! unconditionally every frame, then dispatches to exactly one of the five screen modules
 //! based on `app.screen`.
 
-/// Top breadcrumb bar (app name › screen title › project name when in the Editor).
+/// oca's custom title bar — replaces the OS window chrome (`main.rs` disables it): app name ›
+/// screen title › project name when in the Editor, drag-to-move, and minimize/maximize/close
+/// buttons. Also exposes the window's custom edge-resize borders.
 pub mod breadcrumb;
 /// The Editor screen: toolbar, media library sidebar, preview, clip properties, timeline.
 pub mod editor;

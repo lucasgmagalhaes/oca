@@ -1329,6 +1329,9 @@ impl eframe::App for App {
             ui.ctx().request_repaint_after(Duration::from_millis(200));
         }
 
+        // Must run before any panel narrows `ui`'s rect — see its own doc comment.
+        screens::breadcrumb::handle_resize_borders(ui);
+
         screens::nav_rail::show(self, ui);
 
         // Must run after `nav_rail::show` (which applies the click that changes `self.screen`)

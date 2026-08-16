@@ -67,6 +67,11 @@ macro_rules! text_catalog {
 text_catalog! {
     AppName: pt_br = "oca", en = "oca";
 
+    WindowMinimize: pt_br = "Minimizar", en = "Minimize";
+    WindowMaximize: pt_br = "Maximizar", en = "Maximize";
+    WindowRestore: pt_br = "Restaurar", en = "Restore";
+    WindowClose: pt_br = "Fechar", en = "Close";
+
     NavHome: pt_br = "Início", en = "Home";
     NavEditor: pt_br = "Editor", en = "Editor";
     NavLibrary: pt_br = "Mídia", en = "Media";

@@ -24,7 +24,12 @@ fn main() -> eframe::Result<()> {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("oca")
             .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([960.0, 600.0]),
+            .with_min_inner_size([960.0, 600.0])
+            // No OS window chrome — `screens::breadcrumb` draws oca's own themed title bar
+            // (drag-to-move, double-click-to-maximize, minimize/maximize/close buttons) in its
+            // place, and `screens::breadcrumb::handle_resize_borders` replaces the OS's own
+            // edge/corner resize handles this removes along with the rest of the chrome.
+            .with_decorations(false),
         ..Default::default()
     };
 
