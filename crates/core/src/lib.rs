@@ -26,17 +26,20 @@ pub mod proxy;
 pub mod render;
 pub mod shape_render;
 pub mod sound_library;
+pub mod subtitles;
+pub mod telemetry;
 pub mod text_metrics;
 pub mod text_to_speech;
 pub mod timeline;
 pub mod transcribe;
+pub mod update_check;
 pub mod waveform;
 
 pub use auto_reframe::{
     compute_reframe_crop, detect_faces, main_subject_center, CropRect, FaceBox, ReframeError,
 };
 pub use avbridge::{Canvas, ClipSegment, GpuEncoderPreference, ShapeSegment, TextSegment};
-pub use background_removal::{segment_person, SegmentError};
+pub use background_removal::{encode_matte_video, segment_person, MatteEncodeError, SegmentError};
 pub use export::{ExportJob, ExportJobStatus};
 pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
@@ -55,7 +58,7 @@ pub use persistence::{
 pub use preview::{Preview, PreviewError};
 pub use probe::{probe_media, ProbeError, ProbedMedia};
 pub use project::{Project, Recency, Sequence};
-pub use proxy::{ensure_proxy, ProxyError};
+pub use proxy::{ensure_proxy, PreviewQuality, ProxyError};
 pub use render::{
     apply_export_aspect_ratio, render_export, render_export_job, render_export_job_multi,
     render_timeline_export, resolve_shape_segments, resolve_text_segments,
@@ -64,6 +67,8 @@ pub use render::{
 };
 pub use shape_render::{build_shape_filter_desc, point_in_polygon, ShapeRenderInput};
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
+pub use subtitles::export_srt;
+pub use telemetry::{record_event, TelemetryError, TelemetryEvent};
 pub use text_to_speech::{
     load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
 };
@@ -72,4 +77,5 @@ pub use timeline::{
     TrackKind,
 };
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
+pub use update_check::{fetch_latest_release, is_newer, LatestRelease, UpdateCheckError};
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};

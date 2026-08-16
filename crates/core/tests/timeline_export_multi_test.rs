@@ -352,6 +352,37 @@ fn overlay_track_mask_shape_composites_without_error() {
 }
 
 #[test]
+fn overlay_track_background_removal_composites_without_error() {
+    let asset = video_asset(1);
+    let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
+    let mut c2 = clip(2, 1, 0.0, 0.0, 0.5);
+    c2.background_removal_enabled = true;
+
+    // A small synthetic matte covering the overlay clip's 0.5s trim: 8 frames at 16fps, an
+    // arbitrary size independent of the source's own resolution — build_overlay_vfilter scales
+    // both the overlay clip and the matte to canvas dimensions independently before alphamerge,
+    // so the matte's own native size doesn't need to match anything.
+    let matte_dir = std::env::temp_dir().join("avcore_test_multi_overlay_matte_dir");
+    let _ = std::fs::create_dir_all(&matte_dir);
+    let matte_path = matte_dir.join("clip_2_matte.mp4");
+    let frames: Vec<Vec<u8>> = (0..8).map(|i| vec![(i * 30) as u8; 64 * 64]).collect();
+    avcore::encode_matte_video(&frames, 64, 64, 16, 1, &matte_path).unwrap();
+    c2.background_removal_mask_path = matte_path.to_string_lossy().to_string();
+
+    let overlay = track(2, "V2", vec![c2]);
+    let sequence = sequence_with(vec![background, overlay]);
+
+    let outcome = render_multi(
+        &sequence,
+        std::slice::from_ref(&asset),
+        "avcore_test_multi_overlay_background_removal.mp4",
+    );
+
+    let _ = std::fs::remove_dir_all(&matte_dir);
+    assert_eq!(outcome, RenderOutcome::Completed);
+}
+
+#[test]
 fn cancelling_mid_multi_track_export_reports_cancelled() {
     let asset = video_asset(1);
     let background = track(

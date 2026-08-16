@@ -7,8 +7,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 oca — a native Rust video editor (`egui`/`eframe`) for cutting gameplay
 footage for the PacoPaçoca YouTube channel. Its two headline features are automatic loudness
 normalization and export-that-matches-the-source-bitrate. Full phased execution plan:
-[`features/request.md`](features/request.md) (a near-duplicate lives at `docs/plano.md` —
-not yet reconciled, treat `features/request.md` as canonical).
+[`features/request.md`](features/request.md) (`docs/plano.md` used to be a diverging
+duplicate — it's now just a pointer back here, the one canonical copy).
 
 Current status: the GUI shell (all five screens, navigable) and JSON project save/load are
 wired end-to-end from the UI (`home.rs` open dialog, `editor.rs` save). Probing

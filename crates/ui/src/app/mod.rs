@@ -21,6 +21,7 @@ use crate::screens;
 use crate::theme;
 
 mod auto_reframe;
+mod background_removal;
 mod clip_props;
 pub mod export;
 mod import;
@@ -30,9 +31,11 @@ mod model_download;
 mod motion_tracking;
 mod preview;
 mod sound_library;
+mod telemetry;
 mod text_to_speech;
 mod timeline_ops;
 mod transcribe;
+mod update_check;
 
 /// Which of the app's five top-level views is currently showing. Drives both the central
 /// panel content and which nav-rail button is highlighted.
@@ -95,9 +98,10 @@ pub enum BindableAction {
     SplitAtPlayhead,
     CopyFormatting,
     PasteFormatting,
+    AddOpacityMarker,
 }
 
-/// User-configurable key bindings for the four main editor shortcuts. Persisted as part of
+/// User-configurable key bindings for the five main editor shortcuts. Persisted as part of
 /// [`PrefsState`] so changes survive restarts.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct KeyBindings {
@@ -105,6 +109,12 @@ pub struct KeyBindings {
     pub split_at_playhead: KeyCombo,
     pub copy_formatting: KeyCombo,
     pub paste_formatting: KeyCombo,
+    /// `Ctrl+O` by default, per `request.md`'s Fase 6 key binding spec ("adicionar marcador de
+    /// opacidade") — see [`App::add_opacity_marker_at_playhead`]. Added after the other four,
+    /// so `#[serde(default)]` keeps an older saved `prefs.oc` (with no such key at all in its
+    /// serialized `KeyBindings`) loading correctly instead of failing outright.
+    #[serde(default = "default_add_opacity_marker_binding")]
+    pub add_opacity_marker: KeyCombo,
 }
 
 impl Default for KeyBindings {
@@ -130,7 +140,16 @@ impl Default for KeyBindings {
                 shift: true,
                 key_name: "V".to_string(),
             },
+            add_opacity_marker: default_add_opacity_marker_binding(),
         }
+    }
+}
+
+fn default_add_opacity_marker_binding() -> KeyCombo {
+    KeyCombo {
+        ctrl: true,
+        shift: false,
+        key_name: "O".to_string(),
     }
 }
 
@@ -197,6 +216,50 @@ pub struct PrefsState {
     /// the same shape as `whisper_model_path` above.
     #[serde(default)]
     pub sound_library_path: String,
+    /// Editing-proxy/preview resolution (`request.md`'s Fase 7 "Qualidade do preview
+    /// selecionável"), applied by [`App::spawn_import`] to every proxy generated from then on
+    /// — see [`avcore::PreviewQuality`]. Changing it doesn't retroactively regenerate proxies
+    /// for assets already imported; only newly imported files pick up the new setting.
+    #[serde(default)]
+    pub preview_quality: avcore::PreviewQuality,
+    /// Whether local runtime telemetry (`request.md`'s Fase 7 "Telemetria de runtime" — import/
+    /// export duration, sampled preview frame time, error events) is recorded to
+    /// `telemetry.jsonl`. Stays on-device either way — this only controls whether it's
+    /// collected at all. On by default, matching `request.md`'s "fica no dispositivo por
+    /// padrão" framing (an on-device log, not an opt-in analytics pipeline), but user-visible
+    /// and toggleable in Preferences either way.
+    #[serde(default = "default_telemetry_enabled")]
+    pub telemetry_enabled: bool,
+    /// Persisted Editor panel layout — `request.md`'s Fase 3 "Painéis de UI redimensionáveis"
+    /// explicitly asks for this to survive restarts ("layout salvo por projeto ou por
+    /// usuário"); this is the per-user half, the simpler of the two to wire up since it reuses
+    /// `PrefsState`'s existing save/load machinery rather than touching the `.ocproj` project
+    /// format. `App::lib_panel_width`/`props_panel_width`/`timeline_height` are the live,
+    /// actively-dragged values during a session; `App::save_prefs` copies them in here at save
+    /// time (same technique it already uses for `locale`), and `App::new` seeds the live
+    /// fields from these at startup.
+    #[serde(default = "default_lib_panel_width")]
+    pub lib_panel_width: f32,
+    #[serde(default = "default_props_panel_width")]
+    pub props_panel_width: f32,
+    #[serde(default = "default_timeline_height")]
+    pub timeline_height: f32,
+}
+
+fn default_telemetry_enabled() -> bool {
+    true
+}
+
+fn default_lib_panel_width() -> f32 {
+    220.0
+}
+
+fn default_props_panel_width() -> f32 {
+    240.0
+}
+
+fn default_timeline_height() -> f32 {
+    190.0
 }
 
 impl Default for PrefsState {
@@ -217,6 +280,11 @@ impl Default for PrefsState {
             tts_model_path: String::new(),
             saved_layer_templates: Vec::new(),
             sound_library_path: String::new(),
+            preview_quality: avcore::PreviewQuality::default(),
+            telemetry_enabled: true,
+            lib_panel_width: default_lib_panel_width(),
+            props_panel_width: default_props_panel_width(),
+            timeline_height: default_timeline_height(),
         }
     }
 }
@@ -296,6 +364,11 @@ pub const TRANSITION_DURATION_RANGE: std::ops::RangeInclusive<f32> = 0.1..=3.0;
 /// [`avcore::timeline::ClipInstance::scale_keyframes`]).
 pub const SCALE_RANGE: std::ops::RangeInclusive<f32> = 1.0..=3.0;
 
+/// Minimum gap between sampled `PreviewFrameTime` telemetry events (Fase 7's "Telemetria de
+/// runtime") — recording every single preview frame would flood `telemetry.jsonl` for no
+/// analytical benefit over a periodic sample.
+pub const PREVIEW_FRAME_TELEMETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Slider bounds for the properties panel's layer-resize controls
 /// ([`avcore::timeline::ClipInstance::layer_scale_x`]/`_y`) — unlike [`SCALE_RANGE`]'s
 /// Ken-Burns zoom (which only ever enlarges), a layer's on-canvas footprint can shrink well
@@ -306,16 +379,41 @@ pub const LAYER_SCALE_RANGE: std::ops::RangeInclusive<f32> = 0.1..=3.0;
 /// ([`avcore::timeline::ClipInstance::stabilization_intensity`]).
 pub const STABILIZATION_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 
+/// Slider bounds for the properties panel's motion-tracking region width/height controls
+/// (`App::motion_track_width`/`_height`, `avcore::track_region`'s `template_width_frac`/
+/// `template_height_frac`) — kept well under `1.0` so the template can always slide within the
+/// frame during search, and above a few percent so it still covers enough texture to match
+/// against. Shared by both the width and height sliders.
+pub const MOTION_TRACK_SIZE_RANGE: std::ops::RangeInclusive<f32> = 0.05..=0.6;
+
+/// Slider bounds for the properties panel's motion-tracking search-radius control
+/// (`App::motion_track_search_radius`, `avcore::track_region`'s `search_radius_frac`).
+pub const MOTION_TRACK_SEARCH_RADIUS_RANGE: std::ops::RangeInclusive<f32> = 0.02..=0.3;
+
 /// A message from a background render worker thread (see [`App::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
 /// needed, matching the execution plan's "tokio + canais assíncronos" without pulling egui's
 /// synchronous frame loop into async code.
 enum RenderEvent {
-    Progress { job_id: u64, percent: u8 },
-    Done { job_id: u64 },
-    Failed { job_id: u64, message: String },
-    Cancelled { job_id: u64 },
+    Progress {
+        job_id: u64,
+        percent: u8,
+    },
+    Done {
+        job_id: u64,
+        duration_ms: u64,
+        output_duration_secs: f64,
+    },
+    Failed {
+        job_id: u64,
+        message: String,
+        duration_ms: u64,
+        output_duration_secs: f64,
+    },
+    Cancelled {
+        job_id: u64,
+    },
 }
 
 /// A message from a background import worker thread (see [`App::spawn_import`]) back to
@@ -338,6 +436,7 @@ enum ImportEvent {
         loudness: Option<avcore::LoudnessMetrics>,
         proxy_path: Option<PathBuf>,
         waveform_peaks: Option<Vec<(f32, f32)>>,
+        duration_ms: u64,
     },
     Failed {
         path: PathBuf,
@@ -392,6 +491,29 @@ enum MotionTrackEvent {
     },
 }
 
+/// A message from a background AI-background-removal matte-generation worker thread (see
+/// [`App::spawn_generate_matte_for_selected_clip`]) back to the UI thread.
+enum MatteGenerationEvent {
+    Done { clip_id: u64, mask_path: PathBuf },
+    Failed { message: String },
+}
+
+/// A message from the background update-check thread (see [`App::spawn_update_check`]) back to
+/// the UI thread. Only sent when a newer version actually exists — a check that fails outright
+/// or finds nothing newer sends nothing at all, since there's no user-facing state change
+/// either way.
+enum UpdateCheckEvent {
+    NewerVersionAvailable { version: String, html_url: String },
+}
+
+/// A GitHub release newer than the running build, surfaced by [`App::pump_update_check`] as
+/// [`App::available_update`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AvailableUpdate {
+    pub version: String,
+    pub html_url: String,
+}
+
 /// A message from a background text-to-speech worker thread (see
 /// [`App::spawn_generate_tts`]) back to the UI thread.
 enum TtsEvent {
@@ -438,6 +560,14 @@ pub struct App {
     pub selected_asset_id: Option<u64>,
     pub export_jobs: Vec<ExportJob>,
     pub prefs: PrefsState,
+    /// Sends [`avcore::TelemetryEvent`]s to the dedicated background writer thread spawned in
+    /// [`App::new`] — see [`App::record_telemetry`]/`telemetry::spawn_telemetry_writer`. No
+    /// paired receiver is kept on `App`; that thread owns the only one.
+    telemetry_tx: UnboundedSender<avcore::TelemetryEvent>,
+    /// Wall-clock time [`App::record_telemetry`] last recorded a `PreviewFrameTime` sample —
+    /// throttles sampling to roughly once every [`PREVIEW_FRAME_TELEMETRY_INTERVAL`] rather
+    /// than every single frame, which would flood `telemetry.jsonl`.
+    last_preview_frame_telemetry: Option<std::time::Instant>,
     render_tx: UnboundedSender<RenderEvent>,
     render_rx: UnboundedReceiver<RenderEvent>,
     /// Cancellation flags for jobs a worker thread is currently rendering, keyed by job id.
@@ -516,6 +646,30 @@ pub struct App {
     /// The timeline clip id a background motion-tracking run is currently tracking, if any —
     /// only one runs at a time, same shape as `auto_reframing_clip_id`.
     pub motion_tracking_clip_id: Option<u64>,
+    /// The tracked region's center, as a `0.0..=1.0` fraction of the *source* frame (same
+    /// convention as `avcore::track_region`'s `initial_center_x_frac`/`_y`, not canvas/layer
+    /// space) — user-editable via the properties panel's region controls next to the "Rastrear
+    /// movimento" button, instead of the button always defaulting to a centered region. Plain
+    /// UI/session state, not persisted to the project: it's a one-shot tracking job's input, not
+    /// a durable clip property (unlike, say, `ClipInstance::crop_x/y`) — nothing else reads it
+    /// once a run finishes, only its *output* (`position_keyframes`) is saved.
+    pub motion_track_center_x: f32,
+    pub motion_track_center_y: f32,
+    /// The tracked block's width/height, each independently as a fraction of the frame's
+    /// shorter dimension — `avcore::track_region`'s `template_width_frac`/`template_height_frac`.
+    /// Same non-persistence rationale as `motion_track_center_x`/`_y`.
+    pub motion_track_width: f32,
+    pub motion_track_height: f32,
+    /// How far the tracked block is allowed to move between consecutive sampled frames, as a
+    /// fraction of the frame's shorter dimension — `avcore::track_region`'s
+    /// `search_radius_frac`. Same non-persistence rationale as `motion_track_center_x`/`_y`.
+    pub motion_track_search_radius: f32,
+    matte_generation_tx: UnboundedSender<MatteGenerationEvent>,
+    matte_generation_rx: UnboundedReceiver<MatteGenerationEvent>,
+    /// The timeline clip id a background AI-background-removal matte-generation run is
+    /// currently computing a matte for, if any — only one runs at a time, same shape as
+    /// `auto_reframing_clip_id`.
+    pub matte_generating_clip_id: Option<u64>,
     tts_tx: UnboundedSender<TtsEvent>,
     tts_rx: UnboundedReceiver<TtsEvent>,
     /// `Some(text)` while the "Texto-pra-fala" modal is open — the text buffer being edited.
@@ -542,23 +696,38 @@ pub struct App {
     /// removes whichever clip this points at.
     pub selected_clip_id: Option<u64>,
     /// The text overlay clip currently selected on a text track, if any. Selecting a text clip
-    /// clears `selected_clip_id` and vice versa — only one kind of clip can be selected at a
-    /// time. The properties panel shows text-clip controls when this is `Some`.
+    /// clears `selected_clip_id`/`selected_shape_clip_id` and vice versa — only one kind of clip
+    /// can be selected at a time. The properties panel shows text-clip controls when this is
+    /// `Some`.
     pub selected_text_clip_id: Option<u64>,
+    /// The shape overlay clip currently selected on a shape track, if any. Same mutual-exclusion
+    /// rule as `selected_text_clip_id`. The properties panel shows shape-clip controls when this
+    /// is `Some`.
+    pub selected_shape_clip_id: Option<u64>,
+    /// Canvas-fraction points clicked so far while drawing a custom shape (`request.md`'s Fase
+    /// 4 "forma personalizada"), or `None` when not in drawing mode. Same "pending one-shot
+    /// mode" shape as `binding_capture`/`renaming_sequence` below: `Some(vec![])` on
+    /// [`App::start_drawing_custom_shape`], grows via [`App::push_drawing_shape_point`],
+    /// committed into a new [`avcore::timeline::ShapeClip`] by
+    /// [`App::finish_drawing_custom_shape`] (Enter, needs >= 3 points) or discarded by
+    /// [`App::cancel_drawing_custom_shape`] (Escape). Read each frame by
+    /// `screens::editor::layer_transform_preview`.
+    pub drawing_shape_points: Option<Vec<(f32, f32)>>,
     /// Horizontal scale of the timeline strip and its ruler, in pixels per second. Adjusted by
     /// `Ctrl` + scroll over the timeline (per `request.md`'s Fase 3 spec) — more zoom for
     /// frame-accurate edits, less to see the whole project at once.
     pub timeline_px_per_sec: f32,
     /// Width, in points, of the Editor's media-library column — dragged via the divider
     /// between it and the preview column (`editor.rs::resizable_divider`). Clamped to the
-    /// window's current size every frame (`editor.rs::show`), not persisted across restarts —
-    /// a known simplification short of `request.md`'s "layout salvo por projeto ou por
-    /// usuário" (per-project/per-user persistence isn't wired up yet).
+    /// window's current size every frame (`editor.rs::show`). Seeded from
+    /// `PrefsState::lib_panel_width` at startup and captured back into it by
+    /// `App::prefs_snapshot` on save — the per-user half of `request.md`'s "layout salvo por
+    /// projeto ou por usuário" (per-project persistence isn't wired up).
     pub lib_panel_width: f32,
     /// Same idea as `lib_panel_width`, for the clip-properties column on the right.
     pub props_panel_width: f32,
     /// Height, in points, of the timeline strip — dragged via the horizontal divider above it.
-    /// Same persistence caveat as `lib_panel_width`.
+    /// Same persistence shape as `lib_panel_width`.
     pub timeline_height: f32,
     thumbnail_tx: UnboundedSender<ThumbnailReady>,
     thumbnail_rx: UnboundedReceiver<ThumbnailReady>,
@@ -578,12 +747,18 @@ pub struct App {
     /// how dragging an asset out of the library and dropping it on the timeline works. Always
     /// `None` between frames.
     pub pending_asset_drop: Option<(u64, egui::Pos2)>,
-    /// The last clip copied or cut via `Ctrl+C`/`Ctrl+X`/the timeline context menu, and the
-    /// track kind it came from (so a paste lands on a matching-kind track — same rule as a
-    /// drag-move). Not scoped to a project or sequence: pasting into a different tab, or even
-    /// a different project, is what makes "copiar e colar entre abas" (`request.md`'s Fase 3
-    /// spec) work for free, rather than needing separate cross-tab plumbing.
-    clipboard_clip: Option<(avcore::timeline::ClipInstance, avcore::timeline::TrackKind)>,
+    /// The last clip(s) copied or cut via `Ctrl+C`/`Ctrl+X`/the timeline context menu, and the
+    /// track kind they came from (so a paste lands on a matching-kind track — same rule as a
+    /// drag-move). More than one clip only when the copied clip was a composite block member —
+    /// every clip sharing its `composite_id` is captured too, so `App::paste_clip_at_playhead`
+    /// can paste the whole block back as one unit. Not scoped to a project or sequence: pasting
+    /// into a different tab, or even a different project, is what makes "copiar e colar entre
+    /// abas" (`request.md`'s Fase 3 spec) work for free, rather than needing separate cross-tab
+    /// plumbing.
+    clipboard_clip: Option<(
+        Vec<avcore::timeline::ClipInstance>,
+        avcore::timeline::TrackKind,
+    )>,
     /// The last formatting (gain/freeze settings, not the clip itself) copied via
     /// `Ctrl+Shift+C`/the timeline context menu — [`App::paste_selected_clip_formatting`]
     /// applies it onto a different block, per `request.md`'s Fase 4 "copiar formatação" spec.
@@ -649,6 +824,15 @@ pub struct App {
     /// When `Some(action)`, the prefs modal is waiting for the next key press to set that
     /// action's binding. Pressing Escape clears it without changing the binding.
     pub binding_capture: Option<BindableAction>,
+    update_check_tx: UnboundedSender<UpdateCheckEvent>,
+    update_check_rx: UnboundedReceiver<UpdateCheckEvent>,
+    /// Set once [`App::spawn_update_check`]'s background check finds a GitHub release newer
+    /// than `CARGO_PKG_VERSION` — `None` otherwise, including while the check is still in
+    /// flight or failed outright (offline, no releases published yet). The Home screen shows a
+    /// small banner linking to `html_url` when this is `Some`. Fase 8's "Versão e auto-update"
+    /// scoped down to check-and-notify — see `avcore::update_check`'s module doc comment for
+    /// why downloading/applying the update itself isn't covered.
+    pub available_update: Option<AvailableUpdate>,
     /// Set when "Adicionar exportação" picked an output path that already exists — holds
     /// everything needed to queue the export once the user resolves the conflict via
     /// [`App::show_export_conflict_modal`] (Overwrite / Rename / Cancel).
@@ -669,6 +853,10 @@ impl App {
         // Write the sentinel — deleted on clean exit via on_exit(). Survives a crash.
         let _ = std::fs::write(&sentinel, b"");
         let prefs = load_prefs();
+        // Captured before `prefs` itself is moved into the struct literal below.
+        let lib_panel_width = prefs.lib_panel_width;
+        let props_panel_width = prefs.props_panel_width;
+        let timeline_height = prefs.timeline_height;
         // Reload projects from the last session. Failures (moved/deleted files) are silently
         // skipped — the missing path will be pruned from recents next time prefs are saved.
         let projects: Vec<avcore::Project> = prefs
@@ -688,9 +876,13 @@ impl App {
         let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
         let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
         let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
+        let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
         let (tts_tx, tts_rx) = mpsc::unbounded_channel();
         let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
         let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
+        let (telemetry_tx, telemetry_rx) = mpsc::unbounded_channel();
+        telemetry::spawn_telemetry_writer(telemetry_rx, telemetry::telemetry_path());
+        let (update_check_tx, update_check_rx) = mpsc::unbounded_channel();
         let mut app = Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
@@ -700,6 +892,8 @@ impl App {
             selected_asset_id: None,
             export_jobs: export::load_queue(),
             prefs,
+            telemetry_tx,
+            last_preview_frame_telemetry: None,
             render_tx,
             render_rx,
             active_renders: HashMap::new(),
@@ -726,6 +920,14 @@ impl App {
             motion_tracking_tx,
             motion_tracking_rx,
             motion_tracking_clip_id: None,
+            motion_track_center_x: 0.5,
+            motion_track_center_y: 0.5,
+            motion_track_width: 0.2,
+            motion_track_height: 0.2,
+            motion_track_search_radius: 0.08,
+            matte_generation_tx,
+            matte_generation_rx,
+            matte_generating_clip_id: None,
             tts_tx,
             tts_rx,
             tts_modal_text: None,
@@ -737,10 +939,12 @@ impl App {
             cancel_model_download: None,
             selected_clip_id: None,
             selected_text_clip_id: None,
+            selected_shape_clip_id: None,
+            drawing_shape_points: None,
             timeline_px_per_sec: 4.0,
-            lib_panel_width: 220.0,
-            props_panel_width: 240.0,
-            timeline_height: 190.0,
+            lib_panel_width,
+            props_panel_width,
+            timeline_height,
             thumbnail_tx,
             thumbnail_rx,
             thumbnail_textures: HashMap::new(),
@@ -765,10 +969,14 @@ impl App {
             applying_layer_template: None,
             layer_templates_menu_open: false,
             binding_capture: None,
+            update_check_tx,
+            update_check_rx,
+            available_update: None,
         };
         if !app.prefs.sound_library_path.is_empty() {
             app.rescan_sound_library();
         }
+        app.spawn_update_check();
         app
     }
 
@@ -964,19 +1172,32 @@ impl App {
         }
     }
 
-    /// Serializes `prefs` to the platform config file on a background thread. Called whenever
-    /// the preferences modal closes or a project is opened. Prunes `recent_project_paths`
-    /// entries whose files no longer exist before serializing.
-    pub fn save_prefs(&self) {
+    /// Builds the snapshot [`App::save_prefs`]/[`App::save_prefs_sync`] persist — clones
+    /// `self.prefs` and copies in whatever live `App` state is meant to survive a restart but
+    /// isn't edited through the Preferences modal itself (locale, Editor panel/timeline
+    /// layout), then prunes `recent_project_paths` entries whose files no longer exist.
+    fn prefs_snapshot(&self) -> PrefsState {
         let mut prefs_snapshot = self.prefs.clone();
         // Always capture the live locale (app.locale may differ from prefs.locale if the user
         // changed it this session without having previously saved).
         prefs_snapshot.locale = self.locale;
+        // Editor panel/timeline layout (request.md's Fase 3 "layout salvo por... usuário") —
+        // dragged live via the resizable dividers, with no save trigger of their own short of
+        // this snapshot being taken.
+        prefs_snapshot.lib_panel_width = self.lib_panel_width;
+        prefs_snapshot.props_panel_width = self.props_panel_width;
+        prefs_snapshot.timeline_height = self.timeline_height;
         // Prune stale recents (moved/deleted files) so the list stays clean.
         prefs_snapshot
             .recent_project_paths
             .retain(|p| std::path::Path::new(p).exists());
+        prefs_snapshot
+    }
 
+    /// Serializes `prefs` to the platform config file on a background thread. Called whenever
+    /// the preferences modal closes or a project is opened/removed.
+    pub fn save_prefs(&self) {
+        let prefs_snapshot = self.prefs_snapshot();
         let Ok(bytes) = avcore::to_ocproj_bytes(&prefs_snapshot) else {
             return;
         };
@@ -991,6 +1212,27 @@ impl App {
                 tracing::debug!(path = %path.display(), "prefs saved");
             }
         });
+    }
+
+    /// Synchronous twin of [`App::save_prefs`], only for [`eframe::App::on_exit`] — a
+    /// background thread's write has no guarantee of completing before the process actually
+    /// exits right after `on_exit` returns (nothing joins it), so panel-size/layout changes
+    /// made this session, which have no other save trigger short of opening Preferences, would
+    /// otherwise silently fail to persist on a normal quit. The prefs file is small (a gzip+
+    /// MessagePack blob, not project media), so blocking briefly during an already-in-progress
+    /// shutdown is an acceptable tradeoff for actually guaranteeing the write happens.
+    fn save_prefs_sync(&self) {
+        let prefs_snapshot = self.prefs_snapshot();
+        let Ok(bytes) = avcore::to_ocproj_bytes(&prefs_snapshot) else {
+            return;
+        };
+        let path = prefs_path();
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Err(e) = std::fs::write(&path, &bytes) {
+            tracing::error!(path = %path.display(), error = %e, "failed to write prefs (sync, on exit)");
+        }
     }
 }
 
@@ -1076,8 +1318,10 @@ impl eframe::App for App {
         self.pump_transcribe();
         self.pump_auto_reframe();
         self.pump_motion_tracking();
+        self.pump_matte_generation();
         self.pump_text_to_speech();
         self.pump_model_download();
+        self.pump_update_check();
         self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());
         self.pump_autosave();
@@ -1096,9 +1340,13 @@ impl eframe::App for App {
             // Smooth video needs every-frame repaints; the 200ms throttle below would show
             // it as a slideshow.
             ui.ctx().request_repaint();
+            self.sample_preview_frame_telemetry(ui.ctx());
         } else {
             ui.ctx().request_repaint_after(Duration::from_millis(200));
         }
+
+        // Must run before any panel narrows `ui`'s rect — see its own doc comment.
+        screens::breadcrumb::handle_resize_borders(ui);
 
         screens::nav_rail::show(self, ui);
 
@@ -1131,6 +1379,9 @@ impl eframe::App for App {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Persist synchronously — see save_prefs_sync's doc comment on why the normal
+        // background-thread save_prefs can't be trusted to finish before the process exits.
+        self.save_prefs_sync();
         // Clean exit — remove the crash sentinel so the next launch doesn't think we crashed.
         let _ = std::fs::remove_file(sentinel_path());
         tracing::info!("clean exit — crash sentinel removed");

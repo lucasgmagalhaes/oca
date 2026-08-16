@@ -92,10 +92,12 @@ pub enum ShapeKind {
     /// test), each roughly `-0.5..=0.5` — the shape's own local unit square before it's scaled
     /// by [`ShapeClip::width`]/[`ShapeClip::height`], rotated, and translated to
     /// [`ShapeClip::center_x`]/[`ShapeClip::center_y`]. `request.md`'s "opção de desenhar uma
-    /// forma personalizada" (custom shape) is this same variant with user-placed vertices —
-    /// the data model supports it; the interactive vertex-editing UI to populate it by hand
-    /// doesn't exist yet (a real, separate follow-up, not a small addition — same class of gap
-    /// as `MaskShape::None`'s doc comment already flags for a custom mask shape).
+    /// forma personalizada" (custom shape) is this same variant with user-placed vertices — the
+    /// properties panel's per-vertex X/Y editor (`ui`'s `polygon_vertex_editor`, shown whenever
+    /// a `ShapeClip`'s `shape_kind` is a `Polygon` — every preset included, since they're all
+    /// `Polygon` under the hood too, see `ShapeKind::rectangle()` etc.) lets a user hand-edit,
+    /// add, or remove vertices starting from any preset or from scratch, so this is no longer
+    /// data-model-only.
     Polygon(Vec<(f32, f32)>),
 }
 
@@ -241,11 +243,11 @@ pub struct ClipInstance {
     pub composite_id: Option<u64>,
     /// Volume adjustment in decibels applied to this block's audio, independent of every other
     /// clip — per `request.md`'s Fase 4 "ganho de volume por bloco" spec. `0.0` is unity gain.
-    /// Currently only feeds the timeline waveform display (`ui`'s `draw_waveform`, scaled by
-    /// [`ClipInstance::gain_linear`]); export doesn't mix the timeline yet (it still
-    /// passthrough-renders a single source file per job, see `core::render`), so this doesn't
-    /// affect exported audio yet. `#[serde(default)]` so older saved projects load at unity
-    /// gain.
+    /// Feeds the timeline waveform display (`ui`'s `draw_waveform`, scaled by
+    /// [`ClipInstance::gain_linear`]) and is wired into export — resolved to
+    /// `avbridge::ClipSegment::gain_db` and applied as a `volume=<gain>dB` audio filter stage
+    /// (`timeline_export.c`/`timeline_export_multi.c`). No live preview effect yet. `#[serde(default)]`
+    /// so older saved projects load at unity gain.
     #[serde(default)]
     pub gain_db: f32,
     /// `true` if this block is frozen — holds a single still frame
@@ -267,26 +269,27 @@ pub struct ClipInstance {
     #[serde(default)]
     pub frozen: bool,
     /// Playback speed multiplier for this block — `2.0` plays twice as fast, `0.5` half speed,
-    /// per `request.md`'s Fase 4 "Velocidade" spec. `1.0` is normal speed. Currently only shown
-    /// as a badge on the timeline block (`ui`'s timeline panel); it doesn't yet resample audio,
-    /// change the block's on-timeline duration, or affect preview playback or export — the same
-    /// kind of gap as [`ClipInstance::gain_db`]/[`ClipInstance::frozen`], just earlier: speed
-    /// needs the timeline to support a block whose on-screen length differs from
-    /// `source_out_secs - source_in_secs`, which nothing here does yet. `#[serde(default = ..)]`
-    /// so older saved projects load at normal speed.
+    /// per `request.md`'s Fase 4 "Velocidade" spec. `1.0` is normal speed. Already factored into
+    /// [`ClipInstance::duration_secs`] (the trimmed source range divided by speed, so the
+    /// timeline block's own length reflects the sped-up/slowed-down result), shown as a badge
+    /// on the timeline block (`ui`'s timeline panel), and wired into export: resolved to
+    /// `avbridge::ClipSegment::speed_factor`, applied as `setpts=PTS/<speed>` on video and
+    /// `atempo` on audio (`timeline_export.c`/`timeline_export_multi.c`). No live preview effect
+    /// yet. `#[serde(default = ..)]` so older saved projects load at normal speed.
     #[serde(default = "default_speed_factor")]
     pub speed_factor: f32,
     /// Normalized crop rectangle within the source frame — `(crop_x, crop_y)` is the visible
     /// sub-rectangle's top-left corner, `(crop_w, crop_h)` its size, all fractions of the full
     /// frame (`0.0..=1.0`). Defaults to `(0.0, 0.0, 1.0, 1.0)` — the whole frame, uncropped —
     /// per `request.md`'s Fase 4 "Recorte (crop)" spec: reframing separate from the time-based
-    /// split already covered in Fase 3. Currently only shown as a badge on the timeline block
-    /// (`ui`'s timeline panel, via [`ClipInstance::is_cropped`]); doesn't yet affect preview
-    /// playback or export — the same kind of gap as [`ClipInstance::gain_db`]. Independently
+    /// split already covered in Fase 3. Shown as a badge on the timeline block (`ui`'s timeline
+    /// panel, via [`ClipInstance::is_cropped`]) and wired into export ([`ClipInstance::
+    /// video_filter_chain`]'s `crop=...` stage); no live preview effect yet. Independently
     /// clamped to `[0.0, 1.0]` when set (`ui`'s `App::set_selected_clip_crop`); a crop rect
-    /// extending past the frame edge (`crop_x + crop_w > 1.0`) isn't rejected — a known
-    /// simplification with no visible effect yet since nothing renders the crop.
-    /// `#[serde(default = ..)]` so older saved projects load uncropped.
+    /// extending past the frame edge (`crop_x + crop_w > 1.0`) isn't rejected here — a known
+    /// simplification, not verified against how `ffmpeg`'s own `crop` filter behaves on an
+    /// out-of-bounds rectangle at render time. `#[serde(default = ..)]` so older saved projects
+    /// load uncropped.
     #[serde(default)]
     pub crop_x: f32,
     #[serde(default)]
@@ -296,8 +299,12 @@ pub struct ClipInstance {
     #[serde(default = "default_crop_extent")]
     pub crop_h: f32,
     /// Layer mask shape ([`MaskShape::None`] by default — unmasked). Independent of the
-    /// rectangular crop above; a block can be both cropped and masked. `#[serde(default)]` so
-    /// older saved projects load unmasked.
+    /// rectangular crop above; a block can be both cropped and masked. Wired into export
+    /// ([`ClipInstance::video_filter_chain`]'s `geq`-based alpha stage) but, like
+    /// [`ClipInstance::chroma_key_enabled`], only has a visible effect on a clip placed on an
+    /// **overlay track** — a single/background track's final `format=yuv420p` conform drops
+    /// the alpha plane it produces. No live preview effect yet. `#[serde(default)]` so older
+    /// saved projects load unmasked.
     #[serde(default)]
     pub mask_shape: MaskShape,
     /// Corner radius for [`MaskShape::RoundedRect`], as a fraction (`0.0..=1.0`) of the block's
@@ -306,54 +313,56 @@ pub struct ClipInstance {
     #[serde(default)]
     pub mask_corner_radius: f32,
     /// `true` if this block's frame is mirrored horizontally, per `request.md`'s Fase 4
-    /// "Efeitos visuais" spec ("Espelhar (flip horizontal)"). Currently only shown as a badge
-    /// on the timeline block (`ui`'s timeline panel); doesn't yet affect preview playback or
-    /// export — the same kind of gap as [`ClipInstance::gain_db`]. `#[serde(default)]` so
-    /// older saved projects load unflipped.
+    /// "Efeitos visuais" spec ("Espelhar (flip horizontal)"). Shown as a badge on the timeline
+    /// block (`ui`'s timeline panel) and wired into export ([`ClipInstance::video_filter_chain`]'s
+    /// `hflip` stage); no live preview effect yet. `#[serde(default)]` so older saved projects
+    /// load unflipped.
     #[serde(default)]
     pub flipped_h: bool,
-    /// Color filter applied to this block ([`ColorFilter::None`] by default). Currently only
-    /// shown as a tinted timeline-block fill (`ui`'s timeline panel); doesn't yet affect
-    /// preview playback or export — the same kind of gap as [`ClipInstance::gain_db`].
-    /// `#[serde(default)]` so older saved projects load unfiltered.
+    /// Color filter applied to this block ([`ColorFilter::None`] by default). Shown as a
+    /// tinted timeline-block fill (`ui`'s timeline panel) and wired into export
+    /// ([`ClipInstance::video_filter_chain`]'s `hue=s=0`/`colorchannelmixer` stage); no live
+    /// preview effect yet. `#[serde(default)]` so older saved projects load unfiltered.
     #[serde(default)]
     pub color_filter: ColorFilter,
     /// Vignette strength for this block, `0.0..=1.0` (`0.0` is off) — per `request.md`'s Fase 4
-    /// "Efeitos visuais" spec ("Vinheta"). Currently only shown as a darkened border stroke
-    /// around the timeline block, scaled by intensity (`ui`'s timeline panel); doesn't yet
-    /// affect preview playback or export — the same kind of gap as [`ClipInstance::gain_db`].
+    /// "Efeitos visuais" spec ("Vinheta"). Shown as a darkened border stroke around the timeline
+    /// block, scaled by intensity (`ui`'s timeline panel), and wired into export
+    /// ([`ClipInstance::video_filter_chain`]'s `vignette` stage); no live preview effect yet.
     /// `#[serde(default)]` so older saved projects load with no vignette.
     #[serde(default)]
     pub vignette_intensity: f32,
     /// Brightness adjustment for this block, `-1.0..=1.0` (`0.0` is unchanged) — per
-    /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Brilho, contraste e saturação").
-    /// Currently has no visible effect anywhere (`ui`'s properties panel just exposes the
-    /// slider); doesn't yet affect preview playback or export — the same kind of gap as
-    /// [`ClipInstance::gain_db`]. `#[serde(default)]` so older saved projects load unchanged.
+    /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Brilho, contraste e saturação"). Wired
+    /// into export ([`ClipInstance::video_filter_chain`]'s `eq=brightness=...` stage, combined
+    /// with [`ClipInstance::contrast`]/[`ClipInstance::saturation`] into one `eq` filter); no
+    /// live preview effect yet. `#[serde(default)]` so older saved projects load unchanged.
     #[serde(default)]
     pub brightness: f32,
-    /// Contrast multiplier for this block, `0.0..=2.0` (`1.0` is unchanged) — same spec and gap
-    /// as [`ClipInstance::brightness`]. `#[serde(default = ..)]` so older saved projects load
-    /// unchanged.
+    /// Contrast multiplier for this block, `0.0..=2.0` (`1.0` is unchanged) — same spec and
+    /// export wiring as [`ClipInstance::brightness`]. `#[serde(default = ..)]` so older saved
+    /// projects load unchanged.
     #[serde(default = "default_unity_multiplier")]
     pub contrast: f32,
     /// Saturation multiplier for this block, `0.0..=2.0` (`1.0` is unchanged, `0.0` is
-    /// grayscale) — same spec and gap as [`ClipInstance::brightness`]. `#[serde(default = ..)]`
-    /// so older saved projects load unchanged.
+    /// grayscale) — same spec and export wiring as [`ClipInstance::brightness`].
+    /// `#[serde(default = ..)]` so older saved projects load unchanged.
     #[serde(default = "default_unity_multiplier")]
     pub saturation: f32,
     /// Sharpen strength for this block, `0.0..=1.0` (`0.0` is off) — per `request.md`'s Fase 4
-    /// "Efeitos visuais" spec ("Nitidez (sharpen)"). Currently has no visible effect anywhere
-    /// (`ui`'s properties panel just exposes the slider); doesn't yet affect preview playback or
-    /// export — the same kind of gap as [`ClipInstance::gain_db`]. `#[serde(default)]` so older
-    /// saved projects load unsharpened.
+    /// "Efeitos visuais" spec ("Nitidez (sharpen)"). Wired into export
+    /// ([`ClipInstance::video_filter_chain`]'s `unsharp` stage); no live preview effect yet.
+    /// `#[serde(default)]` so older saved projects load unsharpened.
     #[serde(default)]
     pub sharpen: f32,
     /// `true` if chroma key (green-screen removal) is enabled for this block, per
-    /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Chroma key"). Currently has no visible
-    /// effect anywhere (`ui`'s properties panel just exposes the toggle/color/tolerance
-    /// controls); doesn't yet affect preview playback or export — the same kind of gap as
-    /// [`ClipInstance::gain_db`]. `#[serde(default)]` so older saved projects load disabled.
+    /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Chroma key"). Wired into export
+    /// ([`ClipInstance::video_filter_chain`]'s `colorkey` stage) but only has a visible effect
+    /// on a clip placed on an **overlay track** — a single/background track's final
+    /// `format=yuv420p` conform drops the alpha plane this produces (same caveat
+    /// [`ClipInstance::mask_shape`] carries above; see CLAUDE.md's "Alpha/overlay-track
+    /// caveat"). No live preview effect yet. `#[serde(default)]` so older saved projects load
+    /// disabled.
     #[serde(default)]
     pub chroma_key_enabled: bool,
     /// The key color to remove, as `[r, g, b]` (`0..=255` each) — meaningless while
@@ -368,26 +377,29 @@ pub struct ClipInstance {
     #[serde(default = "default_chroma_key_tolerance")]
     pub chroma_key_tolerance: f32,
     /// Blur strength for this block, `0.0..=1.0` (`0.0` is off) — per `request.md`'s Fase 4
-    /// "Efeitos visuais" spec ("Blur"). Currently has no visible effect anywhere (`ui`'s
-    /// properties panel just exposes the slider); doesn't yet affect preview playback or export
-    /// — the same kind of gap as [`ClipInstance::gain_db`]. `#[serde(default)]` so older saved
-    /// projects load unblurred.
+    /// "Efeitos visuais" spec ("Blur"). Wired into export ([`ClipInstance::video_filter_chain`]'s
+    /// `boxblur` stage); no live preview effect yet. `#[serde(default)]` so older saved projects
+    /// load unblurred.
     #[serde(default)]
     pub blur_intensity: f32,
     /// Camera-shake strength for this block, `0.0..=1.0` (`0.0` is off) — per `request.md`'s
     /// Fase 4 "Efeitos visuais" spec ("Shake"), the deliberate counterpart of the eventual video
-    /// stabilization feature. Same gap as [`ClipInstance::blur_intensity`]. `#[serde(default)]`
+    /// stabilization feature. Wired into export and preview (unlike most of this struct's other
+    /// effect fields) — see [`ClipInstance::video_filter_chain`]'s `crop`+`scale` oscillation
+    /// stage for export and `build_video_filter_bin` for the preview element. `#[serde(default)]`
     /// so older saved projects load unshaken.
     #[serde(default)]
     pub shake_intensity: f32,
     /// Glitch strength for this block, `0.0..=1.0` (`0.0` is off) — per `request.md`'s Fase 4
-    /// "Efeitos visuais" spec ("Glitch"). Same gap as [`ClipInstance::blur_intensity`].
+    /// "Efeitos visuais" spec ("Glitch"). Wired into export ([`ClipInstance::video_filter_chain`]'s
+    /// `noise` stage); no live preview effect yet, unlike [`ClipInstance::shake_intensity`].
     /// `#[serde(default)]` so older saved projects load unglitched.
     #[serde(default)]
     pub glitch_intensity: f32,
     /// Pixelize/mosaic-censor strength for this block, `0.0..=1.0` (`0.0` is off) — per
-    /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Pixelizar/censura (mosaico)"). Same gap as
-    /// [`ClipInstance::blur_intensity`]. `#[serde(default)]` so older saved projects load
+    /// `request.md`'s Fase 4 "Efeitos visuais" spec ("Pixelizar/censura (mosaico)"). Wired into
+    /// both export ([`ClipInstance::video_filter_chain`]'s scale-down/scale-up stage) and
+    /// preview (`build_video_filter_bin`). `#[serde(default)]` so older saved projects load
     /// unpixelized.
     #[serde(default)]
     pub pixelize_intensity: f32,
@@ -396,10 +408,11 @@ pub struct ClipInstance {
     /// only the transition entering this clip, not a real cross-blend between two adjacent
     /// clips — that would need a relationship between this clip and the one before it, not a
     /// field on a single `ClipInstance`. A deliberately smaller first cut, same shape as the
-    /// rest of this struct's effect fields. Currently has no visible effect anywhere (`ui`'s
-    /// properties panel just exposes the picker); doesn't yet affect preview playback or export
-    /// — the same kind of gap as [`ClipInstance::gain_db`]. `#[serde(default)]` so older saved
-    /// projects load with no transition.
+    /// rest of this struct's effect fields. Wired into export — resolved to `avbridge::
+    /// ClipSegment::transition_in`, rendered as a fade/slide/zoom applied over
+    /// [`ClipInstance::transition_duration_secs`] at the start of the clip's own filter chain
+    /// (`timeline_export.c`/`timeline_export_multi.c`); no live preview effect yet.
+    /// `#[serde(default)]` so older saved projects load with no transition.
     #[serde(default)]
     pub transition_in: TransitionType,
     /// Duration in seconds of [`ClipInstance::transition_in`], meaningless while it's
@@ -419,22 +432,28 @@ pub struct ClipInstance {
     /// General keyframe animation for this block's scale, per `features/request.md`'s Fase 4
     /// "Keyframes" spec — supersedes the old two-endpoint `zoom_start`/`zoom_end` Ken-Burns
     /// fields (a 2-keyframe list reproduces that same behavior as a degenerate case). Empty =
-    /// no scaling (`1.0`). Wired into export (`crate::keyframe::scale_filter_expr`); not yet
-    /// wired into live preview. `#[serde(default)]` so older saved projects load unscaled — a
-    /// project that had real `zoom_start`/`zoom_end` values loses that animation on load, since
-    /// this field replaces rather than migrates it (no back-compat promised for this format).
+    /// no scaling (`1.0`). Wired into export (`crate::keyframe::scale_filter_expr`) and into
+    /// live preview (`core::preview::build_video_filter_bin`'s `videocrop`+`videoscale`+
+    /// `capsfilter` chain, re-evaluated per buffer off its own PTS). `#[serde(default)]` so
+    /// older saved projects load unscaled — a project that had real `zoom_start`/`zoom_end`
+    /// values loses that animation on load, since this field replaces rather than migrates it
+    /// (no back-compat promised for this format).
     #[serde(default)]
     pub scale_keyframes: Vec<Keyframe<f32>>,
     /// General keyframe animation for this block's rotation, in degrees, per
     /// `features/request.md`'s Fase 4 "Keyframes" spec. Empty = no rotation (`0.0`). Wired into
-    /// export (`crate::keyframe::rotation_filter_angle_expr`); not yet wired into live preview.
-    /// `#[serde(default)]` so older saved projects load unrotated.
+    /// export (`crate::keyframe::rotation_filter_angle_expr`) and into live preview
+    /// (`core::preview::build_video_filter_bin`'s `rotate` element, its `angle` property
+    /// re-evaluated per buffer). `#[serde(default)]` so older saved projects load unrotated.
     #[serde(default)]
     pub rotation_keyframes: Vec<Keyframe<f32>>,
     /// General keyframe animation for this block's opacity, `0.0..=1.0`, per
     /// `features/request.md`'s Fase 4 "Keyframes" spec. Empty = fully opaque (`1.0`). Wired into
     /// export (`crate::keyframe::opacity_alpha_ramp_expr`) — only has a visible effect on an
-    /// overlay-track clip, same caveat as position above. Not yet wired into live preview.
+    /// overlay-track clip at export time, same caveat as position above — and into live preview
+    /// too (`core::preview::build_video_filter_bin`'s `alpha` element), where it's visible on
+    /// any clip regardless of track, since the preview's fixed RGBA output already supports
+    /// alpha blending directly rather than needing export's overlay-compositing stage.
     /// `#[serde(default)]` so older saved projects load fully opaque.
     #[serde(default)]
     pub opacity_keyframes: Vec<Keyframe<f32>>,
@@ -496,18 +515,19 @@ pub struct ClipInstance {
     /// is generated per-clip (tied to this instance's own `source_in_secs`/`source_out_secs`
     /// range, see `crate::background_removal`), so this field is deliberately excluded from
     /// [`ClipFormatting`] — pasting it onto a different block would point that block at another
-    /// clip's matte video. **Not yet wired into `video_filter_chain`/preview**: computing the
-    /// matte (`crate::background_removal::segment_person`, confirmed working end-to-end) and
-    /// muxing it into a real alpha channel via `alphamerge` are two separate pipeline stages,
-    /// and only the first exists yet — same "field is real, export wiring is a later commit" gap
-    /// `gain_db`/`blur_intensity` shipped with before they were wired up. `#[serde(default)]` so
-    /// older saved projects load with it off.
+    /// clip's matte video. Wired into export (`crate::render::resolve_timeline_segments_multi`
+    /// -> `avbridge::ClipSegment::mask_video_path` -> an `alphamerge` stage in
+    /// `timeline_export_multi.c`), gated the same way `mask_shape`/`chroma_key`'s own alpha is:
+    /// **only takes effect on an overlay track** (track 1+ in a multi-track export) — a
+    /// single/background track's clips never composite, so their alpha (from this or any other
+    /// source) is always discarded by the final `format=yuv420p` conform regardless. Not yet
+    /// wired into preview. `#[serde(default)]` so older saved projects load with it off.
     #[serde(default)]
     pub background_removal_enabled: bool,
-    /// Path to the grayscale alpha-matte video [`ui`'s "Remover fundo (IA)" flow generates for
-    /// this clip — meaningless while [`ClipInstance::background_removal_enabled`] is `false`.
-    /// Empty string = not yet generated. `#[serde(default)]` so older saved projects load with
-    /// no matte.
+    /// Path to the grayscale-as-luma alpha-matte video `ui`'s "Gerar máscara" flow generates for
+    /// this clip (`App::spawn_generate_matte_for_selected_clip`) — meaningless while
+    /// [`ClipInstance::background_removal_enabled`] is `false`. Empty string = not yet
+    /// generated. `#[serde(default)]` so older saved projects load with no matte.
     #[serde(default)]
     pub background_removal_mask_path: String,
 }
@@ -1173,8 +1193,9 @@ impl Track {
     }
 
     /// The position, in seconds, where this track's last clip ends. `0.0` for an empty track —
-    /// the natural "append here" position for a clip added to this track. Accounts for both
-    /// [`ClipInstance`]s and [`TextClip`]s so text tracks report their own length correctly.
+    /// the natural "append here" position for a clip added to this track. Accounts for
+    /// [`ClipInstance`]s, [`TextClip`]s, and [`ShapeClip`]s so every track kind reports its own
+    /// length correctly.
     pub fn duration_secs(&self) -> f64 {
         let clips_end = self
             .clips
@@ -1186,7 +1207,12 @@ impl Track {
             .iter()
             .map(|t| t.start_secs + t.duration_secs)
             .fold(0.0, f64::max);
-        clips_end.max(text_end)
+        let shape_end = self
+            .shape_clips
+            .iter()
+            .map(|s| s.start_secs + s.duration_secs)
+            .fold(0.0, f64::max);
+        clips_end.max(text_end).max(shape_end)
     }
 }
 

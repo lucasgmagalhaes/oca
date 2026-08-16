@@ -67,6 +67,11 @@ macro_rules! text_catalog {
 text_catalog! {
     AppName: pt_br = "oca", en = "oca";
 
+    WindowMinimize: pt_br = "Minimizar", en = "Minimize";
+    WindowMaximize: pt_br = "Maximizar", en = "Maximize";
+    WindowRestore: pt_br = "Restaurar", en = "Restore";
+    WindowClose: pt_br = "Fechar", en = "Close";
+
     NavHome: pt_br = "Início", en = "Home";
     NavEditor: pt_br = "Editor", en = "Editor";
     NavLibrary: pt_br = "Mídia", en = "Media";
@@ -83,6 +88,8 @@ text_catalog! {
 
     HomeTitle: pt_br = "Projetos recentes", en = "Recent projects";
     HomeSubtitle: pt_br = "Continue de onde parou ou comece um projeto novo.", en = "Continue where you left off or start a new project.";
+    UpdateAvailable: pt_br = "Nova versão disponível:", en = "New version available:";
+    UpdateAvailableLink: pt_br = "Ver no GitHub →", en = "View on GitHub →";
     NewProject: pt_br = "＋ Novo projeto", en = "＋ New project";
     OpenProject: pt_br = "Abrir projeto…", en = "Open project…";
     UntitledProject: pt_br = "Projeto sem título", en = "Untitled project";
@@ -96,6 +103,9 @@ text_catalog! {
     ToolCut: pt_br = "Cortar / Split", en = "Cut / Split";
     ToolTrim: pt_br = "Aparar", en = "Trim";
     Export: pt_br = "⭳ Exportar", en = "⭳ Export";
+    ExportSrt: pt_br = "Exportar .srt", en = "Export .srt";
+    ExportSrtHint: pt_br = "Salva as legendas da timeline como um arquivo .srt separado.", en = "Saves the timeline's subtitles as a separate .srt file.";
+    ExportSrtEmpty: pt_br = "Nenhuma legenda na timeline para exportar.", en = "No subtitles on the timeline to export.";
     MediaLibrary: pt_br = "Biblioteca de mídia", en = "Media library";
     SelectedClip: pt_br = "Clipe selecionado", en = "Selected clip";
     NoClipSelected: pt_br = "Nenhum clipe selecionado", en = "No clip selected";
@@ -108,29 +118,29 @@ text_catalog! {
     ProxyPresent: pt_br = "540p pronto", en = "540p ready";
     ProxyAbsent: pt_br = "usando original", en = "using original";
     PropGain: pt_br = "Ganho do bloco", en = "Block gain";
-    GainExportNote: pt_br = "afeta só a waveform por enquanto — export ainda não mixa a timeline.", en = "affects only the waveform for now — export doesn't mix the timeline yet.";
+    GainExportNote: pt_br = "aplicado na exportação (filtro volume) — sem efeito no preview ao vivo.", en = "applied on export (volume filter) — no live preview effect.";
     PropFreeze: pt_br = "❄ Congelar quadro", en = "❄ Freeze frame";
-    FreezeExportNote: pt_br = "afeta só a timeline por enquanto — preview e export ainda tocam a fonte normalmente.", en = "affects only the timeline for now — preview and export still play the source normally.";
+    FreezeExportNote: pt_br = "aplicado na exportação — sem efeito no preview ao vivo.", en = "applied on export — no live preview effect.";
     PropDeflicker: pt_br = "✨ Remover flicker", en = "✨ Remove flicker";
     DeflickerExportNote: pt_br = "aplicado no export — preview ainda não mostra.", en = "applied on export — preview doesn't show it yet.";
     PropSpeed: pt_br = "Velocidade", en = "Speed";
-    SpeedExportNote: pt_br = "mostra só um selo no bloco por enquanto — ainda não reamostra áudio nem muda a duração na timeline.", en = "only shows a badge on the block for now — doesn't resample audio or change the timeline duration yet.";
+    SpeedExportNote: pt_br = "aplicado na exportação (vídeo e áudio) — sem efeito no preview ao vivo.", en = "applied on export (video and audio) — no live preview effect.";
     PropCrop: pt_br = "Recorte (x, y, largura, altura)", en = "Crop (x, y, width, height)";
     CropReset: pt_br = "Redefinir recorte", en = "Reset crop";
-    CropExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda mostram o quadro inteiro.", en = "only shows a badge on the block for now — preview and export still show the full frame.";
+    CropExportNote: pt_br = "aplicado na exportação — sem efeito no preview ao vivo.", en = "applied on export — no live preview effect.";
     PropMask: pt_br = "Máscara", en = "Mask";
     MaskNone: pt_br = "Nenhuma", en = "None";
     MaskCircle: pt_br = "Círculo", en = "Circle";
     MaskRoundedRect: pt_br = "Retângulo arredondado", en = "Rounded rectangle";
     MaskCornerRadius: pt_br = "Raio do canto", en = "Corner radius";
-    MaskExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda mostram o quadro inteiro.", en = "only shows a badge on the block for now — preview and export still show the full frame.";
+    MaskExportNote: pt_br = "aplicado na exportação, mas só tem efeito em blocos de faixas de overlay — sem efeito no preview ao vivo.", en = "applied on export, but only has an effect on overlay-track blocks — no live preview effect.";
     PropFlip: pt_br = "⇄ Espelhar horizontal", en = "⇄ Flip horizontal";
-    FlipExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda mostram o quadro sem espelhar.", en = "only shows a badge on the block for now — preview and export still show the frame unmirrored.";
+    FlipExportNote: pt_br = "aplicado na exportação — sem efeito no preview ao vivo.", en = "applied on export — no live preview effect.";
     PropColorFilter: pt_br = "Filtro de cor", en = "Color filter";
     ColorFilterNone: pt_br = "Nenhum", en = "None";
     ColorFilterBlackAndWhite: pt_br = "Preto e branco", en = "Black and white";
     ColorFilterSepia: pt_br = "Sépia", en = "Sepia";
-    ColorFilterExportNote: pt_br = "mostra só uma prévia tintada no bloco por enquanto — preview e export ainda mostram as cores originais.", en = "only shows a tinted preview on the block for now — preview and export still show the original colors.";
+    ColorFilterExportNote: pt_br = "aplicado na exportação — sem efeito no preview ao vivo.", en = "applied on export — no live preview effect.";
     PropLut: pt_br = "LUT 3D", en = "3D LUT";
     LutExportNote: pt_br = "aplicado na exportação via lut3d — sem suporte no preview ao vivo (nenhum elemento de LUT disponível na instalação do GStreamer).", en = "applied on export via lut3d — no live preview support (no LUT element available in the GStreamer install).";
     ClearLut: pt_br = "Remover", en = "Clear";
@@ -139,20 +149,23 @@ text_catalog! {
     PropLayerWidth: pt_br = "Largura", en = "Width";
     PropLayerHeight: pt_br = "Altura", en = "Height";
     PropVignette: pt_br = "Vinheta", en = "Vignette";
-    VignetteExportNote: pt_br = "mostra só uma borda escurecida no bloco por enquanto — preview e export ainda não aplicam a vinheta.", en = "only shows a darkened border on the block for now — preview and export don't apply the vignette yet.";
+    VignetteExportNote: pt_br = "aplicado na exportação — sem efeito no preview ao vivo.", en = "applied on export — no live preview effect.";
     PropColorAdjust: pt_br = "Cor", en = "Color";
     PropBrightness: pt_br = "Brilho", en = "Brightness";
     PropContrast: pt_br = "Contraste", en = "Contrast";
     PropSaturation: pt_br = "Saturação", en = "Saturation";
-    ColorAdjustExportNote: pt_br = "ainda não tem efeito visível em lugar nenhum — preview e export ignoram esses valores por enquanto.", en = "has no visible effect anywhere yet — preview and export ignore these values for now.";
+    ColorAdjustExportNote: pt_br = "aplicado na exportação (filtro eq) — sem efeito no preview ao vivo.", en = "applied on export (eq filter) — no live preview effect.";
     PropSharpen: pt_br = "Nitidez", en = "Sharpen";
-    SharpenExportNote: pt_br = "ainda não tem efeito visível em lugar nenhum — preview e export ignoram esse valor por enquanto.", en = "has no visible effect anywhere yet — preview and export ignore this value for now.";
+    SharpenExportNote: pt_br = "aplicado na exportação — sem efeito no preview ao vivo.", en = "applied on export — no live preview effect.";
     PropChromaKey: pt_br = "🟩 Chroma key", en = "🟩 Chroma key";
     ChromaKeyColor: pt_br = "Cor:", en = "Color:";
     ChromaKeyTolerance: pt_br = "Tolerância", en = "Tolerance";
-    ChromaKeyExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda não removem o fundo.", en = "only shows a badge on the block for now — preview and export don't remove the background yet.";
+    ChromaKeyExportNote: pt_br = "aplicado na exportação, mas só tem efeito em blocos de faixas de overlay — sem efeito no preview ao vivo.", en = "applied on export, but only has an effect on overlay-track blocks — no live preview effect.";
     PropBackgroundRemoval: pt_br = "🤖 Remoção de fundo (IA)", en = "🤖 Background removal (AI)";
-    BackgroundRemovalExportNote: pt_br = "detecção por IA já roda de verdade (MODNet via ONNX), mas ainda não gera a máscara nem afeta preview ou exportação — só marca o bloco por enquanto.", en = "the AI detection itself already runs for real (MODNet via ONNX), but doesn't generate the matte or affect preview/export yet — only marks the block for now.";
+    BackgroundRemovalExportNote: pt_br = "afeta a exportação só em blocos de faixas de overlay (não na faixa de fundo) — clique em \"Gerar máscara\" antes de exportar.", en = "only affects export on overlay-track blocks (not the background track) — click \"Generate matte\" before exporting.";
+    BackgroundRemovalGenerateMatte: pt_br = "Gerar máscara", en = "Generate matte";
+    BackgroundRemovalGenerating: pt_br = "Gerando máscara...", en = "Generating matte...";
+    BackgroundRemovalNoModelConfigured: pt_br = "Nenhum modelo de remoção de fundo configurado — baixe um em Ajustes primeiro.", en = "No background removal model configured — download one in Preferences first.";
     DownloadBackgroundRemovalModel: pt_br = "Baixar modelo de remoção de fundo", en = "Download background removal model";
     PrefsBackgroundRemovalModelPath: pt_br = "Caminho do modelo de remoção de fundo", en = "Background removal model path";
     TtsButton: pt_br = "🔊 Texto-pra-fala", en = "🔊 Text-to-speech";
@@ -168,7 +181,7 @@ text_catalog! {
     PropShake: pt_br = "Tremido", en = "Shake";
     PropGlitch: pt_br = "Glitch", en = "Glitch";
     PropPixelize: pt_br = "Pixelizar", en = "Pixelize";
-    OtherEffectsExportNote: pt_br = "ainda não têm efeito visível em lugar nenhum — preview e export ignoram esses valores por enquanto.", en = "have no visible effect anywhere yet — preview and export ignore these values for now.";
+    OtherEffectsExportNote: pt_br = "aplicado na exportação — tremido e pixelizar também têm efeito no preview ao vivo; blur e glitch, não.", en = "applied on export — shake and pixelize also affect the live preview; blur and glitch don't.";
     PropStabilization: pt_br = "🎥 Estabilização", en = "🎥 Stabilization";
     StabilizationExportNote: pt_br = "aplicado na exportação via deshake — sem suporte no preview ao vivo (nenhum elemento de estabilização disponível na instalação do GStreamer).", en = "applied on export via deshake — no live preview support (no stabilization element available in the GStreamer install).";
     PropTransition: pt_br = "Transição", en = "Transition";
@@ -178,7 +191,7 @@ text_catalog! {
     TransitionSlide: pt_br = "Slide", en = "Slide";
     TransitionZoom: pt_br = "Zoom", en = "Zoom";
     PropTransitionDuration: pt_br = "Duração da transição", en = "Transition duration";
-    TransitionExportNote: pt_br = "só afeta o painel de propriedades por enquanto, sem efeito no preview ou na exportação — e modela só a transição de entrada deste bloco, não uma mistura real entre dois clipes.", en = "only affects the properties panel for now, with no effect on preview or export — and models only this block's incoming transition, not a real cross-blend between two clips.";
+    TransitionExportNote: pt_br = "aplicado na exportação — sem efeito no preview ao vivo. Modela só a transição de entrada deste bloco, não uma mistura real entre dois clipes.", en = "applied on export — no live preview effect. Models only this block's incoming transition, not a real cross-blend between two clips.";
     PropPositionKeyframes: pt_br = "Posição (keyframes)", en = "Position (keyframes)";
     PropScaleKeyframes: pt_br = "Escala (keyframes / punch-in)", en = "Scale (keyframes / punch-in)";
     PropRotationKeyframes: pt_br = "Rotação (keyframes)", en = "Rotation (keyframes)";
@@ -197,7 +210,7 @@ text_catalog! {
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";
-    ExportAutoNote: pt_br = "loudnorm 2-pass + true peak limiter, aplicado automático no export — sem ajuste manual por clipe.", en = "loudnorm 2-pass + true peak limiter, applied automatically on export — no per-clip manual adjustment.";
+    ExportAutoNote: pt_br = "redução de ruído + loudnorm 2-pass + true peak limiter, aplicado automático no export — sem ajuste manual por clipe.", en = "noise reduction + loudnorm 2-pass + true peak limiter, applied automatically on export — no per-clip manual adjustment.";
     Timeline: pt_br = "🔍 Timeline", en = "🔍 Timeline";
     TimelineEmpty: pt_br = "Este projeto ainda não tem clipes na timeline.", en = "This project doesn't have any clips on the timeline yet.";
     ContextMenuSplit: pt_br = "✂ Dividir no playhead", en = "✂ Split at playhead";
@@ -252,6 +265,12 @@ text_catalog! {
     MotionTrackAction: pt_br = "Rastrear movimento", en = "Track motion";
     MotionTrackInProgress: pt_br = "Rastreando...", en = "Tracking...";
     MotionTrackNoFramesDecoded: pt_br = "Não foi possível decodificar quadros suficientes para rastrear.", en = "Couldn't decode enough frames to track.";
+    PropMotionTrackRegion: pt_br = "Região a rastrear", en = "Region to track";
+    PropMotionTrackRegionHint: pt_br = "centro X/Y e tamanho, como fração do quadro de origem", en = "center X/Y and size, as a fraction of the source frame";
+    PropMotionTrackWidth: pt_br = "Largura", en = "Width";
+    PropMotionTrackHeight: pt_br = "Altura", en = "Height";
+    PropMotionTrackSearchRadius: pt_br = "Raio de busca", en = "Search radius";
+    MotionTrackRegionReset: pt_br = "Centralizar região", en = "Center region";
 
     SoundLibraryTitle: pt_br = "Música e efeitos sonoros", en = "Music & sound effects";
     SoundLibraryRescan: pt_br = "⟳ Atualizar", en = "⟳ Rescan";
@@ -293,9 +312,14 @@ text_catalog! {
     GpuEncoderNvenc: pt_br = "NVIDIA (NVENC)", en = "NVIDIA (NVENC)";
     GpuEncoderQuickSync: pt_br = "Intel (Quick Sync)", en = "Intel (Quick Sync)";
     GpuEncoderAmf: pt_br = "AMD (AMF)", en = "AMD (AMF)";
+    PrefsPreviewQuality: pt_br = "Qualidade do preview", en = "Preview quality";
+    PreviewQualityLow: pt_br = "360p", en = "360p";
+    PreviewQualityMedium: pt_br = "480p", en = "480p";
+    PreviewQualityHigh: pt_br = "720p", en = "720p";
     Browse: pt_br = "Procurar", en = "Browse";
     PrefsProject: pt_br = "Projeto", en = "Project";
     PrefsAutosaveInterval: pt_br = "Intervalo de autosave", en = "Autosave interval";
+    PrefsTelemetryEnabled: pt_br = "Telemetria local ativada (uso/erros, nunca enviado)", en = "Local telemetry enabled (usage/errors, never sent)";
     PrefsShortcuts: pt_br = "Atalhos de teclado", en = "Keyboard shortcuts";
     TableAction: pt_br = "Ação", en = "Action";
     TableShortcut: pt_br = "Atalho", en = "Shortcut";
@@ -303,6 +327,7 @@ text_catalog! {
     ShortcutPlayPause: pt_br = "Play / Pause", en = "Play / Pause";
     ShortcutCopyFormatting: pt_br = "Copiar formatação", en = "Copy formatting";
     ShortcutPasteFormatting: pt_br = "Colar formatação", en = "Paste formatting";
+    ShortcutAddOpacityMarker: pt_br = "Adicionar marcador de opacidade", en = "Add opacity marker";
     BindingPressAnyKey: pt_br = "Pressione uma tecla...", en = "Press any key...";
     BindingChange: pt_br = "Alterar", en = "Change";
     ExportFileExistsTitle: pt_br = "Arquivo já existe", en = "File already exists";
@@ -338,6 +363,36 @@ text_catalog! {
     PropTextDuration: pt_br = "Duração (s)", en = "Duration (s)";
     PropTextStart: pt_br = "Início (s)", en = "Start (s)";
     TextExportNote: pt_br = "renderizado via drawtext no export — preview não suportado ainda.", en = "rendered via drawtext on export — preview not supported yet.";
+
+    AddShapeTrack: pt_br = "S+ Forma", en = "S+ Shape";
+    DefaultShapeTrackName: pt_br = "Forma", en = "Shape";
+    AddShapeClip: pt_br = "+ Adicionar forma", en = "+ Add shape";
+    DrawCustomShape: pt_br = "✎ Desenhar forma", en = "✎ Draw shape";
+    ShapeDrawHint: pt_br = "Clique no preview para adicionar pontos (mín. 3) · Enter conclui · Esc cancela", en = "Click the preview to add points (min. 3) · Enter finishes · Esc cancels";
+    ShapeDrawNeedsPreview: pt_br = "Carregue um clipe no preview antes de desenhar uma forma", en = "Load a clip in the preview before drawing a shape";
+    SelectedShapeClip: pt_br = "Forma geométrica", en = "Geometric shape";
+    NoShapeClipSelected: pt_br = "Nenhuma forma selecionada", en = "No shape selected";
+    PropShapeKind: pt_br = "Tipo", en = "Kind";
+    ShapePresetEllipse: pt_br = "Elipse/círculo", en = "Ellipse/circle";
+    ShapePresetRectangle: pt_br = "Retângulo/quadrado", en = "Rectangle/square";
+    ShapePresetTriangle: pt_br = "Triângulo", en = "Triangle";
+    ShapePresetTrapezoid: pt_br = "Trapézio", en = "Trapezoid";
+    ShapePresetArrow: pt_br = "Seta", en = "Arrow";
+    ShapePresetCustom: pt_br = "Personalizado", en = "Custom";
+    PropShapeColor: pt_br = "Cor", en = "Color";
+    PropShapePosX: pt_br = "Posição X", en = "Position X";
+    PropShapePosY: pt_br = "Posição Y", en = "Position Y";
+    PropShapeWidth: pt_br = "Largura", en = "Width";
+    PropShapeHeight: pt_br = "Altura", en = "Height";
+    PropShapeRotation: pt_br = "Rotação", en = "Rotation";
+    PropShapeStroke: pt_br = "Espessura do contorno (px)", en = "Outline thickness (px)";
+    PropShapeStrokeHint: pt_br = "0 = preenchido", en = "0 = filled";
+    PropShapeDuration: pt_br = "Duração (s)", en = "Duration (s)";
+    PropShapeStart: pt_br = "Início (s)", en = "Start (s)";
+    ShapeExportNote: pt_br = "renderizado via geq no export — preview não suportado ainda.", en = "rendered via geq on export — preview not supported yet.";
+    PropShapeVertices: pt_br = "Vértices", en = "Vertices";
+    ShapeVerticesHint: pt_br = "arraste os valores X/Y para desenhar uma forma personalizada — funciona em qualquer predefinição, já que todas são polígonos por baixo dos panos (exceto elipse/círculo).", en = "drag the X/Y values to draw a custom shape — works on any preset, since they're all polygons underneath (except ellipse/circle).";
+    ShapeAddVertex: pt_br = "+ Adicionar vértice", en = "+ Add vertex";
 }
 
 /// The breadcrumb's title for `screen` (e.g. `Screen::Queue` -> "Fila de exportação" — longer

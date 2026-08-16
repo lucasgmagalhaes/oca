@@ -157,9 +157,12 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
     let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
     let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
+    let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
     let (tts_tx, tts_rx) = mpsc::unbounded_channel();
     let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
     let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
+    let (telemetry_tx, _telemetry_rx) = mpsc::unbounded_channel();
+    let (update_check_tx, update_check_rx) = mpsc::unbounded_channel();
     App {
         screen: Screen::Home,
         tool: EditorTool::Select,
@@ -169,6 +172,8 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         selected_asset_id: None,
         export_jobs,
         prefs: PrefsState::default(),
+        telemetry_tx,
+        last_preview_frame_telemetry: None,
         render_tx,
         render_rx,
         active_renders: HashMap::new(),
@@ -195,6 +200,14 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         motion_tracking_tx,
         motion_tracking_rx,
         motion_tracking_clip_id: None,
+        motion_track_center_x: 0.5,
+        motion_track_center_y: 0.5,
+        motion_track_width: 0.2,
+        motion_track_height: 0.2,
+        motion_track_search_radius: 0.08,
+        matte_generation_tx,
+        matte_generation_rx,
+        matte_generating_clip_id: None,
         tts_tx,
         tts_rx,
         tts_modal_text: None,
@@ -206,6 +219,8 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         cancel_model_download: None,
         selected_clip_id: None,
         selected_text_clip_id: None,
+        selected_shape_clip_id: None,
+        drawing_shape_points: None,
         timeline_px_per_sec: 4.0,
         lib_panel_width: 220.0,
         props_panel_width: 240.0,
@@ -233,6 +248,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         applying_layer_template: None,
         layer_templates_menu_open: false,
         binding_capture: None,
+        update_check_tx,
+        update_check_rx,
+        available_update: None,
         pending_export_conflict: None,
     }
 }
@@ -521,7 +539,13 @@ fn pump_export_queue_marks_a_job_done_and_frees_its_render_slot() {
     );
     app.active_renders
         .insert(1, Arc::new(AtomicBool::new(false)));
-    app.render_tx.send(RenderEvent::Done { job_id: 1 }).unwrap();
+    app.render_tx
+        .send(RenderEvent::Done {
+            job_id: 1,
+            duration_ms: 1000,
+            output_duration_secs: 10.0,
+        })
+        .unwrap();
 
     app.pump_export_queue();
 
@@ -541,6 +565,8 @@ fn pump_export_queue_records_a_failure_message() {
         .send(RenderEvent::Failed {
             job_id: 1,
             message: "disk full".to_string(),
+            duration_ms: 500,
+            output_duration_secs: 10.0,
         })
         .unwrap();
 
@@ -1468,6 +1494,127 @@ fn set_selected_clip_crop_is_a_no_op_when_nothing_is_selected() {
 }
 
 #[test]
+fn spawn_motion_track_selected_clip_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = None;
+
+    app.spawn_motion_track_selected_clip();
+
+    // No background job started — the busy flag stays clear rather than getting stuck "in
+    // progress" forever with nothing to ever complete it.
+    assert_eq!(app.motion_tracking_clip_id, None);
+}
+
+#[test]
+fn spawn_motion_track_selected_clip_is_a_no_op_while_a_run_is_already_in_flight() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.motion_tracking_clip_id = Some(99);
+
+    app.spawn_motion_track_selected_clip();
+
+    // Stays pinned to the already-running clip's id, not overwritten by this second call.
+    assert_eq!(app.motion_tracking_clip_id, Some(99));
+}
+
+#[test]
+fn motion_track_region_defaults_to_a_centered_region() {
+    let app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    assert_eq!(app.motion_track_center_x, 0.5);
+    assert_eq!(app.motion_track_center_y, 0.5);
+}
+
+#[test]
+fn spawn_generate_matte_for_selected_clip_is_a_no_op_when_no_model_is_configured() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    assert!(app.prefs.background_removal_model_path.trim().is_empty());
+
+    app.spawn_generate_matte_for_selected_clip();
+
+    // No background job started, and the user is told why.
+    assert_eq!(app.matte_generating_clip_id, None);
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn spawn_generate_matte_for_selected_clip_is_a_no_op_while_a_run_is_already_in_flight() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.prefs.background_removal_model_path = "/models/modnet.onnx".to_string();
+    app.selected_clip_id = Some(1);
+    app.matte_generating_clip_id = Some(99);
+
+    app.spawn_generate_matte_for_selected_clip();
+
+    // Stays pinned to the already-running clip's id, not overwritten by this second call.
+    assert_eq!(app.matte_generating_clip_id, Some(99));
+}
+
+#[test]
+fn set_selected_clip_background_removal_mask_path_updates_the_selected_clip() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_background_removal_mask_path("/cache/clip_1_matte.mp4".to_string());
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].background_removal_mask_path,
+        "/cache/clip_1_matte.mp4"
+    );
+}
+
+#[test]
 fn set_selected_clip_mask_updates_the_selected_clip() {
     let mut app = test_app(
         vec![test_project_with_tracks(
@@ -2016,6 +2163,114 @@ fn set_selected_clip_scale_keyframes_is_a_no_op_when_nothing_is_selected() {
 
     let clips = &app.active_project().timeline().tracks[0].clips;
     assert!(clips[0].scale_keyframes.is_empty());
+}
+
+#[test]
+fn add_opacity_marker_at_playhead_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.active_project_mut().timeline_mut().playhead_secs = 4.0;
+
+    app.add_opacity_marker_at_playhead();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert!(clips[0].opacity_keyframes.is_empty());
+}
+
+#[test]
+fn add_opacity_marker_at_playhead_is_a_no_op_outside_the_clips_own_span() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.active_project_mut().timeline_mut().playhead_secs = 15.0; // past the clip's 10s span.
+
+    app.add_opacity_marker_at_playhead();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert!(clips[0].opacity_keyframes.is_empty());
+}
+
+#[test]
+fn add_opacity_marker_at_playhead_defaults_to_fully_opaque_with_no_existing_keyframes() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.active_project_mut().timeline_mut().playhead_secs = 4.0; // 4s into a 10s clip -> 0.4.
+
+    app.add_opacity_marker_at_playhead();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].opacity_keyframes.len(), 1);
+    let added = clips[0].opacity_keyframes[0];
+    assert!((added.time_fraction - 0.4).abs() < 1e-6);
+    assert_eq!(added.value, 1.0);
+}
+
+#[test]
+fn add_opacity_marker_at_playhead_preserves_the_currently_interpolated_value() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.set_selected_clip_opacity_keyframes(vec![
+        avcore::Keyframe {
+            time_fraction: 0.0,
+            value: 0.2,
+        },
+        avcore::Keyframe {
+            time_fraction: 1.0,
+            value: 1.0,
+        },
+    ]);
+    app.active_project_mut().timeline_mut().playhead_secs = 5.0; // halfway -> time_fraction 0.5.
+
+    app.add_opacity_marker_at_playhead();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].opacity_keyframes.len(), 3);
+    let added = clips[0]
+        .opacity_keyframes
+        .iter()
+        .find(|kf| (kf.time_fraction - 0.5).abs() < 1e-6)
+        .expect("the new marker at time_fraction 0.5");
+    // Halfway between 0.2 and 1.0 is 0.6 - adding the marker shouldn't itself change the
+    // clip's current opacity.
+    assert!((added.value - 0.6).abs() < 1e-6);
 }
 
 #[test]
@@ -2626,6 +2881,100 @@ fn cut_selected_clip_copies_then_removes_the_clip() {
 }
 
 #[test]
+fn copy_selected_clip_captures_every_member_of_a_composite_group() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 5.0), test_clip(2, 5.0, 0.0, 5.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.multi_selected_clip_ids = HashSet::from([1, 2]);
+    app.merge_into_composite();
+    app.selected_clip_id = Some(1);
+
+    app.copy_selected_clip();
+
+    let (copied, _kind) = app.clipboard_clip.as_ref().unwrap();
+    assert_eq!(copied.len(), 2);
+    let mut copied_ids: Vec<u64> = copied.iter().map(|c| c.id).collect();
+    copied_ids.sort();
+    assert_eq!(copied_ids, vec![1, 2]);
+}
+
+#[test]
+fn paste_clip_at_playhead_pastes_a_composite_group_as_one_block() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 5.0), test_clip(2, 5.0, 0.0, 5.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.multi_selected_clip_ids = HashSet::from([1, 2]);
+    app.merge_into_composite();
+    app.selected_clip_id = Some(1);
+    app.copy_selected_clip();
+    app.active_project_mut().timeline_mut().playhead_secs = 100.0;
+
+    app.paste_clip_at_playhead();
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips.len(), 4);
+    let pasted: Vec<_> = clips.iter().filter(|c| c.id != 1 && c.id != 2).collect();
+    assert_eq!(pasted.len(), 2);
+    // The two originals started at 0.0 and 5.0 (a 5s relative offset) - that offset survives
+    // the paste, anchored at the new playhead instead of at 0.0.
+    let mut pasted_starts: Vec<f64> = pasted.iter().map(|c| c.start_secs).collect();
+    pasted_starts.sort_by(f64::total_cmp);
+    assert_eq!(pasted_starts, vec![100.0, 105.0]);
+    // Fresh ids, distinct from both the originals and each other.
+    assert_ne!(pasted[0].id, pasted[1].id);
+    assert!(pasted[0].id != 1 && pasted[0].id != 2);
+    // Both pasted clips share one new composite_id, distinct from the original group's.
+    let original_group = app.active_project().timeline().tracks[0]
+        .clips
+        .iter()
+        .find(|c| c.id == 1)
+        .unwrap()
+        .composite_id;
+    assert!(pasted[0].composite_id.is_some());
+    assert_eq!(pasted[0].composite_id, pasted[1].composite_id);
+    assert_ne!(pasted[0].composite_id, original_group);
+}
+
+#[test]
+fn paste_clip_at_playhead_keeps_a_lone_copied_clip_standalone() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 5.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.copy_selected_clip();
+    app.active_project_mut().timeline_mut().playhead_secs = 20.0;
+
+    app.paste_clip_at_playhead();
+
+    let pasted = &app.active_project().timeline().tracks[0].clips[1];
+    assert_eq!(pasted.composite_id, None);
+}
+
+#[test]
 fn delete_selected_clip_is_a_no_op_when_nothing_is_selected() {
     let mut app = test_app(
         vec![test_project_with_tracks(
@@ -2738,6 +3087,7 @@ fn pump_import_queue_applies_enrichment_to_the_asset_it_was_assigned() {
             loudness: Some(loudness),
             proxy_path: Some(PathBuf::from("proxy.mp4")),
             waveform_peaks: Some(vec![(-0.5, 0.5)]),
+            duration_ms: 250,
         })
         .unwrap();
     app.pump_import_queue();
@@ -2763,6 +3113,7 @@ fn pump_import_queue_ignores_enrichment_for_an_unknown_token() {
             loudness: None,
             proxy_path: None,
             waveform_peaks: None,
+            duration_ms: 0,
         })
         .unwrap();
 
@@ -3109,4 +3460,242 @@ fn confirm_apply_layer_template_skips_layers_left_without_an_asset() {
     let timeline = app.active_project().timeline();
     assert_eq!(timeline.tracks.len(), 1);
     assert_eq!(timeline.tracks[0].clips.len(), 1);
+}
+
+#[test]
+fn add_shape_track_appends_an_empty_shape_track() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.add_shape_track();
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].kind, TrackKind::Shape);
+    assert!(tracks[0].shape_clips.is_empty());
+}
+
+#[test]
+fn add_shape_clip_auto_creates_a_shape_track_and_selects_the_new_clip() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.add_shape_clip();
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].kind, TrackKind::Shape);
+    assert_eq!(tracks[0].shape_clips.len(), 1);
+    let clip_id = tracks[0].shape_clips[0].id;
+    assert_eq!(app.selected_shape_clip_id, Some(clip_id));
+    assert_eq!(app.selected_clip_id, None);
+    assert_eq!(app.selected_text_clip_id, None);
+}
+
+#[test]
+fn add_shape_clip_ids_stay_unique_past_an_existing_high_shape_clip_id() {
+    let mut track = test_track(1, TrackKind::Shape, Vec::new());
+    track.shape_clips.push(avcore::timeline::ShapeClip {
+        id: 100,
+        start_secs: 0.0,
+        duration_secs: 1.0,
+        shape_kind: avcore::timeline::ShapeKind::rectangle(),
+        center_x: 0.5,
+        center_y: 0.5,
+        width: 0.3,
+        height: 0.3,
+        rotation_deg: 0.0,
+        color_rgba: [255, 255, 255, 255],
+        stroke_thickness_px: 0.0,
+    });
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.add_shape_clip();
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks[0].shape_clips.len(), 2);
+    assert_eq!(tracks[0].shape_clips[1].id, 101);
+}
+
+#[test]
+fn add_shape_clip_reuses_the_existing_shape_track_on_a_second_call() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.add_shape_clip();
+    app.add_shape_clip();
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].shape_clips.len(), 2);
+    // Ids are unique even across the two calls.
+    assert_ne!(tracks[0].shape_clips[0].id, tracks[0].shape_clips[1].id);
+}
+
+#[test]
+fn start_drawing_custom_shape_begins_an_empty_point_list() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.start_drawing_custom_shape();
+
+    assert_eq!(app.drawing_shape_points, Some(Vec::new()));
+}
+
+#[test]
+fn cancel_drawing_custom_shape_discards_the_in_progress_drawing() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.start_drawing_custom_shape();
+    app.push_drawing_shape_point(0.2, 0.3);
+
+    app.cancel_drawing_custom_shape();
+
+    assert_eq!(app.drawing_shape_points, None);
+}
+
+#[test]
+fn push_drawing_shape_point_is_a_no_op_outside_drawing_mode() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.push_drawing_shape_point(0.2, 0.3);
+
+    assert_eq!(app.drawing_shape_points, None);
+}
+
+#[test]
+fn push_drawing_shape_point_clamps_to_the_canvas() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.start_drawing_custom_shape();
+
+    app.push_drawing_shape_point(-0.5, 1.5);
+
+    assert_eq!(app.drawing_shape_points, Some(vec![(0.0, 1.0)]));
+}
+
+#[test]
+fn finish_drawing_custom_shape_is_a_no_op_below_three_points() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.start_drawing_custom_shape();
+    app.push_drawing_shape_point(0.2, 0.2);
+    app.push_drawing_shape_point(0.4, 0.2);
+
+    app.finish_drawing_custom_shape();
+
+    assert_eq!(app.drawing_shape_points, Some(vec![(0.2, 0.2), (0.4, 0.2)]));
+    assert!(app.active_project().timeline().tracks.is_empty());
+}
+
+#[test]
+fn finish_drawing_custom_shape_creates_a_polygon_clip_and_clears_drawing_mode() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.start_drawing_custom_shape();
+    app.push_drawing_shape_point(0.2, 0.2);
+    app.push_drawing_shape_point(0.6, 0.2);
+    app.push_drawing_shape_point(0.4, 0.6);
+
+    app.finish_drawing_custom_shape();
+
+    assert_eq!(app.drawing_shape_points, None);
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].kind, TrackKind::Shape);
+    assert_eq!(tracks[0].shape_clips.len(), 1);
+    let clip = &tracks[0].shape_clips[0];
+    assert_eq!(app.selected_shape_clip_id, Some(clip.id));
+    // Bounding box of the three points above: x in [0.2, 0.6], y in [0.2, 0.6].
+    assert!((clip.center_x - 0.4).abs() < 1e-6);
+    assert!((clip.center_y - 0.4).abs() < 1e-6);
+    assert!((clip.width - 0.4).abs() < 1e-6);
+    assert!((clip.height - 0.4).abs() < 1e-6);
+    assert_eq!(clip.rotation_deg, 0.0);
+    let avcore::timeline::ShapeKind::Polygon(vertices) = &clip.shape_kind else {
+        panic!("expected a Polygon shape kind");
+    };
+    assert_eq!(vertices.len(), 3);
+    // First point (0.2, 0.2) is the box's top-left corner -> local (-0.5, -0.5).
+    assert!((vertices[0].0 - (-0.5)).abs() < 1e-6);
+    assert!((vertices[0].1 - (-0.5)).abs() < 1e-6);
+}
+
+#[test]
+fn finish_drawing_custom_shape_floors_a_degenerate_bounding_box() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.start_drawing_custom_shape();
+    // Three collinear points on the same vertical line - a zero-width bounding box.
+    app.push_drawing_shape_point(0.5, 0.2);
+    app.push_drawing_shape_point(0.5, 0.4);
+    app.push_drawing_shape_point(0.5, 0.6);
+
+    app.finish_drawing_custom_shape();
+
+    let clip = &app.active_project().timeline().tracks[0].shape_clips[0];
+    assert!(clip.width > 0.0);
+    let avcore::timeline::ShapeKind::Polygon(vertices) = &clip.shape_kind else {
+        panic!("expected a Polygon shape kind");
+    };
+    assert!(vertices.iter().all(|v| v.0.is_finite() && v.1.is_finite()));
+}
+
+#[test]
+fn pump_update_check_sets_available_update_on_a_newer_version_event() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.update_check_tx
+        .send(UpdateCheckEvent::NewerVersionAvailable {
+            version: "99.0.0".to_string(),
+            html_url: "https://github.com/lucasgmagalhaes/oca/releases/tag/v99.0.0".to_string(),
+        })
+        .unwrap();
+
+    app.pump_update_check();
+
+    assert_eq!(
+        app.available_update,
+        Some(AvailableUpdate {
+            version: "99.0.0".to_string(),
+            html_url: "https://github.com/lucasgmagalhaes/oca/releases/tag/v99.0.0".to_string(),
+        })
+    );
+}
+
+#[test]
+fn pump_update_check_is_a_no_op_with_no_pending_events() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.pump_update_check();
+
+    assert_eq!(app.available_update, None);
+}
+
+#[test]
+fn prefs_snapshot_captures_live_locale_and_panel_layout() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.locale = Locale::En;
+    app.lib_panel_width = 321.0;
+    app.props_panel_width = 456.0;
+    app.timeline_height = 111.0;
+    // Deliberately different from the live values above, so the snapshot can only match by
+    // actually reading the live App fields, not by coincidentally already matching prefs.
+    app.prefs.locale = Locale::PtBr;
+    app.prefs.lib_panel_width = 1.0;
+    app.prefs.props_panel_width = 2.0;
+    app.prefs.timeline_height = 3.0;
+
+    let snapshot = app.prefs_snapshot();
+
+    assert_eq!(snapshot.locale, Locale::En);
+    assert_eq!(snapshot.lib_panel_width, 321.0);
+    assert_eq!(snapshot.props_panel_width, 456.0);
+    assert_eq!(snapshot.timeline_height, 111.0);
+}
+
+#[test]
+fn prefs_snapshot_prunes_recent_paths_that_no_longer_exist() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.prefs.recent_project_paths = vec![
+        "/definitely/does/not/exist/project.ocproj".to_string(),
+        env!("CARGO_MANIFEST_DIR").to_string(), // this directory does exist.
+    ];
+
+    let snapshot = app.prefs_snapshot();
+
+    assert_eq!(
+        snapshot.recent_project_paths,
+        vec![env!("CARGO_MANIFEST_DIR").to_string()]
+    );
 }

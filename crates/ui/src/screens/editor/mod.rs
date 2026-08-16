@@ -29,6 +29,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let split_combo = app.prefs.key_bindings.split_at_playhead.clone();
     let copy_fmt_combo = app.prefs.key_bindings.copy_formatting.clone();
     let paste_fmt_combo = app.prefs.key_bindings.paste_formatting.clone();
+    let add_opacity_marker_combo = app.prefs.key_bindings.add_opacity_marker.clone();
 
     let ctrl_s_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S));
     if ctrl_s_pressed {
@@ -69,6 +70,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let play_pause_pressed = ui.input(|i| play_pause_combo.matches(i));
     if play_pause_pressed {
         app.toggle_preview_playback();
+    }
+    let add_opacity_marker_pressed = ui.input(|i| add_opacity_marker_combo.matches(i));
+    if add_opacity_marker_pressed {
+        app.add_opacity_marker_at_playhead();
     }
 
     ui.vertical(|ui| {
@@ -254,6 +259,20 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             app.add_text_track();
         }
         ui.separator();
+        if ui.button(Text::AddShapeTrack.tr(locale)).clicked() {
+            app.add_shape_track();
+        }
+        if ui.button(Text::AddShapeClip.tr(locale)).clicked() {
+            app.add_shape_clip();
+        }
+        if ui.button(Text::DrawCustomShape.tr(locale)).clicked() {
+            if app.preview_texture.is_some() {
+                app.start_drawing_custom_shape();
+            } else {
+                app.push_toast(Text::ShapeDrawNeedsPreview.tr(locale).to_string());
+            }
+        }
+        ui.separator();
         let _ = ui.button("↺");
         let _ = ui.button("↻");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -266,6 +285,13 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
                 .clicked()
             {
                 save_active_project(app);
+            }
+            if ui
+                .button(Text::ExportSrt.tr(locale))
+                .on_hover_text(Text::ExportSrtHint.tr(locale))
+                .clicked()
+            {
+                export_srt_for_active_sequence(app);
             }
         });
     });
@@ -349,6 +375,37 @@ fn save_active_project(app: &mut App) {
             app.save_prefs();
         }
         Err(e) => app.push_toast(format!("Failed to save project: {e}")),
+    }
+}
+
+/// Prompts for a destination and writes the active sequence's text-track captions out as a
+/// standalone `.srt` file (`request.md`'s "arquivo `.srt` separado" half of the subtitle
+/// export ask — the embedded `drawtext` half already happens on every normal export). Doesn't
+/// remember the chosen path the way project saves do — each export is a one-off action, not an
+/// ongoing document with its own save location.
+fn export_srt_for_active_sequence(app: &mut App) {
+    let locale = app.locale;
+    let sequence = &app.active_project().sequences[app.active_project().active_sequence];
+    let srt = avcore::export_srt(&sequence.timeline);
+    let default_name = format!("{}.srt", sequence.name);
+    if srt.is_empty() {
+        app.push_toast(Text::ExportSrtEmpty.tr(locale).to_string());
+        return;
+    }
+
+    let mut dialog = rfd::FileDialog::new()
+        .add_filter("SubRip", &["srt"])
+        .set_file_name(default_name);
+    if !app.prefs.output_folder.is_empty() {
+        dialog = dialog.set_directory(&app.prefs.output_folder);
+    }
+    let Some(path) = dialog.save_file() else {
+        return;
+    };
+
+    match std::fs::write(&path, srt) {
+        Ok(()) => tracing::info!(path = %path.display(), "subtitles exported"),
+        Err(e) => app.push_toast(format!("Failed to export subtitles: {e}")),
     }
 }
 
@@ -575,6 +632,11 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
         egui::StrokeKind::Inside,
     );
 
+    if app.drawing_shape_points.is_some() {
+        draw_custom_shape_surface(app, ui, canvas_rect);
+        return;
+    }
+
     // Fixed stand-in baseline (40% of the canvas's shorter side, clipped to the canvas width) —
     // see this function's doc comment on why this is a multiplier applied to a stand-in size
     // rather than a real pixel dimension.
@@ -682,5 +744,71 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
         }
         resize_resp.on_hover_text(Text::LayerTransformResizeHint.tr(locale));
+    }
+}
+
+/// Click-to-place-vertex surface for `request.md`'s Fase 4 "forma personalizada" — active
+/// whenever `app.drawing_shape_points` is `Some` (see [`App::start_drawing_custom_shape`]).
+/// Takes over `canvas_rect` entirely in place of [`layer_transform_preview`]'s usual layer
+/// drag/resize handling for the duration of the drawing; the two modes are mutually exclusive.
+///
+/// Each click on `canvas_rect` appends one point in canvas-fraction coordinates (the same
+/// space [`avcore::timeline::ShapeClip::center_x`]/`_y` use) via
+/// [`App::push_drawing_shape_point`]. Placed points are drawn as small filled dots connected by
+/// straight lines, plus a lighter closing segment back to the first point once there are
+/// enough to see the shape taking form. Enter finishes (a no-op below 3 points — the drawing
+/// stays active); Escape cancels outright.
+fn draw_custom_shape_surface(app: &mut App, ui: &mut egui::Ui, canvas_rect: egui::Rect) {
+    let locale = app.locale;
+    let to_screen = |p: (f32, f32)| {
+        canvas_rect.min + egui::vec2(p.0 * canvas_rect.width(), p.1 * canvas_rect.height())
+    };
+
+    let click_resp = ui.interact(
+        canvas_rect,
+        ui.id().with("shape_draw_surface"),
+        egui::Sense::click(),
+    );
+    if click_resp.clicked() {
+        if let Some(pos) = click_resp.interact_pointer_pos() {
+            let frac_x = (pos.x - canvas_rect.min.x) / canvas_rect.width().max(1.0);
+            let frac_y = (pos.y - canvas_rect.min.y) / canvas_rect.height().max(1.0);
+            app.push_drawing_shape_point(frac_x, frac_y);
+        }
+    }
+    if click_resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+    }
+
+    let points = app.drawing_shape_points.clone().unwrap_or_default();
+    let screen_points: Vec<egui::Pos2> = points.iter().copied().map(to_screen).collect();
+    for &p in &screen_points {
+        ui.painter().circle_filled(p, 4.0, theme::ACCENT);
+    }
+    if screen_points.len() >= 2 {
+        ui.painter().add(egui::Shape::line(
+            screen_points.clone(),
+            egui::Stroke::new(1.5, theme::ACCENT),
+        ));
+    }
+    if screen_points.len() >= 3 {
+        ui.painter().line_segment(
+            [screen_points[screen_points.len() - 1], screen_points[0]],
+            egui::Stroke::new(1.0, theme::TEXT_MUTED),
+        );
+    }
+
+    ui.painter().text(
+        canvas_rect.center_bottom() + egui::vec2(0.0, -6.0),
+        egui::Align2::CENTER_BOTTOM,
+        Text::ShapeDrawHint.tr(locale),
+        egui::FontId::proportional(11.0),
+        theme::TEXT_SECONDARY,
+    );
+
+    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        app.cancel_drawing_custom_shape();
+    } else if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+        app.finish_drawing_custom_shape();
     }
 }

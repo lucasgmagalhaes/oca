@@ -20,6 +20,7 @@ impl App {
     pub fn spawn_import(&mut self, paths: Vec<PathBuf>) {
         let project_id = self.active_project().id;
         let proxy_dir = avcore::proxy::cache_dir_for_project(self.active_project());
+        let preview_quality = self.prefs.preview_quality;
         self.pending_imports += paths.len();
 
         for path in paths {
@@ -28,7 +29,14 @@ impl App {
             let tx = self.import_tx.clone();
             let proxy_dir = proxy_dir.clone();
             std::thread::spawn(move || {
-                import_one(&path, project_id, import_token, &proxy_dir, &tx);
+                import_one(
+                    &path,
+                    project_id,
+                    import_token,
+                    &proxy_dir,
+                    preview_quality,
+                    &tx,
+                );
             });
         }
     }
@@ -81,7 +89,9 @@ impl App {
                     loudness,
                     proxy_path,
                     waveform_peaks,
+                    duration_ms,
                 } => {
+                    self.record_telemetry(avcore::TelemetryEvent::ImportCompleted { duration_ms });
                     let Some(asset_id) = self.pending_enrichment.remove(&import_token) else {
                         continue;
                     };
@@ -105,6 +115,10 @@ impl App {
                 ImportEvent::Failed { path, message } => {
                     self.pending_imports = self.pending_imports.saturating_sub(1);
                     tracing::error!(path = %path.display(), error = %message, "asset import failed");
+                    self.record_telemetry(avcore::TelemetryEvent::Error {
+                        context: "import".to_string(),
+                        message: message.clone(),
+                    });
                     self.push_toast(format!(
                         "Import failed — {}: {message}",
                         path.file_name()
@@ -241,8 +255,10 @@ pub(super) fn import_one(
     project_id: u64,
     import_token: u64,
     proxy_dir: &Path,
+    preview_quality: avcore::PreviewQuality,
     tx: &UnboundedSender<ImportEvent>,
 ) {
+    let started = Instant::now();
     let probed = match avcore::probe_media(path) {
         Ok(probed) => probed,
         Err(e) => {
@@ -269,15 +285,15 @@ pub(super) fn import_one(
     let loudness = match avcore::measure_loudness(path) {
         Ok(metrics) => Some(metrics),
         Err(e) => {
-            eprintln!("failed to measure loudness for {}: {e}", path.display());
+            tracing::warn!(path = %path.display(), error = %e, "failed to measure loudness");
             None
         }
     };
     let proxy_path = if kind == avcore::MediaKind::Video {
-        match avcore::ensure_proxy(path, proxy_dir) {
+        match avcore::ensure_proxy(path, proxy_dir, preview_quality) {
             Ok(proxy_path) => Some(proxy_path),
             Err(e) => {
-                eprintln!("failed to generate proxy for {}: {e}", path.display());
+                tracing::warn!(path = %path.display(), error = %e, "failed to generate proxy");
                 None
             }
         }
@@ -287,7 +303,7 @@ pub(super) fn import_one(
     let waveform_peaks = match avcore::generate_waveform(path) {
         Ok(peaks) => Some(peaks),
         Err(e) => {
-            eprintln!("failed to compute waveform for {}: {e}", path.display());
+            tracing::warn!(path = %path.display(), error = %e, "failed to compute waveform");
             None
         }
     };
@@ -297,5 +313,6 @@ pub(super) fn import_one(
         loudness,
         proxy_path,
         waveform_peaks,
+        duration_ms: started.elapsed().as_millis() as u64,
     });
 }

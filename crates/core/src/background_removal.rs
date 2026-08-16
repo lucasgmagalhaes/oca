@@ -4,9 +4,13 @@
 //! formula FFmpeg's filter graph can evaluate directly), a neural matte can't be expressed as an
 //! avfilter string — [`segment_person`] runs the model against one decoded frame in Rust and
 //! returns a plain alpha buffer; turning a whole clip's worth of per-frame mattes into an actual
-//! exported/previewed alpha channel is a separate, not-yet-built pipeline stage (see
-//! `crate::timeline::ClipInstance::background_removal_enabled`'s doc comment for the current
-//! wiring gap, same shape as `gain_db`/`blur_intensity` before they got wired to export).
+//! alpha channel needed its own pipeline stage, built separately from this module: `ui`'s "Gerar
+//! máscara" flow (`App::spawn_generate_matte_for_selected_clip`) samples frames across the
+//! clip's trim range, runs [`segment_person`] on each, and encodes the mattes into a small H.264
+//! video via [`encode_matte_video`], which export then composites in via an `alphamerge` stage
+//! (see `crate::timeline::ClipInstance::background_removal_enabled`'s doc comment for the exact
+//! export wiring). **Not yet wired into preview** — the same gap `mask_shape`/`chroma_key`
+//! compositing has there.
 //!
 //! **Model:** MODNet (`ZHKKKe/MODNet`, "photographic" weights ported to ONNX by
 //! `yakhyo/modnet`, Apache-2.0), downloaded on demand via
@@ -20,7 +24,9 @@
 //! a bright rectangle on a dark background, producing a plausible low-average matte (no real
 //! person shape in the fixture, so a mostly-background result is expected).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+use crate::project::Project;
 
 /// MODNet is fully convolutional — any input size works, but the reference implementation
 /// targets roughly this size on the constrained dimension (then rounds both dimensions down to
@@ -141,6 +147,66 @@ pub fn segment_person(
         width,
         height,
     ))
+}
+
+/// Where a project's per-clip AI-background-removal alpha mattes are cached: a hidden sibling
+/// folder next to the project file (`myproject.json` -> `.myproject_mattes/`), or a temp folder
+/// for a project that hasn't been saved yet (mattes there won't survive a reboot, but neither
+/// would anything else about an unsaved project) — same convention as
+/// [`crate::proxy::cache_dir_for_project`].
+pub fn mask_cache_dir_for_project(project: &Project) -> PathBuf {
+    match &project.file_path {
+        Some(path) => {
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("project");
+            path.with_file_name(format!(".{stem}_mattes"))
+        }
+        None => std::env::temp_dir().join("oca_unsaved_mattes"),
+    }
+}
+
+/// The matte video's path for `clip_id` inside `mask_dir`, without checking whether it exists
+/// yet. One matte per *clip instance*, not per source asset (unlike
+/// [`crate::proxy::proxy_path_for`]) — the matte is generated for this clip's own trimmed
+/// `source_in_secs..source_out_secs` range and stops matching that range the moment it changes
+/// (re-trim, split — see `crate::timeline::ClipInstance::background_removal_mask_path`'s doc
+/// comment), so it can't be shared across clips the way one asset's proxy can.
+pub fn mask_path_for_clip(clip_id: u64, mask_dir: &Path) -> PathBuf {
+    mask_dir.join(format!("clip_{clip_id}_matte.mp4"))
+}
+
+#[derive(Debug)]
+pub enum MatteEncodeError {
+    Bridge(avbridge::MatteError),
+}
+
+impl std::fmt::Display for MatteEncodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MatteEncodeError::Bridge(e) => write!(f, "failed to encode matte video: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for MatteEncodeError {}
+
+/// Encodes `frames` (one grayscale-as-luma alpha matte per sampled source frame — each exactly
+/// `width * height` bytes, produced by rounding [`segment_person`]'s `0.0..=1.0` output to
+/// `0..=255`) into a plain H.264 video at `out_path`, via `oca-avbridge`'s FFI. See
+/// [`avbridge::encode_matte_video`] for exactly what this encodes (grayscale-as-luma, neutral
+/// chroma — not a true single-plane format).
+pub fn encode_matte_video(
+    frames: &[Vec<u8>],
+    width: u32,
+    height: u32,
+    fps_num: u32,
+    fps_den: u32,
+    out_path: &Path,
+) -> Result<(), MatteEncodeError> {
+    avbridge::encode_matte_video(frames, width, height, fps_num, fps_den, out_path)
+        .map_err(MatteEncodeError::Bridge)
 }
 
 #[cfg(test)]

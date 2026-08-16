@@ -3,8 +3,8 @@
 A native video editor for cutting gameplay footage (PacoPaçoca channel), with automatic
 loudness normalization and export-that-matches-the-source-bitrate as two of its headline
 features. See [`features/request.md`](features/request.md) for the full execution plan and
-phase breakdown this workspace is being built against (a near-duplicate lives at
-`docs/plano.md`, not yet reconciled).
+phase breakdown this workspace is being built against (`docs/plano.md` used to be a diverging
+duplicate — it's now just a pointer back to `features/request.md`, the one canonical copy).
 
 ## Workspace layout
 

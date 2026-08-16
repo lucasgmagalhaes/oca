@@ -13,10 +13,37 @@ use std::path::{Path, PathBuf};
 
 use crate::project::Project;
 
-/// Proxies are downscaled to this height (width follows the source's aspect ratio) — matches
-/// the resolution most NLEs default proxies to: enough detail to judge framing and cuts,
-/// cheap enough to decode in real time while scrubbing.
-pub const PROXY_HEIGHT: u32 = 540;
+/// User-selectable editing-proxy/preview resolution (`request.md`'s Fase 7 "Qualidade do
+/// preview selecionável" — 360p/480p/720p, capped at 720p). Width always follows the source's
+/// aspect ratio, same as the old fixed-height behavior this replaces. Only affects proxies
+/// generated *after* the preference changes — an asset that already has a proxy from a
+/// previous quality keeps it until re-imported, since nothing re-triggers `ensure_proxy` for
+/// already-imported assets. [`proxy_path_for`] bakes the height into the filename precisely so
+/// switching quality can never silently keep serving a stale-resolution file under the same
+/// path (mtime-based freshness alone couldn't tell the two apart).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreviewQuality {
+    Low,
+    #[default]
+    Medium,
+    High,
+}
+
+impl PreviewQuality {
+    /// Target proxy height in pixels — matches the resolution most NLEs default proxies to at
+    /// [`PreviewQuality::Medium`]: enough detail to judge framing and cuts, cheap enough to
+    /// decode in real time while scrubbing. [`PreviewQuality::High`] is the 720p cap
+    /// `request.md` specifies — "enough to judge framing, text and color without forcing the
+    /// preview to decode at full resolution."
+    pub fn height(self) -> u32 {
+        match self {
+            PreviewQuality::Low => 360,
+            PreviewQuality::Medium => 480,
+            PreviewQuality::High => 720,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum ProxyError {
@@ -54,22 +81,30 @@ pub fn cache_dir_for_project(project: &Project) -> PathBuf {
     }
 }
 
-/// The proxy file's path for `source` inside `proxy_dir`, without checking whether it exists
-/// yet. Pure so it's usable both to look up an existing proxy and to test the naming scheme.
-pub fn proxy_path_for(source: &Path, proxy_dir: &Path) -> PathBuf {
+/// The proxy file's path for `source` inside `proxy_dir` at `quality`, without checking
+/// whether it exists yet. Pure so it's usable both to look up an existing proxy and to test
+/// the naming scheme. The height is part of the filename (not just an internal encode
+/// parameter) so that two different [`PreviewQuality`] choices for the same source never
+/// collide on one path — switching quality always resolves to a distinct file rather than
+/// silently overwriting or reusing a proxy encoded at the previous height.
+pub fn proxy_path_for(source: &Path, proxy_dir: &Path, quality: PreviewQuality) -> PathBuf {
     let stem = source
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("clip");
-    proxy_dir.join(format!("{stem}_proxy.mp4"))
+    proxy_dir.join(format!("{stem}_proxy_{}p.mp4", quality.height()))
 }
 
-/// Returns the proxy for `source`, generating it into `proxy_dir` via `oca-avbridge`'s FFI
-/// first if it doesn't already exist or is older than the source (e.g. the source was
-/// re-recorded or replaced). Skips the transcode entirely when the cached proxy is already
-/// fresh.
-pub fn ensure_proxy(source: &Path, proxy_dir: &Path) -> Result<PathBuf, ProxyError> {
-    let proxy_path = proxy_path_for(source, proxy_dir);
+/// Returns the proxy for `source` at `quality`, generating it into `proxy_dir` via
+/// `oca-avbridge`'s FFI first if it doesn't already exist or is older than the source (e.g.
+/// the source was re-recorded or replaced). Skips the transcode entirely when the cached proxy
+/// is already fresh.
+pub fn ensure_proxy(
+    source: &Path,
+    proxy_dir: &Path,
+    quality: PreviewQuality,
+) -> Result<PathBuf, ProxyError> {
+    let proxy_path = proxy_path_for(source, proxy_dir, quality);
 
     if is_up_to_date(source, &proxy_path) {
         return Ok(proxy_path);
@@ -77,7 +112,7 @@ pub fn ensure_proxy(source: &Path, proxy_dir: &Path) -> Result<PathBuf, ProxyErr
 
     fs::create_dir_all(proxy_dir).map_err(ProxyError::Io)?;
 
-    avbridge::generate_proxy(source, &proxy_path, PROXY_HEIGHT).map_err(ProxyError::Bridge)?;
+    avbridge::generate_proxy(source, &proxy_path, quality.height()).map_err(ProxyError::Bridge)?;
 
     Ok(proxy_path)
 }

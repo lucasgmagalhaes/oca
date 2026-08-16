@@ -1,4 +1,4 @@
-use avcore::timeline::{ClipInstance, TextClip, Timeline, Track, TrackKind};
+use avcore::timeline::{ClipInstance, ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind};
 
 use super::App;
 
@@ -328,7 +328,11 @@ impl App {
     }
 
     /// Copies `selected_clip_id` (and the track kind it's on) to [`App::clipboard_clip`] —
-    /// what `Ctrl+C`/the timeline context menu's "Copiar" do. A no-op if nothing is selected.
+    /// what `Ctrl+C`/the timeline context menu's "Copiar" do. If the selected clip is a
+    /// composite block member, every clip sharing its `composite_id` is captured too (not just
+    /// the one clicked), so [`App::paste_clip_at_playhead`] can paste the whole block back as
+    /// one unit — per `request.md`'s Fase 3 "reutilizado ... como se fosse um clipe só" spec.
+    /// A no-op if nothing is selected.
     pub fn copy_selected_clip(&mut self) {
         let Some(clip_id) = self.selected_clip_id else {
             return;
@@ -339,10 +343,17 @@ impl App {
             .tracks
             .iter()
             .find_map(|t| {
-                t.clips
-                    .iter()
-                    .find(|c| c.id == clip_id)
-                    .map(|c| (c.clone(), t.kind))
+                let selected = t.clips.iter().find(|c| c.id == clip_id)?;
+                let group: Vec<_> = match selected.composite_id {
+                    Some(composite_id) => t
+                        .clips
+                        .iter()
+                        .filter(|c| c.composite_id == Some(composite_id))
+                        .cloned()
+                        .collect(),
+                    None => vec![selected.clone()],
+                };
+                Some((group, t.kind))
             });
         if let Some(copied) = found {
             self.clipboard_clip = Some(copied);
@@ -356,13 +367,18 @@ impl App {
         self.delete_selected_clip();
     }
 
-    /// Pastes [`App::clipboard_clip`] as a new, freshly-id'd clip at the playhead's current
+    /// Pastes [`App::clipboard_clip`] as new, freshly-id'd clip(s) at the playhead's current
     /// position on the active sequence — what `Ctrl+V`/the context menu's "Colar" do. Lands on
-    /// a matching-kind track the same way [`App::add_asset_to_timeline`] does (first
-    /// existing track of that kind, auto-created if none exists); always the playhead, not
-    /// wherever the context menu happened to be opened — a known simplification. A no-op if
-    /// the clipboard is empty. Works across sequence tabs and even across projects, since
-    /// `clipboard_clip` isn't scoped to either.
+    /// a matching-kind track the same way [`App::add_asset_to_timeline`] does (first existing
+    /// track of that kind, auto-created if none exists); the earliest copied clip always lands
+    /// exactly on the playhead, not wherever the context menu happened to be opened — a known
+    /// simplification. A no-op if the clipboard is empty. Works across sequence tabs and even
+    /// across projects, since `clipboard_clip` isn't scoped to either.
+    ///
+    /// A copied composite block (more than one clip in [`App::clipboard_clip`]) pastes back as
+    /// one block: every other copied clip keeps its original offset relative to the earliest
+    /// one, and all pasted clips share one fresh `composite_id` — a single copied clip (not a
+    /// composite member) stays standalone, same as before.
     pub fn paste_clip_at_playhead(&mut self) {
         let Some((copied, kind)) = self.clipboard_clip.clone() else {
             return;
@@ -370,59 +386,74 @@ impl App {
         let playhead_secs = self.active_project().timeline().playhead_secs;
         let timeline = self.active_project_mut().timeline_mut();
         let track_index = resolve_or_create_track(timeline, kind, None);
-        let clip_id = next_clip_id(timeline);
-        timeline.tracks[track_index]
-            .clips
-            .push(avcore::timeline::ClipInstance {
-                id: clip_id,
-                asset_id: copied.asset_id,
-                start_secs: playhead_secs,
-                source_in_secs: copied.source_in_secs,
-                source_out_secs: copied.source_out_secs,
-                // A pasted clip is always standalone, even if the copied original was a
-                // composite member — copy/paste doesn't replicate group membership (a known
-                // gap short of request.md's "reutilizado ... como se fosse um clipe só").
-                composite_id: None,
-                gain_db: copied.gain_db,
-                frozen: copied.frozen,
-                speed_factor: copied.speed_factor,
-                crop_x: copied.crop_x,
-                crop_y: copied.crop_y,
-                crop_w: copied.crop_w,
-                crop_h: copied.crop_h,
-                mask_shape: copied.mask_shape,
-                mask_corner_radius: copied.mask_corner_radius,
-                flipped_h: copied.flipped_h,
-                color_filter: copied.color_filter,
-                vignette_intensity: copied.vignette_intensity,
-                brightness: copied.brightness,
-                contrast: copied.contrast,
-                saturation: copied.saturation,
-                sharpen: copied.sharpen,
-                chroma_key_enabled: copied.chroma_key_enabled,
-                chroma_key_color: copied.chroma_key_color,
-                chroma_key_tolerance: copied.chroma_key_tolerance,
-                blur_intensity: copied.blur_intensity,
-                shake_intensity: copied.shake_intensity,
-                glitch_intensity: copied.glitch_intensity,
-                pixelize_intensity: copied.pixelize_intensity,
-                transition_in: copied.transition_in,
-                transition_duration_secs: copied.transition_duration_secs,
-                position_keyframes: copied.position_keyframes,
-                scale_keyframes: copied.scale_keyframes,
-                rotation_keyframes: copied.rotation_keyframes,
-                opacity_keyframes: copied.opacity_keyframes,
-                deflicker_enabled: copied.deflicker_enabled,
-                lut_path: copied.lut_path,
-                layer_scale_x: copied.layer_scale_x,
-                layer_scale_y: copied.layer_scale_y,
-                stabilization_intensity: copied.stabilization_intensity,
-                // A pasted clip keeps the same source_in_secs/source_out_secs as the copied
-                // original, so a matte generated for that exact range (unlike a split's halves,
-                // whose ranges change) is still valid to carry over.
-                background_removal_enabled: copied.background_removal_enabled,
-                background_removal_mask_path: copied.background_removal_mask_path,
-            });
+
+        let group_min_start = copied
+            .iter()
+            .map(|c| c.start_secs)
+            .fold(f64::INFINITY, f64::min);
+        let new_composite_id = (copied.len() > 1).then(|| {
+            timeline.tracks[track_index]
+                .clips
+                .iter()
+                .filter_map(|c| c.composite_id)
+                .max()
+                .unwrap_or(0)
+                + 1
+        });
+
+        for source in copied {
+            let clip_id = next_clip_id(timeline);
+            let start_secs = playhead_secs + (source.start_secs - group_min_start);
+            timeline.tracks[track_index]
+                .clips
+                .push(avcore::timeline::ClipInstance {
+                    id: clip_id,
+                    asset_id: source.asset_id,
+                    start_secs,
+                    source_in_secs: source.source_in_secs,
+                    source_out_secs: source.source_out_secs,
+                    composite_id: new_composite_id,
+                    gain_db: source.gain_db,
+                    frozen: source.frozen,
+                    speed_factor: source.speed_factor,
+                    crop_x: source.crop_x,
+                    crop_y: source.crop_y,
+                    crop_w: source.crop_w,
+                    crop_h: source.crop_h,
+                    mask_shape: source.mask_shape,
+                    mask_corner_radius: source.mask_corner_radius,
+                    flipped_h: source.flipped_h,
+                    color_filter: source.color_filter,
+                    vignette_intensity: source.vignette_intensity,
+                    brightness: source.brightness,
+                    contrast: source.contrast,
+                    saturation: source.saturation,
+                    sharpen: source.sharpen,
+                    chroma_key_enabled: source.chroma_key_enabled,
+                    chroma_key_color: source.chroma_key_color,
+                    chroma_key_tolerance: source.chroma_key_tolerance,
+                    blur_intensity: source.blur_intensity,
+                    shake_intensity: source.shake_intensity,
+                    glitch_intensity: source.glitch_intensity,
+                    pixelize_intensity: source.pixelize_intensity,
+                    transition_in: source.transition_in,
+                    transition_duration_secs: source.transition_duration_secs,
+                    position_keyframes: source.position_keyframes,
+                    scale_keyframes: source.scale_keyframes,
+                    rotation_keyframes: source.rotation_keyframes,
+                    opacity_keyframes: source.opacity_keyframes,
+                    deflicker_enabled: source.deflicker_enabled,
+                    lut_path: source.lut_path,
+                    layer_scale_x: source.layer_scale_x,
+                    layer_scale_y: source.layer_scale_y,
+                    stabilization_intensity: source.stabilization_intensity,
+                    // A pasted clip keeps the same source_in_secs/source_out_secs as the copied
+                    // original, so a matte generated for that exact range (unlike a split's
+                    // halves, whose ranges change) is still valid to carry over.
+                    background_removal_enabled: source.background_removal_enabled,
+                    background_removal_mask_path: source.background_removal_mask_path,
+                });
+        }
     }
 
     /// Adds/removes `clip_id` from [`App::multi_selected_clip_ids`] — what `Ctrl+click`ing
@@ -434,9 +465,11 @@ impl App {
         }
     }
 
-    /// Merges every clip in [`App::multi_selected_clip_ids`] into one composite block —
-    /// what the toolbar's "Mesclar em bloco composto" button does (per `request.md`'s Fase 3
-    /// "blocos compostos" spec). Assigns them all a fresh `composite_id` and clears the
+    /// Merges every clip in [`App::multi_selected_clip_ids`] into one composite block — what
+    /// the toolbar's "Mesclar em bloco composto" button and the timeline context menu's
+    /// matching entry both do (per `request.md`'s Fase 3 "blocos compostos" spec, and its
+    /// context-menu spec listing this among the actions it should offer too). Assigns them all
+    /// a fresh `composite_id` and clears the
     /// multi-selection. A no-op, leaving the multi-selection untouched so the user can fix
     /// their pick, if fewer than two ids were selected or they aren't all on the same track —
     /// composite blocks don't span tracks yet.
@@ -589,9 +622,9 @@ pub(super) fn resolve_or_create_track(
     timeline.tracks.len() - 1
 }
 
-/// The next free clip id across every track in `timeline`, including text clips — one past the
-/// current max, `1` if the timeline has no clips yet. Covers both [`ClipInstance`]s and
-/// [`TextClip`]s so their ids are globally unique within a timeline.
+/// The next free clip id across every track in `timeline`, including text and shape clips — one
+/// past the current max, `1` if the timeline has no clips yet. Covers [`ClipInstance`]s,
+/// [`TextClip`]s, and [`ShapeClip`]s so their ids are globally unique within a timeline.
 pub(super) fn next_clip_id(timeline: &avcore::timeline::Timeline) -> u64 {
     let video_audio_max = timeline
         .tracks
@@ -607,7 +640,14 @@ pub(super) fn next_clip_id(timeline: &avcore::timeline::Timeline) -> u64 {
         .map(|c| c.id)
         .max()
         .unwrap_or(0);
-    video_audio_max.max(text_max) + 1
+    let shape_max = timeline
+        .tracks
+        .iter()
+        .flat_map(|t| &t.shape_clips)
+        .map(|c| c.id)
+        .max()
+        .unwrap_or(0);
+    video_audio_max.max(text_max).max(shape_max) + 1
 }
 
 impl App {
@@ -669,5 +709,145 @@ impl App {
         }
         self.selected_clip_id = None;
         self.selected_text_clip_id = Some(clip_id);
+    }
+
+    /// Appends a new shape track (`TrackKind::Shape`) to the active sequence's timeline. The
+    /// track is named using [`crate::i18n::Text::DefaultShapeTrackName`]. Mirrors
+    /// [`App::add_text_track`].
+    pub fn add_shape_track(&mut self) {
+        use crate::i18n::Text;
+        let locale = self.locale;
+        let track_id = {
+            let timeline = self.active_project().timeline();
+            timeline.tracks.iter().map(|t| t.id).max().unwrap_or(0) + 1
+        };
+        let name = Text::DefaultShapeTrackName.tr(locale).to_string();
+        self.active_project_mut()
+            .timeline_mut()
+            .tracks
+            .push(avcore::timeline::Track {
+                id: track_id,
+                name,
+                kind: TrackKind::Shape,
+                clips: Vec::new(),
+                text_clips: Vec::new(),
+                shape_clips: Vec::new(),
+                visible: true,
+            });
+    }
+
+    /// Appends a new [`ShapeClip`] (a default rectangle, centered, half the canvas size) to the
+    /// first shape track in the active sequence, starting at the current playhead position and
+    /// lasting 3 seconds. Auto-creates a shape track if none exists yet, unlike
+    /// [`App::add_text_clip`] which is a no-op without one — there's no separate "+ Shape track"
+    /// step the user is expected to take first. Selects the new clip immediately so the
+    /// properties panel shows its controls.
+    pub fn add_shape_clip(&mut self) {
+        let playhead_secs = self.active_project().timeline().playhead_secs;
+        let timeline = self.active_project_mut().timeline_mut();
+        let track_index = resolve_or_create_track(timeline, TrackKind::Shape, None);
+        let clip_id = next_clip_id(timeline);
+        timeline.tracks[track_index].shape_clips.push(ShapeClip {
+            id: clip_id,
+            start_secs: playhead_secs,
+            duration_secs: 3.0,
+            shape_kind: ShapeKind::rectangle(),
+            center_x: 0.5,
+            center_y: 0.5,
+            width: 0.3,
+            height: 0.3,
+            rotation_deg: 0.0,
+            color_rgba: [255, 255, 255, 255],
+            stroke_thickness_px: 0.0,
+        });
+        self.selected_clip_id = None;
+        self.selected_text_clip_id = None;
+        self.selected_shape_clip_id = Some(clip_id);
+    }
+
+    /// Enters "draw a custom shape" mode — `request.md`'s Fase 4 "forma personalizada" ask,
+    /// the one gap the fixed-preset shapes above don't cover. What the toolbar's "Desenhar
+    /// forma" button does: clears any in-progress drawing and starts a fresh, empty point
+    /// list. The preview panel (`screens::editor::layer_transform_preview`) reads
+    /// [`App::drawing_shape_points`] each frame while it's `Some` and switches into a
+    /// click-to-place-vertex mode instead of its usual layer drag/resize handling; see that
+    /// function's doc comment for why a loaded preview frame is a precondition. Overwrites
+    /// (does not append to) any drawing already in progress.
+    pub fn start_drawing_custom_shape(&mut self) {
+        self.drawing_shape_points = Some(Vec::new());
+    }
+
+    /// Discards the in-progress custom-shape drawing without creating a clip — what pressing
+    /// Escape while drawing does.
+    pub fn cancel_drawing_custom_shape(&mut self) {
+        self.drawing_shape_points = None;
+    }
+
+    /// Appends one clicked point (canvas-fraction coordinates — same space as
+    /// [`ShapeClip::center_x`]/`_y`, clamped to `0.0..=1.0`) to the in-progress custom shape.
+    /// A no-op if [`App::start_drawing_custom_shape`] hasn't been called (or the drawing was
+    /// already finished/cancelled) — lets the preview panel call this unconditionally on every
+    /// click without checking the mode itself first.
+    pub fn push_drawing_shape_point(&mut self, x: f32, y: f32) {
+        if let Some(points) = self.drawing_shape_points.as_mut() {
+            points.push((x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)));
+        }
+    }
+
+    /// Finishes the in-progress custom-shape drawing — what pressing Enter with at least 3
+    /// points placed does. A no-op (drawing mode stays active) if fewer than 3 points have
+    /// been placed yet, since a polygon needs at least a triangle.
+    ///
+    /// The clicked points are absolute canvas-fraction coordinates; [`ShapeKind::Polygon`]
+    /// stores vertices relative to the shape's own local unit square instead (see that
+    /// variant's doc comment), so this derives a bounding box across all clicked points,
+    /// centers/sizes the new [`ShapeClip`] on it, and re-expresses each point as an offset
+    /// from that box's center divided by its width/height. `rotation_deg` starts at `0.0` (the
+    /// shape is drawn axis-aligned to how it was clicked) — the properties panel's existing
+    /// rotation control still applies afterward, same as any other shape.
+    pub fn finish_drawing_custom_shape(&mut self) {
+        let Some(points) = self.drawing_shape_points.as_ref() else {
+            return;
+        };
+        if points.len() < 3 {
+            return;
+        }
+        let points = self.drawing_shape_points.take().unwrap();
+
+        let min_x = points.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
+        let max_x = points.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max);
+        let min_y = points.iter().map(|p| p.1).fold(f32::INFINITY, f32::min);
+        let max_y = points.iter().map(|p| p.1).fold(f32::NEG_INFINITY, f32::max);
+        let center_x = (min_x + max_x) / 2.0;
+        let center_y = (min_y + max_y) / 2.0;
+        // Floors the bounding box away from zero so near-collinear clicks (e.g. three points
+        // almost in a vertical line) can't produce a divide-by-zero below.
+        let width = (max_x - min_x).max(0.02);
+        let height = (max_y - min_y).max(0.02);
+        let local_vertices: Vec<(f32, f32)> = points
+            .iter()
+            .map(|&(x, y)| ((x - center_x) / width, (y - center_y) / height))
+            .collect();
+
+        let playhead_secs = self.active_project().timeline().playhead_secs;
+        let timeline = self.active_project_mut().timeline_mut();
+        let track_index = resolve_or_create_track(timeline, TrackKind::Shape, None);
+        let clip_id = next_clip_id(timeline);
+        timeline.tracks[track_index].shape_clips.push(ShapeClip {
+            id: clip_id,
+            start_secs: playhead_secs,
+            duration_secs: 3.0,
+            shape_kind: ShapeKind::Polygon(local_vertices),
+            center_x,
+            center_y,
+            width,
+            height,
+            rotation_deg: 0.0,
+            color_rgba: [255, 255, 255, 255],
+            stroke_thickness_px: 0.0,
+        });
+        self.selected_clip_id = None;
+        self.selected_text_clip_id = None;
+        self.selected_shape_clip_id = Some(clip_id);
     }
 }

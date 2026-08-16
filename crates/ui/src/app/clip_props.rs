@@ -33,13 +33,22 @@ impl App {
 
     /// Sets `selected_clip_id`'s
     /// [`avcore::timeline::ClipInstance::background_removal_enabled`] — what checking the
-    /// properties panel's "Remover fundo (IA)" box does. A no-op if nothing is selected. See
-    /// that field's doc comment for the current export-wiring gap — toggling this doesn't yet
-    /// change the exported/previewed video.
+    /// properties panel's "Remover fundo (IA)" box does. A no-op if nothing is selected. Only
+    /// takes visible effect on export once a matte has actually been generated (see
+    /// [`App::spawn_generate_matte_for_selected_clip`]) — checking the box alone doesn't
+    /// generate one.
     pub fn set_selected_clip_background_removal(&mut self, background_removal_enabled: bool) {
         self.with_selected_clip_mut(|clip| {
             clip.background_removal_enabled = background_removal_enabled
         });
+    }
+
+    /// Sets `selected_clip_id`'s
+    /// [`avcore::timeline::ClipInstance::background_removal_mask_path`] — what a finished
+    /// [`App::spawn_generate_matte_for_selected_clip`] run applies. A no-op if nothing is
+    /// selected.
+    pub fn set_selected_clip_background_removal_mask_path(&mut self, mask_path: String) {
+        self.with_selected_clip_mut(|clip| clip.background_removal_mask_path = mask_path);
     }
 
     /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::speed_factor`], clamped to
@@ -270,6 +279,41 @@ impl App {
             kf.value = kf.value.clamp(0.0, 1.0);
         }
         self.with_selected_clip_mut(|clip| clip.opacity_keyframes = keyframes);
+    }
+
+    /// Adds one opacity keyframe at the current timeline playhead position, for the selected
+    /// clip — what `Ctrl+O` (`request.md`'s Fase 6 key binding spec, "adicionar marcador de
+    /// opacidade") does. The new marker's value is the clip's own current effective opacity at
+    /// that instant (`avcore::keyframe::evaluate_keyframes` against a time-sorted copy of the
+    /// existing keyframes — the properties panel's own list editor doesn't keep
+    /// `opacity_keyframes` sorted as stored, so evaluating needs its own sorted copy), so
+    /// placing the marker doesn't itself change how the clip looks; only moving it afterward
+    /// does. A no-op if nothing is selected or the playhead isn't within the selected clip's
+    /// own timeline span.
+    pub fn add_opacity_marker_at_playhead(&mut self) {
+        let playhead_secs = self.active_project().timeline().playhead_secs;
+        let Some(clip) = self.selected_clip() else {
+            return;
+        };
+        let duration_secs = clip.duration_secs();
+        if duration_secs <= 0.0 {
+            return;
+        }
+        let time_fraction = ((playhead_secs - clip.start_secs) / duration_secs) as f32;
+        if !(0.0..=1.0).contains(&time_fraction) {
+            return;
+        }
+
+        let mut sorted = clip.opacity_keyframes.clone();
+        sorted.sort_by(|a, b| a.time_fraction.total_cmp(&b.time_fraction));
+        let value = avcore::keyframe::evaluate_keyframes(&sorted, time_fraction, 1.0);
+
+        let mut keyframes = clip.opacity_keyframes.clone();
+        keyframes.push(Keyframe {
+            time_fraction,
+            value,
+        });
+        self.set_selected_clip_opacity_keyframes(keyframes);
     }
 
     /// Sets `selected_clip_id`'s brightness/contrast/saturation

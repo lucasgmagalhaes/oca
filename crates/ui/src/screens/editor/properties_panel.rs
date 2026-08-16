@@ -18,9 +18,15 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
             ui.set_width(width);
             ui.set_height(height);
             ui.vertical(|ui| {
-                // Text clip properties take priority when a text clip is selected.
+                // Text/shape clip properties take priority when one is selected — only one of
+                // `selected_clip_id`/`selected_text_clip_id`/`selected_shape_clip_id` is ever
+                // `Some` at a time (see `App`'s doc comments on those fields).
                 if let Some(tc_id) = app.selected_text_clip_id {
                     text_clip_properties(app, ui, tc_id, locale);
+                    return;
+                }
+                if let Some(sc_id) = app.selected_shape_clip_id {
+                    shape_clip_properties(app, ui, sc_id, locale);
                     return;
                 }
 
@@ -481,11 +487,25 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                             ui,
                             Text::BackgroundRemovalExportNote.tr(locale),
                             |ui| {
-                                ui.checkbox(
-                                    &mut background_removal_enabled,
-                                    Text::PropBackgroundRemoval.tr(locale),
-                                )
-                                .changed()
+                                let changed = ui
+                                    .checkbox(
+                                        &mut background_removal_enabled,
+                                        Text::PropBackgroundRemoval.tr(locale),
+                                    )
+                                    .changed();
+                                let generating = app.matte_generating_clip_id.is_some();
+                                let label = if generating {
+                                    Text::BackgroundRemovalGenerating.tr(locale)
+                                } else {
+                                    Text::BackgroundRemovalGenerateMatte.tr(locale)
+                                };
+                                if ui
+                                    .add_enabled(!generating, egui::Button::new(label))
+                                    .clicked()
+                                {
+                                    app.spawn_generate_matte_for_selected_clip();
+                                }
+                                changed
                             },
                         ) {
                             app.set_selected_clip_background_removal(background_removal_enabled);
@@ -616,6 +636,62 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         }
                         {
                             let tracking = app.motion_tracking_clip_id.is_some();
+                            components::property_section(
+                                ui,
+                                Text::PropMotionTrackRegion.tr(locale),
+                                Text::PropMotionTrackRegionHint.tr(locale),
+                                |ui| {
+                                    ui.add_enabled_ui(!tracking, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.add(
+                                                egui::DragValue::new(
+                                                    &mut app.motion_track_center_x,
+                                                )
+                                                .speed(0.01)
+                                                .range(0.0..=1.0)
+                                                .prefix("x "),
+                                            );
+                                            ui.add(
+                                                egui::DragValue::new(
+                                                    &mut app.motion_track_center_y,
+                                                )
+                                                .speed(0.01)
+                                                .range(0.0..=1.0)
+                                                .prefix("y "),
+                                            );
+                                            if ui
+                                                .button(Text::MotionTrackRegionReset.tr(locale))
+                                                .clicked()
+                                            {
+                                                app.motion_track_center_x = 0.5;
+                                                app.motion_track_center_y = 0.5;
+                                            }
+                                        });
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut app.motion_track_width,
+                                                crate::app::MOTION_TRACK_SIZE_RANGE,
+                                            )
+                                            .text(Text::PropMotionTrackWidth.tr(locale)),
+                                        );
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut app.motion_track_height,
+                                                crate::app::MOTION_TRACK_SIZE_RANGE,
+                                            )
+                                            .text(Text::PropMotionTrackHeight.tr(locale)),
+                                        );
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut app.motion_track_search_radius,
+                                                crate::app::MOTION_TRACK_SEARCH_RADIUS_RANGE,
+                                            )
+                                            .text(Text::PropMotionTrackSearchRadius.tr(locale)),
+                                        );
+                                    });
+                                    false
+                                },
+                            );
                             let label = if tracking {
                                 Text::MotionTrackInProgress.tr(locale)
                             } else {
@@ -790,6 +866,61 @@ fn position_keyframe_editor(
             time_fraction: 1.0,
             value: avcore::Position { x: 0.0, y: 0.0 },
         });
+        changed = true;
+    }
+    if changed {
+        Some(list)
+    } else {
+        None
+    }
+}
+
+/// Vertex-list counterpart of [`f32_keyframe_editor`]/[`position_keyframe_editor`] — each row
+/// edits one `(x, y)` vertex of a [`avcore::timeline::ShapeKind::Polygon`], in the shape's own
+/// local unit square (see that variant's doc comment). Refuses to remove the third-to-last
+/// vertex (a polygon needs at least 3 to stay a real shape) rather than letting the list
+/// collapse to something degenerate.
+fn polygon_vertex_editor(
+    ui: &mut egui::Ui,
+    vertices: &[(f32, f32)],
+    locale: crate::i18n::Locale,
+) -> Option<Vec<(f32, f32)>> {
+    let mut list = vertices.to_vec();
+    let count = list.len();
+    let mut changed = false;
+    let mut remove_index = None;
+    for (i, v) in list.iter_mut().enumerate() {
+        ui.horizontal(|ui| {
+            changed |= ui
+                .add(
+                    egui::DragValue::new(&mut v.0)
+                        .speed(0.01)
+                        .range(-2.0..=2.0)
+                        .prefix("x "),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::DragValue::new(&mut v.1)
+                        .speed(0.01)
+                        .range(-2.0..=2.0)
+                        .prefix("y "),
+                )
+                .changed();
+            if count > 3 && ui.small_button("🗑").clicked() {
+                remove_index = Some(i);
+            }
+        });
+    }
+    if let Some(i) = remove_index {
+        list.remove(i);
+        changed = true;
+    }
+    if ui.button(Text::ShapeAddVertex.tr(locale)).clicked() {
+        // Offset from the last vertex rather than stacking exactly on top of it, so the new
+        // point is easy to spot and drag into place.
+        let (last_x, last_y) = list.last().copied().unwrap_or((0.0, 0.0));
+        list.push((last_x + 0.1, last_y + 0.1));
         changed = true;
     }
     if changed {
@@ -1015,6 +1146,308 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
             if track.kind == avcore::timeline::TrackKind::Text {
                 if let Some(existing) = track.text_clips.iter_mut().find(|c| c.id == tc_id) {
                     *existing = tc;
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// A `Copy`-friendly stand-in for [`avcore::timeline::ShapeKind`] for use with
+/// [`components::enum_combo`] (whose `T: Copy` bound `ShapeKind` itself can't satisfy — its
+/// `Polygon` variant holds a `Vec`). Maps to/from the fixed presets via `ShapeKind::rectangle()`
+/// etc. `Custom` stands for a `Polygon` that doesn't match any preset's exact vertex list; there
+/// being no vertex-editing UI yet (see `ShapeKind::Polygon`'s doc comment), it's only ever shown
+/// as the current value, never offered as something to pick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShapePreset {
+    Ellipse,
+    Rectangle,
+    Triangle,
+    Trapezoid,
+    Arrow,
+    Custom,
+}
+
+fn shape_kind_to_preset(kind: &avcore::timeline::ShapeKind) -> ShapePreset {
+    use avcore::timeline::ShapeKind;
+    if *kind == ShapeKind::Ellipse {
+        ShapePreset::Ellipse
+    } else if *kind == ShapeKind::rectangle() {
+        ShapePreset::Rectangle
+    } else if *kind == ShapeKind::triangle() {
+        ShapePreset::Triangle
+    } else if *kind == ShapeKind::trapezoid() {
+        ShapePreset::Trapezoid
+    } else if *kind == ShapeKind::arrow() {
+        ShapePreset::Arrow
+    } else {
+        ShapePreset::Custom
+    }
+}
+
+fn shape_preset_label(preset: ShapePreset, locale: crate::i18n::Locale) -> String {
+    match preset {
+        ShapePreset::Ellipse => Text::ShapePresetEllipse.tr(locale).to_string(),
+        ShapePreset::Rectangle => Text::ShapePresetRectangle.tr(locale).to_string(),
+        ShapePreset::Triangle => Text::ShapePresetTriangle.tr(locale).to_string(),
+        ShapePreset::Trapezoid => Text::ShapePresetTrapezoid.tr(locale).to_string(),
+        ShapePreset::Arrow => Text::ShapePresetArrow.tr(locale).to_string(),
+        ShapePreset::Custom => Text::ShapePresetCustom.tr(locale).to_string(),
+    }
+}
+
+/// Renders the properties panel content for a selected shape overlay clip. Shows controls for
+/// the shape preset, RGBA color, center X/Y, width/height, rotation, outline thickness, start
+/// time, and duration. Applies changes immediately by mutating the clip through the active
+/// project's timeline — mirrors [`text_clip_properties`]'s clone-mutate-writeback shape.
+fn shape_clip_properties(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    sc_id: u64,
+    locale: crate::i18n::Locale,
+) {
+    components::section_label(ui, Text::SelectedShapeClip.tr(locale));
+
+    let current = app
+        .active_project()
+        .timeline()
+        .tracks
+        .iter()
+        .filter(|t| t.kind == avcore::timeline::TrackKind::Shape)
+        .flat_map(|t| &t.shape_clips)
+        .find(|sc| sc.id == sc_id)
+        .cloned();
+
+    let Some(mut sc) = current else {
+        ui.label(RichText::new(Text::NoShapeClipSelected.tr(locale)).color(theme::TEXT_MUTED));
+        return;
+    };
+
+    let mut changed = false;
+
+    // Shape preset
+    ui.label(
+        RichText::new(Text::PropShapeKind.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    let mut preset = shape_kind_to_preset(&sc.shape_kind);
+    let mut preset_options = vec![
+        ShapePreset::Ellipse,
+        ShapePreset::Rectangle,
+        ShapePreset::Triangle,
+        ShapePreset::Trapezoid,
+        ShapePreset::Arrow,
+    ];
+    if preset == ShapePreset::Custom {
+        preset_options.push(ShapePreset::Custom);
+    }
+    if components::enum_combo(ui, "shape_kind", &preset_options, &mut preset, |p| {
+        shape_preset_label(p, locale)
+    }) {
+        sc.shape_kind = match preset {
+            ShapePreset::Ellipse => avcore::timeline::ShapeKind::Ellipse,
+            ShapePreset::Rectangle => avcore::timeline::ShapeKind::rectangle(),
+            ShapePreset::Triangle => avcore::timeline::ShapeKind::triangle(),
+            ShapePreset::Trapezoid => avcore::timeline::ShapeKind::trapezoid(),
+            ShapePreset::Arrow => avcore::timeline::ShapeKind::arrow(),
+            // Not reachable — Custom is only ever in `preset_options` when it was already the
+            // current value, so selecting it again isn't a change `enum_combo` reports.
+            ShapePreset::Custom => sc.shape_kind.clone(),
+        };
+        changed = true;
+    }
+    ui.add_space(4.0);
+
+    // Vertex editor — every preset except Ellipse is already a Polygon under the hood (see
+    // ShapeKind::rectangle() etc.), so this lets the user hand-edit any of them into a custom
+    // shape, not just a dedicated "Custom" starting point.
+    let polygon_vertices = match &sc.shape_kind {
+        avcore::timeline::ShapeKind::Polygon(vertices) => Some(vertices.clone()),
+        avcore::timeline::ShapeKind::Ellipse => None,
+    };
+    if let Some(vertices) = polygon_vertices {
+        let mut new_vertices = None;
+        if components::property_section(
+            ui,
+            Text::PropShapeVertices.tr(locale),
+            Text::ShapeVerticesHint.tr(locale),
+            |ui| {
+                new_vertices = polygon_vertex_editor(ui, &vertices, locale);
+                new_vertices.is_some()
+            },
+        ) {
+            if let Some(v) = new_vertices {
+                sc.shape_kind = avcore::timeline::ShapeKind::Polygon(v);
+                changed = true;
+            }
+        }
+    }
+
+    // Color picker (RGBA — alpha controlled via the color picker's alpha channel).
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(Text::PropShapeColor.tr(locale))
+                .size(12.0)
+                .color(theme::TEXT_MUTED),
+        );
+        let mut color = egui::Color32::from_rgba_premultiplied(
+            sc.color_rgba[0],
+            sc.color_rgba[1],
+            sc.color_rgba[2],
+            sc.color_rgba[3],
+        );
+        if ui.color_edit_button_srgba(&mut color).changed() {
+            sc.color_rgba = [color.r(), color.g(), color.b(), color.a()];
+            changed = true;
+        }
+    });
+
+    // Center position
+    ui.label(
+        RichText::new(Text::PropShapePosX.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(
+            egui::Slider::new(&mut sc.center_x, 0.0..=1.0)
+                .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
+        )
+        .changed()
+    {
+        changed = true;
+    }
+    ui.label(
+        RichText::new(Text::PropShapePosY.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(
+            egui::Slider::new(&mut sc.center_y, 0.0..=1.0)
+                .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
+        )
+        .changed()
+    {
+        changed = true;
+    }
+
+    // Size
+    ui.label(
+        RichText::new(Text::PropShapeWidth.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(
+            egui::Slider::new(&mut sc.width, 0.01..=1.0)
+                .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
+        )
+        .changed()
+    {
+        changed = true;
+    }
+    ui.label(
+        RichText::new(Text::PropShapeHeight.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(
+            egui::Slider::new(&mut sc.height, 0.01..=1.0)
+                .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
+        )
+        .changed()
+    {
+        changed = true;
+    }
+
+    // Rotation
+    ui.label(
+        RichText::new(Text::PropShapeRotation.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(egui::Slider::new(&mut sc.rotation_deg, 0.0..=360.0).suffix("°"))
+        .changed()
+    {
+        changed = true;
+    }
+
+    // Outline thickness
+    ui.label(
+        RichText::new(Text::PropShapeStroke.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(
+            egui::DragValue::new(&mut sc.stroke_thickness_px)
+                .range(0.0..=f32::MAX)
+                .speed(0.5)
+                .suffix(" px"),
+        )
+        .changed()
+    {
+        changed = true;
+    }
+    ui.label(
+        RichText::new(Text::PropShapeStrokeHint.tr(locale))
+            .size(10.0)
+            .color(theme::TEXT_MUTED),
+    );
+
+    // Start and duration
+    ui.label(
+        RichText::new(Text::PropShapeStart.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(
+            egui::DragValue::new(&mut sc.start_secs)
+                .range(0.0..=f64::MAX)
+                .speed(0.1)
+                .suffix(" s"),
+        )
+        .changed()
+    {
+        changed = true;
+    }
+    ui.label(
+        RichText::new(Text::PropShapeDuration.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    if ui
+        .add(
+            egui::DragValue::new(&mut sc.duration_secs)
+                .range(0.1..=f64::MAX)
+                .speed(0.1)
+                .suffix(" s"),
+        )
+        .changed()
+    {
+        changed = true;
+    }
+
+    ui.add_space(6.0);
+    ui.label(
+        RichText::new(Text::ShapeExportNote.tr(locale))
+            .size(10.5)
+            .color(theme::TEXT_MUTED),
+    );
+
+    // Apply changes back to the clip in the active project.
+    if changed {
+        let timeline = app.active_project_mut().timeline_mut();
+        for track in &mut timeline.tracks {
+            if track.kind == avcore::timeline::TrackKind::Shape {
+                if let Some(existing) = track.shape_clips.iter_mut().find(|c| c.id == sc_id) {
+                    *existing = sc;
                     break;
                 }
             }

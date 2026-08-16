@@ -6,8 +6,8 @@ use crate::i18n::{Locale, Text};
 use crate::theme;
 
 /// Renders the Ajustes screen: language switcher, audio/export/project settings, and the
-/// keyboard shortcut reference table. Settings write straight into `app.prefs`/`app.locale`
-/// and aren't persisted yet — see [`crate::app::PrefsState`].
+/// keyboard shortcut reference table. Settings write straight into `app.prefs`/`app.locale`,
+/// persisted to disk via `App::save_prefs` — see [`crate::app::PrefsState`].
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {
@@ -103,6 +103,23 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         .clicked()
                     {
                         app.prefs.gpu_encoder = choice;
+                    }
+                }
+            });
+            ui.add_space(10.0);
+            ui.label(Text::PrefsPreviewQuality.tr(locale));
+            ui.horizontal(|ui| {
+                use avcore::PreviewQuality as Quality;
+                for (choice, label) in [
+                    (Quality::Low, Text::PreviewQualityLow),
+                    (Quality::Medium, Text::PreviewQualityMedium),
+                    (Quality::High, Text::PreviewQualityHigh),
+                ] {
+                    if ui
+                        .selectable_label(app.prefs.preview_quality == choice, label.tr(locale))
+                        .clicked()
+                    {
+                        app.prefs.preview_quality = choice;
                     }
                 }
             });
@@ -336,6 +353,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     }
                 }
             });
+            ui.add_space(10.0);
+            ui.checkbox(
+                &mut app.prefs.telemetry_enabled,
+                Text::PrefsTelemetryEnabled.tr(locale),
+            );
         });
         ui.add_space(14.0);
 
@@ -353,7 +375,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 }
 
 /// Renders the configurable key binding table and handles key capture when the user clicks
-/// "Change" on one of the four bindable actions.
+/// "Change" on one of the five bindable actions.
 fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
     // When a binding is being captured, intercept the next non-modifier key press.
     // Escape cancels without changing the binding.
@@ -386,6 +408,9 @@ fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
                     BindableAction::PasteFormatting => {
                         app.prefs.key_bindings.paste_formatting = combo
                     }
+                    BindableAction::AddOpacityMarker => {
+                        app.prefs.key_bindings.add_opacity_marker = combo
+                    }
                 }
                 app.binding_capture = None;
             }
@@ -397,7 +422,7 @@ fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
     }
 
     // Pre-compute display strings so we can borrow app freely inside the Grid closure.
-    let rows: [(BindableAction, Text, String); 4] = [
+    let rows: [(BindableAction, Text, String); 5] = [
         (
             BindableAction::PlayPause,
             Text::ShortcutPlayPause,
@@ -417,6 +442,11 @@ fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
             BindableAction::PasteFormatting,
             Text::ShortcutPasteFormatting,
             app.prefs.key_bindings.paste_formatting.display(),
+        ),
+        (
+            BindableAction::AddOpacityMarker,
+            Text::ShortcutAddOpacityMarker,
+            app.prefs.key_bindings.add_opacity_marker.display(),
         ),
     ];
     let binding_capture = app.binding_capture;
