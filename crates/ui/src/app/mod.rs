@@ -31,6 +31,7 @@ mod model_download;
 mod motion_tracking;
 mod preview;
 mod sound_library;
+mod telemetry;
 mod text_to_speech;
 mod timeline_ops;
 mod transcribe;
@@ -204,6 +205,18 @@ pub struct PrefsState {
     /// for assets already imported; only newly imported files pick up the new setting.
     #[serde(default)]
     pub preview_quality: avcore::PreviewQuality,
+    /// Whether local runtime telemetry (`request.md`'s Fase 7 "Telemetria de runtime" — import/
+    /// export duration, sampled preview frame time, error events) is recorded to
+    /// `telemetry.jsonl`. Stays on-device either way — this only controls whether it's
+    /// collected at all. On by default, matching `request.md`'s "fica no dispositivo por
+    /// padrão" framing (an on-device log, not an opt-in analytics pipeline), but user-visible
+    /// and toggleable in Preferences either way.
+    #[serde(default = "default_telemetry_enabled")]
+    pub telemetry_enabled: bool,
+}
+
+fn default_telemetry_enabled() -> bool {
+    true
 }
 
 impl Default for PrefsState {
@@ -225,6 +238,7 @@ impl Default for PrefsState {
             saved_layer_templates: Vec::new(),
             sound_library_path: String::new(),
             preview_quality: avcore::PreviewQuality::default(),
+            telemetry_enabled: true,
         }
     }
 }
@@ -304,6 +318,11 @@ pub const TRANSITION_DURATION_RANGE: std::ops::RangeInclusive<f32> = 0.1..=3.0;
 /// [`avcore::timeline::ClipInstance::scale_keyframes`]).
 pub const SCALE_RANGE: std::ops::RangeInclusive<f32> = 1.0..=3.0;
 
+/// Minimum gap between sampled `PreviewFrameTime` telemetry events (Fase 7's "Telemetria de
+/// runtime") — recording every single preview frame would flood `telemetry.jsonl` for no
+/// analytical benefit over a periodic sample.
+pub const PREVIEW_FRAME_TELEMETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Slider bounds for the properties panel's layer-resize controls
 /// ([`avcore::timeline::ClipInstance::layer_scale_x`]/`_y`) — unlike [`SCALE_RANGE`]'s
 /// Ken-Burns zoom (which only ever enlarges), a layer's on-canvas footprint can shrink well
@@ -331,10 +350,24 @@ pub const MOTION_TRACK_SEARCH_RADIUS_RANGE: std::ops::RangeInclusive<f32> = 0.02
 /// needed, matching the execution plan's "tokio + canais assíncronos" without pulling egui's
 /// synchronous frame loop into async code.
 enum RenderEvent {
-    Progress { job_id: u64, percent: u8 },
-    Done { job_id: u64 },
-    Failed { job_id: u64, message: String },
-    Cancelled { job_id: u64 },
+    Progress {
+        job_id: u64,
+        percent: u8,
+    },
+    Done {
+        job_id: u64,
+        duration_ms: u64,
+        output_duration_secs: f64,
+    },
+    Failed {
+        job_id: u64,
+        message: String,
+        duration_ms: u64,
+        output_duration_secs: f64,
+    },
+    Cancelled {
+        job_id: u64,
+    },
 }
 
 /// A message from a background import worker thread (see [`App::spawn_import`]) back to
@@ -357,6 +390,7 @@ enum ImportEvent {
         loudness: Option<avcore::LoudnessMetrics>,
         proxy_path: Option<PathBuf>,
         waveform_peaks: Option<Vec<(f32, f32)>>,
+        duration_ms: u64,
     },
     Failed {
         path: PathBuf,
@@ -464,6 +498,14 @@ pub struct App {
     pub selected_asset_id: Option<u64>,
     pub export_jobs: Vec<ExportJob>,
     pub prefs: PrefsState,
+    /// Sends [`avcore::TelemetryEvent`]s to the dedicated background writer thread spawned in
+    /// [`App::new`] — see [`App::record_telemetry`]/`telemetry::spawn_telemetry_writer`. No
+    /// paired receiver is kept on `App`; that thread owns the only one.
+    telemetry_tx: UnboundedSender<avcore::TelemetryEvent>,
+    /// Wall-clock time [`App::record_telemetry`] last recorded a `PreviewFrameTime` sample —
+    /// throttles sampling to roughly once every [`PREVIEW_FRAME_TELEMETRY_INTERVAL`] rather
+    /// than every single frame, which would flood `telemetry.jsonl`.
+    last_preview_frame_telemetry: Option<std::time::Instant>,
     render_tx: UnboundedSender<RenderEvent>,
     render_rx: UnboundedReceiver<RenderEvent>,
     /// Cancellation flags for jobs a worker thread is currently rendering, keyed by job id.
@@ -747,6 +789,8 @@ impl App {
         let (tts_tx, tts_rx) = mpsc::unbounded_channel();
         let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
         let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
+        let (telemetry_tx, telemetry_rx) = mpsc::unbounded_channel();
+        telemetry::spawn_telemetry_writer(telemetry_rx, telemetry::telemetry_path());
         let mut app = Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
@@ -756,6 +800,8 @@ impl App {
             selected_asset_id: None,
             export_jobs: export::load_queue(),
             prefs,
+            telemetry_tx,
+            last_preview_frame_telemetry: None,
             render_tx,
             render_rx,
             active_renders: HashMap::new(),
@@ -1162,6 +1208,7 @@ impl eframe::App for App {
             // Smooth video needs every-frame repaints; the 200ms throttle below would show
             // it as a slideshow.
             ui.ctx().request_repaint();
+            self.sample_preview_frame_telemetry(ui.ctx());
         } else {
             ui.ctx().request_repaint_after(Duration::from_millis(200));
         }

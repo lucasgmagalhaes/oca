@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 use avcore::{
     Canvas, ClipSegment, ExportJob, ExportJobStatus, RenderOutcome, ShapeSegment, TextSegment,
@@ -84,21 +85,46 @@ impl App {
                         }
                     }
                 }
-                RenderEvent::Done { job_id } => {
+                RenderEvent::Done {
+                    job_id,
+                    duration_ms,
+                    output_duration_secs,
+                } => {
                     if let Some(job) = self.export_jobs.iter_mut().find(|j| j.id == job_id) {
                         info!(job_id, output = %job.output_path, "export job completed");
                         job.status = ExportJobStatus::Done;
                     }
                     self.active_renders.remove(&job_id);
                     save_queue(&self.export_jobs);
+                    self.record_telemetry(avcore::TelemetryEvent::ExportCompleted {
+                        duration_ms,
+                        output_duration_secs,
+                        success: true,
+                    });
                 }
-                RenderEvent::Failed { job_id, message } => {
+                RenderEvent::Failed {
+                    job_id,
+                    message,
+                    duration_ms,
+                    output_duration_secs,
+                } => {
                     if let Some(job) = self.export_jobs.iter_mut().find(|j| j.id == job_id) {
                         error!(job_id, output = %job.output_path, error = %message, "export job failed");
-                        job.status = ExportJobStatus::Failed { message };
+                        job.status = ExportJobStatus::Failed {
+                            message: message.clone(),
+                        };
                     }
                     self.active_renders.remove(&job_id);
                     save_queue(&self.export_jobs);
+                    self.record_telemetry(avcore::TelemetryEvent::ExportCompleted {
+                        duration_ms,
+                        output_duration_secs,
+                        success: false,
+                    });
+                    self.record_telemetry(avcore::TelemetryEvent::Error {
+                        context: "export".to_string(),
+                        message,
+                    });
                 }
                 RenderEvent::Cancelled { job_id } => {
                     debug!(job_id, "export job cancelled");
@@ -136,12 +162,30 @@ impl App {
         let gpu_encoder = self.prefs.gpu_encoder;
         job.status = ExportJobStatus::Rendering { percent: 0 };
 
+        // The exported timeline's own length (footage time, not encode wall-clock time) —
+        // track 0 defines a multi-track export's overall duration, same as
+        // `resolve_timeline_segments`'s `total_duration_secs`, just re-derived here from the
+        // already-resolved `ClipSegment`s rather than the original `ClipInstance`s.
+        let output_duration_secs: f64 = track_segments
+            .first()
+            .map(|track| {
+                track
+                    .iter()
+                    .map(|seg| {
+                        (seg.source_out_secs - seg.source_in_secs)
+                            / (seg.speed_factor as f64).max(0.0001)
+                    })
+                    .sum()
+            })
+            .unwrap_or(0.0);
+
         let cancel_flag = Arc::new(AtomicBool::new(false));
         self.active_renders.insert(job_id, Arc::clone(&cancel_flag));
 
         info!(job_id, output = %output_path.display(), "export render worker dispatched");
         let tx = self.render_tx.clone();
         std::thread::spawn(move || {
+            let started = Instant::now();
             let outcome = avcore::render_export_job_multi(
                 &track_segments,
                 canvas,
@@ -155,13 +199,20 @@ impl App {
                     let _ = tx.send(RenderEvent::Progress { job_id, percent });
                 },
             );
+            let duration_ms = started.elapsed().as_millis() as u64;
 
             let event = match outcome {
-                Ok(RenderOutcome::Completed) => RenderEvent::Done { job_id },
+                Ok(RenderOutcome::Completed) => RenderEvent::Done {
+                    job_id,
+                    duration_ms,
+                    output_duration_secs,
+                },
                 Ok(RenderOutcome::Cancelled) => RenderEvent::Cancelled { job_id },
                 Err(e) => RenderEvent::Failed {
                     job_id,
                     message: e.to_string(),
+                    duration_ms,
+                    output_duration_secs,
                 },
             };
             let _ = tx.send(event);

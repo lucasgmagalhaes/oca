@@ -309,6 +309,7 @@ text_catalog! {
     Browse: pt_br = "Procurar", en = "Browse";
     PrefsProject: pt_br = "Projeto", en = "Project";
     PrefsAutosaveInterval: pt_br = "Intervalo de autosave", en = "Autosave interval";
+    PrefsTelemetryEnabled: pt_br = "Telemetria local ativada (uso/erros, nunca enviado)", en = "Local telemetry enabled (usage/errors, never sent)";
     PrefsShortcuts: pt_br = "Atalhos de teclado", en = "Keyboard shortcuts";
     TableAction: pt_br = "Ação", en = "Action";
     TableShortcut: pt_br = "Atalho", en = "Shortcut";

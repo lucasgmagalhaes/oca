@@ -89,7 +89,9 @@ impl App {
                     loudness,
                     proxy_path,
                     waveform_peaks,
+                    duration_ms,
                 } => {
+                    self.record_telemetry(avcore::TelemetryEvent::ImportCompleted { duration_ms });
                     let Some(asset_id) = self.pending_enrichment.remove(&import_token) else {
                         continue;
                     };
@@ -113,6 +115,10 @@ impl App {
                 ImportEvent::Failed { path, message } => {
                     self.pending_imports = self.pending_imports.saturating_sub(1);
                     tracing::error!(path = %path.display(), error = %message, "asset import failed");
+                    self.record_telemetry(avcore::TelemetryEvent::Error {
+                        context: "import".to_string(),
+                        message: message.clone(),
+                    });
                     self.push_toast(format!(
                         "Import failed — {}: {message}",
                         path.file_name()
@@ -252,6 +258,7 @@ pub(super) fn import_one(
     preview_quality: avcore::PreviewQuality,
     tx: &UnboundedSender<ImportEvent>,
 ) {
+    let started = Instant::now();
     let probed = match avcore::probe_media(path) {
         Ok(probed) => probed,
         Err(e) => {
@@ -306,5 +313,6 @@ pub(super) fn import_one(
         loudness,
         proxy_path,
         waveform_peaks,
+        duration_ms: started.elapsed().as_millis() as u64,
     });
 }

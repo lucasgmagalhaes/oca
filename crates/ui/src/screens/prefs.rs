@@ -353,6 +353,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     }
                 }
             });
+            ui.add_space(10.0);
+            ui.checkbox(
+                &mut app.prefs.telemetry_enabled,
+                Text::PrefsTelemetryEnabled.tr(locale),
+            );
         });
         ui.add_space(14.0);
 
