@@ -93,7 +93,7 @@ Os itens de máscaras até remoção de flicker acima foram adicionados após co
 ## Fase 5 — Exportação e fila em background
 
 Renderização nunca pode travar a edição.
-Your so
+
 **Arquitetura**
 - A renderização roda num worker separado da thread de UI (processo ou thread dedicada), comunicando por canal assíncrono (ex.: `tokio::mpsc` em Rust). A interface de edição continua 100% responsiva enquanto um job renderiza.
 - Cada exportação vira um **job** independente, com um snapshot das configurações no momento em que entra na fila: bitrate alvo, perfil de áudio, formato, proporção de tela, caminho de saída. Mudanças feitas depois no projeto ativo não afetam jobs já enfileirados.
