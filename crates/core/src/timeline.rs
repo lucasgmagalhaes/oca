@@ -1173,8 +1173,9 @@ impl Track {
     }
 
     /// The position, in seconds, where this track's last clip ends. `0.0` for an empty track —
-    /// the natural "append here" position for a clip added to this track. Accounts for both
-    /// [`ClipInstance`]s and [`TextClip`]s so text tracks report their own length correctly.
+    /// the natural "append here" position for a clip added to this track. Accounts for
+    /// [`ClipInstance`]s, [`TextClip`]s, and [`ShapeClip`]s so every track kind reports its own
+    /// length correctly.
     pub fn duration_secs(&self) -> f64 {
         let clips_end = self
             .clips
@@ -1186,7 +1187,12 @@ impl Track {
             .iter()
             .map(|t| t.start_secs + t.duration_secs)
             .fold(0.0, f64::max);
-        clips_end.max(text_end)
+        let shape_end = self
+            .shape_clips
+            .iter()
+            .map(|s| s.start_secs + s.duration_secs)
+            .fold(0.0, f64::max);
+        clips_end.max(text_end).max(shape_end)
     }
 }
 

@@ -206,6 +206,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         cancel_model_download: None,
         selected_clip_id: None,
         selected_text_clip_id: None,
+        selected_shape_clip_id: None,
         timeline_px_per_sec: 4.0,
         lib_panel_width: 220.0,
         props_panel_width: 240.0,
@@ -3109,4 +3110,71 @@ fn confirm_apply_layer_template_skips_layers_left_without_an_asset() {
     let timeline = app.active_project().timeline();
     assert_eq!(timeline.tracks.len(), 1);
     assert_eq!(timeline.tracks[0].clips.len(), 1);
+}
+
+#[test]
+fn add_shape_track_appends_an_empty_shape_track() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.add_shape_track();
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].kind, TrackKind::Shape);
+    assert!(tracks[0].shape_clips.is_empty());
+}
+
+#[test]
+fn add_shape_clip_auto_creates_a_shape_track_and_selects_the_new_clip() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.add_shape_clip();
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].kind, TrackKind::Shape);
+    assert_eq!(tracks[0].shape_clips.len(), 1);
+    let clip_id = tracks[0].shape_clips[0].id;
+    assert_eq!(app.selected_shape_clip_id, Some(clip_id));
+    assert_eq!(app.selected_clip_id, None);
+    assert_eq!(app.selected_text_clip_id, None);
+}
+
+#[test]
+fn add_shape_clip_ids_stay_unique_past_an_existing_high_shape_clip_id() {
+    let mut track = test_track(1, TrackKind::Shape, Vec::new());
+    track.shape_clips.push(avcore::timeline::ShapeClip {
+        id: 100,
+        start_secs: 0.0,
+        duration_secs: 1.0,
+        shape_kind: avcore::timeline::ShapeKind::rectangle(),
+        center_x: 0.5,
+        center_y: 0.5,
+        width: 0.3,
+        height: 0.3,
+        rotation_deg: 0.0,
+        color_rgba: [255, 255, 255, 255],
+        stroke_thickness_px: 0.0,
+    });
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.add_shape_clip();
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks[0].shape_clips.len(), 2);
+    assert_eq!(tracks[0].shape_clips[1].id, 101);
+}
+
+#[test]
+fn add_shape_clip_reuses_the_existing_shape_track_on_a_second_call() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.add_shape_clip();
+    app.add_shape_clip();
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].shape_clips.len(), 2);
+    // Ids are unique even across the two calls.
+    assert_ne!(tracks[0].shape_clips[0].id, tracks[0].shape_clips[1].id);
 }

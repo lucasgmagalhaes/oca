@@ -338,6 +338,30 @@ text_catalog! {
     PropTextDuration: pt_br = "Duração (s)", en = "Duration (s)";
     PropTextStart: pt_br = "Início (s)", en = "Start (s)";
     TextExportNote: pt_br = "renderizado via drawtext no export — preview não suportado ainda.", en = "rendered via drawtext on export — preview not supported yet.";
+
+    AddShapeTrack: pt_br = "S+ Forma", en = "S+ Shape";
+    DefaultShapeTrackName: pt_br = "Forma", en = "Shape";
+    AddShapeClip: pt_br = "+ Adicionar forma", en = "+ Add shape";
+    SelectedShapeClip: pt_br = "Forma geométrica", en = "Geometric shape";
+    NoShapeClipSelected: pt_br = "Nenhuma forma selecionada", en = "No shape selected";
+    PropShapeKind: pt_br = "Tipo", en = "Kind";
+    ShapePresetEllipse: pt_br = "Elipse/círculo", en = "Ellipse/circle";
+    ShapePresetRectangle: pt_br = "Retângulo/quadrado", en = "Rectangle/square";
+    ShapePresetTriangle: pt_br = "Triângulo", en = "Triangle";
+    ShapePresetTrapezoid: pt_br = "Trapézio", en = "Trapezoid";
+    ShapePresetArrow: pt_br = "Seta", en = "Arrow";
+    ShapePresetCustom: pt_br = "Personalizado", en = "Custom";
+    PropShapeColor: pt_br = "Cor", en = "Color";
+    PropShapePosX: pt_br = "Posição X", en = "Position X";
+    PropShapePosY: pt_br = "Posição Y", en = "Position Y";
+    PropShapeWidth: pt_br = "Largura", en = "Width";
+    PropShapeHeight: pt_br = "Altura", en = "Height";
+    PropShapeRotation: pt_br = "Rotação", en = "Rotation";
+    PropShapeStroke: pt_br = "Espessura do contorno (px)", en = "Outline thickness (px)";
+    PropShapeStrokeHint: pt_br = "0 = preenchido", en = "0 = filled";
+    PropShapeDuration: pt_br = "Duração (s)", en = "Duration (s)";
+    PropShapeStart: pt_br = "Início (s)", en = "Start (s)";
+    ShapeExportNote: pt_br = "renderizado via geq no export — preview não suportado ainda.", en = "rendered via geq on export — preview not supported yet.";
 }
 
 /// The breadcrumb's title for `screen` (e.g. `Screen::Queue` -> "Fila de exportação" — longer

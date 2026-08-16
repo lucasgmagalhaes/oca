@@ -254,6 +254,13 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             app.add_text_track();
         }
         ui.separator();
+        if ui.button(Text::AddShapeTrack.tr(locale)).clicked() {
+            app.add_shape_track();
+        }
+        if ui.button(Text::AddShapeClip.tr(locale)).clicked() {
+            app.add_shape_clip();
+        }
+        ui.separator();
         let _ = ui.button("↺");
         let _ = ui.button("↻");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

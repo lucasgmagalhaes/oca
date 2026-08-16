@@ -542,9 +542,14 @@ pub struct App {
     /// removes whichever clip this points at.
     pub selected_clip_id: Option<u64>,
     /// The text overlay clip currently selected on a text track, if any. Selecting a text clip
-    /// clears `selected_clip_id` and vice versa — only one kind of clip can be selected at a
-    /// time. The properties panel shows text-clip controls when this is `Some`.
+    /// clears `selected_clip_id`/`selected_shape_clip_id` and vice versa — only one kind of clip
+    /// can be selected at a time. The properties panel shows text-clip controls when this is
+    /// `Some`.
     pub selected_text_clip_id: Option<u64>,
+    /// The shape overlay clip currently selected on a shape track, if any. Same mutual-exclusion
+    /// rule as `selected_text_clip_id`. The properties panel shows shape-clip controls when this
+    /// is `Some`.
+    pub selected_shape_clip_id: Option<u64>,
     /// Horizontal scale of the timeline strip and its ruler, in pixels per second. Adjusted by
     /// `Ctrl` + scroll over the timeline (per `request.md`'s Fase 3 spec) — more zoom for
     /// frame-accurate edits, less to see the whole project at once.
@@ -737,6 +742,7 @@ impl App {
             cancel_model_download: None,
             selected_clip_id: None,
             selected_text_clip_id: None,
+            selected_shape_clip_id: None,
             timeline_px_per_sec: 4.0,
             lib_panel_width: 220.0,
             props_panel_width: 240.0,

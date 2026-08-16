@@ -84,7 +84,9 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let has_formatting_clipboard = app.has_formatting_clipboard();
         let mut clicked_clip_id = None;
         let mut clicked_text_clip_id: Option<u64> = None;
+        let mut clicked_shape_clip_id: Option<u64> = None;
         let mut delete_text_clip_requests: Vec<u64> = Vec::new();
+        let mut delete_shape_clip_requests: Vec<u64> = Vec::new();
         let mut delete_requests: Vec<u64> = Vec::new();
         let mut copy_requests: Vec<u64> = Vec::new();
         let mut cut_requests: Vec<u64> = Vec::new();
@@ -454,6 +456,56 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             }
                         }
                     }
+                    // Render shape clips for shape tracks as solid-color blocks — mirrors the
+                    // text-clip block above, swapping the text label for the shape's own color.
+                    if track.kind == avcore::timeline::TrackKind::Shape {
+                        for sc in &track.shape_clips {
+                            let x = track_rect.left() + sc.start_secs as f32 * px_per_sec;
+                            let w = (sc.duration_secs as f32 * px_per_sec).max(3.0);
+                            let sc_rect = egui::Rect::from_min_size(
+                                egui::pos2(x, track_rect.top()),
+                                egui::vec2(w, track_rect.height()),
+                            );
+                            let sc_response = ui.interact(
+                                sc_rect,
+                                ui.id().with(("timeline_shape_clip", sc.id)),
+                                egui::Sense::click(),
+                            );
+                            sc_response.context_menu(|ui| {
+                                if ui.button(Text::ContextMenuDelete.tr(locale)).clicked() {
+                                    delete_shape_clip_requests.push(sc.id);
+                                    ui.close();
+                                }
+                            });
+                            if sc_response.clicked() {
+                                clicked_shape_clip_id = Some(sc.id);
+                            }
+                            let block_color = egui::Color32::from_rgba_unmultiplied(
+                                sc.color_rgba[0],
+                                sc.color_rgba[1],
+                                sc.color_rgba[2],
+                                120,
+                            );
+                            painter.rect_filled(sc_rect, egui::CornerRadius::same(4), block_color);
+                            let label_pos = sc_rect.left_center() + egui::vec2(4.0, 0.0);
+                            painter.text(
+                                label_pos,
+                                egui::Align2::LEFT_CENTER,
+                                shape_kind_glyph(&sc.shape_kind),
+                                egui::FontId::proportional(11.0),
+                                egui::Color32::WHITE,
+                            );
+                            // Selection ring
+                            if app.selected_shape_clip_id == Some(sc.id) {
+                                painter.rect_stroke(
+                                    sc_rect,
+                                    egui::CornerRadius::same(4),
+                                    egui::Stroke::new(2.0, theme::ACCENT),
+                                    egui::StrokeKind::Inside,
+                                );
+                            }
+                        }
+                    }
                     draw_playhead(
                         ui,
                         track_rect,
@@ -474,11 +526,18 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         });
         if let Some(id) = clicked_clip_id {
             app.selected_text_clip_id = None;
+            app.selected_shape_clip_id = None;
             app.select_timeline_clip(id);
         }
         if let Some(id) = clicked_text_clip_id {
             app.selected_clip_id = None;
+            app.selected_shape_clip_id = None;
             app.selected_text_clip_id = Some(id);
+        }
+        if let Some(id) = clicked_shape_clip_id {
+            app.selected_clip_id = None;
+            app.selected_text_clip_id = None;
+            app.selected_shape_clip_id = Some(id);
         }
         for tc_id in delete_text_clip_requests {
             let timeline = app.active_project_mut().timeline_mut();
@@ -489,6 +548,17 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             }
             if app.selected_text_clip_id == Some(tc_id) {
                 app.selected_text_clip_id = None;
+            }
+        }
+        for sc_id in delete_shape_clip_requests {
+            let timeline = app.active_project_mut().timeline_mut();
+            for track in &mut timeline.tracks {
+                if track.kind == avcore::timeline::TrackKind::Shape {
+                    track.shape_clips.retain(|sc| sc.id != sc_id);
+                }
+            }
+            if app.selected_shape_clip_id == Some(sc_id) {
+                app.selected_shape_clip_id = None;
             }
         }
         for clip_id in multi_select_requests {
@@ -798,6 +868,20 @@ fn draw_playhead(
             rect.y_range(),
             egui::Stroke::new(stroke_width, theme::ACCENT),
         );
+    }
+}
+
+/// A short glyph labeling a shape clip's block on the timeline strip, standing in for the
+/// full-fidelity render (which only happens on export, same preview gap as [`avcore::timeline::
+/// TextClip`]'s).
+fn shape_kind_glyph(kind: &avcore::timeline::ShapeKind) -> &'static str {
+    match kind {
+        avcore::timeline::ShapeKind::Ellipse => "●",
+        avcore::timeline::ShapeKind::Polygon(vertices) => match vertices.len() {
+            3 => "▲",
+            4 => "■",
+            _ => "⬠",
+        },
     }
 }
 

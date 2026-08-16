@@ -1,4 +1,4 @@
-use avcore::timeline::{ClipInstance, TextClip, Timeline, Track, TrackKind};
+use avcore::timeline::{ClipInstance, ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind};
 
 use super::App;
 
@@ -589,9 +589,9 @@ pub(super) fn resolve_or_create_track(
     timeline.tracks.len() - 1
 }
 
-/// The next free clip id across every track in `timeline`, including text clips — one past the
-/// current max, `1` if the timeline has no clips yet. Covers both [`ClipInstance`]s and
-/// [`TextClip`]s so their ids are globally unique within a timeline.
+/// The next free clip id across every track in `timeline`, including text and shape clips — one
+/// past the current max, `1` if the timeline has no clips yet. Covers [`ClipInstance`]s,
+/// [`TextClip`]s, and [`ShapeClip`]s so their ids are globally unique within a timeline.
 pub(super) fn next_clip_id(timeline: &avcore::timeline::Timeline) -> u64 {
     let video_audio_max = timeline
         .tracks
@@ -607,7 +607,14 @@ pub(super) fn next_clip_id(timeline: &avcore::timeline::Timeline) -> u64 {
         .map(|c| c.id)
         .max()
         .unwrap_or(0);
-    video_audio_max.max(text_max) + 1
+    let shape_max = timeline
+        .tracks
+        .iter()
+        .flat_map(|t| &t.shape_clips)
+        .map(|c| c.id)
+        .max()
+        .unwrap_or(0);
+    video_audio_max.max(text_max).max(shape_max) + 1
 }
 
 impl App {
@@ -669,5 +676,59 @@ impl App {
         }
         self.selected_clip_id = None;
         self.selected_text_clip_id = Some(clip_id);
+    }
+
+    /// Appends a new shape track (`TrackKind::Shape`) to the active sequence's timeline. The
+    /// track is named using [`crate::i18n::Text::DefaultShapeTrackName`]. Mirrors
+    /// [`App::add_text_track`].
+    pub fn add_shape_track(&mut self) {
+        use crate::i18n::Text;
+        let locale = self.locale;
+        let track_id = {
+            let timeline = self.active_project().timeline();
+            timeline.tracks.iter().map(|t| t.id).max().unwrap_or(0) + 1
+        };
+        let name = Text::DefaultShapeTrackName.tr(locale).to_string();
+        self.active_project_mut()
+            .timeline_mut()
+            .tracks
+            .push(avcore::timeline::Track {
+                id: track_id,
+                name,
+                kind: TrackKind::Shape,
+                clips: Vec::new(),
+                text_clips: Vec::new(),
+                shape_clips: Vec::new(),
+                visible: true,
+            });
+    }
+
+    /// Appends a new [`ShapeClip`] (a default rectangle, centered, half the canvas size) to the
+    /// first shape track in the active sequence, starting at the current playhead position and
+    /// lasting 3 seconds. Auto-creates a shape track if none exists yet, unlike
+    /// [`App::add_text_clip`] which is a no-op without one — there's no separate "+ Shape track"
+    /// step the user is expected to take first. Selects the new clip immediately so the
+    /// properties panel shows its controls.
+    pub fn add_shape_clip(&mut self) {
+        let playhead_secs = self.active_project().timeline().playhead_secs;
+        let timeline = self.active_project_mut().timeline_mut();
+        let track_index = resolve_or_create_track(timeline, TrackKind::Shape, None);
+        let clip_id = next_clip_id(timeline);
+        timeline.tracks[track_index].shape_clips.push(ShapeClip {
+            id: clip_id,
+            start_secs: playhead_secs,
+            duration_secs: 3.0,
+            shape_kind: ShapeKind::rectangle(),
+            center_x: 0.5,
+            center_y: 0.5,
+            width: 0.3,
+            height: 0.3,
+            rotation_deg: 0.0,
+            color_rgba: [255, 255, 255, 255],
+            stroke_thickness_px: 0.0,
+        });
+        self.selected_clip_id = None;
+        self.selected_text_clip_id = None;
+        self.selected_shape_clip_id = Some(clip_id);
     }
 }

@@ -1,5 +1,6 @@
 use avcore::timeline::{
-    ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
+    ClipInstance, ColorFilter, MaskShape, ShapeClip, ShapeKind, Timeline, Track, TrackKind,
+    TransitionType,
 };
 use avcore::ClipFormatting;
 use avcore::{Keyframe, Position};
@@ -381,6 +382,27 @@ fn track_duration_is_the_single_clips_end() {
 fn track_duration_is_the_furthest_clip_end_on_this_track_only() {
     let track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 50.0, 0.0, 5.0)]);
     // Second clip ends at 50 + 5 = 55, which is furthest even though it's shorter.
+    assert_eq!(track.duration_secs(), 55.0);
+}
+
+#[test]
+fn track_duration_accounts_for_shape_clips() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0)]);
+    track.shape_clips = vec![ShapeClip {
+        id: 1,
+        start_secs: 50.0,
+        duration_secs: 5.0,
+        shape_kind: ShapeKind::rectangle(),
+        center_x: 0.5,
+        center_y: 0.5,
+        width: 0.3,
+        height: 0.3,
+        rotation_deg: 0.0,
+        color_rgba: [255, 255, 255, 255],
+        stroke_thickness_px: 0.0,
+    }];
+    // The shape clip ends at 50 + 5 = 55, past the video clip's 10 — a shape-only or mixed
+    // track must report the furthest end across every clip kind it carries.
     assert_eq!(track.duration_secs(), 55.0);
 }
 

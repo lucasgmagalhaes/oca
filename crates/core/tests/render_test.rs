@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use avcore::project::Sequence;
-use avcore::render::{render_export, resolve_text_segments, RenderOutcome};
-use avcore::timeline::{TextClip, Timeline, Track, TrackKind, WordTiming};
+use avcore::render::{render_export, resolve_shape_segments, resolve_text_segments, RenderOutcome};
+use avcore::timeline::{ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind, WordTiming};
 use avcore::{measure_loudness, probe_media};
 
 fn fixture(name: &str) -> PathBuf {
@@ -214,4 +214,78 @@ fn resolve_text_segments_falls_back_to_one_segment_when_canvas_width_is_zero() {
     let segments = resolve_text_segments(&sequence, 0);
 
     assert_eq!(segments.len(), 1);
+}
+
+fn shape_clip(id: u64, start_secs: f64, duration_secs: f64) -> ShapeClip {
+    ShapeClip {
+        id,
+        start_secs,
+        duration_secs,
+        shape_kind: ShapeKind::rectangle(),
+        center_x: 0.5,
+        center_y: 0.5,
+        width: 0.3,
+        height: 0.3,
+        rotation_deg: 0.0,
+        color_rgba: [255, 255, 255, 255],
+        stroke_thickness_px: 0.0,
+    }
+}
+
+fn sequence_with_shape_track(clips: Vec<ShapeClip>) -> Sequence {
+    Sequence {
+        id: 1,
+        name: "Sequence 1".to_string(),
+        timeline: Timeline {
+            tracks: vec![Track {
+                id: 1,
+                name: "Forma".to_string(),
+                kind: TrackKind::Shape,
+                clips: vec![],
+                text_clips: vec![],
+                shape_clips: clips,
+                visible: true,
+            }],
+            playhead_secs: 0.0,
+        },
+    }
+}
+
+#[test]
+fn resolve_shape_segments_returns_one_segment_for_a_shape_clip() {
+    let sequence = sequence_with_shape_track(vec![shape_clip(1, 1.0, 2.0)]);
+
+    let segments = resolve_shape_segments(&sequence, 1920, 1080);
+
+    assert_eq!(segments.len(), 1);
+    assert!(segments[0].filter_desc.starts_with("geq="));
+    assert!(segments[0]
+        .filter_desc
+        .contains("between(t\\,1.0000\\,3.0000)"));
+}
+
+#[test]
+fn resolve_shape_segments_sorts_by_start_secs_ascending() {
+    // Deliberately built out of start_secs order.
+    let sequence =
+        sequence_with_shape_track(vec![shape_clip(2, 5.0, 1.0), shape_clip(1, 0.0, 1.0)]);
+
+    let segments = resolve_shape_segments(&sequence, 1920, 1080);
+
+    assert_eq!(segments.len(), 2);
+    assert!(segments[0]
+        .filter_desc
+        .contains("between(t\\,0.0000\\,1.0000)"));
+    assert!(segments[1]
+        .filter_desc
+        .contains("between(t\\,5.0000\\,6.0000)"));
+}
+
+#[test]
+fn resolve_shape_segments_returns_empty_when_no_shape_track_exists() {
+    let sequence = sequence_with_text_track(text_clip(Vec::new(), false));
+
+    let segments = resolve_shape_segments(&sequence, 1920, 1080);
+
+    assert!(segments.is_empty());
 }

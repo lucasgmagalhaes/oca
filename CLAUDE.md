@@ -109,21 +109,31 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   background thread and imports the resulting WAV through the exact same pipeline as a
   drag-and-drop import ([`App::spawn_import`]) — no separate asset-creation path needed.
 
-  **Geometric shapes (data model + export rendering done, UI controls not started):**
+  **Geometric shapes (data model, export rendering, and UI all wired now):**
   `TrackKind::Shape`/`ShapeClip` — rectangle/square, ellipse/circle, triangle, trapezoid,
   arrow presets (`ShapeKind::rectangle()` etc.), plus a `Polygon(Vec<(f32,f32)>)` variant that
-  also covers `request.md`'s "forma personalizada" (custom shape) ask, data-model-only for now
-  (no vertex-editing UI yet — a real, separate follow-up). `avcore::shape_render` builds a
-  `geq` avfilter node per shape (rotation via a per-pixel coordinate rotation, ellipse via a
-  quadratic test, every straight-edged shape via ray-casting point-in-polygon — correct for the
-  arrow's concave notches), applied as a post-processing pass
-  (`avbridge::apply_shape_overlays`) the same way text overlays already are. **Confirmed
-  working for real**, not just parse-checked: rendered the generated filter against a synthetic
-  frame and visually verified correct position/rotation/color, including catching two real bugs
-  (RGB not converted to YCbCr; yuv420p chroma-subsampled coordinates not matching luma's) before
-  they shipped. **Not yet done:** any UI to actually place/resize/color/rotate a shape clip on
-  the timeline (no track-creation button, no properties-panel controls, no preview) — export
-  wiring exists and works, but nothing in `ui` creates a `ShapeClip` yet.
+  also covers `request.md`'s "forma personalizada" (custom shape) ask — vertex-editing UI for a
+  hand-drawn custom polygon still doesn't exist (a real, separate follow-up), but every fixed
+  preset is placeable and editable now. `avcore::shape_render` builds a `geq` avfilter node per
+  shape (rotation via a per-pixel coordinate rotation, ellipse via a quadratic test, every
+  straight-edged shape via ray-casting point-in-polygon — correct for the arrow's concave
+  notches), applied as a post-processing pass (`avbridge::apply_shape_overlays`) the same way
+  text overlays already are. **Confirmed working for real**, not just parse-checked: rendered
+  the generated filter against a synthetic frame and visually verified correct position/
+  rotation/color, including catching two real bugs (RGB not converted to YCbCr; yuv420p
+  chroma-subsampled coordinates not matching luma's) before they shipped.
+  UI (`App::add_shape_track`/`add_shape_clip`, `timeline_ops.rs`): toolbar "S+ Forma"/"+
+  Adicionar forma" buttons (`screens/editor/mod.rs`'s `toolbar()`); `add_shape_clip` auto-
+  creates a shape track if none exists yet (unlike `add_text_clip`, which stays a no-op without
+  one — there's no drag-and-drop path onto a shape track the way there is for media assets, so
+  the button has to be able to place the first clip itself). Timeline strip renders each shape
+  clip as a colored block with a preset glyph (`shape_kind_glyph` in `timeline_panel.rs`),
+  click-to-select and a context-menu delete, same interaction shape as text clips. Properties
+  panel (`shape_clip_properties` in `properties_panel.rs`) edits preset/color/center position/
+  size/rotation/outline thickness/timing via the same clone-mutate-writeback pattern
+  `text_clip_properties` uses. **Preview still not implemented** — same gap `TextClip` has
+  (`ShapeClip`'s own doc comment flags it); the timeline block is a color/glyph stand-in only,
+  the real render only happens on export.
 
 - **Fase 5/6 — partially done.** Aspect ratio selection; prefs (`prefs.oc` — same
   gzip-compressed MessagePack framing `.ocproj` uses, via `avcore::to_ocproj_bytes`/
@@ -155,6 +165,18 @@ build (`include/`+`lib/`); its DLLs must be on `PATH` at runtime. `core`'s `prev
 module needs GStreamer discoverable via `PKG_CONFIG_PATH`. `core`'s `whisper-rs` dependency
 needs `LIBCLANG_PATH` pointing at a libclang install (bindgen) and a build directory that
 isn't under `%TEMP%` on Windows (MSVC's FileTracker fails there — `FTK1011`).
+
+**Ubuntu 24.04's packaged FFmpeg (6.1.1, via `apt install libavformat-dev` etc.) is too old
+to build `avbridge`.** `csrc/filters.c` calls `avcodec_get_supported_config`/
+`AV_CODEC_CONFIG_SAMPLE_FORMAT`/`AV_CODEC_CONFIG_SAMPLE_RATE`, added in FFmpeg 7.1 — a plain
+`apt`-installed FFmpeg dev build on noble fails with "undeclared identifier" on that file
+specifically, before reaching any of this project's own logic. A sandboxed session without
+network access to fetch a newer FFmpeg build (or without access to `cdn.pyke.io` for `ort`'s
+prebuilt ONNX Runtime binaries — set `ORT_SKIP_DOWNLOAD=1` to defer *that* failure past `cargo
+check`, same idea as the GPU-encoder note below) can't get a full `cargo check`/`build`/`test`
+to pass — same category of pre-existing, machine-specific build gap as the GPU encoder note
+below, not a code regression. `cargo fmt --check` still works (parses each file independently,
+no dependency build needed) and is a reasonable sanity check when a full build isn't possible.
 
 **Do not remove `avbridge/build.rs`'s import-lib-renaming step.** GStreamer bundles its
 own FFmpeg (gst-libav) with identically named import libs — `build.rs` copies them into
