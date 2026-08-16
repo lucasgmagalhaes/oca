@@ -504,12 +504,33 @@ impl Preview {
     }
 
     /// Seeks to `position_secs`, flushing buffered data for an immediate jump to the nearest
-    /// key unit.
+    /// key unit. Equivalent to [`Self::seek_with_rate`] at rate `1.0`.
     pub fn seek(&self, position_secs: f64) -> Result<(), PreviewError> {
         self.pipeline
             .seek_simple(
                 gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
                 gst::ClockTime::from_seconds_f64(position_secs.max(0.0)),
+            )
+            .map_err(PreviewError::Seek)
+    }
+
+    /// Seeks to `position_secs` like [`Self::seek`], and additionally sets the pipeline's
+    /// playback rate to `rate` — GStreamer's own rate-seek mechanism, not a filter element, so
+    /// it covers audio too and stays in effect across a later plain `play()`/`pause()` until
+    /// the next seek changes it again. Used to make preview playback/scrubbing honor
+    /// [`crate::timeline::ClipInstance::speed_factor`] the same way export's `setpts` scaling
+    /// does — without this, a sped-up/slowed-down clip would still visually play at 1x in the
+    /// preview even though `ui`'s position math already accounts for speed when converting
+    /// between timeline and source time.
+    pub fn seek_with_rate(&self, position_secs: f64, rate: f64) -> Result<(), PreviewError> {
+        self.pipeline
+            .seek(
+                rate,
+                gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+                gst::SeekType::Set,
+                gst::ClockTime::from_seconds_f64(position_secs.max(0.0)),
+                gst::SeekType::None,
+                gst::ClockTime::NONE,
             )
             .map_err(PreviewError::Seek)
     }

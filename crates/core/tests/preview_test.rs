@@ -85,6 +85,18 @@ fn seek_succeeds_and_position_stays_in_bounds() {
 }
 
 #[test]
+fn seek_with_rate_succeeds_and_position_stays_in_bounds() {
+    let preview = Preview::open(&fixture("video.mp4"), None).unwrap();
+    let duration = preview.duration_secs().unwrap();
+
+    preview.seek_with_rate(duration / 2.0, 2.0).unwrap();
+
+    if let Some(position) = preview.position_secs() {
+        assert!(position >= 0.0 && position <= duration + 0.5);
+    }
+}
+
+#[test]
 fn errors_on_a_missing_file() {
     assert!(Preview::open(&fixture("does_not_exist.mp4"), None).is_err());
 }
