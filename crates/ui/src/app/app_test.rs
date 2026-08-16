@@ -3459,3 +3459,41 @@ fn pump_update_check_is_a_no_op_with_no_pending_events() {
 
     assert_eq!(app.available_update, None);
 }
+
+#[test]
+fn prefs_snapshot_captures_live_locale_and_panel_layout() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.locale = Locale::En;
+    app.lib_panel_width = 321.0;
+    app.props_panel_width = 456.0;
+    app.timeline_height = 111.0;
+    // Deliberately different from the live values above, so the snapshot can only match by
+    // actually reading the live App fields, not by coincidentally already matching prefs.
+    app.prefs.locale = Locale::PtBr;
+    app.prefs.lib_panel_width = 1.0;
+    app.prefs.props_panel_width = 2.0;
+    app.prefs.timeline_height = 3.0;
+
+    let snapshot = app.prefs_snapshot();
+
+    assert_eq!(snapshot.locale, Locale::En);
+    assert_eq!(snapshot.lib_panel_width, 321.0);
+    assert_eq!(snapshot.props_panel_width, 456.0);
+    assert_eq!(snapshot.timeline_height, 111.0);
+}
+
+#[test]
+fn prefs_snapshot_prunes_recent_paths_that_no_longer_exist() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.prefs.recent_project_paths = vec![
+        "/definitely/does/not/exist/project.ocproj".to_string(),
+        env!("CARGO_MANIFEST_DIR").to_string(), // this directory does exist.
+    ];
+
+    let snapshot = app.prefs_snapshot();
+
+    assert_eq!(
+        snapshot.recent_project_paths,
+        vec![env!("CARGO_MANIFEST_DIR").to_string()]
+    );
+}
