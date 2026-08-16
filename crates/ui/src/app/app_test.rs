@@ -219,6 +219,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         selected_clip_id: None,
         selected_text_clip_id: None,
         selected_shape_clip_id: None,
+        drawing_shape_points: None,
         timeline_px_per_sec: 4.0,
         lib_panel_width: 220.0,
         props_panel_width: 240.0,
@@ -3320,4 +3321,107 @@ fn add_shape_clip_reuses_the_existing_shape_track_on_a_second_call() {
     assert_eq!(tracks[0].shape_clips.len(), 2);
     // Ids are unique even across the two calls.
     assert_ne!(tracks[0].shape_clips[0].id, tracks[0].shape_clips[1].id);
+}
+
+#[test]
+fn start_drawing_custom_shape_begins_an_empty_point_list() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.start_drawing_custom_shape();
+
+    assert_eq!(app.drawing_shape_points, Some(Vec::new()));
+}
+
+#[test]
+fn cancel_drawing_custom_shape_discards_the_in_progress_drawing() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.start_drawing_custom_shape();
+    app.push_drawing_shape_point(0.2, 0.3);
+
+    app.cancel_drawing_custom_shape();
+
+    assert_eq!(app.drawing_shape_points, None);
+}
+
+#[test]
+fn push_drawing_shape_point_is_a_no_op_outside_drawing_mode() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.push_drawing_shape_point(0.2, 0.3);
+
+    assert_eq!(app.drawing_shape_points, None);
+}
+
+#[test]
+fn push_drawing_shape_point_clamps_to_the_canvas() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.start_drawing_custom_shape();
+
+    app.push_drawing_shape_point(-0.5, 1.5);
+
+    assert_eq!(app.drawing_shape_points, Some(vec![(0.0, 1.0)]));
+}
+
+#[test]
+fn finish_drawing_custom_shape_is_a_no_op_below_three_points() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.start_drawing_custom_shape();
+    app.push_drawing_shape_point(0.2, 0.2);
+    app.push_drawing_shape_point(0.4, 0.2);
+
+    app.finish_drawing_custom_shape();
+
+    assert_eq!(app.drawing_shape_points, Some(vec![(0.2, 0.2), (0.4, 0.2)]));
+    assert!(app.active_project().timeline().tracks.is_empty());
+}
+
+#[test]
+fn finish_drawing_custom_shape_creates_a_polygon_clip_and_clears_drawing_mode() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.start_drawing_custom_shape();
+    app.push_drawing_shape_point(0.2, 0.2);
+    app.push_drawing_shape_point(0.6, 0.2);
+    app.push_drawing_shape_point(0.4, 0.6);
+
+    app.finish_drawing_custom_shape();
+
+    assert_eq!(app.drawing_shape_points, None);
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].kind, TrackKind::Shape);
+    assert_eq!(tracks[0].shape_clips.len(), 1);
+    let clip = &tracks[0].shape_clips[0];
+    assert_eq!(app.selected_shape_clip_id, Some(clip.id));
+    // Bounding box of the three points above: x in [0.2, 0.6], y in [0.2, 0.6].
+    assert!((clip.center_x - 0.4).abs() < 1e-6);
+    assert!((clip.center_y - 0.4).abs() < 1e-6);
+    assert!((clip.width - 0.4).abs() < 1e-6);
+    assert!((clip.height - 0.4).abs() < 1e-6);
+    assert_eq!(clip.rotation_deg, 0.0);
+    let avcore::timeline::ShapeKind::Polygon(vertices) = &clip.shape_kind else {
+        panic!("expected a Polygon shape kind");
+    };
+    assert_eq!(vertices.len(), 3);
+    // First point (0.2, 0.2) is the box's top-left corner -> local (-0.5, -0.5).
+    assert!((vertices[0].0 - (-0.5)).abs() < 1e-6);
+    assert!((vertices[0].1 - (-0.5)).abs() < 1e-6);
+}
+
+#[test]
+fn finish_drawing_custom_shape_floors_a_degenerate_bounding_box() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.start_drawing_custom_shape();
+    // Three collinear points on the same vertical line - a zero-width bounding box.
+    app.push_drawing_shape_point(0.5, 0.2);
+    app.push_drawing_shape_point(0.5, 0.4);
+    app.push_drawing_shape_point(0.5, 0.6);
+
+    app.finish_drawing_custom_shape();
+
+    let clip = &app.active_project().timeline().tracks[0].shape_clips[0];
+    assert!(clip.width > 0.0);
+    let avcore::timeline::ShapeKind::Polygon(vertices) = &clip.shape_kind else {
+        panic!("expected a Polygon shape kind");
+    };
+    assert!(vertices.iter().all(|v| v.0.is_finite() && v.1.is_finite()));
 }
