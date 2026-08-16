@@ -92,10 +92,12 @@ pub enum ShapeKind {
     /// test), each roughly `-0.5..=0.5` — the shape's own local unit square before it's scaled
     /// by [`ShapeClip::width`]/[`ShapeClip::height`], rotated, and translated to
     /// [`ShapeClip::center_x`]/[`ShapeClip::center_y`]. `request.md`'s "opção de desenhar uma
-    /// forma personalizada" (custom shape) is this same variant with user-placed vertices —
-    /// the data model supports it; the interactive vertex-editing UI to populate it by hand
-    /// doesn't exist yet (a real, separate follow-up, not a small addition — same class of gap
-    /// as `MaskShape::None`'s doc comment already flags for a custom mask shape).
+    /// forma personalizada" (custom shape) is this same variant with user-placed vertices — the
+    /// properties panel's per-vertex X/Y editor (`ui`'s `polygon_vertex_editor`, shown whenever
+    /// a `ShapeClip`'s `shape_kind` is a `Polygon` — every preset included, since they're all
+    /// `Polygon` under the hood too, see `ShapeKind::rectangle()` etc.) lets a user hand-edit,
+    /// add, or remove vertices starting from any preset or from scratch, so this is no longer
+    /// data-model-only.
     Polygon(Vec<(f32, f32)>),
 }
 
