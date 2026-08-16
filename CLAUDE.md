@@ -235,7 +235,11 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   configurable key bindings; export job reordering; output-folder overwrite/rename/cancel
   prompt; word-highlight subtitles (single-line only — a caption that wraps in `drawtext`
   gets every highlight positioned as if still on one line); Whisper subtitles (model fetched
-  on demand via `avcore::model_download`, not bundled); music/SFX library scanning (no
+  on demand via `avcore::model_download`, not bundled); standalone `.srt` subtitle export
+  (`avcore::export_srt`, `request.md`'s "arquivo `.srt` separado" half of the subtitle ask —
+  the embedded `drawtext` half already happened on every export; pure string formatting over
+  every `TextClip` across every `TrackKind::Text` track, sorted by start time; Editor toolbar's
+  "Export .srt" button); music/SFX library scanning (no
   bundled content, points at a user-configured folder); per-user Editor panel layout
   (`PrefsState::lib_panel_width`/`props_panel_width`/`timeline_height`, the per-user half of
   Fase 3's "layout salvo por projeto ou por usuário" — per-project persistence would need
