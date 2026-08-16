@@ -311,6 +311,10 @@ pub fn resolve_timeline_segments(
             transition_in: clip.transition_in.to_export_code(),
             transition_duration_secs: clip.transition_duration_secs,
             timeline_start_secs: clip.start_secs,
+            // Ignored by avbridge_encode_timeline_export (this single-track path) regardless —
+            // there's no compositing stage for the alpha to survive into, same reasoning as
+            // resolve_clip_filters' is_overlay gate above.
+            mask_video_path: String::new(),
         });
     }
     let (width, height, fps) = dimensions_fps.ok_or(RenderError::EmptyTimeline)?;
@@ -671,6 +675,15 @@ pub fn resolve_timeline_segments_multi(
             let (fps_num, fps_den) = fps_to_rational(fps);
             let (video_filter, position_x_expr, position_y_expr) =
                 resolve_clip_filters(clip, fps_num, fps_den, duration_secs, is_overlay);
+            // Same overlay-only gate resolve_clip_filters' resize stage above uses (see its
+            // doc comment) — a track-0/background clip's alpha has no compositing stage to
+            // survive into (build_vfilter_descr's immediate format=yuv420p conform discards
+            // it), so the matte is only worth decoding/alphamerging on an overlay track.
+            let mask_video_path = if is_overlay && clip.background_removal_enabled {
+                clip.background_removal_mask_path.clone()
+            } else {
+                String::new()
+            };
             segments.push(avbridge::ClipSegment {
                 source_path: asset.source_path.clone(),
                 source_in_secs: clip.source_in_secs,
@@ -684,6 +697,7 @@ pub fn resolve_timeline_segments_multi(
                 transition_in: clip.transition_in.to_export_code(),
                 transition_duration_secs: clip.transition_duration_secs,
                 timeline_start_secs: clip.start_secs,
+                mask_video_path,
             });
         }
 

@@ -33,13 +33,22 @@ impl App {
 
     /// Sets `selected_clip_id`'s
     /// [`avcore::timeline::ClipInstance::background_removal_enabled`] — what checking the
-    /// properties panel's "Remover fundo (IA)" box does. A no-op if nothing is selected. See
-    /// that field's doc comment for the current export-wiring gap — toggling this doesn't yet
-    /// change the exported/previewed video.
+    /// properties panel's "Remover fundo (IA)" box does. A no-op if nothing is selected. Only
+    /// takes visible effect on export once a matte has actually been generated (see
+    /// [`App::spawn_generate_matte_for_selected_clip`]) — checking the box alone doesn't
+    /// generate one.
     pub fn set_selected_clip_background_removal(&mut self, background_removal_enabled: bool) {
         self.with_selected_clip_mut(|clip| {
             clip.background_removal_enabled = background_removal_enabled
         });
+    }
+
+    /// Sets `selected_clip_id`'s
+    /// [`avcore::timeline::ClipInstance::background_removal_mask_path`] — what a finished
+    /// [`App::spawn_generate_matte_for_selected_clip`] run applies. A no-op if nothing is
+    /// selected.
+    pub fn set_selected_clip_background_removal_mask_path(&mut self, mask_path: String) {
+        self.with_selected_clip_mut(|clip| clip.background_removal_mask_path = mask_path);
     }
 
     /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::speed_factor`], clamped to

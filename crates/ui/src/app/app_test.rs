@@ -157,6 +157,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
     let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
     let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
+    let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
     let (tts_tx, tts_rx) = mpsc::unbounded_channel();
     let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
     let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
@@ -199,6 +200,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         motion_track_center_y: 0.5,
         motion_track_size: 0.2,
         motion_track_search_radius: 0.08,
+        matte_generation_tx,
+        matte_generation_rx,
+        matte_generating_clip_id: None,
         tts_tx,
         tts_rx,
         tts_modal_text: None,
@@ -1522,6 +1526,75 @@ fn motion_track_region_defaults_to_a_centered_region() {
 
     assert_eq!(app.motion_track_center_x, 0.5);
     assert_eq!(app.motion_track_center_y, 0.5);
+}
+
+#[test]
+fn spawn_generate_matte_for_selected_clip_is_a_no_op_when_no_model_is_configured() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    assert!(app.prefs.background_removal_model_path.trim().is_empty());
+
+    app.spawn_generate_matte_for_selected_clip();
+
+    // No background job started, and the user is told why.
+    assert_eq!(app.matte_generating_clip_id, None);
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn spawn_generate_matte_for_selected_clip_is_a_no_op_while_a_run_is_already_in_flight() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.prefs.background_removal_model_path = "/models/modnet.onnx".to_string();
+    app.selected_clip_id = Some(1);
+    app.matte_generating_clip_id = Some(99);
+
+    app.spawn_generate_matte_for_selected_clip();
+
+    // Stays pinned to the already-running clip's id, not overwritten by this second call.
+    assert_eq!(app.matte_generating_clip_id, Some(99));
+}
+
+#[test]
+fn set_selected_clip_background_removal_mask_path_updates_the_selected_clip() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_background_removal_mask_path("/cache/clip_1_matte.mp4".to_string());
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].background_removal_mask_path,
+        "/cache/clip_1_matte.mp4"
+    );
 }
 
 #[test]

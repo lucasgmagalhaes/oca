@@ -487,11 +487,25 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                             ui,
                             Text::BackgroundRemovalExportNote.tr(locale),
                             |ui| {
-                                ui.checkbox(
-                                    &mut background_removal_enabled,
-                                    Text::PropBackgroundRemoval.tr(locale),
-                                )
-                                .changed()
+                                let changed = ui
+                                    .checkbox(
+                                        &mut background_removal_enabled,
+                                        Text::PropBackgroundRemoval.tr(locale),
+                                    )
+                                    .changed();
+                                let generating = app.matte_generating_clip_id.is_some();
+                                let label = if generating {
+                                    Text::BackgroundRemovalGenerating.tr(locale)
+                                } else {
+                                    Text::BackgroundRemovalGenerateMatte.tr(locale)
+                                };
+                                if ui
+                                    .add_enabled(!generating, egui::Button::new(label))
+                                    .clicked()
+                                {
+                                    app.spawn_generate_matte_for_selected_clip();
+                                }
+                                changed
                             },
                         ) {
                             app.set_selected_clip_background_removal(background_removal_enabled);

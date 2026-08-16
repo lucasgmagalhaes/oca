@@ -152,7 +152,10 @@ text_catalog! {
     ChromaKeyTolerance: pt_br = "Tolerância", en = "Tolerance";
     ChromaKeyExportNote: pt_br = "mostra só um selo no bloco por enquanto — preview e export ainda não removem o fundo.", en = "only shows a badge on the block for now — preview and export don't remove the background yet.";
     PropBackgroundRemoval: pt_br = "🤖 Remoção de fundo (IA)", en = "🤖 Background removal (AI)";
-    BackgroundRemovalExportNote: pt_br = "detecção por IA já roda de verdade (MODNet via ONNX), mas ainda não gera a máscara nem afeta preview ou exportação — só marca o bloco por enquanto.", en = "the AI detection itself already runs for real (MODNet via ONNX), but doesn't generate the matte or affect preview/export yet — only marks the block for now.";
+    BackgroundRemovalExportNote: pt_br = "afeta a exportação só em blocos de faixas de overlay (não na faixa de fundo) — clique em \"Gerar máscara\" antes de exportar.", en = "only affects export on overlay-track blocks (not the background track) — click \"Generate matte\" before exporting.";
+    BackgroundRemovalGenerateMatte: pt_br = "Gerar máscara", en = "Generate matte";
+    BackgroundRemovalGenerating: pt_br = "Gerando máscara...", en = "Generating matte...";
+    BackgroundRemovalNoModelConfigured: pt_br = "Nenhum modelo de remoção de fundo configurado — baixe um em Ajustes primeiro.", en = "No background removal model configured — download one in Preferences first.";
     DownloadBackgroundRemovalModel: pt_br = "Baixar modelo de remoção de fundo", en = "Download background removal model";
     PrefsBackgroundRemovalModelPath: pt_br = "Caminho do modelo de remoção de fundo", en = "Background removal model path";
     TtsButton: pt_br = "🔊 Texto-pra-fala", en = "🔊 Text-to-speech";

@@ -36,7 +36,7 @@ pub use auto_reframe::{
     compute_reframe_crop, detect_faces, main_subject_center, CropRect, FaceBox, ReframeError,
 };
 pub use avbridge::{Canvas, ClipSegment, GpuEncoderPreference, ShapeSegment, TextSegment};
-pub use background_removal::{segment_person, SegmentError};
+pub use background_removal::{encode_matte_video, segment_person, MatteEncodeError, SegmentError};
 pub use export::{ExportJob, ExportJobStatus};
 pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};

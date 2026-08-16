@@ -496,18 +496,19 @@ pub struct ClipInstance {
     /// is generated per-clip (tied to this instance's own `source_in_secs`/`source_out_secs`
     /// range, see `crate::background_removal`), so this field is deliberately excluded from
     /// [`ClipFormatting`] — pasting it onto a different block would point that block at another
-    /// clip's matte video. **Not yet wired into `video_filter_chain`/preview**: computing the
-    /// matte (`crate::background_removal::segment_person`, confirmed working end-to-end) and
-    /// muxing it into a real alpha channel via `alphamerge` are two separate pipeline stages,
-    /// and only the first exists yet — same "field is real, export wiring is a later commit" gap
-    /// `gain_db`/`blur_intensity` shipped with before they were wired up. `#[serde(default)]` so
-    /// older saved projects load with it off.
+    /// clip's matte video. Wired into export (`crate::render::resolve_timeline_segments_multi`
+    /// -> `avbridge::ClipSegment::mask_video_path` -> an `alphamerge` stage in
+    /// `timeline_export_multi.c`), gated the same way `mask_shape`/`chroma_key`'s own alpha is:
+    /// **only takes effect on an overlay track** (track 1+ in a multi-track export) — a
+    /// single/background track's clips never composite, so their alpha (from this or any other
+    /// source) is always discarded by the final `format=yuv420p` conform regardless. Not yet
+    /// wired into preview. `#[serde(default)]` so older saved projects load with it off.
     #[serde(default)]
     pub background_removal_enabled: bool,
-    /// Path to the grayscale alpha-matte video [`ui`'s "Remover fundo (IA)" flow generates for
-    /// this clip — meaningless while [`ClipInstance::background_removal_enabled`] is `false`.
-    /// Empty string = not yet generated. `#[serde(default)]` so older saved projects load with
-    /// no matte.
+    /// Path to the grayscale-as-luma alpha-matte video `ui`'s "Gerar máscara" flow generates for
+    /// this clip (`App::spawn_generate_matte_for_selected_clip`) — meaningless while
+    /// [`ClipInstance::background_removal_enabled`] is `false`. Empty string = not yet
+    /// generated. `#[serde(default)]` so older saved projects load with no matte.
     #[serde(default)]
     pub background_removal_mask_path: String,
 }

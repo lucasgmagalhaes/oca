@@ -87,23 +87,83 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   drag-on-preview picker yet (numeric entry only) — `avcore::track_region` still only supports
   a square region (`template_size_frac` is one scalar), not an independent width/height.
 
-  **AI background removal (ONNX inference done, export/preview wiring not started):**
-  `avcore::background_removal::segment_person` runs MODNet (`ZHKKKe/MODNet`, ONNX export by
-  `yakhyo/modnet`, Apache-2.0) against one decoded frame, returning a per-pixel alpha matte.
-  Model isn't bundled yet — `avcore::model_download::download_background_removal_model`
-  fetches it on demand, same shape as the Whisper/reframe model downloads. **Confirmed working
-  end-to-end** on this dev machine: real inference against the downloaded model succeeded on a
-  synthetic frame. `ClipInstance::background_removal_enabled`/`background_removal_mask_path`
-  exist and have a properties-panel checkbox, but unlike auto-reframe/motion-tracking there's
-  no background job wired up yet to actually generate a matte file, and no `alphamerge`-based
-  compositing stage in the export pipeline to consume one — same "field is real, only a UI
-  toggle for now" gap `gain_db`/`blur_intensity` shipped with before their own wiring landed.
-  Next step: an avbridge function that encodes Rust-supplied raw frames into a plain
-  grayscale-as-luma H.264 video (reusing the already-working `libopenh264` encoder, no new
-  alpha-codec requirement), then a per-clip second filtergraph input + `alphamerge` in
-  `timeline_export_multi.c` (which already builds two-input filtergraphs for overlay-track
-  compositing — `src0`/`src1` in that file — so this reuses an existing pattern rather than
-  inventing one).
+  **AI background removal (inference, matte generation, and export wiring all done —
+  preview still not):** `avcore::background_removal::segment_person` runs MODNet
+  (`ZHKKKe/MODNet`, ONNX export by `yakhyo/modnet`, Apache-2.0) against one decoded frame,
+  returning a per-pixel alpha matte. Model isn't bundled yet —
+  `avcore::model_download::download_background_removal_model` fetches it on demand, same shape
+  as the Whisper/reframe model downloads. **Confirmed working end-to-end** on this dev machine:
+  real inference against the downloaded model succeeded on a synthetic frame.
+
+  **Matte generation (`ui`):** `App::spawn_generate_matte_for_selected_clip`
+  (`crates/ui/src/app/background_removal.rs`) — the properties panel's "Gerar máscara" button,
+  next to the "Remoção de fundo (IA)" checkbox. Samples frames across the clip's own trimmed
+  source range via `avcore::preview::Preview` (same seek+poll pattern motion-tracking/auto-
+  reframe use, coarser — `SAMPLES_PER_SEC = 2.0`, `MAX_SAMPLES = 40` — since each sample re-runs
+  a whole ONNX session, see `segment_person`'s doc comment on the lack of session reuse across
+  calls), runs `segment_person` on each, and encodes the resulting alpha values (rounded to
+  `0..=255`) into a small H.264 video via `avcore::encode_matte_video` — saved to
+  `avcore::background_removal::mask_cache_dir_for_project` (a hidden sibling folder next to the
+  project file, same convention as `crate::proxy`'s editing-proxy cache), keyed by clip id via
+  `mask_path_for_clip` (per-clip, not per-asset, since the matte covers this clip's own
+  trim range). The matte's own declared fps is however many frames actually got sampled per
+  second of the clip's real duration — a "stepped" alpha update rate slower than the clip's own
+  frame rate, not frame-perfect, but the export-side compositor already tolerates a
+  shorter/coarser overlay input by holding the last known frame (the same mechanism a track-1
+  clip whose own duration doesn't match track 0's already relies on).
+
+  **Encoding (`avbridge`):** `avbridge_encode_matte_video` (new file `csrc/matte_encode.c`) —
+  encodes a flat `luma_frames` buffer (frames concatenated, `width*height` bytes each) into
+  YUV420P H.264 via a forced `libopenh264` open (no GPU-preference ladder — this is a small
+  internal artifact, not user-facing output), luma plane = the supplied alpha bytes, both
+  chroma planes filled with neutral 128 ("grayscale-as-luma", not a true single-plane GRAY8
+  stream — sidesteps unverified GRAY8-support-in-libopenh264 risk). Closely mirrors
+  `proxy.c`'s existing encoder-open/frame-write/flush pattern, since that already does almost
+  everything needed here minus the decode/scale side (frames arrive pre-decoded from Rust,
+  no demuxer/decoder needed at all — the first avbridge function shaped this way). Rust wrapper
+  `avbridge::encode_matte_video`/`avcore::encode_matte_video`.
+
+  **Export compositing (`avbridge`):** `ClipSegment` gained a `mask_video_path` field (C
+  struct in `bridge.h`, the `#[repr(C)]` `RawClipSegment` mirror, and the public
+  `avbridge::ClipSegment` — all three kept in lockstep, plus both `CString`-marshalling call
+  sites in `avbridge/src/lib.rs`) — empty string = no matte, same "always non-null, empty
+  means unset" convention every other optional string field on this struct already uses.
+  `core::render::resolve_timeline_segments_multi` populates it from
+  `ClipInstance::background_removal_mask_path`, gated the same way `resolve_clip_filters`
+  already gates `layer_scale`'s resize stage: **only on an overlay track** (`is_overlay`) —
+  a single/background track's clips never reach a compositing stage, so their alpha (from
+  this or any other source, e.g. chroma_key/mask_shape) is always discarded by the final
+  `format=yuv420p` conform regardless, same documented caveat those two already carry.
+  `timeline_export_multi.c`'s `init_overlay_graph` (previously a fixed 2-input
+  `[in0]<f0>[v0];[in1]<f1>[v1];[v0][v1]overlay=...` graph) now optionally takes a third
+  `vdec2`/`f2` pair, producing `[in0]<f0>[v0];[in1]<f1>[v1];[in2]<f2>,format=gray[m2];
+  [v1][m2]alphamerge[v1a];[v0][v1a]overlay=...` when a matte is present — a second
+  `OverlayDecoder` (`ov2`) opened/advanced exactly like the existing overlay-track decoder
+  (`ov1`), against a synthetic `ClipSegment` pointing at the matte file with its own 0-based
+  `source_in_secs`/`source_out_secs` (the matte's internal timeline, distinct from the
+  original clip's timeline/source coordinates — see `mask_video_path`'s doc comment in
+  `bridge.h` for the exact mapping). Falls back to compositing without the matte (not a hard
+  export failure) if the matte file can't be opened or the 3-input graph fails to build —
+  matches this codebase's general "an optional post-effect degrades gracefully rather than
+  aborting a multi-minute render" posture. `alphamerge` **replaces**, not combines with, any
+  alpha `f1`'s own chain already produced (e.g. simultaneous chroma_key/mask_shape on the same
+  clip) — combining multiple alpha sources on one clip isn't supported.
+
+  **Verification caveat:** this specific C work (the `init_overlay_graph` 3-input extension
+  and `matte_encode.c`) was written and reviewed carefully but could not be exercised against
+  a real render on any machine during development — same "this dev machine's FFmpeg build
+  can't open any encoder" gap noted below applies. It *was*, however, syntax/type-checked for
+  real: `gcc -fsyntax-only -I <ffmpeg include dir>` against each modified/new `.c` file
+  individually (works even when the full crate can't build, since it only needs the headers
+  the *specific* file includes — `filters.c`'s separate FFmpeg-7.1-only API usage doesn't
+  block syntax-checking files that don't call those functions) came back clean, and the
+  before/after brace/paren-count delta across the whole file matched exactly, both useful
+  fallback techniques when `cargo check`/`build` itself is blocked in a sandbox missing a
+  new-enough FFmpeg. Not a substitute for an actual render — treat the export-compositing path
+  here as unverified beyond static analysis until it's run for real once.
+
+  **Not yet done:** preview compositing (no `alphamerge` stage in the GStreamer preview
+  pipeline — same gap chroma_key/mask_shape/position keyframes already have there).
 
   **Text-to-speech (done, real end-to-end):** `avcore::text_to_speech` — `espeak-rs`
   (statically-linked espeak-ng, no runtime DLL; `core/build.rs` copies its `espeak-ng-data`
@@ -187,6 +247,12 @@ check`, same idea as the GPU-encoder note below) can't get a full `cargo check`/
 to pass — same category of pre-existing, machine-specific build gap as the GPU encoder note
 below, not a code regression. `cargo fmt --check` still works (parses each file independently,
 no dependency build needed) and is a reasonable sanity check when a full build isn't possible.
+For `avbridge/csrc/*.c` changes specifically, `gcc -fsyntax-only -I <ffmpeg-include-dir>
+-Wall -Wextra <file>.c` run per-file from `crates/avbridge/csrc/` is a real (if partial)
+compiler check that still works even when the whole crate can't build — it only needs the
+headers *that file* includes, so it stays clean for every file except `filters.c` itself even
+on Ubuntu's too-old packaged FFmpeg. It won't catch link-time or runtime/filtergraph-semantic
+issues, but it does catch real syntax/type errors no amount of manual review guarantees.
 
 **Do not remove `avbridge/build.rs`'s import-lib-renaming step.** GStreamer bundles its
 own FFmpeg (gst-libav) with identically named import libs — `build.rs` copies them into

@@ -21,6 +21,7 @@ use crate::screens;
 use crate::theme;
 
 mod auto_reframe;
+mod background_removal;
 mod clip_props;
 pub mod export;
 mod import;
@@ -402,6 +403,13 @@ enum MotionTrackEvent {
     },
 }
 
+/// A message from a background AI-background-removal matte-generation worker thread (see
+/// [`App::spawn_generate_matte_for_selected_clip`]) back to the UI thread.
+enum MatteGenerationEvent {
+    Done { clip_id: u64, mask_path: PathBuf },
+    Failed { message: String },
+}
+
 /// A message from a background text-to-speech worker thread (see
 /// [`App::spawn_generate_tts`]) back to the UI thread.
 enum TtsEvent {
@@ -543,6 +551,12 @@ pub struct App {
     /// fraction of the frame's shorter dimension — `avcore::track_region`'s
     /// `search_radius_frac`. Same non-persistence rationale as `motion_track_center_x`/`_y`.
     pub motion_track_search_radius: f32,
+    matte_generation_tx: UnboundedSender<MatteGenerationEvent>,
+    matte_generation_rx: UnboundedReceiver<MatteGenerationEvent>,
+    /// The timeline clip id a background AI-background-removal matte-generation run is
+    /// currently computing a matte for, if any — only one runs at a time, same shape as
+    /// `auto_reframing_clip_id`.
+    pub matte_generating_clip_id: Option<u64>,
     tts_tx: UnboundedSender<TtsEvent>,
     tts_rx: UnboundedReceiver<TtsEvent>,
     /// `Some(text)` while the "Texto-pra-fala" modal is open — the text buffer being edited.
@@ -720,6 +734,7 @@ impl App {
         let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
         let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
         let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
+        let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
         let (tts_tx, tts_rx) = mpsc::unbounded_channel();
         let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
         let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
@@ -762,6 +777,9 @@ impl App {
             motion_track_center_y: 0.5,
             motion_track_size: 0.2,
             motion_track_search_radius: 0.08,
+            matte_generation_tx,
+            matte_generation_rx,
+            matte_generating_clip_id: None,
             tts_tx,
             tts_rx,
             tts_modal_text: None,
@@ -1113,6 +1131,7 @@ impl eframe::App for App {
         self.pump_transcribe();
         self.pump_auto_reframe();
         self.pump_motion_tracking();
+        self.pump_matte_generation();
         self.pump_text_to_speech();
         self.pump_model_download();
         self.pump_thumbnail_queue(ui.ctx());

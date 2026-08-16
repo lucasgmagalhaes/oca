@@ -189,27 +189,33 @@ static int advance_overlay_decoder(OverlayDecoder *d, const ClipSegment *seg,
     return (d->pending != NULL);
 }
 
-/* Build and configure a 2-input overlay AVFilterGraph:
-   [in0]<f0>[v0];[in1]<f1>[v1];[v0][v1]overlay=0:0,format=<pix_fmt_name>[out]
+/* Build and configure a 2- or 3-input overlay AVFilterGraph:
+   2-input (vdec2 == NULL): [in0]<f0>[v0];[in1]<f1>[v1];[v0][v1]overlay=x:y,format=<px>[out]
+   3-input (vdec2 != NULL, AI-background-removal matte on the overlay track): [in0]<f0>[v0];
+   [in1]<f1>[v1];[in2]<f2>,format=gray[m2];[v1][m2]alphamerge[v1a];[v0][v1a]overlay=x:y,
+   format=<px>[out] — alphamerge replaces (not combines with) any alpha f1's own chain already
+   produced (e.g. a mask_shape/chroma_key alpha on the same clip); combining multiple
+   simultaneous alpha sources on one clip isn't supported.
    pix_fmt_name must match whatever the video encoder that will consume this graph's output was
    actually opened with (see open_video_encoder's out_pix_fmt) — yuv420p for most encoders, nv12
    for h264_qsv. Caller owns the returned graph + contexts; free with avfilter_graph_free(). */
 static int init_overlay_graph(
     AVCodecContext *vdec0, const char *f0,
     AVCodecContext *vdec1, const char *f1,
+    AVCodecContext *vdec2, const char *f2,
     const char *pix_fmt_name,
     const char *pos_x_expr, const char *pos_y_expr,
     AVFilterGraph **out_graph,
-    AVFilterContext **out_src0, AVFilterContext **out_src1,
+    AVFilterContext **out_src0, AVFilterContext **out_src1, AVFilterContext **out_src2,
     AVFilterContext **out_sink)
 {
     *out_graph = avfilter_graph_alloc();
-    *out_src0 = *out_src1 = *out_sink = NULL;
+    *out_src0 = *out_src1 = *out_src2 = *out_sink = NULL;
     if (!*out_graph) return AVERROR(ENOMEM);
 
     const AVFilter *bufsrc  = avfilter_get_by_name("buffer");
     const AVFilter *bufsink = avfilter_get_by_name("buffersink");
-    char a0[512], a1[512];
+    char a0[512], a1[512], a2[512];
     AVRational sar0 = vdec0->sample_aspect_ratio;
     AVRational sar1 = vdec1->sample_aspect_ratio;
     if (sar0.num <= 0) sar0 = (AVRational){1, 1};
@@ -227,31 +233,56 @@ static int init_overlay_graph(
     if (ret < 0) goto fail;
     ret = avfilter_graph_create_filter(out_src1, bufsrc,  "src1", a1,   NULL, *out_graph);
     if (ret < 0) goto fail;
+    if (vdec2) {
+        AVRational sar2 = vdec2->sample_aspect_ratio;
+        if (sar2.num <= 0) sar2 = (AVRational){1, 1};
+        snprintf(a2, sizeof(a2), "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d",
+                 vdec2->width, vdec2->height, vdec2->pix_fmt,
+                 vdec2->pkt_timebase.num, vdec2->pkt_timebase.den, sar2.num, sar2.den);
+        ret = avfilter_graph_create_filter(out_src2, bufsrc, "src2", a2, NULL, *out_graph);
+        if (ret < 0) goto fail;
+    }
     ret = avfilter_graph_create_filter(out_sink, bufsink, "snk",  NULL, NULL, *out_graph);
     if (ret < 0) goto fail;
 
-    /* f0/f1 (the per-track filter strings passed in) can each run up to their own 8192-byte
+    /* f0/f1/f2 (the per-track filter strings passed in) can each run up to their own 8192-byte
        capacity now (a RoundedRect mask combined with a scale-keyframe animation on the same
-       clip) — generous margin over the 2x8192 + a short template that implies. pos_x_expr/
+       clip) — generous margin over the 3x8192 + a short template that implies. pos_x_expr/
        pos_y_expr come from the overlaid clip's (s1's, not the background's) position keyframes
        (crate::keyframe::position_overlay_xy_expr) — "0" (overlay's own default) when empty. */
     const char *px = (pos_x_expr && pos_x_expr[0]) ? pos_x_expr : "0";
     const char *py = (pos_y_expr && pos_y_expr[0]) ? pos_y_expr : "0";
-    char fstr[20480];
-    snprintf(fstr, sizeof(fstr),
-             "[in0]%s[v0];[in1]%s[v1];[v0][v1]overlay=x='%s':y='%s',format=%s[out]",
-             f0, f1, px, py, pix_fmt_name);
+    char fstr[28672];
+    if (vdec2) {
+        snprintf(fstr, sizeof(fstr),
+                 "[in0]%s[v0];[in1]%s[v1];[in2]%s,format=gray[m2];[v1][m2]alphamerge[v1a];"
+                 "[v0][v1a]overlay=x='%s':y='%s',format=%s[out]",
+                 f0, f1, f2, px, py, pix_fmt_name);
+    } else {
+        snprintf(fstr, sizeof(fstr),
+                 "[in0]%s[v0];[in1]%s[v1];[v0][v1]overlay=x='%s':y='%s',format=%s[out]",
+                 f0, f1, px, py, pix_fmt_name);
+    }
 
     AVFilterInOut *outs0 = avfilter_inout_alloc();
     AVFilterInOut *outs1 = avfilter_inout_alloc();
+    AVFilterInOut *outs2 = vdec2 ? avfilter_inout_alloc() : NULL;
     AVFilterInOut *inp   = avfilter_inout_alloc();
-    if (!outs0 || !outs1 || !inp) {
-        avfilter_inout_free(&outs0); avfilter_inout_free(&outs1); avfilter_inout_free(&inp);
+    if (!outs0 || !outs1 || !inp || (vdec2 && !outs2)) {
+        avfilter_inout_free(&outs0); avfilter_inout_free(&outs1);
+        avfilter_inout_free(&outs2); avfilter_inout_free(&inp);
         ret = AVERROR(ENOMEM); goto fail;
     }
-    outs0->name = av_strdup("in0"); outs0->filter_ctx = *out_src0; outs0->pad_idx = 0; outs0->next = outs1;
-    outs1->name = av_strdup("in1"); outs1->filter_ctx = *out_src1; outs1->pad_idx = 0; outs1->next = NULL;
-    inp->name   = av_strdup("out"); inp->filter_ctx   = *out_sink;  inp->pad_idx   = 0; inp->next   = NULL;
+    outs0->name = av_strdup("in0"); outs0->filter_ctx = *out_src0; outs0->pad_idx = 0;
+    outs1->name = av_strdup("in1"); outs1->filter_ctx = *out_src1; outs1->pad_idx = 0;
+    inp->name   = av_strdup("out"); inp->filter_ctx   = *out_sink;  inp->pad_idx   = 0; inp->next = NULL;
+    if (vdec2) {
+        outs2->name = av_strdup("in2"); outs2->filter_ctx = *out_src2; outs2->pad_idx = 0; outs2->next = NULL;
+        outs1->next = outs2;
+    } else {
+        outs1->next = NULL;
+    }
+    outs0->next = outs1;
 
     ret = avfilter_graph_parse_ptr(*out_graph, fstr, &inp, &outs0, NULL);
     avfilter_inout_free(&inp);
@@ -262,7 +293,7 @@ static int init_overlay_graph(
     return 0;
 fail:
     avfilter_graph_free(out_graph);
-    *out_src0 = *out_src1 = *out_sink = NULL;
+    *out_src0 = *out_src1 = *out_src2 = *out_sink = NULL;
     return ret;
 }
 
@@ -290,8 +321,8 @@ EncodeStatus avbridge_encode_timeline_export_multi(
     AVCodecContext  *venc_ctx     = NULL, *aenc_ctx = NULL;
     AudioFilterChain achain       = {0};
     AVStream        *vout_stream  = NULL, *aout_stream = NULL;
-    AVPacket        *pkt          = NULL, *t1_pkt = NULL;
-    AVFrame         *dec_frame    = NULL, *filt_frame = NULL, *t1_tmp = NULL;
+    AVPacket        *pkt          = NULL, *t1_pkt = NULL, *t2_pkt = NULL;
+    AVFrame         *dec_frame    = NULL, *filt_frame = NULL, *t1_tmp = NULL, *t2_tmp = NULL;
     AVPacket        *enc_pkt      = NULL;
     EncodeStatus  status       = ENCODE_OK;
     AVRational       canvas_fps   = {canvas_fps_num, canvas_fps_den};
@@ -301,6 +332,12 @@ EncodeStatus avbridge_encode_timeline_export_multi(
     enum AVSampleFormat canonical_fmt = AV_SAMPLE_FMT_NONE;
     AVChannelLayout  canonical_ch = {0};
     OverlayDecoder ov1 = {.seg_open = -1};
+    /* AI-background-removal matte decoder for the overlay track's active clip, if it has one
+       (ClipSegment::mask_video_path non-empty) — see the alphamerge branch of
+       init_overlay_graph. Opened/advanced exactly like ov1, but against a synthetic
+       ClipSegment (built fresh at each graph rebuild, see matte_seg below) pointing at the
+       matte file instead of the overlay clip's own source_path. */
+    OverlayDecoder ov2 = {.seg_open = -1};
 
     avformat_alloc_output_context2(&out_ctx, NULL, NULL, out_path);
     if (!out_ctx) return ENCODE_ERR_ALLOC_OUTPUT;
@@ -328,10 +365,11 @@ EncodeStatus avbridge_encode_timeline_export_multi(
         }
     }
 
-    pkt = av_packet_alloc(); t1_pkt = av_packet_alloc();
-    dec_frame = av_frame_alloc(); filt_frame = av_frame_alloc(); t1_tmp = av_frame_alloc();
+    pkt = av_packet_alloc(); t1_pkt = av_packet_alloc(); t2_pkt = av_packet_alloc();
+    dec_frame = av_frame_alloc(); filt_frame = av_frame_alloc();
+    t1_tmp = av_frame_alloc(); t2_tmp = av_frame_alloc();
     enc_pkt = av_packet_alloc();
-    if (!pkt || !t1_pkt || !dec_frame || !filt_frame || !t1_tmp || !enc_pkt) {
+    if (!pkt || !t1_pkt || !t2_pkt || !dec_frame || !filt_frame || !t1_tmp || !t2_tmp || !enc_pkt) {
         status = ENCODE_ERR_PIPELINE; goto cleanup;
     }
 
@@ -342,11 +380,19 @@ EncodeStatus avbridge_encode_timeline_export_multi(
         AVCodecContext  *vdec_ctx0 = NULL, *adec_ctx0 = NULL;
         VideoFilterChain vchain    = {0};
         AVFilterGraph   *ov_graph  = NULL;
-        AVFilterContext *ov_src0 = NULL, *ov_src1 = NULL, *ov_sink = NULL;
+        AVFilterContext *ov_src0 = NULL, *ov_src1 = NULL, *ov_src2 = NULL, *ov_sink = NULL;
         int vidx0 = -1, aidx0 = -1;
         /* Filter graph mode: 0 = not built, 1 = single-track vchain, 2 = overlay graph. */
         int cur_mode = 0;
-        int64_t ov_frame0 = 0, ov_frame1 = 0; /* synthetic PTS for overlay buffersrc inputs */
+        int64_t ov_frame0 = 0, ov_frame1 = 0, ov_frame2 = 0; /* synthetic buffersrc PTS */
+        /* Whether ov2/ov_src2 are active for the currently-built overlay graph — the active
+           track-1 segment has background_removal_enabled and a mask_video_path that opened
+           successfully. Reset on every graph rebuild (segment change or mode switch). */
+        int ov2_active = 0;
+        /* Synthetic segment describing the matte file as its own 0-based clip, reused by every
+           advance_overlay_decoder(&ov2, ...) call for the currently active track-1 segment —
+           see the rebuild block below for how it's derived from s1. */
+        ClipSegment matte_seg = {0};
 
         double spd0     = seg0->speed_factor > 0.0f ? seg0->speed_factor : 1.0f;
         double tl_start = seg0->timeline_start_secs;
@@ -467,7 +513,7 @@ EncodeStatus avbridge_encode_timeline_export_multi(
                         /* Rebuild filter graph if mode or segment changed. */
                         if (want_overlay && (cur_mode != 2 || t1_seg_idx != ov1.seg_open)) {
                             /* Switch to / rebuild overlay mode */
-                            if (ov_graph) { avfilter_graph_free(&ov_graph); ov_src0 = ov_src1 = ov_sink = NULL; }
+                            if (ov_graph) { avfilter_graph_free(&ov_graph); ov_src0 = ov_src1 = ov_src2 = ov_sink = NULL; }
                             free_video_filter_chain(&vchain);
 
                             const ClipSegment *s1 = &track_segs[1][t1_seg_idx];
@@ -477,22 +523,67 @@ EncodeStatus avbridge_encode_timeline_export_multi(
                                 status = ENCODE_ERR_DECODER; av_frame_unref(dec_frame); break;
                             }
 
-                            char f0[8192], f1[8192];
+                            /* AI background removal: open a second decoder against the matte
+                               file, described as its own synthetic 0-based ClipSegment (see
+                               ClipSegment::mask_video_path's doc comment in bridge.h for why
+                               its range is s1's *source* trim duration, not the timeline/
+                               post-speed one — the matte was generated by sampling s1's
+                               source_path directly). Falls back to no-matte (has_matte = 0)
+                               rather than failing the whole export if the matte can't be
+                               opened (e.g. stale/deleted cache file). */
+                            int has_matte = s1->mask_video_path && s1->mask_video_path[0];
+                            if (has_matte) {
+                                matte_seg = *s1;
+                                matte_seg.source_path = s1->mask_video_path;
+                                matte_seg.source_in_secs = 0.0;
+                                matte_seg.source_out_secs = s1->source_out_secs - s1->source_in_secs;
+                                matte_seg.video_filter = "";
+                                matte_seg.transition_in = 0;
+                                double matte_seek = t1_seek - s1->source_in_secs;
+                                if (open_overlay_decoder(&matte_seg, matte_seek, &ov2, t1_seg_idx) < 0) {
+                                    has_matte = 0;
+                                }
+                            }
+                            if (!has_matte && ov2.in_ctx) {
+                                free_overlay_decoder(&ov2);
+                            }
+
+                            char f0[8192], f1[8192], f2[8192] = "";
                             build_overlay_vfilter(seg0, canvas_width, canvas_height, canvas_fps_num, canvas_fps_den, f0, sizeof(f0));
                             build_overlay_vfilter(s1,   canvas_width, canvas_height, canvas_fps_num, canvas_fps_den, f1, sizeof(f1));
+                            if (has_matte) {
+                                build_overlay_vfilter(&matte_seg, canvas_width, canvas_height, canvas_fps_num, canvas_fps_den, f2, sizeof(f2));
+                            }
                             if (init_overlay_graph(vdec_ctx0, f0, ov1.vdec_ctx, f1,
+                                                        has_matte ? ov2.vdec_ctx : NULL, has_matte ? f2 : "",
                                                         venc_pix_fmt_name,
                                                         s1->position_x_expr, s1->position_y_expr,
-                                                        &ov_graph, &ov_src0, &ov_src1, &ov_sink) < 0) {
-                                status = ENCODE_ERR_FILTER_GRAPH; av_frame_unref(dec_frame); break;
+                                                        &ov_graph, &ov_src0, &ov_src1, &ov_src2, &ov_sink) < 0) {
+                                if (has_matte) {
+                                    /* Retry without the matte rather than failing the whole
+                                       export over an optional alpha-compositing stage. */
+                                    has_matte = 0;
+                                    free_overlay_decoder(&ov2);
+                                    if (init_overlay_graph(vdec_ctx0, f0, ov1.vdec_ctx, f1, NULL, "",
+                                                                venc_pix_fmt_name,
+                                                                s1->position_x_expr, s1->position_y_expr,
+                                                                &ov_graph, &ov_src0, &ov_src1, &ov_src2, &ov_sink) < 0) {
+                                        status = ENCODE_ERR_FILTER_GRAPH; av_frame_unref(dec_frame); break;
+                                    }
+                                } else {
+                                    status = ENCODE_ERR_FILTER_GRAPH; av_frame_unref(dec_frame); break;
+                                }
                             }
-                            ov_frame0 = ov_frame1 = 0;
+                            ov_frame0 = ov_frame1 = ov_frame2 = 0;
+                            ov2_active = has_matte;
                             cur_mode = 2;
                         } else if (!want_overlay && cur_mode != 1) {
                             /* Switch to single-track mode */
-                            if (ov_graph) { avfilter_graph_free(&ov_graph); ov_src0 = ov_src1 = ov_sink = NULL; }
+                            if (ov_graph) { avfilter_graph_free(&ov_graph); ov_src0 = ov_src1 = ov_src2 = ov_sink = NULL; }
                             free_video_filter_chain(&vchain);
                             if (ov1.in_ctx) free_overlay_decoder(&ov1);
+                            if (ov2.in_ctx) free_overlay_decoder(&ov2);
+                            ov2_active = 0;
 
                             char vfd[16384];
                             build_vfilter_descr(seg0, canvas_width, canvas_height,
@@ -510,6 +601,10 @@ EncodeStatus avbridge_encode_timeline_export_multi(
                             double sp1 = s1->speed_factor > 0.0f ? s1->speed_factor : 1.0f;
                             double t1_src = s1->source_in_secs + (ftl - s1->timeline_start_secs) * sp1;
                             advance_overlay_decoder(&ov1, s1, t1_src, t1_pkt, t1_tmp);
+                            if (ov2_active) {
+                                double matte_target = t1_src - s1->source_in_secs;
+                                advance_overlay_decoder(&ov2, &matte_seg, matte_target, t2_pkt, t2_tmp);
+                            }
 
                             /* Push track-0 frame to overlay graph with synthetic pts. */
                             dec_frame->pts = ov_frame0++;
@@ -521,6 +616,10 @@ EncodeStatus avbridge_encode_timeline_export_multi(
                                 av_buffersrc_add_frame_flags(ov_src1, ov1.pending, AV_BUFFERSRC_FLAG_KEEP_REF);
                             }
                             /* (If no track-1 frame: overlay filter holds last known frame.) */
+                            if (ov2_active && ov2.pending) {
+                                ov2.pending->pts = ov_frame2++;
+                                av_buffersrc_add_frame_flags(ov_src2, ov2.pending, AV_BUFFERSRC_FLAG_KEEP_REF);
+                            }
 
                             /* Pull composite frames from overlay sink. */
                             while (av_buffersink_get_frame(ov_sink, filt_frame) == 0) {
@@ -572,7 +671,7 @@ EncodeStatus avbridge_encode_timeline_export_multi(
         elapsed += (seg0->source_out_secs - seg0->source_in_secs) / spd0;
 
     seg_cleanup:
-        if (ov_graph) { avfilter_graph_free(&ov_graph); ov_src0 = ov_src1 = ov_sink = NULL; }
+        if (ov_graph) { avfilter_graph_free(&ov_graph); ov_src0 = ov_src1 = ov_src2 = ov_sink = NULL; }
         free_video_filter_chain(&vchain);
         avcodec_free_context(&vdec_ctx0);
         avcodec_free_context(&adec_ctx0);
@@ -594,12 +693,15 @@ EncodeStatus avbridge_encode_timeline_export_multi(
 
 cleanup:
     free_overlay_decoder(&ov1);
+    free_overlay_decoder(&ov2);
     av_packet_free(&pkt);
     av_packet_free(&t1_pkt);
+    av_packet_free(&t2_pkt);
     av_packet_free(&enc_pkt);
     av_frame_free(&dec_frame);
     av_frame_free(&filt_frame);
     av_frame_free(&t1_tmp);
+    av_frame_free(&t2_tmp);
     if (out_ctx && out_ctx->pb && !(out_ctx->oformat->flags & AVFMT_NOFILE))
         avio_closep(&out_ctx->pb);
     free_audio_filter_chain(&achain);
