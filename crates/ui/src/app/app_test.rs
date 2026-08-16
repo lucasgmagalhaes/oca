@@ -161,6 +161,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (tts_tx, tts_rx) = mpsc::unbounded_channel();
     let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
     let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
+    let (telemetry_tx, _telemetry_rx) = mpsc::unbounded_channel();
     App {
         screen: Screen::Home,
         tool: EditorTool::Select,
@@ -170,6 +171,8 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         selected_asset_id: None,
         export_jobs,
         prefs: PrefsState::default(),
+        telemetry_tx,
+        last_preview_frame_telemetry: None,
         render_tx,
         render_rx,
         active_renders: HashMap::new(),
@@ -531,7 +534,13 @@ fn pump_export_queue_marks_a_job_done_and_frees_its_render_slot() {
     );
     app.active_renders
         .insert(1, Arc::new(AtomicBool::new(false)));
-    app.render_tx.send(RenderEvent::Done { job_id: 1 }).unwrap();
+    app.render_tx
+        .send(RenderEvent::Done {
+            job_id: 1,
+            duration_ms: 1000,
+            output_duration_secs: 10.0,
+        })
+        .unwrap();
 
     app.pump_export_queue();
 
@@ -551,6 +560,8 @@ fn pump_export_queue_records_a_failure_message() {
         .send(RenderEvent::Failed {
             job_id: 1,
             message: "disk full".to_string(),
+            duration_ms: 500,
+            output_duration_secs: 10.0,
         })
         .unwrap();
 
@@ -2869,6 +2880,7 @@ fn pump_import_queue_applies_enrichment_to_the_asset_it_was_assigned() {
             loudness: Some(loudness),
             proxy_path: Some(PathBuf::from("proxy.mp4")),
             waveform_peaks: Some(vec![(-0.5, 0.5)]),
+            duration_ms: 250,
         })
         .unwrap();
     app.pump_import_queue();
@@ -2894,6 +2906,7 @@ fn pump_import_queue_ignores_enrichment_for_an_unknown_token() {
             loudness: None,
             proxy_path: None,
             waveform_peaks: None,
+            duration_ms: 0,
         })
         .unwrap();
 
