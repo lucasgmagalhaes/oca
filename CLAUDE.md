@@ -181,12 +181,27 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   background thread and imports the resulting WAV through the exact same pipeline as a
   drag-and-drop import ([`App::spawn_import`]) — no separate asset-creation path needed.
 
-  **Geometric shapes (data model, export rendering, and UI all wired now):**
-  `TrackKind::Shape`/`ShapeClip` — rectangle/square, ellipse/circle, triangle, trapezoid,
-  arrow presets (`ShapeKind::rectangle()` etc.), plus a `Polygon(Vec<(f32,f32)>)` variant that
-  also covers `request.md`'s "forma personalizada" (custom shape) ask — vertex-editing UI for a
-  hand-drawn custom polygon still doesn't exist (a real, separate follow-up), but every fixed
-  preset is placeable and editable now. `avcore::shape_render` builds a `geq` avfilter node per
+  **Geometric shapes (data model, export rendering, and UI all wired now, including hand-drawn
+  custom shapes):** `TrackKind::Shape`/`ShapeClip` — rectangle/square, ellipse/circle, triangle,
+  trapezoid, arrow presets (`ShapeKind::rectangle()` etc.), plus a `Polygon(Vec<(f32,f32)>)`
+  variant that also covers `request.md`'s "forma personalizada" (custom shape) ask. Beyond the
+  numeric `polygon_vertex_editor` list editor (edits an existing polygon's vertices one value at
+  a time), the toolbar's "✎ Desenhar forma" button now lets the user click points directly on
+  the preview to draw a brand-new custom polygon from scratch: `App::start_drawing_custom_shape`
+  sets `App::drawing_shape_points = Some(vec![])`; `screens::editor::draw_custom_shape_surface`
+  (a `layer_transform_preview` branch, mutually exclusive with its usual layer drag/resize
+  handling — active whenever `drawing_shape_points.is_some()`) takes over `canvas_rect`, drawing
+  each placed point as a dot with connecting lines via `App::push_drawing_shape_point`; Escape
+  cancels, Enter (needs >= 3 points) commits via `App::finish_drawing_custom_shape`, which
+  derives a bounding box across the clicked canvas-fraction points, centers/sizes the new
+  `ShapeClip` on it, and re-expresses each point relative to that box (`(x-center)/width`) since
+  `ShapeKind::Polygon` stores vertices in the shape's own local unit square, not absolute canvas
+  fractions — `rotation_deg` starts at `0.0`, same as a fresh preset. **Known limitation:**
+  drawing requires a loaded preview frame (`layer_transform_preview`'s existing precondition —
+  the toolbar button toasts `ShapeDrawNeedsPreview` instead of entering drawing mode otherwise),
+  and since shape preview rendering itself doesn't exist yet (see below), the drawing surface is
+  the canvas outline only, not a live composited image to trace over. Every fixed preset is
+  placeable and editable too. `avcore::shape_render` builds a `geq` avfilter node per
   shape (rotation via a per-pixel coordinate rotation, ellipse via a quadratic test, every
   straight-edged shape via ray-casting point-in-polygon — correct for the arrow's concave
   notches), applied as a post-processing pass (`avbridge::apply_shape_overlays`) the same way
