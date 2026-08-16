@@ -36,6 +36,7 @@ mod text_to_speech;
 mod timeline_ops;
 mod transcribe;
 mod update_check;
+mod youtube_download;
 
 /// Which of the app's five top-level views is currently showing. Drives both the central
 /// panel content and which nav-rail button is highlighted.
@@ -521,6 +522,23 @@ enum TtsEvent {
     Failed { message: String },
 }
 
+/// Which format the "Baixar do YouTube" modal is currently set to — picks which of
+/// [`App::youtube_modal_mp4_quality`]/[`App::youtube_modal_mp3_bitrate`]
+/// [`App::spawn_youtube_download`] reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum YoutubeFormatChoice {
+    Mp4,
+    Mp3,
+}
+
+/// A message from a background YouTube-download worker thread (see
+/// [`App::spawn_youtube_download`]) back to the UI thread.
+enum YoutubeDownloadEvent {
+    Progress(f32),
+    Done { path: PathBuf },
+    Failed { message: String },
+}
+
 /// A message from a background model-download worker thread (see
 /// [`App::spawn_download_whisper_model`]/[`App::spawn_download_reframe_model`]) back to the UI
 /// thread. Only one download can run at a time ([`App::cancel_model_download`] gates that), so
@@ -695,6 +713,26 @@ pub struct App {
     /// `true` while a background TTS synthesis run is in flight — only one at a time, same
     /// shape as `transcribing_asset_id`.
     pub tts_generating: bool,
+    youtube_download_tx: UnboundedSender<YoutubeDownloadEvent>,
+    youtube_download_rx: UnboundedReceiver<YoutubeDownloadEvent>,
+    /// `Some(url)` while the "Baixar do YouTube" modal is open — the URL text buffer being
+    /// edited. Unlike [`Self::tts_modal_text`], stays `Some` (rather than being taken) once a
+    /// download starts, so the modal can keep showing the URL alongside progress and an error
+    /// message stays actionable (retry without retyping the URL) instead of the modal just
+    /// closing on submit the way the TTS one does.
+    pub youtube_modal_url: Option<String>,
+    pub youtube_modal_format: YoutubeFormatChoice,
+    pub youtube_modal_mp4_quality: avcore::Mp4Quality,
+    pub youtube_modal_mp3_bitrate: avcore::Mp3Bitrate,
+    /// `true` while a background `yt-dlp` download is in flight — only one at a time.
+    pub youtube_downloading: bool,
+    /// `0.0..=1.0` fraction reported by `yt-dlp`'s own progress output — meaningless while
+    /// `youtube_downloading` is `false`.
+    pub youtube_download_progress: f32,
+    /// Set after a failed/cancelled download; cleared on the next successful submit. Shown
+    /// inline in the modal rather than as a toast, since the modal stays open for a retry.
+    pub youtube_download_error: Option<String>,
+    youtube_download_cancel: Option<Arc<AtomicBool>>,
     model_download_tx: UnboundedSender<ModelDownloadEvent>,
     model_download_rx: UnboundedReceiver<ModelDownloadEvent>,
     /// `Some((downloaded_bytes, total_bytes))` while a model download is running —
@@ -895,6 +933,7 @@ impl App {
         let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
         let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
         let (tts_tx, tts_rx) = mpsc::unbounded_channel();
+        let (youtube_download_tx, youtube_download_rx) = mpsc::unbounded_channel();
         let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
         let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
         let (telemetry_tx, telemetry_rx) = mpsc::unbounded_channel();
@@ -952,6 +991,16 @@ impl App {
             tts_rx,
             tts_modal_text: None,
             tts_generating: false,
+            youtube_download_tx,
+            youtube_download_rx,
+            youtube_modal_url: None,
+            youtube_modal_format: YoutubeFormatChoice::Mp4,
+            youtube_modal_mp4_quality: avcore::Mp4Quality::P720,
+            youtube_modal_mp3_bitrate: avcore::Mp3Bitrate::K192,
+            youtube_downloading: false,
+            youtube_download_progress: 0.0,
+            youtube_download_error: None,
+            youtube_download_cancel: None,
             model_download_tx,
             model_download_rx,
             model_download_progress: None,
@@ -1284,6 +1333,16 @@ pub(self) fn tts_output_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("tts_output"))
 }
 
+/// Where [`App::spawn_youtube_download`] tells `yt-dlp` to save downloaded files before
+/// importing them — same platform-config-dir shape as [`tts_output_dir`], a sibling
+/// `youtube_downloads/` folder.
+pub(self) fn youtube_downloads_dir() -> PathBuf {
+    prefs_path()
+        .parent()
+        .map(|d| d.join("youtube_downloads"))
+        .unwrap_or_else(|| PathBuf::from("youtube_downloads"))
+}
+
 /// Loads [`PrefsState`] from the platform config file, falling back to the default if the file
 /// is absent or cannot be parsed.
 pub fn load_prefs() -> PrefsState {
@@ -1340,6 +1399,7 @@ impl eframe::App for App {
         self.pump_motion_tracking();
         self.pump_matte_generation();
         self.pump_text_to_speech();
+        self.pump_youtube_download();
         self.pump_model_download();
         self.pump_update_check();
         self.pump_thumbnail_queue(ui.ctx());
@@ -1400,6 +1460,7 @@ impl eframe::App for App {
         self.show_layer_templates_menu(ui.ctx());
         self.show_apply_layer_template_modal(ui.ctx());
         self.show_tts_modal(ui.ctx());
+        self.show_youtube_download_modal(ui.ctx());
         self.show_toasts(ui.ctx());
     }
 

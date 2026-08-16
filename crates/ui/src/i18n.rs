@@ -175,6 +175,16 @@ text_catalog! {
     TtsGenerationFailed: pt_br = "Falha ao gerar narração", en = "Narration generation failed";
     TtsGenerating: pt_br = "Gerando narração…", en = "Generating narration…";
     DownloadTtsVoice: pt_br = "Baixar voz de texto-pra-fala", en = "Download text-to-speech voice";
+    YoutubeDownloadButton: pt_br = "⭳ Baixar do YouTube", en = "⭳ Download from YouTube";
+    YoutubeDownloadModalTitle: pt_br = "Baixar do YouTube", en = "Download from YouTube";
+    YoutubeDownloadUrlHint: pt_br = "Link do vídeo", en = "Video URL";
+    YoutubeDownloadFormatMp4: pt_br = "MP4 (vídeo)", en = "MP4 (video)";
+    YoutubeDownloadFormatMp3: pt_br = "MP3 (áudio)", en = "MP3 (audio)";
+    YoutubeDownloadQuality: pt_br = "Qualidade", en = "Quality";
+    YoutubeDownloadStart: pt_br = "Baixar", en = "Download";
+    YoutubeDownloadCancel: pt_br = "Cancelar", en = "Cancel";
+    YoutubeDownloadInProgress: pt_br = "Baixando…", en = "Downloading…";
+    YoutubeDownloadToolMissing: pt_br = "yt-dlp não encontrado no PATH — instale-o para usar este recurso.", en = "yt-dlp not found on PATH — install it to use this feature.";
     PrefsTtsModelPath: pt_br = "Caminho do modelo de texto-pra-fala", en = "Text-to-speech model path";
     PropOtherEffects: pt_br = "Outros efeitos", en = "Other effects";
     PropBlur: pt_br = "Blur", en = "Blur";

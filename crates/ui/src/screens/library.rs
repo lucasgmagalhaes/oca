@@ -28,6 +28,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 if ui.button(Text::TtsButton.tr(locale)).clicked() {
                     app.open_tts_modal();
                 }
+                if ui.button(Text::YoutubeDownloadButton.tr(locale)).clicked() {
+                    app.open_youtube_modal();
+                }
                 if app.tts_generating {
                     ui.label(
                         RichText::new(Text::TtsGenerating.tr(locale))
