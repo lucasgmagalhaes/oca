@@ -227,6 +227,20 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   all — every test that reaches `avcodec_open2`/`avcodec_send_frame` fails with
   `EncodeError::Encoder` here specifically, a pre-existing build gap, not a regression.
 
+- **Fase 7 — partially done.** Editing proxy generation already existed (Fase 1-3, downscaled
+  transcode for scrubbing); its resolution is now user-selectable —
+  `avcore::proxy::PreviewQuality` (Low/Medium/High = 360p/480p/720p, `request.md`'s explicit
+  cap) replaces the old fixed `PROXY_HEIGHT` constant. `PrefsState::preview_quality` (Ajustes
+  screen, next to the GPU encoder picker) flows through `App::spawn_import` into
+  `avcore::ensure_proxy`, so newly imported clips generate their proxy at the chosen height.
+  `proxy_path_for` bakes the height into the filename (`{stem}_proxy_{height}p.mp4`)
+  specifically so switching the preference can't collide with or silently keep serving a
+  stale-resolution proxy under the old path — the tradeoff is no retroactive regeneration: an
+  asset imported before the change keeps its existing proxy until re-imported. **Not yet
+  done:** hardware-accelerated preview decode, an explicit lazy-frame-loading layer, release
+  binary stripping (`[profile.release]` has `opt-level = 3`/`lto = true` but no `strip`), and
+  runtime telemetry collection.
+
 Check `features/request.md` for what's still unbuilt before assuming a feature is live —
 when in doubt, `graphify query`.
 
