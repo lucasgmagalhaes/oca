@@ -162,6 +162,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
     let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
     let (telemetry_tx, _telemetry_rx) = mpsc::unbounded_channel();
+    let (update_check_tx, update_check_rx) = mpsc::unbounded_channel();
     App {
         screen: Screen::Home,
         tool: EditorTool::Select,
@@ -247,6 +248,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         applying_layer_template: None,
         layer_templates_menu_open: false,
         binding_capture: None,
+        update_check_tx,
+        update_check_rx,
+        available_update: None,
         pending_export_conflict: None,
     }
 }
@@ -3424,4 +3428,34 @@ fn finish_drawing_custom_shape_floors_a_degenerate_bounding_box() {
         panic!("expected a Polygon shape kind");
     };
     assert!(vertices.iter().all(|v| v.0.is_finite() && v.1.is_finite()));
+}
+
+#[test]
+fn pump_update_check_sets_available_update_on_a_newer_version_event() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.update_check_tx
+        .send(UpdateCheckEvent::NewerVersionAvailable {
+            version: "99.0.0".to_string(),
+            html_url: "https://github.com/lucasgmagalhaes/oca/releases/tag/v99.0.0".to_string(),
+        })
+        .unwrap();
+
+    app.pump_update_check();
+
+    assert_eq!(
+        app.available_update,
+        Some(AvailableUpdate {
+            version: "99.0.0".to_string(),
+            html_url: "https://github.com/lucasgmagalhaes/oca/releases/tag/v99.0.0".to_string(),
+        })
+    );
+}
+
+#[test]
+fn pump_update_check_is_a_no_op_with_no_pending_events() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.pump_update_check();
+
+    assert_eq!(app.available_update, None);
 }
