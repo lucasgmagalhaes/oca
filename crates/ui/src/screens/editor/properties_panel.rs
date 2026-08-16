@@ -669,10 +669,17 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                         });
                                         ui.add(
                                             egui::Slider::new(
-                                                &mut app.motion_track_size,
+                                                &mut app.motion_track_width,
                                                 crate::app::MOTION_TRACK_SIZE_RANGE,
                                             )
-                                            .text(Text::PropMotionTrackSize.tr(locale)),
+                                            .text(Text::PropMotionTrackWidth.tr(locale)),
+                                        );
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut app.motion_track_height,
+                                                crate::app::MOTION_TRACK_SIZE_RANGE,
+                                            )
+                                            .text(Text::PropMotionTrackHeight.tr(locale)),
                                         );
                                         ui.add(
                                             egui::Slider::new(

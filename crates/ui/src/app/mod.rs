@@ -307,10 +307,11 @@ pub const LAYER_SCALE_RANGE: std::ops::RangeInclusive<f32> = 0.1..=3.0;
 /// ([`avcore::timeline::ClipInstance::stabilization_intensity`]).
 pub const STABILIZATION_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 
-/// Slider bounds for the properties panel's motion-tracking region-size control
-/// (`App::motion_track_size`, `avcore::track_region`'s `template_size_frac`) — kept well under
-/// `1.0` so the template can always slide within the frame during search, and above a few
-/// percent so it still covers enough texture to match against.
+/// Slider bounds for the properties panel's motion-tracking region width/height controls
+/// (`App::motion_track_width`/`_height`, `avcore::track_region`'s `template_width_frac`/
+/// `template_height_frac`) — kept well under `1.0` so the template can always slide within the
+/// frame during search, and above a few percent so it still covers enough texture to match
+/// against. Shared by both the width and height sliders.
 pub const MOTION_TRACK_SIZE_RANGE: std::ops::RangeInclusive<f32> = 0.05..=0.6;
 
 /// Slider bounds for the properties panel's motion-tracking search-radius control
@@ -543,10 +544,11 @@ pub struct App {
     /// once a run finishes, only its *output* (`position_keyframes`) is saved.
     pub motion_track_center_x: f32,
     pub motion_track_center_y: f32,
-    /// The tracked block's side length, as a fraction of the frame's shorter dimension —
-    /// `avcore::track_region`'s `template_size_frac`. Same non-persistence rationale as
-    /// `motion_track_center_x`/`_y`.
-    pub motion_track_size: f32,
+    /// The tracked block's width/height, each independently as a fraction of the frame's
+    /// shorter dimension — `avcore::track_region`'s `template_width_frac`/`template_height_frac`.
+    /// Same non-persistence rationale as `motion_track_center_x`/`_y`.
+    pub motion_track_width: f32,
+    pub motion_track_height: f32,
     /// How far the tracked block is allowed to move between consecutive sampled frames, as a
     /// fraction of the frame's shorter dimension — `avcore::track_region`'s
     /// `search_radius_frac`. Same non-persistence rationale as `motion_track_center_x`/`_y`.
@@ -775,7 +777,8 @@ impl App {
             motion_tracking_clip_id: None,
             motion_track_center_x: 0.5,
             motion_track_center_y: 0.5,
-            motion_track_size: 0.2,
+            motion_track_width: 0.2,
+            motion_track_height: 0.2,
             motion_track_search_radius: 0.08,
             matte_generation_tx,
             matte_generation_rx,

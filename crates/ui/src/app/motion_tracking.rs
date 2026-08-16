@@ -16,12 +16,13 @@ const MAX_SAMPLES: usize = 60;
 impl App {
     /// Runs motion tracking against `selected_clip_id` on a background thread — what the
     /// properties panel's "Rastrear movimento" button does. Tracks the region set by
-    /// `motion_track_center_x`/`_y`/`motion_track_size`/`motion_track_search_radius` (the
-    /// properties panel's region controls, editable before clicking the button — defaults to a
-    /// centered region the same size the button always used before those controls existed)
-    /// across the clip's own trimmed source duration, then rewrites `position_keyframes` as that
-    /// motion applied on top of whatever single position (or the default centered-at-origin
-    /// placement) was already set. A no-op if nothing is selected or a run is already in flight.
+    /// `motion_track_center_x`/`_y`/`motion_track_width`/`_height`/`motion_track_search_radius`
+    /// (the properties panel's region controls, editable before clicking the button — defaults
+    /// to a centered square region the same size the button always used before those controls
+    /// existed) across the clip's own trimmed source duration, then rewrites
+    /// `position_keyframes` as that motion applied on top of whatever single position (or the
+    /// default centered-at-origin placement) was already set. A no-op if nothing is selected or
+    /// a run is already in flight.
     pub fn spawn_motion_track_selected_clip(&mut self) {
         if self.motion_tracking_clip_id.is_some() {
             return;
@@ -49,7 +50,11 @@ impl App {
         let source_path = asset.source_path.clone();
         let center_x = self.motion_track_center_x.clamp(0.0, 1.0);
         let center_y = self.motion_track_center_y.clamp(0.0, 1.0);
-        let template_size = self.motion_track_size.clamp(
+        let template_width = self.motion_track_width.clamp(
+            *MOTION_TRACK_SIZE_RANGE.start(),
+            *MOTION_TRACK_SIZE_RANGE.end(),
+        );
+        let template_height = self.motion_track_height.clamp(
             *MOTION_TRACK_SIZE_RANGE.start(),
             *MOTION_TRACK_SIZE_RANGE.end(),
         );
@@ -68,7 +73,8 @@ impl App {
                 base_position,
                 center_x,
                 center_y,
-                template_size,
+                template_width,
+                template_height,
                 search_radius,
             );
             let _ = tx.send(MotionTrackEvent::Done { clip_id, keyframes });
@@ -114,7 +120,8 @@ fn motion_track_one(
     base_position: Position,
     center_x: f32,
     center_y: f32,
-    template_size: f32,
+    template_width: f32,
+    template_height: f32,
     search_radius: f32,
 ) -> Vec<Keyframe<Position>> {
     let duration = (source_out_secs - source_in_secs).max(0.0);
@@ -162,6 +169,13 @@ fn motion_track_one(
     }
 
     let (time_fractions, frames): (Vec<f32>, Vec<avcore::GrayFrame>) = decoded.into_iter().unzip();
-    let tracked = avcore::track_region(&frames, center_x, center_y, template_size, search_radius);
+    let tracked = avcore::track_region(
+        &frames,
+        center_x,
+        center_y,
+        template_width,
+        template_height,
+        search_radius,
+    );
     avcore::tracked_positions_to_keyframes(&tracked, &time_fractions, base_position)
 }
