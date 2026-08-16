@@ -252,6 +252,11 @@ text_catalog! {
     MotionTrackAction: pt_br = "Rastrear movimento", en = "Track motion";
     MotionTrackInProgress: pt_br = "Rastreando...", en = "Tracking...";
     MotionTrackNoFramesDecoded: pt_br = "Não foi possível decodificar quadros suficientes para rastrear.", en = "Couldn't decode enough frames to track.";
+    PropMotionTrackRegion: pt_br = "Região a rastrear", en = "Region to track";
+    PropMotionTrackRegionHint: pt_br = "centro X/Y e tamanho, como fração do quadro de origem", en = "center X/Y and size, as a fraction of the source frame";
+    PropMotionTrackSize: pt_br = "Tamanho", en = "Size";
+    PropMotionTrackSearchRadius: pt_br = "Raio de busca", en = "Search radius";
+    MotionTrackRegionReset: pt_br = "Centralizar região", en = "Center region";
 
     SoundLibraryTitle: pt_br = "Música e efeitos sonoros", en = "Music & sound effects";
     SoundLibraryRescan: pt_br = "⟳ Atualizar", en = "⟳ Rescan";

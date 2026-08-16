@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use avcore::{Keyframe, Position};
 
-use super::{App, MotionTrackEvent};
+use super::{App, MotionTrackEvent, MOTION_TRACK_SEARCH_RADIUS_RANGE, MOTION_TRACK_SIZE_RANGE};
 
 /// Frames sampled per second of the clip's own trimmed source duration — dense enough to follow
 /// ordinary motion, coarse enough that a several-second clip still tracks in roughly a second or
@@ -15,12 +15,13 @@ const MAX_SAMPLES: usize = 60;
 
 impl App {
     /// Runs motion tracking against `selected_clip_id` on a background thread — what the
-    /// properties panel's "Rastrear movimento" button does. Tracks a region centered on the
-    /// middle of the frame (no dedicated region-of-interest picker yet — see
-    /// `avcore::motion_tracking`'s module docs) across the clip's own trimmed source duration,
-    /// then rewrites `position_keyframes` as that motion applied on top of whatever single
-    /// position (or the default centered-at-origin placement) was already set. A no-op if
-    /// nothing is selected or a run is already in flight.
+    /// properties panel's "Rastrear movimento" button does. Tracks the region set by
+    /// `motion_track_center_x`/`_y`/`motion_track_size`/`motion_track_search_radius` (the
+    /// properties panel's region controls, editable before clicking the button — defaults to a
+    /// centered region the same size the button always used before those controls existed)
+    /// across the clip's own trimmed source duration, then rewrites `position_keyframes` as that
+    /// motion applied on top of whatever single position (or the default centered-at-origin
+    /// placement) was already set. A no-op if nothing is selected or a run is already in flight.
     pub fn spawn_motion_track_selected_clip(&mut self) {
         if self.motion_tracking_clip_id.is_some() {
             return;
@@ -46,12 +47,30 @@ impl App {
             return;
         };
         let source_path = asset.source_path.clone();
+        let center_x = self.motion_track_center_x.clamp(0.0, 1.0);
+        let center_y = self.motion_track_center_y.clamp(0.0, 1.0);
+        let template_size = self.motion_track_size.clamp(
+            *MOTION_TRACK_SIZE_RANGE.start(),
+            *MOTION_TRACK_SIZE_RANGE.end(),
+        );
+        let search_radius = self.motion_track_search_radius.clamp(
+            *MOTION_TRACK_SEARCH_RADIUS_RANGE.start(),
+            *MOTION_TRACK_SEARCH_RADIUS_RANGE.end(),
+        );
 
         self.motion_tracking_clip_id = Some(clip_id);
         let tx = self.motion_tracking_tx.clone();
         std::thread::spawn(move || {
-            let keyframes =
-                motion_track_one(&source_path, source_in_secs, source_out_secs, base_position);
+            let keyframes = motion_track_one(
+                &source_path,
+                source_in_secs,
+                source_out_secs,
+                base_position,
+                center_x,
+                center_y,
+                template_size,
+                search_radius,
+            );
             let _ = tx.send(MotionTrackEvent::Done { clip_id, keyframes });
         });
     }
@@ -81,16 +100,22 @@ impl App {
 }
 
 /// Runs on [`App::spawn_motion_track_selected_clip`]'s background thread — decodes frames
-/// sampled across `[source_in_secs, source_out_secs)`, tracks a centered region across them, and
+/// sampled across `[source_in_secs, source_out_secs)`, tracks the region centered at
+/// `(center_x, center_y)` (source-frame fractions, per `avcore::track_region`) across them, and
 /// converts the result into a `position_keyframes` list. Returns an empty `Vec` if fewer than 2
 /// frames could be decoded (nothing meaningful to track — [`App::pump_motion_tracking`] leaves
 /// the clip's existing keyframes untouched in that case rather than replacing them with a
 /// single-point "animation").
+#[allow(clippy::too_many_arguments)]
 fn motion_track_one(
     source_path: &Path,
     source_in_secs: f64,
     source_out_secs: f64,
     base_position: Position,
+    center_x: f32,
+    center_y: f32,
+    template_size: f32,
+    search_radius: f32,
 ) -> Vec<Keyframe<Position>> {
     let duration = (source_out_secs - source_in_secs).max(0.0);
     if duration <= 0.0 {
@@ -137,6 +162,6 @@ fn motion_track_one(
     }
 
     let (time_fractions, frames): (Vec<f32>, Vec<avcore::GrayFrame>) = decoded.into_iter().unzip();
-    let tracked = avcore::track_region(&frames, 0.5, 0.5, 0.2, 0.08);
+    let tracked = avcore::track_region(&frames, center_x, center_y, template_size, search_radius);
     avcore::tracked_positions_to_keyframes(&tracked, &time_fractions, base_position)
 }

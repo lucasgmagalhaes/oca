@@ -67,15 +67,25 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   inference pass against the downloaded model succeeded on the `core` test fixture (0 faces
   found, as expected for a fixture with no real face in it).
 
-  **Motion tracking (single centered region, no ROI picker yet):**
+  **Motion tracking (region now user-editable):**
   `avcore::motion_tracking` — plain fixed-template block matching (full search within a
   radius each sampled frame, SAD against the *first* frame's template so it doesn't drift),
   no ML model. Reuses the keyframe system: `tracked_positions_to_keyframes()` converts the
   tracked path into a `position_keyframes` delta from the first tracked frame, added onto
   whatever fixed position was already set, so the layer rides the motion while keeping its
-  initial placement. Fully unit tested against synthetic frames. `ui`'s "Rastrear movimento"
-  button always tracks a region centered on the frame — no way to pick a different region yet
-  (a real gap for an off-center subject).
+  initial placement. Fully unit tested against synthetic frames, including an off-center
+  starting region (`tracks_a_block_starting_from_an_off_center_region`) so a future regression
+  that silently re-hardcodes the center back to `(0.5, 0.5)` gets caught. `ui`'s "Rastrear
+  movimento" button no longer always tracks a region centered on the frame — the properties
+  panel now has region controls (center X/Y drag values, size/search-radius sliders, a
+  "Centralizar região" reset button) right above it, defaulting to the old centered-region
+  values but user-editable before clicking the button. `App::motion_track_center_x`/`_y`/
+  `_size`/`_search_radius` are plain, non-persisted session state (a one-shot tracking job's
+  input, not a durable clip property like `crop_x/y` — only the job's *output*
+  `position_keyframes` is saved), read once at click time by
+  `App::spawn_motion_track_selected_clip` and threaded through to `avcore::track_region`. No
+  drag-on-preview picker yet (numeric entry only) — `avcore::track_region` still only supports
+  a square region (`template_size_frac` is one scalar), not an independent width/height.
 
   **AI background removal (ONNX inference done, export/preview wiring not started):**
   `avcore::background_removal::segment_person` runs MODNet (`ZHKKKe/MODNet`, ONNX export by

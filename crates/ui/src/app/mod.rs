@@ -306,6 +306,16 @@ pub const LAYER_SCALE_RANGE: std::ops::RangeInclusive<f32> = 0.1..=3.0;
 /// ([`avcore::timeline::ClipInstance::stabilization_intensity`]).
 pub const STABILIZATION_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 
+/// Slider bounds for the properties panel's motion-tracking region-size control
+/// (`App::motion_track_size`, `avcore::track_region`'s `template_size_frac`) — kept well under
+/// `1.0` so the template can always slide within the frame during search, and above a few
+/// percent so it still covers enough texture to match against.
+pub const MOTION_TRACK_SIZE_RANGE: std::ops::RangeInclusive<f32> = 0.05..=0.6;
+
+/// Slider bounds for the properties panel's motion-tracking search-radius control
+/// (`App::motion_track_search_radius`, `avcore::track_region`'s `search_radius_frac`).
+pub const MOTION_TRACK_SEARCH_RADIUS_RANGE: std::ops::RangeInclusive<f32> = 0.02..=0.3;
+
 /// A message from a background render worker thread (see [`App::pump_export_queue`])
 /// back to the UI thread, sent over a plain `tokio::sync::mpsc` channel used purely
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
@@ -516,6 +526,23 @@ pub struct App {
     /// The timeline clip id a background motion-tracking run is currently tracking, if any —
     /// only one runs at a time, same shape as `auto_reframing_clip_id`.
     pub motion_tracking_clip_id: Option<u64>,
+    /// The tracked region's center, as a `0.0..=1.0` fraction of the *source* frame (same
+    /// convention as `avcore::track_region`'s `initial_center_x_frac`/`_y`, not canvas/layer
+    /// space) — user-editable via the properties panel's region controls next to the "Rastrear
+    /// movimento" button, instead of the button always defaulting to a centered region. Plain
+    /// UI/session state, not persisted to the project: it's a one-shot tracking job's input, not
+    /// a durable clip property (unlike, say, `ClipInstance::crop_x/y`) — nothing else reads it
+    /// once a run finishes, only its *output* (`position_keyframes`) is saved.
+    pub motion_track_center_x: f32,
+    pub motion_track_center_y: f32,
+    /// The tracked block's side length, as a fraction of the frame's shorter dimension —
+    /// `avcore::track_region`'s `template_size_frac`. Same non-persistence rationale as
+    /// `motion_track_center_x`/`_y`.
+    pub motion_track_size: f32,
+    /// How far the tracked block is allowed to move between consecutive sampled frames, as a
+    /// fraction of the frame's shorter dimension — `avcore::track_region`'s
+    /// `search_radius_frac`. Same non-persistence rationale as `motion_track_center_x`/`_y`.
+    pub motion_track_search_radius: f32,
     tts_tx: UnboundedSender<TtsEvent>,
     tts_rx: UnboundedReceiver<TtsEvent>,
     /// `Some(text)` while the "Texto-pra-fala" modal is open — the text buffer being edited.
@@ -731,6 +758,10 @@ impl App {
             motion_tracking_tx,
             motion_tracking_rx,
             motion_tracking_clip_id: None,
+            motion_track_center_x: 0.5,
+            motion_track_center_y: 0.5,
+            motion_track_size: 0.2,
+            motion_track_search_radius: 0.08,
             tts_tx,
             tts_rx,
             tts_modal_text: None,

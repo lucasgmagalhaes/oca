@@ -622,6 +622,55 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         }
                         {
                             let tracking = app.motion_tracking_clip_id.is_some();
+                            components::property_section(
+                                ui,
+                                Text::PropMotionTrackRegion.tr(locale),
+                                Text::PropMotionTrackRegionHint.tr(locale),
+                                |ui| {
+                                    ui.add_enabled_ui(!tracking, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.add(
+                                                egui::DragValue::new(
+                                                    &mut app.motion_track_center_x,
+                                                )
+                                                .speed(0.01)
+                                                .range(0.0..=1.0)
+                                                .prefix("x "),
+                                            );
+                                            ui.add(
+                                                egui::DragValue::new(
+                                                    &mut app.motion_track_center_y,
+                                                )
+                                                .speed(0.01)
+                                                .range(0.0..=1.0)
+                                                .prefix("y "),
+                                            );
+                                            if ui
+                                                .button(Text::MotionTrackRegionReset.tr(locale))
+                                                .clicked()
+                                            {
+                                                app.motion_track_center_x = 0.5;
+                                                app.motion_track_center_y = 0.5;
+                                            }
+                                        });
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut app.motion_track_size,
+                                                crate::app::MOTION_TRACK_SIZE_RANGE,
+                                            )
+                                            .text(Text::PropMotionTrackSize.tr(locale)),
+                                        );
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut app.motion_track_search_radius,
+                                                crate::app::MOTION_TRACK_SEARCH_RADIUS_RANGE,
+                                            )
+                                            .text(Text::PropMotionTrackSearchRadius.tr(locale)),
+                                        );
+                                    });
+                                    false
+                                },
+                            );
                             let label = if tracking {
                                 Text::MotionTrackInProgress.tr(locale)
                             } else {

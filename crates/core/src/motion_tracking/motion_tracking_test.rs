@@ -61,6 +61,43 @@ fn tracks_a_block_moving_in_a_straight_line() {
 }
 
 #[test]
+fn tracks_a_block_starting_from_an_off_center_region() {
+    // Regression coverage for the UI region picker: every other tracking test starts near the
+    // frame's middle, which would silently pass even if a caller always hard-coded (0.5, 0.5)
+    // instead of threading through the user's picked center. Starts near the top-left corner
+    // instead and moves away from it, so a center-only bug would produce a very different
+    // (0.5, 0.5)-centered track and fail this assertion.
+    let start = (8 - BLOCK_SIZE / 2, 8 - BLOCK_SIZE / 2);
+    let frames: Vec<GrayFrame> = (0..4)
+        .map(|i| frame_with_block(start.0 + i * 3, start.1 + i * 2, 200))
+        .collect();
+
+    let tracked = track_region(
+        &frames,
+        8.0 / FRAME_W as f32,
+        8.0 / FRAME_H as f32,
+        0.2,
+        0.15,
+    );
+
+    assert_eq!(tracked.len(), 4);
+    for (i, t) in tracked.iter().enumerate() {
+        let expected_cx = 8.0 + (i as f32) * 3.0;
+        let expected_cy = 8.0 + (i as f32) * 2.0;
+        let got_cx = t.center_x_frac * FRAME_W as f32;
+        let got_cy = t.center_y_frac * FRAME_H as f32;
+        assert!(
+            (got_cx - expected_cx).abs() <= 1.0,
+            "frame {i}: expected cx {expected_cx}, got {got_cx}"
+        );
+        assert!(
+            (got_cy - expected_cy).abs() <= 1.0,
+            "frame {i}: expected cy {expected_cy}, got {got_cy}"
+        );
+    }
+}
+
+#[test]
 fn stays_put_when_the_block_does_not_move() {
     let frames: Vec<GrayFrame> = (0..3).map(|_| frame_with_block(30, 20, 0)).collect();
 

@@ -195,6 +195,10 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         motion_tracking_tx,
         motion_tracking_rx,
         motion_tracking_clip_id: None,
+        motion_track_center_x: 0.5,
+        motion_track_center_y: 0.5,
+        motion_track_size: 0.2,
+        motion_track_search_radius: 0.08,
         tts_tx,
         tts_rx,
         tts_modal_text: None,
@@ -1466,6 +1470,58 @@ fn set_selected_clip_crop_is_a_no_op_when_nothing_is_selected() {
         ),
         (0.0, 0.0, 1.0, 1.0)
     );
+}
+
+#[test]
+fn spawn_motion_track_selected_clip_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = None;
+
+    app.spawn_motion_track_selected_clip();
+
+    // No background job started — the busy flag stays clear rather than getting stuck "in
+    // progress" forever with nothing to ever complete it.
+    assert_eq!(app.motion_tracking_clip_id, None);
+}
+
+#[test]
+fn spawn_motion_track_selected_clip_is_a_no_op_while_a_run_is_already_in_flight() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.motion_tracking_clip_id = Some(99);
+
+    app.spawn_motion_track_selected_clip();
+
+    // Stays pinned to the already-running clip's id, not overwritten by this second call.
+    assert_eq!(app.motion_tracking_clip_id, Some(99));
+}
+
+#[test]
+fn motion_track_region_defaults_to_a_centered_region() {
+    let app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    assert_eq!(app.motion_track_center_x, 0.5);
+    assert_eq!(app.motion_track_center_y, 0.5);
 }
 
 #[test]
