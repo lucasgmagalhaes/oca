@@ -731,12 +731,18 @@ pub struct App {
     /// how dragging an asset out of the library and dropping it on the timeline works. Always
     /// `None` between frames.
     pub pending_asset_drop: Option<(u64, egui::Pos2)>,
-    /// The last clip copied or cut via `Ctrl+C`/`Ctrl+X`/the timeline context menu, and the
-    /// track kind it came from (so a paste lands on a matching-kind track — same rule as a
-    /// drag-move). Not scoped to a project or sequence: pasting into a different tab, or even
-    /// a different project, is what makes "copiar e colar entre abas" (`request.md`'s Fase 3
-    /// spec) work for free, rather than needing separate cross-tab plumbing.
-    clipboard_clip: Option<(avcore::timeline::ClipInstance, avcore::timeline::TrackKind)>,
+    /// The last clip(s) copied or cut via `Ctrl+C`/`Ctrl+X`/the timeline context menu, and the
+    /// track kind they came from (so a paste lands on a matching-kind track — same rule as a
+    /// drag-move). More than one clip only when the copied clip was a composite block member —
+    /// every clip sharing its `composite_id` is captured too, so `App::paste_clip_at_playhead`
+    /// can paste the whole block back as one unit. Not scoped to a project or sequence: pasting
+    /// into a different tab, or even a different project, is what makes "copiar e colar entre
+    /// abas" (`request.md`'s Fase 3 spec) work for free, rather than needing separate cross-tab
+    /// plumbing.
+    clipboard_clip: Option<(
+        Vec<avcore::timeline::ClipInstance>,
+        avcore::timeline::TrackKind,
+    )>,
     /// The last formatting (gain/freeze settings, not the clip itself) copied via
     /// `Ctrl+Shift+C`/the timeline context menu — [`App::paste_selected_clip_formatting`]
     /// applies it onto a different block, per `request.md`'s Fase 4 "copiar formatação" spec.
