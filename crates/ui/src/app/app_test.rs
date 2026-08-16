@@ -182,6 +182,8 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         preview_texture: None,
         preview_playing: false,
         preview_frozen_since: None,
+        fullscreen_preview: false,
+        fullscreen_controls_last_moved: None,
         import_tx,
         import_rx,
         pending_imports: 0,
@@ -205,6 +207,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         motion_track_width: 0.2,
         motion_track_height: 0.2,
         motion_track_search_radius: 0.08,
+        picking_motion_track_region: false,
         matte_generation_tx,
         matte_generation_rx,
         matte_generating_clip_id: None,
@@ -1543,6 +1546,38 @@ fn motion_track_region_defaults_to_a_centered_region() {
 
     assert_eq!(app.motion_track_center_x, 0.5);
     assert_eq!(app.motion_track_center_y, 0.5);
+}
+
+#[test]
+fn start_picking_motion_track_region_is_a_no_op_without_a_loaded_preview() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.preview_texture = None;
+
+    app.start_picking_motion_track_region();
+
+    assert!(!app.picking_motion_track_region);
+}
+
+#[test]
+fn start_picking_motion_track_region_activates_with_a_loaded_preview() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let ctx = egui::Context::default();
+    let image = egui::ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
+    app.preview_texture = Some(ctx.load_texture("test", image, egui::TextureOptions::default()));
+
+    app.start_picking_motion_track_region();
+
+    assert!(app.picking_motion_track_region);
+}
+
+#[test]
+fn stop_picking_motion_track_region_clears_the_flag() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.picking_motion_track_region = true;
+
+    app.stop_picking_motion_track_region();
+
+    assert!(!app.picking_motion_track_region);
 }
 
 #[test]
