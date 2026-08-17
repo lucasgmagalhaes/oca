@@ -208,6 +208,41 @@ fn highlight_disabled_never_draws_the_highlight_color_even_within_a_words_window
     assert!(!contains_pixel(&buf, clip.highlight_color_rgba));
 }
 
+#[test]
+fn a_highlighted_word_follows_the_base_layout_onto_the_next_line() {
+    let mut clip = sample_text_with_words(
+        "WWWW WWWW",
+        vec![
+            WordTiming {
+                text: "WWWW".to_string(),
+                start_secs: 0.0,
+                end_secs: 0.5,
+            },
+            WordTiming {
+                text: "WWWW".to_string(),
+                start_secs: 0.5,
+                end_secs: 1.0,
+            },
+        ],
+    );
+    clip.pos_x = 0.0;
+    clip.pos_y = 0.0;
+    clip.font_size = 32.0;
+    clip.color_rgba = [255, 255, 255, 0];
+    let width = 110;
+    let height = 140;
+
+    let first = render_text_clip_rgba(&clip, width, height, 0.2);
+    let second = render_text_clip_rgba(&clip, width, height, 0.7);
+    let (first_min_y, _) = opaque_y_extent(&first, width, height);
+    let (second_min_y, _) = opaque_y_extent(&second, width, height);
+
+    assert!(
+        second_min_y > first_min_y,
+        "expected the wrapped second word below the first ({second_min_y} <= {first_min_y})"
+    );
+}
+
 /// The vertical extent (min/max y) covering every opaque pixel in an RGBA buffer — a one-line
 /// render stays within roughly one line height, a wrapped multi-line render spans much more.
 fn opaque_y_extent(buf: &[u8], width: u32, height: u32) -> (u32, u32) {

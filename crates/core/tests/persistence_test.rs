@@ -24,7 +24,7 @@ use avcore::timeline::{
     ClipInstance, ColorFilter, MaskShape, TextClip, TextFontFamily, TextFontStyle, Timeline, Track,
     TrackKind, TransitionType,
 };
-use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency, Sequence};
+use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency, Sequence, TextSegment};
 
 /// Looks up `key` in a MessagePack struct-map value, panicking if `value` isn't a map or
 /// doesn't have that key. `rmpv::Value` only exposes read-only indexing/`as_map`, so mutating
@@ -465,6 +465,48 @@ fn ocqueue_round_trip_uses_its_own_magic_bytes() {
         from_ocproj_bytes::<Vec<u64>>(&bytes),
         Err(PersistError::Corrupt(_))
     ));
+}
+
+#[test]
+fn queued_text_segments_without_a_glyph_range_load_as_whole_text() {
+    let original = vec![TextSegment {
+        start_secs: 1.0,
+        duration_secs: 0.5,
+        text: "old queued word".to_string(),
+        font_size: 32.0,
+        font_family: TextFontFamily::Lato,
+        font_style: TextFontStyle::Regular,
+        color_rgba: [255, 255, 255, 255],
+        background_rgba: [0, 0, 0, 0],
+        background_padding: 0.0,
+        background_corner_radius: 0.0,
+        glyph_byte_range: Some([4, 10]),
+        pos_x: 0.1,
+        pos_y: 0.8,
+    }];
+    let bytes = to_ocqueue_bytes(&original).unwrap();
+    let mut msgpack = Vec::new();
+    std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(&bytes[5..]), &mut msgpack)
+        .unwrap();
+    let mut value = rmpv::decode::read_value(&mut &msgpack[..]).unwrap();
+    let rmpv::Value::Array(segments) = &mut value else {
+        panic!("expected segment array");
+    };
+    let rmpv::Value::Map(fields) = &mut segments[0] else {
+        panic!("expected segment map");
+    };
+    fields.retain(|(key, _)| key.as_str() != Some("glyph_byte_range"));
+
+    let mut legacy_msgpack = Vec::new();
+    rmpv::encode::write_value(&mut legacy_msgpack, &value).unwrap();
+    let mut legacy_bytes = bytes[..5].to_vec();
+    let mut encoder = flate2::write::GzEncoder::new(&mut legacy_bytes, flate2::Compression::fast());
+    std::io::Write::write_all(&mut encoder, &legacy_msgpack).unwrap();
+    encoder.finish().unwrap();
+
+    let restored: Vec<TextSegment> = from_ocqueue_bytes(&legacy_bytes).unwrap();
+    assert_eq!(restored[0].glyph_byte_range, None);
+    assert_eq!(restored[0].text, "old queued word");
 }
 
 #[test]

@@ -412,12 +412,14 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   `text_clip_properties` uses.
 
   **Text/shape preview now exists** — `avcore::overlay_render::render_text_clip_rgba`/
-  `render_shape_clip_rgba` rasterize a `TextClip`/`ShapeClip` into a single full-canvas RGBA
-  buffer once (both clip types are static for their whole visible span, no keyframes on
-  either), fed into `Preview::open_composited`'s `compositor` pipeline as its own
+  `render_shape_clip_rgba` rasterize a `TextClip`/`ShapeClip` into a full-canvas RGBA buffer
+  (both clip types have static geometry, no keyframes), fed into
+  `Preview::open_composited`'s `compositor` pipeline as its own
   `appsrc ! imagefreeze` branch (`build_static_overlay_branch`, `preview.rs`) — `imagefreeze`
-  repeats that single pushed buffer indefinitely, so unlike every other overlay branch this one
-  needs no pad probe or `Preview::branches` seek entry. Shape rasterization mirrors
+  repeats the latest pushed buffer indefinitely, so unlike every other overlay branch this one
+  needs no pad probe or `Preview::branches` seek entry. Text branches set the verified
+  `allow-replace=true` property and remain open for word-boundary replacements; shape branches
+  still push once and send EOS. Shape rasterization mirrors
   `shape_render::build_shape_filter_desc`'s per-pixel math term-for-term (rotate into the
   shape's local frame, then an ellipse quadratic or the same `point_in_polygon` ray-cast export
   uses), evaluated directly against a pixel buffer instead of compiled into a `geq` expression.
@@ -442,24 +444,20 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   `open_composited` whenever any exist, even with zero video overlay tracks —
   `App::preview_text_clip_ids`/`preview_shape_clip_ids` mirror `preview_overlay_clip_ids`'s
   reopen-detection role for both `ensure_preview_loaded` and `seek_preview`'s fast path.
-  **Word-highlight timing and auto line-wrap now render too.** `render_text_clip_rgba` takes a
-  `local_time_secs` argument (elapsed time since the clip's own `start_secs`) and redraws
-  whichever word's `[start_secs, end_secs)` covers it in `highlight_color_rgba`, positioned via
-  `text_metrics::word_x_offsets_px` — the same offset export's own `render::
-  text_clip_to_segments` already used for its per-word overlay segments. **Known gap:** since
-  the branch's buffer is pushed once and repeated by `imagefreeze` for its whole life, the
-  highlighted word stays fixed at whatever was current when the branch was last opened/reseeked
-  rather than advancing word-by-word during uninterrupted playback — same "picked up on next
-  seek/reload, not live-patched" shape `speed_factor` already has. Long text wraps at word
-  boundaries once a line would run past the canvas edge (`fontdue`'s `max_width`) in both preview
-  and export.
-  Word-highlight positioning still assumes a single line (same limitation `text_clip_to_segments`
-  already documented for export), so a highlighted word past a wrap point lands at its unwrapped
-  x position. Confirmed working for real against a live GStreamer pipeline on this dev machine
-  (`open_composited_with_text_and_shape_overlays_composites_without_error`,
+  **Word-highlight timing and auto line-wrap render live and identically in preview/export.**
+  `render_text_clip_rgba` takes `local_time_secs` (elapsed since the text clip's own start) and
+  redraws whichever word's half-open timing window covers it. Each resolved highlight segment
+  now keeps the complete caption plus one UTF-8 glyph byte range; both preview and export run
+  that through the same `fontdue` layout and rasterize only the selected range, so explicit
+  newlines and automatic wrapping preserve the word's real x/y position. During playback,
+  `App::pump_preview_frame` calls `Preview::update_text_overlays`; the preview caches each
+  branch's active word and uploads a replacement RGBA buffer only when the index changes (also
+  covers entering a timing gap), while repeated UI frames inside one word are allocation-free.
+  Confirmed working against a live Playing GStreamer pipeline on this dev machine
+  (`composited_text_highlight_replaces_its_buffer_during_playback`,
   `preview_test.rs`) — required an explicit `framerate=0/1` field on the `appsrc` caps
   ("still image" sentinel), discovered empirically: `imagefreeze`'s sink pad rejected caps
-  without one.
+  without one; `gst-inspect-1.0 imagefreeze` confirmed `allow-replace` before it was used.
 
 - **Fase 5/6 — partially done.** Aspect ratio selection; prefs (`prefs.oc` — same
   gzip-compressed MessagePack framing `.ocproj` uses, via `avcore::to_ocproj_bytes`/
@@ -476,8 +474,7 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   frame-progress callbacks, so a pause requested after the primary encode reaches 100% may only
   be visible briefly before that already-running post-pass completes); output-folder
   overwrite/rename/cancel
-  prompt; word-highlight subtitles (single-line only — a caption that wraps
-  gets every highlight positioned as if still on one line); Whisper subtitles (model fetched
+  prompt; live word-highlight subtitles with shared multiline preview/export layout; Whisper subtitles (model fetched
   on demand via `avcore::model_download`, not bundled); standalone `.srt` subtitle export
   (`avcore::export_srt`, `request.md`'s "arquivo `.srt` separado" half of the subtitle ask —
   the embedded RGBA-overlay half already happens on every export; pure string formatting over

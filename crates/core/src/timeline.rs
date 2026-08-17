@@ -85,16 +85,11 @@ pub enum TextFontStyle {
 /// post-processing pass after the main timeline encode — see `avbridge::apply_text_overlays`.
 ///
 /// Previewed via [`crate::overlay_render::render_text_clip_rgba`] and
-/// [`crate::preview::Preview::open_composited`]'s static overlay branches. Word-highlight
-/// timing *is* rendered — [`crate::overlay_render::render_text_clip_rgba`]'s `local_time_secs`
-/// picks the current word
-/// against `words`/`highlight_enabled` — but only for whichever instant the branch was last
-/// (re)opened at, since that buffer is then pushed once and repeated for the branch's whole
-/// life; see [`crate::preview::Preview::open_composited`]'s doc comment for the exact "not
-/// live-patched during playback" gap this leaves, same "approximate, not pixel-perfect"
-/// tolerance `preview` already has for its other partially-covered effects. Auto word-wrap at
-/// the canvas edge *is* fully covered (`render_text_clip_rgba` sets `fontdue`'s `max_width`);
-/// export uses that same rasterizer, so wrapping and background geometry remain identical.
+/// [`crate::preview::Preview::open_composited`]'s replaceable overlay branches. During playback,
+/// the UI asks the preview to replace its frozen RGBA buffer only when `words`/
+/// `highlight_enabled` resolve to another active word. Preview and export filter the same
+/// complete-caption `fontdue` layout by UTF-8 byte range, so automatic wrapping, explicit
+/// newlines, font geometry, and background geometry remain identical.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextClip {
     pub id: u64,

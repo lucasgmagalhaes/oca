@@ -211,31 +211,29 @@ fn resolve_text_segments_expands_a_highlighted_clip_into_a_base_plus_one_segment
 
     let base = segments
         .iter()
-        .find(|s| s.text == "Hello World")
+        .find(|s| s.glyph_byte_range.is_none())
         .expect("base segment missing");
     assert_eq!(base.start_secs, 10.0);
     assert_eq!(base.duration_secs, 2.0);
     assert_eq!(base.color_rgba, [255, 255, 255, 255]);
+    assert_eq!(base.glyph_byte_range, None);
 
     let word_segments: Vec<_> = segments
         .iter()
-        .filter(|s| s.text != "Hello World")
+        .filter(|s| s.glyph_byte_range.is_some())
         .collect();
     assert_eq!(word_segments.len(), 2);
     for word in &word_segments {
         assert_eq!(word.color_rgba, [255, 220, 0, 255]);
         assert_eq!(word.background_rgba, [0, 0, 0, 0]);
+        assert_eq!(word.text, "Hello World");
+        assert_eq!(word.pos_x, base.pos_x);
+        assert_eq!(word.pos_y, base.pos_y);
         // Timeline-absolute: clip.start_secs (10.0) + the word's own relative offset.
         assert!(word.start_secs >= 10.0 && word.start_secs < 11.5);
     }
-
-    // "World" (the second word) must be positioned strictly to the right of "Hello" (the
-    // first) - proves text_metrics actually drove the x offset, not just a constant pos_x.
-    let hello = segments.iter().find(|s| s.text == "Hello").unwrap();
-    let world = segments.iter().find(|s| s.text == "World").unwrap();
-    assert!(world.pos_x > hello.pos_x);
-    // Both still anchored relative to the base clip's own pos_x (0.1), not drifted off-screen.
-    assert!(hello.pos_x >= 0.1);
+    assert_eq!(word_segments[0].glyph_byte_range, Some([0, 5]));
+    assert_eq!(word_segments[1].glyph_byte_range, Some([6, 11]));
 }
 
 #[test]

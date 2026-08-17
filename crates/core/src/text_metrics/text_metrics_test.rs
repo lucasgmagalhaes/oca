@@ -65,6 +65,22 @@ fn word_x_offsets_px_is_empty_for_no_words() {
 }
 
 #[test]
+fn word_byte_ranges_follow_repeated_words_across_whitespace_and_lines() {
+    assert_eq!(
+        word_byte_ranges("go  go\nnow", &["go", "go", "now"]),
+        vec![Some([0, 2]), Some([4, 6]), Some([7, 10])]
+    );
+}
+
+#[test]
+fn word_byte_ranges_leave_stale_timing_words_unmatched() {
+    assert_eq!(
+        word_byte_ranges("edited caption", &["edited", "old", "caption"]),
+        vec![Some([0, 6]), None, Some([7, 14])]
+    );
+}
+
+#[test]
 fn every_bundled_font_face_parses_and_is_cached() {
     for family in TextFontFamily::ALL {
         let regular = bundled_font(family, TextFontStyle::Regular)

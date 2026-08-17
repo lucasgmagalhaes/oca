@@ -65,6 +65,11 @@ pub struct TextSegment {
     pub background_padding: f32,
     #[serde(default)]
     pub background_corner_radius: f32,
+    /// Optional UTF-8 byte range within `text` to rasterize. Word-highlight segments keep the
+    /// full caption here and select just one word, so they inherit the base caption's exact
+    /// fontdue wrapping and line position. `None` renders the whole string.
+    #[serde(default)]
+    pub glyph_byte_range: Option<[u32; 2]>,
     pub pos_x: f32,
     pub pos_y: f32,
 }
@@ -589,9 +594,9 @@ fn apply_shape_overlay_pass(
 /// or none have any clips. Used to pass text overlays to the post-processing pass after the
 /// main video encode ([`render_export_job`]).
 ///
-/// `canvas_width` (pixels) converts word-highlight pixel offsets (from
-/// `text_metrics::word_x_offsets_px`) into the `0.0..=1.0` fraction [`TextSegment`]'s
-/// `pos_x` expects — see [`text_clip_to_segments`].
+/// `canvas_width` is retained as a zero-width guard for malformed export settings; word
+/// highlights otherwise use UTF-8 byte ranges into the complete caption, letting the shared
+/// rasterizer place them with the exact same wrapping as the base text.
 pub fn resolve_text_segments(sequence: &Sequence, canvas_width: u32) -> Vec<TextSegment> {
     let mut segments: Vec<TextSegment> = sequence
         .timeline
@@ -609,14 +614,10 @@ pub fn resolve_text_segments(sequence: &Sequence, canvas_width: u32) -> Vec<Text
 /// or `highlight_enabled` off) is exactly the one segment it's always been. A word-highlight
 /// clip becomes a base segment (the full text, in `color_rgba`, for the clip's whole duration —
 /// so something is always on screen even between words / before the first word starts) plus one
-/// short segment per word (just that word's text, in `highlight_color_rgba`, only for that
-/// word's own `[start_secs, end_secs)`), each positioned via `text_metrics::word_x_offsets_px`
-/// so it lands exactly on top of the matching word in the base text underneath it.
-///
-/// Known limitation: this only positions words along a single line — a caption long enough to
-/// wrap would have every highlight overlay computed as if the whole sentence were still on one
-/// line, landing in the wrong place past the wrap point. Fine for the short
-/// shorts-style captions this feature targets; not a general multi-line layout engine.
+/// short segment per matched word (the complete caption plus that word's UTF-8 byte range, in
+/// `highlight_color_rgba`, only for its own `[start_secs, end_secs)`). Rendering the complete
+/// caption layout and filtering its glyphs by byte range makes highlights follow both explicit
+/// newlines and automatic word wrapping exactly.
 fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<TextSegment> {
     let base = TextSegment {
         start_secs: clip.start_secs,
@@ -629,6 +630,7 @@ fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<TextSegment>
         background_rgba: clip.background_rgba,
         background_padding: clip.background_padding,
         background_corner_radius: clip.background_corner_radius,
+        glyph_byte_range: None,
         pos_x: clip.pos_x,
         pos_y: clip.pos_y,
     };
@@ -637,20 +639,21 @@ fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<TextSegment>
     }
 
     let words: Vec<&str> = clip.words.iter().map(|w| w.text.as_str()).collect();
-    let offsets_px = crate::text_metrics::word_x_offsets_px_with_font(
-        &words,
-        clip.font_size,
-        clip.font_family,
-        clip.font_style,
-    );
+    let byte_ranges = crate::text_metrics::word_byte_ranges(&clip.text, &words);
 
     let mut segments = Vec::with_capacity(1 + clip.words.len());
     segments.push(base);
-    for (word, offset_px) in clip.words.iter().zip(offsets_px) {
+    for (word, byte_range) in clip.words.iter().zip(byte_ranges) {
+        let Some([start, end]) = byte_range else {
+            continue;
+        };
+        let (Ok(start), Ok(end)) = (u32::try_from(start), u32::try_from(end)) else {
+            continue;
+        };
         segments.push(TextSegment {
             start_secs: clip.start_secs + word.start_secs,
             duration_secs: (word.end_secs - word.start_secs).max(0.05),
-            text: word.text.clone(),
+            text: clip.text.clone(),
             font_size: clip.font_size,
             font_family: clip.font_family,
             font_style: clip.font_style,
@@ -658,7 +661,8 @@ fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<TextSegment>
             background_rgba: [0, 0, 0, 0],
             background_padding: 0.0,
             background_corner_radius: 0.0,
-            pos_x: clip.pos_x + offset_px / canvas_width as f32,
+            glyph_byte_range: Some([start, end]),
+            pos_x: clip.pos_x,
             pos_y: clip.pos_y,
         });
     }

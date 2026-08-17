@@ -661,9 +661,9 @@ pub struct App {
     /// Ids of the [`TrackKind::Text`] clips covering the playhead the last time
     /// [`App::ensure_preview_loaded`] opened a pipeline, in the same order passed as
     /// [`avcore::preview::Preview::open_composited`]'s `text_overlays` — same reopen-detection
-    /// role [`App::preview_overlay_clip_ids`] has for video overlay branches. Text/shape clips
-    /// have no keyframes and nothing to seek, so unlike video overlays this list only ever
-    /// drives "does the pipeline need reopening", never per-branch offset math.
+    /// role [`App::preview_overlay_clip_ids`] has for video overlay branches. Text clips have no
+    /// source to seek, but this ordering also guards live word-highlight buffer replacements;
+    /// a different id set is left for the next full pipeline rebuild.
     preview_text_clip_ids: Vec<u64>,
     /// Same role as [`App::preview_text_clip_ids`], for [`TrackKind::Shape`] clips.
     preview_shape_clip_ids: Vec<u64>,

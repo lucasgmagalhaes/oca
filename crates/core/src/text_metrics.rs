@@ -13,10 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Pure-Rust access to oca's bundled fonts and metrics for positioning word-highlight subtitle
-//! overlays. Font files are compiled into the application, but each face is parsed only on its
-//! first render or measurement through a dedicated [`OnceLock`] — opening the text-properties
-//! panel therefore doesn't eagerly parse every bundled family.
+//! Pure-Rust access to oca's bundled fonts and text/word mapping helpers. Font files are compiled
+//! into the application, but each face is parsed only on its first render or measurement through
+//! a dedicated [`OnceLock`] — opening the text-properties panel therefore doesn't eagerly parse
+//! every bundled family.
 //!
 //! Font shaping is deliberately simple: per-character advance widths summed left to right, no
 //! kerning, no ligatures, no bidi/complex script shaping. Fine for the short Latin-script
@@ -152,6 +152,29 @@ pub fn word_x_offsets_px_with_font(
         x += text_width_px_with_font(word, font_size_px, family, style);
     }
     offsets
+}
+
+/// Locates each timed/transcribed word inside the exact caption string, in order, returning
+/// UTF-8 byte ranges suitable for matching [`fontdue::layout::GlyphPosition::byte_offset`].
+/// Searching continues after the previous match, so repeated words map to their own occurrence
+/// and arbitrary whitespace/newlines in the edited caption remain intact. A word that no longer
+/// appears after the previous match returns `None` instead of drawing a highlight over unrelated
+/// text — useful when a user edits the caption without regenerating its word timings.
+pub fn word_byte_ranges(text: &str, words: &[&str]) -> Vec<Option<[usize; 2]>> {
+    let mut search_from = 0usize;
+    words
+        .iter()
+        .map(|word| {
+            if word.is_empty() || search_from > text.len() {
+                return None;
+            }
+            let relative_start = text[search_from..].find(word)?;
+            let start = search_from + relative_start;
+            let end = start + word.len();
+            search_from = end;
+            Some([start, end])
+        })
+        .collect()
 }
 
 #[cfg(test)]

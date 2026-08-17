@@ -21,20 +21,19 @@
 //! `Preview::open_composited`, which now feeds each buffer this module builds into the
 //! compositor as its own static overlay branch).
 //!
-//! Both clip kinds are static for the clip's whole visible span (no keyframes on either type),
-//! so unlike every other preview overlay effect, one RGBA buffer rendered once is enough — no
-//! per-buffer pad probe recomputing anything. `imagefreeze` repeats that single buffer for as
-//! long as the branch stays open.
+//! Both clip kinds have static geometry for their whole visible span (no keyframes on either
+//! type). Shape preview therefore needs one RGBA buffer only. Text preview also starts with one,
+//! then replaces it only when playback enters another timed word; `imagefreeze` repeats the
+//! latest buffer between boundaries without per-video-frame rasterization.
 //!
 //! Text uses `fontdue`'s own layout engine (already a dependency, see [`crate::text_metrics`])
 //! rather than the manual baseline math its `Metrics` type alone would require — `Layout` hands
 //! back each glyph's top-left pixel position directly under [`fontdue::layout::CoordinateSystem::
 //! PositiveYDown`], matching this buffer's row-major top-down layout, and wraps at word
 //! boundaries once a line would run past the canvas's right edge (`LayoutSettings::max_width`).
-//! Word-highlight timing ([`crate::timeline::TextClip::words`]) *is* rendered — see
-//! [`render_text_clip_rgba`]'s `local_time_secs` parameter — though only for whatever instant
-//! the caller asks for at render time, not live-updated frame-by-frame the way export's
-//! per-word overlay segments are each their own exact `[start, end)` window.
+//! Word-highlight timing ([`crate::timeline::TextClip::words`]) is rendered through
+//! [`render_text_clip_rgba`]'s `local_time_secs` parameter. Preview calls it on word-boundary
+//! changes; export emits one precisely timed PNG overlay per word.
 //!
 //! Shapes mirror [`crate::shape_render::build_shape_filter_desc`]'s per-pixel math term-for-term
 //! (rotate into the shape's local frame, then an ellipse quadratic or
@@ -104,11 +103,18 @@ fn draw_laid_out_text(
     font: &fontdue::Font,
     layout: &Layout<()>,
     rgba: [u8; 4],
+    glyph_byte_range: Option<[u32; 2]>,
     canvas_width: u32,
     canvas_height: u32,
 ) {
     let [r, g, b, a] = rgba;
     for glyph in layout.glyphs() {
+        if glyph_byte_range.is_some_and(|[start, end]| {
+            let offset = glyph.byte_offset as u64;
+            offset < start as u64 || offset >= end as u64
+        }) {
+            continue;
+        }
         let (_metrics, coverage) = font.rasterize_config(GlyphRasterConfig {
             glyph_index: glyph.key.glyph_index,
             px: glyph.key.px,
@@ -140,41 +146,48 @@ fn draw_laid_out_text(
 fn draw_rounded_background(
     buf: &mut [u8],
     layout: &Layout<()>,
-    rgba: [u8; 4],
-    padding: f32,
-    radius: f32,
+    segment: &TextSegment,
     canvas_width: u32,
     canvas_height: u32,
 ) {
-    if rgba[3] == 0 || layout.glyphs().is_empty() {
+    let rgba = segment.background_rgba;
+    let glyph_byte_range = segment.glyph_byte_range;
+    let glyphs: Vec<_> = layout
+        .glyphs()
+        .iter()
+        .filter(|glyph| {
+            !glyph_byte_range.is_some_and(|[start, end]| {
+                let offset = glyph.byte_offset as u64;
+                offset < start as u64 || offset >= end as u64
+            })
+        })
+        .collect();
+    if rgba[3] == 0 || glyphs.is_empty() {
         return;
     }
-    let min_x = layout
-        .glyphs()
+    let min_x = glyphs
         .iter()
         .map(|glyph| glyph.x)
         .fold(f32::INFINITY, f32::min);
-    let min_y = layout
-        .glyphs()
+    let min_y = glyphs
         .iter()
         .map(|glyph| glyph.y)
         .fold(f32::INFINITY, f32::min);
-    let max_x = layout
-        .glyphs()
+    let max_x = glyphs
         .iter()
         .map(|glyph| glyph.x + glyph.width as f32)
         .fold(f32::NEG_INFINITY, f32::max);
-    let max_y = layout
-        .glyphs()
+    let max_y = glyphs
         .iter()
         .map(|glyph| glyph.y + glyph.height as f32)
         .fold(f32::NEG_INFINITY, f32::max);
-    let padding = padding.max(0.0);
+    let padding = segment.background_padding.max(0.0);
     let left = min_x - padding;
     let top = min_y - padding;
     let right = max_x + padding;
     let bottom = max_y + padding;
-    let radius = radius
+    let radius = segment
+        .background_corner_radius
         .max(0.0)
         .min((right - left) / 2.0)
         .min((bottom - top) / 2.0);
@@ -212,20 +225,13 @@ fn draw_text_segment_onto(
     let y = segment.pos_y * canvas_height as f32;
     let max_width = (canvas_width as f32 - x).max(1.0);
     let layout = text_layout(font, &segment.text, segment.font_size, x, y, max_width);
-    draw_rounded_background(
-        buf,
-        &layout,
-        segment.background_rgba,
-        segment.background_padding,
-        segment.background_corner_radius,
-        canvas_width,
-        canvas_height,
-    );
+    draw_rounded_background(buf, &layout, segment, canvas_width, canvas_height);
     draw_laid_out_text(
         buf,
         font,
         &layout,
         segment.color_rgba,
+        segment.glyph_byte_range,
         canvas_width,
         canvas_height,
     );
@@ -258,16 +264,9 @@ pub fn render_text_segment_rgba(
 ///
 /// `local_time_secs` is elapsed time since `clip.start_secs` (not a timeline position) — when
 /// [`TextClip::highlight_enabled`] and it falls within some [`crate::timeline::WordTiming`]'s
-/// `[start_secs, end_secs)`, that word is redrawn on top in `highlight_color_rgba`, positioned
-/// via [`crate::text_metrics::word_x_offsets_px`] exactly like export's own
-/// [`crate::render::text_clip_to_segments`] positions its highlight overlay segment. Shares that
-/// function's documented "single line only" limitation: the offset assumes the base text is all
-/// on one line, so a highlighted word past a wrap point (a literal `\n`, or — preview-only —
-/// this function's own auto-wrap above) lands at its unwrapped x position instead of its real
-/// one. Unlike export's per-word overlay clips (each with their own exact `[start, end)` on the
-/// export timeline), the caller here is the one deciding *which* instant `local_time_secs` is —
-/// see [`crate::preview::Preview::open_composited`]'s own doc comment for what that means for
-/// live playback.
+/// `[start_secs, end_secs)`, that word's glyph range is redrawn on top in
+/// `highlight_color_rgba`. The range is filtered from the complete caption's layout, so explicit
+/// newlines and automatic wrapping match the base text and export exactly.
 pub fn render_text_clip_rgba(
     clip: &TextClip,
     canvas_width: u32,
@@ -285,39 +284,45 @@ pub fn render_text_clip_rgba(
         background_rgba: clip.background_rgba,
         background_padding: clip.background_padding,
         background_corner_radius: clip.background_corner_radius,
+        glyph_byte_range: None,
         pos_x: clip.pos_x,
         pos_y: clip.pos_y,
     };
     let mut buf = render_text_segment_rgba(&base, canvas_width, canvas_height);
 
-    if clip.highlight_enabled {
-        let current_word = clip
-            .words
-            .iter()
-            .enumerate()
-            .find(|(_, w)| local_time_secs >= w.start_secs && local_time_secs < w.end_secs);
-        if let Some((index, word)) = current_word {
-            let words: Vec<&str> = clip.words.iter().map(|w| w.text.as_str()).collect();
-            let offset_px = crate::text_metrics::word_x_offsets_px_with_font(
-                &words,
-                clip.font_size,
-                clip.font_family,
-                clip.font_style,
-            )[index];
-            let highlight = TextSegment {
-                text: word.text.clone(),
-                color_rgba: clip.highlight_color_rgba,
-                background_rgba: [0, 0, 0, 0],
-                background_padding: 0.0,
-                background_corner_radius: 0.0,
-                pos_x: clip.pos_x + offset_px / canvas_width as f32,
-                ..base
-            };
-            draw_text_segment_onto(&mut buf, &highlight, canvas_width, canvas_height);
-        }
+    if let Some(index) = active_highlight_word_index(clip, local_time_secs) {
+        let words: Vec<&str> = clip.words.iter().map(|w| w.text.as_str()).collect();
+        let byte_range = crate::text_metrics::word_byte_ranges(&clip.text, &words)
+            .get(index)
+            .copied()
+            .flatten()
+            .and_then(|[start, end]| Some([u32::try_from(start).ok()?, u32::try_from(end).ok()?]));
+        let Some(glyph_byte_range) = byte_range else {
+            return buf;
+        };
+        let highlight = TextSegment {
+            color_rgba: clip.highlight_color_rgba,
+            background_rgba: [0, 0, 0, 0],
+            background_padding: 0.0,
+            background_corner_radius: 0.0,
+            glyph_byte_range: Some(glyph_byte_range),
+            ..base
+        };
+        draw_text_segment_onto(&mut buf, &highlight, canvas_width, canvas_height);
     }
 
     buf
+}
+
+/// Index of the word whose half-open timing window covers `local_time_secs`, or `None` when
+/// highlighting is disabled/between words. Shared by the rasterizer and live preview branch so
+/// an unchanged word does not trigger another full-canvas RGBA upload every UI frame.
+pub fn active_highlight_word_index(clip: &TextClip, local_time_secs: f64) -> Option<usize> {
+    clip.highlight_enabled.then(|| {
+        clip.words
+            .iter()
+            .position(|word| local_time_secs >= word.start_secs && local_time_secs < word.end_secs)
+    })?
 }
 
 /// `(rx/hw)^2 + (ry/hh)^2 <= 1` — the pure-pixel twin of

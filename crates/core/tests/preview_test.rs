@@ -424,6 +424,89 @@ fn open_composited_with_text_and_shape_overlays_composites_without_error() {
 }
 
 #[test]
+fn composited_text_highlight_replaces_its_buffer_during_playback() {
+    let bg = fixture("video.mp4");
+    let text_clip = avcore::timeline::TextClip {
+        id: 7,
+        start_secs: 0.0,
+        duration_secs: 1.0,
+        text: "II MMMMM".to_string(),
+        font_size: 48.0,
+        font_family: Default::default(),
+        font_style: Default::default(),
+        // Hide the base caption so magenta pixels belong only to the active word.
+        color_rgba: [255, 255, 255, 0],
+        background_rgba: [0, 0, 0, 0],
+        background_padding: 8.0,
+        background_corner_radius: 8.0,
+        pos_x: 0.05,
+        pos_y: 0.1,
+        words: vec![
+            avcore::timeline::WordTiming {
+                text: "II".to_string(),
+                start_secs: 0.0,
+                end_secs: 0.5,
+            },
+            avcore::timeline::WordTiming {
+                text: "MMMMM".to_string(),
+                start_secs: 0.5,
+                end_secs: 1.0,
+            },
+        ],
+        highlight_enabled: true,
+        highlight_color_rgba: [255, 0, 255, 255],
+    };
+
+    let mut preview =
+        Preview::open_composited(&bg, None, &[], &[], &[(&text_clip, 0.2)], &[]).unwrap();
+    let initial_frame = preview
+        .current_frame()
+        .expect("the initial highlighted word should be present after preroll");
+    let magenta_centroid_x = |frame: &avcore::preview::VideoFrame| {
+        let mut x_sum = 0u64;
+        let mut count = 0u64;
+        for y in 0..frame.height.min(120) {
+            for x in 0..frame.width {
+                let offset = (y * frame.width + x) as usize * 4;
+                let pixel = &frame.rgba[offset..offset + 4];
+                if pixel[0] > 220 && pixel[1] < 40 && pixel[2] > 220 {
+                    x_sum += x as u64;
+                    count += 1;
+                }
+            }
+        }
+        (count > 0).then_some(x_sum as f64 / count as f64)
+    };
+    let initial_x = magenta_centroid_x(&initial_frame)
+        .expect("the first word should contribute visible magenta pixels");
+    assert_eq!(
+        preview.update_text_overlays(&[(&text_clip, 0.3)]).unwrap(),
+        0,
+        "remaining inside the same word must not upload another full-canvas buffer"
+    );
+
+    preview.play().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert_eq!(
+        preview.update_text_overlays(&[(&text_clip, 0.7)]).unwrap(),
+        1,
+        "crossing into the second word must replace the live imagefreeze buffer"
+    );
+    let moved_x = (0..20).find_map(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        preview
+            .current_frame()
+            .and_then(|frame| magenta_centroid_x(&frame))
+            .filter(|&x| x > initial_x + 10.0)
+    });
+    assert!(
+        moved_x.is_some(),
+        "the visible magenta highlight never moved from the first word at x={initial_x}"
+    );
+    preview.pause().unwrap();
+}
+
+#[test]
 fn open_composited_with_animated_overlay_still_composites_without_error() {
     let bg = fixture("video.mp4");
     let overlay = fixture("video.mp4");

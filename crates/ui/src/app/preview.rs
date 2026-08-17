@@ -35,9 +35,9 @@ pub(crate) fn frozen_playhead(
 }
 
 impl App {
-    /// Drops the current pipeline/texture so the next Editor frame rebuilds static overlay
-    /// branches from their latest styling. Text and shape branches use `imagefreeze`, so their
-    /// already-pushed RGBA buffer cannot be updated in place after a property edit.
+    /// Drops the current pipeline/texture so the next Editor frame rebuilds overlay branches
+    /// from their latest styling. Word-timing changes can replace a text branch's buffer live,
+    /// but arbitrary text/shape property edits still use this conservative full rebuild.
     pub fn invalidate_preview_rendering(&mut self) {
         self.preview = None;
         self.preview_texture = None;
@@ -119,7 +119,7 @@ impl App {
     /// convention (there's no `overlay`/`background` distinction among text tracks — every one
     /// composites the same way, on top of every video branch, matching export's own
     /// post-processing-pass ordering).
-    fn current_preview_text_clips(&self) -> Vec<TextClip> {
+    fn preview_text_clips_at(&self, position_secs: f64) -> Vec<TextClip> {
         let timeline = self.active_project().timeline();
         timeline
             .tracks
@@ -127,12 +127,38 @@ impl App {
             .filter(|t| t.kind == TrackKind::Text)
             .filter_map(|t| {
                 t.text_clips.iter().find(|c| {
-                    timeline.playhead_secs >= c.start_secs
-                        && timeline.playhead_secs < c.start_secs + c.duration_secs
+                    position_secs >= c.start_secs && position_secs < c.start_secs + c.duration_secs
                 })
             })
             .cloned()
             .collect()
+    }
+
+    fn current_preview_text_clips(&self) -> Vec<TextClip> {
+        self.preview_text_clips_at(self.active_project().timeline().playhead_secs)
+    }
+
+    /// Pushes a replacement RGBA frame only when `position_secs` crosses into another timed
+    /// word (or a gap between words). `Preview` owns the last active-word state and ignores
+    /// same-word calls, so invoking this every UI frame during playback remains cheap.
+    fn refresh_preview_text_highlights(&mut self, position_secs: f64) {
+        if self.preview_text_clip_ids.is_empty() {
+            return;
+        }
+        let clips = self.preview_text_clips_at(position_secs);
+        let ids: Vec<u64> = clips.iter().map(|clip| clip.id).collect();
+        if ids != self.preview_text_clip_ids {
+            return;
+        }
+        let timed_clips: Vec<(&TextClip, f64)> = clips
+            .iter()
+            .map(|clip| (clip, position_secs - clip.start_secs))
+            .collect();
+        if let Some(preview) = self.preview.as_mut() {
+            if let Err(error) = preview.update_text_overlays(&timed_clips) {
+                warn!(%error, "failed to refresh preview word highlight");
+            }
+        }
     }
 
     /// Same role as [`App::current_preview_text_clips`], for [`ShapeClip`]s on
@@ -564,6 +590,7 @@ impl App {
                 self.active_project_mut().timeline_mut().playhead_secs = position_secs;
             }
         }
+        self.refresh_preview_text_highlights(position_secs);
     }
 
     /// Whether the clip at the timeline playhead has a live preview pipeline — `false` before
@@ -651,5 +678,6 @@ impl App {
             }
         };
         self.active_project_mut().timeline_mut().playhead_secs = new_playhead;
+        self.refresh_preview_text_highlights(new_playhead);
     }
 }

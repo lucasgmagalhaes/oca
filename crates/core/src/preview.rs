@@ -1192,13 +1192,31 @@ fn build_composite_branch(
     Ok((decodebin, matte_decodebin))
 }
 
-/// Builds one static text/shape overlay branch of [`Preview::open_composited`]'s pipeline:
+fn push_rgba_overlay_buffer(appsrc: &gst_app::AppSrc, rgba: Vec<u8>) -> Result<(), PreviewError> {
+    let mut buffer = gst::Buffer::with_size(rgba.len()).map_err(PreviewError::Compositing)?;
+    {
+        let buffer_mut = buffer.get_mut().expect("freshly created, uniquely owned");
+        buffer_mut.set_pts(gst::ClockTime::ZERO);
+        let mut map = buffer_mut
+            .map_writable()
+            .map_err(|_| PreviewError::PushBuffer(gst::FlowError::Error))?;
+        map.copy_from_slice(&rgba);
+    }
+    appsrc
+        .push_buffer(buffer)
+        .map(|_| ())
+        .map_err(PreviewError::PushBuffer)
+}
+
+/// Builds one text/shape overlay branch of [`Preview::open_composited`]'s pipeline:
 /// `appsrc` (pushed exactly one already-rasterized full-canvas RGBA buffer, see
 /// [`crate::overlay_render`]) through `imagefreeze` (repeats that single buffer indefinitely,
 /// deriving fresh timestamps off the pipeline's own clock) into a freshly requested `compositor`
-/// sink pad. Unlike [`build_composite_branch`], there's no keyframe animation and no seeking —
-/// [`TextClip`]/[`ShapeClip`] are both static for their whole visible span and have no source
-/// file of their own — so this needs neither a pad probe nor an entry in [`Preview::branches`].
+/// sink pad. `allow_replace` enables `imagefreeze`'s verified `allow-replace` property and keeps
+/// `appsrc` open so word-highlight text can replace this buffer as playback crosses a timing
+/// boundary; shape branches still send EOS after their one immutable frame. Unlike
+/// [`build_composite_branch`], there's no seeking — [`TextClip`]/[`ShapeClip`] have no source
+/// file of their own — so this needs no entry in [`Preview::branches`].
 /// `rgba` already covers the whole canvas with the text/shape positioned within it (matching
 /// export's own absolute-pixel-position convention), so the compositor pad is placed at
 /// `(0, 0)` at the canvas's own size rather than needing per-pad position math.
@@ -1208,7 +1226,8 @@ fn build_static_overlay_branch(
     canvas: (u32, u32),
     rgba: Vec<u8>,
     zorder: u32,
-) -> Result<(), PreviewError> {
+    allow_replace: bool,
+) -> Result<gst_app::AppSrc, PreviewError> {
     let (width, height) = canvas;
     let caps = gst::Caps::builder("video/x-raw")
         .field("format", "RGBA")
@@ -1225,29 +1244,21 @@ fn build_static_overlay_branch(
         .caps(&caps)
         .format(gst::Format::Time)
         .build();
-    let mut buffer = gst::Buffer::with_size(rgba.len()).map_err(PreviewError::Compositing)?;
-    {
-        let buffer_mut = buffer.get_mut().expect("freshly created, uniquely owned");
-        buffer_mut.set_pts(gst::ClockTime::ZERO);
-        let mut map = buffer_mut
-            .map_writable()
-            .map_err(|_| PreviewError::PushBuffer(gst::FlowError::Error))?;
-        map.copy_from_slice(&rgba);
+    push_rgba_overlay_buffer(&appsrc, rgba)?;
+    if !allow_replace {
+        appsrc.end_of_stream().map_err(PreviewError::PushBuffer)?;
     }
-    appsrc
-        .push_buffer(buffer)
-        .map_err(PreviewError::PushBuffer)?;
-    appsrc.end_of_stream().map_err(PreviewError::PushBuffer)?;
 
     let imagefreeze = gst::ElementFactory::make("imagefreeze")
+        .property("allow-replace", allow_replace)
         .build()
         .map_err(PreviewError::CreateElement)?;
-    let appsrc = appsrc.upcast::<gst::Element>();
+    let appsrc_element = appsrc.clone().upcast::<gst::Element>();
 
     pipeline
-        .add_many([&appsrc, &imagefreeze])
+        .add_many([&appsrc_element, &imagefreeze])
         .map_err(PreviewError::Compositing)?;
-    gst::Element::link_many([&appsrc, &imagefreeze]).map_err(PreviewError::Compositing)?;
+    gst::Element::link_many([&appsrc_element, &imagefreeze]).map_err(PreviewError::Compositing)?;
 
     let sink_pad = compositor
         .request_pad_simple("sink_%u")
@@ -1262,7 +1273,15 @@ fn build_static_overlay_branch(
         .expect("imagefreeze always has a src pad");
     src_pad.link(&sink_pad).map_err(PreviewError::PadLink)?;
 
-    Ok(())
+    Ok(appsrc)
+}
+
+struct TextOverlayBranch {
+    clip_id: u64,
+    appsrc: gst_app::AppSrc,
+    active_word_index: Option<usize>,
+    canvas_width: u32,
+    canvas_height: u32,
 }
 
 /// A media pipeline loaded for preview playback — either a single file via `playbin`
@@ -1286,6 +1305,9 @@ pub struct Preview {
     /// `source_in_secs` rather than taking a separate offset from the caller — `ui`'s `App`
     /// never needs to know mattes exist.
     matte_branches: Vec<(usize, gst::Element, f64)>,
+    /// Replaceable `appsrc ! imagefreeze(allow-replace=true)` branches for active text clips.
+    /// Their order and ids mirror `open_composited`'s `text_overlays` argument.
+    text_overlay_branches: Vec<TextOverlayBranch>,
 }
 
 impl Preview {
@@ -1376,6 +1398,7 @@ impl Preview {
             video_sink,
             branches: Vec::new(),
             matte_branches: Vec::new(),
+            text_overlay_branches: Vec::new(),
         })
     }
 
@@ -1410,22 +1433,17 @@ impl Preview {
     ///
     /// `text_overlays`/`shape_overlays` — the clips covering the playhead on any
     /// [`crate::timeline::TrackKind::Text`]/[`crate::timeline::TrackKind::Shape`] track, if
-    /// any — are rasterized once each ([`crate::overlay_render`]) and composited on top of
+    /// any — are rasterized ([`crate::overlay_render`]) and composited on top of
     /// every `overlays` video branch (drawn last, matching export's own text/shape
-    /// post-processing passes running after the main timeline composite). Static for the whole
-    /// branch lifetime, unlike `overlays`' video branches — neither clip type has keyframes or
-    /// a source file of its own to seek.
+    /// post-processing passes running after the main timeline composite). Shapes stay static;
+    /// text branches use `imagefreeze(allow-replace=true)` so [`Self::update_text_overlays`]
+    /// can replace the repeated image at word boundaries without rebuilding this pipeline.
     ///
     /// Each `text_overlays` entry pairs a clip with the elapsed time since its own
     /// `start_secs` — the instant [`crate::overlay_render::render_text_clip_rgba`] resolves
-    /// [`crate::timeline::TextClip::highlight_enabled`]'s current word against. **Known gap:**
-    /// since the rendered buffer is pushed once and repeated by `imagefreeze` for the branch's
-    /// whole life (see above), the highlighted word stays exactly whatever was current at that
-    /// one instant — it does not advance word-by-word during uninterrupted playback the way
-    /// export's per-word overlay segments do, only on the next full reopen/reseek (e.g.
-    /// scrubbing, or the playhead crossing onto a different clip). Same "picked up on next
-    /// seek/reload, not live-patched" shape this codebase already has for other preview
-    /// properties (see `speed_factor`'s own doc comment in `ui::app::preview`).
+    /// [`crate::timeline::TextClip::highlight_enabled`]'s initial word against. The UI then
+    /// calls [`Self::update_text_overlays`] during uninterrupted playback and explicit seeks;
+    /// unchanged words are no-ops rather than full-canvas uploads every frame.
     pub fn open_composited(
         background_path: &Path,
         background_clip: Option<&ClipInstance>,
@@ -1583,6 +1601,7 @@ impl Preview {
         }
 
         let mut next_zorder = (overlays.len() + 1) as u32;
+        let mut text_overlay_branches = Vec::with_capacity(text_overlays.len());
         for (clip, local_time_secs) in text_overlays {
             let rgba = crate::overlay_render::render_text_clip_rgba(
                 clip,
@@ -1590,12 +1609,29 @@ impl Preview {
                 canvas.1,
                 *local_time_secs,
             );
-            build_static_overlay_branch(&pipeline, &compositor, canvas, rgba, next_zorder)?;
+            let appsrc = build_static_overlay_branch(
+                &pipeline,
+                &compositor,
+                canvas,
+                rgba,
+                next_zorder,
+                true,
+            )?;
+            text_overlay_branches.push(TextOverlayBranch {
+                clip_id: clip.id,
+                appsrc,
+                active_word_index: crate::overlay_render::active_highlight_word_index(
+                    clip,
+                    *local_time_secs,
+                ),
+                canvas_width: canvas.0,
+                canvas_height: canvas.1,
+            });
             next_zorder += 1;
         }
         for clip in shape_overlays {
             let rgba = crate::overlay_render::render_shape_clip_rgba(clip, canvas.0, canvas.1);
-            build_static_overlay_branch(&pipeline, &compositor, canvas, rgba, next_zorder)?;
+            build_static_overlay_branch(&pipeline, &compositor, canvas, rgba, next_zorder, false)?;
             next_zorder += 1;
         }
 
@@ -1616,6 +1652,7 @@ impl Preview {
             video_sink,
             branches,
             matte_branches,
+            text_overlay_branches,
         })
     }
 
@@ -1673,6 +1710,46 @@ impl Preview {
             Some(e) => Err(e),
             None => Ok(()),
         }
+    }
+
+    /// Re-rasterizes and replaces only text branches whose active word changed. The branch set
+    /// must still match the one passed to [`Self::open_composited`]; a mismatch returns `Ok(0)`
+    /// because the UI will rebuild the whole pipeline on its next `ensure_preview_loaded` pass.
+    /// Returns the number of full-canvas buffers replaced, allowing integration tests and
+    /// callers to verify that repeated UI frames inside one word stay allocation/upload-free.
+    pub fn update_text_overlays(
+        &mut self,
+        text_overlays: &[(&TextClip, f64)],
+    ) -> Result<usize, PreviewError> {
+        if text_overlays.len() != self.text_overlay_branches.len()
+            || text_overlays
+                .iter()
+                .zip(&self.text_overlay_branches)
+                .any(|((clip, _), branch)| clip.id != branch.clip_id)
+        {
+            return Ok(0);
+        }
+
+        let mut updated = 0;
+        for ((clip, local_time_secs), branch) in
+            text_overlays.iter().zip(&mut self.text_overlay_branches)
+        {
+            let active_word_index =
+                crate::overlay_render::active_highlight_word_index(clip, *local_time_secs);
+            if active_word_index == branch.active_word_index {
+                continue;
+            }
+            let rgba = crate::overlay_render::render_text_clip_rgba(
+                clip,
+                branch.canvas_width,
+                branch.canvas_height,
+                *local_time_secs,
+            );
+            push_rgba_overlay_buffer(&branch.appsrc, rgba)?;
+            branch.active_word_index = active_word_index;
+            updated += 1;
+        }
+        Ok(updated)
     }
 
     pub fn play(&self) -> Result<(), PreviewError> {
