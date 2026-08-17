@@ -231,7 +231,8 @@ fn open_composited_reports_a_canvas_sized_frame() {
     let overlay_clip = clip();
 
     let preview =
-        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)]).unwrap();
+        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)], &[], &[])
+            .unwrap();
     let frame = preview
         .current_frame()
         .expect("a frame should be available right after preroll");
@@ -241,6 +242,43 @@ fn open_composited_reports_a_canvas_sized_frame() {
     // doesn't change the compositor's own output size.
     assert_eq!((frame.width, frame.height), (320, 240));
     assert!(frame.rgba.iter().any(|&b| b != 0));
+}
+
+#[test]
+fn open_composited_with_text_and_shape_overlays_composites_without_error() {
+    let bg = fixture("video.mp4");
+    let text_clip = avcore::timeline::TextClip {
+        id: 1,
+        start_secs: 0.0,
+        duration_secs: 1.0,
+        text: "hi".to_string(),
+        font_size: 24.0,
+        color_rgba: [255, 255, 255, 255],
+        pos_x: 0.1,
+        pos_y: 0.1,
+        words: vec![],
+        highlight_enabled: false,
+        highlight_color_rgba: [255, 220, 0, 255],
+    };
+    let shape_clip = avcore::timeline::ShapeClip {
+        id: 2,
+        start_secs: 0.0,
+        duration_secs: 1.0,
+        shape_kind: avcore::timeline::ShapeKind::Ellipse,
+        center_x: 0.5,
+        center_y: 0.5,
+        width: 0.2,
+        height: 0.2,
+        rotation_deg: 0.0,
+        color_rgba: [0, 255, 0, 255],
+        stroke_thickness_px: 0.0,
+    };
+
+    let preview = Preview::open_composited(&bg, None, &[], &[&text_clip], &[&shape_clip]).unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("a frame should be available right after preroll");
+    assert_eq!((frame.width, frame.height), (320, 240));
 }
 
 #[test]
@@ -273,7 +311,8 @@ fn open_composited_with_animated_overlay_still_composites_without_error() {
     overlay_clip.chroma_key_enabled = true;
 
     let preview =
-        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)]).unwrap();
+        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)], &[], &[])
+            .unwrap();
     let frame = preview
         .current_frame()
         .expect("a frame should be available right after preroll");
@@ -295,7 +334,8 @@ fn seek_composited_seeks_every_branch_without_error() {
     let overlay_clip = clip();
 
     let preview =
-        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)]).unwrap();
+        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)], &[], &[])
+            .unwrap();
     preview.seek_composited(&[0.5, 0.2]).unwrap();
     let _ = preview.current_frame();
 }
@@ -307,7 +347,9 @@ fn open_composited_errors_on_a_missing_background() {
     assert!(Preview::open_composited(
         &fixture("does_not_exist.mp4"),
         None,
-        &[(overlay.as_path(), &overlay_clip)]
+        &[(overlay.as_path(), &overlay_clip)],
+        &[],
+        &[],
     )
     .is_err());
 }
