@@ -10,7 +10,7 @@ normalization and export-that-matches-the-source-bitrate. Full phased execution 
 [`features/request.md`](features/request.md) (`docs/plano.md` used to be a diverging
 duplicate — it's now just a pointer back here, the one canonical copy).
 
-Current status: the GUI shell (all five screens, navigable) and JSON project save/load are
+Current status: the GUI shell (all five screens, navigable) and binary `.ocproj` project save/load are
 wired end-to-end from the UI (`home.rs` open dialog, `editor.rs` save). Probing
 (`avcore::probe`), export rendering (`avcore::render`), loudness measurement
 (`avcore::loudness`), and proxy generation (`avcore::proxy`) all go through
@@ -192,7 +192,7 @@ and `ui` is its only consumer.
 - **`core`** — project/timeline/media data model plus the media wrappers that populate
   it (`probe`, `render`, `loudness`, `proxy`, and `waveform` — all via `avbridge` FFI, no
   subprocess left in any of them), a `playbin`-based GStreamer playback pipeline (`preview`: open/play/pause/seek/
-  query, `current_frame()` pulls packed RGBA via an appsink), JSON save/load (`persistence`),
+  query, `current_frame()` pulls packed RGBA via an appsink), `.ocproj` save/load (`persistence`),
   and mock sample data (`sample`) used to exercise the UI before real files
   are wired in. Locale-neutral by design: it stores data like `Recency` (an enum), never
   pre-formatted display strings — formatting is `ui`'s job.
