@@ -15,7 +15,7 @@
 
 //! `.srt` subtitle file export — `request.md`'s Fase 4 ask for subtitles "exportável como
 //! texto embutido no vídeo ou como arquivo `.srt` separado". The embedded half already exists
-//! (`TextClip`'s `drawtext` rendering on export); this covers the separate-file half. Pure
+//! (`TextClip`'s shared Rust raster rendering on export); this covers the separate-file half. Pure
 //! string formatting over already-placed [`crate::timeline::TextClip`]s — no FFI or
 //! render-pipeline involvement, so it works the same whether or not this build can decode or
 //! encode anything.
@@ -80,7 +80,12 @@ mod tests {
             duration_secs,
             text: text.to_string(),
             font_size: 32.0,
+            font_family: Default::default(),
+            font_style: Default::default(),
             color_rgba: [255, 255, 255, 255],
+            background_rgba: [0, 0, 0, 0],
+            background_padding: 8.0,
+            background_corner_radius: 8.0,
             pos_x: 0.5,
             pos_y: 0.9,
             words: Vec::new(),

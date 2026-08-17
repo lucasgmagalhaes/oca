@@ -802,6 +802,7 @@ dependencies = [
  "gstreamer-app",
  "gstreamer-video",
  "hound",
+ "image",
  "ort",
  "rmp-serde",
  "rmpv",

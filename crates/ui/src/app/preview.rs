@@ -35,6 +35,19 @@ pub(crate) fn frozen_playhead(
 }
 
 impl App {
+    /// Drops the current pipeline/texture so the next Editor frame rebuilds static overlay
+    /// branches from their latest styling. Text and shape branches use `imagefreeze`, so their
+    /// already-pushed RGBA buffer cannot be updated in place after a property edit.
+    pub fn invalidate_preview_rendering(&mut self) {
+        self.preview = None;
+        self.preview_texture = None;
+        self.preview_clip_id = None;
+        self.preview_overlay_clip_ids.clear();
+        self.preview_audio_clip_ids.clear();
+        self.preview_text_clip_ids.clear();
+        self.preview_shape_clip_ids.clear();
+    }
+
     /// The clip covering the active sequence's timeline playhead, and the asset it plays from,
     /// if both resolve — `None` if the video track is missing/empty, nothing covers the
     /// playhead ([`avcore::timeline::Track::clip_at`]), or the clip's `asset_id` isn't in the

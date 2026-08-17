@@ -22,30 +22,19 @@
 #include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
 
-/* Platform-specific default font path for avbridge_apply_text_overlays. The font must exist
-   on the system at runtime — drawtext fails filter graph configuration if it is absent.
-   On Windows the drive-letter colon is escaped as \: for avfilter's option parser. */
-#if defined(__APPLE__)
-#define DEFAULT_FONT "/System/Library/Fonts/Helvetica.ttc"
-#elif defined(_WIN32)
-#define DEFAULT_FONT "C\\:/Windows/Fonts/arial.ttf"
-#else
-#define DEFAULT_FONT "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-#endif
+/* Maximum byte length of one movie+overlay filter fragment (per segment). */
+#define TEXT_OVERLAY_SEG_MAX 2048
 
-/* Maximum byte length of a single drawtext filter node description (per segment). */
-#define DRAWTEXT_SEG_MAX 1024
-
-/* Escapes `in` for use in an avfilter drawtext single-quoted 'text' value. Backslash,
-   single-quote, colon, and comma each get a backslash prefix (the latter two are avfilter
-   option and chain separators that drawtext would mis-parse otherwise).
+/* Escapes `in` for use as a single-quoted avfilter movie filename. Backslash, single-quote,
+   colon, comma, semicolon, and graph-label brackets each get a backslash prefix.
    Writes into `out` (size `out_size`); returns bytes written excluding NUL, or -1 on
    buffer overflow. */
-static int escape_drawtext_text(char *out, size_t out_size, const char *in) {
+static int escape_filter_path(char *out, size_t out_size, const char *in) {
     size_t pos = 0;
     for (size_t i = 0; in[i] != '\0'; i++) {
         char c = in[i];
-        int needs_escape = (c == '\\' || c == '\'' || c == ':' || c == ',');
+        int needs_escape = (c == '\\' || c == '\'' || c == ':' || c == ',' ||
+                            c == ';' || c == '[' || c == ']');
         if (pos + (size_t)(needs_escape ? 2 : 1) + 1 > out_size) return -1;
         if (needs_escape) out[pos++] = '\\';
         out[pos++] = c;
@@ -55,7 +44,7 @@ static int escape_drawtext_text(char *out, size_t out_size, const char *in) {
 }
 
 /* Opens `in_path` (an already-rendered H.264/AAC mp4 produced by
-   avbridge_encode_timeline_export), composites drawtext overlays for each segment, and
+   avbridge_encode_timeline_export), composites pre-rasterized RGBA PNG overlays, and
    writes the result to `out_path`. Video is decoded, filtered, and re-encoded via
    libopenh264; audio is stream-copied unchanged to avoid a lossy second AAC encode.
    canvas_width/height and canvas_fps_num/den must match the rendered video so the output
@@ -112,38 +101,35 @@ TextOverlayStatus avbridge_apply_text_overlays(
         }
     }
 
-    /* Build drawtext filter description: chain of drawtext= nodes separated by commas. */
+    /* Build one movie source and one timeline-enabled overlay node per pre-rasterized PNG. */
     {
-        size_t filter_buf_size = (size_t)segment_count * DRAWTEXT_SEG_MAX + 8;
+        size_t filter_buf_size = (size_t)segment_count * TEXT_OVERLAY_SEG_MAX + 8;
         filter_str = av_malloc(filter_buf_size);
         if (!filter_str) { status = TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup; }
 
         size_t pos = 0;
         for (int i = 0; i < segment_count; i++) {
             const TextSegment *seg = &segments[i];
-            if (i > 0) {
-                if (pos + 2 >= filter_buf_size) {
-                    status = TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup;
-                }
-                filter_str[pos++] = ',';
-            }
-            char escaped[512];
-            if (escape_drawtext_text(escaped, sizeof(escaped), seg->text) < 0) {
+            char escaped[1024];
+            if (escape_filter_path(escaped, sizeof(escaped), seg->overlay_path) < 0) {
                 status = TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup;
             }
-            float alpha    = (float)seg->color_a / 255.0f;
             double end_secs = seg->start_secs + seg->duration_secs;
-            /* enable='between(t\,start\,end)' — commas inside the value are \, escaped */
+            char main_label[32];
+            char out_label[32];
+            if (i == 0) snprintf(main_label, sizeof(main_label), "in");
+            else snprintf(main_label, sizeof(main_label), "v%d", i - 1);
+            if (i == segment_count - 1) snprintf(out_label, sizeof(out_label), "out");
+            else snprintf(out_label, sizeof(out_label), "v%d", i);
+
+            /* `repeatlast=1` holds the PNG's only frame for the full main-video timeline;
+               enable='between(...)' controls the actual clip visibility window. */
             int written = snprintf(filter_str + pos, filter_buf_size - pos,
-                "drawtext=fontfile='%s':text='%s':fontsize=%.1f"
-                ":fontcolor=0x%02X%02X%02X@%.4f"
-                ":x=w*%.5f:y=h*%.5f"
-                ":enable='between(t\\,%.4f\\,%.4f)'",
-                DEFAULT_FONT, escaped, (double)seg->font_size,
-                (unsigned)seg->color_r, (unsigned)seg->color_g, (unsigned)seg->color_b,
-                (double)alpha,
-                (double)seg->pos_x, (double)seg->pos_y,
-                seg->start_secs, end_secs);
+                "movie=filename='%s',format=rgba[text%d];"
+                "[%s][text%d]overlay=x=0:y=0:format=auto:alpha=straight:"
+                "repeatlast=1:eof_action=repeat:enable='between(t\\,%.4f\\,%.4f)'[%s]%s",
+                escaped, i, main_label, i, seg->start_secs, end_secs, out_label,
+                i == segment_count - 1 ? "" : ";");
             if (written < 0 || pos + (size_t)written >= filter_buf_size) {
                 status = TEXT_OVERLAY_ERR_FILTER_GRAPH; goto cleanup;
             }
@@ -152,7 +138,7 @@ TextOverlayStatus avbridge_apply_text_overlays(
         filter_str[pos] = '\0';
     }
 
-    /* Set up filtergraph: buffer -> [drawtext chain] -> buffersink */
+    /* Set up filtergraph: buffer + PNG movie sources -> overlay chain -> buffersink. */
     {
         AVStream *vs = in_ctx->streams[video_in_idx];
         filter_graph = avfilter_graph_alloc();

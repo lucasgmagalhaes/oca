@@ -396,7 +396,7 @@ fn save_active_project(app: &mut App) {
 
 /// Prompts for a destination and writes the active sequence's text-track captions out as a
 /// standalone `.srt` file (`request.md`'s "arquivo `.srt` separado" half of the subtitle
-/// export ask — the embedded `drawtext` half already happens on every normal export). Doesn't
+/// export ask — the embedded raster-overlay half already happens on every normal export). Doesn't
 /// remember the chosen path the way project saves do — each export is a one-off action, not an
 /// ongoing document with its own save location.
 fn export_srt_for_active_sequence(app: &mut App) {

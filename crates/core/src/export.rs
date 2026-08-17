@@ -80,7 +80,7 @@ pub enum ExportJobStatus {
 /// to [`ClipSegment`]s and [`TextSegment`]s at the moment the job entered the queue — later
 /// edits to the source project must not retroactively change a queued job. Rendered via
 /// [`crate::render::render_export_job`] (main encode) followed by
-/// [`crate::render::apply_text_overlay_pass`]-equivalent (drawtext post-processing).
+/// [`crate::render::apply_text_overlay_pass`]-equivalent (pre-rasterized PNG post-processing).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportJob {
     pub id: u64,

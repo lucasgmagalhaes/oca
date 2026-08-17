@@ -71,7 +71,12 @@ fn sample_text(text: &str) -> TextClip {
         duration_secs: 1.0,
         text: text.to_string(),
         font_size: 32.0,
+        font_family: Default::default(),
+        font_style: Default::default(),
         color_rgba: [255, 255, 255, 255],
+        background_rgba: [0, 0, 0, 0],
+        background_padding: 8.0,
+        background_corner_radius: 8.0,
         pos_x: 0.1,
         pos_y: 0.1,
         words: Vec::<WordTiming>::new(),
@@ -92,6 +97,43 @@ fn non_empty_text_draws_at_least_one_opaque_pixel() {
     let clip = sample_text("A");
     let buf = render_text_clip_rgba(&clip, 200, 100, 0.0);
     assert!(buf.chunks_exact(4).any(|p| p[3] > 0));
+}
+
+#[test]
+fn selected_font_family_changes_the_rasterized_pixels() {
+    let lato = sample_text("Paco Paçoca");
+    let mut display = lato.clone();
+    display.font_family = crate::timeline::TextFontFamily::BebasNeue;
+
+    assert_ne!(
+        render_text_clip_rgba(&lato, 400, 120, 0.0),
+        render_text_clip_rgba(&display, 400, 120, 0.0)
+    );
+}
+
+#[test]
+fn rounded_background_has_transparent_corners_and_opaque_edges() {
+    let mut clip = sample_text("WIDE");
+    clip.color_rgba = [255, 255, 255, 0];
+    clip.background_rgba = [10, 20, 30, 255];
+    clip.background_padding = 12.0;
+    clip.background_corner_radius = 10.0;
+    let width = 300;
+    let height = 120;
+    let buf = render_text_clip_rgba(&clip, width, height, 0.0);
+
+    let opaque: Vec<(u32, u32)> = (0..height)
+        .flat_map(|y| (0..width).map(move |x| (x, y)))
+        .filter(|&(x, y)| pixel(&buf, width, x, y)[3] > 0)
+        .collect();
+    let min_x = opaque.iter().map(|&(x, _)| x).min().unwrap();
+    let max_x = opaque.iter().map(|&(x, _)| x).max().unwrap();
+    let min_y = opaque.iter().map(|&(_, y)| y).min().unwrap();
+    let max_y = opaque.iter().map(|&(_, y)| y).max().unwrap();
+
+    assert_eq!(pixel(&buf, width, min_x, min_y)[3], 0);
+    assert!(pixel(&buf, width, (min_x + max_x) / 2, min_y)[3] > 0);
+    assert!(pixel(&buf, width, min_x, (min_y + max_y) / 2)[3] > 0);
 }
 
 fn contains_pixel(buf: &[u8], rgba: [u8; 4]) -> bool {

@@ -347,7 +347,12 @@ fn word_highlight_text_overlay_exports_without_error() {
             duration_secs: 0.4,
             text: "Hello World".to_string(),
             font_size: 48.0,
+            font_family: Default::default(),
+            font_style: Default::default(),
             color_rgba: [255, 255, 255, 255],
+            background_rgba: [0, 0, 0, 0],
+            background_padding: 8.0,
+            background_corner_radius: 8.0,
             pos_x: 0.1,
             pos_y: 0.85,
             words: vec![

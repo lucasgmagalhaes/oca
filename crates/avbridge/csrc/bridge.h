@@ -393,41 +393,29 @@ typedef enum {
     TEXT_OVERLAY_ERR_OPEN_INPUT = 1,
     /* Couldn't allocate the output context or open the output file for writing. */
     TEXT_OVERLAY_ERR_ALLOC_OUTPUT = 2,
-    /* Couldn't build the drawtext filter graph. */
+    /* Couldn't build the PNG overlay filter graph. */
     TEXT_OVERLAY_ERR_FILTER_GRAPH = 3,
     /* A decode/filter/encode call failed mid-stream. */
     TEXT_OVERLAY_ERR_PIPELINE = 4,
 } TextOverlayStatus;
 
-/* One text overlay to composite over an already-rendered export video. */
+/* One pre-rasterized text overlay to composite over an already-rendered export video. */
 typedef struct {
     /* Timeline position in seconds where this text becomes visible. */
     double start_secs;
     /* How long the text stays visible, in seconds. */
     double duration_secs;
-    /* UTF-8, NUL-terminated. Must not be NULL. */
-    const char *text;
-    /* Font size in points. */
-    float font_size;
-    /* RGBA color components, each 0-255. color_a: 0 = transparent, 255 = opaque. */
-    uint8_t color_r;
-    uint8_t color_g;
-    uint8_t color_b;
-    uint8_t color_a;
-    /* Horizontal anchor as a 0.0-1.0 fraction of canvas width (0.0 = left). */
-    float pos_x;
-    /* Vertical anchor as a 0.0-1.0 fraction of canvas height (0.0 = top). */
-    float pos_y;
+    /* UTF-8, NUL-terminated path to a full-canvas RGBA PNG. Must not be NULL. */
+    const char *overlay_path;
 } TextSegment;
 
-/* Opens `in_path` (an already-rendered H.264/AAC mp4), composites drawtext overlays for every
+/* Opens `in_path` (an already-rendered H.264/AAC mp4), composites PNG overlays for every
    segment in `segments` using an enable='between(t,start,end)' avfilter expression, and writes
-   the result to `out_path`.  Video is decoded, filtered, and re-encoded via libopenh264;
-   audio is stream-copied unchanged.  canvas_width/canvas_height and canvas_fps_num/den are
+   the result to `out_path`. Each overlay is already rasterized as a transparent PNG so preview
+   and export share the exact same font/background renderer. Video is decoded, filtered, and
+   re-encoded via libopenh264; audio is stream-copied unchanged.
+   canvas_width/canvas_height and canvas_fps_num/den are
    used only to size the output encoder context — they must match the actual rendered video.
-
-   The platform default font (bridge.h's DEFAULT_FONT) is used; drawtext silently renders
-   nothing if the font file doesn't exist on the system.
 
    Returns TEXT_OVERLAY_OK immediately if segment_count <= 0 without touching any files. */
 TextOverlayStatus avbridge_apply_text_overlays(
@@ -452,7 +440,7 @@ typedef struct {
 
 /* Same shape as [`avbridge_apply_text_overlays`] (same TextOverlayStatus return codes, same
    decode/filter/re-encode-video + stream-copy-audio approach), but chains each segment's
-   pre-built `geq` filter node instead of building a `drawtext` chain itself. Returns
+   pre-built `geq` filter node instead of loading a pre-rasterized PNG. Returns
    TEXT_OVERLAY_OK immediately if segment_count <= 0 without touching any files. */
 TextOverlayStatus avbridge_apply_shape_overlays(
     const char *in_path, const char *out_path,

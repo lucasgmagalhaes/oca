@@ -27,7 +27,9 @@ pub use crate::export::ExportAspectRatio;
 use crate::keyframe;
 use crate::media::MediaAsset;
 use crate::project::Sequence;
-use crate::timeline::{ClipInstance, ShapeClip, TextClip, TrackKind};
+use crate::timeline::{
+    ClipInstance, ShapeClip, TextClip, TextFontFamily, TextFontStyle, TrackKind,
+};
 
 /// Overrides `canvas` width/height to match `ratio`, keeping fps and bitrate unchanged.
 /// Returns `canvas` unmodified when `ratio` is [`ExportAspectRatio::Original`].
@@ -41,6 +43,30 @@ pub fn apply_export_aspect_ratio(canvas: Canvas, ratio: ExportAspectRatio) -> Ca
         height,
         ..canvas
     }
+}
+
+/// One resolved text overlay saved in an export job. Unlike avbridge's raw image-overlay FFI
+/// input, this remains semantic text plus styling so a persisted queue does not depend on
+/// temporary PNG files. [`apply_text_overlay_pass`] rasterizes it only when the job runs.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TextSegment {
+    pub start_secs: f64,
+    pub duration_secs: f64,
+    pub text: String,
+    pub font_size: f32,
+    #[serde(default)]
+    pub font_family: TextFontFamily,
+    #[serde(default)]
+    pub font_style: TextFontStyle,
+    pub color_rgba: [u8; 4],
+    #[serde(default)]
+    pub background_rgba: [u8; 4],
+    #[serde(default)]
+    pub background_padding: f32,
+    #[serde(default)]
+    pub background_corner_radius: f32,
+    pub pos_x: f32,
+    pub pos_y: f32,
 }
 
 #[derive(Debug)]
@@ -317,14 +343,14 @@ pub fn resolve_timeline_segments(
 /// trimmed duration, same contract as [`render_export`].
 ///
 /// Text overlay errors are logged but do not fail the export — the video is already complete
-/// without the overlays and deleting the caller's file on a font-config issue would be worse.
+/// without the overlays and deleting the caller's file on a post-processing issue would be worse.
 pub fn render_export_job(
     segments: &[avbridge::ClipSegment],
     canvas: Canvas,
     output: &Path,
     target_lufs: f32,
     gpu_encoder: avbridge::GpuEncoderPreference,
-    text_segments: &[avbridge::TextSegment],
+    text_segments: &[TextSegment],
     shape_segments: &[avbridge::ShapeSegment],
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u8),
@@ -454,21 +480,54 @@ pub fn resolve_audio_segments(
 }
 
 /// Applies text overlays to an already-written export file in place. Writes to a temp path
-/// beside `output`, then renames over `output`. Logs and silently skips on any error so a
-/// font-config failure doesn't destroy the already-completed video file.
-fn apply_text_overlay_pass(output: &Path, canvas: Canvas, text_segments: &[avbridge::TextSegment]) {
+/// beside `output`, then renames over `output`. Logs and silently skips on any error so an
+/// overlay-raster or filter failure doesn't destroy the already-completed video file.
+fn apply_text_overlay_pass(output: &Path, canvas: Canvas, text_segments: &[TextSegment]) {
+    static TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
     let Some(parent) = output.parent() else {
         return;
     };
     let Some(stem) = output.file_stem().and_then(|s| s.to_str()) else {
         return;
     };
-    let tmp = parent.join(format!("{stem}.text_tmp.mp4"));
+    let temp_id = TEMP_ID.fetch_add(1, Ordering::Relaxed);
+    let suffix = format!("{}-{temp_id}", std::process::id());
+    let tmp = parent.join(format!("{stem}.oca-text-{suffix}.mp4"));
+    let overlay_dir = parent.join(format!(".{stem}.oca-text-{suffix}"));
+    if let Err(error) = std::fs::create_dir(&overlay_dir) {
+        tracing::error!(error = %error, output = %output.display(), "text overlay temp directory failed");
+        return;
+    }
+
+    let mut overlays = Vec::with_capacity(text_segments.len());
+    for (index, segment) in text_segments.iter().enumerate() {
+        let rgba =
+            crate::overlay_render::render_text_segment_rgba(segment, canvas.width, canvas.height);
+        let overlay_path = overlay_dir.join(format!("overlay-{index}.png"));
+        if let Err(error) = image::save_buffer_with_format(
+            &overlay_path,
+            &rgba,
+            canvas.width,
+            canvas.height,
+            image::ColorType::Rgba8,
+            image::ImageFormat::Png,
+        ) {
+            tracing::error!(error = %error, output = %output.display(), "text overlay raster write failed");
+            let _ = std::fs::remove_dir_all(&overlay_dir);
+            return;
+        }
+        overlays.push(avbridge::TextOverlaySegment {
+            start_secs: segment.start_secs,
+            duration_secs: segment.duration_secs,
+            overlay_path,
+        });
+    }
 
     match avbridge::apply_text_overlays(
         output,
         &tmp,
-        text_segments,
+        &overlays,
         canvas.width,
         canvas.height,
         canvas.fps_num,
@@ -485,6 +544,7 @@ fn apply_text_overlay_pass(output: &Path, canvas: Canvas, text_segments: &[avbri
             let _ = std::fs::remove_file(&tmp);
         }
     }
+    let _ = std::fs::remove_dir_all(&overlay_dir);
 }
 
 /// Applies shape overlays to an already-written export file in place — same "temp path, rename
@@ -524,16 +584,16 @@ fn apply_shape_overlay_pass(
     }
 }
 
-/// Collects all [`TextClip`]s from `sequence`'s text tracks into [`avbridge::TextSegment`]s,
+/// Collects all [`TextClip`]s from `sequence`'s text tracks into [`TextSegment`]s,
 /// sorted by `start_secs` ascending. Returns an empty vec if the sequence has no text tracks
 /// or none have any clips. Used to pass text overlays to the post-processing pass after the
 /// main video encode ([`render_export_job`]).
 ///
 /// `canvas_width` (pixels) converts word-highlight pixel offsets (from
-/// `text_metrics::word_x_offsets_px`) into the `0.0..=1.0` fraction [`avbridge::TextSegment`]'s
+/// `text_metrics::word_x_offsets_px`) into the `0.0..=1.0` fraction [`TextSegment`]'s
 /// `pos_x` expects — see [`text_clip_to_segments`].
-pub fn resolve_text_segments(sequence: &Sequence, canvas_width: u32) -> Vec<avbridge::TextSegment> {
-    let mut segments: Vec<avbridge::TextSegment> = sequence
+pub fn resolve_text_segments(sequence: &Sequence, canvas_width: u32) -> Vec<TextSegment> {
+    let mut segments: Vec<TextSegment> = sequence
         .timeline
         .tracks
         .iter()
@@ -545,7 +605,7 @@ pub fn resolve_text_segments(sequence: &Sequence, canvas_width: u32) -> Vec<avbr
     segments
 }
 
-/// Expands one [`TextClip`] into one or more [`avbridge::TextSegment`]s. A plain clip (no words,
+/// Expands one [`TextClip`] into one or more [`TextSegment`]s. A plain clip (no words,
 /// or `highlight_enabled` off) is exactly the one segment it's always been. A word-highlight
 /// clip becomes a base segment (the full text, in `color_rgba`, for the clip's whole duration —
 /// so something is always on screen even between words / before the first word starts) plus one
@@ -554,16 +614,21 @@ pub fn resolve_text_segments(sequence: &Sequence, canvas_width: u32) -> Vec<avbr
 /// so it lands exactly on top of the matching word in the base text underneath it.
 ///
 /// Known limitation: this only positions words along a single line — a caption long enough to
-/// wrap in `drawtext` would have every highlight overlay computed as if the whole sentence were
-/// still on one line, landing in the wrong place past the wrap point. Fine for the short
+/// wrap would have every highlight overlay computed as if the whole sentence were still on one
+/// line, landing in the wrong place past the wrap point. Fine for the short
 /// shorts-style captions this feature targets; not a general multi-line layout engine.
-fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<avbridge::TextSegment> {
-    let base = avbridge::TextSegment {
+fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<TextSegment> {
+    let base = TextSegment {
         start_secs: clip.start_secs,
         duration_secs: clip.duration_secs,
         text: clip.text.clone(),
         font_size: clip.font_size,
+        font_family: clip.font_family,
+        font_style: clip.font_style,
         color_rgba: clip.color_rgba,
+        background_rgba: clip.background_rgba,
+        background_padding: clip.background_padding,
+        background_corner_radius: clip.background_corner_radius,
         pos_x: clip.pos_x,
         pos_y: clip.pos_y,
     };
@@ -572,17 +637,27 @@ fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<avbridge::Te
     }
 
     let words: Vec<&str> = clip.words.iter().map(|w| w.text.as_str()).collect();
-    let offsets_px = crate::text_metrics::word_x_offsets_px(&words, clip.font_size);
+    let offsets_px = crate::text_metrics::word_x_offsets_px_with_font(
+        &words,
+        clip.font_size,
+        clip.font_family,
+        clip.font_style,
+    );
 
     let mut segments = Vec::with_capacity(1 + clip.words.len());
     segments.push(base);
     for (word, offset_px) in clip.words.iter().zip(offsets_px) {
-        segments.push(avbridge::TextSegment {
+        segments.push(TextSegment {
             start_secs: clip.start_secs + word.start_secs,
             duration_secs: (word.end_secs - word.start_secs).max(0.05),
             text: word.text.clone(),
             font_size: clip.font_size,
+            font_family: clip.font_family,
+            font_style: clip.font_style,
             color_rgba: clip.highlight_color_rgba,
+            background_rgba: [0, 0, 0, 0],
+            background_padding: 0.0,
+            background_corner_radius: 0.0,
             pos_x: clip.pos_x + offset_px / canvas_width as f32,
             pos_y: clip.pos_y,
         });
@@ -765,7 +840,7 @@ pub fn render_export_job_multi(
     output: &Path,
     target_lufs: f32,
     gpu_encoder: avbridge::GpuEncoderPreference,
-    text_segments: &[avbridge::TextSegment],
+    text_segments: &[TextSegment],
     shape_segments: &[avbridge::ShapeSegment],
     cancel: &AtomicBool,
     on_progress: impl FnMut(u8),
@@ -796,7 +871,7 @@ pub fn render_export_job_multi_with_audio(
     output: &Path,
     target_lufs: f32,
     gpu_encoder: avbridge::GpuEncoderPreference,
-    text_segments: &[avbridge::TextSegment],
+    text_segments: &[TextSegment],
     shape_segments: &[avbridge::ShapeSegment],
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u8),

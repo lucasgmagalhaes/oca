@@ -21,7 +21,8 @@ use avcore::persistence::{
     to_ocproj_bytes, to_ocqueue_bytes, PersistError,
 };
 use avcore::timeline::{
-    ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
+    ClipInstance, ColorFilter, MaskShape, TextClip, TextFontFamily, TextFontStyle, Timeline, Track,
+    TrackKind, TransitionType,
 };
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency, Sequence};
 
@@ -169,12 +170,104 @@ fn empty_project() -> Project {
     }
 }
 
+fn project_with_styled_text() -> Project {
+    let mut project = fixture_project();
+    project.sequences[0].timeline.tracks.push(Track {
+        id: 2,
+        name: "Text".to_string(),
+        kind: TrackKind::Text,
+        clips: vec![],
+        text_clips: vec![TextClip {
+            id: 2,
+            start_secs: 0.0,
+            duration_secs: 2.0,
+            text: "Paco Paçoca".to_string(),
+            font_size: 48.0,
+            font_family: TextFontFamily::PlayfairDisplay,
+            font_style: TextFontStyle::Bold,
+            color_rgba: [255, 255, 255, 255],
+            background_rgba: [10, 20, 30, 180],
+            background_padding: 14.0,
+            background_corner_radius: 9.0,
+            pos_x: 0.1,
+            pos_y: 0.8,
+            words: vec![],
+            highlight_enabled: false,
+            highlight_color_rgba: [255, 220, 0, 255],
+        }],
+        shape_clips: vec![],
+        visible: true,
+    });
+    project
+}
+
 #[test]
 fn round_trips_a_project_through_ocproj() {
     let original = fixture_project();
     let bytes = to_ocproj_bytes(&original).unwrap();
     let restored = from_ocproj_bytes(&bytes).unwrap();
     assert_eq!(original, restored);
+}
+
+#[test]
+fn round_trips_bundled_font_and_text_background_style() {
+    let original = project_with_styled_text();
+    let restored: Project = from_ocproj_bytes(&to_ocproj_bytes(&original).unwrap()).unwrap();
+    let text = &restored.sequences[0].timeline.tracks[1].text_clips[0];
+
+    assert_eq!(text.font_family, TextFontFamily::PlayfairDisplay);
+    assert_eq!(text.font_style, TextFontStyle::Bold);
+    assert_eq!(text.background_rgba, [10, 20, 30, 180]);
+    assert_eq!(text.background_padding, 14.0);
+    assert_eq!(text.background_corner_radius, 9.0);
+}
+
+#[test]
+fn projects_saved_before_text_styles_load_with_safe_defaults() {
+    let bytes = to_ocproj_bytes(&project_with_styled_text()).unwrap();
+    let header_len = 5;
+    let mut msgpack = Vec::new();
+    std::io::Read::read_to_end(
+        &mut flate2::read::GzDecoder::new(&bytes[header_len..]),
+        &mut msgpack,
+    )
+    .unwrap();
+
+    let mut value = rmpv::decode::read_value(&mut &msgpack[..]).unwrap();
+    let sequences = as_array_field_mut(&mut value, "sequences");
+    let timeline = as_map_field_mut(&mut sequences[0], "timeline");
+    let tracks = as_array_field_mut(timeline, "tracks");
+    let text_clips = as_array_field_mut(&mut tracks[1], "text_clips");
+    if let rmpv::Value::Map(pairs) = &mut text_clips[0] {
+        pairs.retain(|(key, _)| {
+            !matches!(
+                key.as_str(),
+                Some(
+                    "font_family"
+                        | "font_style"
+                        | "background_rgba"
+                        | "background_padding"
+                        | "background_corner_radius"
+                )
+            )
+        });
+    }
+
+    let mut edited_msgpack = Vec::new();
+    rmpv::encode::write_value(&mut edited_msgpack, &value).unwrap();
+    let mut edited_bytes = Vec::new();
+    edited_bytes.extend_from_slice(&bytes[..header_len]);
+    let mut encoder = flate2::write::GzEncoder::new(&mut edited_bytes, flate2::Compression::fast());
+    std::io::Write::write_all(&mut encoder, &edited_msgpack).unwrap();
+    encoder.finish().unwrap();
+
+    let restored: Project = from_ocproj_bytes(&edited_bytes).unwrap();
+    let text = &restored.sequences[0].timeline.tracks[1].text_clips[0];
+    assert_eq!(text.font_family, TextFontFamily::Lato);
+    assert_eq!(text.font_style, TextFontStyle::Regular);
+    assert_eq!(text.background_rgba, [0, 0, 0, 0]);
+    assert_eq!(text.background_padding, 8.0);
+    assert_eq!(text.background_corner_radius, 8.0);
 }
 
 #[test]

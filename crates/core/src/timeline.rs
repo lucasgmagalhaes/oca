@@ -23,7 +23,7 @@ use crate::keyframe::{self, Keyframe, Position};
 pub enum TrackKind {
     Video,
     Audio,
-    /// A text-overlay track: holds [`TextClip`]s rendered as drawtext overlays on export.
+    /// A text-overlay track: holds [`TextClip`]s rasterized into RGBA overlays on export.
     /// No media assets are placed here — only `text_clips`.
     Text,
     /// A shape-overlay track: holds [`ShapeClip`]s (rectangles/ellipses — per `request.md`'s
@@ -32,9 +32,57 @@ pub enum TrackKind {
     Shape,
 }
 
+/// Bundled font family used by a [`TextClip`]. Every family is shipped with oca under the
+/// SIL Open Font License, so projects render identically even when the host has no fonts
+/// installed. The actual font bytes are parsed lazily by [`crate::text_metrics`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum TextFontFamily {
+    /// Modern sans-serif suitable for body text and general captions.
+    #[default]
+    Lato,
+    /// Condensed display face suitable for titles.
+    BebasNeue,
+    /// High-contrast serif display face.
+    PlayfairDisplay,
+    /// Casual handwritten face.
+    PatrickHand,
+    /// Monospaced face.
+    AnonymousPro,
+    /// Heavy, high-contrast face intended for short-form captions.
+    ArchivoBlack,
+}
+
+impl TextFontFamily {
+    pub const ALL: [Self; 6] = [
+        Self::Lato,
+        Self::BebasNeue,
+        Self::PlayfairDisplay,
+        Self::PatrickHand,
+        Self::AnonymousPro,
+        Self::ArchivoBlack,
+    ];
+
+    /// Whether this bundled family has a distinct bold file. Single-weight display faces keep
+    /// their own designed weight and therefore expose only [`TextFontStyle::Regular`].
+    pub const fn supports_bold(self) -> bool {
+        matches!(
+            self,
+            Self::Lato | Self::PlayfairDisplay | Self::AnonymousPro
+        )
+    }
+}
+
+/// Style within a bundled [`TextFontFamily`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum TextFontStyle {
+    #[default]
+    Regular,
+    Bold,
+}
+
 /// One placed text overlay on a [`Track`] whose [`TrackKind`] is [`TrackKind::Text`].
-/// Rendered into the exported video via the `drawtext` avfilter in a post-processing pass
-/// after the main timeline encode — see `avbridge::apply_text_overlays`.
+/// Rasterized with the selected bundled font into an RGBA image, then composited in a native
+/// post-processing pass after the main timeline encode — see `avbridge::apply_text_overlays`.
 ///
 /// Previewed via [`crate::overlay_render::render_text_clip_rgba`] and
 /// [`crate::preview::Preview::open_composited`]'s static overlay branches. Word-highlight
@@ -46,8 +94,7 @@ pub enum TrackKind {
 /// live-patched during playback" gap this leaves, same "approximate, not pixel-perfect"
 /// tolerance `preview` already has for its other partially-covered effects. Auto word-wrap at
 /// the canvas edge *is* fully covered (`render_text_clip_rgba` sets `fontdue`'s `max_width`);
-/// export's `drawtext` has no equivalent, so a render of the same clip can wrap differently past
-/// that point.
+/// export uses that same rasterizer, so wrapping and background geometry remain identical.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextClip {
     pub id: u64,
@@ -59,8 +106,24 @@ pub struct TextClip {
     pub text: String,
     /// Font size in points.
     pub font_size: f32,
+    /// Bundled font family. Defaults to Lato for projects saved before font selection existed.
+    #[serde(default)]
+    pub font_family: TextFontFamily,
+    /// Font style. Families without a distinct bold file normalize this to `Regular` at render
+    /// time, while keeping the persisted value harmless and forwards-compatible.
+    #[serde(default)]
+    pub font_style: TextFontStyle,
     /// RGBA color: `[r, g, b, a]`, each 0–255. Alpha 255 = fully opaque.
     pub color_rgba: [u8; 4],
+    /// RGBA color behind the complete laid-out text block. Alpha 0 disables the background.
+    #[serde(default)]
+    pub background_rgba: [u8; 4],
+    /// Space in pixels between glyph bounds and the background edge.
+    #[serde(default = "default_text_background_padding")]
+    pub background_padding: f32,
+    /// Rounded-corner radius in pixels for the background.
+    #[serde(default = "default_text_background_corner_radius")]
+    pub background_corner_radius: f32,
     /// Horizontal anchor as a 0.0–1.0 fraction of the canvas width (0.0 = left edge).
     pub pos_x: f32,
     /// Vertical anchor as a 0.0–1.0 fraction of the canvas height (0.0 = top edge).
@@ -85,6 +148,14 @@ pub struct TextClip {
     /// rather than an invisible/transparent black.
     #[serde(default = "default_highlight_color")]
     pub highlight_color_rgba: [u8; 4],
+}
+
+fn default_text_background_padding() -> f32 {
+    8.0
+}
+
+fn default_text_background_corner_radius() -> f32 {
+    8.0
 }
 
 /// One word within a [`TextClip`]'s [`TextClip::words`] — see
@@ -781,8 +852,9 @@ impl ClipInstance {
     /// `features/request.md`'s Fase 4 "Efeitos visuais" list): crop, deflicker, brightness/
     /// contrast/saturation, the black-and-white/sepia color filter, chroma key, mask shape,
     /// blur, sharpen, pixelize, shake, glitch, vignette, and horizontal flip. `gain_db` is audio, not
-    /// video, and isn't part of this chain. `speed_factor` and `zoom_start`/`zoom_end` are
-    /// handled in `bridge.c` (not here). `mask_shape`'s alpha only survives to the rendered
+    /// video, and isn't part of this chain. `speed_factor` is handled in the native bridge;
+    /// general keyframes are compiled separately by [`ClipInstance::keyframe_video_filter_chain`].
+    /// `mask_shape`'s alpha only survives to the rendered
     /// output on an overlay track — see the caveat on its stage below. `transition_in` needs a
     /// materially different mechanism (cross-clip blending) and isn't covered here yet.
     /// `frozen` also needs a different mechanism (frame duplication) but is covered elsewhere —
@@ -834,8 +906,7 @@ impl ClipInstance {
             // Forward slashes even on Windows sidesteps avfilter's own backslash-escaping rules
             // inside a quoted option value (ffmpeg accepts `/`-separated paths on any platform);
             // a literal single quote in the path (the one character `'...'` quoting can't pass
-            // through unescaped) is escaped avfilter-style, matching text_overlay.c's existing
-            // `drawtext=fontfile='%s'` convention for embedding a file path into a filter option.
+            // through unescaped) is escaped avfilter-style.
             let escaped = self.lut_path.replace('\\', "/").replace('\'', "'\\''");
             stages.push(format!("lut3d=file='{escaped}'"));
         }

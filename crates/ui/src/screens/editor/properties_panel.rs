@@ -1037,6 +1037,60 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
     }
     ui.add_space(4.0);
 
+    // Bundled family/style metadata is cheap; the font file itself is parsed lazily by core
+    // only when preview/export actually rasterizes this clip.
+    ui.label(
+        RichText::new(Text::PropTextFontFamily.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    let previous_family = tc.font_family;
+    egui::ComboBox::from_id_salt(("text_font_family", tc_id))
+        .selected_text(text_font_family_label(tc.font_family, locale))
+        .width(ui.available_width())
+        .show_ui(ui, |ui| {
+            for family in avcore::TextFontFamily::ALL {
+                ui.selectable_value(
+                    &mut tc.font_family,
+                    family,
+                    text_font_family_label(family, locale),
+                );
+            }
+        });
+    if tc.font_family != previous_family {
+        if !tc.font_family.supports_bold() {
+            tc.font_style = avcore::TextFontStyle::Regular;
+        }
+        changed = true;
+    }
+
+    ui.label(
+        RichText::new(Text::PropTextFontStyle.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    let previous_style = tc.font_style;
+    ui.add_enabled_ui(tc.font_family.supports_bold(), |ui| {
+        egui::ComboBox::from_id_salt(("text_font_style", tc_id))
+            .selected_text(text_font_style_label(tc.font_style, locale))
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                ui.selectable_value(
+                    &mut tc.font_style,
+                    avcore::TextFontStyle::Regular,
+                    Text::TextFontRegular.tr(locale),
+                );
+                ui.selectable_value(
+                    &mut tc.font_style,
+                    avcore::TextFontStyle::Bold,
+                    Text::TextFontBold.tr(locale),
+                );
+            });
+    });
+    if tc.font_style != previous_style {
+        changed = true;
+    }
+
     // Font size
     ui.label(
         RichText::new(Text::PropTextFontSize.tr(locale))
@@ -1057,14 +1111,67 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
                 .size(12.0)
                 .color(theme::TEXT_MUTED),
         );
-        let mut color = egui::Color32::from_rgba_premultiplied(
+        let mut color = egui::Color32::from_rgba_unmultiplied(
             tc.color_rgba[0],
             tc.color_rgba[1],
             tc.color_rgba[2],
             tc.color_rgba[3],
         );
         if ui.color_edit_button_srgba(&mut color).changed() {
-            tc.color_rgba = [color.r(), color.g(), color.b(), color.a()];
+            tc.color_rgba = color.to_srgba_unmultiplied();
+            changed = true;
+        }
+    });
+
+    let mut background_enabled = tc.background_rgba[3] > 0;
+    if ui
+        .checkbox(
+            &mut background_enabled,
+            Text::PropTextBackgroundEnabled.tr(locale),
+        )
+        .changed()
+    {
+        tc.background_rgba[3] = if background_enabled { 192 } else { 0 };
+        changed = true;
+    }
+    ui.add_enabled_ui(background_enabled, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(Text::PropTextBackgroundColor.tr(locale))
+                    .size(12.0)
+                    .color(theme::TEXT_MUTED),
+            );
+            let mut color = egui::Color32::from_rgba_unmultiplied(
+                tc.background_rgba[0],
+                tc.background_rgba[1],
+                tc.background_rgba[2],
+                tc.background_rgba[3],
+            );
+            if ui.color_edit_button_srgba(&mut color).changed() {
+                tc.background_rgba = color.to_srgba_unmultiplied();
+                changed = true;
+            }
+        });
+        ui.label(
+            RichText::new(Text::PropTextBackgroundPadding.tr(locale))
+                .size(12.0)
+                .color(theme::TEXT_MUTED),
+        );
+        if ui
+            .add(egui::Slider::new(&mut tc.background_padding, 0.0..=64.0).suffix(" px"))
+            .changed()
+        {
+            changed = true;
+        }
+        ui.label(
+            RichText::new(Text::PropTextBackgroundRadius.tr(locale))
+                .size(12.0)
+                .color(theme::TEXT_MUTED),
+        );
+        if ui
+            .add(egui::Slider::new(&mut tc.background_corner_radius, 0.0..=64.0).suffix(" px"))
+            .changed()
+        {
             changed = true;
         }
     });
@@ -1083,19 +1190,14 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
             {
                 changed = true;
             }
-            let mut highlight_color = egui::Color32::from_rgba_premultiplied(
+            let mut highlight_color = egui::Color32::from_rgba_unmultiplied(
                 tc.highlight_color_rgba[0],
                 tc.highlight_color_rgba[1],
                 tc.highlight_color_rgba[2],
                 tc.highlight_color_rgba[3],
             );
             if ui.color_edit_button_srgba(&mut highlight_color).changed() {
-                tc.highlight_color_rgba = [
-                    highlight_color.r(),
-                    highlight_color.g(),
-                    highlight_color.b(),
-                    highlight_color.a(),
-                ];
+                tc.highlight_color_rgba = highlight_color.to_srgba_unmultiplied();
                 changed = true;
             }
         });
@@ -1183,6 +1285,31 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
                 }
             }
         }
+        app.invalidate_preview_rendering();
+    }
+}
+
+fn text_font_family_label(
+    family: avcore::TextFontFamily,
+    locale: crate::i18n::Locale,
+) -> &'static str {
+    match family {
+        avcore::TextFontFamily::Lato => Text::TextFontLato.tr(locale),
+        avcore::TextFontFamily::BebasNeue => Text::TextFontBebasNeue.tr(locale),
+        avcore::TextFontFamily::PlayfairDisplay => Text::TextFontPlayfairDisplay.tr(locale),
+        avcore::TextFontFamily::PatrickHand => Text::TextFontPatrickHand.tr(locale),
+        avcore::TextFontFamily::AnonymousPro => Text::TextFontAnonymousPro.tr(locale),
+        avcore::TextFontFamily::ArchivoBlack => Text::TextFontArchivoBlack.tr(locale),
+    }
+}
+
+fn text_font_style_label(
+    style: avcore::TextFontStyle,
+    locale: crate::i18n::Locale,
+) -> &'static str {
+    match style {
+        avcore::TextFontStyle::Regular => Text::TextFontRegular.tr(locale),
+        avcore::TextFontStyle::Bold => Text::TextFontBold.tr(locale),
     }
 }
 

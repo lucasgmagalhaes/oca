@@ -423,7 +423,20 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   uses), evaluated directly against a pixel buffer instead of compiled into a `geq` expression.
   Text reuses `fontdue`'s own `Layout` engine (already a dependency for word-highlight metrics,
   `text_metrics.rs`) under `CoordinateSystem::PositiveYDown` rather than hand-rolled baseline
-  math. `ui`'s `App::ensure_preview_loaded`/`seek_preview` (`app/preview.rs`) now also collect
+  math. **Text fonts are bundled and lazy-loaded now:** Lato, Bebas Neue, Playfair Display SC,
+  Patrick Hand, Anonymous Pro, and Archivo Black ship under their SIL OFL licenses in
+  `crates/core/assets/fonts`; `text_metrics::bundled_font` has one `OnceLock` per face, so merely
+  opening the text-properties screen enumerates cheap metadata and only the selected face is
+  parsed once a visible text clip actually rasterizes. `TextClip::font_family`/`font_style` and
+  its background RGBA/padding/corner-radius fields are persisted with serde defaults for older
+  `.ocproj` files. Preview and export use the same Rust rasterizer: export writes each resolved
+  text segment to a temporary full-canvas RGBA PNG and `text_overlay.c` composites those PNGs
+  with timeline-enabled `movie`+`overlay` nodes instead of asking the host's `drawtext` filter
+  for an installed font. This makes font choice, word wrap, alpha, and rounded backgrounds
+  deterministic across platforms; temporary PNGs are generated only when the export job runs
+  and removed after the pass, never persisted in `queue.ocqueue`.
+
+  `ui`'s `App::ensure_preview_loaded`/`seek_preview` (`app/preview.rs`) now also collect
   every `TrackKind::Text`/`TrackKind::Shape` clip covering the playhead
   (`current_preview_text_clips`/`current_preview_shape_clips`) and route through
   `open_composited` whenever any exist, even with zero video overlay tracks —
@@ -437,9 +450,9 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   the branch's buffer is pushed once and repeated by `imagefreeze` for its whole life, the
   highlighted word stays fixed at whatever was current when the branch was last opened/reseeked
   rather than advancing word-by-word during uninterrupted playback — same "picked up on next
-  seek/reload, not live-patched" shape `speed_factor` already has. Long text also now wraps at
-  word boundaries once a line would run past the canvas edge (`fontdue`'s `max_width`); `drawtext`
-  has no equivalent auto-wrap, so an export of the same clip can disagree on where lines break.
+  seek/reload, not live-patched" shape `speed_factor` already has. Long text wraps at word
+  boundaries once a line would run past the canvas edge (`fontdue`'s `max_width`) in both preview
+  and export.
   Word-highlight positioning still assumes a single line (same limitation `text_clip_to_segments`
   already documented for export), so a highlighted word past a wrap point lands at its unwrapped
   x position. Confirmed working for real against a live GStreamer pipeline on this dev machine
@@ -463,11 +476,11 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   frame-progress callbacks, so a pause requested after the primary encode reaches 100% may only
   be visible briefly before that already-running post-pass completes); output-folder
   overwrite/rename/cancel
-  prompt; word-highlight subtitles (single-line only — a caption that wraps in `drawtext`
+  prompt; word-highlight subtitles (single-line only — a caption that wraps
   gets every highlight positioned as if still on one line); Whisper subtitles (model fetched
   on demand via `avcore::model_download`, not bundled); standalone `.srt` subtitle export
   (`avcore::export_srt`, `request.md`'s "arquivo `.srt` separado" half of the subtitle ask —
-  the embedded `drawtext` half already happened on every export; pure string formatting over
+  the embedded RGBA-overlay half already happens on every export; pure string formatting over
   every `TextClip` across every `TrackKind::Text` track, sorted by start time; Editor toolbar's
   "Export .srt" button); music/SFX library scanning (no
   bundled content, points at a user-configured folder); Editor panel layout, now savable either

@@ -14,8 +14,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Rasterizes a [`crate::timeline::TextClip`] or [`crate::timeline::ShapeClip`] into a single
-//! full-canvas RGBA buffer — the preview-side counterpart to the export path's `drawtext`/`geq`
-//! avfilter passes ([`crate::render::text_clip_to_segments`], [`crate::shape_render`]), which
+//! full-canvas RGBA buffer — text export now writes this exact buffer to a temporary PNG while
+//! shape export still uses a `geq` avfilter pass ([`crate::render`], [`crate::shape_render`]),
 //! only ever run against an already-encoded file and have no live GStreamer element equivalent
 //! ([`crate::preview`]'s doc comment previously listed this as a known gap — see
 //! `Preview::open_composited`, which now feeds each buffer this module builds into the
@@ -43,6 +43,7 @@
 
 use fontdue::layout::{CoordinateSystem, GlyphRasterConfig, Layout, LayoutSettings, TextStyle};
 
+use crate::render::TextSegment;
 use crate::shape_render::point_in_polygon;
 use crate::timeline::{MaskShape, ShapeClip, ShapeKind, TextClip};
 
@@ -58,22 +59,35 @@ fn put_pixel(buf: &mut [u8], width: u32, height: u32, x: i64, y: i64, rgba: [u8;
     buf[idx..idx + 4].copy_from_slice(&rgba);
 }
 
-/// Rasterizes `text` at `font_size` in color `rgba`, anchored top-left at `(x, y)` and wrapped
-/// at word boundaries past `max_width`, directly into `buf` — the shared glyph-rasterizing core
-/// [`render_text_clip_rgba`] uses for both its base-text pass and its word-highlight pass.
-#[allow(clippy::too_many_arguments)]
-fn draw_text_layout(
-    buf: &mut [u8],
+/// Alpha-composites one straight-alpha RGBA pixel over the existing buffer pixel.
+fn blend_pixel(buf: &mut [u8], width: u32, height: u32, x: i64, y: i64, rgba: [u8; 4]) {
+    if x < 0 || y < 0 || x as u32 >= width || y as u32 >= height || rgba[3] == 0 {
+        return;
+    }
+    let idx = (y as u32 * width + x as u32) as usize * 4;
+    let src_a = rgba[3] as f32 / 255.0;
+    let dst_a = buf[idx + 3] as f32 / 255.0;
+    let out_a = src_a + dst_a * (1.0 - src_a);
+    if out_a <= f32::EPSILON {
+        return;
+    }
+    for channel in 0..3 {
+        let src = rgba[channel] as f32 / 255.0;
+        let dst = buf[idx + channel] as f32 / 255.0;
+        let out = (src * src_a + dst * dst_a * (1.0 - src_a)) / out_a;
+        buf[idx + channel] = (out * 255.0).round().clamp(0.0, 255.0) as u8;
+    }
+    buf[idx + 3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
+}
+
+fn text_layout(
     font: &fontdue::Font,
     text: &str,
     font_size: f32,
-    rgba: [u8; 4],
     x: f32,
     y: f32,
     max_width: f32,
-    canvas_width: u32,
-    canvas_height: u32,
-) {
+) -> Layout<()> {
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings {
         x,
@@ -82,7 +96,17 @@ fn draw_text_layout(
         ..LayoutSettings::default()
     });
     layout.append(&[font], &TextStyle::new(text, font_size, 0));
+    layout
+}
 
+fn draw_laid_out_text(
+    buf: &mut [u8],
+    font: &fontdue::Font,
+    layout: &Layout<()>,
+    rgba: [u8; 4],
+    canvas_width: u32,
+    canvas_height: u32,
+) {
     let [r, g, b, a] = rgba;
     for glyph in layout.glyphs() {
         let (_metrics, coverage) = font.rasterize_config(GlyphRasterConfig {
@@ -100,7 +124,7 @@ fn draw_text_layout(
                 if pixel_alpha == 0 {
                     continue;
                 }
-                put_pixel(
+                blend_pixel(
                     buf,
                     canvas_width,
                     canvas_height,
@@ -113,16 +137,120 @@ fn draw_text_layout(
     }
 }
 
+fn draw_rounded_background(
+    buf: &mut [u8],
+    layout: &Layout<()>,
+    rgba: [u8; 4],
+    padding: f32,
+    radius: f32,
+    canvas_width: u32,
+    canvas_height: u32,
+) {
+    if rgba[3] == 0 || layout.glyphs().is_empty() {
+        return;
+    }
+    let min_x = layout
+        .glyphs()
+        .iter()
+        .map(|glyph| glyph.x)
+        .fold(f32::INFINITY, f32::min);
+    let min_y = layout
+        .glyphs()
+        .iter()
+        .map(|glyph| glyph.y)
+        .fold(f32::INFINITY, f32::min);
+    let max_x = layout
+        .glyphs()
+        .iter()
+        .map(|glyph| glyph.x + glyph.width as f32)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let max_y = layout
+        .glyphs()
+        .iter()
+        .map(|glyph| glyph.y + glyph.height as f32)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let padding = padding.max(0.0);
+    let left = min_x - padding;
+    let top = min_y - padding;
+    let right = max_x + padding;
+    let bottom = max_y + padding;
+    let radius = radius
+        .max(0.0)
+        .min((right - left) / 2.0)
+        .min((bottom - top) / 2.0);
+
+    let x_start = left.floor().max(0.0) as i64;
+    let x_end = right.ceil().min(canvas_width as f32) as i64;
+    let y_start = top.floor().max(0.0) as i64;
+    let y_end = bottom.ceil().min(canvas_height as f32) as i64;
+    for y in y_start..y_end {
+        for x in x_start..x_end {
+            let px = x as f32 + 0.5;
+            let py = y as f32 + 0.5;
+            let nearest_x = px.clamp(left + radius, right - radius);
+            let nearest_y = py.clamp(top + radius, bottom - radius);
+            let dx = px - nearest_x;
+            let dy = py - nearest_y;
+            if dx * dx + dy * dy <= radius * radius {
+                blend_pixel(buf, canvas_width, canvas_height, x, y, rgba);
+            }
+        }
+    }
+}
+
+fn draw_text_segment_onto(
+    buf: &mut [u8],
+    segment: &TextSegment,
+    canvas_width: u32,
+    canvas_height: u32,
+) {
+    let Some(font) = crate::text_metrics::bundled_font(segment.font_family, segment.font_style)
+    else {
+        return;
+    };
+    let x = segment.pos_x * canvas_width as f32;
+    let y = segment.pos_y * canvas_height as f32;
+    let max_width = (canvas_width as f32 - x).max(1.0);
+    let layout = text_layout(font, &segment.text, segment.font_size, x, y, max_width);
+    draw_rounded_background(
+        buf,
+        &layout,
+        segment.background_rgba,
+        segment.background_padding,
+        segment.background_corner_radius,
+        canvas_width,
+        canvas_height,
+    );
+    draw_laid_out_text(
+        buf,
+        font,
+        &layout,
+        segment.color_rgba,
+        canvas_width,
+        canvas_height,
+    );
+}
+
+/// Rasterizes one semantic export segment into a full-canvas transparent RGBA image. Export
+/// writes this buffer to a temporary PNG and the native post-pass overlays it, ensuring the
+/// exact same font/background implementation as preview.
+pub fn render_text_segment_rgba(
+    segment: &TextSegment,
+    canvas_width: u32,
+    canvas_height: u32,
+) -> Vec<u8> {
+    let mut buf = vec![0u8; canvas_width as usize * canvas_height as usize * 4];
+    draw_text_segment_onto(&mut buf, segment, canvas_width, canvas_height);
+    buf
+}
+
 /// Renders `clip`'s text into a fully transparent `canvas_width`×`canvas_height` RGBA buffer,
-/// positioned the same way export's `drawtext` anchors it (`x=w*pos_x:y=h*pos_y`, top-left of
-/// the text block) — see `avbridge/csrc/text_overlay.c`. Falls back to an all-transparent buffer
-/// if the platform default font can't be loaded, same "degrade rather than fail" shape
-/// [`crate::text_metrics::text_width_px`] already has for the same missing-font case.
+/// positioned at `x=w*pos_x:y=h*pos_y` (top-left of the text block). Export writes the same
+/// rasterized buffer to PNG before its native overlay pass. Falls back to an all-transparent
+/// buffer if a bundled font is unexpectedly corrupt.
 ///
-/// Wraps at word boundaries once a line would run past the canvas's right edge — `drawtext`
-/// itself has no equivalent auto-wrap (only ever breaks on a literal `\n` the caller already put
-/// in `clip.text`), so this preview behavior and an export render of the same clip can disagree
-/// on line breaks past that point. `max_width` is the space between the text's own left anchor
+/// Wraps at word boundaries once a line would run past the canvas's right edge. `max_width` is
+/// the space between the text's own left anchor
 /// and the canvas's right edge (`fontdue::layout::LayoutSettings`'s `x`/`max_width` are
 /// independent — `max_width` alone doesn't already account for a nonzero `x`), floored at `1.0`
 /// so a clip anchored at or past the right edge still lays out instead of getting a degenerate
@@ -146,26 +274,21 @@ pub fn render_text_clip_rgba(
     canvas_height: u32,
     local_time_secs: f64,
 ) -> Vec<u8> {
-    let mut buf = vec![0u8; canvas_width as usize * canvas_height as usize * 4];
-    let Some(font) = crate::text_metrics::default_font() else {
-        return buf;
+    let base = TextSegment {
+        start_secs: clip.start_secs,
+        duration_secs: clip.duration_secs,
+        text: clip.text.clone(),
+        font_size: clip.font_size,
+        font_family: clip.font_family,
+        font_style: clip.font_style,
+        color_rgba: clip.color_rgba,
+        background_rgba: clip.background_rgba,
+        background_padding: clip.background_padding,
+        background_corner_radius: clip.background_corner_radius,
+        pos_x: clip.pos_x,
+        pos_y: clip.pos_y,
     };
-
-    let x = clip.pos_x * canvas_width as f32;
-    let y = clip.pos_y * canvas_height as f32;
-    let max_width = (canvas_width as f32 - x).max(1.0);
-    draw_text_layout(
-        &mut buf,
-        font,
-        &clip.text,
-        clip.font_size,
-        clip.color_rgba,
-        x,
-        y,
-        max_width,
-        canvas_width,
-        canvas_height,
-    );
+    let mut buf = render_text_segment_rgba(&base, canvas_width, canvas_height);
 
     if clip.highlight_enabled {
         let current_word = clip
@@ -175,19 +298,22 @@ pub fn render_text_clip_rgba(
             .find(|(_, w)| local_time_secs >= w.start_secs && local_time_secs < w.end_secs);
         if let Some((index, word)) = current_word {
             let words: Vec<&str> = clip.words.iter().map(|w| w.text.as_str()).collect();
-            let offset_px = crate::text_metrics::word_x_offsets_px(&words, clip.font_size)[index];
-            draw_text_layout(
-                &mut buf,
-                font,
-                &word.text,
+            let offset_px = crate::text_metrics::word_x_offsets_px_with_font(
+                &words,
                 clip.font_size,
-                clip.highlight_color_rgba,
-                x + offset_px,
-                y,
-                f32::MAX,
-                canvas_width,
-                canvas_height,
-            );
+                clip.font_family,
+                clip.font_style,
+            )[index];
+            let highlight = TextSegment {
+                text: word.text.clone(),
+                color_rgba: clip.highlight_color_rgba,
+                background_rgba: [0, 0, 0, 0],
+                background_padding: 0.0,
+                background_corner_radius: 0.0,
+                pos_x: clip.pos_x + offset_px / canvas_width as f32,
+                ..base
+            };
+            draw_text_segment_onto(&mut buf, &highlight, canvas_width, canvas_height);
         }
     }
 

@@ -55,9 +55,7 @@ pub mod youtube_download;
 pub use auto_reframe::{
     compute_reframe_crop, detect_faces, main_subject_center, CropRect, FaceBox, ReframeError,
 };
-pub use avbridge::{
-    AudioSegment, Canvas, ClipSegment, GpuEncoderPreference, ShapeSegment, TextSegment,
-};
+pub use avbridge::{AudioSegment, Canvas, ClipSegment, GpuEncoderPreference, ShapeSegment};
 pub use background_removal::{encode_matte_video, segment_person, MatteEncodeError, SegmentError};
 pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus};
 pub use keyframe::{Keyframe, Position};
@@ -83,7 +81,7 @@ pub use render::{
     apply_export_aspect_ratio, render_export, render_export_job, render_export_job_multi,
     render_export_job_multi_with_audio, render_timeline_export, resolve_audio_segments,
     resolve_shape_segments, resolve_text_segments, resolve_timeline_segments,
-    resolve_timeline_segments_multi, RenderError, RenderOutcome,
+    resolve_timeline_segments_multi, RenderError, RenderOutcome, TextSegment,
 };
 pub use shape_render::{build_shape_filter_desc, point_in_polygon, ShapeRenderInput};
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
@@ -93,8 +91,8 @@ pub use text_to_speech::{
     load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
 };
 pub use timeline::{
-    ClipFormatting, ClipInstance, LayerTemplate, ShapeClip, ShapeKind, TextClip, Timeline, Track,
-    TrackKind,
+    ClipFormatting, ClipInstance, LayerTemplate, ShapeClip, ShapeKind, TextClip, TextFontFamily,
+    TextFontStyle, Timeline, Track, TrackKind,
 };
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
 pub use update_check::{fetch_latest_release, is_newer, LatestRelease, UpdateCheckError};

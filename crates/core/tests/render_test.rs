@@ -106,7 +106,12 @@ fn text_clip(words: Vec<WordTiming>, highlight_enabled: bool) -> TextClip {
         duration_secs: 2.0,
         text: "Hello World".to_string(),
         font_size: 48.0,
+        font_family: Default::default(),
+        font_style: Default::default(),
         color_rgba: [255, 255, 255, 255],
+        background_rgba: [0, 0, 0, 0],
+        background_padding: 8.0,
+        background_corner_radius: 8.0,
         pos_x: 0.1,
         pos_y: 0.85,
         words,
@@ -137,7 +142,13 @@ fn sequence_with_text_track(clip: TextClip) -> Sequence {
 
 #[test]
 fn resolve_text_segments_returns_one_segment_for_a_plain_text_clip() {
-    let sequence = sequence_with_text_track(text_clip(Vec::new(), false));
+    let mut clip = text_clip(Vec::new(), false);
+    clip.font_family = avcore::TextFontFamily::PlayfairDisplay;
+    clip.font_style = avcore::TextFontStyle::Bold;
+    clip.background_rgba = [10, 20, 30, 180];
+    clip.background_padding = 12.0;
+    clip.background_corner_radius = 6.0;
+    let sequence = sequence_with_text_track(clip);
 
     let segments = resolve_text_segments(&sequence, 1920);
 
@@ -146,6 +157,14 @@ fn resolve_text_segments_returns_one_segment_for_a_plain_text_clip() {
     assert_eq!(segments[0].start_secs, 10.0);
     assert_eq!(segments[0].duration_secs, 2.0);
     assert_eq!(segments[0].pos_x, 0.1);
+    assert_eq!(
+        segments[0].font_family,
+        avcore::TextFontFamily::PlayfairDisplay
+    );
+    assert_eq!(segments[0].font_style, avcore::TextFontStyle::Bold);
+    assert_eq!(segments[0].background_rgba, [10, 20, 30, 180]);
+    assert_eq!(segments[0].background_padding, 12.0);
+    assert_eq!(segments[0].background_corner_radius, 6.0);
 }
 
 #[test]
@@ -205,6 +224,7 @@ fn resolve_text_segments_expands_a_highlighted_clip_into_a_base_plus_one_segment
     assert_eq!(word_segments.len(), 2);
     for word in &word_segments {
         assert_eq!(word.color_rgba, [255, 220, 0, 255]);
+        assert_eq!(word.background_rgba, [0, 0, 0, 0]);
         // Timeline-absolute: clip.start_secs (10.0) + the word's own relative offset.
         assert!(word.start_secs >= 10.0 && word.start_secs < 11.5);
     }

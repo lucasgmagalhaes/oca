@@ -63,3 +63,36 @@ fn word_x_offsets_px_is_empty_for_no_words() {
     let offsets: Vec<f32> = word_x_offsets_px(&[], 48.0);
     assert!(offsets.is_empty());
 }
+
+#[test]
+fn every_bundled_font_face_parses_and_is_cached() {
+    for family in TextFontFamily::ALL {
+        let regular = bundled_font(family, TextFontStyle::Regular)
+            .unwrap_or_else(|| panic!("failed to parse {family:?} regular"));
+        assert!(std::ptr::eq(
+            regular,
+            bundled_font(family, TextFontStyle::Regular).unwrap()
+        ));
+        if family.supports_bold() {
+            bundled_font(family, TextFontStyle::Bold)
+                .unwrap_or_else(|| panic!("failed to parse {family:?} bold"));
+        }
+    }
+}
+
+#[test]
+fn selecting_another_family_changes_text_metrics() {
+    let lato = text_width_px_with_font(
+        "Paco Paçoca",
+        48.0,
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+    );
+    let mono = text_width_px_with_font(
+        "Paco Paçoca",
+        48.0,
+        TextFontFamily::AnonymousPro,
+        TextFontStyle::Regular,
+    );
+    assert_ne!(lato, mono);
+}
