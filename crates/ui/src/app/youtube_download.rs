@@ -68,7 +68,7 @@ impl App {
         let tx = self.youtube_download_tx.clone();
         std::thread::spawn(move || {
             let progress_tx = tx.clone();
-            let result = avcore::download_youtube(&url, target, &out_dir, cancel, move |pct| {
+            let result = avcore::download_youtube(&url, target, &out_dir, &cancel, move |pct| {
                 let _ = progress_tx.send(YoutubeDownloadEvent::Progress(pct));
             });
             let event = match result {
