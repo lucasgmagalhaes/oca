@@ -400,38 +400,43 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   Cancel button rather than closing immediately, since a video download can run far longer than
   TTS synthesis.
 
-  **`avcore::youtube_download` embeds a Python interpreter (`pyo3`, `auto-initialize` feature)
-  and calls yt-dlp's own Python library API (`yt_dlp.YoutubeDL`) directly** — no subprocess,
-  no parsing human-readable progress text off stdout, per explicit user direction over an
-  initial subprocess-based version. This is a materially heavier dependency than anything else
-  in this codebase: every other native tool (FFmpeg, GStreamer, Whisper, Piper, ONNX Runtime)
-  is a linked C/C++ library or a spawned executable; this is a whole embedded CPython
-  interpreter dynamically linked against `libpython`/`python3*.dll` at **build time**, needing
-  that same (or ABI-compatible) Python runtime present at **launch time** — if the target
-  machine has no matching Python installed, `ui.exe` itself fails to start (a missing shared-
-  library load), not just this one feature, unlike a missing subprocess binary which would have
-  failed this feature alone, gracefully. `yt_dlp` (`pip install yt-dlp`) additionally needs to
-  be importable in that interpreter. **Fase 8's "motores embutidos no instalador" plan does not
-  yet account for bundling a Python runtime at all** — a real, currently-unresolved packaging
-  gap. A progress-hook closure (`pyo3::types::PyCFunction::new_closure`) reads yt-dlp's
-  `progress_hooks` dict (`status`/`downloaded_bytes`/`total_bytes`) each callback and computes
-  the `0.0..=1.0` fraction `ui` reads for its progress bar; cancellation raises
-  `yt_dlp.utils.DownloadCancelled` from inside that same hook. The final output path is read
-  from `info['requested_downloads'][0]['filepath']` — the same field yt-dlp's own CLI `--print
-  after_move:filepath` resolves to, populated only after any post-processing (merge, audio
-  extraction) has produced the truly final file.
+  **`ytbridge` (new fourth workspace crate) is the thing that actually embeds Python and calls
+  yt-dlp's `YoutubeDL` library API directly** — `avcore::youtube_download` spawns it as a
+  subprocess rather than linking `pyo3` itself. First version linked `pyo3` straight into
+  `core` (transitively `ui.exe`): dynamically linked against `libpython`/`python3*.dll` at
+  **build time**, needing that same (or ABI-compatible) Python runtime present at **launch
+  time** — on a machine with no matching Python installed, `ui.exe` itself failed to *start*
+  (a missing shared-library load), not just this one feature. Moved to a standalone
+  `crates/ytbridge` binary (`pyo3`/`serde`/`serde_json` only, no dependency on `core`/`ui`) so
+  `ui.exe` never touches Python at all — confirmed via `cargo tree -p ui`/`-p core`: `pyo3`
+  appears only under `ytbridge`'s own tree. `avcore::youtube_download::download_youtube` spawns
+  `ytbridge` (located next to the running executable via `std::env::current_exe()`, same
+  directory a normal build already puts both binaries in — confirmed by a real `cargo build -p
+  ytbridge` landing `ytbridge.exe` next to the existing `ui.exe` in `target/debug/`), passing
+  `<mp4:HEIGHT|mp4:best|mp3:KBPS> <url> <dest_dir>` as three positional args; `ytbridge` prints
+  newline-delimited JSON progress/result events to stdout (`{"type":"progress","fraction":...}`
+  / `{"type":"done","path":...}` / `{"type":"error","message":...}`) rather than yt-dlp's own
+  human-readable text, so nothing has to scrape percentage strings. Cancellation is just
+  killing the child process — no `DownloadCancelled`-raising complexity, no assumption about
+  whether that exception propagates cleanly out of a `progress_hooks` callback (the previous
+  version's biggest unverified assumption is gone entirely, not just untested). If `ytbridge`
+  itself crashes outright (e.g. no compatible Python installed on this machine) that's now a
+  normal, catchable non-zero/abnormal child exit status — `YoutubeDownloadError::Failed` with
+  an explanatory message — not a crash of `ui.exe`. Progress-hook math and the
+  `info['requested_downloads'][0]['filepath']` final-path lookup (same field yt-dlp's own CLI
+  `--print after_move:filepath` resolves to) are otherwise unchanged from the first version.
+  **Fase 8's "motores embutidos no instalador" plan does not yet account for bundling a Python
+  runtime at all** — `ytbridge.exe` itself still needs one at runtime; this feature remains
+  unusable on a machine without Python + `pip install yt-dlp`, that packaging gap just no
+  longer takes the whole app down with it.
 
   **Verification caveat:** the `pyo3`/`yt_dlp` API usage (`Python::attach`,
   `PyCFunction::new_closure`, `PyDictMethods::set_item`, `PyAnyMethods::call`/`call_method`,
-  `progress_hooks`' dict shape, `DownloadCancelled`) was checked against pyo3 0.29.2's real
-  published docs and yt-dlp's own `YoutubeDL.py` source rather than guessed, and the crate
-  builds and links cleanly on this dev machine (confirming a compatible Python was
-  discoverable at build time here) — but has not been exercised against a real download on any
-  machine, no Python environment with `yt_dlp` installed was available to actually run it. One
-  assumption in particular is unconfirmed against real yt-dlp behavior: that raising
-  `DownloadCancelled` from a `progress_hooks` callback (rather than from `match_filter`, its
-  one documented use in the reviewed source) actually aborts `extract_info()` cleanly rather
-  than being swallowed or mishandled.
+  `progress_hooks`' dict shape) was checked against pyo3 0.29.2's real published docs and
+  yt-dlp's own `YoutubeDL.py` source rather than guessed, and `ytbridge` builds and links
+  cleanly on this dev machine (confirming a compatible Python was discoverable at build time
+  here) — but has not been exercised against a real download on any machine, no Python
+  environment with `yt_dlp` installed was available to actually run it.
 
 Check `features/request.md` for what's still unbuilt before assuming a feature is live —
 when in doubt, `graphify query`.
