@@ -5,3 +5,7 @@ e2e/.pytest_cache
 e2e/__pycache__
 .claude/worktrees/
 /whisper_models/
+# Self-contained Python runtime (python-build-standalone) crates/ytbridge links against —
+# fetched by crates/ytbridge/setup-python-runtime.ps1, not checked in (see CLAUDE.md's Fase 8
+# "Python runtime for ytbridge" plan).
+/vendor/python-runtime/

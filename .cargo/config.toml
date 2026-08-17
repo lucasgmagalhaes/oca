@@ -1,0 +1,9 @@
+# Points pyo3 (crates/ytbridge's only real dependency on Python) at the self-contained
+# python-build-standalone runtime vendored at vendor/python-runtime/ (fetched by
+# crates/ytbridge/setup-python-runtime.ps1, not checked in — see CLAUDE.md's Fase 8 "Python
+# runtime for ytbridge" plan) instead of whatever Python happens to be on this machine's PATH.
+# Fixes the "must match whatever Python version the build machine has" fragility, and is the
+# first step toward shipping ytbridge fully self-contained (no separate Python install needed
+# by the end user at all).
+[env]
+PYO3_PYTHON = { value = "vendor/python-runtime/python.exe", relative = true }
