@@ -37,11 +37,17 @@ pub enum TrackKind {
 /// after the main timeline encode — see `avbridge::apply_text_overlays`.
 ///
 /// Previewed via [`crate::overlay_render::render_text_clip_rgba`] and
-/// [`crate::preview::Preview::open_composited`]'s static overlay branches — base text only
-/// (no per-word highlight timing), same "approximate, not pixel-perfect" tolerance `preview`
-/// already has for its other partially-covered effects. Auto word-wrap at the canvas edge *is*
-/// covered (`render_text_clip_rgba` sets `fontdue`'s `max_width`); export's `drawtext` has no
-/// equivalent, so a render of the same clip can wrap differently past that point.
+/// [`crate::preview::Preview::open_composited`]'s static overlay branches. Word-highlight
+/// timing *is* rendered — [`crate::overlay_render::render_text_clip_rgba`]'s `local_time_secs`
+/// picks the current word
+/// against `words`/`highlight_enabled` — but only for whichever instant the branch was last
+/// (re)opened at, since that buffer is then pushed once and repeated for the branch's whole
+/// life; see [`crate::preview::Preview::open_composited`]'s doc comment for the exact "not
+/// live-patched during playback" gap this leaves, same "approximate, not pixel-perfect"
+/// tolerance `preview` already has for its other partially-covered effects. Auto word-wrap at
+/// the canvas edge *is* fully covered (`render_text_clip_rgba` sets `fontdue`'s `max_width`);
+/// export's `drawtext` has no equivalent, so a render of the same clip can wrap differently past
+/// that point.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextClip {
     pub id: u64,

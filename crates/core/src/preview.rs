@@ -1346,11 +1346,22 @@ impl Preview {
     /// post-processing passes running after the main timeline composite). Static for the whole
     /// branch lifetime, unlike `overlays`' video branches — neither clip type has keyframes or
     /// a source file of its own to seek.
+    ///
+    /// Each `text_overlays` entry pairs a clip with the elapsed time since its own
+    /// `start_secs` — the instant [`crate::overlay_render::render_text_clip_rgba`] resolves
+    /// [`crate::timeline::TextClip::highlight_enabled`]'s current word against. **Known gap:**
+    /// since the rendered buffer is pushed once and repeated by `imagefreeze` for the branch's
+    /// whole life (see above), the highlighted word stays exactly whatever was current at that
+    /// one instant — it does not advance word-by-word during uninterrupted playback the way
+    /// export's per-word overlay segments do, only on the next full reopen/reseek (e.g.
+    /// scrubbing, or the playhead crossing onto a different clip). Same "picked up on next
+    /// seek/reload, not live-patched" shape this codebase already has for other preview
+    /// properties (see `speed_factor`'s own doc comment in `ui::app::preview`).
     pub fn open_composited(
         background_path: &Path,
         background_clip: Option<&ClipInstance>,
         overlays: &[(&Path, &ClipInstance)],
-        text_overlays: &[&TextClip],
+        text_overlays: &[(&TextClip, f64)],
         shape_overlays: &[&ShapeClip],
     ) -> Result<Self, PreviewError> {
         gst::init().map_err(PreviewError::Init)?;
@@ -1475,8 +1486,13 @@ impl Preview {
         }
 
         let mut next_zorder = (overlays.len() + 1) as u32;
-        for clip in text_overlays {
-            let rgba = crate::overlay_render::render_text_clip_rgba(clip, canvas.0, canvas.1);
+        for (clip, local_time_secs) in text_overlays {
+            let rgba = crate::overlay_render::render_text_clip_rgba(
+                clip,
+                canvas.0,
+                canvas.1,
+                *local_time_secs,
+            );
             build_static_overlay_branch(&pipeline, &compositor, canvas, rgba, next_zorder)?;
             next_zorder += 1;
         }

@@ -31,9 +31,10 @@
 //! back each glyph's top-left pixel position directly under [`fontdue::layout::CoordinateSystem::
 //! PositiveYDown`], matching this buffer's row-major top-down layout, and wraps at word
 //! boundaries once a line would run past the canvas's right edge (`LayoutSettings::max_width`).
-//! Word-highlight timing ([`crate::timeline::TextClip::words`]) isn't rendered here — the base
-//! text only, same "approximate, not pixel-perfect" tolerance the rest of `preview` already
-//! documents for effects it only partially covers.
+//! Word-highlight timing ([`crate::timeline::TextClip::words`]) *is* rendered — see
+//! [`render_text_clip_rgba`]'s `local_time_secs` parameter — though only for whatever instant
+//! the caller asks for at render time, not live-updated frame-by-frame the way export's
+//! per-word overlay segments are each their own exact `[start, end)` window.
 //!
 //! Shapes mirror [`crate::shape_render::build_shape_filter_desc`]'s per-pixel math term-for-term
 //! (rotate into the shape's local frame, then an ellipse quadratic or
@@ -57,39 +58,32 @@ fn put_pixel(buf: &mut [u8], width: u32, height: u32, x: i64, y: i64, rgba: [u8;
     buf[idx..idx + 4].copy_from_slice(&rgba);
 }
 
-/// Renders `clip`'s text into a fully transparent `canvas_width`×`canvas_height` RGBA buffer,
-/// positioned the same way export's `drawtext` anchors it (`x=w*pos_x:y=h*pos_y`, top-left of
-/// the text block) — see `avbridge/csrc/text_overlay.c`. Falls back to an all-transparent buffer
-/// if the platform default font can't be loaded, same "degrade rather than fail" shape
-/// [`crate::text_metrics::text_width_px`] already has for the same missing-font case.
-///
-/// Wraps at word boundaries once a line would run past the canvas's right edge — `drawtext`
-/// itself has no equivalent auto-wrap (only ever breaks on a literal `\n` the caller already put
-/// in `clip.text`), so this preview behavior and an export render of the same clip can disagree
-/// on line breaks past that point; same class of preview/export mismatch already documented for
-/// word-highlight timing on this type. `max_width` is the space between the text's own left
-/// anchor and the canvas's right edge (`fontdue::layout::LayoutSettings`'s `x`/`max_width` are
-/// independent — `max_width` alone doesn't already account for a nonzero `x`), floored at `1.0`
-/// so a clip anchored at or past the right edge still lays out instead of getting a degenerate
-/// zero/negative wrap width.
-pub fn render_text_clip_rgba(clip: &TextClip, canvas_width: u32, canvas_height: u32) -> Vec<u8> {
-    let mut buf = vec![0u8; canvas_width as usize * canvas_height as usize * 4];
-    let Some(font) = crate::text_metrics::default_font() else {
-        return buf;
-    };
-
-    let x = clip.pos_x * canvas_width as f32;
-    let max_width = (canvas_width as f32 - x).max(1.0);
+/// Rasterizes `text` at `font_size` in color `rgba`, anchored top-left at `(x, y)` and wrapped
+/// at word boundaries past `max_width`, directly into `buf` — the shared glyph-rasterizing core
+/// [`render_text_clip_rgba`] uses for both its base-text pass and its word-highlight pass.
+#[allow(clippy::too_many_arguments)]
+fn draw_text_layout(
+    buf: &mut [u8],
+    font: &fontdue::Font,
+    text: &str,
+    font_size: f32,
+    rgba: [u8; 4],
+    x: f32,
+    y: f32,
+    max_width: f32,
+    canvas_width: u32,
+    canvas_height: u32,
+) {
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings {
         x,
-        y: clip.pos_y * canvas_height as f32,
+        y,
         max_width: Some(max_width),
         ..LayoutSettings::default()
     });
-    layout.append(&[font], &TextStyle::new(&clip.text, clip.font_size, 0));
+    layout.append(&[font], &TextStyle::new(text, font_size, 0));
 
-    let [r, g, b, a] = clip.color_rgba;
+    let [r, g, b, a] = rgba;
     for glyph in layout.glyphs() {
         let (_metrics, coverage) = font.rasterize_config(GlyphRasterConfig {
             glyph_index: glyph.key.glyph_index,
@@ -107,7 +101,7 @@ pub fn render_text_clip_rgba(clip: &TextClip, canvas_width: u32, canvas_height: 
                     continue;
                 }
                 put_pixel(
-                    &mut buf,
+                    buf,
                     canvas_width,
                     canvas_height,
                     glyph.x as i64 + col as i64,
@@ -117,6 +111,86 @@ pub fn render_text_clip_rgba(clip: &TextClip, canvas_width: u32, canvas_height: 
             }
         }
     }
+}
+
+/// Renders `clip`'s text into a fully transparent `canvas_width`×`canvas_height` RGBA buffer,
+/// positioned the same way export's `drawtext` anchors it (`x=w*pos_x:y=h*pos_y`, top-left of
+/// the text block) — see `avbridge/csrc/text_overlay.c`. Falls back to an all-transparent buffer
+/// if the platform default font can't be loaded, same "degrade rather than fail" shape
+/// [`crate::text_metrics::text_width_px`] already has for the same missing-font case.
+///
+/// Wraps at word boundaries once a line would run past the canvas's right edge — `drawtext`
+/// itself has no equivalent auto-wrap (only ever breaks on a literal `\n` the caller already put
+/// in `clip.text`), so this preview behavior and an export render of the same clip can disagree
+/// on line breaks past that point. `max_width` is the space between the text's own left anchor
+/// and the canvas's right edge (`fontdue::layout::LayoutSettings`'s `x`/`max_width` are
+/// independent — `max_width` alone doesn't already account for a nonzero `x`), floored at `1.0`
+/// so a clip anchored at or past the right edge still lays out instead of getting a degenerate
+/// zero/negative wrap width.
+///
+/// `local_time_secs` is elapsed time since `clip.start_secs` (not a timeline position) — when
+/// [`TextClip::highlight_enabled`] and it falls within some [`crate::timeline::WordTiming`]'s
+/// `[start_secs, end_secs)`, that word is redrawn on top in `highlight_color_rgba`, positioned
+/// via [`crate::text_metrics::word_x_offsets_px`] exactly like export's own
+/// [`crate::render::text_clip_to_segments`] positions its highlight overlay segment. Shares that
+/// function's documented "single line only" limitation: the offset assumes the base text is all
+/// on one line, so a highlighted word past a wrap point (a literal `\n`, or — preview-only —
+/// this function's own auto-wrap above) lands at its unwrapped x position instead of its real
+/// one. Unlike export's per-word overlay clips (each with their own exact `[start, end)` on the
+/// export timeline), the caller here is the one deciding *which* instant `local_time_secs` is —
+/// see [`crate::preview::Preview::open_composited`]'s own doc comment for what that means for
+/// live playback.
+pub fn render_text_clip_rgba(
+    clip: &TextClip,
+    canvas_width: u32,
+    canvas_height: u32,
+    local_time_secs: f64,
+) -> Vec<u8> {
+    let mut buf = vec![0u8; canvas_width as usize * canvas_height as usize * 4];
+    let Some(font) = crate::text_metrics::default_font() else {
+        return buf;
+    };
+
+    let x = clip.pos_x * canvas_width as f32;
+    let y = clip.pos_y * canvas_height as f32;
+    let max_width = (canvas_width as f32 - x).max(1.0);
+    draw_text_layout(
+        &mut buf,
+        font,
+        &clip.text,
+        clip.font_size,
+        clip.color_rgba,
+        x,
+        y,
+        max_width,
+        canvas_width,
+        canvas_height,
+    );
+
+    if clip.highlight_enabled {
+        let current_word = clip
+            .words
+            .iter()
+            .enumerate()
+            .find(|(_, w)| local_time_secs >= w.start_secs && local_time_secs < w.end_secs);
+        if let Some((index, word)) = current_word {
+            let words: Vec<&str> = clip.words.iter().map(|w| w.text.as_str()).collect();
+            let offset_px = crate::text_metrics::word_x_offsets_px(&words, clip.font_size)[index];
+            draw_text_layout(
+                &mut buf,
+                font,
+                &word.text,
+                clip.font_size,
+                clip.highlight_color_rgba,
+                x + offset_px,
+                y,
+                f32::MAX,
+                canvas_width,
+                canvas_height,
+            );
+        }
+    }
+
     buf
 }
 
