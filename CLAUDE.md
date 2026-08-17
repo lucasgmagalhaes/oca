@@ -59,15 +59,17 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   **Per-branch seeking, not one pipeline-wide seek.** Each branch is a different source file
   with its own trim points/time base, so a single absolute `Pipeline::seek` position can't be
   simultaneously correct for all of them (unlike `playbin`'s single-source case, where it is).
-  `Preview::seek_composited(offsets: &[f64])` seeks each branch's own `uridecodebin` element
-  independently, `offsets[i]` being seconds within that branch's own source file. Once each
-  branch's own starting offset is set this way, `Playing` advances every branch together at the
-  same rate off the pipeline's one shared clock — no further per-frame bookkeeping needed
-  during playback itself (confirmed via `seek_composited_seeks_every_branch_without_error` and
-  manual reasoning about GStreamer's shared-clock model, not exercised against real multi-
-  second scrubbing here). **Known gap:** every branch plays at a uniform rate `1.0` regardless
-  of its own `speed_factor` — unlike the single-clip path's `seek_with_rate`, composited preview
-  doesn't honor per-branch speed yet.
+  `Preview::seek_composited(offsets: &[f64], rates: &[f64])` seeks each branch's own
+  `uridecodebin` element independently via `Element::seek` (not `seek_simple`), `offsets[i]`
+  being seconds within that branch's own source file and `rates[i]` that branch's own
+  `ClipInstance::speed_factor` — same rate-seek technique the single-clip path's
+  `seek_with_rate` already used pipeline-wide, just sent to one branch's element instead of the
+  whole pipeline, which doesn't affect any other branch's own rate. **Per-branch speed is now
+  honored, closing the gap this paragraph used to describe** — confirmed via
+  `seek_composited_honors_a_per_branch_rate` (background at 0.5x, overlay at 2x, composites
+  without error) alongside the existing `seek_composited_seeks_every_branch_without_error`.
+  `ui`'s `App::ensure_preview_loaded`/`seek_preview` build a `rates` array in the same order as
+  `offsets` (background clip's `speed_factor` first, then each overlay's).
 
   `ui`'s `App::ensure_preview_loaded` (`crates/ui/src/app/preview.rs`) now resolves *every*
   video track's clip at the playhead (`App::current_preview_overlay_clips`, track index 1+), not
