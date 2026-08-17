@@ -245,6 +245,29 @@ fn open_composited_reports_a_canvas_sized_frame() {
 }
 
 #[test]
+fn open_composited_with_background_removal_matte_composites_without_error() {
+    let bg = fixture("video.mp4");
+    let overlay = fixture("video.mp4");
+    let mut overlay_clip = clip();
+    overlay_clip.background_removal_enabled = true;
+    // Any decodable video works as the matte source for a "does the alphacombine wiring link
+    // and preroll" check — video.mp4 stands in the same way it does as its own overlay branch
+    // in the tests above; this doesn't assert anything about which pixels end up transparent.
+    overlay_clip.background_removal_mask_path = overlay.to_string_lossy().to_string();
+
+    let preview =
+        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)], &[], &[])
+            .unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("a frame should be available right after preroll");
+    assert_eq!((frame.width, frame.height), (320, 240));
+
+    preview.seek_composited(&[0.2, 0.1]).unwrap();
+    let _ = preview.current_frame();
+}
+
+#[test]
 fn open_composited_with_text_and_shape_overlays_composites_without_error() {
     let bg = fixture("video.mp4");
     let text_clip = avcore::timeline::TextClip {
