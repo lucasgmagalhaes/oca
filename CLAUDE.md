@@ -436,9 +436,20 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   `open_composited` whenever any exist, even with zero video overlay tracks —
   `App::preview_text_clip_ids`/`preview_shape_clip_ids` mirror `preview_overlay_clip_ids`'s
   reopen-detection role for both `ensure_preview_loaded` and `seek_preview`'s fast path.
-  **Known gaps:** word-highlight timing (`TextClip::words`) isn't rendered — base text only,
-  same "approximate, not pixel-perfect" tolerance `preview` already has elsewhere; no line
-  wrap. Confirmed working for real against a live GStreamer pipeline on this dev machine
+  **Word-highlight timing and auto line-wrap now render too.** `render_text_clip_rgba` takes a
+  `local_time_secs` argument (elapsed time since the clip's own `start_secs`) and redraws
+  whichever word's `[start_secs, end_secs)` covers it in `highlight_color_rgba`, positioned via
+  `text_metrics::word_x_offsets_px` — the same offset export's own `render::
+  text_clip_to_segments` already used for its per-word overlay segments. **Known gap:** since
+  the branch's buffer is pushed once and repeated by `imagefreeze` for its whole life, the
+  highlighted word stays fixed at whatever was current when the branch was last opened/reseeked
+  rather than advancing word-by-word during uninterrupted playback — same "picked up on next
+  seek/reload, not live-patched" shape `speed_factor` already has. Long text also now wraps at
+  word boundaries once a line would run past the canvas edge (`fontdue`'s `max_width`); `drawtext`
+  has no equivalent auto-wrap, so an export of the same clip can disagree on where lines break.
+  Word-highlight positioning still assumes a single line (same limitation `text_clip_to_segments`
+  already documented for export), so a highlighted word past a wrap point lands at its unwrapped
+  x position. Confirmed working for real against a live GStreamer pipeline on this dev machine
   (`open_composited_with_text_and_shape_overlays_composites_without_error`,
   `preview_test.rs`) — required an explicit `framerate=0/1` field on the `appsrc` caps
   ("still image" sentinel), discovered empirically: `imagefreeze`'s sink pad rejected caps
