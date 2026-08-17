@@ -28,7 +28,7 @@ use gstreamer_video as gst_video;
 
 use gst::prelude::*;
 
-use crate::timeline::{ClipInstance, ColorFilter, ShapeClip, TextClip};
+use crate::timeline::{ClipInstance, ColorFilter, ShapeClip, TextClip, TransitionType};
 
 #[derive(Debug)]
 pub enum PreviewError {
@@ -126,15 +126,14 @@ pub struct VideoFrame {
 /// size — needed since `videocrop`'s properties and the zoom/pixelize/shake downscale/upscale
 /// target sizes are plain pixel counts, and `path` may be a lower-resolution editing proxy
 /// rather than the original asset.
-// TODO: transitions (ClipInstance::transition_in / ClipSegment::transition_in — a *different*
-// concept from the scale_keyframes Ken-Burns-style animation above: an entry animation over the
-// clip's first transition_duration_secs) are not yet covered by preview — the fade/slide/zoom
-// avfilter expressions are built in bridge.c's avbridge_encode_timeline_export and only affect
-// the exported file. Adding them here would require either a GStreamer element equivalent
-// (e.g. `frei0r-filter-cairoimagegraphics` for drawbox, or a custom element) or a manual
-// frame-count-driven property update — the same pad-probe technique shake/scale use below would
-// work for the crop/scale-based Zoom transition variant, but Fade (alpha ramp) and Slide
-// (drawbox wipe) still need their own element equivalents.
+// Transitions (ClipInstance::transition_in/transition_duration_secs — a *different* concept
+// from the scale_keyframes Ken-Burns-style animation above: an entry animation over just the
+// clip's first transition_duration_secs) are now covered — Fade shares the opacity block's
+// `alpha` element, Zoom reuses the scale_keyframes crop+upscale shape driven by transition
+// progress instead of keyframes, and Slide uses two chained `videobox` elements (crop, then an
+// equal-and-opposite black border) so the output frame size stays constant while the crop/pad
+// split moves — see each block below for specifics. HardCut and None both still render nothing
+// here, same as export.
 //
 // TODO: position keyframes aren't wired to preview (see crate::keyframe module docs) — unlike
 // rotation/opacity below, position needs a compositing (`overlay`) stage that this single-clip
@@ -244,7 +243,14 @@ fn build_video_filter_bin(
         elements.push(rotate);
     }
 
-    if include_opacity && clip.has_opacity_keyframes() {
+    // Fade transition (ClipInstance::transition_in == Fade) shares this same "alpha" element/
+    // pad-probe with opacity keyframes rather than getting its own — "alpha"'s `method=set`
+    // overwrites the buffer's alpha outright, so two separate `alpha` elements chained would
+    // just have the second silently discard the first's ramp instead of combining with it.
+    // Both factors default to a no-op (opacity 1.0, fade 1.0 once past transition_duration_secs)
+    // so either one alone still works exactly as before.
+    let has_fade = include_opacity && clip.transition_in == TransitionType::Fade;
+    if include_opacity && (clip.has_opacity_keyframes() || has_fade) {
         // "alpha" (gst-plugins-good) sets a uniform per-buffer alpha on its output — the RGBA
         // path is already forced by the AppSink's fixed caps in Preview::open, and egui draws
         // ColorImage::from_rgba_unmultiplied with alpha blending, so a reduced alpha here is
@@ -253,6 +259,7 @@ fn build_video_filter_bin(
         let opacity_keyframes = clip.opacity_keyframes.clone();
         let source_in_secs = clip.source_in_secs;
         let clip_duration_secs = (clip.source_out_secs - clip.source_in_secs).max(1e-6);
+        let transition_duration_secs = clip.transition_duration_secs.max(1e-6) as f64;
 
         let alpha = gst::ElementFactory::make("alpha")
             .property_from_str("method", "set")
@@ -268,13 +275,141 @@ fn build_video_filter_bin(
                 .and_then(|b| b.pts())
                 .map(|t| t.seconds_f64())
                 .unwrap_or(source_in_secs);
-            let frac = ((secs - source_in_secs) / clip_duration_secs).clamp(0.0, 1.0) as f32;
-            let a =
+            let elapsed = secs - source_in_secs;
+            let frac = (elapsed / clip_duration_secs).clamp(0.0, 1.0) as f32;
+            let opacity =
                 crate::keyframe::evaluate_keyframes(&opacity_keyframes, frac, 1.0).clamp(0.0, 1.0);
-            alpha_for_probe.set_property("alpha", a as f64);
+            let fade = if has_fade {
+                (elapsed / transition_duration_secs).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+            alpha_for_probe.set_property("alpha", (opacity as f64) * fade);
             gst::PadProbeReturn::Ok
         });
         elements.push(alpha);
+    }
+
+    // Zoom transition (ClipInstance::transition_in == Zoom) — an entry animation over just
+    // transition_duration_secs, distinct from the Ken-Burns scale_keyframes block above (which
+    // covers the clip's whole duration). Mirrors export's own z(N) formula in
+    // `timeline_export_multi.c`'s `build_vfilter_descr` (`z = 0.5 + 0.5*min(N/tf, 1)`, sampling
+    // source coordinates scaled by `1/z`) as a crop-then-upscale zoom factor of `1/z` instead —
+    // `1/z` ranges `2.0` (transition start, cropped to a small central region and upscaled —
+    // "zoomed in") down to `1.0` (transition end, full frame) — same zoom_crop/upscale/capsfilter
+    // shape as the scale_keyframes block, just driven by transition progress instead of
+    // keyframes, and safe to stack with it (each is its own crop+upscale stage).
+    if include_opacity && clip.transition_in == TransitionType::Zoom {
+        if let Some((width, height)) = resolution {
+            let source_in_secs = clip.source_in_secs;
+            let transition_duration_secs = clip.transition_duration_secs.max(1e-6) as f64;
+
+            let zoom_crop = gst::ElementFactory::make("videocrop")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let zoom_crop_for_probe = zoom_crop.clone();
+            let sink_pad = zoom_crop
+                .static_pad("sink")
+                .expect("videocrop always has a sink pad");
+            sink_pad.add_probe(gst::PadProbeType::BUFFER, move |_pad, info| {
+                let secs = info
+                    .buffer()
+                    .and_then(|b| b.pts())
+                    .map(|t| t.seconds_f64())
+                    .unwrap_or(source_in_secs);
+                let progress = ((secs - source_in_secs) / transition_duration_secs).clamp(0.0, 1.0);
+                let z = 0.5 + 0.5 * progress;
+                let zoom = (1.0 / z).clamp(0.1, 20.0);
+                let crop_w = (width as f64 / zoom).round().max(2.0);
+                let crop_h = (height as f64 / zoom).round().max(2.0);
+                let side_w = ((width as f64 - crop_w) / 2.0).round().max(0.0) as i32;
+                let side_h = ((height as f64 - crop_h) / 2.0).round().max(0.0) as i32;
+                zoom_crop_for_probe.set_property("left", side_w);
+                zoom_crop_for_probe.set_property("right", side_w);
+                zoom_crop_for_probe.set_property("top", side_h);
+                zoom_crop_for_probe.set_property("bottom", side_h);
+                gst::PadProbeReturn::Ok
+            });
+
+            let upscale = gst::ElementFactory::make("videoscale")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let full_caps = gst::ElementFactory::make("capsfilter")
+                .property(
+                    "caps",
+                    gst::Caps::builder("video/x-raw")
+                        .field("width", width as i32)
+                        .field("height", height as i32)
+                        .build(),
+                )
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            elements.push(zoom_crop);
+            elements.push(upscale);
+            elements.push(full_caps);
+        }
+    }
+
+    // Slide transition (ClipInstance::transition_in == Slide) — a left-to-right wipe reveal:
+    // mirrors export's geq wipe (visible = source pixels left of a moving edge, black
+    // everywhere past it) via two chained `videobox` elements instead of one, so the output
+    // frame size stays constant throughout (same reason the zoom stages above always follow a
+    // crop with an upscale back to the fixed canvas size, rather than letting frame size drift
+    // per buffer): the first crops `hidden_w` pixels off the right (shrinking the frame down to
+    // just the already-revealed region), the second re-pads that same `hidden_w` back onto the
+    // right as a black (`fill`'s default) border, netting zero size change overall.
+    if include_opacity && clip.transition_in == TransitionType::Slide {
+        if let Some((width, height)) = resolution {
+            let source_in_secs = clip.source_in_secs;
+            let transition_duration_secs = clip.transition_duration_secs.max(1e-6) as f64;
+
+            let reveal_crop = gst::ElementFactory::make("videobox")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let reveal_pad = gst::ElementFactory::make("videobox")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let crop_for_probe = reveal_crop.clone();
+            let pad_for_probe = reveal_pad.clone();
+            let sink_pad = reveal_crop
+                .static_pad("sink")
+                .expect("videobox always has a sink pad");
+            sink_pad.add_probe(gst::PadProbeType::BUFFER, move |_pad, info| {
+                let secs = info
+                    .buffer()
+                    .and_then(|b| b.pts())
+                    .map(|t| t.seconds_f64())
+                    .unwrap_or(source_in_secs);
+                let progress = ((secs - source_in_secs) / transition_duration_secs).clamp(0.0, 1.0);
+                let hidden_w = (width as f64 * (1.0 - progress)).round().max(0.0) as i32;
+                crop_for_probe.set_property("right", hidden_w);
+                pad_for_probe.set_property("right", -hidden_w);
+                gst::PadProbeReturn::Ok
+            });
+            elements.push(reveal_crop);
+            elements.push(reveal_pad);
+
+            // The crop and its equal-and-opposite pad were observed to occasionally net one
+            // pixel off the canvas width (an internal videobox rounding quirk against
+            // chroma-subsampled formats, not something either property alone controls) — a
+            // trailing rescale-to-exact-size stage (`videoscale` + a pinning `capsfilter`, same
+            // pair the zoom stages above use after their own crop) irons that out regardless.
+            let rescale = gst::ElementFactory::make("videoscale")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let full_caps = gst::ElementFactory::make("capsfilter")
+                .property(
+                    "caps",
+                    gst::Caps::builder("video/x-raw")
+                        .field("width", width as i32)
+                        .field("height", height as i32)
+                        .build(),
+                )
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            elements.push(rescale);
+            elements.push(full_caps);
+        }
     }
 
     if let Some((width, height)) = resolution {
