@@ -260,8 +260,32 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   new-enough FFmpeg. Not a substitute for an actual render — treat the export-compositing path
   here as unverified beyond static analysis until it's run for real once.
 
-  **Not yet done:** preview compositing (no `alphamerge` stage in the GStreamer preview
-  pipeline — same gap chroma_key/mask_shape/position keyframes already have there).
+  **Matte preview compositing now exists too.** `crate::preview::build_composite_branch`
+  gained an `alphacombine` stage (gst-plugins-bad's `codecalpha` plugin — confirmed present via
+  a real `gst-inspect-1.0 alphacombine` on this dev machine, not assumed) — the GStreamer
+  counterpart to avfilter's `alphamerge`: it takes an `I420` color input on its `sink` pad and
+  a `GRAY8` luma input on its `alpha` pad, producing an alpha-capable output (`A420`/etc.).
+  Gated identically to export's own gate (overlay branch + `background_removal_enabled` + a
+  non-empty `background_removal_mask_path`). A second `uridecodebin` decodes the matte file
+  through its own `videoconvert`/`videoscale`/`capsfilter(GRAY8)` chain into `alphacombine`'s
+  `alpha` pad, while the branch's own already-built effects chain gets forced into `I420` (a
+  `capsfilter`, since `alphacombine`'s `sink` pad template doesn't accept the
+  unconstrained/RGBA-negotiated caps the chain otherwise ends with) before feeding `sink`.
+  **Required an explicit, identical `colorimetry=bt601` field on both capsfilters** — discovered
+  empirically (`gst_alpha_combine_negotiate`'s "Color range mismatch" error) rather than
+  documented anywhere obvious; the matte's own encode and the main chain's own negotiated caps
+  don't otherwise agree on color range. The matte plays its own 0-based clip, exactly mirroring
+  `ClipSegment::mask_video_path`'s doc comment in `bridge.h` (sampled directly from the overlay
+  clip's own trimmed source range, not the timeline) — `Preview::matte_branches` tracks each
+  matte's own `uridecodebin` alongside the branch index and `source_in_secs` it needs, and
+  `seek_composited` derives the matte's own seek target (`branch_offset - source_in_secs`)
+  automatically whenever the branch it belongs to is seeked, rather than the caller passing a
+  separate offset — `ui`'s `App` needed zero changes for this feature, since it already passes
+  the full `ClipInstance` (background-removal fields included) into `open_composited`'s
+  `overlays` list. Confirmed working for real against a live GStreamer pipeline on this dev
+  machine (`open_composited_with_background_removal_matte_composites_without_error`,
+  `preview_test.rs`) — proves the pipeline links, prerolls, and seeks without error; doesn't
+  assert anything about which pixels end up transparent.
 
   **Text-to-speech (done, real end-to-end):** `avcore::text_to_speech` — `espeak-rs`
   (statically-linked espeak-ng, no runtime DLL; `core/build.rs` copies its `espeak-ng-data`
