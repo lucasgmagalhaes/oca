@@ -5,5 +5,9 @@
 # Fixes the "must match whatever Python version the build machine has" fragility, and is the
 # first step toward shipping ytbridge fully self-contained (no separate Python install needed
 # by the end user at all).
+#
+# Windows-only value — [env] has no per-target-OS override in Cargo's config format. Linux
+# builds (setup-python-runtime.sh) export PYO3_PYTHON themselves before calling cargo, same
+# per-shell convention this project already uses for FFMPEG_DIR/PKG_CONFIG_PATH.
 [env]
 PYO3_PYTHON = { value = "vendor/python-runtime/python.exe", relative = true }

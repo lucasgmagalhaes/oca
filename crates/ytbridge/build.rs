@@ -11,15 +11,19 @@
 //! fully self-contained, runnable binary with no separate Python install needed, confirmed by
 //! running it with the system `PATH` stripped of every Python installation.
 //!
-//! Windows-only for now (`python-build-standalone`'s Linux/macOS layout differs enough — a
-//! `libpythonX.Y.so`/`.dylib` plus `lib-dynload/` instead of `DLLs/`, no `.dll`/`.pyd`
-//! extensions — that this would need real adaptation, not just a path rename, and Fase 8's
-//! Linux packaging hasn't started at all yet per `CLAUDE.md`).
+//! Windows and Linux (`python-build-standalone`'s `install_only` tarball layout differs between
+//! the two: Windows is flat (`python.exe`, `python310.dll`, `DLLs/`, `Lib/`) while Linux nests
+//! everything under `bin/`/`lib/` and links the interpreter against a shared
+//! `libpython3.10.so.1.0` instead of baking the stdlib C-extensions into a separate `DLLs/`
+//! folder — both branches below mirror `setup-python-runtime.ps1`/`.sh` respectively). macOS is
+//! still unhandled (Fase 8 packaging hasn't started at all yet per `CLAUDE.md`, and there's no
+//! current plan to support macOS).
 
 use std::path::{Path, PathBuf};
 
 fn main() {
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if target_os != "windows" && target_os != "linux" {
         return;
     }
 
@@ -30,16 +34,21 @@ fn main() {
         .expect("crates/ytbridge is two levels under the workspace root");
     let runtime_dir = workspace_root.join("vendor").join("python-runtime");
     if !runtime_dir.is_dir() {
+        let setup_script = if target_os == "windows" {
+            "crates/ytbridge/setup-python-runtime.ps1"
+        } else {
+            "crates/ytbridge/setup-python-runtime.sh"
+        };
         println!(
-            "cargo:warning=vendor/python-runtime not found — run \
-             crates/ytbridge/setup-python-runtime.ps1 first, or ytbridge.exe won't run \
-             standalone (it'll fall back to whatever Python is on PATH, if any)"
+            "cargo:warning=vendor/python-runtime not found — run {setup_script} first, or \
+             ytbridge won't run standalone (it'll fall back to whatever Python is on PATH, \
+             if any)"
         );
         return;
     }
 
     // OUT_DIR is target/<profile>/build/ytbridge-<hash>/out — three levels up is
-    // target/<profile>/, where cargo actually places the built ytbridge.exe.
+    // target/<profile>/, where cargo actually places the built ytbridge binary.
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let target_dir = out_dir
         .ancestors()
@@ -47,12 +56,22 @@ fn main() {
         .expect("OUT_DIR is nested three levels under target/<profile>/")
         .to_path_buf();
 
-    copy_file(
-        &runtime_dir.join("python310.dll"),
-        &target_dir.join("python310.dll"),
-    );
-    copy_dir_all(&runtime_dir.join("DLLs"), &target_dir.join("DLLs"));
-    copy_dir_all(&runtime_dir.join("Lib"), &target_dir.join("Lib"));
+    if target_os == "windows" {
+        copy_file(
+            &runtime_dir.join("python310.dll"),
+            &target_dir.join("python310.dll"),
+        );
+        copy_dir_all(&runtime_dir.join("DLLs"), &target_dir.join("DLLs"));
+        copy_dir_all(&runtime_dir.join("Lib"), &target_dir.join("Lib"));
+    } else {
+        // Linux's install_only layout keeps the stdlib (incl. lib-dynload/'s compiled C
+        // extensions) and the shared library together under lib/ — one copy covers both, unlike
+        // Windows' split DLLs/ + Lib/.
+        copy_dir_all(&runtime_dir.join("lib"), &target_dir.join("lib"));
+        // rpath so the copied ytbridge binary finds libpython3.10.so.1.0 in ./lib next to it
+        // without needing LD_LIBRARY_PATH set by whatever spawns it.
+        println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/lib");
+    }
 
     println!("cargo:rerun-if-changed={}", runtime_dir.display());
 }
