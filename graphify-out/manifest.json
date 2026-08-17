@@ -205,8 +205,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786932180.965695,
-    "ast_hash": "472bec01207a764e3b91252fc0dcc146",
+    "mtime": 1786932649.462274,
+    "ast_hash": "46b71ab6c214fa99cfe3b159f7bb986c",
     "semantic_hash": ""
   },
   "README.md": {
@@ -765,8 +765,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/youtube_download.rs": {
-    "mtime": 1786932063.5760865,
-    "ast_hash": "4bda2e64f1026266f758c05756e8459f",
+    "mtime": 1786932612.9497607,
+    "ast_hash": "02df5117c608d40c2c7ca7069b870775",
     "semantic_hash": ""
   },
   "crates/ui/src/app/youtube_download.rs": {
@@ -795,13 +795,18 @@
     "semantic_hash": ""
   },
   "crates/ytbridge/build.rs": {
-    "mtime": 1786932334.2077365,
-    "ast_hash": "f3e42bbf8960bc01c9c5e6c8e355529c",
+    "mtime": 1786932586.8838592,
+    "ast_hash": "fee350a4da9d5d0d3579149b53417eff",
     "semantic_hash": ""
   },
   "crates/ytbridge/setup-python-runtime.ps1": {
     "mtime": 1786932113.3925443,
     "ast_hash": "87ffef0e5c1bd1e96d486e95aecc8692",
+    "semantic_hash": ""
+  },
+  "crates/ytbridge/setup-python-runtime.sh": {
+    "mtime": 1786932597.5823278,
+    "ast_hash": "17bf7a1b3f4189b11d68dc0a552db5f3",
     "semantic_hash": ""
   }
 }
