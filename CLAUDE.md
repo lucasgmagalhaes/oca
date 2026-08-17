@@ -33,8 +33,31 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   layer templates, auto-reframe, motion tracking.
 
   **Wired to preview:** scale/rotation/opacity keyframes, pixelize/shake/zoom/freeze_frame,
-  speed. **Not wired to preview:** transitions, vignette, mask_shape, gain_db, glitch,
-  deflicker, LUTs, stabilization.
+  speed, transitions (fade/zoom/slide — see below). **Not wired to preview:** vignette,
+  mask_shape, gain_db, glitch, deflicker, LUTs, stabilization.
+
+  **Transitions now preview too** — `build_video_filter_bin` (`crates/core/src/preview.rs`)
+  gained Fade/Zoom/Slide, gated to `include_opacity` only (the same "background-branch-only"
+  flag that already scopes opacity keyframes) since export itself only applies transitions on
+  track 0 (`timeline_export_multi.c`'s `build_overlay_vfilter` explicitly omits them for overlay
+  tracks). Fade shares the opacity block's own `alpha` element/pad-probe rather than getting a
+  second one — `alpha`'s `method=set` overwrites rather than blends, so two chained `alpha`
+  elements would have the later one silently discard the earlier's ramp; the combined value is
+  `opacity_keyframe_value * fade_progress`, each defaulting to a no-op alone. Zoom reuses the
+  scale_keyframes crop+upscale shape (`1/z` zoom factor, `z = 0.5 + 0.5*progress`, mirroring
+  export's own `z(N)` formula in `build_vfilter_descr`) driven by transition progress instead of
+  keyframes — safe to stack with an actual Ken-Burns scale_keyframes animation on the same clip,
+  since each is its own independent crop+upscale stage. Slide uses two chained `videobox`
+  elements (gst-plugins-good) — the first crops `hidden_w` pixels off the right, the second
+  re-pads that same amount back on as a black border, netting zero size change as the wipe edge
+  moves — plus a trailing `videoscale`+`capsfilter` pinned to the exact canvas size, needed after
+  an empirically observed off-by-one-pixel quirk (a chroma-subsampled format like I420 rounded
+  the crop and its equal-and-opposite pad to mismatched actual pixel counts internally on some
+  frames). Confirmed working for real against a live GStreamer pipeline on this dev machine
+  (`a_fade_transition_clip_still_opens_and_decodes`, `a_zoom_transition_clip_...`,
+  `a_slide_transition_clip_...`, `preview_test.rs`) — proves each pipeline links, prerolls, and
+  decodes multiple frames without error; doesn't assert the rendered pixels match export's own
+  geq-based transitions frame-for-frame.
 
   **Multi-track preview compositing now exists** — position/opacity keyframes, layer scale,
   and chroma key are wired to preview on an overlay track, closing the gap the paragraph above
