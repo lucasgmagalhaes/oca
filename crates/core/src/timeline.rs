@@ -38,8 +38,10 @@ pub enum TrackKind {
 ///
 /// Previewed via [`crate::overlay_render::render_text_clip_rgba`] and
 /// [`crate::preview::Preview::open_composited`]'s static overlay branches — base text only
-/// (no per-word highlight timing, and no line-wrap), same "approximate, not pixel-perfect"
-/// tolerance `preview` already has for its other partially-covered effects.
+/// (no per-word highlight timing), same "approximate, not pixel-perfect" tolerance `preview`
+/// already has for its other partially-covered effects. Auto word-wrap at the canvas edge *is*
+/// covered (`render_text_clip_rgba` sets `fontdue`'s `max_width`); export's `drawtext` has no
+/// equivalent, so a render of the same clip can wrap differently past that point.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextClip {
     pub id: u64,

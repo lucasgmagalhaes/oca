@@ -29,10 +29,11 @@
 //! Text uses `fontdue`'s own layout engine (already a dependency, see [`crate::text_metrics`])
 //! rather than the manual baseline math its `Metrics` type alone would require — `Layout` hands
 //! back each glyph's top-left pixel position directly under [`fontdue::layout::CoordinateSystem::
-//! PositiveYDown`], matching this buffer's row-major top-down layout. Word-highlight timing
-//! ([`crate::timeline::TextClip::words`]) isn't rendered here — the base text only, same
-//! "approximate, not pixel-perfect" tolerance the rest of `preview` already documents for
-//! effects it only partially covers.
+//! PositiveYDown`], matching this buffer's row-major top-down layout, and wraps at word
+//! boundaries once a line would run past the canvas's right edge (`LayoutSettings::max_width`).
+//! Word-highlight timing ([`crate::timeline::TextClip::words`]) isn't rendered here — the base
+//! text only, same "approximate, not pixel-perfect" tolerance the rest of `preview` already
+//! documents for effects it only partially covers.
 //!
 //! Shapes mirror [`crate::shape_render::build_shape_filter_desc`]'s per-pixel math term-for-term
 //! (rotate into the shape's local frame, then an ellipse quadratic or
@@ -61,16 +62,29 @@ fn put_pixel(buf: &mut [u8], width: u32, height: u32, x: i64, y: i64, rgba: [u8;
 /// the text block) — see `avbridge/csrc/text_overlay.c`. Falls back to an all-transparent buffer
 /// if the platform default font can't be loaded, same "degrade rather than fail" shape
 /// [`crate::text_metrics::text_width_px`] already has for the same missing-font case.
+///
+/// Wraps at word boundaries once a line would run past the canvas's right edge — `drawtext`
+/// itself has no equivalent auto-wrap (only ever breaks on a literal `\n` the caller already put
+/// in `clip.text`), so this preview behavior and an export render of the same clip can disagree
+/// on line breaks past that point; same class of preview/export mismatch already documented for
+/// word-highlight timing on this type. `max_width` is the space between the text's own left
+/// anchor and the canvas's right edge (`fontdue::layout::LayoutSettings`'s `x`/`max_width` are
+/// independent — `max_width` alone doesn't already account for a nonzero `x`), floored at `1.0`
+/// so a clip anchored at or past the right edge still lays out instead of getting a degenerate
+/// zero/negative wrap width.
 pub fn render_text_clip_rgba(clip: &TextClip, canvas_width: u32, canvas_height: u32) -> Vec<u8> {
     let mut buf = vec![0u8; canvas_width as usize * canvas_height as usize * 4];
     let Some(font) = crate::text_metrics::default_font() else {
         return buf;
     };
 
+    let x = clip.pos_x * canvas_width as f32;
+    let max_width = (canvas_width as f32 - x).max(1.0);
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings {
-        x: clip.pos_x * canvas_width as f32,
+        x,
         y: clip.pos_y * canvas_height as f32,
+        max_width: Some(max_width),
         ..LayoutSettings::default()
     });
     layout.append(&[font], &TextStyle::new(&clip.text, clip.font_size, 0));
