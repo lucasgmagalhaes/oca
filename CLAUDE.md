@@ -33,10 +33,40 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   layer templates, auto-reframe, motion tracking.
 
   **Wired to preview:** scale/rotation/opacity keyframes, pixelize/shake/zoom/freeze_frame,
-  speed, transitions (fade/zoom/slide — see below), mask_shape (see below). **Not wired to
-  preview:** vignette (confirmed no matching GStreamer element via a real `gst-inspect-1.0` on
-  this dev machine — not just assumed, unlike the rest of this list, which just hasn't been
-  attempted), gain_db, glitch, deflicker, LUTs, stabilization.
+  speed, transitions (fade/zoom/slide — see below), mask_shape (see below), gain_db (see below
+  — preview now has a real audio route at all, not just video). **Not wired to preview, and
+  confirmed no matching GStreamer element exists on this dev machine at all** (via a real
+  `gst-inspect-1.0`, not assumed) **— a genuinely hard wall, not just unattempted:** vignette,
+  glitch, deflicker, LUTs (3D `.cube` LUTs specifically — `gllut3d`/`lut3d`/`3dlut` all checked),
+  stabilization (`videostabilize`/`deshake`/`opencvvideostab` all checked). Each would need a
+  custom-coded GStreamer element or CPU-side frame processing to ever preview — a materially
+  bigger lift than every other preview gap closed this far, which all reused stock elements.
+
+  **Preview now has real audio, not just a silent `fakesink`.** `Preview::open`'s `audio-sink`
+  is `autoaudiosink` (wasapi/directsound on Windows, alsa/pulse on Linux) instead of the old
+  always-`fakesink` placeholder; `ClipInstance::gain_db` applies via a `volume` element on
+  `playbin`'s `audio-filter` property (`preview::build_audio_filter_bin`, mirroring
+  `video-filter`'s own shape) — `preview::gain_db_to_linear` converts the dB value to the
+  linear scale factor GStreamer's `volume` property actually expects (`10^(dB/20)`), unlike
+  avfilter's own `volume=<gain>dB` string option export already uses. If the Paused preroll
+  fails with a real audio sink (no usable audio device), retries once with `fakesink` instead of
+  making the whole preview unavailable — same "degrade rather than abort" posture as a missing
+  matte file or an unloadable font elsewhere in this module.
+  `Preview::open_composited` gained its own separate manually-wired audio chain
+  (`audioconvert`→`audioresample`→`volume`→`autoaudiosink`) hung off the **background (track 0)
+  branch's decodebin only** — `preview::connect_decodebin_audio_pad`, the audio twin of the
+  existing video pad connector — matching export's own "audio comes from track 0 only"
+  convention (`timeline_export_multi.c`'s top-of-file comment); overlay tracks' audio is
+  silently dropped in preview the same way it already is on export. **Known asymmetry:** unlike
+  `Preview::open`'s cheap property-swap retry, `open_composited`'s audio sink is already linked
+  into a manually-built chain by the time Paused is attempted, so there's no equivalent
+  fallback there — a missing/broken audio device fails that whole `open_composited` call, same
+  as any other setup failure already does in that function. Confirmed working for real against
+  a live GStreamer pipeline with real audio hardware on this dev machine
+  (`a_gained_clip_opens_with_a_real_audio_sink_and_still_decodes_video`,
+  `open_composited_with_gain_composites_with_real_audio`, `preview_test.rs` — both call
+  `play()`/`pause()` against the real audio sink, not just preroll) — doesn't assert anything
+  about the actual audible loudness/gain applied.
 
   **Layer mask (`mask_shape`) now previews too.** `crate::preview::build_mask_shape_stage`
   (`preview.rs`) reuses the exact `alphacombine` technique the background-removal matte stage
