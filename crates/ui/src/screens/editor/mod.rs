@@ -273,6 +273,9 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         if ui.button(Text::AddTextTrack.tr(locale)).clicked() {
             app.add_text_track();
         }
+        if ui.button(Text::AddTextClip.tr(locale)).clicked() {
+            app.add_text_clip();
+        }
         ui.separator();
         if ui.button(Text::AddShapeTrack.tr(locale)).clicked() {
             app.add_shape_track();

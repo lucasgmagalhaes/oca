@@ -23,6 +23,7 @@ use crate::i18n::{self, Text};
 use crate::screens;
 use crate::theme;
 
+use super::color::{parse_color_value, COLOR_PRESETS};
 use super::export::next_available_path;
 use super::App;
 
@@ -66,6 +67,140 @@ impl App {
                     }
                 });
             });
+    }
+
+    /// Shows the reusable text-color editor. Changes stay in modal-local state until Apply,
+    /// while the manual field accepts the same HEX/RGB(A) formats documented in its hint.
+    pub(super) fn show_text_color_modal(&mut self, ctx: &egui::Context) {
+        let Some(mut edit) = self.text_color_edit.take() else {
+            return;
+        };
+        let locale = self.locale;
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let modal = egui::Modal::new(egui::Id::new("text_color_modal"));
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(340.0);
+            ui.label(
+                egui::RichText::new(Text::TextColorPickerTitle.tr(locale))
+                    .size(15.0)
+                    .strong(),
+            );
+            let target_label = match edit.target {
+                super::TextColorTarget::Foreground => Text::PropTextColor.tr(locale),
+                super::TextColorTarget::Background => Text::PropTextBackgroundColor.tr(locale),
+                super::TextColorTarget::Highlight => Text::PropTextHighlightColor.tr(locale),
+            };
+            ui.label(egui::RichText::new(target_label).color(theme::TEXT_MUTED));
+            ui.add_space(8.0);
+
+            let mut color = egui::Color32::from_rgba_unmultiplied(
+                edit.rgba[0],
+                edit.rgba[1],
+                edit.rgba[2],
+                edit.rgba[3],
+            );
+            if egui::color_picker::color_picker_color32(
+                ui,
+                &mut color,
+                egui::color_picker::Alpha::OnlyBlend,
+            ) {
+                edit.rgba = color.to_srgba_unmultiplied();
+                edit.manual_input = super::format_color_hex(edit.rgba);
+                edit.manual_invalid = false;
+            }
+
+            ui.add_space(8.0);
+            ui.label(Text::TextColorPickerPresets.tr(locale));
+            for row in COLOR_PRESETS.chunks(8) {
+                ui.horizontal(|ui| {
+                    for &rgba in row {
+                        let preset = egui::Color32::from_rgba_unmultiplied(
+                            rgba[0], rgba[1], rgba[2], rgba[3],
+                        );
+                        let selected = rgba == edit.rgba;
+                        let response = ui
+                            .add(
+                                egui::Button::new("")
+                                    .fill(preset)
+                                    .stroke(egui::Stroke::new(
+                                        if selected { 2.0 } else { 1.0 },
+                                        if selected {
+                                            theme::ACCENT
+                                        } else {
+                                            theme::BORDER
+                                        },
+                                    ))
+                                    .min_size(egui::vec2(30.0, 24.0)),
+                            )
+                            .on_hover_text(super::format_color_hex(rgba));
+                        if response.clicked() {
+                            edit.rgba = rgba;
+                            edit.manual_input = super::format_color_hex(rgba);
+                            edit.manual_invalid = false;
+                        }
+                    }
+                });
+            }
+
+            ui.add_space(8.0);
+            ui.label(Text::TextColorPickerManual.tr(locale));
+            let manual_response = ui.add(
+                egui::TextEdit::singleline(&mut edit.manual_input)
+                    .desired_width(f32::INFINITY)
+                    .hint_text(Text::TextColorPickerManualHint.tr(locale)),
+            );
+            let use_manual = ui
+                .button(Text::TextColorPickerUseValue.tr(locale))
+                .clicked()
+                || (manual_response.lost_focus()
+                    && ui.input(|input| input.key_pressed(egui::Key::Enter)));
+            if use_manual {
+                match parse_color_value(&edit.manual_input) {
+                    Ok(rgba) => {
+                        edit.rgba = rgba;
+                        edit.manual_input = super::format_color_hex(rgba);
+                        edit.manual_invalid = false;
+                    }
+                    Err(()) => edit.manual_invalid = true,
+                }
+            }
+            if edit.manual_invalid {
+                ui.label(
+                    egui::RichText::new(Text::TextColorPickerInvalid.tr(locale))
+                        .color(theme::ERROR),
+                );
+            }
+
+            if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.button(Text::TextColorPickerApply.tr(locale)).clicked() {
+                    match parse_color_value(&edit.manual_input) {
+                        Ok(rgba) => {
+                            edit.rgba = rgba;
+                            edit.manual_input = super::format_color_hex(rgba);
+                            edit.manual_invalid = false;
+                            confirmed = true;
+                        }
+                        Err(()) => edit.manual_invalid = true,
+                    }
+                }
+                if ui.button(Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+
+        if response.should_close() || cancelled {
+            return;
+        }
+        self.text_color_edit = Some(edit);
+        if confirmed {
+            self.confirm_text_color_edit();
+        }
     }
 
     /// Shows the preferences modal when `prefs_open` is set, overlaying whatever screen is

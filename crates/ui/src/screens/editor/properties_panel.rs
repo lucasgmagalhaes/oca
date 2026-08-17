@@ -1030,7 +1030,7 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
     let text_resp = ui.add(
         egui::TextEdit::singleline(&mut tc.text)
             .desired_width(f32::INFINITY)
-            .hint_text("Hello World"),
+            .hint_text(Text::TextContentHint.tr(locale)),
     );
     if text_resp.changed() {
         changed = true;
@@ -1104,22 +1104,19 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
         changed = true;
     }
 
-    // Color picker (RGBA — alpha controlled via the color picker's alpha channel).
+    // Color modal: wheel, presets, and manual HEX/RGB input are shared by all text colors.
     ui.horizontal(|ui| {
         ui.label(
             RichText::new(Text::PropTextColor.tr(locale))
                 .size(12.0)
                 .color(theme::TEXT_MUTED),
         );
-        let mut color = egui::Color32::from_rgba_unmultiplied(
-            tc.color_rgba[0],
-            tc.color_rgba[1],
-            tc.color_rgba[2],
-            tc.color_rgba[3],
-        );
-        if ui.color_edit_button_srgba(&mut color).changed() {
-            tc.color_rgba = color.to_srgba_unmultiplied();
-            changed = true;
+        if text_color_button(ui, tc.color_rgba).clicked() {
+            app.begin_text_color_edit(
+                tc_id,
+                crate::app::TextColorTarget::Foreground,
+                tc.color_rgba,
+            );
         }
     });
 
@@ -1141,15 +1138,12 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
                     .size(12.0)
                     .color(theme::TEXT_MUTED),
             );
-            let mut color = egui::Color32::from_rgba_unmultiplied(
-                tc.background_rgba[0],
-                tc.background_rgba[1],
-                tc.background_rgba[2],
-                tc.background_rgba[3],
-            );
-            if ui.color_edit_button_srgba(&mut color).changed() {
-                tc.background_rgba = color.to_srgba_unmultiplied();
-                changed = true;
+            if text_color_button(ui, tc.background_rgba).clicked() {
+                app.begin_text_color_edit(
+                    tc_id,
+                    crate::app::TextColorTarget::Background,
+                    tc.background_rgba,
+                );
             }
         });
         ui.label(
@@ -1190,15 +1184,12 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
             {
                 changed = true;
             }
-            let mut highlight_color = egui::Color32::from_rgba_unmultiplied(
-                tc.highlight_color_rgba[0],
-                tc.highlight_color_rgba[1],
-                tc.highlight_color_rgba[2],
-                tc.highlight_color_rgba[3],
-            );
-            if ui.color_edit_button_srgba(&mut highlight_color).changed() {
-                tc.highlight_color_rgba = highlight_color.to_srgba_unmultiplied();
-                changed = true;
+            if text_color_button(ui, tc.highlight_color_rgba).clicked() {
+                app.begin_text_color_edit(
+                    tc_id,
+                    crate::app::TextColorTarget::Highlight,
+                    tc.highlight_color_rgba,
+                );
             }
         });
     }
@@ -1287,6 +1278,24 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
         }
         app.invalidate_preview_rendering();
     }
+}
+
+fn text_color_button(ui: &mut egui::Ui, rgba: [u8; 4]) -> egui::Response {
+    let color = egui::Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]);
+    let luminance =
+        0.299 * f32::from(rgba[0]) + 0.587 * f32::from(rgba[1]) + 0.114 * f32::from(rgba[2]);
+    let label_color = if rgba[3] >= 128 && luminance > 160.0 {
+        egui::Color32::BLACK
+    } else {
+        egui::Color32::WHITE
+    };
+    ui.add(
+        egui::Button::new(
+            egui::RichText::new(crate::app::format_color_hex(rgba)).color(label_color),
+        )
+        .fill(color)
+        .min_size(egui::vec2(112.0, 22.0)),
+    )
 }
 
 fn text_font_family_label(

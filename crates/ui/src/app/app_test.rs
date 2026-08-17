@@ -257,6 +257,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         cancel_model_download: None,
         selected_clip_id: None,
         selected_text_clip_id: None,
+        text_color_edit: None,
         selected_shape_clip_id: None,
         drawing_shape_points: None,
         timeline_px_per_sec: 4.0,
@@ -4099,6 +4100,85 @@ fn add_shape_track_appends_an_empty_shape_track() {
     assert_eq!(tracks.len(), 1);
     assert_eq!(tracks[0].kind, TrackKind::Shape);
     assert!(tracks[0].shape_clips.is_empty());
+}
+
+#[test]
+fn add_text_clip_auto_creates_a_text_track_at_the_playhead_and_selects_it() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.active_project_mut().timeline_mut().playhead_secs = 12.5;
+    app.selected_clip_id = Some(90);
+    app.selected_shape_clip_id = Some(91);
+
+    app.add_text_clip();
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].kind, TrackKind::Text);
+    assert_eq!(tracks[0].text_clips.len(), 1);
+    let clip = &tracks[0].text_clips[0];
+    assert_eq!(clip.start_secs, 12.5);
+    assert_eq!(clip.duration_secs, 3.0);
+    assert_eq!(clip.text, "Texto");
+    assert_eq!(app.selected_text_clip_id, Some(clip.id));
+    assert_eq!(app.selected_clip_id, None);
+    assert_eq!(app.selected_shape_clip_id, None);
+}
+
+#[test]
+fn add_text_clip_reuses_the_existing_text_track() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.add_text_clip();
+    app.add_text_clip();
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].text_clips.len(), 2);
+    assert_ne!(tracks[0].text_clips[0].id, tracks[0].text_clips[1].id);
+}
+
+#[test]
+fn text_color_edit_commits_each_supported_target_only_on_confirmation() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_text_clip();
+    let clip_id = app.selected_text_clip_id.unwrap();
+
+    app.begin_text_color_edit(clip_id, TextColorTarget::Foreground, [255, 255, 255, 255]);
+    app.text_color_edit.as_mut().unwrap().rgba = [1, 2, 3, 4];
+    assert_eq!(
+        app.active_project().timeline().tracks[0].text_clips[0].color_rgba,
+        [255, 255, 255, 255]
+    );
+    assert!(app.confirm_text_color_edit());
+
+    for (target, rgba) in [
+        (TextColorTarget::Background, [5, 6, 7, 8]),
+        (TextColorTarget::Highlight, [9, 10, 11, 12]),
+    ] {
+        app.begin_text_color_edit(clip_id, target, [255, 255, 255, 255]);
+        app.text_color_edit.as_mut().unwrap().rgba = rgba;
+        assert!(app.confirm_text_color_edit());
+    }
+
+    let clip = &app.active_project().timeline().tracks[0].text_clips[0];
+    assert_eq!(clip.color_rgba, [1, 2, 3, 4]);
+    assert_eq!(clip.background_rgba, [5, 6, 7, 8]);
+    assert_eq!(clip.highlight_color_rgba, [9, 10, 11, 12]);
+}
+
+#[test]
+fn switching_sequences_discards_an_open_text_color_edit() {
+    let mut project = test_project(1, Vec::new());
+    project.new_sequence("Sequence 2".to_string());
+    project.active_sequence = 0;
+    let mut app = test_app(vec![project], Vec::new());
+    app.add_text_clip();
+    let clip_id = app.selected_text_clip_id.unwrap();
+    app.begin_text_color_edit(clip_id, TextColorTarget::Foreground, [255, 255, 255, 255]);
+
+    app.select_sequence(1);
+
+    assert_eq!(app.text_color_edit, None);
 }
 
 #[test]

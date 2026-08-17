@@ -38,6 +38,7 @@ use crate::theme;
 mod auto_reframe;
 mod background_removal;
 mod clip_props;
+mod color;
 pub mod export;
 mod import;
 mod layer_templates;
@@ -52,6 +53,8 @@ mod timeline_ops;
 mod transcribe;
 mod update_check;
 mod youtube_download;
+
+pub(crate) use color::{format_color_hex, TextColorEdit, TextColorTarget};
 
 /// Which of the app's five top-level views is currently showing. Drives both the central
 /// panel content and which nav-rail button is highlighted.
@@ -828,6 +831,9 @@ pub struct App {
     /// can be selected at a time. The properties panel shows text-clip controls when this is
     /// `Some`.
     pub selected_text_clip_id: Option<u64>,
+    /// Transactional state for the text color modal. The project is only mutated when the
+    /// user confirms, so closing or cancelling the modal leaves the original color untouched.
+    text_color_edit: Option<TextColorEdit>,
     /// The shape overlay clip currently selected on a shape track, if any. Same mutual-exclusion
     /// rule as `selected_text_clip_id`. The properties panel shows shape-clip controls when this
     /// is `Some`.
@@ -1094,6 +1100,7 @@ impl App {
             cancel_model_download: None,
             selected_clip_id: None,
             selected_text_clip_id: None,
+            text_color_edit: None,
             selected_shape_clip_id: None,
             drawing_shape_points: None,
             timeline_px_per_sec: 4.0,
@@ -1449,6 +1456,7 @@ impl App {
     fn reset_sequence_context(&mut self) {
         self.selected_clip_id = None;
         self.selected_text_clip_id = None;
+        self.text_color_edit = None;
         self.selected_shape_clip_id = None;
         self.multi_selected_clip_ids.clear();
         self.drawing_shape_points = None;
@@ -1725,6 +1733,7 @@ impl eframe::App for App {
         self.show_rename_project_modal(ui.ctx());
         self.show_rename_sequence_modal(ui.ctx());
         self.show_delete_sequence_modal(ui.ctx());
+        self.show_text_color_modal(ui.ctx());
         self.show_export_conflict_modal(ui.ctx());
         self.show_save_layer_template_modal(ui.ctx());
         self.show_layer_templates_menu(ui.ctx());

@@ -692,43 +692,38 @@ impl App {
     }
 
     /// Appends a new [`TextClip`] to the first text track in the active sequence, starting at
-    /// the current playhead position and lasting 3 seconds. Selects it immediately so the
-    /// properties panel shows its controls. A no-op if no text track exists yet.
+    /// the current playhead position and lasting 3 seconds. Auto-creates the track when this is
+    /// the first manually inserted text overlay and selects the new clip immediately.
     pub fn add_text_clip(&mut self) {
-        let playhead_secs = self.active_project().timeline().playhead_secs;
-        let track_id = self
-            .active_project()
-            .timeline()
-            .tracks
-            .iter()
-            .find(|t| t.kind == TrackKind::Text)
-            .map(|t| t.id);
-        let Some(track_id) = track_id else { return };
+        use crate::i18n::Text;
 
-        let clip_id = next_clip_id(self.active_project().timeline());
+        let playhead_secs = self.active_project().timeline().playhead_secs;
+        let default_text = Text::DefaultTextContent.tr(self.locale).to_string();
         let timeline = self.active_project_mut().timeline_mut();
-        if let Some(track) = timeline.tracks.iter_mut().find(|t| t.id == track_id) {
-            track.text_clips.push(TextClip {
-                id: clip_id,
-                start_secs: playhead_secs,
-                duration_secs: 3.0,
-                text: "Text".to_string(),
-                font_size: 48.0,
-                font_family: Default::default(),
-                font_style: Default::default(),
-                color_rgba: [255, 255, 255, 255],
-                background_rgba: [0, 0, 0, 0],
-                background_padding: 8.0,
-                background_corner_radius: 8.0,
-                pos_x: 0.1,
-                pos_y: 0.85,
-                words: Vec::new(),
-                highlight_enabled: false,
-                highlight_color_rgba: [255, 220, 0, 255],
-            });
-        }
+        let track_index = resolve_or_create_track(timeline, TrackKind::Text, None);
+        let clip_id = next_clip_id(timeline);
+        timeline.tracks[track_index].text_clips.push(TextClip {
+            id: clip_id,
+            start_secs: playhead_secs,
+            duration_secs: 3.0,
+            text: default_text,
+            font_size: 48.0,
+            font_family: Default::default(),
+            font_style: Default::default(),
+            color_rgba: [255, 255, 255, 255],
+            background_rgba: [0, 0, 0, 0],
+            background_padding: 8.0,
+            background_corner_radius: 8.0,
+            pos_x: 0.1,
+            pos_y: 0.85,
+            words: Vec::new(),
+            highlight_enabled: false,
+            highlight_color_rgba: [255, 220, 0, 255],
+        });
         self.selected_clip_id = None;
+        self.selected_shape_clip_id = None;
         self.selected_text_clip_id = Some(clip_id);
+        self.invalidate_preview_rendering();
     }
 
     /// Appends a new shape track (`TrackKind::Shape`) to the active sequence's timeline. The
@@ -758,10 +753,8 @@ impl App {
 
     /// Appends a new [`ShapeClip`] (a default rectangle, centered, half the canvas size) to the
     /// first shape track in the active sequence, starting at the current playhead position and
-    /// lasting 3 seconds. Auto-creates a shape track if none exists yet, unlike
-    /// [`App::add_text_clip`] which is a no-op without one — there's no separate "+ Shape track"
-    /// step the user is expected to take first. Selects the new clip immediately so the
-    /// properties panel shows its controls.
+    /// lasting 3 seconds. Auto-creates a shape track if none exists yet, matching manual text
+    /// insertion. Selects the new clip immediately so the properties panel shows its controls.
     pub fn add_shape_clip(&mut self) {
         let playhead_secs = self.active_project().timeline().playhead_secs;
         let timeline = self.active_project_mut().timeline_mut();

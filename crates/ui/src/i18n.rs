@@ -396,6 +396,8 @@ text_catalog! {
     AddTextTrack: pt_br = "T+ Texto", en = "T+ Text";
     DefaultTextTrackName: pt_br = "Texto", en = "Text";
     AddTextClip: pt_br = "+ Adicionar texto", en = "+ Add text";
+    DefaultTextContent: pt_br = "Texto", en = "Text";
+    TextContentHint: pt_br = "Digite seu texto", en = "Type your text";
     SelectedTextClip: pt_br = "Sobreposição de texto", en = "Text overlay";
     NoTextClipSelected: pt_br = "Nenhuma sobreposição selecionada", en = "No overlay selected";
     PropTextContent: pt_br = "Texto", en = "Text";
@@ -416,6 +418,14 @@ text_catalog! {
     PropTextBackgroundPadding: pt_br = "Espaçamento", en = "Padding";
     PropTextBackgroundRadius: pt_br = "Cantos arredondados", en = "Corner radius";
     PropTextHighlightEnabled: pt_br = "Destacar palavra falada", en = "Highlight spoken word";
+    PropTextHighlightColor: pt_br = "Cor do destaque", en = "Highlight color";
+    TextColorPickerTitle: pt_br = "Escolher cor", en = "Choose color";
+    TextColorPickerPresets: pt_br = "Cores predefinidas", en = "Preset colors";
+    TextColorPickerManual: pt_br = "Valor manual", en = "Manual value";
+    TextColorPickerManualHint: pt_br = "#RRGGBB, #RRGGBBAA, rgb(...) ou rgba(...)", en = "#RRGGBB, #RRGGBBAA, rgb(...), or rgba(...)";
+    TextColorPickerUseValue: pt_br = "Usar valor", en = "Use value";
+    TextColorPickerInvalid: pt_br = "Cor inválida. Use HEX, RGB ou RGBA.", en = "Invalid color. Use HEX, RGB, or RGBA.";
+    TextColorPickerApply: pt_br = "Aplicar", en = "Apply";
     PropTextPosX: pt_br = "Posição X", en = "Position X";
     PropTextPosY: pt_br = "Posição Y", en = "Position Y";
     PropTextDuration: pt_br = "Duração (s)", en = "Duration (s)";
