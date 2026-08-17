@@ -13,11 +13,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! `fetch_latest_release` itself isn't tested here — it's a real network call against GitHub's
-//! API, the same "not gated behind an env var, just fails offline" posture as
-//! `model_download_test.rs`'s Whisper download tests. `is_newer` is pure and fully covered.
+//! Network access and executable replacement are deliberately excluded. The pure version and
+//! release-asset contract are covered here; the UI tests inject updater completion events rather
+//! than mutating the test runner's executable.
 
-use avcore::is_newer;
+use avcore::{
+    auto_update_supported, expected_update_asset_name, is_newer, release_supports_auto_update,
+    UpdatePackage,
+};
 
 #[test]
 fn a_newer_patch_version_is_newer() {
@@ -68,4 +71,68 @@ fn a_segment_with_no_leading_digits_at_all_reads_as_zero() {
 fn empty_strings_do_not_panic() {
     assert!(!is_newer("", ""));
     assert!(!is_newer("1.0.0", ""));
+}
+
+#[test]
+fn windows_target_uses_zip_release_asset() {
+    assert_eq!(
+        expected_update_asset_name("x86_64-pc-windows-msvc", UpdatePackage::NativeBinary),
+        Some("oca-x86_64-pc-windows-msvc.zip".to_string())
+    );
+}
+
+#[test]
+fn linux_target_uses_tar_gz_release_asset() {
+    assert_eq!(
+        expected_update_asset_name("x86_64-unknown-linux-gnu", UpdatePackage::NativeBinary),
+        Some("oca-x86_64-unknown-linux-gnu.tar.gz".to_string())
+    );
+}
+
+#[test]
+fn unsupported_target_has_no_automatic_update_asset() {
+    assert_eq!(
+        expected_update_asset_name("aarch64-apple-darwin", UpdatePackage::NativeBinary),
+        None
+    );
+}
+
+#[test]
+fn linux_appimage_uses_a_distinct_tar_gz_release_asset() {
+    assert_eq!(
+        expected_update_asset_name("x86_64-unknown-linux-gnu", UpdatePackage::LinuxAppImage),
+        Some("oca-x86_64-unknown-linux-gnu-appimage.tar.gz".to_string())
+    );
+    assert_eq!(
+        expected_update_asset_name("x86_64-pc-windows-msvc", UpdatePackage::LinuxAppImage),
+        None
+    );
+}
+
+#[test]
+fn runtime_support_matches_the_packaged_platform_contract() {
+    assert_eq!(
+        auto_update_supported(),
+        cfg!(any(target_os = "windows", target_os = "linux"))
+    );
+}
+
+#[test]
+fn auto_update_requires_an_exact_target_asset_name() {
+    let assets = [
+        "oca-x86_64-pc-windows-msvc.zip.sha256",
+        "oca-aarch64-pc-windows-msvc.zip",
+        "oca-x86_64-unknown-linux-gnu.tar.gz",
+    ];
+
+    assert!(!release_supports_auto_update(
+        assets,
+        "x86_64-pc-windows-msvc",
+        UpdatePackage::NativeBinary,
+    ));
+    assert!(release_supports_auto_update(
+        assets,
+        "x86_64-unknown-linux-gnu",
+        UpdatePackage::NativeBinary,
+    ));
 }

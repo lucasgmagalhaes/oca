@@ -95,7 +95,11 @@ pub use timeline::{
     TextFontStyle, Timeline, Track, TrackKind,
 };
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
-pub use update_check::{fetch_latest_release, is_newer, LatestRelease, UpdateCheckError};
+pub use update_check::{
+    apply_update, auto_update_supported, expected_update_asset_name, fetch_latest_release,
+    is_newer, release_supports_auto_update, restart_application, ApplyUpdateError,
+    ApplyUpdateOutcome, LatestRelease, UpdateCheckError, UpdatePackage,
+};
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};
 pub use youtube_download::{
     download_youtube, is_yt_dlp_available, Mp3Bitrate, Mp4Quality, YoutubeDownloadError,

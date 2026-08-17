@@ -47,6 +47,10 @@ image = { version = "0.25.10", default-features = false, features = ["png"] }
 # TLS backend, no OpenSSL/C toolchain. Verified against a real huggingface.co download before
 # depending on it (got a real 200 with the exact known Content-Length back).
 ureq = "3"
+# In-place GitHub Releases updater. Both archive formats are enabled because published Windows
+# builds use zip while Linux builds use tar.gz. The ureq + rustls path reuses the workspace's
+# pure-Rust HTTP/TLS stack instead of introducing OpenSSL or a second blocking HTTP client.
+self_update = { version = "0.44", default-features = false, features = ["ureq", "rustls", "archive-tar", "archive-zip", "compression-flate2", "compression-zip-deflate"] }
 # ONNX Runtime bindings for auto-reframe's face-detection model (see `auto_reframe`).
 # `download-binaries` fetches a prebuilt ONNX Runtime dynamic library at build time — same
 # "not bundled in the installer yet" gap the Whisper model has, see `request.md`'s Fase 8
