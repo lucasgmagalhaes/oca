@@ -492,3 +492,42 @@ fn a_flipped_clip_still_opens_and_decodes() {
     // (nothing here decodes/compares pixel content).
     assert_eq!((frame.width, frame.height), (320, 240));
 }
+
+#[test]
+fn a_gained_clip_opens_with_a_real_audio_sink_and_still_decodes_video() {
+    let mut c = clip();
+    c.gain_db = -6.0;
+
+    // Proves build_audio_filter_bin's volume element links into playbin's audio-filter and the
+    // pipeline still prerolls against a real (not fakesink) audio-sink — doesn't assert
+    // anything about the actual decoded audio samples' loudness.
+    let preview = Preview::open(&fixture("video.mp4"), Some(&c)).unwrap();
+    let frame = preview.current_frame().unwrap();
+    assert_eq!((frame.width, frame.height), (320, 240));
+    preview.play().unwrap();
+    preview.pause().unwrap();
+}
+
+#[test]
+fn open_composited_with_gain_composites_with_real_audio() {
+    let bg = fixture("video.mp4");
+    let overlay = fixture("video.mp4");
+    let mut bg_clip = clip();
+    bg_clip.gain_db = 3.0;
+    let overlay_clip = clip();
+
+    let preview = Preview::open_composited(
+        &bg,
+        Some(&bg_clip),
+        &[(overlay.as_path(), &overlay_clip)],
+        &[],
+        &[],
+    )
+    .unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("a frame should be available right after preroll");
+    assert_eq!((frame.width, frame.height), (320, 240));
+    preview.play().unwrap();
+    preview.pause().unwrap();
+}
