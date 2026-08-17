@@ -28,6 +28,16 @@ pub enum PreviewError {
     /// Failed wiring the per-clip effects filter bin together (linking elements or adding
     /// ghost pads).
     FilterBin(gst::glib::BoolError),
+    /// Failed wiring the multi-track compositor pipeline together (adding elements, linking a
+    /// branch's chain, or linking a branch into `compositor`).
+    Compositing(gst::glib::BoolError),
+    /// `compositor` refused to hand out a new `sink_%u` request pad.
+    RequestPad,
+    /// Failed linking a branch's last element into its `compositor` request pad.
+    PadLink(gst::PadLinkError),
+    /// [`Preview::open_composited`]'s background input has no video stream to size the canvas
+    /// from.
+    NoBackgroundVideo,
 }
 
 impl std::fmt::Display for PreviewError {
@@ -42,6 +52,19 @@ impl std::fmt::Display for PreviewError {
             PreviewError::Seek(e) => write!(f, "failed to seek: {e}"),
             PreviewError::Probe(e) => write!(f, "failed to probe for the effects filter bin: {e}"),
             PreviewError::FilterBin(e) => write!(f, "failed to build the effects filter bin: {e}"),
+            PreviewError::Compositing(e) => {
+                write!(f, "failed to build the compositor pipeline: {e}")
+            }
+            PreviewError::RequestPad => {
+                write!(f, "compositor refused to hand out a sink request pad")
+            }
+            PreviewError::PadLink(e) => write!(f, "failed to link into compositor: {e:?}"),
+            PreviewError::NoBackgroundVideo => {
+                write!(
+                    f,
+                    "background input has no video stream to size the canvas from"
+                )
+            }
         }
     }
 }
@@ -96,9 +119,16 @@ pub struct VideoFrame {
 // rotation/opacity below, position needs a compositing (`overlay`) stage that this single-clip
 // pipeline doesn't have at all; adding it would mean building out multi-track preview
 // compositing first, not just picking a GStreamer element.
+/// `include_opacity` is `false` for an overlay branch in [`Preview::open_composited`]'s
+/// pipeline — there, opacity keyframes drive `compositor`'s own per-pad `alpha` property
+/// instead (real alpha blending against whatever's under it), so baking a second, redundant
+/// uniform-alpha stage in here via the `alpha` element would just double-apply the same ramp.
+/// Every other caller (the single-clip [`Preview::open`] path, and a composited pipeline's
+/// background branch, which has nothing under it to blend against) keeps the old behavior.
 fn build_video_filter_bin(
     clip: &ClipInstance,
     resolution: Option<(u32, u32)>,
+    include_opacity: bool,
 ) -> Result<Option<gst::Element>, PreviewError> {
     let mut elements: Vec<gst::Element> = Vec::new();
 
@@ -193,7 +223,7 @@ fn build_video_filter_bin(
         elements.push(rotate);
     }
 
-    if clip.has_opacity_keyframes() {
+    if include_opacity && clip.has_opacity_keyframes() {
         // "alpha" (gst-plugins-good) sets a uniform per-buffer alpha on its output — the RGBA
         // path is already forced by the AppSink's fixed caps in Preview::open, and egui draws
         // ColorImage::from_rgba_unmultiplied with alpha blending, so a reduced alpha here is
@@ -415,12 +445,212 @@ fn build_video_filter_bin(
     Ok(Some(bin.upcast::<gst::Element>()))
 }
 
-/// A single media file loaded into a `playbin`-based GStreamer pipeline for preview playback.
-/// Owns the pipeline; dropping it tears the pipeline down (`State::Null`) so GStreamer releases
-/// any decoder/output resources.
+/// Builds the `alpha` element's chroma-key configuration for `clip` — `method=custom` against
+/// its own `chroma_key_color` rather than the fixed `green`/`blue` presets, so an arbitrary key
+/// color (not just a standard green/blue screen) works the same as export's avfilter `colorkey`
+/// stage does. `chroma_key_tolerance` (`0.0..=1.0`) maps onto `alpha`'s `black-sensitivity`/
+/// `white-sensitivity` (`0..=128`, default `100`) linearly — a judgment call, same as this
+/// module's other intensity-to-property scale factors, not a value derived from anything.
+fn build_chroma_key_element(clip: &ClipInstance) -> Result<gst::Element, PreviewError> {
+    let [r, g, b] = clip.chroma_key_color;
+    let sensitivity = (clip.chroma_key_tolerance.clamp(0.0, 1.0) * 128.0).round() as u32;
+    gst::ElementFactory::make("alpha")
+        .property_from_str("method", "custom")
+        .property("target-r", r as u32)
+        .property("target-g", g as u32)
+        .property("target-b", b as u32)
+        .property("black-sensitivity", sensitivity)
+        .property("white-sensitivity", sensitivity)
+        .build()
+        .map_err(PreviewError::CreateElement)
+}
+
+/// Links `decodebin`'s first video output pad to `target_sink` once it appears — `decodebin`/
+/// `uridecodebin` expose pads dynamically (`pad-added`, possibly more than one: video, audio,
+/// subtitle), so this can't be a static link at bin-build time like every other element pair in
+/// [`build_video_filter_bin`]. Ignores non-video pads (an audio pad with nothing downstream just
+/// sits unused — GStreamer doesn't require every source pad to be linked) and a second video pad
+/// if one somehow appears (multi-video-stream files aren't a case this preview handles).
+fn connect_decodebin_video_pad(decodebin: &gst::Element, target_sink: gst::Pad) {
+    decodebin.connect_pad_added(move |_dbin, src_pad| {
+        if target_sink.is_linked() {
+            return;
+        }
+        let is_video = src_pad
+            .current_caps()
+            .or_else(|| Some(src_pad.query_caps(None)))
+            .and_then(|caps| caps.structure(0).map(|s| s.name().starts_with("video/")))
+            .unwrap_or(false);
+        if !is_video {
+            return;
+        }
+        if let Err(e) = src_pad.link(&target_sink) {
+            tracing::warn!(error = ?e, "failed to link decodebin video pad into its branch chain");
+        }
+    });
+}
+
+/// One input (background or overlay) feeding [`Preview::open_composited`]'s `compositor`.
+struct CompositeBranch<'a> {
+    path: &'a Path,
+    clip: Option<&'a ClipInstance>,
+    resolution: Option<(u32, u32)>,
+    /// `false` for the background (track 0) branch — position/opacity keyframes only drive
+    /// `compositor`'s pad properties on an overlay branch, matching export's own
+    /// position/opacity-is-overlay-only convention (see `crate::keyframe` module docs).
+    is_overlay: bool,
+    zorder: u32,
+}
+
+/// Builds one branch of [`Preview::open_composited`]'s pipeline — `uridecodebin` (dynamically
+/// linked once its video pad appears) through this branch's own effects chain (layer-scale
+/// resize, [`build_video_filter_bin`]'s subset, chroma key) into a freshly requested
+/// `compositor` sink pad — and returns that branch's `uridecodebin` element (what
+/// [`Preview::seek_composited`] seeks independently, since each branch's source file has its
+/// own, unrelated time base — a single pipeline-wide seek would send every branch to the same
+/// absolute source time, which is only ever correct by coincidence when clips have different
+/// trim points).
+fn build_composite_branch(
+    pipeline: &gst::Pipeline,
+    compositor: &gst::Element,
+    canvas: (u32, u32),
+    branch: CompositeBranch,
+) -> Result<gst::Element, PreviewError> {
+    let uri = gst::glib::filename_to_uri(branch.path, None).map_err(PreviewError::UriConversion)?;
+    let decodebin = gst::ElementFactory::make("uridecodebin")
+        .property("uri", uri.as_str())
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+
+    let mut chain: Vec<gst::Element> = vec![gst::ElementFactory::make("videoconvert")
+        .build()
+        .map_err(PreviewError::CreateElement)?];
+
+    if branch.is_overlay {
+        if let (Some(clip), Some((width, height))) = (branch.clip, branch.resolution) {
+            if clip.has_layer_scale() {
+                // Mirrors export's own layer_scale handling (resolve_clip_filters): the
+                // overlay's own decoded frame is resized before compositing, not the
+                // compositor's placement — `compositor` pad width/height are left at their
+                // default (-1, meaning "use the input's own negotiated size").
+                let target_w = ((width as f32 * clip.layer_scale_x).round().max(2.0)) as i32;
+                let target_h = ((height as f32 * clip.layer_scale_y).round().max(2.0)) as i32;
+                chain.push(
+                    gst::ElementFactory::make("videoscale")
+                        .build()
+                        .map_err(PreviewError::CreateElement)?,
+                );
+                chain.push(
+                    gst::ElementFactory::make("capsfilter")
+                        .property(
+                            "caps",
+                            gst::Caps::builder("video/x-raw")
+                                .field("width", target_w)
+                                .field("height", target_h)
+                                .build(),
+                        )
+                        .build()
+                        .map_err(PreviewError::CreateElement)?,
+                );
+            }
+        }
+    }
+
+    if let Some(clip) = branch.clip {
+        if let Some(filter_bin) =
+            build_video_filter_bin(clip, branch.resolution, !branch.is_overlay)?
+        {
+            chain.push(filter_bin);
+        }
+        if branch.is_overlay && clip.chroma_key_enabled {
+            chain.push(build_chroma_key_element(clip)?);
+        }
+    }
+
+    chain.push(
+        gst::ElementFactory::make("videoconvert")
+            .build()
+            .map_err(PreviewError::CreateElement)?,
+    );
+
+    pipeline
+        .add(&decodebin)
+        .map_err(PreviewError::Compositing)?;
+    pipeline
+        .add_many(&chain)
+        .map_err(PreviewError::Compositing)?;
+    gst::Element::link_many(&chain).map_err(PreviewError::Compositing)?;
+
+    let chain_sink = chain
+        .first()
+        .and_then(|e| e.static_pad("sink"))
+        .expect("chain always starts with a videoconvert, which always has a sink pad");
+    connect_decodebin_video_pad(&decodebin, chain_sink);
+
+    let sink_pad = compositor
+        .request_pad_simple("sink_%u")
+        .ok_or(PreviewError::RequestPad)?;
+    sink_pad.set_property("zorder", branch.zorder);
+    sink_pad.set_property("xpos", 0i32);
+    sink_pad.set_property("ypos", 0i32);
+    sink_pad.set_property("alpha", 1.0f64);
+
+    if branch.is_overlay {
+        if let Some(clip) = branch.clip {
+            let position_keyframes = clip.position_keyframes.clone();
+            let opacity_keyframes = clip.opacity_keyframes.clone();
+            let source_in_secs = clip.source_in_secs;
+            let clip_duration_secs = (clip.source_out_secs - clip.source_in_secs).max(1e-6);
+            let (canvas_w, canvas_h) = canvas;
+            let pad_for_probe = sink_pad.clone();
+
+            let chain_src = chain
+                .last()
+                .and_then(|e| e.static_pad("src"))
+                .expect("chain always ends with a videoconvert, which always has a src pad");
+            chain_src.add_probe(gst::PadProbeType::BUFFER, move |_pad, info| {
+                let secs = info
+                    .buffer()
+                    .and_then(|b| b.pts())
+                    .map(|t| t.seconds_f64())
+                    .unwrap_or(source_in_secs);
+                let frac = ((secs - source_in_secs) / clip_duration_secs).clamp(0.0, 1.0) as f32;
+                let pos = crate::keyframe::evaluate_keyframes(
+                    &position_keyframes,
+                    frac,
+                    crate::keyframe::Position { x: 0.0, y: 0.0 },
+                );
+                let alpha = crate::keyframe::evaluate_keyframes(&opacity_keyframes, frac, 1.0)
+                    .clamp(0.0, 1.0);
+                pad_for_probe.set_property("xpos", (pos.x * canvas_w as f32).round() as i32);
+                pad_for_probe.set_property("ypos", (pos.y * canvas_h as f32).round() as i32);
+                pad_for_probe.set_property("alpha", alpha as f64);
+                gst::PadProbeReturn::Ok
+            });
+        }
+    }
+
+    let chain_out = chain
+        .last()
+        .and_then(|e| e.static_pad("src"))
+        .expect("chain always ends with a videoconvert, which always has a src pad");
+    chain_out.link(&sink_pad).map_err(PreviewError::PadLink)?;
+
+    Ok(decodebin)
+}
+
+/// A media pipeline loaded for preview playback — either a single file via `playbin`
+/// ([`Self::open`]) or a multi-track `compositor` pipeline ([`Self::open_composited`]). Owns
+/// the pipeline; dropping it tears the pipeline down (`State::Null`) so GStreamer releases any
+/// decoder/output resources.
 pub struct Preview {
     pipeline: gst::Element,
     video_sink: gst_app::AppSink,
+    /// Each branch's own `uridecodebin`, in the same order [`Self::open_composited`]'s
+    /// `overlays` were given (background first) — what [`Self::seek_composited`] seeks
+    /// independently. Empty for a [`Self::open`]-opened single-clip pipeline, which uses the
+    /// plain [`Self::seek`]/[`Self::seek_with_rate`] instead.
+    branches: Vec<gst::Element>,
 }
 
 impl Preview {
@@ -447,7 +677,7 @@ impl Preview {
             let resolution = avbridge::probe(path)
                 .map_err(PreviewError::Probe)?
                 .resolution;
-            if let Some(filter_bin) = build_video_filter_bin(clip, resolution)? {
+            if let Some(filter_bin) = build_video_filter_bin(clip, resolution, true)? {
                 pipeline.set_property("video-filter", &filter_bin);
             }
         }
@@ -486,7 +716,148 @@ impl Preview {
         Ok(Self {
             pipeline,
             video_sink,
+            branches: Vec::new(),
         })
+    }
+
+    /// Opens a multi-track composited pipeline: `background` (track 0, `is_overlay: false`)
+    /// underneath every entry in `overlays` (in the given order — later entries draw on top,
+    /// matching [`crate::render::resolve_timeline_segments_multi`]'s "track index = z-order"
+    /// convention), mixed live via `compositor` instead of `playbin`'s single-source decode.
+    /// Wires up the subset of overlay-only effects export already gates the same way (see
+    /// `crate::keyframe` module docs): position/opacity keyframes drive `compositor`'s own
+    /// per-pad `xpos`/`ypos`/`alpha`, layer scale resizes the branch's decoded frame before
+    /// compositing, and chroma key removes a background color before the branch reaches the
+    /// mixer — all recomputed per buffer off the branch's own PTS, same pad-probe technique
+    /// [`build_video_filter_bin`]'s scale/rotation keyframes already use.
+    ///
+    /// Each branch's `uridecodebin` seeks independently ([`Self::seek_composited`]) rather than
+    /// through a single pipeline-wide seek — the branches are different source files with
+    /// unrelated time bases (different trim points), so one absolute seek position wouldn't be
+    /// simultaneously correct for all of them. Once each branch's own starting offset is set,
+    /// `Playing` advances every branch together at the same rate off the pipeline's one shared
+    /// clock — no further per-branch bookkeeping needed during playback itself.
+    ///
+    /// `background`'s resolution sizes the canvas every overlay's layer-scale/position math is
+    /// expressed in pixels against — [`PreviewError::NoBackgroundVideo`] if it can't be probed.
+    /// Known gap: every branch plays at a uniform rate `1.0` — `ClipInstance::speed_factor`
+    /// isn't honored per-branch here yet, unlike the single-clip [`Self::seek_with_rate`] path.
+    pub fn open_composited(
+        background_path: &Path,
+        background_clip: Option<&ClipInstance>,
+        overlays: &[(&Path, &ClipInstance)],
+    ) -> Result<Self, PreviewError> {
+        gst::init().map_err(PreviewError::Init)?;
+
+        let canvas = avbridge::probe(background_path)
+            .map_err(PreviewError::Probe)?
+            .resolution
+            .ok_or(PreviewError::NoBackgroundVideo)?;
+
+        let pipeline = gst::Pipeline::new();
+
+        let compositor = gst::ElementFactory::make("compositor")
+            .build()
+            .map_err(PreviewError::CreateElement)?;
+        let out_convert = gst::ElementFactory::make("videoconvert")
+            .build()
+            .map_err(PreviewError::CreateElement)?;
+        let out_caps = gst::ElementFactory::make("capsfilter")
+            .property(
+                "caps",
+                gst::Caps::builder("video/x-raw")
+                    .field("format", "RGBA")
+                    .build(),
+            )
+            .build()
+            .map_err(PreviewError::CreateElement)?;
+        pipeline
+            .add_many([&compositor, &out_convert, &out_caps])
+            .map_err(PreviewError::Compositing)?;
+        gst::Element::link_many([&compositor, &out_convert, &out_caps])
+            .map_err(PreviewError::Compositing)?;
+
+        let video_caps = gst::Caps::builder("video/x-raw")
+            .field("format", "RGBA")
+            .build();
+        let video_sink = gst_app::AppSink::builder()
+            .caps(&video_caps)
+            .sync(false)
+            .max_buffers(1)
+            .drop(true)
+            .build();
+        pipeline
+            .add(&video_sink)
+            .map_err(PreviewError::Compositing)?;
+        out_caps
+            .link(&video_sink)
+            .map_err(PreviewError::Compositing)?;
+
+        let mut branches = vec![build_composite_branch(
+            &pipeline,
+            &compositor,
+            canvas,
+            CompositeBranch {
+                path: background_path,
+                clip: background_clip,
+                resolution: Some(canvas),
+                is_overlay: false,
+                zorder: 0,
+            },
+        )?];
+        for (i, (path, clip)) in overlays.iter().enumerate() {
+            let resolution = avbridge::probe(path)
+                .map_err(PreviewError::Probe)?
+                .resolution;
+            branches.push(build_composite_branch(
+                &pipeline,
+                &compositor,
+                canvas,
+                CompositeBranch {
+                    path,
+                    clip: Some(clip),
+                    resolution,
+                    is_overlay: true,
+                    zorder: (i + 1) as u32,
+                },
+            )?);
+        }
+
+        let pipeline = pipeline.upcast::<gst::Element>();
+        pipeline
+            .set_state(gst::State::Paused)
+            .map_err(PreviewError::StateChange)?;
+        let (result, _current, _pending) = pipeline.state(gst::ClockTime::from_seconds(5));
+        result.map_err(PreviewError::StateChange)?;
+
+        Ok(Self {
+            pipeline,
+            video_sink,
+            branches,
+        })
+    }
+
+    /// Seeks a [`Self::open_composited`] pipeline's branches independently — `offsets[i]` is
+    /// seconds within branch `i`'s own source file (background first, then `overlays` in the
+    /// order [`Self::open_composited`] was given), not a shared timeline position. A no-op for
+    /// any branch beyond `offsets`' length; extra offsets past [`Self::branches`]' length are
+    /// ignored. Returns the first branch's seek error, if any, after attempting every branch
+    /// (partial application is preferable to leaving some branches on their old offset with no
+    /// indication which).
+    pub fn seek_composited(&self, offsets: &[f64]) -> Result<(), PreviewError> {
+        let mut first_err = None;
+        for (branch, &offset) in self.branches.iter().zip(offsets) {
+            if let Err(e) = branch.seek_simple(
+                gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+                gst::ClockTime::from_seconds_f64(offset.max(0.0)),
+            ) {
+                first_err.get_or_insert(PreviewError::Seek(e));
+            }
+        }
+        match first_err {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
     }
 
     pub fn play(&self) -> Result<(), PreviewError> {
