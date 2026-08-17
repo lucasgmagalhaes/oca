@@ -140,8 +140,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1786997493.670033,
-    "ast_hash": "73e7399aa6b9bbd331836b21649638fd",
+    "mtime": 1786998396.3585958,
+    "ast_hash": "c06bd9cc6762985f1cd424ba67d9b894",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
@@ -205,8 +205,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786997445.6078553,
-    "ast_hash": "4b87dbf956ec3b07618c86e651fae104",
+    "mtime": 1786998474.358465,
+    "ast_hash": "68ede5c63ee6ffbad7d0ba7713c791f7",
     "semantic_hash": ""
   },
   "README.md": {
@@ -350,8 +350,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1786992554.6724768,
-    "ast_hash": "1c5d3c14856560845bbd11940803a3ae",
+    "mtime": 1786998474.3580384,
+    "ast_hash": "b37b6d0fdf8b3ec62495166a28ea4c45",
     "semantic_hash": ""
   },
   "crates/ui/src/components/combo.rs": {
@@ -525,13 +525,13 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/import.rs": {
-    "mtime": 1786985605.2211506,
-    "ast_hash": "1dfd8a2ec49a3a35f1db295003f11100",
+    "mtime": 1786998414.66693,
+    "ast_hash": "ab01da8456c1e338604d10554ba5dfb3",
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1786993710.580686,
-    "ast_hash": "870811abcf45568b511962f5cc05b85b",
+    "mtime": 1786998283.9836574,
+    "ast_hash": "81017b0d9a90701b92aeecb4e2c39a10",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
@@ -570,8 +570,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel.rs": {
-    "mtime": 1786985605.266485,
-    "ast_hash": "8dd8c9b404833933d9c7cb8b0e1b29ba",
+    "mtime": 1786998688.450066,
+    "ast_hash": "51ec18e360a15f3ab1797452b80fad46",
     "semantic_hash": ""
   },
   ".github/FFMPEG_UPDATE.md": {
@@ -867,6 +867,11 @@
   "crates/core/tests/fixtures/video_silent.mp4": {
     "mtime": 1786997641.6213295,
     "ast_hash": "e81ae1ec649ee063727fec9b6497377c",
+    "semantic_hash": ""
+  },
+  "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs": {
+    "mtime": 1786998518.7233663,
+    "ast_hash": "86ac340b27bbde14d5ae3b4b8a69bb6f",
     "semantic_hash": ""
   }
 }
