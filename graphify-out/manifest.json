@@ -90,8 +90,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/timeline.rs": {
-    "mtime": 1786974665.7824895,
-    "ast_hash": "814d10822ee48d1ae7d815048de734fe",
+    "mtime": 1786977517.5709178,
+    "ast_hash": "498a5105fa2af5dfbd973b4606bdd2ac",
     "semantic_hash": ""
   },
   "crates/core/tests/gstreamer_link_test.rs": {
@@ -810,13 +810,13 @@
     "semantic_hash": ""
   },
   "crates/core/src/overlay_render.rs": {
-    "mtime": 1786973897.704373,
-    "ast_hash": "682477058a0d324d71604b321d5faaa1",
+    "mtime": 1786977517.5699036,
+    "ast_hash": "a5dfa87a30184a7d7c738d959d2f14c6",
     "semantic_hash": ""
   },
   "crates/core/src/overlay_render/overlay_render_test.rs": {
-    "mtime": 1786973756.9385738,
-    "ast_hash": "7af74d5930f29faa5c37cf29cf823cde",
+    "mtime": 1786977517.5699036,
+    "ast_hash": "40699477d87bb67d895e6dc6585aa163",
     "semantic_hash": ""
   }
 }
