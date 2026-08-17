@@ -790,7 +790,7 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
     );
 
     if app.drawing_shape_points.is_some() {
-        draw_custom_shape_surface(app, ui, canvas_rect);
+        draw_custom_shape_surface(app, ui, canvas_rect, &texture);
         return;
     }
 
@@ -914,14 +914,30 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
 /// Takes over `canvas_rect` entirely in place of [`layer_transform_preview`]'s usual layer
 /// drag/resize handling for the duration of the drawing; the two modes are mutually exclusive.
 ///
+/// Draws `texture` stretched to fill `canvas_rect` first (same "stretch to the target rect,
+/// don't preserve its own aspect separately" convention [`layer_transform_preview`]'s own image
+/// paint and `fullscreen_preview_overlay` already use) so there's an actual frame to trace a
+/// shape over, rather than the bare canvas outline this surface used to be limited to.
+///
 /// Each click on `canvas_rect` appends one point in canvas-fraction coordinates (the same
 /// space [`avcore::timeline::ShapeClip::center_x`]/`_y` use) via
 /// [`App::push_drawing_shape_point`]. Placed points are drawn as small filled dots connected by
 /// straight lines, plus a lighter closing segment back to the first point once there are
 /// enough to see the shape taking form. Enter finishes (a no-op below 3 points — the drawing
 /// stays active); Escape cancels outright.
-fn draw_custom_shape_surface(app: &mut App, ui: &mut egui::Ui, canvas_rect: egui::Rect) {
+fn draw_custom_shape_surface(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    canvas_rect: egui::Rect,
+    texture: &egui::TextureHandle,
+) {
     let locale = app.locale;
+    ui.painter().image(
+        texture.id(),
+        canvas_rect,
+        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
     let to_screen = |p: (f32, f32)| {
         canvas_rect.min + egui::vec2(p.0 * canvas_rect.width(), p.1 * canvas_rect.height())
     };

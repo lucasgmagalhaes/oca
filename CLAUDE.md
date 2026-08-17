@@ -393,12 +393,12 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   derives a bounding box across the clicked canvas-fraction points, centers/sizes the new
   `ShapeClip` on it, and re-expresses each point relative to that box (`(x-center)/width`) since
   `ShapeKind::Polygon` stores vertices in the shape's own local unit square, not absolute canvas
-  fractions — `rotation_deg` starts at `0.0`, same as a fresh preset. **Known limitation:**
-  drawing requires a loaded preview frame (`layer_transform_preview`'s existing precondition —
-  the toolbar button toasts `ShapeDrawNeedsPreview` instead of entering drawing mode otherwise);
-  the drawing surface is the canvas outline only, not a live composited image to trace over — the
-  drawing surface itself was never wired to the composited preview frame, even after shape
-  preview rendering (below) started existing. Every fixed preset is
+  fractions — `rotation_deg` starts at `0.0`, same as a fresh preset. Drawing requires a loaded
+  preview frame (`layer_transform_preview`'s existing precondition — the toolbar button toasts
+  `ShapeDrawNeedsPreview` instead of entering drawing mode otherwise); the drawing surface now
+  draws that live preview texture stretched across the canvas underneath the placed points
+  (`screens::editor::draw_custom_shape_surface`'s own `texture` parameter), so tracing happens
+  over the actual composited frame instead of a bare outline. Every fixed preset is
   placeable and editable too. `avcore::shape_render` builds a `geq` avfilter node per
   shape (rotation via a per-pixel coordinate rotation, ellipse via a quadratic test, every
   straight-edged shape via ray-casting point-in-polygon — correct for the arrow's concave
