@@ -371,6 +371,39 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   beyond that, same "implemented carefully, not run for real" caveat this file already carries
   for a few other network/hardware-dependent features.
 
+  **Python runtime for `ytbridge` (YouTube download) — build-time bundling done, installer-time
+  bundling not yet.** `crates/ytbridge` needs a Python 3 + `yt_dlp` to actually run. Instead of
+  requiring one already installed on every dev/build machine (the "matches whatever's on PATH"
+  fragility every other approach here would have), `crates/ytbridge/setup-python-runtime.ps1`
+  fetches a self-contained [`python-build-standalone`](https://github.com/astral-sh/python-build-standalone)
+  distribution (currently CPython 3.10.21, Windows x86_64 MSVC `install_only` build — no system
+  install, no registry entries) into `vendor/python-runtime/` (gitignored, one-time per clone)
+  and `pip install`s `yt_dlp` straight into it. `.cargo/config.toml`'s `PYO3_PYTHON` env var
+  points `ytbridge`'s own build at that exact `python.exe`, so it always links against a known,
+  pinned interpreter rather than the build machine's own. `crates/ytbridge/build.rs` then
+  copies `python310.dll`, `DLLs/` (compiled stdlib C-extension modules — `_socket`, `_ssl`,
+  etc.; missing these was the first real bug hit here, `import socket` failing with
+  `ModuleNotFoundError` since `yt_dlp` pulls it in transitively) and `Lib/` (stdlib +
+  `site-packages/yt_dlp`) next to `ytbridge.exe` on every `cargo build -p ytbridge` — so a
+  normal build already produces a fully self-contained, runnable binary, no separate Python
+  needed at all. `avcore::youtube_download::download_youtube` sets `PYTHONHOME` on the spawned
+  process to `ytbridge`'s own directory (not relying on CPython's own DLL-relative-path
+  auto-detection, unverified for an embedding host like this) so it finds that bundled runtime
+  specifically. **Confirmed working end-to-end** on this dev machine: ran the real
+  `cargo build`-produced `ytbridge.exe` with the system `PATH` stripped down to bare Windows
+  system directories (no Python anywhere reachable) — it initialized Python, imported `yt_dlp`,
+  and reached real network code (failed only on a deliberately-fake test URL, as expected).
+  **Not yet done:** actually packaging `vendor/python-runtime/` *inside* the Windows
+  installer/Linux AppImage themselves — there is no installer at all yet (see "Not started at
+  all" above), so this only fixes local dev/CI builds so far, not an end user's install. Linux
+  needs its own adaptation too (`build.rs`/the setup script are Windows-only for now —
+  `python-build-standalone`'s Linux layout differs enough — `libpythonX.Y.so` +
+  `lib-dynload/`, no `.dll`/`.pyd` — that this isn't just a path rename). Until packaged,
+  `App::youtube_download_error` surfaces a clear `YoutubeDownloadToolMissing`-style message
+  when `ytbridge` isn't found or crashes, so the feature degrades to "visibly unavailable"
+  rather than silently broken — or, before the earlier `ytbridge`-isolation fix, taking the
+  rest of the app down with it.
+
 - **Custom title bar (ad hoc, not from `request.md`).** `main.rs`'s `NativeOptions` now sets
   `.with_decorations(false)` — no OS window chrome. `screens::breadcrumb::show` (still the
   topmost `Panel::top`, now doubling as oca's own title bar) draws the window's drag-to-move
@@ -400,35 +433,23 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   Cancel button rather than closing immediately, since a video download can run far longer than
   TTS synthesis.
 
-  **`ytbridge` (new fourth workspace crate) is the thing that actually embeds Python and calls
-  yt-dlp's `YoutubeDL` library API directly** — `avcore::youtube_download` spawns it as a
-  subprocess rather than linking `pyo3` itself. First version linked `pyo3` straight into
-  `core` (transitively `ui.exe`): dynamically linked against `libpython`/`python3*.dll` at
-  **build time**, needing that same (or ABI-compatible) Python runtime present at **launch
-  time** — on a machine with no matching Python installed, `ui.exe` itself failed to *start*
-  (a missing shared-library load), not just this one feature. Moved to a standalone
-  `crates/ytbridge` binary (`pyo3`/`serde`/`serde_json` only, no dependency on `core`/`ui`) so
-  `ui.exe` never touches Python at all — confirmed via `cargo tree -p ui`/`-p core`: `pyo3`
-  appears only under `ytbridge`'s own tree. `avcore::youtube_download::download_youtube` spawns
-  `ytbridge` (located next to the running executable via `std::env::current_exe()`, same
-  directory a normal build already puts both binaries in — confirmed by a real `cargo build -p
-  ytbridge` landing `ytbridge.exe` next to the existing `ui.exe` in `target/debug/`), passing
-  `<mp4:HEIGHT|mp4:best|mp3:KBPS> <url> <dest_dir>` as three positional args; `ytbridge` prints
-  newline-delimited JSON progress/result events to stdout (`{"type":"progress","fraction":...}`
-  / `{"type":"done","path":...}` / `{"type":"error","message":...}`) rather than yt-dlp's own
-  human-readable text, so nothing has to scrape percentage strings. Cancellation is just
-  killing the child process — no `DownloadCancelled`-raising complexity, no assumption about
-  whether that exception propagates cleanly out of a `progress_hooks` callback (the previous
-  version's biggest unverified assumption is gone entirely, not just untested). If `ytbridge`
-  itself crashes outright (e.g. no compatible Python installed on this machine) that's now a
-  normal, catchable non-zero/abnormal child exit status — `YoutubeDownloadError::Failed` with
-  an explanatory message — not a crash of `ui.exe`. Progress-hook math and the
-  `info['requested_downloads'][0]['filepath']` final-path lookup (same field yt-dlp's own CLI
-  `--print after_move:filepath` resolves to) are otherwise unchanged from the first version.
-  **Fase 8's "motores embutidos no instalador" plan does not yet account for bundling a Python
-  runtime at all** — `ytbridge.exe` itself still needs one at runtime; this feature remains
-  unusable on a machine without Python + `pip install yt-dlp`, that packaging gap just no
-  longer takes the whole app down with it.
+  **`crates/ytbridge` (fourth workspace crate) is the thing that actually embeds Python and
+  calls yt-dlp's `YoutubeDL` library API directly** — `avcore::youtube_download` spawns it as a
+  subprocess (`pyo3`/`serde`/`serde_json` only; no dependency on `core`/`ui`, and `core`/`ui`
+  have none on `pyo3` — confirmed via `cargo tree`) rather than linking `pyo3` into `core`
+  itself, which would make `ui.exe` fail to *launch* on any machine without a matching Python
+  installed, not just this one feature (see Fase 8's "Python runtime for `ytbridge`" below).
+  `download_youtube` finds `ytbridge` next to the running executable
+  (`std::env::current_exe()` — a normal build already puts both binaries in the same
+  `target/<profile>/` dir) and runs it with `<mp4:HEIGHT|mp4:best|mp3:KBPS> <url> <dest_dir>`
+  as three positional args; `ytbridge` prints newline-delimited JSON events to stdout
+  (`{"type":"progress","fraction":...}` / `{"type":"done","path":...}` /
+  `{"type":"error","message":...}`) instead of yt-dlp's own human-readable progress text.
+  Cancellation is just killing the child process. A crash inside `ytbridge` (e.g. no
+  compatible Python found) surfaces as a normal, catchable abnormal exit status
+  (`YoutubeDownloadError::Failed`), not a crash of `ui.exe`. The final file path comes from
+  `info['requested_downloads'][0]['filepath']` — the same field yt-dlp's own CLI `--print
+  after_move:filepath` resolves to.
 
   **Verification caveat:** the `pyo3`/`yt_dlp` API usage (`Python::attach`,
   `PyCFunction::new_closure`, `PyDictMethods::set_item`, `PyAnyMethods::call`/`call_method`,
