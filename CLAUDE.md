@@ -33,9 +33,72 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   layer templates, auto-reframe, motion tracking.
 
   **Wired to preview:** scale/rotation/opacity keyframes, pixelize/shake/zoom/freeze_frame,
-  speed. **Not wired to preview:** transitions, vignette, chroma_key, mask_shape, gain_db,
-  glitch, deflicker, LUTs, stabilization, position keyframes (needs multi-track preview
-  compositing that doesn't exist yet — single-clip `playbin` pipeline has no `overlay` stage).
+  speed. **Not wired to preview:** transitions, vignette, mask_shape, gain_db, glitch,
+  deflicker, LUTs, stabilization.
+
+  **Multi-track preview compositing now exists** — position/opacity keyframes, layer scale,
+  and chroma key are wired to preview on an overlay track, closing the gap the paragraph above
+  used to describe as needing "multi-track preview compositing that doesn't exist yet".
+  `avcore::preview::Preview::open_composited` (`crates/core/src/preview.rs`) builds a raw
+  `gst::Pipeline` (not `playbin`) with a `compositor` element: a background branch
+  (`uridecodebin` -> [`build_video_filter_bin`]'s existing effects subset -> `compositor`
+  `sink_0`, `zorder=0`) underneath one branch per overlay clip covering the playhead
+  (`sink_1`, `sink_2`, ... in track order, matching
+  `render::resolve_timeline_segments_multi`'s "track index = z-order" convention), each
+  dynamically linked once `uridecodebin`'s video pad appears (`connect_decodebin_video_pad`).
+  An overlay branch's position/opacity keyframes are evaluated per buffer (same PTS-keyed pad-
+  probe technique `build_video_filter_bin`'s scale/rotation stages already use) and written
+  straight onto `compositor`'s own per-pad `xpos`/`ypos`/`alpha` properties instead of a
+  separate GStreamer filter element — real alpha blending against whatever's under it, unlike
+  the single-clip path's uniform `alpha` element (which has nothing to blend against). Layer
+  scale resizes the branch's own decoded frame before compositing (`videoscale` + `capsfilter`,
+  mirroring export's `resolve_clip_filters`) rather than touching the compositor pad's
+  width/height. Chroma key runs `alpha` with `method=custom` against the clip's own key color
+  (`build_chroma_key_element`) — an overlay-only stage, like export's.
+
+  **Per-branch seeking, not one pipeline-wide seek.** Each branch is a different source file
+  with its own trim points/time base, so a single absolute `Pipeline::seek` position can't be
+  simultaneously correct for all of them (unlike `playbin`'s single-source case, where it is).
+  `Preview::seek_composited(offsets: &[f64])` seeks each branch's own `uridecodebin` element
+  independently, `offsets[i]` being seconds within that branch's own source file. Once each
+  branch's own starting offset is set this way, `Playing` advances every branch together at the
+  same rate off the pipeline's one shared clock — no further per-frame bookkeeping needed
+  during playback itself (confirmed via `seek_composited_seeks_every_branch_without_error` and
+  manual reasoning about GStreamer's shared-clock model, not exercised against real multi-
+  second scrubbing here). **Known gap:** every branch plays at a uniform rate `1.0` regardless
+  of its own `speed_factor` — unlike the single-clip path's `seek_with_rate`, composited preview
+  doesn't honor per-branch speed yet.
+
+  `ui`'s `App::ensure_preview_loaded` (`crates/ui/src/app/preview.rs`) now resolves *every*
+  video track's clip at the playhead (`App::current_preview_overlay_clips`, track index 1+), not
+  just track 0 — opens the plain single-clip `Preview::open` when there are no overlay clips at
+  the playhead (byte-for-byte the old behavior, zero regression risk for the common single-track
+  case), or `Preview::open_composited` when there are. `App::seek_preview` mirrors the same
+  branch: the already-open-pipeline fast path re-derives every branch's offset
+  (`App::clip_seek_offset`, pulled out of the old single-clip-only inline math) and calls
+  `seek_composited` when the pipeline has overlay branches, falling back to updating just the
+  timeline playhead (letting `ensure_preview_loaded` reopen next frame) whenever the overlay
+  clip *set* at the target position doesn't exactly match what's currently open — reusing a
+  composited pipeline across a scrub that crosses an overlay clip's own boundary isn't handled
+  by the fast path, same conservative "reopen rather than get sync subtly wrong" choice already
+  used for the background clip boundary case.
+
+  **Confirmed working end-to-end, for real** — a rarer claim than most of this file's other
+  GStreamer-preview features carry, made possible by `crates/core/tests/preview_test.rs`
+  already exercising real `Preview::open` against a real fixture file with real GStreamer on
+  this dev machine (not just syntax-checked). Four new tests
+  (`open_composited_reports_a_canvas_sized_frame`,
+  `open_composited_with_animated_overlay_still_composites_without_error`,
+  `seek_composited_seeks_every_branch_without_error`,
+  `open_composited_errors_on_a_missing_background`) build a real two-branch `compositor`
+  pipeline (background + one overlay, both the same fixture file, the overlay carrying
+  position/opacity keyframes, `layer_scale`, and `chroma_key_enabled`) and pull a real decoded
+  RGBA frame from it — all pass. Confirms `compositor` and `alpha`'s `method=custom` are both
+  present in this machine's GStreamer install and that the dynamic-pad-linking/pad-probe wiring
+  doesn't crash or deadlock. **Not verified:** the actual visual correctness of composited
+  pixels (position/scale/chroma-key placement) — these tests prove the pipeline links and
+  prerolls, not that pixels land where intended; and real multi-second playback/scrub-across-
+  overlay-boundary behavior in the live UI, which needs a display this sandbox doesn't have.
 
   **Speed (`speed_factor`) now honored in preview, not just export.** Previously the
   timeline-to-source offset math in `ui::app::preview` (`ensure_preview_loaded`'s initial
