@@ -385,7 +385,8 @@ fn open_composited_with_text_and_shape_overlays_composites_without_error() {
         stroke_thickness_px: 0.0,
     };
 
-    let preview = Preview::open_composited(&bg, None, &[], &[&text_clip], &[&shape_clip]).unwrap();
+    let preview =
+        Preview::open_composited(&bg, None, &[], &[(&text_clip, 0.0)], &[&shape_clip]).unwrap();
     let frame = preview
         .current_frame()
         .expect("a frame should be available right after preroll");

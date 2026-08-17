@@ -83,15 +83,87 @@ fn sample_text(text: &str) -> TextClip {
 #[test]
 fn empty_text_produces_a_fully_transparent_buffer() {
     let clip = sample_text("");
-    let buf = render_text_clip_rgba(&clip, 200, 100);
+    let buf = render_text_clip_rgba(&clip, 200, 100, 0.0);
     assert!(buf.chunks_exact(4).all(|p| p[3] == 0));
 }
 
 #[test]
 fn non_empty_text_draws_at_least_one_opaque_pixel() {
     let clip = sample_text("A");
-    let buf = render_text_clip_rgba(&clip, 200, 100);
+    let buf = render_text_clip_rgba(&clip, 200, 100, 0.0);
     assert!(buf.chunks_exact(4).any(|p| p[3] > 0));
+}
+
+fn contains_pixel(buf: &[u8], rgba: [u8; 4]) -> bool {
+    buf.chunks_exact(4)
+        .any(|p| p[0] == rgba[0] && p[1] == rgba[1] && p[2] == rgba[2] && p[3] == rgba[3])
+}
+
+fn sample_text_with_words(text: &str, words: Vec<WordTiming>) -> TextClip {
+    let mut clip = sample_text(text);
+    clip.words = words;
+    clip.highlight_enabled = true;
+    clip
+}
+
+#[test]
+fn the_word_covering_local_time_is_drawn_in_the_highlight_color() {
+    let clip = sample_text_with_words(
+        "aa bb",
+        vec![
+            WordTiming {
+                text: "aa".to_string(),
+                start_secs: 0.0,
+                end_secs: 0.5,
+            },
+            WordTiming {
+                text: "bb".to_string(),
+                start_secs: 0.5,
+                end_secs: 1.0,
+            },
+        ],
+    );
+    // 0.7s falls within "bb"'s [0.5, 1.0) window.
+    let buf = render_text_clip_rgba(&clip, 300, 100, 0.7);
+    assert!(contains_pixel(&buf, clip.highlight_color_rgba));
+}
+
+#[test]
+fn a_local_time_covered_by_no_word_leaves_only_the_base_color() {
+    let clip = sample_text_with_words(
+        "aa bb",
+        vec![
+            WordTiming {
+                text: "aa".to_string(),
+                start_secs: 0.0,
+                end_secs: 0.5,
+            },
+            WordTiming {
+                text: "bb".to_string(),
+                start_secs: 0.5,
+                end_secs: 1.0,
+            },
+        ],
+    );
+    // Past every word's own end — no word is "current" here, so nothing should be highlighted.
+    let buf = render_text_clip_rgba(&clip, 300, 100, 5.0);
+    assert!(!contains_pixel(&buf, clip.highlight_color_rgba));
+    assert!(contains_pixel(&buf, clip.color_rgba));
+}
+
+#[test]
+fn highlight_disabled_never_draws_the_highlight_color_even_within_a_words_window() {
+    let mut clip = sample_text_with_words(
+        "aa bb",
+        vec![WordTiming {
+            text: "aa".to_string(),
+            start_secs: 0.0,
+            end_secs: 0.5,
+        }],
+    );
+    clip.highlight_enabled = false;
+    let buf = render_text_clip_rgba(&clip, 300, 100, 0.2);
+    assert!(!contains_pixel(&buf, clip.highlight_color_rgba));
 }
 
 /// The vertical extent (min/max y) covering every opaque pixel in an RGBA buffer — a one-line
@@ -116,9 +188,10 @@ fn long_text_wraps_onto_multiple_lines_once_narrower_than_the_canvas() {
     clip.pos_x = 0.0;
     clip.font_size = 20.0;
 
-    let (wide_min, wide_max) = opaque_y_extent(&render_text_clip_rgba(&clip, 800, 300), 800, 300);
+    let (wide_min, wide_max) =
+        opaque_y_extent(&render_text_clip_rgba(&clip, 800, 300, 0.0), 800, 300);
     let (narrow_min, narrow_max) =
-        opaque_y_extent(&render_text_clip_rgba(&clip, 100, 300), 100, 300);
+        opaque_y_extent(&render_text_clip_rgba(&clip, 100, 300, 0.0), 100, 300);
 
     // A canvas wide enough for the whole string renders on one line — under a generous single
     // line-height bound (comfortably more than the font size, well short of two stacked lines).
