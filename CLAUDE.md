@@ -623,18 +623,19 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   current Editor preview immediately when toggled. Release binary stripping is also done:
   `[profile.release]` has `strip = true` alongside `opt-level = 3`/`lto = true`.
 
-- **Fase 8 — barely started (auto-update check-and-notify only).** `avcore::update_check` —
+- **Fase 8 — started (About modal plus auto-update check-and-notify).** `avcore::update_check` —
   `fetch_latest_release` hits GitHub's `repos/lucasgmagalhaes/oca/releases/latest` API
   (`ureq::get` + manual `serde_json::from_str`, not `ureq`'s own `into_json` — that's gated
   behind a `json` feature this crate doesn't enable); `is_newer` does a pure, panic-free
   dotted-version comparison, fully unit tested. `ui`'s `App::spawn_update_check` runs this once
-  on startup on a background thread (silent on any failure — offline, rate-limited, no releases
-  published yet — this is a best-effort courtesy notice, never something that should alarm the
-  user), and `App::available_update` (surfaced via a small banner + GitHub link on the Home
-  screen) is only ever set when a real newer version is found. **Scoped down from
-  `request.md`'s full ask:** only the "consulta a última release... e avisa" half is done —
-  actually downloading and applying the update ("baixar e aplicar") isn't implemented; the
-  banner just links to the release's GitHub page for a manual download. **Not started at all:**
+  on startup on a background thread. `App::update_check_status` keeps checking/up-to-date/
+  failed/available distinct; only `Available` produces the Home banner, while the About modal
+  reports every state without claiming the app is current after a network failure. Ajustes'
+  footer opens that modal, which shows `CARGO_PKG_VERSION` as the installed version and links
+  either directly to the newer release or to the project's releases page. **Scoped down from
+  `request.md`'s full ask:** the "Sobre" and "consulta a última release... e avisa" halves are
+  done, but actually downloading and applying the update ("baixar e aplicar") isn't
+  implemented; links still lead to GitHub for a manual download. **Not started at all:**
   installers/packaging for Windows/Linux, bundled engines (FFmpeg/GStreamer/Whisper/TTS/ONNX
   Runtime), VAAPI GPU encode on Linux, configurable install location. **Verification caveat:**
   this dev environment's outbound network proxy blocks direct calls to `api.github.com`
