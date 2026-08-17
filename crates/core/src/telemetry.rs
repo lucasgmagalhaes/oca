@@ -21,15 +21,20 @@
 //! directory Fase 6's `tracing` file appender already writes to) and whether the user has
 //! opted out; this module only knows how to append one record given an already-resolved path.
 //!
-//! **Not yet covered:** CPU/RAM/GPU resource sampling from `request.md`'s full wishlist — no
-//! resource-sampling dependency (e.g. `sysinfo`) is wired in yet, only the event-shaped
-//! metrics below (import/export duration, preview frame time, error events).
+//! **CPU/RAM resource sampling** ([`ResourceUsage`][TelemetryEvent::ResourceUsage],
+//! [`sample_resource_usage`]) is now wired in via `sysinfo`. **GPU usage from `request.md`'s
+//! full wishlist is still not covered** — `sysinfo` has no cross-platform GPU reader; a
+//! vendor-specific one (NVML for NVIDIA, similar for AMD/Intel) is a materially bigger,
+//! hardware-dependent lift than this slice covers, same "hard wall, not just unattempted"
+//! posture this codebase already applies to the GPU encoder ladder and the preview-only
+//! GStreamer-element gaps documented in `CLAUDE.md`.
 
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use sysinfo::System;
 
 /// Above this size, [`record_event`] rotates the file to a `.1`-suffixed backup (replacing any
 /// previous one) before appending further — bounds total disk usage to roughly this size times
@@ -66,6 +71,16 @@ pub enum TelemetryEvent {
     /// `context` is a short machine-readable tag (e.g. `"import"`, `"export"`), not a full
     /// sentence, so records group cleanly if this file is ever aggregated across sessions.
     Error { context: String, message: String },
+    /// A periodic CPU/RAM sample, taken independently of any import/export/preview activity —
+    /// see [`sample_resource_usage`]. `cpu_percent` is the whole system's usage (all cores
+    /// averaged, `sysinfo`'s own convention), not just this process's, since `request.md`'s
+    /// wording ("uso de CPU/RAM... numa sessão de 2h") is about overall system load during a
+    /// session, not this process's isolated footprint.
+    ResourceUsage {
+        cpu_percent: f32,
+        ram_used_mb: u64,
+        ram_total_mb: u64,
+    },
 }
 
 #[derive(Debug)]
@@ -134,4 +149,42 @@ fn rotate_if_oversized(telemetry_path: &Path) {
     let mut backup_name = telemetry_path.as_os_str().to_os_string();
     backup_name.push(".1");
     let _ = std::fs::rename(telemetry_path, PathBuf::from(backup_name));
+}
+
+/// Wraps a `sysinfo::System`, kept alive across calls since CPU-usage percentages are a delta
+/// between two refreshes (`sysinfo`'s own model) rather than an instantaneous read — a fresh
+/// one-shot `System` would report `0.0` every single time. Call [`ResourceSampler::sample`]
+/// repeatedly (e.g. once per telemetry-sampling interval on a long-lived background thread)
+/// rather than constructing a new sampler each time.
+pub struct ResourceSampler {
+    sys: System,
+}
+
+impl ResourceSampler {
+    pub fn new() -> Self {
+        let mut sys = System::new();
+        sys.refresh_cpu_usage();
+        sys.refresh_memory();
+        Self { sys }
+    }
+
+    /// Refreshes and returns a [`TelemetryEvent::ResourceUsage`] sample. The very first call
+    /// right after [`ResourceSampler::new`] may read `0.0` CPU usage — `sysinfo` needs a real
+    /// elapsed interval between two refreshes to compute a delta — harmless for a periodic
+    /// sampler, since only the first sample in a session is ever affected.
+    pub fn sample(&mut self) -> TelemetryEvent {
+        self.sys.refresh_cpu_usage();
+        self.sys.refresh_memory();
+        TelemetryEvent::ResourceUsage {
+            cpu_percent: self.sys.global_cpu_usage(),
+            ram_used_mb: self.sys.used_memory() / (1024 * 1024),
+            ram_total_mb: self.sys.total_memory() / (1024 * 1024),
+        }
+    }
+}
+
+impl Default for ResourceSampler {
+    fn default() -> Self {
+        Self::new()
+    }
 }

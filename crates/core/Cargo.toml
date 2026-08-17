@@ -60,6 +60,11 @@ espeak-rs = "0.2"
 unicode-segmentation = "1"
 # Writes synthesized audio to a plain WAV file for text_to_speech's output.
 hound = "3"
+# CPU/RAM sampling for telemetry's `ResourceUsage` event (`request.md`'s "uso de CPU/RAM/GPU"
+# wishlist) — no GPU usage query here: unlike CPU/RAM, sysinfo has no cross-platform GPU
+# reader, and a vendor-specific one (NVML/etc.) is a bigger, hardware-dependent lift than this
+# slice covers. Default features only (no unneeded per-process listing).
+sysinfo = "0.33"
 
 [build-dependencies]
 # Not called directly by build.rs — listing it here forces Cargo to build espeak-rs-sys's own

@@ -85,7 +85,7 @@ pub use render::{
 pub use shape_render::{build_shape_filter_desc, point_in_polygon, ShapeRenderInput};
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
 pub use subtitles::export_srt;
-pub use telemetry::{record_event, TelemetryError, TelemetryEvent};
+pub use telemetry::{record_event, ResourceSampler, TelemetryError, TelemetryEvent};
 pub use text_to_speech::{
     load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
 };
