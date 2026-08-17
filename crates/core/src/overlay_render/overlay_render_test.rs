@@ -94,6 +94,50 @@ fn non_empty_text_draws_at_least_one_opaque_pixel() {
     assert!(buf.chunks_exact(4).any(|p| p[3] > 0));
 }
 
+/// The vertical extent (min/max y) covering every opaque pixel in an RGBA buffer — a one-line
+/// render stays within roughly one line height, a wrapped multi-line render spans much more.
+fn opaque_y_extent(buf: &[u8], width: u32, height: u32) -> (u32, u32) {
+    let mut min_y = height;
+    let mut max_y = 0;
+    for y in 0..height {
+        for x in 0..width {
+            if pixel(buf, width, x, y)[3] > 0 {
+                min_y = min_y.min(y);
+                max_y = max_y.max(y);
+            }
+        }
+    }
+    (min_y, max_y)
+}
+
+#[test]
+fn long_text_wraps_onto_multiple_lines_once_narrower_than_the_canvas() {
+    let mut clip = sample_text("wwww wwww wwww wwww");
+    clip.pos_x = 0.0;
+    clip.font_size = 20.0;
+
+    let (wide_min, wide_max) = opaque_y_extent(&render_text_clip_rgba(&clip, 800, 300), 800, 300);
+    let (narrow_min, narrow_max) =
+        opaque_y_extent(&render_text_clip_rgba(&clip, 100, 300), 100, 300);
+
+    // A canvas wide enough for the whole string renders on one line — under a generous single
+    // line-height bound (comfortably more than the font size, well short of two stacked lines).
+    assert!(
+        wide_max - wide_min < clip.font_size as u32 * 3 / 2,
+        "expected a single line on a wide canvas, got a {}px vertical span",
+        wide_max - wide_min
+    );
+    // The same text on a canvas too narrow for one word per line wraps across multiple lines,
+    // spanning noticeably more vertical space than the unwrapped render above.
+    assert!(
+        narrow_max - narrow_min > wide_max - wide_min,
+        "expected wrapping on a narrow canvas to span more vertical space than the unwrapped \
+         render ({}px vs {}px)",
+        narrow_max - narrow_min,
+        wide_max - wide_min
+    );
+}
+
 fn gray_pixel(buf: &[u8], width: u32, x: u32, y: u32) -> u8 {
     buf[(y * width + x) as usize]
 }
