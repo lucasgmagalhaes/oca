@@ -15,7 +15,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 
 use avcore::{
@@ -25,6 +25,78 @@ use avcore::{
 use tracing::{debug, error, info};
 
 use super::{App, RenderEvent};
+
+/// Cooperative controls shared by the UI and one render worker. The native encoder already
+/// checks `cancel` between packets; pause is implemented at its per-frame progress callback,
+/// where the worker can safely wait without blocking egui's UI thread.
+pub(super) struct RenderControl {
+    cancel: AtomicBool,
+    paused: AtomicBool,
+    wait_lock: Mutex<()>,
+    wake: Condvar,
+}
+
+impl RenderControl {
+    pub(super) fn new() -> Self {
+        Self {
+            cancel: AtomicBool::new(false),
+            paused: AtomicBool::new(false),
+            wait_lock: Mutex::new(()),
+            wake: Condvar::new(),
+        }
+    }
+
+    fn lock_wait_state(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.wait_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    pub(super) fn pause(&self) {
+        let _guard = self.lock_wait_state();
+        self.paused.store(true, Ordering::Release);
+    }
+
+    pub(super) fn resume(&self) {
+        let _guard = self.lock_wait_state();
+        self.paused.store(false, Ordering::Release);
+        self.wake.notify_all();
+    }
+
+    pub(super) fn cancel(&self) {
+        let _guard = self.lock_wait_state();
+        self.cancel.store(true, Ordering::Release);
+        self.paused.store(false, Ordering::Release);
+        self.wake.notify_all();
+    }
+
+    pub(super) fn cancel_flag(&self) -> &AtomicBool {
+        &self.cancel
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_cancelled(&self) -> bool {
+        self.cancel.load(Ordering::Acquire)
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_paused(&self) -> bool {
+        self.paused.load(Ordering::Acquire)
+    }
+
+    /// Waits until Resume or Cancel when a pause was requested. Returns `false` after
+    /// cancellation so the caller can avoid doing any more callback-side work.
+    pub(super) fn wait_if_paused(&self) -> bool {
+        let mut guard = self.lock_wait_state();
+        while self.paused.load(Ordering::Acquire) && !self.cancel.load(Ordering::Acquire) {
+            guard = self
+                .wake
+                .wait(guard)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        !self.cancel.load(Ordering::Acquire)
+    }
+}
 
 /// A ready-to-queue export whose output path collided with an existing file — held until the
 /// user picks Overwrite, Rename, or Cancel in [`App::show_export_conflict_modal`]. Everything
@@ -84,8 +156,44 @@ impl App {
     /// `Failed` job — callers only wire this to the buttons where it's meaningful.
     pub fn cancel_export_job(&mut self, job_id: u64) {
         match self.active_renders.get(&job_id) {
-            Some(cancel_flag) => cancel_flag.store(true, Ordering::Relaxed),
+            Some(control) => control.cancel(),
             None => self.export_jobs.retain(|j| j.id != job_id),
+        }
+        save_queue(&self.export_jobs);
+    }
+
+    /// Pauses a queued job before it starts, or requests a cooperative pause for an active
+    /// render at its next frame-progress checkpoint. Completed and failed jobs are unchanged.
+    pub fn pause_export_job(&mut self, job_id: u64) {
+        let Some(job) = self.export_jobs.iter_mut().find(|job| job.id == job_id) else {
+            return;
+        };
+        let percent = match job.status {
+            ExportJobStatus::Queued => 0,
+            ExportJobStatus::Rendering { percent } => percent,
+            _ => return,
+        };
+        if let Some(control) = self.active_renders.get(&job_id) {
+            control.pause();
+        }
+        job.status = ExportJobStatus::Paused { percent };
+        save_queue(&self.export_jobs);
+    }
+
+    /// Resumes an active paused worker, or moves a persisted/pre-start paused job back to the
+    /// queue so [`App::pump_export_queue`] can dispatch it normally.
+    pub fn resume_export_job(&mut self, job_id: u64) {
+        let Some(job) = self.export_jobs.iter_mut().find(|job| job.id == job_id) else {
+            return;
+        };
+        let ExportJobStatus::Paused { percent } = job.status else {
+            return;
+        };
+        if let Some(control) = self.active_renders.get(&job_id) {
+            control.resume();
+            job.status = ExportJobStatus::Rendering { percent };
+        } else {
+            job.status = ExportJobStatus::Queued;
         }
         save_queue(&self.export_jobs);
     }
@@ -99,8 +207,12 @@ impl App {
             match event {
                 RenderEvent::Progress { job_id, percent } => {
                     if let Some(job) = self.export_jobs.iter_mut().find(|j| j.id == job_id) {
-                        if let ExportJobStatus::Rendering { percent: p } = &mut job.status {
-                            *p = percent;
+                        match &mut job.status {
+                            ExportJobStatus::Rendering { percent: current }
+                            | ExportJobStatus::Paused { percent: current } => {
+                                *current = percent;
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -199,8 +311,8 @@ impl App {
             })
             .unwrap_or(0.0);
 
-        let cancel_flag = Arc::new(AtomicBool::new(false));
-        self.active_renders.insert(job_id, Arc::clone(&cancel_flag));
+        let control = Arc::new(RenderControl::new());
+        self.active_renders.insert(job_id, Arc::clone(&control));
 
         info!(job_id, output = %output_path.display(), "export render worker dispatched");
         let tx = self.render_tx.clone();
@@ -215,9 +327,10 @@ impl App {
                 gpu_encoder,
                 &text_segments,
                 &shape_segments,
-                &cancel_flag,
+                control.cancel_flag(),
                 |percent| {
                     let _ = tx.send(RenderEvent::Progress { job_id, percent });
+                    control.wait_if_paused();
                 },
             );
             let duration_ms = started.elapsed().as_millis() as u64;
@@ -272,15 +385,11 @@ fn queue_path() -> std::path::PathBuf {
 }
 
 /// Saves `jobs` to `queue.json` on a background thread. `Rendering` jobs are written as
-/// `Queued` so they restart properly if the app is reopened mid-queue. `Done` and `Failed`
-/// jobs are included for history display.
+/// `Queued` so they restart properly if the app is reopened mid-queue. Paused jobs remain
+/// paused but reset to 0%, because a process restart cannot retain partially encoded output.
+/// `Done` and `Failed` jobs are included for history display.
 pub(super) fn save_queue(jobs: &[ExportJob]) {
-    let mut snapshot: Vec<ExportJob> = jobs.to_vec();
-    for job in &mut snapshot {
-        if matches!(job.status, ExportJobStatus::Rendering { .. }) {
-            job.status = ExportJobStatus::Queued;
-        }
-    }
+    let snapshot = persisted_queue_snapshot(jobs);
     let path = queue_path();
     std::thread::spawn(move || {
         if let Ok(json) = serde_json::to_string_pretty(&snapshot) {
@@ -289,21 +398,38 @@ pub(super) fn save_queue(jobs: &[ExportJob]) {
     });
 }
 
+pub(super) fn persisted_queue_snapshot(jobs: &[ExportJob]) -> Vec<ExportJob> {
+    let mut snapshot = jobs.to_vec();
+    for job in &mut snapshot {
+        match job.status {
+            ExportJobStatus::Rendering { .. } => job.status = ExportJobStatus::Queued,
+            ExportJobStatus::Paused { .. } => {
+                job.status = ExportJobStatus::Paused { percent: 0 };
+            }
+            _ => {}
+        }
+    }
+    snapshot
+}
+
 /// Loads the persisted queue from `queue.json`. Returns an empty vec if absent or unparseable.
-/// `Rendering`/`Paused` jobs are reset to `Queued` — the render worker died when the app
-/// closed.
+/// `Rendering` jobs are reset to `Queued`; `Paused` jobs stay paused at 0% until explicitly
+/// resumed, because the render worker and its partial output did not survive the process.
 pub(super) fn load_queue() -> Vec<ExportJob> {
     let path = queue_path();
     let Ok(bytes) = std::fs::read(&path) else {
         return Vec::new();
     };
-    let mut jobs: Vec<ExportJob> = serde_json::from_slice(&bytes).unwrap_or_default();
+    let jobs: Vec<ExportJob> = serde_json::from_slice(&bytes).unwrap_or_default();
+    normalize_loaded_queue(jobs)
+}
+
+pub(super) fn normalize_loaded_queue(mut jobs: Vec<ExportJob>) -> Vec<ExportJob> {
     for job in &mut jobs {
-        if matches!(
-            job.status,
-            ExportJobStatus::Rendering { .. } | ExportJobStatus::Paused { .. }
-        ) {
+        if matches!(job.status, ExportJobStatus::Rendering { .. }) {
             job.status = ExportJobStatus::Queued;
+        } else if matches!(job.status, ExportJobStatus::Paused { .. }) {
+            job.status = ExportJobStatus::Paused { percent: 0 };
         }
     }
     jobs

@@ -453,7 +453,12 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   (`queue.json`, still plain JSON) persisted to the platform config dir; recent project list;
   debounced autosave + restore modal; crash detection + panic hook; prefs modal; home screen
   context menu; file size estimate; structured logging; copy formatting (`Ctrl+Shift+C`/`V`);
-  configurable key bindings; export job reordering; output-folder overwrite/rename/cancel
+  configurable key bindings; export job reordering and cooperative pause/resume (a queued job
+  pauses before dispatch; an active worker waits at its next per-frame progress checkpoint on a
+  `Condvar`, with Cancel waking the same waiter; native text/shape/audio post-passes don't emit
+  frame-progress callbacks, so a pause requested after the primary encode reaches 100% may only
+  be visible briefly before that already-running post-pass completes); output-folder
+  overwrite/rename/cancel
   prompt; word-highlight subtitles (single-line only — a caption that wraps in `drawtext`
   gets every highlight positioned as if still on one line); Whisper subtitles (model fetched
   on demand via `avcore::model_download`, not bundled); standalone `.srt` subtitle export

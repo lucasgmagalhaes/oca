@@ -633,10 +633,11 @@ pub struct App {
     last_preview_frame_telemetry: Option<std::time::Instant>,
     render_tx: UnboundedSender<RenderEvent>,
     render_rx: UnboundedReceiver<RenderEvent>,
-    /// Cancellation flags for jobs a worker thread is currently rendering, keyed by job id.
+    /// Cooperative pause/cancel controls for jobs a worker thread is currently rendering,
+    /// keyed by job id.
     /// A job id present here is the source of truth for "how many workers are busy right
     /// now" — [`App::pump_export_queue`] uses its length against `prefs.export_workers`.
-    active_renders: HashMap<u64, Arc<AtomicBool>>,
+    active_renders: HashMap<u64, Arc<export::RenderControl>>,
     /// The GStreamer pipeline for the clip currently covering the active sequence's timeline
     /// playhead, if it could be opened (`None` before any project has a clip at the playhead,
     /// before it's been lazily opened, and when `Preview::open` failed, e.g. a source file

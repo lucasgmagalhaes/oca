@@ -538,13 +538,110 @@ fn cancel_export_job_flags_an_active_render_instead_of_removing_it() {
         vec![test_project(1, Vec::new())],
         vec![test_job(1, ExportJobStatus::Rendering { percent: 40 })],
     );
-    let cancel_flag = Arc::new(AtomicBool::new(false));
-    app.active_renders.insert(1, Arc::clone(&cancel_flag));
+    let control = Arc::new(export::RenderControl::new());
+    app.active_renders.insert(1, Arc::clone(&control));
 
     app.cancel_export_job(1);
 
-    assert!(cancel_flag.load(Ordering::Relaxed));
+    assert!(control.is_cancelled());
     assert_eq!(app.export_jobs.len(), 1);
+}
+
+#[test]
+fn pause_export_job_holds_a_queued_job_before_it_starts() {
+    let mut app = test_app(
+        vec![test_project(1, Vec::new())],
+        vec![test_job(1, ExportJobStatus::Queued)],
+    );
+
+    app.pause_export_job(1);
+
+    assert_eq!(
+        app.export_jobs[0].status,
+        ExportJobStatus::Paused { percent: 0 }
+    );
+    assert!(app.active_renders.is_empty());
+}
+
+#[test]
+fn pause_and_resume_export_job_controls_an_active_worker() {
+    let mut app = test_app(
+        vec![test_project(1, Vec::new())],
+        vec![test_job(1, ExportJobStatus::Rendering { percent: 40 })],
+    );
+    let control = Arc::new(export::RenderControl::new());
+    app.active_renders.insert(1, Arc::clone(&control));
+
+    app.pause_export_job(1);
+
+    assert!(control.is_paused());
+    assert_eq!(
+        app.export_jobs[0].status,
+        ExportJobStatus::Paused { percent: 40 }
+    );
+
+    app.resume_export_job(1);
+
+    assert!(!control.is_paused());
+    assert_eq!(
+        app.export_jobs[0].status,
+        ExportJobStatus::Rendering { percent: 40 }
+    );
+}
+
+#[test]
+fn resume_export_job_requeues_a_paused_job_without_a_live_worker() {
+    let mut app = test_app(
+        vec![test_project(1, Vec::new())],
+        vec![test_job(1, ExportJobStatus::Paused { percent: 0 })],
+    );
+
+    app.resume_export_job(1);
+
+    assert_eq!(app.export_jobs[0].status, ExportJobStatus::Queued);
+}
+
+#[test]
+fn persisted_queue_keeps_paused_jobs_paused_but_resets_their_progress() {
+    let jobs = vec![
+        test_job(1, ExportJobStatus::Paused { percent: 65 }),
+        test_job(2, ExportJobStatus::Rendering { percent: 30 }),
+    ];
+
+    let snapshot = export::persisted_queue_snapshot(&jobs);
+
+    assert_eq!(snapshot[0].status, ExportJobStatus::Paused { percent: 0 });
+    assert_eq!(snapshot[1].status, ExportJobStatus::Queued);
+}
+
+#[test]
+fn loading_a_queue_preserves_a_paused_job_until_the_user_resumes_it() {
+    let jobs = vec![
+        test_job(1, ExportJobStatus::Paused { percent: 65 }),
+        test_job(2, ExportJobStatus::Rendering { percent: 30 }),
+    ];
+
+    let normalized = export::normalize_loaded_queue(jobs);
+
+    assert_eq!(normalized[0].status, ExportJobStatus::Paused { percent: 0 });
+    assert_eq!(normalized[1].status, ExportJobStatus::Queued);
+}
+
+#[test]
+fn cancelling_a_paused_control_releases_its_waiter() {
+    let control = Arc::new(export::RenderControl::new());
+    control.pause();
+    let waiter_control = Arc::clone(&control);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let waiter = std::thread::spawn(move || {
+        tx.send(waiter_control.wait_if_paused()).unwrap();
+    });
+
+    assert!(rx.recv_timeout(Duration::from_millis(25)).is_err());
+    control.cancel();
+
+    assert!(!rx.recv_timeout(Duration::from_secs(1)).unwrap());
+    waiter.join().unwrap();
 }
 
 #[test]
@@ -554,7 +651,7 @@ fn pump_export_queue_applies_a_progress_event_to_the_matching_job() {
         vec![test_job(1, ExportJobStatus::Rendering { percent: 0 })],
     );
     app.active_renders
-        .insert(1, Arc::new(AtomicBool::new(false)));
+        .insert(1, Arc::new(export::RenderControl::new()));
     app.render_tx
         .send(RenderEvent::Progress {
             job_id: 1,
@@ -571,13 +668,52 @@ fn pump_export_queue_applies_a_progress_event_to_the_matching_job() {
 }
 
 #[test]
+fn pump_export_queue_updates_progress_without_resuming_a_paused_job() {
+    let mut app = test_app(
+        vec![test_project(1, Vec::new())],
+        vec![test_job(1, ExportJobStatus::Paused { percent: 20 })],
+    );
+    app.active_renders
+        .insert(1, Arc::new(export::RenderControl::new()));
+    app.render_tx
+        .send(RenderEvent::Progress {
+            job_id: 1,
+            percent: 42,
+        })
+        .unwrap();
+
+    app.pump_export_queue();
+
+    assert_eq!(
+        app.export_jobs[0].status,
+        ExportJobStatus::Paused { percent: 42 }
+    );
+}
+
+#[test]
+fn pump_export_queue_does_not_dispatch_a_paused_queued_job() {
+    let mut app = test_app(
+        vec![test_project(1, Vec::new())],
+        vec![test_job(1, ExportJobStatus::Paused { percent: 0 })],
+    );
+
+    app.pump_export_queue();
+
+    assert!(app.active_renders.is_empty());
+    assert_eq!(
+        app.export_jobs[0].status,
+        ExportJobStatus::Paused { percent: 0 }
+    );
+}
+
+#[test]
 fn pump_export_queue_marks_a_job_done_and_frees_its_render_slot() {
     let mut app = test_app(
         vec![test_project(1, Vec::new())],
         vec![test_job(1, ExportJobStatus::Rendering { percent: 90 })],
     );
     app.active_renders
-        .insert(1, Arc::new(AtomicBool::new(false)));
+        .insert(1, Arc::new(export::RenderControl::new()));
     app.render_tx
         .send(RenderEvent::Done {
             job_id: 1,
@@ -599,7 +735,7 @@ fn pump_export_queue_records_a_failure_message() {
         vec![test_job(1, ExportJobStatus::Rendering { percent: 10 })],
     );
     app.active_renders
-        .insert(1, Arc::new(AtomicBool::new(false)));
+        .insert(1, Arc::new(export::RenderControl::new()));
     app.render_tx
         .send(RenderEvent::Failed {
             job_id: 1,
@@ -627,7 +763,7 @@ fn pump_export_queue_removes_a_cancelled_job_entirely() {
         vec![test_job(1, ExportJobStatus::Rendering { percent: 10 })],
     );
     app.active_renders
-        .insert(1, Arc::new(AtomicBool::new(false)));
+        .insert(1, Arc::new(export::RenderControl::new()));
     app.render_tx
         .send(RenderEvent::Cancelled { job_id: 1 })
         .unwrap();

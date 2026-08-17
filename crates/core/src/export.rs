@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::{AudioSegment, Canvas, ClipSegment, ShapeSegment, TextSegment};
 
 /// A queued render's lifecycle. `Rendering`/`Paused` carry a snapshot progress percentage;
-/// the queue itself (Fase 4) will drive these via the background worker channel.
+/// the Fase 5 queue drives these via the background worker channel.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ExportJobStatus {
     Queued,

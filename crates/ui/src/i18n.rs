@@ -324,6 +324,7 @@ text_catalog! {
     StatusFailed: pt_br = "Falhou", en = "Failed";
     CancelJob: pt_br = "Cancelar", en = "Cancel";
     RemoveJob: pt_br = "Remover", en = "Remove";
+    PauseJob: pt_br = "Pausar", en = "Pause";
     Resume: pt_br = "Retomar", en = "Resume";
     OpenFolder: pt_br = "Abrir pasta", en = "Open folder";
     RetryExport: pt_br = "↻ Tentar novamente", en = "↻ Retry";

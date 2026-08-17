@@ -21,10 +21,9 @@ use crate::components;
 use crate::i18n::{self, Text};
 use crate::theme;
 
-/// Renders the Fila screen: the export queue's job list (reorder for queued jobs, cancel for
-/// anything in flight, retry for failures) and the concurrent-worker count. Jobs are rendered
-/// for real on background threads dispatched by [`crate::app::App`] each frame — see
-/// its `pump_export_queue`.
+/// Renders the Fila screen: the export queue's job list (reorder, pause/resume, cancel, retry)
+/// and the concurrent-worker count. Jobs are rendered for real on background threads dispatched
+/// by [`crate::app::App`] each frame — see its `pump_export_queue`.
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {
@@ -166,6 +165,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         let mut move_up: Option<usize> = None;
         let mut move_down: Option<usize> = None;
         let mut cancel: Option<u64> = None;
+        let mut pause: Option<u64> = None;
         let mut retry: Option<u64> = None;
         let mut resume: Option<u64> = None;
 
@@ -215,10 +215,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     ui.with_layout(
                         egui::Layout::right_to_left(egui::Align::Center),
                         |ui| match &job.status {
-                            // ffmpeg has no notion of pausing an in-flight render (see
-                            // avcore::render's module docs), so a rendering job only
-                            // offers Cancel — there's no Pause button to promise something
-                            // this queue can't actually do.
                             ExportJobStatus::Rendering { .. } => {
                                 if ui
                                     .button("✕")
@@ -226,6 +222,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                     .clicked()
                                 {
                                     cancel = Some(job.id);
+                                }
+                                if ui
+                                    .button("⏸")
+                                    .on_hover_text(Text::PauseJob.tr(locale))
+                                    .clicked()
+                                {
+                                    pause = Some(job.id);
                                 }
                             }
                             ExportJobStatus::Queued => {
@@ -241,6 +244,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                 }
                                 if ui.button("▲").clicked() {
                                     move_up = Some(i);
+                                }
+                                if ui
+                                    .button("⏸")
+                                    .on_hover_text(Text::PauseJob.tr(locale))
+                                    .clicked()
+                                {
+                                    pause = Some(job.id);
                                 }
                             }
                             ExportJobStatus::Paused { .. } => {
@@ -293,10 +303,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         if let Some(id) = cancel {
             app.cancel_export_job(id);
         }
+        if let Some(id) = pause {
+            app.pause_export_job(id);
+        }
         if let Some(id) = resume {
-            if let Some(job) = app.export_jobs.iter_mut().find(|j| j.id == id) {
-                job.status = ExportJobStatus::Queued;
-            }
+            app.resume_export_job(id);
         }
         if let Some(id) = retry {
             if let Some(job) = app.export_jobs.iter_mut().find(|j| j.id == id) {
