@@ -42,7 +42,7 @@ fontdue = "0.9"
 # Blocking HTTP client for downloading Whisper GGML model files on demand — rustls (pure Rust)
 # TLS backend, no OpenSSL/C toolchain. Verified against a real huggingface.co download before
 # depending on it (got a real 200 with the exact known Content-Length back).
-ureq = "2"
+ureq = "3"
 # ONNX Runtime bindings for auto-reframe's face-detection model (see `auto_reframe`).
 # `download-binaries` fetches a prebuilt ONNX Runtime dynamic library at build time — same
 # "not bundled in the installer yet" gap the Whisper model has, see `request.md`'s Fase 8
