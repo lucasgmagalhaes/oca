@@ -5,13 +5,13 @@
     "semantic_hash": ""
   },
   "crates/avbridge/csrc/bridge.h": {
-    "mtime": 1786986844.5080452,
-    "ast_hash": "5cae4b51018c4469a3397fe0cbc0b7ad",
+    "mtime": 1786988199.0823069,
+    "ast_hash": "db3c09cc4fe05c1d230a1f26e501ee0a",
     "semantic_hash": ""
   },
   "crates/avbridge/src/lib.rs": {
-    "mtime": 1786986844.5065017,
-    "ast_hash": "33a2f551d8bb76fd6c6bba0c139b0ca8",
+    "mtime": 1786988199.0805776,
+    "ast_hash": "9f4b28ae9817f2ca15938aaaba9a501b",
     "semantic_hash": ""
   },
   "crates/avbridge/tests/encode_test.rs": {
@@ -85,8 +85,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/render.rs": {
-    "mtime": 1786986915.1693287,
-    "ast_hash": "2b771fe1cc00a69465f4f07f2df8f72f",
+    "mtime": 1786988199.0814443,
+    "ast_hash": "4ca6275ab87c048e1a8e87898b992a76",
     "semantic_hash": ""
   },
   "crates/core/src/timeline.rs": {
@@ -205,8 +205,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786986844.50142,
-    "ast_hash": "5556eea5aaed86b75fb4d54827496d93",
+    "mtime": 1786988244.4596605,
+    "ast_hash": "2e6c9b2a8b642e4be62070125836f54c",
     "semantic_hash": ""
   },
   "README.md": {
@@ -455,8 +455,8 @@
     "semantic_hash": ""
   },
   "crates/avbridge/csrc/timeline_export_multi.c": {
-    "mtime": 1786986844.5074356,
-    "ast_hash": "b373262610f678febb5d9fafbbca5646",
+    "mtime": 1786988121.5203977,
+    "ast_hash": "205b28dfbb3114e529271fb8b6ef757e",
     "semantic_hash": ""
   },
   "crates/avbridge/csrc/waveform.c": {
@@ -505,8 +505,8 @@
     "semantic_hash": ""
   },
   "crates/core/tests/timeline_export_multi_test.rs": {
-    "mtime": 1786987178.3063939,
-    "ast_hash": "76d16783b242539104f4d174af374500",
+    "mtime": 1786988265.0627573,
+    "ast_hash": "abe4778d3b48426b99a1a2ab51df166c",
     "semantic_hash": ""
   },
   "crates/core/tests/transcribe_test.rs": {
