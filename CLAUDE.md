@@ -294,9 +294,10 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   `ShapeKind::Polygon` stores vertices in the shape's own local unit square, not absolute canvas
   fractions — `rotation_deg` starts at `0.0`, same as a fresh preset. **Known limitation:**
   drawing requires a loaded preview frame (`layer_transform_preview`'s existing precondition —
-  the toolbar button toasts `ShapeDrawNeedsPreview` instead of entering drawing mode otherwise),
-  and since shape preview rendering itself doesn't exist yet (see below), the drawing surface is
-  the canvas outline only, not a live composited image to trace over. Every fixed preset is
+  the toolbar button toasts `ShapeDrawNeedsPreview` instead of entering drawing mode otherwise);
+  the drawing surface is the canvas outline only, not a live composited image to trace over — the
+  drawing surface itself was never wired to the composited preview frame, even after shape
+  preview rendering (below) started existing. Every fixed preset is
   placeable and editable too. `avcore::shape_render` builds a `geq` avfilter node per
   shape (rotation via a per-pixel coordinate rotation, ellipse via a quadratic test, every
   straight-edged shape via ray-casting point-in-polygon — correct for the arrow's concave
@@ -314,9 +315,33 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   click-to-select and a context-menu delete, same interaction shape as text clips. Properties
   panel (`shape_clip_properties` in `properties_panel.rs`) edits preset/color/center position/
   size/rotation/outline thickness/timing via the same clone-mutate-writeback pattern
-  `text_clip_properties` uses. **Preview still not implemented** — same gap `TextClip` has
-  (`ShapeClip`'s own doc comment flags it); the timeline block is a color/glyph stand-in only,
-  the real render only happens on export.
+  `text_clip_properties` uses.
+
+  **Text/shape preview now exists** — `avcore::overlay_render::render_text_clip_rgba`/
+  `render_shape_clip_rgba` rasterize a `TextClip`/`ShapeClip` into a single full-canvas RGBA
+  buffer once (both clip types are static for their whole visible span, no keyframes on
+  either), fed into `Preview::open_composited`'s `compositor` pipeline as its own
+  `appsrc ! imagefreeze` branch (`build_static_overlay_branch`, `preview.rs`) — `imagefreeze`
+  repeats that single pushed buffer indefinitely, so unlike every other overlay branch this one
+  needs no pad probe or `Preview::branches` seek entry. Shape rasterization mirrors
+  `shape_render::build_shape_filter_desc`'s per-pixel math term-for-term (rotate into the
+  shape's local frame, then an ellipse quadratic or the same `point_in_polygon` ray-cast export
+  uses), evaluated directly against a pixel buffer instead of compiled into a `geq` expression.
+  Text reuses `fontdue`'s own `Layout` engine (already a dependency for word-highlight metrics,
+  `text_metrics.rs`) under `CoordinateSystem::PositiveYDown` rather than hand-rolled baseline
+  math. `ui`'s `App::ensure_preview_loaded`/`seek_preview` (`app/preview.rs`) now also collect
+  every `TrackKind::Text`/`TrackKind::Shape` clip covering the playhead
+  (`current_preview_text_clips`/`current_preview_shape_clips`) and route through
+  `open_composited` whenever any exist, even with zero video overlay tracks —
+  `App::preview_text_clip_ids`/`preview_shape_clip_ids` mirror `preview_overlay_clip_ids`'s
+  reopen-detection role for both `ensure_preview_loaded` and `seek_preview`'s fast path.
+  **Known gaps:** word-highlight timing (`TextClip::words`) isn't rendered — base text only,
+  same "approximate, not pixel-perfect" tolerance `preview` already has elsewhere; no line
+  wrap. Confirmed working for real against a live GStreamer pipeline on this dev machine
+  (`open_composited_with_text_and_shape_overlays_composites_without_error`,
+  `preview_test.rs`) — required an explicit `framerate=0/1` field on the `appsrc` caps
+  ("still image" sentinel), discovered empirically: `imagefreeze`'s sink pad rejected caps
+  without one.
 
 - **Fase 5/6 — partially done.** Aspect ratio selection; prefs (`prefs.oc` — same
   gzip-compressed MessagePack framing `.ocproj` uses, via `avcore::to_ocproj_bytes`/
