@@ -222,7 +222,12 @@ impl App {
                 .zip(&overlays)
                 .map(|(p, (c, _))| (p.as_deref().expect("checked above"), c))
                 .collect();
-            let text_refs: Vec<&TextClip> = text_clips.iter().collect();
+            // The elapsed time since each text clip's own start — what
+            // `render_text_clip_rgba` resolves its current highlighted word against.
+            let text_refs: Vec<(&TextClip, f64)> = text_clips
+                .iter()
+                .map(|c| (c, playhead - c.start_secs))
+                .collect();
             let shape_refs: Vec<&ShapeClip> = shape_clips.iter().collect();
             avcore::preview::Preview::open_composited(
                 &path,
