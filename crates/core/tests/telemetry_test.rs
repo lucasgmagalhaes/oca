@@ -15,7 +15,7 @@
 
 use std::fs;
 
-use avcore::{record_event, TelemetryEvent};
+use avcore::{record_event, ResourceSampler, TelemetryEvent};
 
 #[test]
 fn record_event_appends_one_json_line_per_call() {
@@ -129,6 +129,50 @@ fn record_event_does_not_rotate_a_file_under_the_threshold() {
     let contents = fs::read_to_string(&path).unwrap();
     assert_eq!(contents.lines().count(), 2);
     assert!(contents.starts_with("pre-existing line"));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn resource_sampler_reports_nonzero_ram_on_a_real_machine() {
+    let mut sampler = ResourceSampler::new();
+    let TelemetryEvent::ResourceUsage {
+        cpu_percent,
+        ram_used_mb,
+        ram_total_mb,
+    } = sampler.sample()
+    else {
+        panic!("ResourceSampler::sample must return ResourceUsage");
+    };
+
+    // Real system RAM on any dev/CI machine this runs on is well above zero, and used can
+    // never exceed total.
+    assert!(ram_total_mb > 0);
+    assert!(ram_used_mb <= ram_total_mb);
+    assert!(cpu_percent >= 0.0);
+}
+
+#[test]
+fn resource_sampler_event_serializes_as_resource_usage() {
+    let dir = std::env::temp_dir().join("oca_telemetry_test_resource_usage");
+    let _ = fs::remove_dir_all(&dir);
+    let path = dir.join("telemetry.jsonl");
+
+    record_event(
+        &path,
+        &TelemetryEvent::ResourceUsage {
+            cpu_percent: 12.5,
+            ram_used_mb: 2048,
+            ram_total_mb: 16384,
+        },
+    )
+    .unwrap();
+
+    let contents = fs::read_to_string(&path).unwrap();
+    assert!(contents.contains("\"event\":\"resource_usage\""));
+    assert!(contents.contains("\"cpu_percent\":12.5"));
+    assert!(contents.contains("\"ram_used_mb\":2048"));
+    assert!(contents.contains("\"ram_total_mb\":16384"));
 
     let _ = fs::remove_dir_all(&dir);
 }
