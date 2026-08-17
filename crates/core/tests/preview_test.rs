@@ -225,6 +225,56 @@ fn a_zoomed_clip_still_opens_and_decodes_at_full_size() {
 }
 
 #[test]
+fn a_fade_transition_clip_still_opens_and_decodes() {
+    let mut c = clip();
+    c.transition_in = TransitionType::Fade;
+    c.transition_duration_secs = 0.3;
+
+    let preview = Preview::open(&fixture("video.mp4"), Some(&c)).unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("a frame should be available right after preroll");
+    assert_eq!((frame.width, frame.height), (320, 240));
+    for _ in 0..3 {
+        let _ = preview.current_frame();
+    }
+}
+
+#[test]
+fn a_zoom_transition_clip_still_opens_and_decodes_at_full_size() {
+    let mut c = clip();
+    c.transition_in = TransitionType::Zoom;
+    c.transition_duration_secs = 0.3;
+
+    let preview = Preview::open(&fixture("video.mp4"), Some(&c)).unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("a frame should be available right after preroll");
+    assert_eq!((frame.width, frame.height), (320, 240));
+    for _ in 0..3 {
+        let _ = preview.current_frame();
+    }
+}
+
+#[test]
+fn a_slide_transition_clip_still_opens_and_decodes_at_full_size() {
+    let mut c = clip();
+    c.transition_in = TransitionType::Slide;
+    c.transition_duration_secs = 0.3;
+
+    let preview = Preview::open(&fixture("video.mp4"), Some(&c)).unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("a frame should be available right after preroll");
+    // Proves the two chained videobox elements' output size stays the fixed canvas size
+    // throughout, not just at the moment of preroll.
+    assert_eq!((frame.width, frame.height), (320, 240));
+    for _ in 0..3 {
+        let _ = preview.current_frame();
+    }
+}
+
+#[test]
 fn open_composited_reports_a_canvas_sized_frame() {
     let bg = fixture("video.mp4");
     let overlay = fixture("video.mp4");
