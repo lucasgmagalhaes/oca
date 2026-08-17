@@ -509,9 +509,9 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   stale-resolution proxy under the old path — the tradeoff is no retroactive regeneration: an
   asset imported before the change keeps its existing proxy until re-imported.
 
-  **Runtime telemetry (event-shaped metrics only — CPU/RAM/GPU sampling not done).**
+  **Runtime telemetry, now including CPU/RAM sampling (GPU still not done).**
   `avcore::telemetry` — `TelemetryEvent` (`ImportCompleted`/`ExportCompleted`/
-  `PreviewFrameTime`/`Error`) appended as JSON lines via `record_event`, no rotation yet, plain
+  `PreviewFrameTime`/`Error`/`ResourceUsage`) appended as JSON lines via `record_event`, no rotation yet, plain
   on-device file (matches `request.md`'s "fica no dispositivo por padrão" — never sent
   anywhere). `ui`'s `App::record_telemetry` sends to a dedicated background writer thread
   (`telemetry::spawn_telemetry_writer`, spawned once in `App::new`) that owns the only
@@ -529,9 +529,19 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   a report. `record_event` now rotates `telemetry.jsonl` to a `.1`-suffixed backup once it
   crosses 10 MiB (`avcore::telemetry::rotate_if_oversized`, size-based rather than Fase 6's
   daily rotation since this crate has no date/time dependency) — bounds long-lived-install disk
-  usage to roughly the cap times two. **Not yet done:** CPU/RAM/GPU resource-usage sampling
-  (`request.md`'s full wishlist) — no `sysinfo`-style dependency is wired in, only the
-  event-shaped metrics above.
+  usage to roughly the cap times two. **CPU/RAM resource-usage sampling** (`request.md`'s
+  wishlist) is now wired via `avcore::ResourceSampler` (`sysinfo`-backed, system-wide CPU
+  usage plus used/total RAM) — `ui`'s `telemetry::spawn_resource_sampler` runs its own
+  background thread (not the writer thread, since sampling itself must stay off the UI
+  thread too), ticking once per `RESOURCE_TELEMETRY_INTERVAL` (30s, far coarser than
+  `PREVIEW_FRAME_TELEMETRY_INTERVAL` since resource usage doesn't need frame granularity to
+  be useful for a "RAM over a 2h session" metric). Gated by `App::telemetry_enabled_flag`, an
+  `Arc<AtomicBool>` mirror of `prefs.telemetry_enabled` kept in sync from the Preferences
+  checkbox — the sampler thread has no direct access to `App`/`prefs`, so this is the one
+  piece of state it reads each tick, letting the toggle take effect on the next tick without
+  restarting the thread. **Still not done:** GPU usage — `sysinfo` has no cross-platform GPU
+  reader; a vendor-specific one (NVML/etc.) is a bigger, hardware-dependent lift, same
+  "hard wall" class as the GPU encoder ladder and the preview-only GStreamer gaps above.
 
   **Not yet done (rest of Fase 7):** hardware-accelerated preview decode and an explicit
   lazy-frame-loading layer. Release binary stripping is done — `[profile.release]` has
