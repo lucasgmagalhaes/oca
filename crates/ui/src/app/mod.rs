@@ -589,17 +589,25 @@ enum ModelDownloadEvent {
     Failed { message: String },
 }
 
-/// A poster frame extracted on a background thread (see [`App::request_thumbnail`]),
-/// ready to upload as an egui texture. No failure variant — a (asset, bucket) that couldn't be
-/// extracted just never gets a texture; [`App::requested_thumbnails`] already stops it from
-/// being retried every frame.
-struct ThumbnailReady {
-    asset_id: u64,
-    bucket: i64,
-    width: u32,
-    height: u32,
-    rgba: Vec<u8>,
+/// Result of one background poster-frame extraction (see [`App::request_thumbnail`]). The key
+/// is `(asset_id, frame_index)` rather than a fixed-width seconds bucket: timeline zoom chooses
+/// a source frame for each visible filmstrip tile, while quantizing to the source frame rate
+/// keeps nearby zoom levels able to share cached textures.
+enum ThumbnailReady {
+    Ready {
+        asset_id: u64,
+        frame_index: i64,
+        width: u32,
+        height: u32,
+        rgba: Vec<u8>,
+    },
+    Failed {
+        asset_id: u64,
+        frame_index: i64,
+    },
 }
+
+type ThumbnailKey = (u64, i64);
 
 // ClipFormatting is defined in core::timeline and re-exported as avcore::ClipFormatting;
 // the type alias below is kept for in-module readability only.
@@ -851,17 +859,20 @@ pub struct App {
     pub timeline_height: f32,
     thumbnail_tx: UnboundedSender<ThumbnailReady>,
     thumbnail_rx: UnboundedReceiver<ThumbnailReady>,
-    /// Filmstrip tile textures for video clips on the timeline, keyed by `(asset_id, bucket)`
-    /// where `bucket` is a source-time offset quantized to [`THUMBNAIL_BUCKET_SECS`] (see
-    /// `editor.rs::draw_filmstrip`) — shared across every clip on that asset, and stable across
-    /// zoom changes rather than tied to a particular on-screen tile. A known simplification:
-    /// the bucket size is fixed, not adapted to the current zoom, so a very zoomed-in filmstrip
-    /// can repeat the same tile a few times in a row instead of showing a unique frame each.
-    pub thumbnail_textures: HashMap<(u64, i64), egui::TextureHandle>,
-    /// `(asset_id, bucket)` pairs a thumbnail has already been requested for, successfully or
-    /// not — stops [`App::request_thumbnail`] from spawning a new extraction thread every
-    /// frame for a bucket that's still pending, or that already failed once.
-    requested_thumbnails: HashSet<(u64, i64)>,
+    /// Filmstrip tile textures keyed by `(asset_id, source_frame_index)`. Only visible tiles
+    /// request frames; [`App::touch_thumbnails`] and [`App::pump_thumbnail_queue`] keep this as
+    /// a bounded LRU cache so browsing/zooming through a long recording cannot grow GPU memory
+    /// for the rest of the session.
+    pub thumbnail_textures: HashMap<ThumbnailKey, egui::TextureHandle>,
+    /// Extractions currently running. Separate from cached/failed keys so the hard concurrency
+    /// cap doesn't also make an evicted texture permanently non-requestable.
+    pending_thumbnails: HashSet<ThumbnailKey>,
+    /// Last-use ticks for cached textures, used by the LRU eviction pass.
+    thumbnail_last_used: HashMap<ThumbnailKey, u64>,
+    /// Recently failed keys and their last-use ticks. Bounded independently so a missing or
+    /// corrupt source is not retried every frame but also cannot grow this set forever.
+    failed_thumbnails: HashMap<ThumbnailKey, u64>,
+    thumbnail_usage_clock: u64,
     /// Set by the media library panel on the frame a dragged asset is released (screen-space
     /// pointer position), consumed by the timeline panel later in the same frame to place it —
     /// how dragging an asset out of the library and dropping it on the timeline works. Always
@@ -1088,7 +1099,10 @@ impl App {
             thumbnail_tx,
             thumbnail_rx,
             thumbnail_textures: HashMap::new(),
-            requested_thumbnails: HashSet::new(),
+            pending_thumbnails: HashSet::new(),
+            thumbnail_last_used: HashMap::new(),
+            failed_thumbnails: HashMap::new(),
+            thumbnail_usage_clock: 0,
             pending_asset_drop: None,
             clipboard_clip: None,
             formatting_clipboard: None,
@@ -1530,11 +1544,38 @@ pub(self) fn prefs_path() -> PathBuf {
     PathBuf::from("prefs.oc")
 }
 
-/// Source-time width, in seconds, of one filmstrip thumbnail bucket (see
-/// [`App::thumbnail_textures`]). Fixed rather than zoom-dependent — simpler cache
-/// invalidation (a bucket's key never changes as the user zooms) at the cost of some tiles
-/// repeating when zoomed in past roughly one tile per this many seconds.
-pub const THUMBNAIL_BUCKET_SECS: f64 = 1.0;
+/// Upper bounds for filmstrip resources. At [`THUMBNAIL_MAX_DIM`] a worst-case square RGBA
+/// texture is 36 KiB, so 512 entries cap decoded texture data around 18 MiB (usually lower for
+/// landscape video). Extraction is deliberately much tighter: every request opens and seeks a
+/// real GStreamer pipeline on its own worker thread.
+pub(crate) const THUMBNAIL_CACHE_CAPACITY: usize = 512;
+pub(crate) const THUMBNAIL_FAILURE_CAPACITY: usize = 128;
+pub(crate) const THUMBNAIL_MAX_PENDING: usize = 16;
+pub(crate) const THUMBNAIL_MAX_DIM: u32 = 96;
+const THUMBNAIL_FALLBACK_FPS: f64 = 30.0;
+
+pub(crate) fn thumbnail_fps(fps: Option<f32>) -> f64 {
+    match fps {
+        Some(value) if value.is_finite() && value > 0.0 => value as f64,
+        _ => THUMBNAIL_FALLBACK_FPS,
+    }
+}
+
+/// Quantizes a source timestamp to a stable frame key. This is adaptive without making the
+/// cache zoom-specific: zoom changes which tile-center timestamps are requested, while the
+/// same underlying source frame always maps to the same key.
+pub(crate) fn thumbnail_frame_index(at_secs: f64, fps: Option<f32>) -> i64 {
+    let at_secs = if at_secs.is_finite() {
+        at_secs.max(0.0)
+    } else {
+        0.0
+    };
+    (at_secs * thumbnail_fps(fps)).floor() as i64
+}
+
+pub(crate) fn thumbnail_frame_time(frame_index: i64, fps: Option<f32>) -> f64 {
+    frame_index.max(0) as f64 / thumbnail_fps(fps)
+}
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {

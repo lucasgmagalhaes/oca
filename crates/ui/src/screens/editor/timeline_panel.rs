@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use avcore::MediaAsset;
 use eframe::egui::{self, RichText};
 
-use crate::app::{App, THUMBNAIL_BUCKET_SECS};
+use crate::app::{thumbnail_frame_index, App};
 use crate::i18n::Text;
 use crate::theme;
 
@@ -43,6 +43,33 @@ struct ClipDrag {
 enum TrimEdge {
     Start(f64),
     End(f64),
+}
+
+fn visible_tile_range(
+    clip_left: f32,
+    clip_right: f32,
+    visible_left: f32,
+    visible_right: f32,
+    tile_width: f32,
+) -> std::ops::Range<usize> {
+    if tile_width <= 0.0 || clip_right <= clip_left || visible_right <= visible_left {
+        return 0..0;
+    }
+    let first = ((visible_left - clip_left) / tile_width).floor().max(0.0) as usize;
+    let end = ((visible_right.min(clip_right) - clip_left) / tile_width)
+        .ceil()
+        .max(first as f32) as usize;
+    first..end
+}
+
+fn filmstrip_frame_index_for_tile(
+    source_in_secs: f64,
+    tile_center_offset_px: f32,
+    px_per_sec: f32,
+    fps: Option<f32>,
+) -> i64 {
+    let time_in_source = source_in_secs + (tile_center_offset_px / px_per_sec) as f64;
+    thumbnail_frame_index(time_in_source, fps)
 }
 
 pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
@@ -117,6 +144,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
         let mut toggle_track_visibility_requests: Vec<u64> = Vec::new();
         let mut thumbnail_requests: Vec<(u64, i64)> = Vec::new();
+        let mut thumbnail_touches: Vec<(u64, i64)> = Vec::new();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for track in &app.active_project().timeline().tracks {
                 ui.horizontal(|ui| {
@@ -317,15 +345,23 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         if track.kind == avcore::timeline::TrackKind::Video {
                             if let Some(asset) = asset {
                                 if clip.frozen {
+                                    let mut thumbnail_work = ThumbnailDrawWork {
+                                        requests: &mut thumbnail_requests,
+                                        touches: &mut thumbnail_touches,
+                                    };
                                     draw_frozen_poster(
                                         &app.thumbnail_textures,
                                         painter,
                                         clip_rect,
                                         asset,
                                         clip.source_in_secs,
-                                        &mut thumbnail_requests,
+                                        &mut thumbnail_work,
                                     );
                                 } else {
+                                    let mut thumbnail_work = ThumbnailDrawWork {
+                                        requests: &mut thumbnail_requests,
+                                        touches: &mut thumbnail_touches,
+                                    };
                                     draw_filmstrip(
                                         &app.thumbnail_textures,
                                         painter,
@@ -333,7 +369,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         asset,
                                         clip.source_in_secs,
                                         px_per_sec,
-                                        &mut thumbnail_requests,
+                                        &mut thumbnail_work,
                                     );
                                 }
                             }
@@ -663,8 +699,9 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 _ => app.move_clip_with_group(drag.clip_id, drag.new_start_secs),
             }
         }
-        for (asset_id, bucket) in thumbnail_requests {
-            app.request_thumbnail(asset_id, bucket);
+        app.touch_thumbnails(&thumbnail_touches);
+        for (asset_id, frame_index) in thumbnail_requests {
+            app.request_thumbnail(asset_id, frame_index);
         }
         // An asset dragged out of the media library and released somewhere at or below the
         // ruler: whichever track row's Y-range the pointer landed on becomes the preferred
@@ -689,15 +726,17 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
     });
 }
 
-/// Draws one filmstrip tile per column of `clip_rect` (each column's width set by `asset`'s
-/// aspect ratio scaled to the clip's height, same as a single poster frame tiled), each showing
-/// the cached thumbnail texture for whichever [`THUMBNAIL_BUCKET_SECS`]-quantized source-time
-/// bucket that column falls in (`App::thumbnail_textures`) — distinct buckets read like a
-/// true filmstrip, unlike one poster frame repeated. A column whose bucket has no texture yet
-/// is queued into `thumbnail_requests` (deduplicated against already-pending buckets by
-/// [`App::request_thumbnail`] once the caller applies it) and left showing the clip's plain
-/// background color, already painted underneath by the caller, until it arrives. A no-op if
-/// `asset` has no resolution (audio-only, shouldn't happen for a clip on a video track).
+/// Draws aspect-ratio-sized tiles only where `clip_rect` intersects the painter's visible clip
+/// rect. Every tile samples the source timestamp under its center, quantized to the asset's
+/// frame rate by [`thumbnail_frame_index`]: increasing timeline zoom shrinks the source-time
+/// distance between adjacent tiles and therefore reveals denser, distinct frames; zooming out
+/// spaces them farther apart. Tile columns remain anchored to the full clip rect so vertical
+/// scrolling/repaint clipping never changes which frame a given column represents.
+struct ThumbnailDrawWork<'a> {
+    requests: &'a mut Vec<(u64, i64)>,
+    touches: &'a mut Vec<(u64, i64)>,
+}
+
 fn draw_filmstrip(
     thumbnail_textures: &HashMap<(u64, i64), egui::TextureHandle>,
     painter: &egui::Painter,
@@ -705,7 +744,7 @@ fn draw_filmstrip(
     asset: &MediaAsset,
     source_in_secs: f64,
     px_per_sec: f32,
-    thumbnail_requests: &mut Vec<(u64, i64)>,
+    thumbnail_work: &mut ThumbnailDrawWork<'_>,
 ) {
     let Some((res_w, res_h)) = asset.resolution else {
         return;
@@ -715,16 +754,34 @@ fn draw_filmstrip(
     }
     let tile_height = clip_rect.height();
     let tile_width = (tile_height * res_w as f32 / res_h as f32).max(1.0);
+    let visible_rect = clip_rect.intersect(painter.clip_rect());
+    if !visible_rect.is_positive() || px_per_sec <= 0.0 {
+        return;
+    }
 
-    let mut x = clip_rect.left();
-    while x < clip_rect.right() {
+    let tile_range = visible_tile_range(
+        clip_rect.left(),
+        clip_rect.right(),
+        visible_rect.left(),
+        visible_rect.right(),
+        tile_width,
+    );
+    for tile_index in tile_range {
+        let x = clip_rect.left() + tile_index as f32 * tile_width;
         let w = tile_width.min(clip_rect.right() - x);
         let tile_rect =
             egui::Rect::from_min_size(egui::pos2(x, clip_rect.top()), egui::vec2(w, tile_height));
-        let time_in_source = source_in_secs + ((x - clip_rect.left()) / px_per_sec) as f64;
-        let bucket = (time_in_source / THUMBNAIL_BUCKET_SECS).floor() as i64;
-        match thumbnail_textures.get(&(asset.id, bucket)) {
+        let tile_center_offset_px = x + w / 2.0 - clip_rect.left();
+        let frame_index = filmstrip_frame_index_for_tile(
+            source_in_secs,
+            tile_center_offset_px,
+            px_per_sec,
+            asset.fps,
+        );
+        let key = (asset.id, frame_index);
+        match thumbnail_textures.get(&key) {
             Some(texture) => {
+                thumbnail_work.touches.push(key);
                 painter.image(
                     texture.id(),
                     tile_rect,
@@ -732,9 +789,8 @@ fn draw_filmstrip(
                     egui::Color32::WHITE,
                 );
             }
-            None => thumbnail_requests.push((asset.id, bucket)),
+            None => thumbnail_work.requests.push(key),
         }
-        x += tile_width;
     }
 }
 
@@ -742,16 +798,15 @@ fn draw_filmstrip(
 /// ([`avcore::timeline::ClipInstance::frozen`]) holds per `request.md`'s Fase 4 "Congelar"
 /// spec — tiled across all of `clip_rect`, plus a small "❄" badge marking the block as frozen
 /// even at a zoom level too tight to tell a still poster from a real filmstrip. Reuses
-/// `draw_filmstrip`'s texture cache/request plumbing, just pinned to one bucket instead of one
-/// per column. A no-op if `asset` has no resolution (audio-only, shouldn't happen for a clip on
-/// a video track).
+/// `draw_filmstrip`'s texture cache/request plumbing, just pinned to the exact held source frame
+/// instead of sampling one frame per column. Only visible columns are iterated.
 fn draw_frozen_poster(
     thumbnail_textures: &HashMap<(u64, i64), egui::TextureHandle>,
     painter: &egui::Painter,
     clip_rect: egui::Rect,
     asset: &MediaAsset,
     source_in_secs: f64,
-    thumbnail_requests: &mut Vec<(u64, i64)>,
+    thumbnail_work: &mut ThumbnailDrawWork<'_>,
 ) {
     let Some((res_w, res_h)) = asset.resolution else {
         return;
@@ -761,12 +816,25 @@ fn draw_frozen_poster(
     }
     let tile_height = clip_rect.height();
     let tile_width = (tile_height * res_w as f32 / res_h as f32).max(1.0);
-    let bucket = (source_in_secs / THUMBNAIL_BUCKET_SECS).floor() as i64;
+    let visible_rect = clip_rect.intersect(painter.clip_rect());
+    if !visible_rect.is_positive() {
+        return;
+    }
+    let frame_index = thumbnail_frame_index(source_in_secs, asset.fps);
+    let key = (asset.id, frame_index);
 
-    match thumbnail_textures.get(&(asset.id, bucket)) {
+    match thumbnail_textures.get(&key) {
         Some(texture) => {
-            let mut x = clip_rect.left();
-            while x < clip_rect.right() {
+            thumbnail_work.touches.push(key);
+            let tile_range = visible_tile_range(
+                clip_rect.left(),
+                clip_rect.right(),
+                visible_rect.left(),
+                visible_rect.right(),
+                tile_width,
+            );
+            for tile_index in tile_range {
+                let x = clip_rect.left() + tile_index as f32 * tile_width;
                 let w = tile_width.min(clip_rect.right() - x);
                 let tile_rect = egui::Rect::from_min_size(
                     egui::pos2(x, clip_rect.top()),
@@ -778,10 +846,9 @@ fn draw_frozen_poster(
                     egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                     egui::Color32::WHITE,
                 );
-                x += tile_width;
             }
         }
-        None => thumbnail_requests.push((asset.id, bucket)),
+        None => thumbnail_work.requests.push(key),
     }
 
     painter.text(
@@ -792,6 +859,10 @@ fn draw_frozen_poster(
         egui::Color32::WHITE,
     );
 }
+
+#[cfg(test)]
+#[path = "timeline_panel/timeline_panel_test.rs"]
+mod tests;
 
 /// Draws one vertical min/max bar per horizontal pixel of `clip_rect`, resampling `peaks`
 /// (the asset's full-duration waveform, see [`avcore::waveform`]) down to whatever's visible

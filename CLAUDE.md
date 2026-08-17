@@ -542,6 +542,18 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   stale-resolution proxy under the old path — the tradeoff is no retroactive regeneration: an
   asset imported before the change keeps its existing proxy until re-imported.
 
+  **Timeline filmstrip loading is zoom-adaptive and bounded.** `draw_filmstrip` no longer walks
+  a long clip's entire off-screen rectangle or keys frames to a fixed one-second bucket. It
+  intersects each clip with the painter-visible area, keeps tile columns anchored to the clip,
+  and samples each visible tile's center at the asset's own frame rate. More timeline zoom
+  therefore requests denser source frames; less zoom naturally spaces them farther apart, while
+  clips of the same asset share `(asset_id, source_frame_index)` cache keys. At most 16 real
+  GStreamer extraction pipelines can be pending, successful textures live in a 512-entry LRU
+  cache (roughly 18 MiB worst-case at the 96px thumbnail cap), and failed-key suppression is
+  independently bounded to 128 entries. This closes Fase 7's explicit lazy-frame-loading gap
+  for timeline imagery and prevents a two-hour clip from queuing thousands of decodes or
+  retaining every frame the user has ever browsed.
+
   **Runtime telemetry, now including CPU/RAM sampling (GPU still not done).**
   `avcore::telemetry` — `TelemetryEvent` (`ImportCompleted`/`ExportCompleted`/
   `PreviewFrameTime`/`Error`/`ResourceUsage`) appended as JSON lines via `record_event`, no rotation yet, plain
@@ -576,9 +588,9 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   reader; a vendor-specific one (NVML/etc.) is a bigger, hardware-dependent lift, same
   "hard wall" class as the GPU encoder ladder and the preview-only GStreamer gaps above.
 
-  **Not yet done (rest of Fase 7):** hardware-accelerated preview decode and an explicit
-  lazy-frame-loading layer. Release binary stripping is done — `[profile.release]` has
-  `strip = true` alongside `opt-level = 3`/`lto = true`.
+  **Not yet done (rest of Fase 7):** hardware-accelerated preview decode. Release binary
+  stripping is done — `[profile.release]` has `strip = true` alongside `opt-level = 3`/`lto =
+  true`.
 
 - **Fase 8 — barely started (auto-update check-and-notify only).** `avcore::update_check` —
   `fetch_latest_release` hits GitHub's `repos/lucasgmagalhaes/oca/releases/latest` API

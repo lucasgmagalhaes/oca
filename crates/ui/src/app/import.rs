@@ -19,7 +19,10 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 use tokio::sync::mpsc::UnboundedSender;
 
-use super::{App, ImportEvent, ThumbnailReady, THUMBNAIL_BUCKET_SECS};
+use super::{
+    thumbnail_frame_time, App, ImportEvent, ThumbnailKey, ThumbnailReady, THUMBNAIL_CACHE_CAPACITY,
+    THUMBNAIL_FAILURE_CAPACITY, THUMBNAIL_MAX_DIM, THUMBNAIL_MAX_PENDING,
+};
 
 impl App {
     /// Probes each of `paths` on its own background thread — what "Importar arquivos" does.
@@ -145,19 +148,20 @@ impl App {
         }
     }
 
-    /// Requests a poster-frame thumbnail for a timeline clip — what `timeline_panel` calls for
-    /// every visible filmstrip tile that doesn't have a texture cached yet (see
-    /// `editor.rs::draw_filmstrip`). A no-op if `(asset_id, bucket)` was already requested
-    /// (successfully or not; see [`App::requested_thumbnails`]). Extraction (open the
-    /// asset's proxy-or-source file, seek to the bucket's representative time, grab a frame,
-    /// downscale) runs on a background thread — the same reasoning as
-    /// [`App::spawn_import`]: this is FFI/decode work that must not run on the UI thread.
-    pub fn request_thumbnail(&mut self, asset_id: u64, bucket: i64) {
-        let key = (asset_id, bucket);
-        if self.requested_thumbnails.contains(&key) {
+    /// Requests a source frame for one visible timeline filmstrip tile. A no-op when the key is
+    /// cached, pending, recently failed, or [`THUMBNAIL_MAX_PENDING`] extractions are already
+    /// running. Skipped-over visible keys are offered again next frame as slots free up.
+    /// Extraction still runs on a background thread because opening/seeking/decoding a real
+    /// GStreamer pipeline must never block the UI thread.
+    pub fn request_thumbnail(&mut self, asset_id: u64, frame_index: i64) {
+        let key = (asset_id, frame_index);
+        if self.thumbnail_textures.contains_key(&key)
+            || self.pending_thumbnails.contains(&key)
+            || self.failed_thumbnails.contains_key(&key)
+            || self.pending_thumbnails.len() >= THUMBNAIL_MAX_PENDING
+        {
             return;
         }
-        self.requested_thumbnails.insert(key);
 
         let Some(asset) = self
             .active_project()
@@ -165,50 +169,128 @@ impl App {
             .iter()
             .find(|a| a.id == asset_id)
         else {
+            self.remember_thumbnail_failure(key);
             return;
         };
         let path = asset
             .proxy_path
             .clone()
             .unwrap_or_else(|| asset.source_path.clone());
-        let at_secs = bucket as f64 * THUMBNAIL_BUCKET_SECS;
+        let at_secs = thumbnail_frame_time(frame_index, asset.fps);
 
+        self.pending_thumbnails.insert(key);
         let tx = self.thumbnail_tx.clone();
         std::thread::spawn(move || {
-            if let Some((width, height, rgba)) = extract_thumbnail(&path, at_secs) {
-                let _ = tx.send(ThumbnailReady {
+            let result = match extract_thumbnail(&path, at_secs) {
+                Some((width, height, rgba)) => ThumbnailReady::Ready {
                     asset_id,
-                    bucket,
+                    frame_index,
                     width,
                     height,
                     rgba,
-                });
-            }
+                },
+                None => ThumbnailReady::Failed {
+                    asset_id,
+                    frame_index,
+                },
+            };
+            let _ = tx.send(result);
         });
     }
 
+    /// Marks cached keys used by the just-painted visible filmstrip. One shared tick per frame
+    /// is enough for LRU ordering and avoids making duplicate tiles artificially newer than
+    /// their neighbors merely because the same frame was drawn more than once.
+    pub(crate) fn touch_thumbnails(&mut self, keys: &[ThumbnailKey]) {
+        if keys.is_empty() {
+            return;
+        }
+        let tick = self.next_thumbnail_usage_tick();
+        for key in keys {
+            if self.thumbnail_textures.contains_key(key) {
+                self.thumbnail_last_used.insert(*key, tick);
+            }
+        }
+    }
+
     /// Uploads finished thumbnail extractions as egui textures. Called once per frame from
-    /// [`eframe::App::ui`], same as [`App::pump_import_queue`].
+    /// [`eframe::App::ui`], same as [`App::pump_import_queue`]. Every completion releases its
+    /// pending slot; successful uploads enter the bounded texture LRU and failures enter a
+    /// smaller bounded retry-suppression set.
     pub(super) fn pump_thumbnail_queue(&mut self, ctx: &egui::Context) {
         while let Ok(ready) = self.thumbnail_rx.try_recv() {
-            let image = egui::ColorImage::from_rgba_unmultiplied(
-                [ready.width as usize, ready.height as usize],
-                &ready.rgba,
-            );
-            let texture = ctx.load_texture(
-                format!("thumb-{}-{}", ready.asset_id, ready.bucket),
-                image,
-                egui::TextureOptions::LINEAR,
-            );
-            self.thumbnail_textures
-                .insert((ready.asset_id, ready.bucket), texture);
+            match ready {
+                ThumbnailReady::Ready {
+                    asset_id,
+                    frame_index,
+                    width,
+                    height,
+                    rgba,
+                } => {
+                    let key = (asset_id, frame_index);
+                    self.pending_thumbnails.remove(&key);
+                    let image = egui::ColorImage::from_rgba_unmultiplied(
+                        [width as usize, height as usize],
+                        &rgba,
+                    );
+                    let texture = ctx.load_texture(
+                        format!("thumb-{asset_id}-{frame_index}"),
+                        image,
+                        egui::TextureOptions::LINEAR,
+                    );
+                    let tick = self.next_thumbnail_usage_tick();
+                    self.thumbnail_textures.insert(key, texture);
+                    self.thumbnail_last_used.insert(key, tick);
+                    self.evict_thumbnail_textures();
+                }
+                ThumbnailReady::Failed {
+                    asset_id,
+                    frame_index,
+                } => {
+                    let key = (asset_id, frame_index);
+                    self.pending_thumbnails.remove(&key);
+                    self.remember_thumbnail_failure(key);
+                }
+            }
+        }
+    }
+
+    fn next_thumbnail_usage_tick(&mut self) -> u64 {
+        self.thumbnail_usage_clock = self.thumbnail_usage_clock.saturating_add(1);
+        self.thumbnail_usage_clock
+    }
+
+    fn remember_thumbnail_failure(&mut self, key: ThumbnailKey) {
+        let tick = self.next_thumbnail_usage_tick();
+        self.failed_thumbnails.insert(key, tick);
+        while self.failed_thumbnails.len() > THUMBNAIL_FAILURE_CAPACITY {
+            let Some(oldest) = self
+                .failed_thumbnails
+                .iter()
+                .min_by_key(|(_, tick)| **tick)
+                .map(|(key, _)| *key)
+            else {
+                break;
+            };
+            self.failed_thumbnails.remove(&oldest);
+        }
+    }
+
+    fn evict_thumbnail_textures(&mut self) {
+        while self.thumbnail_textures.len() > THUMBNAIL_CACHE_CAPACITY {
+            let Some(oldest) = self
+                .thumbnail_textures
+                .keys()
+                .min_by_key(|key| self.thumbnail_last_used.get(key).copied().unwrap_or(0))
+                .copied()
+            else {
+                break;
+            };
+            self.thumbnail_textures.remove(&oldest);
+            self.thumbnail_last_used.remove(&oldest);
         }
     }
 }
-
-/// Longest side, in pixels, a generated thumbnail is downscaled to — tiny on purpose, these
-/// are drawn small and tiled, not viewed full-size.
-const THUMBNAIL_MAX_DIM: u32 = 96;
 
 /// Runs on one of [`App::request_thumbnail`]'s background threads — opens `path`, seeks to
 /// `at_secs`, and grabs the first frame that decodes, downscaled. `None` if the file doesn't

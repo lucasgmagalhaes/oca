@@ -37,10 +37,11 @@ resolution/creation via `resolve_or_create_track`. The timeline
 (`editor.rs::timeline_panel`) draws clips at their real `start_secs` position, video clips draw
 a filmstrip of distinct per-position poster frames (`editor.rs::draw_filmstrip`, one tile per
 on-screen column; each tile's frame is extracted lazily on a background thread once its
-source-time bucket — fixed-width, quantized by `OcaApp::THUMBNAIL_BUCKET_SECS`, shared across
-every clip on that asset rather than per-clip — scrolls into view, so it gets visibly denser as
-the timeline zooms in, per `request.md`'s Fase 3 spec; a known simplification, not zoom-adaptive,
-so a filmstrip zoomed in past roughly one tile per bucket repeats a tile a few times in a row),
+source-frame key — quantized by the asset's frame rate and shared across every clip on that
+asset rather than per-clip — scrolls into view. Tile-center sampling follows the current
+timeline zoom, so zooming in requests denser source frames and zooming out spaces them farther
+apart. Only the painter-visible intersection is traversed; extraction is capped at 16 concurrent
+workers and textures use a 512-entry LRU cache instead of growing for the whole session),
 audio clips draw a min/max peak waveform (`avcore::waveform::generate_waveform`, a fixed
 `WAVEFORM_BUCKET_COUNT`-bucket table computed once per asset during import enrichment and
 resampled per pixel column at draw time — see `editor.rs::draw_waveform`), has a click/drag
