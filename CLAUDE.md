@@ -401,9 +401,8 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   chroma-subsampled coordinates not matching luma's) before they shipped.
   UI (`App::add_shape_track`/`add_shape_clip`, `timeline_ops.rs`): toolbar "S+ Forma"/"+
   Adicionar forma" buttons (`screens/editor/mod.rs`'s `toolbar()`); `add_shape_clip` auto-
-  creates a shape track if none exists yet (unlike `add_text_clip`, which stays a no-op without
-  one — there's no drag-and-drop path onto a shape track the way there is for media assets, so
-  the button has to be able to place the first clip itself). Timeline strip renders each shape
+  creates a shape track if none exists yet, matching manual text insertion. Timeline strip
+  renders each shape
   clip as a colored block with a preset glyph (`shape_kind_glyph` in `timeline_panel.rs`),
   click-to-select and a context-menu delete, same interaction shape as text clips. Properties
   panel (`shape_clip_properties` in `properties_panel.rs`) edits preset/color/center position/
@@ -436,6 +435,16 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   for an installed font. This makes font choice, word wrap, alpha, and rounded backgrounds
   deterministic across platforms; temporary PNGs are generated only when the export job runs
   and removed after the pass, never persisted in `queue.ocqueue`.
+
+  **Manual text insertion and full color editor are wired.** The Editor toolbar's "+ Adicionar
+  texto" action creates a three-second `TextClip` at the playhead, auto-creates `T1` when needed,
+  and selects it for immediate editing. Foreground, background, and spoken-word highlight colors
+  now open one transactional modal instead of egui's inline popup. The modal combines egui's
+  HSV color selector with a 16-swatch preset palette and manual parsing for short/long HEX,
+  `rgb(...)`, `rgba(...)`, and bare comma-separated RGB(A); alpha accepts normalized, percent,
+  and byte values. Cancel leaves the project untouched, while Apply resolves the originating
+  project, sequence, and clip id before mutating so switching context cannot target another
+  clip with the same local id.
 
   `ui`'s `App::ensure_preview_loaded`/`seek_preview` (`app/preview.rs`) now also collect
   every `TrackKind::Text`/`TrackKind::Shape` clip covering the playhead

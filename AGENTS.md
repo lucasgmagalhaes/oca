@@ -72,8 +72,12 @@ one at the playhead keeps both halves in the group (`Track::split_clip_at`), and
 deletes all of them (`OcaApp::delete_selected_clip`). Two scope limits, both enforced rather
 than silently broken: a group can't span tracks (merging across tracks, or dragging a member
 onto a different track, is a no-op/falls back to a same-track move), and copy/paste doesn't
-replicate group membership yet (a pasted clip is always standalone). The Editor screen's three
-columns (media
+replicate group membership yet (a pasted clip is always standalone). The Editor toolbar supports
+manual text overlays: "+ Add text" creates a three-second `TextClip` at the
+playhead and auto-creates a text track when needed. Text foreground, background, and spoken-word
+highlight colors share a transactional modal with an HSV selector, preset swatches, and manual
+HEX/RGB(A) input; cancelling does not dirty the project, while applying verifies the originating
+project and sequence before updating the clip. The Editor screen's three columns (media
 library / preview / properties) and the timeline strip are all resizable by dragging the
 divider between them (`editor.rs::resizable_divider`/`resizable_divider_horizontal`,
 `OcaApp::lib_panel_width`/`props_panel_width`/`timeline_height`) — sizes clamp to the window's
