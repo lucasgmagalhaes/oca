@@ -187,9 +187,10 @@ pub fn download_youtube(
     let mut cmd = Command::new(&bridge);
     cmd.arg(target.target_arg()).arg(url).arg(dest_dir);
     // Points the bundled interpreter at its own vendored stdlib/site-packages next to the
-    // binary (python310.dll, DLLs/, Lib/ — see ytbridge's build.rs) instead of relying on
-    // CPython's own DLL-directory auto-detection, which isn't a documented/verified behavior
-    // for an embedding host like this (as opposed to running python.exe itself).
+    // binary (Windows: python310.dll, DLLs/, Lib/; Linux: lib/ — see ytbridge's build.rs)
+    // instead of relying on CPython's own DLL-directory auto-detection, which isn't a
+    // documented/verified behavior for an embedding host like this (as opposed to running
+    // python.exe/python3 itself).
     if let Some(dir) = bridge.parent() {
         cmd.env("PYTHONHOME", dir);
     }

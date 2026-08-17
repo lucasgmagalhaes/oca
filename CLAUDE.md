@@ -393,16 +393,32 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   `cargo build`-produced `ytbridge.exe` with the system `PATH` stripped down to bare Windows
   system directories (no Python anywhere reachable) — it initialized Python, imported `yt_dlp`,
   and reached real network code (failed only on a deliberately-fake test URL, as expected).
+  **Linux dev/CI build now also bundles its own Python runtime**, mirroring the Windows path:
+  `crates/ytbridge/setup-python-runtime.sh` fetches the `x86_64-unknown-linux-gnu`
+  `install_only` tarball (same `PYTHON_VERSION`/`RELEASE_TAG` as the `.ps1` twin) into
+  `vendor/python-runtime/` and pip-installs `yt_dlp` into it; `build.rs` now branches on
+  `CARGO_CFG_TARGET_OS` — Linux's `install_only` layout keeps the stdlib (incl. `lib-dynload/`'s
+  compiled C-extensions) and `libpython3.10.so.1.0` together under one `lib/` dir (no separate
+  `DLLs/`/`Lib/` split like Windows), so one `copy_dir_all` covers both, plus a
+  `cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/lib` so the built binary finds the shared library
+  next to itself without needing `LD_LIBRARY_PATH` set by whatever spawns it.
+  `PYTHONHOME` continues to work unchanged on Linux (`avcore::youtube_download` already just
+  points it at `ytbridge`'s own directory, no Windows-specific assumption in that code path).
+  **Unlike Windows, `PYO3_PYTHON` isn't pinned in `.cargo/config.toml`** — that file has no
+  per-target-OS override in Cargo's config format, so Linux builds export `PYO3_PYTHON`
+  themselves before calling `cargo build`, same per-shell convention this project already uses
+  for `FFMPEG_DIR`/`PKG_CONFIG_PATH`. **Verification caveat:** written and syntax-checked
+  (`rustc --emit=metadata` on `build.rs` alone) on this Windows dev machine, which has no Linux
+  target toolchain — the Linux branch has not been exercised against a real Linux build or
+  `x86_64-unknown-linux-gnu` tarball on any machine.
+
   **Not yet done:** actually packaging `vendor/python-runtime/` *inside* the Windows
   installer/Linux AppImage themselves — there is no installer at all yet (see "Not started at
-  all" above), so this only fixes local dev/CI builds so far, not an end user's install. Linux
-  needs its own adaptation too (`build.rs`/the setup script are Windows-only for now —
-  `python-build-standalone`'s Linux layout differs enough — `libpythonX.Y.so` +
-  `lib-dynload/`, no `.dll`/`.pyd` — that this isn't just a path rename). Until packaged,
-  `App::youtube_download_error` surfaces a clear `YoutubeDownloadToolMissing`-style message
-  when `ytbridge` isn't found or crashes, so the feature degrades to "visibly unavailable"
-  rather than silently broken — or, before the earlier `ytbridge`-isolation fix, taking the
-  rest of the app down with it.
+  all" above), so this only fixes local dev/CI builds so far, not an end user's install. Until
+  packaged, `App::youtube_download_error` surfaces a clear `YoutubeDownloadToolMissing`-style
+  message when `ytbridge` isn't found or crashes, so the feature degrades to "visibly
+  unavailable" rather than silently broken — or, before the earlier `ytbridge`-isolation fix,
+  taking the rest of the app down with it.
 
 - **Custom title bar (ad hoc, not from `request.md`).** `main.rs`'s `NativeOptions` now sets
   `.with_decorations(false)` — no OS window chrome. `screens::breadcrumb::show` (still the
