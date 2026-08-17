@@ -14,7 +14,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use super::*;
-use crate::timeline::{ShapeClip, ShapeKind, TextClip, WordTiming};
+use crate::timeline::{MaskShape, ShapeClip, ShapeKind, TextClip, WordTiming};
 
 fn sample_shape(kind: ShapeKind) -> ShapeClip {
     ShapeClip {
@@ -92,4 +92,35 @@ fn non_empty_text_draws_at_least_one_opaque_pixel() {
     let clip = sample_text("A");
     let buf = render_text_clip_rgba(&clip, 200, 100);
     assert!(buf.chunks_exact(4).any(|p| p[3] > 0));
+}
+
+fn gray_pixel(buf: &[u8], width: u32, x: u32, y: u32) -> u8 {
+    buf[(y * width + x) as usize]
+}
+
+#[test]
+fn none_mask_shape_is_fully_masked_out() {
+    let buf = render_mask_shape_gray8(MaskShape::None, 0.0, 100, 100);
+    assert!(buf.iter().all(|&b| b == 0));
+}
+
+#[test]
+fn circle_mask_center_is_visible_and_corners_are_masked() {
+    let buf = render_mask_shape_gray8(MaskShape::Circle, 0.0, 100, 100);
+    assert_eq!(gray_pixel(&buf, 100, 50, 50), 255);
+    assert_eq!(gray_pixel(&buf, 100, 0, 0), 0);
+}
+
+#[test]
+fn rounded_rect_mask_with_zero_radius_covers_almost_the_whole_frame() {
+    let buf = render_mask_shape_gray8(MaskShape::RoundedRect, 0.0, 100, 100);
+    assert_eq!(gray_pixel(&buf, 100, 50, 50), 255);
+    assert_eq!(gray_pixel(&buf, 100, 1, 1), 255);
+}
+
+#[test]
+fn rounded_rect_mask_with_full_radius_masks_out_the_corner() {
+    let buf = render_mask_shape_gray8(MaskShape::RoundedRect, 1.0, 100, 100);
+    assert_eq!(gray_pixel(&buf, 100, 50, 50), 255);
+    assert_eq!(gray_pixel(&buf, 100, 0, 0), 0);
 }
