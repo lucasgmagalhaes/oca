@@ -265,8 +265,11 @@ pub struct ClipInstance {
     /// Feeds the timeline waveform display (`ui`'s `draw_waveform`, scaled by
     /// [`ClipInstance::gain_linear`]) and is wired into export — resolved to
     /// `avbridge::ClipSegment::gain_db` and applied as a `volume=<gain>dB` audio filter stage
-    /// (`timeline_export.c`/`timeline_export_multi.c`). No live preview effect yet. `#[serde(default)]`
-    /// so older saved projects load at unity gain.
+    /// (`timeline_export.c`/`timeline_export_multi.c`). Also wired into preview now
+    /// (`crate::preview::build_audio_filter_bin`/`Preview::open_composited`'s own audio chain,
+    /// both via GStreamer's `volume` element — a linear scale factor, so `gain_db` converts via
+    /// `preview::gain_db_to_linear`, unlike avfilter's own `volume=<gain>dB` string option).
+    /// `#[serde(default)]` so older saved projects load at unity gain.
     #[serde(default)]
     pub gain_db: f32,
     /// `true` if this block is frozen — holds a single still frame

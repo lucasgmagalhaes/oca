@@ -621,6 +621,68 @@ fn build_chroma_key_element(clip: &ClipInstance) -> Result<gst::Element, Preview
         .map_err(PreviewError::CreateElement)
 }
 
+/// `ClipInstance::gain_db` (a dB offset, matching export's own `volume=%.4fdB` avfilter option)
+/// converted to the linear scale factor GStreamer's `volume` element property actually expects
+/// (`1.0` = unity gain, unlike avfilter which takes the dB string directly) — standard dB-to-
+/// amplitude conversion, `10^(dB/20)`.
+fn gain_db_to_linear(gain_db: f32) -> f64 {
+    10f64.powf(gain_db as f64 / 20.0)
+}
+
+/// Builds a `gst::Bin` wrapping a `volume` element set to `clip.gain_db`'s linear equivalent —
+/// `None` if `gain_db` is `0.0` (unity gain, a no-op), same "`None` when neutral" convention
+/// [`build_video_filter_bin`] uses. Suitable for `playbin`'s `audio-filter` property
+/// ([`Preview::open`]) — [`Preview::open_composited`]'s own manually-built audio chain applies
+/// the `volume` element directly instead, since it isn't `playbin`-managed.
+fn build_audio_filter_bin(clip: &ClipInstance) -> Result<Option<gst::Element>, PreviewError> {
+    if clip.gain_db == 0.0 {
+        return Ok(None);
+    }
+    let volume = gst::ElementFactory::make("volume")
+        .property("volume", gain_db_to_linear(clip.gain_db).clamp(0.0, 10.0))
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+
+    let bin = gst::Bin::new();
+    bin.add(&volume).map_err(PreviewError::FilterBin)?;
+    let sink_pad = volume
+        .static_pad("sink")
+        .expect("volume always has a sink pad");
+    let src_pad = volume
+        .static_pad("src")
+        .expect("volume always has a src pad");
+    let ghost_sink = gst::GhostPad::with_target(&sink_pad).map_err(PreviewError::FilterBin)?;
+    let ghost_src = gst::GhostPad::with_target(&src_pad).map_err(PreviewError::FilterBin)?;
+    bin.add_pad(&ghost_sink).map_err(PreviewError::FilterBin)?;
+    bin.add_pad(&ghost_src).map_err(PreviewError::FilterBin)?;
+
+    Ok(Some(bin.upcast::<gst::Element>()))
+}
+
+/// Links `decodebin`'s first audio output pad to `target_sink` once it appears — the audio twin
+/// of [`connect_decodebin_video_pad`], used only for [`Preview::open_composited`]'s background
+/// (track 0) branch, matching export's own "audio comes from track 0 only" convention
+/// (`timeline_export_multi.c`'s top-of-file comment) — overlay branches' own audio is never
+/// wired up at all, silently dropped same as export drops it.
+fn connect_decodebin_audio_pad(decodebin: &gst::Element, target_sink: gst::Pad) {
+    decodebin.connect_pad_added(move |_dbin, src_pad| {
+        if target_sink.is_linked() {
+            return;
+        }
+        let is_audio = src_pad
+            .current_caps()
+            .or_else(|| Some(src_pad.query_caps(None)))
+            .and_then(|caps| caps.structure(0).map(|s| s.name().starts_with("audio/")))
+            .unwrap_or(false);
+        if !is_audio {
+            return;
+        }
+        if let Err(e) = src_pad.link(&target_sink) {
+            tracing::warn!(error = ?e, "failed to link decodebin audio pad into the audio chain");
+        }
+    });
+}
+
 /// Links `decodebin`'s first video output pad to `target_sink` once it appears — `decodebin`/
 /// `uridecodebin` expose pads dynamically (`pad-added`, possibly more than one: video, audio,
 /// subtitle), so this can't be a static link at bin-build time like every other element pair in
@@ -1189,6 +1251,9 @@ impl Preview {
             if let Some(filter_bin) = build_video_filter_bin(clip, resolution, true)? {
                 pipeline.set_property("video-filter", &filter_bin);
             }
+            if let Some(audio_filter_bin) = build_audio_filter_bin(clip)? {
+                pipeline.set_property("audio-filter", &audio_filter_bin);
+            }
         }
 
         // Fixed RGBA caps: whatever the source's actual pixel format is (planar YUV, etc.),
@@ -1205,10 +1270,14 @@ impl Preview {
             .build();
         pipeline.set_property("video-sink", &video_sink);
 
-        // No audio output wired up yet — fakesink avoids playbin defaulting to
-        // autoaudiosink, which would need real audio hardware for something as basic as
-        // `open()`.
-        let audio_sink = gst::ElementFactory::make("fakesink")
+        // Real audio output — `autoaudiosink` picks whatever's actually available (wasapi/
+        // directsound on Windows, alsa/pulse on Linux). If this machine has no usable audio
+        // device at all, the Paused transition below fails; falls back to `fakesink` (silent,
+        // matching the old always-fakesink behavior) and retries once rather than making the
+        // whole preview unavailable over a missing/broken audio device — same "degrade rather
+        // than abort" posture the rest of this module already has for a missing matte file or
+        // an unloadable font.
+        let audio_sink = gst::ElementFactory::make("autoaudiosink")
             .build()
             .map_err(PreviewError::CreateElement)?;
         pipeline.set_property("audio-sink", &audio_sink);
@@ -1220,7 +1289,23 @@ impl Preview {
         // preroll happens on GStreamer's own threads) so duration/position/frame queries made
         // right after `open()` returns are reliable instead of racing the preroll.
         let (result, _current, _pending) = pipeline.state(gst::ClockTime::from_seconds(5));
-        result.map_err(PreviewError::StateChange)?;
+        if result.is_err() {
+            tracing::warn!(
+                "failed to preroll with a real audio sink, retrying muted (no audio device?)"
+            );
+            pipeline
+                .set_state(gst::State::Null)
+                .map_err(PreviewError::StateChange)?;
+            let fakesink = gst::ElementFactory::make("fakesink")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            pipeline.set_property("audio-sink", &fakesink);
+            pipeline
+                .set_state(gst::State::Paused)
+                .map_err(PreviewError::StateChange)?;
+            let (result, _current, _pending) = pipeline.state(gst::ClockTime::from_seconds(5));
+            result.map_err(PreviewError::StateChange)?;
+        }
 
         Ok(Self {
             pipeline,
@@ -1326,6 +1411,38 @@ impl Preview {
                 zorder: 0,
             },
         )?;
+
+        // Audio — background (track 0) branch only, matching export's own "audio comes from
+        // track 0 only" convention (`timeline_export_multi.c`'s top-of-file comment). `volume`
+        // applies `background_clip.gain_db` directly (a plain property, not a pad probe —
+        // gain_db has no keyframes, so it's a single static value for the branch's whole life),
+        // same linear-scale conversion [`build_audio_filter_bin`] uses for the single-clip path.
+        {
+            let audioconvert = gst::ElementFactory::make("audioconvert")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let audioresample = gst::ElementFactory::make("audioresample")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let gain = background_clip.map_or(0.0, |c| c.gain_db);
+            let volume = gst::ElementFactory::make("volume")
+                .property("volume", gain_db_to_linear(gain).clamp(0.0, 10.0))
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            let audio_sink = gst::ElementFactory::make("autoaudiosink")
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            pipeline
+                .add_many([&audioconvert, &audioresample, &volume, &audio_sink])
+                .map_err(PreviewError::Compositing)?;
+            gst::Element::link_many([&audioconvert, &audioresample, &volume, &audio_sink])
+                .map_err(PreviewError::Compositing)?;
+            let audio_sink_pad = audioconvert
+                .static_pad("sink")
+                .expect("audioconvert always has a sink pad");
+            connect_decodebin_audio_pad(&background_decodebin, audio_sink_pad);
+        }
+
         let mut branches = vec![background_decodebin];
         let mut matte_branches: Vec<(usize, gst::Element, f64)> = Vec::new();
         if let Some(matte) = background_matte {
@@ -1369,6 +1486,11 @@ impl Preview {
             next_zorder += 1;
         }
 
+        // Unlike [`Self::open`]'s playbin-managed audio-sink property (a one-line swap-and-
+        // retry on failure), this pipeline's audio sink is already linked into a manually-built
+        // chain by this point — no cheap retry-with-fakesink available here, so a missing/broken
+        // audio device fails this whole `open_composited` call, same as any other setup failure
+        // in this function (a probe failing, a missing background video, etc.).
         let pipeline = pipeline.upcast::<gst::Element>();
         pipeline
             .set_state(gst::State::Paused)
