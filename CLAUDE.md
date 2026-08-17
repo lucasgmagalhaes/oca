@@ -33,8 +33,30 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   layer templates, auto-reframe, motion tracking.
 
   **Wired to preview:** scale/rotation/opacity keyframes, pixelize/shake/zoom/freeze_frame,
-  speed, transitions (fade/zoom/slide — see below). **Not wired to preview:** vignette,
-  mask_shape, gain_db, glitch, deflicker, LUTs, stabilization.
+  speed, transitions (fade/zoom/slide — see below), mask_shape (see below). **Not wired to
+  preview:** vignette (confirmed no matching GStreamer element via a real `gst-inspect-1.0` on
+  this dev machine — not just assumed, unlike the rest of this list, which just hasn't been
+  attempted), gain_db, glitch, deflicker, LUTs, stabilization.
+
+  **Layer mask (`mask_shape`) now previews too.** `crate::preview::build_mask_shape_stage`
+  (`preview.rs`) reuses the exact `alphacombine` technique the background-removal matte stage
+  already established, gated identically (overlay branch only, matching export's own
+  `mask_shape`-only-visible-on-an-overlay-track caveat) and running *before* the matte stage in
+  the branch's own chain so a clip with both set gets the same "matte replaces, doesn't combine"
+  precedence export's `bridge.h` documents for `mask_video_path`. Unlike the matte (a decoded
+  video file), the mask has no keyframes and no source file — `crate::overlay_render::
+  render_mask_shape_gray8` rasterizes it once into a static `GRAY8` buffer (mirroring
+  `render_text_clip_rgba`/`render_shape_clip_rgba`'s own static-buffer shape), pushed via
+  `appsrc`+`imagefreeze` straight into `alphacombine`'s `alpha` pad — `alphacombine` accepts
+  `GRAY8` there directly, so unlike the matte's own decode branch this needs no
+  `videoconvert`/`capsfilter` conversion stage on the mask side at all. Circle mirrors the
+  export `geq`'s plain-circle test; RoundedRect mirrors its rounded-rect signed-distance test,
+  same `mask_corner_radius` fraction convention. Confirmed working for real against a live
+  GStreamer pipeline on this dev machine (`open_composited_with_mask_shape_composites_without_
+  error`, `open_composited_with_mask_shape_and_matte_composites_without_error`,
+  `preview_test.rs`) — the latter specifically exercises both `alphacombine` stages chained on
+  the same branch. Needed the same explicit, identical `colorimetry=bt601` field the matte
+  stage's own caps already carry (same "Color range mismatch" `alphacombine` error otherwise).
 
   **Transitions now preview too** — `build_video_filter_bin` (`crates/core/src/preview.rs`)
   gained Fade/Zoom/Slide, gated to `include_opacity` only (the same "background-branch-only"
