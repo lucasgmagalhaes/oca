@@ -5697,8 +5697,8 @@
       "source_location": "L217",
       "_origin": "ast",
       "id": "crates_core_src_preview_build_video_filter_bin",
-      "community": 87,
-      "community_name": "src/preview.rs",
+      "community": 95,
+      "community_name": ".open_composited_once",
       "norm_label": "build_video_filter_bin()"
     },
     {
@@ -5829,8 +5829,8 @@
       "source_location": "L954",
       "_origin": "ast",
       "id": "crates_core_src_preview_compositebranch",
-      "community": 95,
-      "community_name": ".open_composited_once",
+      "community": 87,
+      "community_name": "src/preview.rs",
       "norm_label": "compositebranch"
     },
     {
@@ -6071,8 +6071,8 @@
       "source_location": "L1962",
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_position_secs",
-      "community": 5,
-      "community_name": "PreviewError",
+      "community": 95,
+      "community_name": ".open_composited_once",
       "norm_label": ".position_secs()"
     },
     {
@@ -6082,8 +6082,8 @@
       "source_location": "L1969",
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_duration_secs",
-      "community": 5,
-      "community_name": "PreviewError",
+      "community": 95,
+      "community_name": ".open_composited_once",
       "norm_label": ".duration_secs()"
     },
     {
@@ -9797,7 +9797,7 @@
       "label": "is_newer()",
       "file_type": "code",
       "source_file": "crates/core/src/update_check.rs",
-      "source_location": "L94",
+      "source_location": "L96",
       "_origin": "ast",
       "id": "crates_core_src_update_check_is_newer",
       "community": 80,
@@ -37111,7 +37111,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "crates/core/src/model_download.rs",
-      "source_location": "L269",
+      "source_location": "L266",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_core_src_model_download_download_file",
@@ -51853,7 +51853,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "crates/core/src/update_check.rs",
-      "source_location": "L94",
+      "source_location": "L96",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_core_src_update_check",
@@ -80236,5 +80236,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "575d08ae854766bbcafba85b47f4c5998565c87d"
+  "built_at_commit": "19e8261624ba21491e70f2ac9d4a96b138288e78"
 }
