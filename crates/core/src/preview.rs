@@ -525,18 +525,21 @@ struct CompositeBranch<'a> {
 
 /// Builds one branch of [`Preview::open_composited`]'s pipeline — `uridecodebin` (dynamically
 /// linked once its video pad appears) through this branch's own effects chain (layer-scale
-/// resize, [`build_video_filter_bin`]'s subset, chroma key) into a freshly requested
-/// `compositor` sink pad — and returns that branch's `uridecodebin` element (what
-/// [`Preview::seek_composited`] seeks independently, since each branch's source file has its
-/// own, unrelated time base — a single pipeline-wide seek would send every branch to the same
-/// absolute source time, which is only ever correct by coincidence when clips have different
-/// trim points).
+/// resize, [`build_video_filter_bin`]'s subset, chroma key, background-removal matte) into a
+/// freshly requested `compositor` sink pad — and returns that branch's `uridecodebin` element
+/// (what [`Preview::seek_composited`] seeks independently, since each branch's source file has
+/// its own, unrelated time base — a single pipeline-wide seek would send every branch to the
+/// same absolute source time, which is only ever correct by coincidence when clips have
+/// different trim points), plus a second `uridecodebin` for the matte file if
+/// `clip.background_removal_enabled` and a matte path is set — mirroring export's own
+/// `ClipSegment::mask_video_path` gate (see that field's doc comment in `bridge.h`): only
+/// consulted on an overlay branch, same as chroma key.
 fn build_composite_branch(
     pipeline: &gst::Pipeline,
     compositor: &gst::Element,
     canvas: (u32, u32),
     branch: CompositeBranch,
-) -> Result<gst::Element, PreviewError> {
+) -> Result<(gst::Element, Option<gst::Element>), PreviewError> {
     let uri = gst::glib::filename_to_uri(branch.path, None).map_err(PreviewError::UriConversion)?;
     let decodebin = gst::ElementFactory::make("uridecodebin")
         .property("uri", uri.as_str())
@@ -594,6 +597,21 @@ fn build_composite_branch(
             .map_err(PreviewError::CreateElement)?,
     );
 
+    // Background-removal matte — mirrors export's `ClipSegment::mask_video_path`/`alphamerge`
+    // stage: only meaningful on an overlay branch, only when a matte was actually generated for
+    // this clip. `alphacombine` (gst-plugins-bad's `codecalpha` plugin, confirmed present via
+    // `gst-inspect-1.0` on this dev machine) takes the `sink` pad's own video and the `alpha`
+    // pad's luma plane, producing an alpha-capable output (`A420`/etc.) — the GStreamer
+    // counterpart to avfilter's `alphamerge`. Both inputs are forced to the branch's own
+    // resolution so their planes line up regardless of the matte's own encoded size (see
+    // `crate::background_removal`'s doc comment on how it's generated).
+    // At this point `chain` already holds this branch's complete pre-matte effects sequence
+    // (layer scale, filter bin, chroma key, trailing videoconvert) — every element in it is
+    // added/linked together, exactly once, by the single `add_many`/`link_many` call right
+    // below. The matte apparatus below is deliberately kept out of `chain` and added/linked
+    // separately instead, since it needs its own second input (the matte decode branch) that
+    // a plain linear chain can't express — pushing `alphacombine` into `chain` too would give
+    // the pipeline two elements sharing the same auto-generated name and fail to add.
     pipeline
         .add(&decodebin)
         .map_err(PreviewError::Compositing)?;
@@ -607,6 +625,136 @@ fn build_composite_branch(
         .and_then(|e| e.static_pad("sink"))
         .expect("chain always starts with a videoconvert, which always has a sink pad");
     connect_decodebin_video_pad(&decodebin, chain_sink);
+
+    let chain_tail = chain
+        .last()
+        .expect("chain always has at least the trailing videoconvert")
+        .clone();
+
+    // Background-removal matte — mirrors export's `ClipSegment::mask_video_path`/`alphamerge`
+    // stage: only meaningful on an overlay branch, only when a matte was actually generated for
+    // this clip. `alphacombine` (gst-plugins-bad's `codecalpha` plugin, confirmed present via
+    // `gst-inspect-1.0` on this dev machine) takes the `sink` pad's own video and the `alpha`
+    // pad's luma plane, producing an alpha-capable output (`A420`/etc.) — the GStreamer
+    // counterpart to avfilter's `alphamerge`. Both inputs are forced to the branch's own
+    // resolution so their planes line up regardless of the matte's own encoded size (see
+    // `crate::background_removal`'s doc comment on how it's generated). Returns the matte's own
+    // `uridecodebin` (for independent seeking, see [`Preview::matte_branches`]) and this
+    // branch's true final video element — `chain_tail` itself when there's no matte.
+    let (matte_decodebin, branch_output) = if branch.is_overlay
+        && branch.clip.is_some_and(|c| {
+            c.background_removal_enabled && !c.background_removal_mask_path.is_empty()
+        }) {
+        let clip = branch.clip.expect("checked by is_some_and above");
+        let (width, height) = branch.resolution.unwrap_or(canvas);
+        let mask_path = Path::new(&clip.background_removal_mask_path);
+        match gst::glib::filename_to_uri(mask_path, None) {
+            Ok(uri) => {
+                let matte_decodebin = gst::ElementFactory::make("uridecodebin")
+                    .property("uri", uri.as_str())
+                    .build()
+                    .map_err(PreviewError::CreateElement)?;
+                let matte_convert = gst::ElementFactory::make("videoconvert")
+                    .build()
+                    .map_err(PreviewError::CreateElement)?;
+                let matte_scale = gst::ElementFactory::make("videoscale")
+                    .build()
+                    .map_err(PreviewError::CreateElement)?;
+                let matte_caps = gst::ElementFactory::make("capsfilter")
+                    .property(
+                        "caps",
+                        gst::Caps::builder("video/x-raw")
+                            .field("format", "GRAY8")
+                            .field("width", width as i32)
+                            .field("height", height as i32)
+                            // Explicit, identical colorimetry on both this and `sink_caps`
+                            // below — `alphacombine` refuses to combine two inputs with
+                            // mismatched color range ("Color range mismatch"), which the
+                            // matte's own encode and the main chain's own negotiated caps
+                            // otherwise don't guarantee agree on, confirmed empirically
+                            // (`gst_alpha_combine_negotiate`'s error message, not guessed).
+                            .field("colorimetry", "bt601")
+                            .build(),
+                    )
+                    .build()
+                    .map_err(PreviewError::CreateElement)?;
+                // Forces `chain_tail`'s output into I420 before it reaches `alphacombine`'s
+                // `sink` pad — its pad template doesn't accept the unconstrained/RGBA-negotiated
+                // caps `chain_tail` otherwise produces.
+                let sink_caps = gst::ElementFactory::make("capsfilter")
+                    .property(
+                        "caps",
+                        gst::Caps::builder("video/x-raw")
+                            .field("format", "I420")
+                            .field("width", width as i32)
+                            .field("height", height as i32)
+                            .field("colorimetry", "bt601")
+                            .build(),
+                    )
+                    .build()
+                    .map_err(PreviewError::CreateElement)?;
+                let alphacombine = gst::ElementFactory::make("alphacombine")
+                    .build()
+                    .map_err(PreviewError::CreateElement)?;
+                let post_convert = gst::ElementFactory::make("videoconvert")
+                    .build()
+                    .map_err(PreviewError::CreateElement)?;
+
+                pipeline
+                    .add_many([
+                        &matte_decodebin,
+                        &matte_convert,
+                        &matte_scale,
+                        &matte_caps,
+                        &sink_caps,
+                        &alphacombine,
+                        &post_convert,
+                    ])
+                    .map_err(PreviewError::Compositing)?;
+                gst::Element::link_many([&matte_convert, &matte_scale, &matte_caps])
+                    .map_err(PreviewError::Compositing)?;
+                let matte_sink = matte_convert
+                    .static_pad("sink")
+                    .expect("videoconvert always has a sink pad");
+                connect_decodebin_video_pad(&matte_decodebin, matte_sink);
+
+                chain_tail
+                    .link(&sink_caps)
+                    .map_err(PreviewError::Compositing)?;
+
+                let color_src = sink_caps
+                    .static_pad("src")
+                    .expect("capsfilter always has a src pad");
+                let color_sink = alphacombine
+                    .static_pad("sink")
+                    .expect("alphacombine always has a sink pad");
+                color_src.link(&color_sink).map_err(PreviewError::PadLink)?;
+
+                let alpha_src = matte_caps
+                    .static_pad("src")
+                    .expect("capsfilter always has a src pad");
+                let alpha_sink = alphacombine
+                    .static_pad("alpha")
+                    .expect("alphacombine always has an alpha sink pad");
+                alpha_src.link(&alpha_sink).map_err(PreviewError::PadLink)?;
+
+                alphacombine
+                    .link(&post_convert)
+                    .map_err(PreviewError::Compositing)?;
+
+                (Some(matte_decodebin), post_convert)
+            }
+            Err(e) => {
+                // Same "degrade rather than abort" posture export's matte handling has for a
+                // stale/deleted cache file — no matte compositing this branch, not a failed
+                // preview pipeline.
+                tracing::warn!(error = ?e, path = %mask_path.display(), "failed to resolve matte path for preview, compositing without it");
+                (None, chain_tail.clone())
+            }
+        }
+    } else {
+        (None, chain_tail.clone())
+    };
 
     let sink_pad = compositor
         .request_pad_simple("sink_%u")
@@ -625,10 +773,9 @@ fn build_composite_branch(
             let (canvas_w, canvas_h) = canvas;
             let pad_for_probe = sink_pad.clone();
 
-            let chain_src = chain
-                .last()
-                .and_then(|e| e.static_pad("src"))
-                .expect("chain always ends with a videoconvert, which always has a src pad");
+            let chain_src = branch_output
+                .static_pad("src")
+                .expect("branch_output is always a videoconvert, which always has a src pad");
             chain_src.add_probe(gst::PadProbeType::BUFFER, move |_pad, info| {
                 let secs = info
                     .buffer()
@@ -651,13 +798,12 @@ fn build_composite_branch(
         }
     }
 
-    let chain_out = chain
-        .last()
-        .and_then(|e| e.static_pad("src"))
-        .expect("chain always ends with a videoconvert, which always has a src pad");
+    let chain_out = branch_output
+        .static_pad("src")
+        .expect("branch_output is always a videoconvert, which always has a src pad");
     chain_out.link(&sink_pad).map_err(PreviewError::PadLink)?;
 
-    Ok(decodebin)
+    Ok((decodebin, matte_decodebin))
 }
 
 /// Builds one static text/shape overlay branch of [`Preview::open_composited`]'s pipeline:
@@ -745,6 +891,15 @@ pub struct Preview {
     /// independently. Empty for a [`Self::open`]-opened single-clip pipeline, which uses the
     /// plain [`Self::seek`]/[`Self::seek_with_rate`] instead.
     branches: Vec<gst::Element>,
+    /// `(branch_index, matte uridecodebin, clip.source_in_secs)` for every overlay branch with
+    /// a background-removal matte. `branch_index` indexes into [`Self::branches`]/the offsets
+    /// [`Self::seek_composited`] is given — the matte plays its own 0-based clip (see
+    /// `ClipSegment::mask_video_path`'s doc comment in `bridge.h` for why: it was sampled
+    /// directly from the overlay clip's own trimmed source range, not the timeline), so
+    /// `seek_composited` derives its seek target from the matching branch's own offset minus
+    /// `source_in_secs` rather than taking a separate offset from the caller — `ui`'s `App`
+    /// never needs to know mattes exist.
+    matte_branches: Vec<(usize, gst::Element, f64)>,
 }
 
 impl Preview {
@@ -811,6 +966,7 @@ impl Preview {
             pipeline,
             video_sink,
             branches: Vec::new(),
+            matte_branches: Vec::new(),
         })
     }
 
@@ -897,7 +1053,7 @@ impl Preview {
             .link(&video_sink)
             .map_err(PreviewError::Compositing)?;
 
-        let mut branches = vec![build_composite_branch(
+        let (background_decodebin, background_matte) = build_composite_branch(
             &pipeline,
             &compositor,
             canvas,
@@ -908,12 +1064,20 @@ impl Preview {
                 is_overlay: false,
                 zorder: 0,
             },
-        )?];
+        )?;
+        let mut branches = vec![background_decodebin];
+        let mut matte_branches: Vec<(usize, gst::Element, f64)> = Vec::new();
+        if let Some(matte) = background_matte {
+            // Unreachable in practice — matte compositing is gated to overlay branches only
+            // (see `build_composite_branch`'s doc comment) — but kept for completeness rather
+            // than silently dropping a matte decodebin if that gate ever changes.
+            matte_branches.push((0, matte, background_clip.map_or(0.0, |c| c.source_in_secs)));
+        }
         for (i, (path, clip)) in overlays.iter().enumerate() {
             let resolution = avbridge::probe(path)
                 .map_err(PreviewError::Probe)?
                 .resolution;
-            branches.push(build_composite_branch(
+            let (decodebin, matte) = build_composite_branch(
                 &pipeline,
                 &compositor,
                 canvas,
@@ -924,7 +1088,12 @@ impl Preview {
                     is_overlay: true,
                     zorder: (i + 1) as u32,
                 },
-            )?);
+            )?;
+            let branch_index = branches.len();
+            branches.push(decodebin);
+            if let Some(matte) = matte {
+                matte_branches.push((branch_index, matte, clip.source_in_secs));
+            }
         }
 
         let mut next_zorder = (overlays.len() + 1) as u32;
@@ -950,6 +1119,7 @@ impl Preview {
             pipeline,
             video_sink,
             branches,
+            matte_branches,
         })
     }
 
@@ -960,12 +1130,29 @@ impl Preview {
     /// ignored. Returns the first branch's seek error, if any, after attempting every branch
     /// (partial application is preferable to leaving some branches on their old offset with no
     /// indication which).
+    ///
+    /// Any [`Self::matte_branches`] entry tied to a branch that got seeked here is seeked too,
+    /// to that branch's own offset minus its `source_in_secs` (the matte's own 0-based clip
+    /// timeline — see [`Self::matte_branches`]' doc comment) — the caller never passes a
+    /// separate offset for it.
     pub fn seek_composited(&self, offsets: &[f64]) -> Result<(), PreviewError> {
         let mut first_err = None;
         for (branch, &offset) in self.branches.iter().zip(offsets) {
             if let Err(e) = branch.seek_simple(
                 gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
                 gst::ClockTime::from_seconds_f64(offset.max(0.0)),
+            ) {
+                first_err.get_or_insert(PreviewError::Seek(e));
+            }
+        }
+        for &(branch_index, ref matte, source_in_secs) in &self.matte_branches {
+            let Some(&offset) = offsets.get(branch_index) else {
+                continue;
+            };
+            let matte_offset = (offset - source_in_secs).max(0.0);
+            if let Err(e) = matte.seek_simple(
+                gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+                gst::ClockTime::from_seconds_f64(matte_offset),
             ) {
                 first_err.get_or_insert(PreviewError::Seek(e));
             }

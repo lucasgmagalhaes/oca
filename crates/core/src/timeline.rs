@@ -539,8 +539,10 @@ pub struct ClipInstance {
     /// `timeline_export_multi.c`), gated the same way `mask_shape`/`chroma_key`'s own alpha is:
     /// **only takes effect on an overlay track** (track 1+ in a multi-track export) — a
     /// single/background track's clips never composite, so their alpha (from this or any other
-    /// source) is always discarded by the final `format=yuv420p` conform regardless. Not yet
-    /// wired into preview. `#[serde(default)]` so older saved projects load with it off.
+    /// source) is always discarded by the final `format=yuv420p` conform regardless. Also wired
+    /// into preview (`crate::preview::build_composite_branch`'s `alphacombine` stage — the
+    /// GStreamer counterpart to avfilter's `alphamerge`), same overlay-only gate.
+    /// `#[serde(default)]` so older saved projects load with it off.
     #[serde(default)]
     pub background_removal_enabled: bool,
     /// Path to the grayscale-as-luma alpha-matte video `ui`'s "Gerar máscara" flow generates for
