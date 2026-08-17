@@ -625,6 +625,15 @@ pub struct App {
     /// plain [`avcore::preview::Preview::open`] single-clip pipeline instead, same as before
     /// composited preview existed.
     preview_overlay_clip_ids: Vec<u64>,
+    /// Ids of the [`TrackKind::Text`] clips covering the playhead the last time
+    /// [`App::ensure_preview_loaded`] opened a pipeline, in the same order passed as
+    /// [`avcore::preview::Preview::open_composited`]'s `text_overlays` — same reopen-detection
+    /// role [`App::preview_overlay_clip_ids`] has for video overlay branches. Text/shape clips
+    /// have no keyframes and nothing to seek, so unlike video overlays this list only ever
+    /// drives "does the pipeline need reopening", never per-branch offset math.
+    preview_text_clip_ids: Vec<u64>,
+    /// Same role as [`App::preview_text_clip_ids`], for [`TrackKind::Shape`] clips.
+    preview_shape_clip_ids: Vec<u64>,
     /// Uploaded from the latest [`avcore::preview::Preview::current_frame`] each frame the
     /// Editor screen is shown; `None` until the first frame decodes. Reset whenever
     /// [`App::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
@@ -979,6 +988,8 @@ impl App {
             preview: None,
             preview_clip_id: None,
             preview_overlay_clip_ids: Vec::new(),
+            preview_text_clip_ids: Vec::new(),
+            preview_shape_clip_ids: Vec::new(),
             preview_texture: None,
             preview_playing: false,
             preview_frozen_since: None,

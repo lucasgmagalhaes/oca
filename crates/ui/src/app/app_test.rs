@@ -196,6 +196,8 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         preview: None,
         preview_clip_id: None,
         preview_overlay_clip_ids: Vec::new(),
+        preview_text_clip_ids: Vec::new(),
+        preview_shape_clip_ids: Vec::new(),
         preview_texture: None,
         preview_playing: false,
         preview_frozen_since: None,
