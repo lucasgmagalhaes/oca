@@ -369,10 +369,18 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 }
             });
             ui.add_space(10.0);
-            ui.checkbox(
-                &mut app.prefs.telemetry_enabled,
-                Text::PrefsTelemetryEnabled.tr(locale),
-            );
+            if ui
+                .checkbox(
+                    &mut app.prefs.telemetry_enabled,
+                    Text::PrefsTelemetryEnabled.tr(locale),
+                )
+                .changed()
+            {
+                app.telemetry_enabled_flag.store(
+                    app.prefs.telemetry_enabled,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+            }
         });
         ui.add_space(14.0);
 

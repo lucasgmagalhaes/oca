@@ -385,6 +385,12 @@ pub const SCALE_RANGE: std::ops::RangeInclusive<f32> = 1.0..=3.0;
 /// analytical benefit over a periodic sample.
 pub const PREVIEW_FRAME_TELEMETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// Gap between `ResourceUsage` (CPU/RAM) telemetry samples — far coarser than
+/// [`PREVIEW_FRAME_TELEMETRY_INTERVAL`] since system-wide resource usage doesn't need to be
+/// tracked at anywhere near frame granularity to be useful for `request.md`'s "uso de RAM numa
+/// sessão de 2h" target metric.
+pub const RESOURCE_TELEMETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Slider bounds for the properties panel's layer-resize controls
 /// ([`avcore::timeline::ClipInstance::layer_scale_x`]/`_y`) — unlike [`SCALE_RANGE`]'s
 /// Ken-Burns zoom (which only ever enlarges), a layer's on-canvas footprint can shrink well
@@ -597,6 +603,12 @@ pub struct App {
     /// [`App::new`] — see [`App::record_telemetry`]/`telemetry::spawn_telemetry_writer`. No
     /// paired receiver is kept on `App`; that thread owns the only one.
     telemetry_tx: UnboundedSender<avcore::TelemetryEvent>,
+    /// Live mirror of `prefs.telemetry_enabled`, checked by the background resource-sampling
+    /// thread spawned in [`App::new`] (`telemetry::spawn_resource_sampler`) — that thread has
+    /// no access to `App`/`prefs` directly, so this `Arc<AtomicBool>` is the one piece of
+    /// shared state it reads each tick. Kept in sync with `prefs.telemetry_enabled` wherever
+    /// the Preferences screen's checkbox mutates it.
+    pub(crate) telemetry_enabled_flag: Arc<AtomicBool>,
     /// Wall-clock time [`App::record_telemetry`] last recorded a `PreviewFrameTime` sample —
     /// throttles sampling to roughly once every [`PREVIEW_FRAME_TELEMETRY_INTERVAL`] rather
     /// than every single frame, which would flood `telemetry.jsonl`.
@@ -970,6 +982,11 @@ impl App {
         let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
         let (telemetry_tx, telemetry_rx) = mpsc::unbounded_channel();
         telemetry::spawn_telemetry_writer(telemetry_rx, telemetry::telemetry_path());
+        let telemetry_enabled_flag = Arc::new(AtomicBool::new(prefs.telemetry_enabled));
+        telemetry::spawn_resource_sampler(
+            telemetry_tx.clone(),
+            Arc::clone(&telemetry_enabled_flag),
+        );
         let (update_check_tx, update_check_rx) = mpsc::unbounded_channel();
         let mut app = Self {
             screen: Screen::Home,
@@ -981,6 +998,7 @@ impl App {
             export_jobs: export::load_queue(),
             prefs,
             telemetry_tx,
+            telemetry_enabled_flag,
             last_preview_frame_telemetry: None,
             render_tx,
             render_rx,

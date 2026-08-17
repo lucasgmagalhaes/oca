@@ -14,11 +14,13 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use eframe::egui;
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-use super::{App, PREVIEW_FRAME_TELEMETRY_INTERVAL};
+use super::{App, PREVIEW_FRAME_TELEMETRY_INTERVAL, RESOURCE_TELEMETRY_INTERVAL};
 
 /// Where `telemetry.jsonl` lives — right next to the rolling daily log files Fase 6's
 /// `tracing` file appender already writes into (`crate::platform_log_dir`), since both are
@@ -41,6 +43,30 @@ pub(super) fn spawn_telemetry_writer(
         while let Some(event) = rx.blocking_recv() {
             if let Err(e) = avcore::record_event(&telemetry_path, &event) {
                 tracing::warn!(error = %e, "failed to write telemetry record");
+            }
+        }
+    });
+}
+
+/// Runs for the app's whole lifetime, sampling CPU/RAM (`avcore::ResourceSampler`) once per
+/// [`RESOURCE_TELEMETRY_INTERVAL`] and sending the result to `tx` — a separate thread from
+/// [`spawn_telemetry_writer`], since resource sampling itself (not just the disk write) must
+/// not run on the UI thread either. `enabled` is checked each tick rather than once at spawn
+/// time, so toggling the Preferences checkbox takes effect on the very next tick without
+/// needing to restart this thread.
+pub(super) fn spawn_resource_sampler(
+    tx: UnboundedSender<avcore::TelemetryEvent>,
+    enabled: Arc<AtomicBool>,
+) {
+    std::thread::spawn(move || {
+        let mut sampler = avcore::ResourceSampler::new();
+        loop {
+            std::thread::sleep(RESOURCE_TELEMETRY_INTERVAL);
+            if !enabled.load(Ordering::Relaxed) {
+                continue;
+            }
+            if tx.send(sampler.sample()).is_err() {
+                return;
             }
         }
     });
