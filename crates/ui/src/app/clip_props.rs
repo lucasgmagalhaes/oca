@@ -70,9 +70,19 @@ impl App {
     /// [`SPEED_FACTOR_RANGE`] — what dragging the properties panel's speed slider does. A no-op
     /// if nothing is selected.
     pub fn set_selected_clip_speed(&mut self, speed_factor: f32) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
         let speed_factor =
             speed_factor.clamp(*SPEED_FACTOR_RANGE.start(), *SPEED_FACTOR_RANGE.end());
-        self.with_selected_clip_mut(|clip| clip.speed_factor = speed_factor);
+        let mut changed = false;
+        self.with_selected_clip_mut(|clip| {
+            clip.speed_factor = speed_factor;
+            changed = true;
+        });
+        if changed {
+            self.refresh_preview_speed(clip_id);
+        }
     }
 
     /// Sets `selected_clip_id`'s crop rect ([`avcore::timeline::ClipInstance::crop_x`]/`crop_y`/

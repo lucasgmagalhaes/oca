@@ -1686,6 +1686,22 @@ fn set_selected_clip_speed_updates_the_selected_clip() {
 }
 
 #[test]
+fn preview_seek_parameters_keep_composited_branches_in_order() {
+    let mut background = test_clip(1, 2.0, 1.0, 9.0);
+    background.speed_factor = 0.5;
+    let mut overlay = test_clip(2, 3.0, 0.25, 9.0);
+    overlay.speed_factor = 2.0;
+    let mut audio = test_clip(3, 1.0, 4.0, 9.0);
+    audio.frozen = true;
+    audio.speed_factor = 1.5;
+
+    let (offsets, rates) = App::preview_seek_parameters([&background, &overlay, &audio], 5.0);
+
+    assert_eq!(offsets, vec![2.5, 4.25, 4.0]);
+    assert_eq!(rates, vec![0.5, 2.0, 1.5]);
+}
+
+#[test]
 fn set_selected_clip_speed_clamps_to_speed_factor_range() {
     let mut app = test_app(
         vec![test_project_with_tracks(

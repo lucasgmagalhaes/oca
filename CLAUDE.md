@@ -195,11 +195,10 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   same as GStreamer's own semantics. The three call sites now multiply/divide by
   `clip.speed_factor.max(0.01)` consistently with `ClipInstance::split_clip_at`'s existing
   `source_in_secs + offset * speed_factor` convention (`timeline.rs`), and pass that same
-  factor as `seek_with_rate`'s rate. **Known gap:** the rate is only re-applied on a seek, so
-  dragging the properties panel's speed slider while a clip is already playing without
-  scrubbing won't retroactively change the pipeline's live rate until the next seek — same
-  "picked up on next seek/reload, not live-patched" shape as this codebase's other preview
-  properties.
+  factor as `seek_with_rate`'s rate. Dragging the properties panel's speed slider now
+  re-applies that rate immediately at the current timeline playhead through the same path used
+  by scrubbing. The single-clip pipeline keeps its position, while a composited pipeline
+  re-seeks every video/audio branch with its own offset and rate so they remain synchronized.
 
   **Alpha/overlay-track caveat (applies to chroma_key, mask_shape, position/opacity
   keyframes, layer resize):** these only have a visible effect on a clip placed on an

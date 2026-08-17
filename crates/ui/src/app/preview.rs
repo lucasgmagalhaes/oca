@@ -204,6 +204,41 @@ impl App {
         }
     }
 
+    /// Resolves source offsets and playback rates in the exact branch order expected by
+    /// [`avcore::preview::Preview::seek_composited`]. Keeping this calculation shared by the
+    /// initial open, timeline scrubbing, and live speed edits prevents those paths from
+    /// drifting into subtly different synchronization rules.
+    pub(super) fn preview_seek_parameters<'a>(
+        clips: impl IntoIterator<Item = &'a ClipInstance>,
+        playhead_secs: f64,
+    ) -> (Vec<f64>, Vec<f64>) {
+        clips
+            .into_iter()
+            .map(|clip| {
+                (
+                    Self::clip_seek_offset(clip, playhead_secs),
+                    clip.speed_factor.max(0.01) as f64,
+                )
+            })
+            .unzip()
+    }
+
+    /// Re-applies the selected media clip's new playback speed at the current timeline
+    /// playhead. [`App::seek_preview`] already owns the branch-matching and single/composited
+    /// seek rules, so using it here preserves every active branch's synchronization and does
+    /// not rebuild the pipeline or jump back to the clip start. If the edited clip is not part
+    /// of the currently loaded preview, there is nothing live to update.
+    pub(super) fn refresh_preview_speed(&mut self, clip_id: u64) {
+        let clip_is_loaded = self.preview_clip_id == Some(clip_id)
+            || self.preview_overlay_clip_ids.contains(&clip_id)
+            || self.preview_audio_clip_ids.contains(&clip_id);
+        if !clip_is_loaded || self.preview.is_none() {
+            return;
+        }
+        let playhead_secs = self.active_project().timeline().playhead_secs;
+        self.seek_preview(playhead_secs);
+    }
+
     /// Reopens the preview pipeline whenever the clip covering the timeline playhead
     /// ([`App::current_preview_clip`]) differs from the one last opened for
     /// (`preview_clip_id`) — called once per frame from the Editor's preview panel, right
@@ -343,27 +378,11 @@ impl App {
                         self.preview_frozen_since = None;
                     }
                 } else {
-                    let mut offsets = vec![Self::clip_seek_offset(&clip, playhead)];
-                    offsets.extend(
-                        overlays
-                            .iter()
-                            .map(|(c, _)| Self::clip_seek_offset(c, playhead)),
-                    );
-                    offsets.extend(
-                        audio_clips
-                            .iter()
-                            .map(|(clip, _)| Self::clip_seek_offset(clip, playhead)),
-                    );
-                    let mut rates = vec![clip.speed_factor.max(0.01) as f64];
-                    rates.extend(
-                        overlays
-                            .iter()
-                            .map(|(c, _)| c.speed_factor.max(0.01) as f64),
-                    );
-                    rates.extend(
-                        audio_clips
-                            .iter()
-                            .map(|(clip, _)| clip.speed_factor.max(0.01) as f64),
+                    let (offsets, rates) = Self::preview_seek_parameters(
+                        std::iter::once(&clip)
+                            .chain(overlays.iter().map(|(clip, _)| clip))
+                            .chain(audio_clips.iter().map(|(clip, _)| clip)),
+                        playhead,
                     );
                     if let Err(e) = preview.seek_composited(&offsets, &rates) {
                         warn!(error = %e, "failed to seek newly opened composited preview");
@@ -559,27 +578,11 @@ impl App {
                     .filter(|track| track.kind == TrackKind::Audio && track.visible)
                     .filter_map(|track| track.clip_at(position_secs))
                     .collect();
-                let mut offsets = vec![Self::clip_seek_offset(&clip, position_secs)];
-                offsets.extend(
-                    overlay_clips
-                        .iter()
-                        .map(|c| Self::clip_seek_offset(c, position_secs)),
-                );
-                offsets.extend(
-                    audio_clips
-                        .iter()
-                        .map(|clip| Self::clip_seek_offset(clip, position_secs)),
-                );
-                let mut rates = vec![clip.speed_factor.max(0.01) as f64];
-                rates.extend(
-                    overlay_clips
-                        .iter()
-                        .map(|c| c.speed_factor.max(0.01) as f64),
-                );
-                rates.extend(
-                    audio_clips
-                        .iter()
-                        .map(|clip| clip.speed_factor.max(0.01) as f64),
+                let (offsets, rates) = Self::preview_seek_parameters(
+                    std::iter::once(&clip)
+                        .chain(overlay_clips.iter().copied())
+                        .chain(audio_clips.iter().copied()),
+                    position_secs,
                 );
                 if let Err(e) = preview.seek_composited(&offsets, &rates) {
                     warn!(error = %e, "failed to seek composited preview");

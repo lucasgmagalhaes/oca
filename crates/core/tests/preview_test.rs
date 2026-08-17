@@ -112,6 +112,33 @@ fn seek_with_rate_succeeds_and_position_stays_in_bounds() {
 }
 
 #[test]
+fn seek_with_rate_can_change_rate_while_playing_and_keep_decoding() {
+    let preview = Preview::open(&fixture("video_silent.mp4"), None).unwrap();
+
+    preview.seek_with_rate(0.1, 0.25).unwrap();
+    preview.play().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let position = preview
+        .position_secs()
+        .expect("playing pipeline should report its position");
+
+    preview.seek_with_rate(position, 2.0).unwrap();
+    let kept_decoding = (0..20).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        preview.current_frame().is_some()
+    });
+    assert!(
+        preview.position_secs().is_some(),
+        "pipeline stopped reporting position after a live rate change"
+    );
+    assert!(
+        kept_decoding,
+        "pipeline stopped producing frames after a live rate change"
+    );
+    preview.pause().unwrap();
+}
+
+#[test]
 fn errors_on_a_missing_file() {
     assert!(Preview::open(&fixture("does_not_exist.mp4"), None).is_err());
 }
@@ -579,8 +606,8 @@ fn seek_composited_seeks_every_branch_without_error() {
 
 #[test]
 fn seek_composited_honors_a_per_branch_rate() {
-    let bg = fixture("video.mp4");
-    let overlay = fixture("video.mp4");
+    let bg = fixture("video_silent.mp4");
+    let overlay = fixture("video_silent.mp4");
     let overlay_clip = clip();
 
     let preview = Preview::open_composited(
@@ -595,7 +622,28 @@ fn seek_composited_honors_a_per_branch_rate() {
     // Background at half speed, overlay at double — proves seek_composited's rates argument
     // reaches each branch independently rather than being ignored or applied uniformly.
     preview.seek_composited(&[0.2, 0.2], &[0.5, 2.0]).unwrap();
-    let _ = preview.current_frame();
+    preview.play().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    let position = preview
+        .position_secs()
+        .expect("playing composited pipeline should report its position");
+
+    // Reapply both branch rates while Playing, at the current background position. This is
+    // the exact operation the UI performs when the speed slider changes; it must not require
+    // rebuilding or pausing the pipeline.
+    preview
+        .seek_composited(&[position, position], &[2.0, 0.5])
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    assert!(
+        preview.position_secs().is_some(),
+        "composited pipeline stopped reporting position after a live rate change"
+    );
+    assert!(
+        preview.current_frame().is_some(),
+        "composited pipeline stopped producing frames after a live rate change"
+    );
+    preview.pause().unwrap();
 }
 
 #[test]
