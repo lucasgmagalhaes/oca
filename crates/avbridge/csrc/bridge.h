@@ -35,6 +35,8 @@ typedef enum {
 typedef struct {
     /* 1 if the picked stream is video, 0 if audio. */
     int has_video;
+    /* 1 when the container has at least one audio stream, including video+audio files. */
+    int has_audio;
     double duration_secs;
     /* Short codec name (e.g. "h264", "aac") — always NUL-terminated. */
     char codec_name[32];
@@ -231,7 +233,9 @@ EncodeStatus avbridge_encode_timeline_export(
    Track 0 is the background (drives the output duration and audio); tracks 1..n_tracks-1 are
    overlaid on top using avfilter's overlay filter whenever a clip from those tracks is active
    at the corresponding timeline position (determined by ClipSegment::timeline_start_secs).
-   Audio comes from track 0 only; tracks 1+ are video-only contributors to the composite.
+   This function's initial audio comes from track 0 only; the core timeline renderer uses
+   avbridge_mix_audio_timeline + avbridge_mux_video_audio afterward when tracks 1+ contribute
+   sound.
    For n_tracks == 1, delegates to avbridge_encode_timeline_export unchanged.
    gpu_encoder_preference has the same meaning as avbridge_encode_timeline_export's. */
 EncodeStatus avbridge_encode_timeline_export_multi(
@@ -240,6 +244,58 @@ EncodeStatus avbridge_encode_timeline_export_multi(
     int64_t canvas_bit_rate_bps, const char *out_path, float target_lufs,
     int gpu_encoder_preference, ProgressCallback progress_cb, void *progress_user_data,
     const uint8_t *cancel);
+
+typedef struct {
+    /* UTF-8, NUL-terminated source containing an audio stream. */
+    const char *source_path;
+    /* Trim range within source_path, in seconds. */
+    double source_in_secs;
+    double source_out_secs;
+    /* Placement on the exported timeline, in seconds. */
+    double timeline_start_secs;
+    /* Per-clip gain and playback speed. */
+    float gain_db;
+    float speed_factor;
+} AudioSegment;
+
+typedef enum {
+    AUDIO_MIX_OK = 0,
+    AUDIO_MIX_ERR_OPEN_INPUT = 1,
+    AUDIO_MIX_ERR_ALLOC_OUTPUT = 2,
+    AUDIO_MIX_ERR_NO_AUDIO = 3,
+    AUDIO_MIX_ERR_FILTER_GRAPH = 4,
+    AUDIO_MIX_ERR_ENCODER = 5,
+    AUDIO_MIX_ERR_OPEN_OUTPUT = 6,
+    AUDIO_MIX_ERR_WRITE_HEADER = 7,
+    AUDIO_MIX_ERR_PIPELINE = 8,
+    AUDIO_MIX_CANCELLED = 9,
+} AudioMixStatus;
+
+/* Mixes every segment that contains audio onto one timeline and writes AAC 192 kbps to an
+   audio-only container. Per-segment trim, gain, speed, and timeline placement are applied
+   before the shared afftdn/loudnorm/limiter chain. Inputs without an audio stream are skipped;
+   returns AUDIO_MIX_ERR_NO_AUDIO when none remain. timeline_duration_secs trims the final mix
+   so an audio clip cannot extend the output past the rendered video. */
+AudioMixStatus avbridge_mix_audio_timeline(
+    const AudioSegment *segments, int segment_count, double timeline_duration_secs,
+    const char *out_path, float target_lufs, const uint8_t *cancel);
+
+typedef enum {
+    MEDIA_MUX_OK = 0,
+    MEDIA_MUX_ERR_OPEN_INPUT = 1,
+    MEDIA_MUX_ERR_ALLOC_OUTPUT = 2,
+    MEDIA_MUX_ERR_MISSING_STREAM = 3,
+    MEDIA_MUX_ERR_NEW_STREAM = 4,
+    MEDIA_MUX_ERR_OPEN_OUTPUT = 5,
+    MEDIA_MUX_ERR_WRITE_HEADER = 6,
+    MEDIA_MUX_ERR_WRITE_FRAME = 7,
+} MediaMuxStatus;
+
+/* Stream-copies the first video stream from video_path and the first audio stream from
+   audio_path into out_path. Used after avbridge_mix_audio_timeline so replacing a timeline's
+   audio never incurs another lossy video encode. */
+MediaMuxStatus avbridge_mux_video_audio(
+    const char *video_path, const char *audio_path, const char *out_path);
 
 typedef enum {
     LOUDNESS_OK = 0,

@@ -53,6 +53,7 @@ fn duration_label_delegates_to_format_timecode() {
         file_name: "clip.mp4".to_string(),
         source_path: PathBuf::from("/videos/clip.mp4"),
         kind: MediaKind::Video,
+        has_audio: true,
         duration_secs: 134.0,
         codec: "H.264".to_string(),
         source_bitrate_mbps: 42.0,

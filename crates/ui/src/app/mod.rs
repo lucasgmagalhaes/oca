@@ -655,6 +655,8 @@ pub struct App {
     /// plain [`avcore::preview::Preview::open`] single-clip pipeline instead, same as before
     /// composited preview existed.
     preview_overlay_clip_ids: Vec<u64>,
+    /// Audio-only timeline clips currently opened as independent `audiomixer` branches.
+    preview_audio_clip_ids: Vec<u64>,
     /// Ids of the [`TrackKind::Text`] clips covering the playhead the last time
     /// [`App::ensure_preview_loaded`] opened a pipeline, in the same order passed as
     /// [`avcore::preview::Preview::open_composited`]'s `text_overlays` — same reopen-detection
@@ -1024,6 +1026,7 @@ impl App {
             preview: None,
             preview_clip_id: None,
             preview_overlay_clip_ids: Vec::new(),
+            preview_audio_clip_ids: Vec::new(),
             preview_text_clip_ids: Vec::new(),
             preview_shape_clip_ids: Vec::new(),
             preview_texture: None,

@@ -280,9 +280,15 @@ fn open_composited_reports_a_canvas_sized_frame() {
     let overlay = fixture("video.mp4");
     let overlay_clip = clip();
 
-    let preview =
-        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)], &[], &[])
-            .unwrap();
+    let preview = Preview::open_composited(
+        &bg,
+        None,
+        &[(overlay.as_path(), &overlay_clip)],
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
     let frame = preview
         .current_frame()
         .expect("a frame should be available right after preroll");
@@ -305,9 +311,15 @@ fn open_composited_with_background_removal_matte_composites_without_error() {
     // in the tests above; this doesn't assert anything about which pixels end up transparent.
     overlay_clip.background_removal_mask_path = overlay.to_string_lossy().to_string();
 
-    let preview =
-        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)], &[], &[])
-            .unwrap();
+    let preview = Preview::open_composited(
+        &bg,
+        None,
+        &[(overlay.as_path(), &overlay_clip)],
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
     let frame = preview
         .current_frame()
         .expect("a frame should be available right after preroll");
@@ -324,9 +336,15 @@ fn open_composited_with_mask_shape_composites_without_error() {
     let mut overlay_clip = clip();
     overlay_clip.mask_shape = MaskShape::Circle;
 
-    let preview =
-        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)], &[], &[])
-            .unwrap();
+    let preview = Preview::open_composited(
+        &bg,
+        None,
+        &[(overlay.as_path(), &overlay_clip)],
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
     let frame = preview
         .current_frame()
         .expect("a frame should be available right after preroll");
@@ -346,9 +364,15 @@ fn open_composited_with_mask_shape_and_matte_composites_without_error() {
     overlay_clip.background_removal_enabled = true;
     overlay_clip.background_removal_mask_path = overlay.to_string_lossy().to_string();
 
-    let preview =
-        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)], &[], &[])
-            .unwrap();
+    let preview = Preview::open_composited(
+        &bg,
+        None,
+        &[(overlay.as_path(), &overlay_clip)],
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
     let frame = preview
         .current_frame()
         .expect("a frame should be available right after preroll");
@@ -386,7 +410,8 @@ fn open_composited_with_text_and_shape_overlays_composites_without_error() {
     };
 
     let preview =
-        Preview::open_composited(&bg, None, &[], &[(&text_clip, 0.0)], &[&shape_clip]).unwrap();
+        Preview::open_composited(&bg, None, &[], &[], &[(&text_clip, 0.0)], &[&shape_clip])
+            .unwrap();
     let frame = preview
         .current_frame()
         .expect("a frame should be available right after preroll");
@@ -422,9 +447,15 @@ fn open_composited_with_animated_overlay_still_composites_without_error() {
     overlay_clip.layer_scale_y = 0.5;
     overlay_clip.chroma_key_enabled = true;
 
-    let preview =
-        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)], &[], &[])
-            .unwrap();
+    let preview = Preview::open_composited(
+        &bg,
+        None,
+        &[(overlay.as_path(), &overlay_clip)],
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
     let frame = preview
         .current_frame()
         .expect("a frame should be available right after preroll");
@@ -445,9 +476,15 @@ fn seek_composited_seeks_every_branch_without_error() {
     let overlay = fixture("video.mp4");
     let overlay_clip = clip();
 
-    let preview =
-        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)], &[], &[])
-            .unwrap();
+    let preview = Preview::open_composited(
+        &bg,
+        None,
+        &[(overlay.as_path(), &overlay_clip)],
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
     preview.seek_composited(&[0.5, 0.2], &[1.0, 1.0]).unwrap();
     let _ = preview.current_frame();
 }
@@ -458,9 +495,15 @@ fn seek_composited_honors_a_per_branch_rate() {
     let overlay = fixture("video.mp4");
     let overlay_clip = clip();
 
-    let preview =
-        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)], &[], &[])
-            .unwrap();
+    let preview = Preview::open_composited(
+        &bg,
+        None,
+        &[(overlay.as_path(), &overlay_clip)],
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
     // Background at half speed, overlay at double — proves seek_composited's rates argument
     // reaches each branch independently rather than being ignored or applied uniformly.
     preview.seek_composited(&[0.2, 0.2], &[0.5, 2.0]).unwrap();
@@ -475,6 +518,7 @@ fn open_composited_errors_on_a_missing_background() {
         &fixture("does_not_exist.mp4"),
         None,
         &[(overlay.as_path(), &overlay_clip)],
+        &[],
         &[],
         &[],
     )
@@ -523,12 +567,39 @@ fn open_composited_with_gain_composites_with_real_audio() {
         &[(overlay.as_path(), &overlay_clip)],
         &[],
         &[],
+        &[],
     )
     .unwrap();
     let frame = preview
         .current_frame()
         .expect("a frame should be available right after preroll");
     assert_eq!((frame.width, frame.height), (320, 240));
+    preview.play().unwrap();
+    preview.pause().unwrap();
+}
+
+#[test]
+fn open_composited_mixes_an_audio_only_timeline_branch() {
+    let background = fixture("video.mp4");
+    let audio = fixture("audio.m4a");
+    let mut audio_clip = clip();
+    audio_clip.id = 2;
+    audio_clip.gain_db = -4.0;
+
+    let preview = Preview::open_composited(
+        &background,
+        None,
+        &[],
+        &[(audio.as_path(), &audio_clip)],
+        &[],
+        &[],
+    )
+    .unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("mixed-audio preview should still preroll video");
+    assert_eq!((frame.width, frame.height), (320, 240));
+    preview.seek_composited(&[0.1, 0.2], &[1.0, 1.25]).unwrap();
     preview.play().unwrap();
     preview.pause().unwrap();
 }

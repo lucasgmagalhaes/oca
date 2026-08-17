@@ -33,6 +33,7 @@ fn probes_a_video_file() {
     assert!((info.duration_secs - 1.0).abs() < 0.1);
     assert!(info.bit_rate.unwrap() > 0);
     assert_eq!(info.sample_rate_hz, None);
+    assert!(info.has_audio);
 }
 
 #[test]
@@ -43,6 +44,7 @@ fn falls_back_to_audio_when_there_is_no_video_stream() {
     assert_eq!(info.resolution, None);
     assert_eq!(info.fps, None);
     assert_eq!(info.sample_rate_hz, Some(44100));
+    assert!(info.has_audio);
 }
 
 #[test]

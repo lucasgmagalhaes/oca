@@ -41,8 +41,10 @@
    - Otherwise: fall back to a plain VideoFilterChain for track 0 (same as the
      existing single-track function).
 
-   Audio comes from track 0 only.  Only the first two tracks are composited in this
-   implementation; additional tracks beyond index 1 are silently ignored.
+   This low-level compositor's initial audio comes from track 0 only.  Core's full timeline
+   export replaces it afterward with avbridge_mix_audio_timeline + avbridge_mux_video_audio
+   whenever another video/audio track contributes sound. Only the first two video tracks are
+   composited here; additional tracks beyond index 1 are silently ignored.
    ========================================================================= */
 
 /* Build the complete single-track video filter string for `seg` — identical logic to

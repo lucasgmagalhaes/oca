@@ -24,7 +24,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use avcore::project::Sequence;
-use avcore::render::{render_export_job_multi, resolve_timeline_segments_multi, RenderOutcome};
+use avcore::render::{
+    render_export_job_multi, resolve_audio_segments, resolve_timeline_segments_multi, RenderOutcome,
+};
 use avcore::timeline::{
     ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
 };
@@ -96,6 +98,13 @@ fn video_asset(id: u64) -> MediaAsset {
     probe_media(&path)
         .unwrap()
         .into_media_asset(id, "video.mp4".to_string(), path)
+}
+
+fn audio_asset(id: u64) -> MediaAsset {
+    let path = fixture("audio.m4a");
+    probe_media(&path)
+        .unwrap()
+        .into_media_asset(id, "audio.m4a".to_string(), path)
 }
 
 fn track(id: u64, name: &str, clips: Vec<ClipInstance>) -> Track {
@@ -170,6 +179,81 @@ fn resolve_timeline_segments_multi_skips_hidden_tracks() {
     let (track_segments, _canvas) = resolve_timeline_segments_multi(&sequence, &[asset]).unwrap();
 
     assert_eq!(track_segments.len(), 1);
+}
+
+#[test]
+fn resolve_audio_segments_includes_background_and_additional_audio_tracks() {
+    let video = video_asset(1);
+    let audio = audio_asset(2);
+    let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
+    let mut audio_clip = clip(2, 2, 0.25, 0.1, 0.6);
+    audio_clip.gain_db = -5.0;
+    audio_clip.speed_factor = 1.25;
+    let audio_track = Track {
+        id: 2,
+        name: "A1".to_string(),
+        kind: TrackKind::Audio,
+        clips: vec![audio_clip],
+        text_clips: vec![],
+        shape_clips: vec![],
+        visible: true,
+    };
+    let sequence = sequence_with(vec![background, audio_track]);
+
+    let segments = resolve_audio_segments(&sequence, &[video, audio]).unwrap();
+
+    assert_eq!(segments.len(), 2);
+    assert_eq!(segments[0].timeline_start_secs, 0.0);
+    assert_eq!(segments[1].timeline_start_secs, 0.25);
+    assert_eq!(segments[1].gain_db, -5.0);
+    assert_eq!(segments[1].speed_factor, 1.25);
+}
+
+#[test]
+fn resolve_audio_segments_is_empty_without_an_additional_contributor() {
+    let video = video_asset(1);
+    let sequence = sequence_with(vec![track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)])]);
+
+    assert!(resolve_audio_segments(&sequence, &[video])
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn resolve_audio_segments_ignores_hidden_audio_tracks() {
+    let video = video_asset(1);
+    let audio = audio_asset(2);
+    let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
+    let hidden_audio = Track {
+        id: 2,
+        name: "A1".to_string(),
+        kind: TrackKind::Audio,
+        clips: vec![clip(2, 2, 0.0, 0.0, 0.5)],
+        text_clips: vec![],
+        shape_clips: vec![],
+        visible: false,
+    };
+    let sequence = sequence_with(vec![background, hidden_audio]);
+
+    assert!(resolve_audio_segments(&sequence, &[video, audio])
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn resolve_audio_segments_ignores_video_assets_without_audio() {
+    let background_asset = video_asset(1);
+    let mut silent_overlay_asset = video_asset(2);
+    silent_overlay_asset.has_audio = false;
+    let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
+    let overlay = track(2, "V2", vec![clip(2, 2, 0.0, 0.0, 0.5)]);
+    let sequence = sequence_with(vec![background, overlay]);
+
+    assert!(
+        resolve_audio_segments(&sequence, &[background_asset, silent_overlay_asset])
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]

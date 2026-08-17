@@ -372,6 +372,7 @@ impl App {
             self.queue_export(
                 pending.title,
                 pending.track_segments,
+                pending.audio_segments,
                 pending.text_segments,
                 pending.shape_segments,
                 pending.canvas,

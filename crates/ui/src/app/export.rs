@@ -19,7 +19,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use avcore::{
-    Canvas, ClipSegment, ExportJob, ExportJobStatus, RenderOutcome, ShapeSegment, TextSegment,
+    AudioSegment, Canvas, ClipSegment, ExportJob, ExportJobStatus, RenderOutcome, ShapeSegment,
+    TextSegment,
 };
 use tracing::{debug, error, info};
 
@@ -32,6 +33,7 @@ use super::{App, RenderEvent};
 pub struct PendingExportConflict {
     pub title: String,
     pub track_segments: Vec<Vec<ClipSegment>>,
+    pub audio_segments: Vec<AudioSegment>,
     pub text_segments: Vec<TextSegment>,
     pub shape_segments: Vec<ShapeSegment>,
     pub canvas: Canvas,
@@ -40,15 +42,16 @@ pub struct PendingExportConflict {
 }
 
 impl App {
-    /// Appends a new `Queued` job — what "Adicionar exportação" does, given `track_segments`
-    /// and `text_segments` already resolved from the active sequence so this job renders the
-    /// timeline as it was at the moment it entered the queue, not whatever it's edited to later.
+    /// Appends a new `Queued` job — what "Adicionar exportação" does, given video, audio, text,
+    /// and shape segments already resolved from the active sequence so this job renders the
+    /// timeline as it was at the moment it entered the queue, not whatever is edited later.
     /// Picked up by [`App::pump_export_queue`] once a worker slot ([`App::queue_workers`])
     /// frees up.
     pub fn queue_export(
         &mut self,
         title: String,
         track_segments: Vec<Vec<avcore::ClipSegment>>,
+        audio_segments: Vec<avcore::AudioSegment>,
         text_segments: Vec<avcore::TextSegment>,
         shape_segments: Vec<avcore::ShapeSegment>,
         canvas: avcore::Canvas,
@@ -67,6 +70,7 @@ impl App {
             text_segments,
             shape_segments,
             track_segments,
+            audio_segments,
             canvas,
             target_lufs,
             output_path,
@@ -164,6 +168,7 @@ impl App {
         let job_id = job.id;
         let text_segments = job.text_segments.clone();
         let shape_segments = job.shape_segments.clone();
+        let audio_segments = job.audio_segments.clone();
         // Prefer multi-track snapshot; fall back to legacy single-track `segments` field for
         // jobs persisted before multi-track support was added.
         let track_segments: Vec<Vec<avcore::ClipSegment>> = if !job.track_segments.is_empty() {
@@ -201,8 +206,9 @@ impl App {
         let tx = self.render_tx.clone();
         std::thread::spawn(move || {
             let started = Instant::now();
-            let outcome = avcore::render_export_job_multi(
+            let outcome = avcore::render_export_job_multi_with_audio(
                 &track_segments,
+                &audio_segments,
                 canvas,
                 &output_path,
                 target_lufs,

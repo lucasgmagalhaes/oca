@@ -106,6 +106,7 @@ fn fixture_project() -> Project {
             file_name: "clip.mp4".to_string(),
             source_path: PathBuf::from("/media/clip.mp4"),
             kind: MediaKind::Video,
+            has_audio: true,
             duration_secs: 10.0,
             codec: "H.264".to_string(),
             source_bitrate_mbps: 40.0,

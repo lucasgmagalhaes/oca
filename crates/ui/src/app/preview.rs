@@ -46,7 +46,7 @@ impl App {
         let track = timeline
             .tracks
             .iter()
-            .find(|t| t.kind == TrackKind::Video)?;
+            .find(|t| t.kind == TrackKind::Video && t.visible)?;
         let clip = track.clip_at(timeline.playhead_secs)?;
         let asset = project
             .media_library
@@ -67,7 +67,7 @@ impl App {
         timeline
             .tracks
             .iter()
-            .filter(|t| t.kind == TrackKind::Video)
+            .filter(|t| t.kind == TrackKind::Video && t.visible)
             .skip(1)
             .filter_map(|t| {
                 let clip = t.clip_at(timeline.playhead_secs)?;
@@ -75,6 +75,26 @@ impl App {
                     .media_library
                     .iter()
                     .find(|a| a.id == clip.asset_id)?;
+                Some((clip.clone(), asset.clone()))
+            })
+            .collect()
+    }
+
+    /// Every audio-only track clip covering the playhead, in track order. Video clips with
+    /// embedded audio are already represented by the background/overlay branch lists.
+    fn current_preview_audio_clips(&self) -> Vec<(ClipInstance, MediaAsset)> {
+        let project = self.active_project();
+        let timeline = project.timeline();
+        timeline
+            .tracks
+            .iter()
+            .filter(|track| track.kind == TrackKind::Audio && track.visible)
+            .filter_map(|track| {
+                let clip = track.clip_at(timeline.playhead_secs)?;
+                let asset = project
+                    .media_library
+                    .iter()
+                    .find(|asset| asset.id == clip.asset_id && asset.has_audio)?;
                 Some((clip.clone(), asset.clone()))
             })
             .collect()
@@ -159,24 +179,24 @@ impl App {
     /// hitches while the new pipeline opens.
     pub fn ensure_preview_loaded(&mut self) {
         let current = self.current_preview_clip();
-        let overlays = current
-            .is_some()
-            .then(|| self.current_preview_overlay_clips())
-            .unwrap_or_default();
-        let text_clips = current
-            .is_some()
-            .then(|| self.current_preview_text_clips())
-            .unwrap_or_default();
-        let shape_clips = current
-            .is_some()
-            .then(|| self.current_preview_shape_clips())
-            .unwrap_or_default();
+        let (overlays, audio_clips, text_clips, shape_clips) = if current.is_some() {
+            (
+                self.current_preview_overlay_clips(),
+                self.current_preview_audio_clips(),
+                self.current_preview_text_clips(),
+                self.current_preview_shape_clips(),
+            )
+        } else {
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new())
+        };
         let overlay_ids: Vec<u64> = overlays.iter().map(|(c, _)| c.id).collect();
+        let audio_ids: Vec<u64> = audio_clips.iter().map(|(clip, _)| clip.id).collect();
         let text_ids: Vec<u64> = text_clips.iter().map(|c| c.id).collect();
         let shape_ids: Vec<u64> = shape_clips.iter().map(|c| c.id).collect();
         let current_clip_id = current.as_ref().map(|(c, _)| c.id);
         if current_clip_id == self.preview_clip_id
             && overlay_ids == self.preview_overlay_clip_ids
+            && audio_ids == self.preview_audio_clip_ids
             && text_ids == self.preview_text_clip_ids
             && shape_ids == self.preview_shape_clip_ids
         {
@@ -190,6 +210,7 @@ impl App {
         // unresolvable asset is the latter, not the former.
         self.preview_clip_id = current_clip_id;
         self.preview_overlay_clip_ids = overlay_ids;
+        self.preview_audio_clip_ids = audio_ids;
         self.preview_text_clip_ids = text_ids;
         self.preview_shape_clip_ids = shape_ids;
 
@@ -204,23 +225,36 @@ impl App {
         };
         let playhead = self.active_project().timeline().playhead_secs;
 
-        let wants_composited =
-            !(overlays.is_empty() && text_clips.is_empty() && shape_clips.is_empty());
+        let wants_composited = !(overlays.is_empty()
+            && audio_clips.is_empty()
+            && text_clips.is_empty()
+            && shape_clips.is_empty());
         let overlay_paths: Vec<Option<std::path::PathBuf>> = overlays
             .iter()
             .map(|(_, a)| Self::preview_source_path(a))
+            .collect();
+        let audio_paths: Vec<Option<std::path::PathBuf>> = audio_clips
+            .iter()
+            .map(|(_, asset)| Self::preview_source_path(asset))
             .collect();
         // Every video overlay clip needs a resolvable path too — falling back to the plain
         // single-clip pipeline (background only, dropping any text/shape overlays as well)
         // rather than silently dropping just the unresolvable overlay would misrepresent which
         // clips are actually compositing.
-        let composited = wants_composited && overlay_paths.iter().all(Option::is_some);
+        let composited = wants_composited
+            && overlay_paths.iter().all(Option::is_some)
+            && audio_paths.iter().all(Option::is_some);
 
         let opened = if composited {
             let overlay_refs: Vec<(&std::path::Path, &ClipInstance)> = overlay_paths
                 .iter()
                 .zip(&overlays)
                 .map(|(p, (c, _))| (p.as_deref().expect("checked above"), c))
+                .collect();
+            let audio_refs: Vec<(&std::path::Path, &ClipInstance)> = audio_paths
+                .iter()
+                .zip(&audio_clips)
+                .map(|(path, (clip, _))| (path.as_deref().expect("checked above"), clip))
                 .collect();
             // The elapsed time since each text clip's own start — what
             // `render_text_clip_rgba` resolves its current highlighted word against.
@@ -233,6 +267,7 @@ impl App {
                 &path,
                 Some(&clip),
                 &overlay_refs,
+                &audio_refs,
                 &text_refs,
                 &shape_refs,
             )
@@ -275,11 +310,21 @@ impl App {
                             .iter()
                             .map(|(c, _)| Self::clip_seek_offset(c, playhead)),
                     );
+                    offsets.extend(
+                        audio_clips
+                            .iter()
+                            .map(|(clip, _)| Self::clip_seek_offset(clip, playhead)),
+                    );
                     let mut rates = vec![clip.speed_factor.max(0.01) as f64];
                     rates.extend(
                         overlays
                             .iter()
                             .map(|(c, _)| c.speed_factor.max(0.01) as f64),
+                    );
+                    rates.extend(
+                        audio_clips
+                            .iter()
+                            .map(|(clip, _)| clip.speed_factor.max(0.01) as f64),
                     );
                     if let Err(e) = preview.seek_composited(&offsets, &rates) {
                         warn!(error = %e, "failed to seek newly opened composited preview");
@@ -391,17 +436,26 @@ impl App {
         // path below reuses the already-open pipeline's branches as-is rather than rebuilding
         // them.
         let timeline = self.active_project().timeline();
-        let overlays_still_match = self.preview_overlay_clip_ids.is_empty() || {
+        let overlays_still_match = {
             let overlay_ids: Vec<u64> = timeline
                 .tracks
                 .iter()
-                .filter(|t| t.kind == TrackKind::Video)
+                .filter(|t| t.kind == TrackKind::Video && t.visible)
                 .skip(1)
                 .filter_map(|t| t.clip_at(position_secs).map(|c| c.id))
                 .collect();
             overlay_ids == self.preview_overlay_clip_ids
         };
-        let text_still_match = self.preview_text_clip_ids.is_empty() || {
+        let audio_still_match = {
+            let audio_ids: Vec<u64> = timeline
+                .tracks
+                .iter()
+                .filter(|track| track.kind == TrackKind::Audio && track.visible)
+                .filter_map(|track| track.clip_at(position_secs).map(|clip| clip.id))
+                .collect();
+            audio_ids == self.preview_audio_clip_ids
+        };
+        let text_still_match = {
             let text_ids: Vec<u64> = timeline
                 .tracks
                 .iter()
@@ -418,7 +472,7 @@ impl App {
                 .collect();
             text_ids == self.preview_text_clip_ids
         };
-        let shape_still_match = self.preview_shape_clip_ids.is_empty() || {
+        let shape_still_match = {
             let shape_ids: Vec<u64> = timeline
                 .tracks
                 .iter()
@@ -436,9 +490,11 @@ impl App {
             shape_ids == self.preview_shape_clip_ids
         };
         let is_composited = !self.preview_overlay_clip_ids.is_empty()
+            || !self.preview_audio_clip_ids.is_empty()
             || !self.preview_text_clip_ids.is_empty()
             || !self.preview_shape_clip_ids.is_empty();
-        let branches_still_match = overlays_still_match && text_still_match && shape_still_match;
+        let branches_still_match =
+            overlays_still_match && audio_still_match && text_still_match && shape_still_match;
 
         match (&self.preview, same_clip.filter(|_| branches_still_match)) {
             (Some(preview), Some(clip)) if !is_composited => {
@@ -454,9 +510,15 @@ impl App {
                 let overlay_clips: Vec<&ClipInstance> = timeline
                     .tracks
                     .iter()
-                    .filter(|t| t.kind == TrackKind::Video)
+                    .filter(|t| t.kind == TrackKind::Video && t.visible)
                     .skip(1)
                     .filter_map(|t| t.clip_at(position_secs))
+                    .collect();
+                let audio_clips: Vec<&ClipInstance> = timeline
+                    .tracks
+                    .iter()
+                    .filter(|track| track.kind == TrackKind::Audio && track.visible)
+                    .filter_map(|track| track.clip_at(position_secs))
                     .collect();
                 let mut offsets = vec![Self::clip_seek_offset(&clip, position_secs)];
                 offsets.extend(
@@ -464,11 +526,21 @@ impl App {
                         .iter()
                         .map(|c| Self::clip_seek_offset(c, position_secs)),
                 );
+                offsets.extend(
+                    audio_clips
+                        .iter()
+                        .map(|clip| Self::clip_seek_offset(clip, position_secs)),
+                );
                 let mut rates = vec![clip.speed_factor.max(0.01) as f64];
                 rates.extend(
                     overlay_clips
                         .iter()
                         .map(|c| c.speed_factor.max(0.01) as f64),
+                );
+                rates.extend(
+                    audio_clips
+                        .iter()
+                        .map(|clip| clip.speed_factor.max(0.01) as f64),
                 );
                 if let Err(e) = preview.seek_composited(&offsets, &rates) {
                     warn!(error = %e, "failed to seek composited preview");

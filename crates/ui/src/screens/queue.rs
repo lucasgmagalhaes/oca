@@ -38,11 +38,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let project = app.active_project();
                 let sequence_name = project.sequences[project.active_sequence].name.clone();
-                let resolved = avcore::resolve_timeline_segments_multi(
-                    &project.sequences[project.active_sequence],
-                    &project.media_library,
-                );
-                let size_estimate_label = if let Ok((ref track_segments, ref canvas)) = resolved {
+                let sequence = &project.sequences[project.active_sequence];
+                let resolved =
+                    avcore::resolve_timeline_segments_multi(sequence, &project.media_library)
+                        .and_then(|(track_segments, canvas)| {
+                            avcore::resolve_audio_segments(sequence, &project.media_library)
+                                .map(|audio_segments| (track_segments, audio_segments, canvas))
+                        });
+                let size_estimate_label = if let Ok((ref track_segments, _, ref canvas)) = resolved
+                {
                     let duration_secs: f64 = track_segments
                         .first()
                         .map(|segs| {
@@ -64,7 +68,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     .add_enabled(resolved.is_ok(), add_button)
                     .on_disabled_hover_text(Text::AddExportNeedsClip.tr(locale));
                 if response.clicked() {
-                    if let Ok((track_segments, canvas)) = resolved {
+                    if let Ok((track_segments, audio_segments, canvas)) = resolved {
                         let (_, target_lufs) = LUFS_PROFILES[app.prefs.lufs_profile];
                         let canvas =
                             avcore::apply_export_aspect_ratio(canvas, app.export_aspect_ratio);
@@ -90,6 +94,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                     Some(crate::app::export::PendingExportConflict {
                                         title: sequence_name,
                                         track_segments,
+                                        audio_segments,
                                         text_segments,
                                         shape_segments,
                                         canvas,
@@ -100,6 +105,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                 app.queue_export(
                                     sequence_name,
                                     track_segments,
+                                    audio_segments,
                                     text_segments,
                                     shape_segments,
                                     canvas,

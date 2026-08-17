@@ -63,6 +63,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
             file_name: format!("clip_{i:04}.mp4"),
             source_path: PathBuf::from(format!("/media/clip_{i:04}.mp4")),
             kind: MediaKind::Video,
+            has_audio: true,
             duration_secs: 30.0,
             codec: "h264".to_string(),
             source_bitrate_mbps: 42.0,

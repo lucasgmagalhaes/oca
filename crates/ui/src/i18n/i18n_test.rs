@@ -108,6 +108,7 @@ fn job(status: ExportJobStatus) -> ExportJob {
         shape_segments: vec![],
 
         track_segments: Vec::new(),
+        audio_segments: Vec::new(),
 
         canvas: avcore::Canvas {
             width: 1920,

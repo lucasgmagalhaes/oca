@@ -110,7 +110,7 @@ pub struct VideoFrame {
 /// per-clip filter chain for export — for consistency with what export applies, even though the
 /// element set differs (GStreamer elements here, avfilter there) and the covered subset is
 /// narrower (no vignette — no matching element in this GStreamer install; no chroma key — only
-/// meaningful once layering exists; no gain — preview has no audio route at all yet; no
+/// meaningful once layering exists; gain is handled by the separate audio pipeline; no
 /// glitch/transitions — animated per-frame in export via avfilter's `n` frame-count expressions
 /// with no static element equivalent GStreamer-side; position keyframes aren't wired to preview
 /// — they need a compositing (`overlay`) stage, which this single-clip pipeline doesn't have,
@@ -660,10 +660,8 @@ fn build_audio_filter_bin(clip: &ClipInstance) -> Result<Option<gst::Element>, P
 }
 
 /// Links `decodebin`'s first audio output pad to `target_sink` once it appears — the audio twin
-/// of [`connect_decodebin_video_pad`], used only for [`Preview::open_composited`]'s background
-/// (track 0) branch, matching export's own "audio comes from track 0 only" convention
-/// (`timeline_export_multi.c`'s top-of-file comment) — overlay branches' own audio is never
-/// wired up at all, silently dropped same as export drops it.
+/// of [`connect_decodebin_video_pad`], shared by every branch feeding the composited preview's
+/// `audiomixer`.
 fn connect_decodebin_audio_pad(decodebin: &gst::Element, target_sink: gst::Pad) {
     decodebin.connect_pad_added(move |_dbin, src_pad| {
         if target_sink.is_linked() {
@@ -681,6 +679,72 @@ fn connect_decodebin_audio_pad(decodebin: &gst::Element, target_sink: gst::Pad) 
             tracing::warn!(error = ?e, "failed to link decodebin audio pad into the audio chain");
         }
     });
+}
+
+/// Connects one decoded source to an `audiomixer`, applying the clip's static gain before the
+/// mix. A queue isolates each source's decode scheduling so one slow branch cannot block every
+/// other input upstream of the mixer.
+fn attach_audio_mix_branch(
+    pipeline: &gst::Pipeline,
+    mixer: &gst::Element,
+    decodebin: &gst::Element,
+    gain_db: f32,
+) -> Result<(), PreviewError> {
+    let queue = gst::ElementFactory::make("queue")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    let convert = gst::ElementFactory::make("audioconvert")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    let resample = gst::ElementFactory::make("audioresample")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    let volume = gst::ElementFactory::make("volume")
+        .property("volume", gain_db_to_linear(gain_db).clamp(0.0, 10.0))
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    pipeline
+        .add_many([&queue, &convert, &resample, &volume])
+        .map_err(PreviewError::Compositing)?;
+    gst::Element::link_many([&queue, &convert, &resample, &volume])
+        .map_err(PreviewError::Compositing)?;
+    let mixer_pad = mixer
+        .request_pad_simple("sink_%u")
+        .ok_or(PreviewError::RequestPad)?;
+    volume
+        .static_pad("src")
+        .expect("volume always has a src pad")
+        .link(&mixer_pad)
+        .map_err(PreviewError::PadLink)?;
+    connect_decodebin_audio_pad(
+        decodebin,
+        queue
+            .static_pad("sink")
+            .expect("queue always has a sink pad"),
+    );
+    Ok(())
+}
+
+/// Creates the shared mixed-audio output chain and returns its `audiomixer` input element.
+fn build_audio_mix_output(pipeline: &gst::Pipeline) -> Result<gst::Element, PreviewError> {
+    let mixer = gst::ElementFactory::make("audiomixer")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    let convert = gst::ElementFactory::make("audioconvert")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    let resample = gst::ElementFactory::make("audioresample")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    let sink = gst::ElementFactory::make("autoaudiosink")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    pipeline
+        .add_many([&mixer, &convert, &resample, &sink])
+        .map_err(PreviewError::Compositing)?;
+    gst::Element::link_many([&mixer, &convert, &resample, &sink])
+        .map_err(PreviewError::Compositing)?;
+    Ok(mixer)
 }
 
 /// Links `decodebin`'s first video output pad to `target_sink` once it appears — `decodebin`/
@@ -1339,6 +1403,11 @@ impl Preview {
     /// [`Self::seek_composited`]'s `rates` argument, called right after this returns — this
     /// method itself only opens the pipeline (implicitly rate `1.0` until the first seek).
     ///
+    /// `audio_overlays` contains active clips from audio-only timeline tracks. Their decodebins,
+    /// together with every video branch that has embedded audio, feed one `audiomixer`; each
+    /// branch applies its own gain and is included in `branches` so independent trim-aware seek
+    /// offsets and playback rates stay aligned with the picture.
+    ///
     /// `text_overlays`/`shape_overlays` — the clips covering the playhead on any
     /// [`crate::timeline::TrackKind::Text`]/[`crate::timeline::TrackKind::Shape`] track, if
     /// any — are rasterized once each ([`crate::overlay_render`]) and composited on top of
@@ -1361,15 +1430,27 @@ impl Preview {
         background_path: &Path,
         background_clip: Option<&ClipInstance>,
         overlays: &[(&Path, &ClipInstance)],
+        audio_overlays: &[(&Path, &ClipInstance)],
         text_overlays: &[(&TextClip, f64)],
         shape_overlays: &[&ShapeClip],
     ) -> Result<Self, PreviewError> {
         gst::init().map_err(PreviewError::Init)?;
 
-        let canvas = avbridge::probe(background_path)
-            .map_err(PreviewError::Probe)?
+        let background_info = avbridge::probe(background_path).map_err(PreviewError::Probe)?;
+        let canvas = background_info
             .resolution
             .ok_or(PreviewError::NoBackgroundVideo)?;
+        let overlay_infos: Vec<avbridge::ProbeInfo> = overlays
+            .iter()
+            .map(|(path, _)| avbridge::probe(path).map_err(PreviewError::Probe))
+            .collect::<Result<_, _>>()?;
+        let audio_infos: Vec<avbridge::ProbeInfo> = audio_overlays
+            .iter()
+            .map(|(path, _)| avbridge::probe(path).map_err(PreviewError::Probe))
+            .collect::<Result<_, _>>()?;
+        let has_any_audio = background_info.has_audio
+            || overlay_infos.iter().any(|info| info.has_audio)
+            || audio_infos.iter().any(|info| info.has_audio);
 
         let pipeline = gst::Pipeline::new();
 
@@ -1410,6 +1491,10 @@ impl Preview {
             .link(&video_sink)
             .map_err(PreviewError::Compositing)?;
 
+        let audio_mixer = has_any_audio
+            .then(|| build_audio_mix_output(&pipeline))
+            .transpose()?;
+
         let (background_decodebin, background_matte) = build_composite_branch(
             &pipeline,
             &compositor,
@@ -1422,36 +1507,15 @@ impl Preview {
                 zorder: 0,
             },
         )?;
-
-        // Audio — background (track 0) branch only, matching export's own "audio comes from
-        // track 0 only" convention (`timeline_export_multi.c`'s top-of-file comment). `volume`
-        // applies `background_clip.gain_db` directly (a plain property, not a pad probe —
-        // gain_db has no keyframes, so it's a single static value for the branch's whole life),
-        // same linear-scale conversion [`build_audio_filter_bin`] uses for the single-clip path.
-        {
-            let audioconvert = gst::ElementFactory::make("audioconvert")
-                .build()
-                .map_err(PreviewError::CreateElement)?;
-            let audioresample = gst::ElementFactory::make("audioresample")
-                .build()
-                .map_err(PreviewError::CreateElement)?;
-            let gain = background_clip.map_or(0.0, |c| c.gain_db);
-            let volume = gst::ElementFactory::make("volume")
-                .property("volume", gain_db_to_linear(gain).clamp(0.0, 10.0))
-                .build()
-                .map_err(PreviewError::CreateElement)?;
-            let audio_sink = gst::ElementFactory::make("autoaudiosink")
-                .build()
-                .map_err(PreviewError::CreateElement)?;
-            pipeline
-                .add_many([&audioconvert, &audioresample, &volume, &audio_sink])
-                .map_err(PreviewError::Compositing)?;
-            gst::Element::link_many([&audioconvert, &audioresample, &volume, &audio_sink])
-                .map_err(PreviewError::Compositing)?;
-            let audio_sink_pad = audioconvert
-                .static_pad("sink")
-                .expect("audioconvert always has a sink pad");
-            connect_decodebin_audio_pad(&background_decodebin, audio_sink_pad);
+        if background_info.has_audio {
+            attach_audio_mix_branch(
+                &pipeline,
+                audio_mixer
+                    .as_ref()
+                    .expect("has_any_audio guarantees a mixer"),
+                &background_decodebin,
+                background_clip.map_or(0.0, |clip| clip.gain_db),
+            )?;
         }
 
         let mut branches = vec![background_decodebin];
@@ -1462,10 +1526,8 @@ impl Preview {
             // than silently dropping a matte decodebin if that gate ever changes.
             matte_branches.push((0, matte, background_clip.map_or(0.0, |c| c.source_in_secs)));
         }
-        for (i, (path, clip)) in overlays.iter().enumerate() {
-            let resolution = avbridge::probe(path)
-                .map_err(PreviewError::Probe)?
-                .resolution;
+        for (i, ((path, clip), info)) in overlays.iter().zip(&overlay_infos).enumerate() {
+            let resolution = info.resolution;
             let (decodebin, matte) = build_composite_branch(
                 &pipeline,
                 &compositor,
@@ -1478,11 +1540,46 @@ impl Preview {
                     zorder: (i + 1) as u32,
                 },
             )?;
+            if info.has_audio {
+                attach_audio_mix_branch(
+                    &pipeline,
+                    audio_mixer
+                        .as_ref()
+                        .expect("has_any_audio guarantees a mixer"),
+                    &decodebin,
+                    clip.gain_db,
+                )?;
+            }
             let branch_index = branches.len();
             branches.push(decodebin);
             if let Some(matte) = matte {
                 matte_branches.push((branch_index, matte, clip.source_in_secs));
             }
+        }
+
+        // Audio-only timeline tracks have no compositor branch, but still need their own
+        // independently seekable decode source feeding the same mixer as embedded video audio.
+        for ((path, clip), info) in audio_overlays.iter().zip(&audio_infos) {
+            let uri =
+                gst::glib::filename_to_uri(path, None).map_err(PreviewError::UriConversion)?;
+            let decodebin = gst::ElementFactory::make("uridecodebin")
+                .property("uri", uri.as_str())
+                .build()
+                .map_err(PreviewError::CreateElement)?;
+            pipeline
+                .add(&decodebin)
+                .map_err(PreviewError::Compositing)?;
+            if info.has_audio {
+                attach_audio_mix_branch(
+                    &pipeline,
+                    audio_mixer
+                        .as_ref()
+                        .expect("has_any_audio guarantees a mixer"),
+                    &decodebin,
+                    clip.gain_db,
+                )?;
+            }
+            branches.push(decodebin);
         }
 
         let mut next_zorder = (overlays.len() + 1) as u32;

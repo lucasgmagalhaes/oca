@@ -49,6 +49,7 @@ ProbeStatus avbridge_probe(const char *path, ProbeInfo *out) {
 
     memset(out, 0, sizeof(*out));
     out->has_video = video ? 1 : 0;
+    out->has_audio = audio ? 1 : 0;
 
     double duration_secs = 0.0;
     if (fmt_ctx->duration != (int64_t)AV_NOPTS_VALUE) {

@@ -49,6 +49,16 @@ struct RawClipSegment {
     mask_video_path: *const c_char,
 }
 
+#[repr(C)]
+struct RawAudioSegment {
+    source_path: *const c_char,
+    source_in_secs: f64,
+    source_out_secs: f64,
+    timeline_start_secs: f64,
+    gain_db: f32,
+    speed_factor: f32,
+}
+
 /// Mirror of `TextSegment` in `bridge.h` — one text overlay to draw on the exported video.
 #[repr(C)]
 struct RawTextSegment {
@@ -72,6 +82,7 @@ struct RawShapeSegment {
 #[repr(C)]
 struct RawProbeInfo {
     has_video: c_int,
+    has_audio: c_int,
     duration_secs: f64,
     codec_name: [c_char; 32],
     bit_rate: c_longlong,
@@ -124,6 +135,19 @@ unsafe extern "C" {
         progress_cb: Option<unsafe extern "C" fn(user_data: *mut c_void, seconds: f64)>,
         progress_user_data: *mut c_void,
         cancel: *const u8,
+    ) -> c_int;
+    fn avbridge_mix_audio_timeline(
+        segments: *const RawAudioSegment,
+        segment_count: c_int,
+        timeline_duration_secs: f64,
+        out_path: *const c_char,
+        target_lufs: f32,
+        cancel: *const u8,
+    ) -> c_int;
+    fn avbridge_mux_video_audio(
+        video_path: *const c_char,
+        audio_path: *const c_char,
+        out_path: *const c_char,
     ) -> c_int;
     fn avbridge_measure_loudness(
         in_path: *const c_char,
@@ -230,6 +254,9 @@ pub enum StreamKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProbeInfo {
     pub kind: StreamKind,
+    /// Whether the container has at least one audio stream. Unlike [`Self::kind`], this remains
+    /// true for a video file with embedded audio.
+    pub has_audio: bool,
     pub duration_secs: f64,
     pub codec_name: String,
     /// Bits per second; `None` if neither the container nor the stream reports one.
@@ -251,6 +278,7 @@ pub fn probe(path: &Path) -> Result<ProbeInfo, ProbeError> {
         CString::new(path.to_string_lossy().as_bytes()).map_err(ProbeError::InvalidPath)?;
     let mut raw = RawProbeInfo {
         has_video: 0,
+        has_audio: 0,
         duration_secs: 0.0,
         codec_name: [0; 32],
         bit_rate: 0,
@@ -288,6 +316,7 @@ pub fn probe(path: &Path) -> Result<ProbeInfo, ProbeError> {
 
     Ok(ProbeInfo {
         kind,
+        has_audio: raw.has_audio != 0,
         duration_secs: raw.duration_secs,
         codec_name,
         bit_rate: (raw.bit_rate > 0).then_some(raw.bit_rate as u64),
@@ -530,6 +559,19 @@ pub struct ClipSegment {
     pub mask_video_path: String,
 }
 
+/// One independently placed audio contributor in a timeline mix. Unlike [`ClipSegment`], this
+/// is valid for both video assets with embedded audio and audio-only assets; no video metadata
+/// crosses the FFI boundary for this pass.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AudioSegment {
+    pub source_path: std::path::PathBuf,
+    pub source_in_secs: f64,
+    pub source_out_secs: f64,
+    pub timeline_start_secs: f64,
+    pub gain_db: f32,
+    pub speed_factor: f32,
+}
+
 /// The fixed output frame size/rate every segment in an [`encode_timeline_export`] call is
 /// scaled/padded/frame-rate-conformed onto.
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -703,6 +745,9 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
 /// When `n_tracks == 1`, delegates to [`encode_timeline_export`] unchanged — this is the
 /// guaranteed backward-compatible path that exercises no new C code. Additional tracks beyond
 /// index 1 are silently ignored in the current implementation (only two-input overlay is built).
+/// Higher-level callers that need every track's audio use [`mix_audio_timeline`] after this
+/// render and [`mux_video_audio`] to replace the background-only stream without re-encoding
+/// video; this lower-level compositor intentionally retains its original track-0 contract.
 ///
 /// Same cancellation and progress contract as [`encode_timeline_export`].
 pub fn encode_timeline_export_multi<F: FnMut(f64)>(
@@ -841,6 +886,150 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
         15 => Err(EncodeError::AudioFormatMismatch),
         16 => Err(EncodeError::EmptyTimeline),
         other => Err(EncodeError::Unknown(other)),
+    }
+}
+
+/// Result of rendering a standalone multi-track audio mix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AudioMixOutcome {
+    Completed,
+    Cancelled,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AudioMixError {
+    #[error("path is not a valid C string: {0}")]
+    InvalidPath(NulError),
+    #[error("failed to open an audio source")]
+    OpenInput,
+    #[error("failed to allocate the audio output")]
+    AllocOutput,
+    #[error("no timeline segment contains audio")]
+    NoAudio,
+    #[error("failed to build the audio mixing graph")]
+    FilterGraph,
+    #[error("failed to open the AAC encoder")]
+    Encoder,
+    #[error("failed to open the audio output")]
+    OpenOutput,
+    #[error("failed to write the audio header")]
+    WriteHeader,
+    #[error("audio mixing failed mid-stream")]
+    Pipeline,
+    #[error("unknown audio mix status code: {0}")]
+    Unknown(c_int),
+}
+
+/// Mixes `segments` into one AAC stream. Inputs without an audio stream are skipped by the C
+/// bridge, allowing silent video overlays to coexist with actual audio tracks.
+pub fn mix_audio_timeline(
+    segments: &[AudioSegment],
+    timeline_duration_secs: f64,
+    out_path: &Path,
+    target_lufs: f32,
+    cancel: &AtomicBool,
+) -> Result<AudioMixOutcome, AudioMixError> {
+    if segments.is_empty() {
+        return Err(AudioMixError::NoAudio);
+    }
+    let c_out =
+        CString::new(out_path.to_string_lossy().as_bytes()).map_err(AudioMixError::InvalidPath)?;
+    let paths: Vec<CString> = segments
+        .iter()
+        .map(|seg| {
+            CString::new(seg.source_path.to_string_lossy().as_bytes())
+                .map_err(AudioMixError::InvalidPath)
+        })
+        .collect::<Result<_, _>>()?;
+    let raw: Vec<RawAudioSegment> = segments
+        .iter()
+        .zip(&paths)
+        .map(|(seg, path)| RawAudioSegment {
+            source_path: path.as_ptr(),
+            source_in_secs: seg.source_in_secs,
+            source_out_secs: seg.source_out_secs,
+            timeline_start_secs: seg.timeline_start_secs,
+            gain_db: seg.gain_db,
+            speed_factor: seg.speed_factor,
+        })
+        .collect();
+
+    // SAFETY: raw and every CString backing its pointers remain alive for the whole call; the C
+    // function does not retain them. AtomicBool has a byte-addressable 0/1 representation, the
+    // same cancellation contract used by the encode functions above.
+    let status = unsafe {
+        avbridge_mix_audio_timeline(
+            raw.as_ptr(),
+            raw.len() as c_int,
+            timeline_duration_secs,
+            c_out.as_ptr(),
+            target_lufs,
+            cancel.as_ptr() as *const u8,
+        )
+    };
+    match status {
+        0 => Ok(AudioMixOutcome::Completed),
+        1 => Err(AudioMixError::OpenInput),
+        2 => Err(AudioMixError::AllocOutput),
+        3 => Err(AudioMixError::NoAudio),
+        4 => Err(AudioMixError::FilterGraph),
+        5 => Err(AudioMixError::Encoder),
+        6 => Err(AudioMixError::OpenOutput),
+        7 => Err(AudioMixError::WriteHeader),
+        8 => Err(AudioMixError::Pipeline),
+        9 => Ok(AudioMixOutcome::Cancelled),
+        other => Err(AudioMixError::Unknown(other)),
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MediaMuxError {
+    #[error("path is not a valid C string: {0}")]
+    InvalidPath(NulError),
+    #[error("failed to open a mux input")]
+    OpenInput,
+    #[error("failed to allocate the mux output")]
+    AllocOutput,
+    #[error("video or audio input is missing its required stream")]
+    MissingStream,
+    #[error("failed to create a mux output stream")]
+    NewStream,
+    #[error("failed to open the mux output")]
+    OpenOutput,
+    #[error("failed to write the mux header")]
+    WriteHeader,
+    #[error("failed while stream-copying mux packets")]
+    WriteFrame,
+    #[error("unknown media mux status code: {0}")]
+    Unknown(c_int),
+}
+
+/// Stream-copies the first video stream from `video_path` and first audio stream from
+/// `audio_path` into `out_path`.
+pub fn mux_video_audio(
+    video_path: &Path,
+    audio_path: &Path,
+    out_path: &Path,
+) -> Result<(), MediaMuxError> {
+    let c_video = CString::new(video_path.to_string_lossy().as_bytes())
+        .map_err(MediaMuxError::InvalidPath)?;
+    let c_audio = CString::new(audio_path.to_string_lossy().as_bytes())
+        .map_err(MediaMuxError::InvalidPath)?;
+    let c_out =
+        CString::new(out_path.to_string_lossy().as_bytes()).map_err(MediaMuxError::InvalidPath)?;
+    // SAFETY: all three CStrings stay alive for the duration of the synchronous call.
+    let status =
+        unsafe { avbridge_mux_video_audio(c_video.as_ptr(), c_audio.as_ptr(), c_out.as_ptr()) };
+    match status {
+        0 => Ok(()),
+        1 => Err(MediaMuxError::OpenInput),
+        2 => Err(MediaMuxError::AllocOutput),
+        3 => Err(MediaMuxError::MissingStream),
+        4 => Err(MediaMuxError::NewStream),
+        5 => Err(MediaMuxError::OpenOutput),
+        6 => Err(MediaMuxError::WriteHeader),
+        7 => Err(MediaMuxError::WriteFrame),
+        other => Err(MediaMuxError::Unknown(other)),
     }
 }
 

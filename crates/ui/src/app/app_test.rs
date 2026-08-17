@@ -119,6 +119,7 @@ fn test_asset(id: u64) -> MediaAsset {
         file_name: format!("asset-{id}.mp4"),
         source_path: PathBuf::from(format!("asset-{id}.mp4")),
         kind: MediaKind::Video,
+        has_audio: true,
         duration_secs: 10.0,
         codec: "h264".to_string(),
         source_bitrate_mbps: 8.0,
@@ -158,6 +159,7 @@ fn test_job(id: u64, status: ExportJobStatus) -> ExportJob {
         shape_segments: vec![],
 
         track_segments: Vec::new(),
+        audio_segments: Vec::new(),
 
         canvas: test_canvas(),
         target_lufs: -14.0,
@@ -198,6 +200,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         preview: None,
         preview_clip_id: None,
         preview_overlay_clip_ids: Vec::new(),
+        preview_audio_clip_ids: Vec::new(),
         preview_text_clip_ids: Vec::new(),
         preview_shape_clip_ids: Vec::new(),
         preview_texture: None,
@@ -487,6 +490,7 @@ fn queue_export_appends_a_queued_job_with_the_next_id() {
         Vec::new(),
         vec![],
         vec![],
+        vec![],
         test_canvas(),
         -14.0,
         "out.mp4".to_string(),
@@ -505,6 +509,7 @@ fn queue_export_starts_at_one_when_no_jobs_exist() {
     app.queue_export(
         "Export".to_string(),
         Vec::new(),
+        vec![],
         vec![],
         vec![],
         test_canvas(),
@@ -3331,6 +3336,7 @@ fn pending_export_conflict_overwrite_queues_with_the_original_path() {
     app.pending_export_conflict = Some(super::export::PendingExportConflict {
         title: "Export".to_string(),
         track_segments: Vec::new(),
+        audio_segments: vec![],
         text_segments: vec![],
         shape_segments: vec![],
         canvas: test_canvas(),
@@ -3343,6 +3349,7 @@ fn pending_export_conflict_overwrite_queues_with_the_original_path() {
     app.queue_export(
         pending.title,
         pending.track_segments,
+        pending.audio_segments,
         pending.text_segments,
         pending.shape_segments,
         pending.canvas,

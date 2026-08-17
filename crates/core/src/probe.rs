@@ -61,6 +61,7 @@ impl From<avbridge::ProbeError> for ProbeError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProbedMedia {
     pub kind: MediaKind,
+    pub has_audio: bool,
     pub duration_secs: f64,
     pub codec: String,
     /// Overall container bitrate in Mbps (falls back to the primary stream's bitrate if the
@@ -81,6 +82,7 @@ impl ProbedMedia {
             file_name,
             source_path,
             kind: self.kind,
+            has_audio: self.has_audio,
             duration_secs: self.duration_secs,
             codec: self.codec,
             source_bitrate_mbps: self.bitrate_mbps,
@@ -107,6 +109,7 @@ pub fn probe_media(path: &Path) -> Result<ProbedMedia, ProbeError> {
             avbridge::StreamKind::Video => MediaKind::Video,
             avbridge::StreamKind::Audio => MediaKind::Audio,
         },
+        has_audio: info.has_audio,
         duration_secs: info.duration_secs,
         codec: info.codec_name,
         bitrate_mbps: info

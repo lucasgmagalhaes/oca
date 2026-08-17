@@ -43,6 +43,10 @@ pub struct MediaAsset {
     /// again, not a regenerable cache artifact.
     pub source_path: PathBuf,
     pub kind: MediaKind,
+    /// Whether this source has an audio stream. Defaults to true for projects saved before the
+    /// field existed, matching the editor's historical assumption that video clips had audio.
+    #[serde(default = "default_has_audio")]
+    pub has_audio: bool,
     pub duration_secs: f64,
     pub codec: String,
     pub source_bitrate_mbps: f32,
@@ -64,6 +68,10 @@ pub struct MediaAsset {
     /// Serialized (unlike `proxy_path`) — recomputing it means a full audio decode pass, so a
     /// reopened project keeps it rather than paying that cost again.
     pub waveform_peaks: Option<Vec<(f32, f32)>>,
+}
+
+fn default_has_audio() -> bool {
+    true
 }
 
 impl MediaAsset {

@@ -19,7 +19,7 @@
 //! the source's bitrate exactly, one of this editor's two headline differentiators.
 
 use std::path::Path;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use avbridge::Canvas;
 
@@ -118,6 +118,12 @@ pub enum RenderError {
     /// (`render_timeline_export` only) a clip's `asset_id` isn't in the project's media
     /// library.
     MissingAsset,
+    /// The native multi-track audio mixing pass failed after the video render completed.
+    AudioMix(String),
+    /// Stream-copying the rendered video together with the mixed audio failed.
+    MediaMux(String),
+    /// Replacing the rendered file with a completed post-processing result failed.
+    ReplaceOutput(std::io::Error),
 }
 
 impl std::fmt::Display for RenderError {
@@ -145,6 +151,9 @@ impl std::fmt::Display for RenderError {
             }
             RenderError::EmptyTimeline => write!(f, "sequence has no video clips to export"),
             RenderError::MissingAsset => write!(f, "a clip references a missing media asset"),
+            RenderError::AudioMix(message) => write!(f, "audio mix failed: {message}"),
+            RenderError::MediaMux(message) => write!(f, "audio mux failed: {message}"),
+            RenderError::ReplaceOutput(error) => write!(f, "failed to replace export: {error}"),
         }
     }
 }
@@ -223,16 +232,14 @@ pub fn render_export(
 /// [`crate::timeline::ClipInstance::video_filter_chain`] documents (crop, brightness/contrast/
 /// saturation, color filter, vignette, sharpen, chroma key, blur) plus per-clip audio gain and
 /// freeze frame ([`crate::timeline::ClipInstance::frozen`], resolved to
-/// [`avbridge::ClipSegment::frozen`] rather than a filter string); everything else
-/// `features/request.md`'s Fase 4 status notes list (speed, zoom, transitions, masks,
-/// multi-track compositing) isn't resolved yet.
+/// [`avbridge::ClipSegment::frozen`] rather than a filter string). The complete visible-track
+/// audio snapshot is resolved separately by [`resolve_audio_segments`].
 ///
 /// The canvas's resolution/frame rate is the first clip's own probed resolution/fps; its
 /// bitrate is a duration-weighted average of every clip's own source bitrate — video is
 /// re-encoded here (unlike [`render_export`]'s exact passthrough copy), so an exact
 /// source-bitrate match isn't possible once effects require decode+filter+encode; this is the
-/// closest equivalent for a multi-clip timeline. Only the video track's clips' own embedded
-/// audio is included — separate audio-only tracks aren't mixed in.
+/// closest equivalent for a multi-clip timeline.
 ///
 /// Builds `clip`'s combined avfilter `video_filter` string (scale/rotation/opacity keyframe
 /// stages, from [`ClipInstance::keyframe_video_filter_chain`], spliced onto the front of
@@ -428,11 +435,13 @@ pub fn render_timeline_export(
     cancel: &AtomicBool,
     on_progress: impl FnMut(u8),
 ) -> Result<RenderOutcome, RenderError> {
-    let (segments, canvas) = resolve_timeline_segments(sequence, media_library)?;
+    let (track_segments, canvas) = resolve_timeline_segments_multi(sequence, media_library)?;
+    let audio_segments = resolve_audio_segments(sequence, media_library)?;
     let text_segments = resolve_text_segments(sequence, canvas.width);
     let shape_segments = resolve_shape_segments(sequence, canvas.width, canvas.height);
-    render_export_job(
-        &segments,
+    render_export_job_multi_with_audio(
+        &track_segments,
+        &audio_segments,
         canvas,
         output,
         target_lufs,
@@ -442,6 +451,53 @@ pub fn render_timeline_export(
         cancel,
         on_progress,
     )
+}
+
+/// Resolves every audible clip from visible video and audio tracks. Returns an empty list when
+/// the first video track is the only audio contributor, allowing the established one-pass
+/// export path to avoid an unnecessary second AAC encode. Once any additional track contributes
+/// audio, the returned list includes the background clips too because the post-pass replaces,
+/// rather than layers on top of, the original output audio.
+pub fn resolve_audio_segments(
+    sequence: &Sequence,
+    media_library: &[MediaAsset],
+) -> Result<Vec<avbridge::AudioSegment>, RenderError> {
+    let first_video_track = sequence.timeline.tracks.iter().position(|track| {
+        track.kind == TrackKind::Video && track.visible && !track.clips.is_empty()
+    });
+
+    let mut resolved = Vec::new();
+    let mut has_additional_contributor = false;
+    for (track_index, track) in sequence.timeline.tracks.iter().enumerate() {
+        if !track.visible || !matches!(track.kind, TrackKind::Video | TrackKind::Audio) {
+            continue;
+        }
+        for clip in &track.clips {
+            let asset = media_library
+                .iter()
+                .find(|asset| asset.id == clip.asset_id)
+                .ok_or(RenderError::MissingAsset)?;
+            if !asset.has_audio {
+                continue;
+            }
+            if Some(track_index) != first_video_track {
+                has_additional_contributor = true;
+            }
+            resolved.push(avbridge::AudioSegment {
+                source_path: asset.source_path.clone(),
+                source_in_secs: clip.source_in_secs,
+                source_out_secs: clip.source_out_secs,
+                timeline_start_secs: clip.start_secs,
+                gain_db: clip.gain_db,
+                speed_factor: clip.speed_factor,
+            });
+        }
+    }
+    if !has_additional_contributor {
+        return Ok(Vec::new());
+    }
+    resolved.sort_by(|a, b| a.timeline_start_secs.total_cmp(&b.timeline_start_secs));
+    Ok(resolved)
 }
 
 /// Applies text overlays to an already-written export file in place. Writes to a temp path
@@ -760,13 +816,44 @@ pub fn render_export_job_multi(
     text_segments: &[avbridge::TextSegment],
     shape_segments: &[avbridge::ShapeSegment],
     cancel: &AtomicBool,
+    on_progress: impl FnMut(u8),
+) -> Result<RenderOutcome, RenderError> {
+    render_export_job_multi_with_audio(
+        track_segments,
+        &[],
+        canvas,
+        output,
+        target_lufs,
+        gpu_encoder,
+        text_segments,
+        shape_segments,
+        cancel,
+        on_progress,
+    )
+}
+
+/// Multi-track render with an optional complete audio snapshot. When `audio_segments` is empty,
+/// this is byte-for-byte the established render path. Otherwise the completed video's audio is
+/// replaced by a native `amix` result after visual post-processing, stream-copying video so the
+/// extra pass never reduces image quality.
+#[allow(clippy::too_many_arguments)]
+pub fn render_export_job_multi_with_audio(
+    track_segments: &[Vec<avbridge::ClipSegment>],
+    audio_segments: &[avbridge::AudioSegment],
+    canvas: Canvas,
+    output: &Path,
+    target_lufs: f32,
+    gpu_encoder: avbridge::GpuEncoderPreference,
+    text_segments: &[avbridge::TextSegment],
+    shape_segments: &[avbridge::ShapeSegment],
+    cancel: &AtomicBool,
     mut on_progress: impl FnMut(u8),
 ) -> Result<RenderOutcome, RenderError> {
     if track_segments.is_empty() || track_segments[0].is_empty() {
         return Err(RenderError::EmptyTimeline);
     }
     if track_segments.len() == 1 {
-        return render_export_job(
+        let outcome = render_export_job(
             &track_segments[0],
             canvas,
             output,
@@ -776,7 +863,18 @@ pub fn render_export_job_multi(
             shape_segments,
             cancel,
             on_progress,
-        );
+        )?;
+        return if outcome == RenderOutcome::Completed && !audio_segments.is_empty() {
+            apply_audio_mix_pass(
+                output,
+                audio_segments,
+                timeline_duration(track_segments),
+                target_lufs,
+                cancel,
+            )
+        } else {
+            Ok(outcome)
+        };
     }
 
     // Total output duration from track 0 (the primary / audio track).
@@ -816,10 +914,92 @@ pub fn render_export_job_multi(
             if !shape_segments.is_empty() {
                 apply_shape_overlay_pass(output, canvas, shape_segments);
             }
+            if !audio_segments.is_empty() {
+                return apply_audio_mix_pass(
+                    output,
+                    audio_segments,
+                    total_duration_secs,
+                    target_lufs,
+                    cancel,
+                );
+            }
             RenderOutcome::Completed
         }
         avbridge::EncodeOutcome::Cancelled => RenderOutcome::Cancelled,
     })
+}
+
+fn timeline_duration(track_segments: &[Vec<avbridge::ClipSegment>]) -> f64 {
+    track_segments
+        .first()
+        .map(|track| {
+            track
+                .iter()
+                .map(|segment| {
+                    (segment.source_out_secs - segment.source_in_secs)
+                        / (segment.speed_factor as f64).max(0.0001)
+                })
+                .sum()
+        })
+        .unwrap_or(0.0)
+}
+
+fn apply_audio_mix_pass(
+    output: &Path,
+    audio_segments: &[avbridge::AudioSegment],
+    timeline_duration_secs: f64,
+    target_lufs: f32,
+    cancel: &AtomicBool,
+) -> Result<RenderOutcome, RenderError> {
+    static TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
+    let parent = output.parent().unwrap_or_else(|| Path::new("."));
+    let stem = output
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("oca_export");
+    let temp_id = TEMP_ID.fetch_add(1, Ordering::Relaxed);
+    let suffix = format!("{}-{temp_id}", std::process::id());
+    let audio_tmp = parent.join(format!("{stem}.oca-audio-mix-{suffix}.m4a"));
+    let mux_tmp = parent.join(format!("{stem}.oca-audio-mux-{suffix}.mp4"));
+    let backup = parent.join(format!("{stem}.oca-audio-original-{suffix}.mp4"));
+
+    let mix_outcome = match avbridge::mix_audio_timeline(
+        audio_segments,
+        timeline_duration_secs,
+        &audio_tmp,
+        target_lufs,
+        cancel,
+    ) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let _ = std::fs::remove_file(&audio_tmp);
+            return Err(RenderError::AudioMix(error.to_string()));
+        }
+    };
+    if mix_outcome == avbridge::AudioMixOutcome::Cancelled {
+        let _ = std::fs::remove_file(&audio_tmp);
+        let _ = std::fs::remove_file(output);
+        return Ok(RenderOutcome::Cancelled);
+    }
+    if let Err(error) = avbridge::mux_video_audio(output, &audio_tmp, &mux_tmp) {
+        let _ = std::fs::remove_file(&audio_tmp);
+        let _ = std::fs::remove_file(&mux_tmp);
+        return Err(RenderError::MediaMux(error.to_string()));
+    }
+    let _ = std::fs::remove_file(&audio_tmp);
+
+    if let Err(error) = std::fs::rename(output, &backup) {
+        let _ = std::fs::remove_file(&mux_tmp);
+        return Err(RenderError::ReplaceOutput(error));
+    }
+    if let Err(error) = std::fs::rename(&mux_tmp, output) {
+        let _ = std::fs::rename(&backup, output);
+        let _ = std::fs::remove_file(&mux_tmp);
+        return Err(RenderError::ReplaceOutput(error));
+    }
+    let _ = std::fs::remove_file(&backup);
+    Ok(RenderOutcome::Completed)
 }
 
 /// Approximates `fps` as a small integer ratio for `avbridge::Canvas` — exact for whole frame

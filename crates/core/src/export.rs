@@ -15,7 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Canvas, ClipSegment, ShapeSegment, TextSegment};
+use crate::{AudioSegment, Canvas, ClipSegment, ShapeSegment, TextSegment};
 
 /// A queued render's lifecycle. `Rendering`/`Paused` carry a snapshot progress percentage;
 /// the queue itself (Fase 4) will drive these via the background worker channel.
@@ -55,6 +55,10 @@ pub struct ExportJob {
     /// before multi-track support (those jobs fall back to [`ExportJob::segments`]).
     #[serde(default)]
     pub track_segments: Vec<Vec<ClipSegment>>,
+    /// Complete audio mix snapshot when a track beyond the background contributes audio.
+    /// Empty keeps persisted pre-mix jobs on the established background-only path.
+    #[serde(default)]
+    pub audio_segments: Vec<AudioSegment>,
     pub canvas: Canvas,
     pub target_lufs: f32,
     pub output_path: String,

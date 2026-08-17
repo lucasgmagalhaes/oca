@@ -52,12 +52,16 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   fails with a real audio sink (no usable audio device), retries once with `fakesink` instead of
   making the whole preview unavailable — same "degrade rather than abort" posture as a missing
   matte file or an unloadable font elsewhere in this module.
-  `Preview::open_composited` gained its own separate manually-wired audio chain
-  (`audioconvert`→`audioresample`→`volume`→`autoaudiosink`) hung off the **background (track 0)
-  branch's decodebin only** — `preview::connect_decodebin_audio_pad`, the audio twin of the
-  existing video pad connector — matching export's own "audio comes from track 0 only"
-  convention (`timeline_export_multi.c`'s top-of-file comment); overlay tracks' audio is
-  silently dropped in preview the same way it already is on export. **Known asymmetry:** unlike
+  `Preview::open_composited` now mixes every active visible audio contributor through one
+  `audiomixer`: embedded audio from the background and overlay video branches plus clips on
+  audio-only tracks. Each branch has its own `queue`→`audioconvert`→`audioresample`→`volume`
+  chain, preserving per-clip gain, seek offset, trim boundary, and playback rate. The export
+  queue snapshots the same visible contributors as `AudioSegment`s; after the video render, a
+  native avfilter pass applies each segment's trim, speed, gain, and timeline delay, mixes with
+  `amix`, then runs the shared `afftdn`→`loudnorm`→`alimiter` chain and AAC encoding. A final
+  native mux pass stream-copies the already-rendered video with that mixed audio, avoiding a
+  second lossy video encode. The old one-pass background-only path remains in use when no
+  additional audio contributor exists. **Known asymmetry:** unlike
   `Preview::open`'s cheap property-swap retry, `open_composited`'s audio sink is already linked
   into a manually-built chain by the time Paused is attempted, so there's no equivalent
   fallback there — a missing/broken audio device fails that whole `open_composited` call, same
@@ -66,7 +70,8 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   (`a_gained_clip_opens_with_a_real_audio_sink_and_still_decodes_video`,
   `open_composited_with_gain_composites_with_real_audio`, `preview_test.rs` — both call
   `play()`/`pause()` against the real audio sink, not just preroll) — doesn't assert anything
-  about the actual audible loudness/gain applied.
+  about the actual audible loudness/gain applied. Multi-track behavior is covered separately by
+  the native audio mix/mux integration test and an audio-only composited-preview branch test.
 
   **Layer mask (`mask_shape`) now previews too.** `crate::preview::build_mask_shape_stage`
   (`preview.rs`) reuses the exact `alphacombine` technique the background-removal matte stage

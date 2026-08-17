@@ -31,6 +31,7 @@ fn probes_a_video_stream_as_the_primary_track() {
     assert_eq!(media.codec, "mpeg4");
     assert_eq!(media.resolution, Some((320, 240)));
     assert_eq!(media.sample_rate_khz, None);
+    assert!(media.has_audio);
     assert!((media.duration_secs - 1.0).abs() < 0.1);
 }
 
@@ -53,6 +54,7 @@ fn falls_back_to_the_audio_stream_when_there_is_no_video() {
     assert_eq!(media.codec, "aac");
     assert_eq!(media.resolution, None);
     assert_eq!(media.sample_rate_khz, Some(44.1));
+    assert!(media.has_audio);
 }
 
 #[test]
@@ -75,5 +77,6 @@ fn into_media_asset_carries_the_probed_fields_through() {
     assert_eq!(asset.file_name, "video.mp4");
     assert_eq!(asset.source_path, PathBuf::from("/videos/video.mp4"));
     assert_eq!(asset.codec, "mpeg4");
+    assert!(asset.has_audio);
     assert!(asset.loudness.is_none());
 }
