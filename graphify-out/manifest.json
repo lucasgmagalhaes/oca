@@ -25,8 +25,8 @@
     "semantic_hash": ""
   },
   "crates/core/benches/parsing.rs": {
-    "mtime": 1786934783.1045673,
-    "ast_hash": "d823399b0e68cf470b95942678cc5c43",
+    "mtime": 1786976572.0803852,
+    "ast_hash": "c58cb2afd500bb8d297692064580bc49",
     "semantic_hash": ""
   },
   "crates/core/src/export.rs": {
@@ -35,8 +35,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/lib.rs": {
-    "mtime": 1786975627.5542035,
-    "ast_hash": "b8af538642601f52659b9607b8913938",
+    "mtime": 1786976528.3098028,
+    "ast_hash": "0057b13555948b2b1fc18270a85b7408",
     "semantic_hash": ""
   },
   "crates/core/src/loudness.rs": {
@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/project.rs": {
-    "mtime": 1786934784.9362125,
-    "ast_hash": "1268a56e2796c3bbaa99926bb88a6b3b",
+    "mtime": 1786976522.6914294,
+    "ast_hash": "f6ea9aebb463c7916bd4ab4735a5123d",
     "semantic_hash": ""
   },
   "crates/core/src/proxy.rs": {
@@ -110,8 +110,8 @@
     "semantic_hash": ""
   },
   "crates/core/tests/persistence_test.rs": {
-    "mtime": 1786934786.842622,
-    "ast_hash": "88a10293bd81a8299a80cd2f4879ff1d",
+    "mtime": 1786976813.7916079,
+    "ast_hash": "002fd48226c0d9d938b88ee218668d0e",
     "semantic_hash": ""
   },
   "crates/core/tests/preview_test.rs": {
@@ -140,13 +140,13 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1786971323.3912916,
-    "ast_hash": "70e7046ef67ea69c60a2b5071465f3fe",
+    "mtime": 1786976947.634518,
+    "ast_hash": "4a40d66dbfbc1730bf2bded8821eca6d",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1786934790.0397537,
-    "ast_hash": "209ea2e6706998323e8de6faa0e4da80",
+    "mtime": 1786976720.7889636,
+    "ast_hash": "55120096eb728eb2fcf0c22816ae3f9c",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -185,8 +185,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/prefs.rs": {
-    "mtime": 1786975963.10023,
-    "ast_hash": "c91daa4f5763bbd3e9ae0157ddb05f69",
+    "mtime": 1786976730.828374,
+    "ast_hash": "6b58bee100c2237fa324934a9edf1b4d",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/queue.rs": {
@@ -205,8 +205,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786974690.6314995,
-    "ast_hash": "01657b1b7b0bf88173e6764fd57e6b8e",
+    "mtime": 1786977129.4737518,
+    "ast_hash": "85094de8703275de53177ecc42b53413",
     "semantic_hash": ""
   },
   "README.md": {
@@ -345,8 +345,8 @@
     "semantic_hash": ""
   },
   "crates/core/tests/project_test.rs": {
-    "mtime": 1786934787.0929768,
-    "ast_hash": "092a30674cbe85bdba75e6bf83b37329",
+    "mtime": 1786976557.3523922,
+    "ast_hash": "81b7af210659fb7a506fea764fb4d791",
     "semantic_hash": ""
   },
   "AGENTS.md": {
@@ -535,13 +535,13 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1786975962.890527,
-    "ast_hash": "9d7b10e0be58acb1eef21bd921d51ebd",
+    "mtime": 1786976690.1212113,
+    "ast_hash": "aaccecb37cef38ecddf4976dd01f72ba",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
-    "mtime": 1786934788.666612,
-    "ast_hash": "8975058f8e83948574c650759850eb3b",
+    "mtime": 1786976704.2956307,
+    "ast_hash": "652f0b7f73cd678e343dc4fd63675116",
     "semantic_hash": ""
   },
   "crates/ui/src/app/model_download.rs": {
@@ -565,8 +565,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/mod.rs": {
-    "mtime": 1786934790.3563652,
-    "ast_hash": "0dd20641e977a336746ca12ed84ec1e3",
+    "mtime": 1786976661.0405726,
+    "ast_hash": "3969aad1ddba5f83d878ae628517b6db",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/properties_panel.rs": {
@@ -735,8 +735,8 @@
     "semantic_hash": ""
   },
   "crates/core/tests/background_removal_test.rs": {
-    "mtime": 1786934786.4484904,
-    "ast_hash": "21e9729490f3e4787dcaa6211aab2854",
+    "mtime": 1786976550.122583,
+    "ast_hash": "2ba58264855359f4a1ef088177aea610",
     "semantic_hash": ""
   },
   "crates/core/tests/telemetry_test.rs": {
