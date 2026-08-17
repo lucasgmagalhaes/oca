@@ -278,6 +278,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         toasts: Vec::new(),
         prefs_open: false,
         prev_prefs_open: false,
+        about_open: false,
         project_dirty: false,
         last_edit_instant: None,
         last_autosave_instant: None,
@@ -292,7 +293,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         binding_capture: None,
         update_check_tx,
         update_check_rx,
-        available_update: None,
+        update_check_status: UpdateCheckStatus::Checking,
         pending_export_conflict: None,
     }
 }
@@ -4373,7 +4374,7 @@ fn finish_drawing_custom_shape_floors_a_degenerate_bounding_box() {
 }
 
 #[test]
-fn pump_update_check_sets_available_update_on_a_newer_version_event() {
+fn pump_update_check_sets_available_status_on_a_newer_version_event() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
     app.update_check_tx
         .send(UpdateCheckEvent::NewerVersionAvailable {
@@ -4385,8 +4386,8 @@ fn pump_update_check_sets_available_update_on_a_newer_version_event() {
     app.pump_update_check();
 
     assert_eq!(
-        app.available_update,
-        Some(AvailableUpdate {
+        app.update_check_status,
+        UpdateCheckStatus::Available(AvailableUpdate {
             version: "99.0.0".to_string(),
             html_url: "https://github.com/lucasgmagalhaes/oca/releases/tag/v99.0.0".to_string(),
         })
@@ -4399,7 +4400,39 @@ fn pump_update_check_is_a_no_op_with_no_pending_events() {
 
     app.pump_update_check();
 
-    assert_eq!(app.available_update, None);
+    assert_eq!(app.update_check_status, UpdateCheckStatus::Checking);
+}
+
+#[test]
+fn pump_update_check_distinguishes_up_to_date_from_failure() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.update_check_tx
+        .send(UpdateCheckEvent::UpToDate)
+        .unwrap();
+
+    app.pump_update_check();
+
+    assert_eq!(app.update_check_status, UpdateCheckStatus::UpToDate);
+
+    app.update_check_tx.send(UpdateCheckEvent::Failed).unwrap();
+    app.pump_update_check();
+
+    assert_eq!(app.update_check_status, UpdateCheckStatus::Failed);
+}
+
+#[test]
+fn open_about_closes_preferences_and_close_about_clears_the_modal() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.prefs_open = true;
+
+    app.open_about();
+
+    assert!(!app.prefs_open);
+    assert!(app.about_open);
+
+    app.close_about();
+
+    assert!(!app.about_open);
 }
 
 #[test]

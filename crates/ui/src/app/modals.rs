@@ -27,6 +27,8 @@ use super::color::{parse_color_value, COLOR_PRESETS};
 use super::export::next_available_path;
 use super::App;
 
+const RELEASES_PAGE_URL: &str = "https://github.com/lucasgmagalhaes/oca/releases";
+
 impl App {
     /// Queues a short-lived error message to be shown as a floating overlay at the bottom-right
     /// of the window. Replaces silent `eprintln!` calls for user-facing errors.
@@ -218,6 +220,88 @@ impl App {
         });
         if response.should_close() {
             self.prefs_open = false;
+        }
+    }
+
+    /// Opens the About modal and closes Preferences so the two modal layers never stack.
+    pub fn open_about(&mut self) {
+        self.prefs_open = false;
+        self.about_open = true;
+    }
+
+    /// Closes the About modal without changing update-check state.
+    pub fn close_about(&mut self) {
+        self.about_open = false;
+    }
+
+    /// Shows the installed version and the result of the startup release check. The releases
+    /// link stays useful even when the check is still running or failed, while an available
+    /// update links directly to that release's page.
+    pub(super) fn show_about_modal(&mut self, ctx: &egui::Context) {
+        if !self.about_open {
+            return;
+        }
+
+        let locale = self.locale;
+        let status = self.update_check_status.clone();
+        let mut close = false;
+        let response = egui::Modal::new(egui::Id::new("about_modal")).show(ctx, |ui| {
+            ui.set_width(380.0);
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    egui::RichText::new(Text::AppName.tr(locale))
+                        .size(28.0)
+                        .strong()
+                        .color(theme::ACCENT),
+                );
+                ui.label(
+                    egui::RichText::new(Text::AboutDescription.tr(locale))
+                        .color(theme::TEXT_SECONDARY),
+                );
+            });
+            ui.add_space(16.0);
+            ui.separator();
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                ui.label(Text::AboutInstalledVersion.tr(locale));
+                ui.label(egui::RichText::new(env!("CARGO_PKG_VERSION")).strong());
+            });
+            ui.add_space(8.0);
+
+            let release_url = match &status {
+                super::UpdateCheckStatus::Checking => {
+                    ui.label(Text::AboutCheckingUpdates.tr(locale));
+                    RELEASES_PAGE_URL
+                }
+                super::UpdateCheckStatus::UpToDate => {
+                    ui.label(Text::AboutUpToDate.tr(locale));
+                    RELEASES_PAGE_URL
+                }
+                super::UpdateCheckStatus::Failed => {
+                    ui.label(Text::AboutCheckFailed.tr(locale));
+                    RELEASES_PAGE_URL
+                }
+                super::UpdateCheckStatus::Available(update) => {
+                    ui.label(format!(
+                        "{} {}",
+                        Text::UpdateAvailable.tr(locale),
+                        update.version
+                    ));
+                    &update.html_url
+                }
+            };
+            ui.add_space(8.0);
+            ui.hyperlink_to(Text::AboutViewReleases.tr(locale), release_url);
+            ui.add_space(16.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button(Text::WindowClose.tr(locale)).clicked() {
+                    close = true;
+                }
+            });
+        });
+
+        if response.should_close() || close {
+            self.close_about();
         }
     }
 

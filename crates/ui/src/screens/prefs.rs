@@ -426,6 +426,20 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(6.0);
             shortcut_binding_editor(app, ui, locale);
         });
+        ui.add_space(14.0);
+
+        components::card_frame().show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "{} {}",
+                    Text::AppName.tr(locale),
+                    env!("CARGO_PKG_VERSION")
+                ));
+                if ui.button(Text::AboutOpen.tr(locale)).clicked() {
+                    app.open_about();
+                }
+            });
+        });
     });
 }
 

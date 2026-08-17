@@ -60,7 +60,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             });
         });
 
-        if let Some(update) = app.available_update.clone() {
+        if let crate::app::UpdateCheckStatus::Available(update) = &app.update_check_status {
             ui.add_space(10.0);
             components::card_frame().show(ui, |ui| {
                 ui.horizontal(|ui| {

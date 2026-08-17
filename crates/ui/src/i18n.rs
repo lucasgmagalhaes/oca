@@ -105,6 +105,13 @@ text_catalog! {
     HomeSubtitle: pt_br = "Continue de onde parou ou comece um projeto novo.", en = "Continue where you left off or start a new project.";
     UpdateAvailable: pt_br = "Nova versão disponível:", en = "New version available:";
     UpdateAvailableLink: pt_br = "Ver no GitHub →", en = "View on GitHub →";
+    AboutOpen: pt_br = "Sobre o oca", en = "About oca";
+    AboutDescription: pt_br = "Editor de vídeo nativo", en = "Native video editor";
+    AboutInstalledVersion: pt_br = "Versão instalada:", en = "Installed version:";
+    AboutCheckingUpdates: pt_br = "Verificando atualizações...", en = "Checking for updates...";
+    AboutUpToDate: pt_br = "Você está usando a versão mais recente.", en = "You are running the latest version.";
+    AboutCheckFailed: pt_br = "Não foi possível verificar atualizações.", en = "Could not check for updates.";
+    AboutViewReleases: pt_br = "Ver releases no GitHub →", en = "View GitHub releases →";
     NewProject: pt_br = "＋ Novo projeto", en = "＋ New project";
     OpenProject: pt_br = "Abrir projeto…", en = "Open project…";
     UntitledProject: pt_br = "Projeto sem título", en = "Untitled project";

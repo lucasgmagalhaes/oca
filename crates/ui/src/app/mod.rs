@@ -552,19 +552,31 @@ enum MatteGenerationEvent {
 }
 
 /// A message from the background update-check thread (see [`App::spawn_update_check`]) back to
-/// the UI thread. Only sent when a newer version actually exists — a check that fails outright
-/// or finds nothing newer sends nothing at all, since there's no user-facing state change
-/// either way.
+/// the UI thread. Every terminal result is sent because the About modal distinguishes a
+/// successful current-version result from a failed network request.
 enum UpdateCheckEvent {
     NewerVersionAvailable { version: String, html_url: String },
+    UpToDate,
+    Failed,
 }
 
-/// A GitHub release newer than the running build, surfaced by [`App::pump_update_check`] as
-/// [`App::available_update`].
+/// A GitHub release newer than the running build, carried by
+/// [`UpdateCheckStatus::Available`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AvailableUpdate {
     pub version: String,
     pub html_url: String,
+}
+
+/// User-facing state of the one-shot GitHub Releases check. Keeping failure distinct from
+/// `UpToDate` prevents the About modal from claiming the running version is current when the
+/// network request never completed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpdateCheckStatus {
+    Checking,
+    UpToDate,
+    Failed,
+    Available(AvailableUpdate),
 }
 
 /// A message from a background text-to-speech worker thread (see
@@ -936,6 +948,9 @@ pub struct App {
     /// The value of `prefs_open` on the previous frame — lets [`App::ui`] detect the
     /// closing edge (true → false) and trigger a prefs save exactly once.
     prev_prefs_open: bool,
+    /// Whether the Fase 8 About modal is open. It is separate from `prefs_open` so opening it
+    /// from Preferences closes that larger modal instead of stacking two modal layers.
+    pub about_open: bool,
     /// Set to the autosave file path when opening a project that has a newer autosave on disk.
     /// [`App::pump_autosave_restore`] consumes it to show the restore/discard modal.
     autosave_restore_pending: Option<PathBuf>,
@@ -973,13 +988,11 @@ pub struct App {
     pub binding_capture: Option<BindableAction>,
     update_check_tx: UnboundedSender<UpdateCheckEvent>,
     update_check_rx: UnboundedReceiver<UpdateCheckEvent>,
-    /// Set once [`App::spawn_update_check`]'s background check finds a GitHub release newer
-    /// than `CARGO_PKG_VERSION` — `None` otherwise, including while the check is still in
-    /// flight or failed outright (offline, no releases published yet). The Home screen shows a
-    /// small banner linking to `html_url` when this is `Some`. Fase 8's "Versão e auto-update"
-    /// scoped down to check-and-notify — see `avcore::update_check`'s module doc comment for
-    /// why downloading/applying the update itself isn't covered.
-    pub available_update: Option<AvailableUpdate>,
+    /// Result of the startup GitHub Releases check. The Home screen shows a banner only for
+    /// [`UpdateCheckStatus::Available`]; the About modal also reports checking/current/failure
+    /// states without conflating them. Fase 8's "Versão e auto-update" remains scoped down to
+    /// check-and-notify — see `avcore::update_check`'s module doc comment.
+    pub update_check_status: UpdateCheckStatus,
     /// Set when "Adicionar exportação" picked an output path that already exists — holds
     /// everything needed to queue the export once the user resolves the conflict via
     /// [`App::show_export_conflict_modal`] (Overwrite / Rename / Cancel).
@@ -1131,6 +1144,7 @@ impl App {
             toasts: Vec::new(),
             prefs_open: false,
             prev_prefs_open: false,
+            about_open: false,
             project_dirty: false,
             last_edit_instant: None,
             last_autosave_instant: None,
@@ -1146,7 +1160,7 @@ impl App {
             binding_capture: None,
             update_check_tx,
             update_check_rx,
-            available_update: None,
+            update_check_status: UpdateCheckStatus::Checking,
         };
         if !app.prefs.sound_library_path.is_empty() {
             app.rescan_sound_library();
@@ -1740,6 +1754,7 @@ impl eframe::App for App {
             Screen::Queue => screens::queue::show(self, ui),
         });
         self.show_prefs_modal(ui.ctx());
+        self.show_about_modal(ui.ctx());
         self.show_rename_project_modal(ui.ctx());
         self.show_rename_sequence_modal(ui.ctx());
         self.show_delete_sequence_modal(ui.ctx());
