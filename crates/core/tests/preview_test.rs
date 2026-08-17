@@ -210,6 +210,94 @@ fn a_zoomed_clip_still_opens_and_decodes_at_full_size() {
 }
 
 #[test]
+fn open_composited_reports_a_canvas_sized_frame() {
+    let bg = fixture("video.mp4");
+    let overlay = fixture("video.mp4");
+    let overlay_clip = clip();
+
+    let preview =
+        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)]).unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("a frame should be available right after preroll");
+
+    // video.mp4 is 320x240 (see preview_test.rs's other fixture-size assertions) — the
+    // canvas is sized from the background branch, and a neutral overlay (no layer_scale)
+    // doesn't change the compositor's own output size.
+    assert_eq!((frame.width, frame.height), (320, 240));
+    assert!(frame.rgba.iter().any(|&b| b != 0));
+}
+
+#[test]
+fn open_composited_with_animated_overlay_still_composites_without_error() {
+    let bg = fixture("video.mp4");
+    let overlay = fixture("video.mp4");
+    let mut overlay_clip = clip();
+    overlay_clip.position_keyframes = vec![
+        avcore::Keyframe {
+            time_fraction: 0.0,
+            value: avcore::keyframe::Position { x: 0.0, y: 0.0 },
+        },
+        avcore::Keyframe {
+            time_fraction: 1.0,
+            value: avcore::keyframe::Position { x: 0.5, y: 0.25 },
+        },
+    ];
+    overlay_clip.opacity_keyframes = vec![
+        avcore::Keyframe {
+            time_fraction: 0.0,
+            value: 1.0,
+        },
+        avcore::Keyframe {
+            time_fraction: 1.0,
+            value: 0.4,
+        },
+    ];
+    overlay_clip.layer_scale_x = 0.5;
+    overlay_clip.layer_scale_y = 0.5;
+    overlay_clip.chroma_key_enabled = true;
+
+    let preview =
+        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)]).unwrap();
+    let frame = preview
+        .current_frame()
+        .expect("a frame should be available right after preroll");
+    // Proves the branch's videoscale/chroma-key/compositor-pad-probe chain links and prerolls
+    // a real frame without erroring — not that the overlay is visually positioned/keyed
+    // correctly (nothing here decodes/compares pixel content).
+    assert_eq!((frame.width, frame.height), (320, 240));
+
+    // A few more pulls exercise the per-buffer compositor-pad probe past frame 0.
+    for _ in 0..3 {
+        let _ = preview.current_frame();
+    }
+}
+
+#[test]
+fn seek_composited_seeks_every_branch_without_error() {
+    let bg = fixture("video.mp4");
+    let overlay = fixture("video.mp4");
+    let overlay_clip = clip();
+
+    let preview =
+        Preview::open_composited(&bg, None, &[(overlay.as_path(), &overlay_clip)]).unwrap();
+    preview.seek_composited(&[0.5, 0.2]).unwrap();
+    let _ = preview.current_frame();
+}
+
+#[test]
+fn open_composited_errors_on_a_missing_background() {
+    let overlay = fixture("video.mp4");
+    let overlay_clip = clip();
+    assert!(Preview::open_composited(
+        &fixture("does_not_exist.mp4"),
+        None,
+        &[(overlay.as_path(), &overlay_clip)]
+    )
+    .is_err());
+}
+
+#[test]
 fn a_flipped_clip_still_opens_and_decodes() {
     let mut c = clip();
     c.flipped_h = true;
