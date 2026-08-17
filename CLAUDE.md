@@ -623,7 +623,7 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   current Editor preview immediately when toggled. Release binary stripping is also done:
   `[profile.release]` has `strip = true` alongside `opt-level = 3`/`lto = true`.
 
-- **Fase 8 — started (About modal plus auto-update check-and-notify).** `avcore::update_check` —
+- **Fase 8 — started (About modal plus in-place auto-update).** `avcore::update_check` —
   `fetch_latest_release` hits GitHub's `repos/lucasgmagalhaes/oca/releases/latest` API
   (`ureq::get` + manual `serde_json::from_str`, not `ureq`'s own `into_json` — that's gated
   behind a `json` feature this crate doesn't enable); `is_newer` does a pure, panic-free
@@ -632,17 +632,22 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   failed/available distinct; only `Available` produces the Home banner, while the About modal
   reports every state without claiming the app is current after a network failure. Ajustes'
   footer opens that modal, which shows `CARGO_PKG_VERSION` as the installed version and links
-  either directly to the newer release or to the project's releases page. **Scoped down from
-  `request.md`'s full ask:** the "Sobre" and "consulta a última release... e avisa" halves are
-  done, but actually downloading and applying the update ("baixar e aplicar") isn't
-  implemented; links still lead to GitHub for a manual download. **Not started at all:**
+  either directly to the newer release or to the project's releases page. On Windows/Linux,
+  releases containing the exact `oca-<Rust target>.zip`/`.tar.gz` asset expose an explicit
+  download/install action. `self_update` runs on a worker, the selected asset is validated before
+  download, replacement is atomic, failures retain retry/manual-download choices, and a completed
+  install waits for an explicit restart so normal eframe shutdown still persists preferences.
+  Linux AppImage launches use a distinct `-appimage.tar.gz` asset and replace/restart through
+  `$APPIMAGE`, not the read-only executable path inside the mounted image.
+  The release archive contract and publishing checklist live in `docs/auto-update.md`.
+  **Not started at all:**
   installers/packaging for Windows/Linux, bundled engines (FFmpeg/GStreamer/Whisper/TTS/ONNX
   Runtime), VAAPI GPU encode on Linux, configurable install location. **Verification caveat:**
   this dev environment's outbound network proxy blocks direct calls to `api.github.com`
   (returns its own "GitHub access is not enabled for this session" error, not a real GitHub
   response), so `fetch_latest_release` itself could not be exercised against the real API here
   — every `ureq` call it makes mirrors `model_download.rs`'s already-working
-  `download_whisper_model` pattern exactly (`ureq::get(url).set(...).call()`), and the JSON
+  `download_whisper_model` pattern exactly (`ureq::get(url).header(...).call()`), and the JSON
   shape/User-Agent-header requirement match GitHub's documented API, but this is unverified
   beyond that, same "implemented carefully, not run for real" caveat this file already carries
   for a few other network/hardware-dependent features.
