@@ -84,8 +84,11 @@ three-column body (`editor.rs::sequence_tab_bar`); every project always has at l
 every clip-editing `OcaApp` method reads/writes through `Project::timeline`/`timeline_mut`
 (the active tab), never a `timeline` field directly. Each sequence also persists its own
 `SequenceExportSettings` (aspect ratio + target LUFS); queued jobs snapshot those values, so
-later tab changes cannot alter an in-flight export. Tab deletion/reordering is the remaining
-gap short of `request.md`'s full "abas de projeto" spec. Importing files
+later tab changes cannot alter an in-flight export. Tabs can be renamed, duplicated, deleted
+(with confirmation and a one-tab minimum), and reordered either by dragging or through
+left/right context-menu actions; reordering preserves the active sequence by id, while an
+actual tab switch clears clip/text/shape selections and invalidates the old preview so
+sequence-local ids cannot collide across tabs. Importing files
 (`library.rs`/`OcaApp::spawn_import`)
 runs each file on its own background thread instead of blocking the UI — large source files
 used to freeze the app. Each file becomes usable in the media library as soon as its (cheap,

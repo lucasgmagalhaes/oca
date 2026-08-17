@@ -500,6 +500,19 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   trigger short of opening Preferences otherwise, under the per-user scope) needs a save that's
   guaranteed to complete before shutdown, not just kicked off.
 
+  **Sequence-tab management is complete.** Beyond add/select/rename, the Editor tab bar now
+  duplicates a sequence (full timeline + export defaults, with a fresh sequence id), deletes it
+  behind a confirmation modal, and reorders it either by direct drag-and-drop or left/right
+  context-menu actions. `Project::duplicate_sequence`/`remove_sequence`/`move_sequence` own the
+  invariants in `core`: every project keeps at least one sequence, deletion selects the nearest
+  surviving neighbor, and reorder tracks the active sequence by stable id instead of letting an
+  index shift silently activate another tab. `ui::App::reset_sequence_context` now clears all
+  clip/text/shape/multi-selections and drops the old preview whenever sequence identity changes;
+  clip ids are sequence-local, so keeping stale state could otherwise target an unrelated clip
+  with the same number. Reordering alone deliberately preserves that state because the active
+  sequence identity did not change. All changes persist through the existing `.ocproj` sequence
+  list with no schema change.
+
   **Copy/paste now preserves composite block membership.** `App::copy_selected_clip` used to
   capture only the one clicked clip even when it was a composite block member, so pasting always
   produced a standalone clip — short of Fase 3's "reutilizado ... como se fosse um clipe só"
