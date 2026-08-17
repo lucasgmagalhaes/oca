@@ -60,8 +60,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/preview.rs": {
-    "mtime": 1786972773.4637477,
-    "ast_hash": "9c270a90c2f717259d629ffaf029f202",
+    "mtime": 1786973487.5697513,
+    "ast_hash": "6fc07ab8158d2f20a3bc619a88b98f5f",
     "semantic_hash": ""
   },
   "crates/core/src/probe.rs": {
@@ -115,8 +115,8 @@
     "semantic_hash": ""
   },
   "crates/core/tests/preview_test.rs": {
-    "mtime": 1786972803.2654524,
-    "ast_hash": "7135c11d06c90137cdd5a0fcb08f3c10",
+    "mtime": 1786973353.5920293,
+    "ast_hash": "36f1d257d58cd57983ce0bf7d1aecec5",
     "semantic_hash": ""
   },
   "crates/core/tests/probe_test.rs": {
@@ -205,8 +205,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786972923.6675165,
-    "ast_hash": "4321820740c8bf00a59b0f5246f0dfd1",
+    "mtime": 1786973533.6405818,
+    "ast_hash": "80a5a69eb795a390abd411f3d43a2da2",
     "semantic_hash": ""
   },
   "README.md": {
