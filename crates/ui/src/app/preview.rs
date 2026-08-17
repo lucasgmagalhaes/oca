@@ -270,13 +270,18 @@ impl App {
                             .iter()
                             .map(|(c, _)| Self::clip_seek_offset(c, playhead)),
                     );
-                    if let Err(e) = preview.seek_composited(&offsets) {
+                    let mut rates = vec![clip.speed_factor.max(0.01) as f64];
+                    rates.extend(
+                        overlays
+                            .iter()
+                            .map(|(c, _)| c.speed_factor.max(0.01) as f64),
+                    );
+                    if let Err(e) = preview.seek_composited(&offsets, &rates) {
                         warn!(error = %e, "failed to seek newly opened composited preview");
                     }
-                    // Composited playback doesn't honor per-branch speed_factor yet (see
-                    // Preview::open_composited's doc comment) — a frozen background clip still
-                    // gets the same wall-clock-driven playhead advance as the single-clip path,
-                    // uniformly across whatever overlays are compositing on top of it.
+                    // A frozen background clip's pipeline stays Paused regardless of rate (same
+                    // as the single-clip path) — its own playhead advance is wall-clock-driven
+                    // instead, uniformly across whatever overlays are compositing on top of it.
                     self.preview_frozen_since = clip
                         .frozen
                         .then(|| self.preview_playing)
@@ -441,17 +446,26 @@ impl App {
             }
             (Some(preview), Some(clip)) => {
                 let timeline = self.active_project().timeline();
+                let overlay_clips: Vec<&ClipInstance> = timeline
+                    .tracks
+                    .iter()
+                    .filter(|t| t.kind == TrackKind::Video)
+                    .skip(1)
+                    .filter_map(|t| t.clip_at(position_secs))
+                    .collect();
                 let mut offsets = vec![Self::clip_seek_offset(&clip, position_secs)];
                 offsets.extend(
-                    timeline
-                        .tracks
+                    overlay_clips
                         .iter()
-                        .filter(|t| t.kind == TrackKind::Video)
-                        .skip(1)
-                        .filter_map(|t| t.clip_at(position_secs))
                         .map(|c| Self::clip_seek_offset(c, position_secs)),
                 );
-                if let Err(e) = preview.seek_composited(&offsets) {
+                let mut rates = vec![clip.speed_factor.max(0.01) as f64];
+                rates.extend(
+                    overlay_clips
+                        .iter()
+                        .map(|c| c.speed_factor.max(0.01) as f64),
+                );
+                if let Err(e) = preview.seek_composited(&offsets, &rates) {
                     warn!(error = %e, "failed to seek composited preview");
                 }
                 self.active_project_mut().timeline_mut().playhead_secs = position_secs;
