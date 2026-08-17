@@ -803,7 +803,6 @@ dependencies = [
  "gstreamer-video",
  "hound",
  "ort",
- "pyo3",
  "rmp-serde",
  "rmpv",
  "serde",
@@ -5171,6 +5170,15 @@ dependencies = [
  "quote",
  "syn 2.0.119",
  "synstructure",
+]
+
+[[package]]
+name = "ytbridge"
+version = "0.1.0"
+dependencies = [
+ "pyo3",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

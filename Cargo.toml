@@ -4,6 +4,7 @@ members = [
     "crates/core",
     "crates/ui",
     "crates/avbridge",
+    "crates/ytbridge",
 ]
 
 [workspace.package]

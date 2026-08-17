@@ -1,48 +1,26 @@
 //! Downloads a YouTube video as MP3 (audio only) or MP4 (video), at a chosen quality, by
-//! embedding a Python interpreter (via `pyo3`) and calling yt-dlp's own Python library API
-//! (`yt_dlp.YoutubeDL`) directly — no subprocess, no parsing human-readable progress text off
-//! stdout. This crate doesn't implement its own YouTube extractor — the site's playback
-//! machinery is a moving target yt-dlp already tracks and updates for. Not part of
-//! `request.md`'s phased plan — an ad hoc addition, same footing as the custom title bar.
+//! spawning the workspace's own `ytbridge` helper binary (`crates/ytbridge`) as a subprocess —
+//! `ytbridge` is the thing that actually embeds Python and calls yt-dlp's `YoutubeDL` library
+//! API directly (see its own module doc). This crate deliberately does **not** link `pyo3`
+//! itself, and neither does `ui` — an earlier version of this feature did exactly that, and it
+//! meant `ui.exe` itself failed to *launch* on any machine without a matching Python installed,
+//! not just this one feature. Isolating the Python dependency in a separate helper process,
+//! spawned only when this feature is actually used, fixes that: `ui.exe` never touches Python
+//! at all. Not part of `request.md`'s phased plan — an ad hoc addition, same footing as the
+//! custom title bar.
 //!
-//! **This is a materially different, heavier dependency than anything else in this crate.**
-//! Every other native tool oca depends on (FFmpeg, GStreamer, Whisper, Piper, ONNX Runtime) is
-//! a C/C++ library linked or an executable spawned — this is a whole embedded CPython
-//! interpreter, dynamically linked against `libpython`/`python3*.dll` at **build time**, and
-//! needing that same (or ABI-compatible) Python runtime present at **launch time** — not just
-//! when this feature is used. If the target machine has no matching Python installed,
-//! `ui.exe` itself fails to start (a missing shared-library load failure), not just this one
-//! feature — unlike, say, a missing `yt-dlp` binary under the previous subprocess-based
-//! design, which only broke this one feature gracefully. `yt_dlp` (the Python package itself,
-//! `pip install yt-dlp`) additionally needs to be importable in that interpreter. Fase 8's
-//! "motores embutidos no instalador" plan does not yet account for bundling a Python runtime
-//! at all — this is a real, currently-unresolved packaging gap this feature introduces, beyond
-//! every other "not bundled yet, downloaded/expected on demand" gap already documented
-//! elsewhere in this codebase.
-//!
-//! **Verification caveat:** this module's `pyo3`/`yt_dlp` API usage was checked against
-//! `pyo3` 0.29.2's real published docs (`Python::attach`, `PyCFunction::new_closure`,
-//! `PyDictMethods::set_item`, `PyAnyMethods::call`/`call_method`, all confirmed by their exact
-//! signatures rather than guessed) and yt-dlp's own `YoutubeDL.py` source (`progress_hooks`'
-//! dict shape, `postprocessor_hooks`, `add_progress_hook`, `DownloadCancelled`) — but could not
-//! be exercised against a real download on any machine during development (no Python
-//! environment with `yt_dlp` installed and matching this crate's linked Python ABI available
-//! in this sandbox). Treat as unverified beyond static/API-signature-level review until run
-//! for real once, same posture this file's neighbors (`background_removal.rs`,
-//! `motion_tracking.rs`, `update_check.rs`) already carry for their own unexercised paths.
-//! One specific assumption in particular hasn't been confirmed against real yt-dlp behavior:
-//! that raising `yt_dlp.utils.DownloadCancelled` from inside a `progress_hooks` callback
-//! (rather than from `match_filter`, its one *documented* use in the source reviewed) actually
-//! propagates out of `extract_info()` as an abort rather than being swallowed or mishandled.
+//! Progress and the final result come back as newline-delimited JSON on `ytbridge`'s stdout
+//! (see `ytbridge`'s `Event` enum) rather than scraped human-readable text — sturdier than
+//! this module's own first version, which shelled out to the external `yt-dlp` CLI and parsed
+//! its `[download] NN.N%` lines directly. Cancellation is just killing the child process; no
+//! IPC message needed for it.
 
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 
-use pyo3::types::{
-    PyAnyMethods, PyCFunction, PyDict, PyDictMethods, PyTuple, PyTupleMethods, PyTypeMethods,
-};
-use pyo3::{Bound, PyAny, PyErr, PyResult, Python};
+use serde::Deserialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mp4Quality {
@@ -72,21 +50,14 @@ impl Mp4Quality {
         }
     }
 
-    /// yt-dlp's `format` selector string — prefers a separate video+audio pair capped at this
-    /// height, falling back to a single pre-muxed stream at the same cap if the site has one.
-    fn format_selector(self) -> String {
+    /// `ytbridge`'s `<target>` argument for this quality, e.g. `"mp4:720"`/`"mp4:best"`.
+    fn target_arg(self) -> String {
         match self {
-            Mp4Quality::Best => "bestvideo+bestaudio/best".to_string(),
-            _ => {
-                let h = match self {
-                    Mp4Quality::P360 => 360,
-                    Mp4Quality::P480 => 480,
-                    Mp4Quality::P720 => 720,
-                    Mp4Quality::P1080 => 1080,
-                    Mp4Quality::Best => unreachable!(),
-                };
-                format!("bestvideo[height<={h}]+bestaudio/best[height<={h}]")
-            }
+            Mp4Quality::Best => "mp4:best".to_string(),
+            Mp4Quality::P360 => "mp4:360".to_string(),
+            Mp4Quality::P480 => "mp4:480".to_string(),
+            Mp4Quality::P720 => "mp4:720".to_string(),
+            Mp4Quality::P1080 => "mp4:1080".to_string(),
         }
     }
 }
@@ -109,11 +80,12 @@ impl Mp3Bitrate {
         }
     }
 
-    fn kbps(self) -> u32 {
+    /// `ytbridge`'s `<target>` argument for this bitrate, e.g. `"mp3:192"`.
+    fn target_arg(self) -> String {
         match self {
-            Mp3Bitrate::K128 => 128,
-            Mp3Bitrate::K192 => 192,
-            Mp3Bitrate::K320 => 320,
+            Mp3Bitrate::K128 => "mp3:128".to_string(),
+            Mp3Bitrate::K192 => "mp3:192".to_string(),
+            Mp3Bitrate::K320 => "mp3:320".to_string(),
         }
     }
 }
@@ -124,21 +96,28 @@ pub enum YoutubeDownloadTarget {
     Mp3(Mp3Bitrate),
 }
 
+impl YoutubeDownloadTarget {
+    fn target_arg(self) -> String {
+        match self {
+            YoutubeDownloadTarget::Mp4(q) => q.target_arg(),
+            YoutubeDownloadTarget::Mp3(b) => b.target_arg(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum YoutubeDownloadError {
-    /// The Python interpreter came up but `import yt_dlp` failed — the package isn't
-    /// installed in it.
+    /// The `ytbridge` helper binary isn't next to the running executable — not built/shipped
+    /// alongside `ui.exe`.
     ToolNotFound,
-    /// Failed to create the destination directory.
-    Io(std::io::Error),
-    /// `yt_dlp.YoutubeDL(...).extract_info(...)` raised — the message is the Python
-    /// exception's string representation. Also used for a cancelled download (message
-    /// `"cancelled"`), same convention `avcore::youtube_download`'s previous subprocess-based
-    /// implementation used, since there's no dedicated `Cancelled` outcome variant here either.
+    /// Failed to spawn or wait on the `ytbridge` process.
+    Spawn(std::io::Error),
+    /// `ytbridge` exited non-zero, or crashed outright (e.g. its own embedded Python failed to
+    /// initialize) — the message is its last reported error, or a generic note if it exited
+    /// without ever emitting one (a hard crash, not a clean `Event::Error`). Also used for a
+    /// cancelled download (message `"cancelled"`).
     Failed(String),
-    /// `extract_info` returned successfully but its info dict had no
-    /// `requested_downloads[0].filepath` — shouldn't happen in practice, but the caller needs a
-    /// real path, not a guess at one.
+    /// `ytbridge` exited zero but never emitted a `done` event.
     NoOutputFile,
 }
 
@@ -148,13 +127,13 @@ impl std::fmt::Display for YoutubeDownloadError {
             YoutubeDownloadError::ToolNotFound => {
                 write!(
                     f,
-                    "yt_dlp Python package not importable — pip install yt-dlp"
+                    "ytbridge helper not found next to the running executable"
                 )
             }
-            YoutubeDownloadError::Io(e) => write!(f, "failed to prepare download directory: {e}"),
-            YoutubeDownloadError::Failed(msg) => write!(f, "yt-dlp failed: {msg}"),
+            YoutubeDownloadError::Spawn(e) => write!(f, "failed to run ytbridge: {e}"),
+            YoutubeDownloadError::Failed(msg) => write!(f, "download failed: {msg}"),
             YoutubeDownloadError::NoOutputFile => {
-                write!(f, "yt-dlp finished but reported no output file")
+                write!(f, "ytbridge finished but reported no output file")
             }
         }
     }
@@ -162,173 +141,92 @@ impl std::fmt::Display for YoutubeDownloadError {
 
 impl std::error::Error for YoutubeDownloadError {}
 
-/// Whether `yt_dlp` is importable in the embedded interpreter at all — checked once up front
-/// so the UI can show a clear "install yt-dlp" message instead of a generic failure once a
-/// download is already underway.
-pub fn is_yt_dlp_available() -> bool {
-    Python::attach(|py| py.import("yt_dlp").is_ok())
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum Event {
+    Progress { fraction: f32 },
+    Done { path: String },
+    Error { message: String },
 }
 
-/// Downloads `url` into `dest_dir` (created if it doesn't exist) as `target`'s format/quality,
-/// reporting fractional progress (`0.0..=1.0`) as yt-dlp's `progress_hooks` report it.
-/// `cancel` is an `Arc` (not a plain reference) because the progress-hook closure handed to
-/// yt-dlp must be `'static` (`pyo3::types::PyCFunction::new_closure`'s bound) — it outlives
-/// this function call from Python's perspective, held by the `YoutubeDL` instance for the
-/// whole `extract_info` call.
+/// The `ytbridge` binary's expected path — next to the currently running executable, same
+/// directory `cargo build`/an installed layout would put it in. `None` if
+/// `std::env::current_exe()` itself fails (should not happen in practice).
+fn ytbridge_path() -> Option<PathBuf> {
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let name = if cfg!(windows) {
+        "ytbridge.exe"
+    } else {
+        "ytbridge"
+    };
+    Some(dir.join(name))
+}
+
+/// Whether the `ytbridge` helper binary is present — checked once up front so the UI can show
+/// a clear message instead of a generic spawn failure once a download is already underway.
+pub fn is_yt_dlp_available() -> bool {
+    ytbridge_path().is_some_and(|p| p.is_file())
+}
+
+/// Downloads `url` into `dest_dir` (created if it doesn't exist, by `ytbridge` itself) as
+/// `target`'s format/quality, reporting fractional progress (`0.0..=1.0`) as `ytbridge` reports
+/// it. Checked against `cancel` between output lines — if set, kills the child process and
+/// returns [`YoutubeDownloadError::Failed`] with a `"cancelled"` message.
 pub fn download_youtube(
     url: &str,
     target: YoutubeDownloadTarget,
     dest_dir: &Path,
-    cancel: Arc<AtomicBool>,
-    on_progress: impl FnMut(f32) + Send + 'static,
+    cancel: &AtomicBool,
+    mut on_progress: impl FnMut(f32),
 ) -> Result<PathBuf, YoutubeDownloadError> {
-    std::fs::create_dir_all(dest_dir).map_err(YoutubeDownloadError::Io)?;
-
-    let outtmpl = dest_dir
-        .join("%(title).200B [%(id)s].%(ext)s")
-        .display()
-        .to_string();
-    let on_progress = Mutex::new(on_progress);
-
-    Python::attach(|py| {
-        let yt_dlp = py
-            .import("yt_dlp")
-            .map_err(|_| YoutubeDownloadError::ToolNotFound)?;
-        let utils = py
-            .import("yt_dlp.utils")
-            .map_err(|_| YoutubeDownloadError::ToolNotFound)?;
-        let cancelled_cls = utils
-            .getattr("DownloadCancelled")
-            .map_err(|e| YoutubeDownloadError::Failed(e.to_string()))?;
-
-        let opts = PyDict::new(py);
-        opts.set_item("outtmpl", &outtmpl)
-            .and_then(|_| opts.set_item("noplaylist", true))
-            .and_then(|_| opts.set_item("quiet", true))
-            .and_then(|_| opts.set_item("no_warnings", true))
-            .map_err(|e| YoutubeDownloadError::Failed(e.to_string()))?;
-        match target {
-            YoutubeDownloadTarget::Mp4(quality) => {
-                opts.set_item("format", quality.format_selector())
-                    .and_then(|_| opts.set_item("merge_output_format", "mp4"))
-                    .map_err(|e| YoutubeDownloadError::Failed(e.to_string()))?;
-            }
-            YoutubeDownloadTarget::Mp3(bitrate) => {
-                let pp = PyDict::new(py);
-                pp.set_item("key", "FFmpegExtractAudio")
-                    .and_then(|_| pp.set_item("preferredcodec", "mp3"))
-                    .and_then(|_| pp.set_item("preferredquality", bitrate.kbps().to_string()))
-                    .map_err(|e| YoutubeDownloadError::Failed(e.to_string()))?;
-                let pps = PyTuple::new(py, [pp])
-                    .map_err(|e| YoutubeDownloadError::Failed(e.to_string()))?;
-                opts.set_item("postprocessors", pps)
-                    .map_err(|e| YoutubeDownloadError::Failed(e.to_string()))?;
-            }
-        }
-
-        let cancelled_cls_owned = cancelled_cls.unbind();
-        let hook = PyCFunction::new_closure(
-            py,
-            None,
-            None,
-            move |args: &Bound<'_, PyTuple>, _kwargs: Option<&Bound<'_, PyDict>>| -> PyResult<()> {
-                // The GIL is already held on this thread — Python is the one calling us —
-                // so the token comes from the already-`Bound` argument rather than a fresh
-                // `Python::attach` (which would be a same-thread-reentrant acquisition; `.py()`
-                // avoids relying on that being sound).
-                let py = args.py();
-                if cancel.load(Ordering::Relaxed) {
-                    let cls = cancelled_cls_owned.bind(py);
-                    let exc = cls.call1(("cancelled",))?;
-                    return Err(PyErr::from_value(exc));
-                }
-                let Ok(d) = args.get_item(0) else {
-                    return Ok(());
-                };
-                let status: String = d
-                    .get_item("status")
-                    .and_then(|v| v.extract())
-                    .unwrap_or_default();
-                let fraction = if status == "finished" {
-                    Some(1.0)
-                } else if status == "downloading" {
-                    let downloaded: f64 = d
-                        .get_item("downloaded_bytes")
-                        .and_then(|v| v.extract())
-                        .unwrap_or(0.0);
-                    let total: f64 = d
-                        .get_item("total_bytes")
-                        .and_then(|v| v.extract())
-                        .or_else(|_| d.get_item("total_bytes_estimate").and_then(|v| v.extract()))
-                        .unwrap_or(0.0);
-                    if total > 0.0 {
-                        Some((downloaded / total).clamp(0.0, 1.0) as f32)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-                if let Some(fraction) = fraction {
-                    if let Ok(mut cb) = on_progress.lock() {
-                        cb(fraction);
-                    }
-                }
-                Ok(())
-            },
-        )
-        .map_err(|e| YoutubeDownloadError::Failed(e.to_string()))?;
-        let hooks =
-            PyTuple::new(py, [hook]).map_err(|e| YoutubeDownloadError::Failed(e.to_string()))?;
-        opts.set_item("progress_hooks", hooks)
-            .map_err(|e| YoutubeDownloadError::Failed(e.to_string()))?;
-
-        let ydl_cls = yt_dlp
-            .getattr("YoutubeDL")
-            .map_err(|e| YoutubeDownloadError::Failed(e.to_string()))?;
-        let ydl = ydl_cls
-            .call1((opts,))
-            .map_err(|e| YoutubeDownloadError::Failed(e.to_string()))?;
-
-        let kwargs = PyDict::new(py);
-        kwargs
-            .set_item("download", true)
-            .map_err(|e| YoutubeDownloadError::Failed(e.to_string()))?;
-        let info = ydl
-            .call_method("extract_info", (url,), Some(&kwargs))
-            .map_err(|e| classify_extract_error(py, &e))?;
-
-        extract_final_path(&info).ok_or(YoutubeDownloadError::NoOutputFile)
-    })
-}
-
-/// Turns a Python exception from `extract_info` into a [`YoutubeDownloadError`] — `Failed`
-/// with the `"cancelled"` message specifically when the exception is (or wraps) a
-/// `DownloadCancelled`, so [`crate::youtube_download`]'s caller can tell a deliberate
-/// cancellation apart from a real failure the same way it always could under the previous
-/// subprocess-based implementation.
-fn classify_extract_error(py: Python<'_>, err: &PyErr) -> YoutubeDownloadError {
-    let is_cancelled = err
-        .value(py)
-        .get_type()
-        .name()
-        .map(|n| n.to_string() == "DownloadCancelled")
-        .unwrap_or(false);
-    if is_cancelled {
-        YoutubeDownloadError::Failed("cancelled".to_string())
-    } else {
-        YoutubeDownloadError::Failed(err.to_string())
+    let bridge = ytbridge_path().ok_or(YoutubeDownloadError::ToolNotFound)?;
+    if !bridge.is_file() {
+        return Err(YoutubeDownloadError::ToolNotFound);
     }
-}
 
-/// Reads `info['requested_downloads'][0]['filepath']` — the same field yt-dlp's own CLI
-/// `--print after_move:filepath` template resolves to, set only after any post-processing
-/// (merge, audio extraction) has produced the truly final file.
-fn extract_final_path(info: &Bound<'_, PyAny>) -> Option<PathBuf> {
-    let downloads = info.get_item("requested_downloads").ok()?;
-    let first = downloads.get_item(0).ok()?;
-    let filepath: String = first.get_item("filepath").ok()?.extract().ok()?;
-    Some(PathBuf::from(filepath))
+    let mut child: Child = Command::new(&bridge)
+        .arg(target.target_arg())
+        .arg(url)
+        .arg(dest_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(YoutubeDownloadError::Spawn)?;
+
+    let stdout = child.stdout.take().expect("stdout is piped");
+    let mut result: Option<Result<PathBuf, String>> = None;
+    let mut cancelled = false;
+    for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+        if cancel.load(Ordering::Relaxed) {
+            cancelled = true;
+            let _ = child.kill();
+            break;
+        }
+        let Ok(event) = serde_json::from_str::<Event>(&line) else {
+            continue;
+        };
+        match event {
+            Event::Progress { fraction } => on_progress(fraction),
+            Event::Done { path } => result = Some(Ok(PathBuf::from(path))),
+            Event::Error { message } => result = Some(Err(message)),
+        }
+    }
+
+    let status = child.wait().map_err(YoutubeDownloadError::Spawn)?;
+
+    if cancelled {
+        return Err(YoutubeDownloadError::Failed("cancelled".to_string()));
+    }
+    match result {
+        Some(Ok(path)) => Ok(path),
+        Some(Err(message)) => Err(YoutubeDownloadError::Failed(message)),
+        None if status.success() => Err(YoutubeDownloadError::NoOutputFile),
+        None => Err(YoutubeDownloadError::Failed(format!(
+            "ytbridge exited with {status} without reporting a result — it may have crashed \
+             (e.g. no compatible Python installation found)"
+        ))),
+    }
 }
 
 #[cfg(test)]
@@ -336,16 +234,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mp4_quality_format_selectors_cap_by_height_except_best() {
-        assert!(Mp4Quality::P720.format_selector().contains("height<=720"));
-        assert_eq!(
-            Mp4Quality::Best.format_selector(),
-            "bestvideo+bestaudio/best"
-        );
+    fn mp4_quality_target_args_encode_height_except_best() {
+        assert_eq!(Mp4Quality::P720.target_arg(), "mp4:720");
+        assert_eq!(Mp4Quality::Best.target_arg(), "mp4:best");
     }
 
     #[test]
-    fn mp3_bitrate_kbps_matches_label() {
-        assert_eq!(Mp3Bitrate::K192.kbps(), 192);
+    fn mp3_bitrate_target_args_encode_kbps() {
+        assert_eq!(Mp3Bitrate::K192.target_arg(), "mp3:192");
     }
 }
