@@ -254,12 +254,9 @@ fn download_file(
     let response = ureq::get(url)
         .call()
         .map_err(|e| DownloadError::Request(e.to_string()))?;
-    let total: u64 = response
-        .header("Content-Length")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
+    let total = response.body().content_length().unwrap_or(0);
 
-    let mut reader = response.into_reader();
+    let mut reader = response.into_parts().1.into_reader();
     let mut file = std::fs::File::create(&tmp_path).map_err(DownloadError::Io)?;
     let mut buf = [0u8; 64 * 1024];
     let mut downloaded: u64 = 0;

@@ -70,12 +70,14 @@ impl std::error::Error for UpdateCheckError {}
 /// (`serde`/`serde_json`) covers the same ground without adding one.
 pub fn fetch_latest_release() -> Result<LatestRelease, UpdateCheckError> {
     // GitHub's API rejects requests with no User-Agent header.
-    let body = ureq::get(RELEASES_API_URL)
-        .set("User-Agent", "oca-update-check")
-        .set("Accept", "application/vnd.github+json")
+    let mut response = ureq::get(RELEASES_API_URL)
+        .header("User-Agent", "oca-update-check")
+        .header("Accept", "application/vnd.github+json")
         .call()
-        .map_err(|e| UpdateCheckError::Request(e.to_string()))?
-        .into_string()
+        .map_err(|e| UpdateCheckError::Request(e.to_string()))?;
+    let body = response
+        .body_mut()
+        .read_to_string()
         .map_err(|e| UpdateCheckError::Request(e.to_string()))?;
     let parsed: GithubRelease =
         serde_json::from_str(&body).map_err(|e| UpdateCheckError::Parse(e.to_string()))?;
