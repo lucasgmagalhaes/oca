@@ -315,29 +315,61 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
 /// Row of tabs, one per sequence in the active project (per `request.md`'s Fase 3 "abas de
 /// projeto" spec) — click a tab to switch which sequence's timeline the rest of the Editor
 /// screen shows, or the trailing "+" to append a new empty one and switch to it.
+#[derive(Clone, Copy)]
+struct SequenceTabDrag {
+    sequence_id: u64,
+}
+
 fn sequence_tab_bar(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     let active_index = app.active_project().active_sequence;
     let mut select_index = None;
     let mut rename_index = None;
+    let mut duplicate_index = None;
+    let mut move_request = None;
+    let mut drag_move_request = None;
+    let mut delete_request = None;
     let mut add_requested = false;
 
     ui.horizontal(|ui| {
         let count = app.active_project().sequences.len();
         for index in 0..count {
             let active = index == active_index;
-            let name = app.active_project().sequences[index].name.clone();
+            let sequence = &app.active_project().sequences[index];
+            let sequence_id = sequence.id;
+            let name = sequence.name.clone();
             let text = RichText::new(&name).color(if active {
                 theme::ACCENT
             } else {
                 theme::TEXT_SECONDARY
             });
-            let button = egui::Button::new(text).fill(if active {
-                theme::SURFACE_2
-            } else {
-                theme::SURFACE
-            });
-            let resp = ui.add(button);
+            let button = egui::Button::new(text)
+                .fill(if active {
+                    theme::SURFACE_2
+                } else {
+                    theme::SURFACE
+                })
+                .sense(egui::Sense::click_and_drag());
+            let resp = ui
+                .add(button)
+                .on_hover_text(Text::SequenceTabDragHint.tr(locale));
+            resp.dnd_set_drag_payload(SequenceTabDrag { sequence_id });
+            if resp
+                .dnd_hover_payload::<SequenceTabDrag>()
+                .is_some_and(|payload| payload.sequence_id != sequence_id)
+            {
+                ui.painter().rect_stroke(
+                    resp.rect,
+                    4,
+                    egui::Stroke::new(2.0, theme::ACCENT),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            if let Some(payload) = resp.dnd_release_payload::<SequenceTabDrag>() {
+                if payload.sequence_id != sequence_id {
+                    drag_move_request = Some((payload.sequence_id, sequence_id));
+                }
+            }
             if resp.clicked() && !active {
                 select_index = Some(index);
             }
@@ -346,7 +378,42 @@ fn sequence_tab_bar(app: &mut App, ui: &mut egui::Ui) {
                     .button(crate::i18n::Text::SequenceTabCtxRename.tr(locale))
                     .clicked()
                 {
-                    rename_index = Some((index, name));
+                    rename_index = Some((index, name.clone()));
+                }
+                if ui
+                    .button(Text::SequenceTabCtxDuplicate.tr(locale))
+                    .clicked()
+                {
+                    duplicate_index = Some(index);
+                }
+                ui.separator();
+                if ui
+                    .add_enabled(
+                        index > 0,
+                        egui::Button::new(Text::SequenceTabCtxMoveLeft.tr(locale)),
+                    )
+                    .clicked()
+                {
+                    move_request = Some((index, index - 1));
+                }
+                if ui
+                    .add_enabled(
+                        index + 1 < count,
+                        egui::Button::new(Text::SequenceTabCtxMoveRight.tr(locale)),
+                    )
+                    .clicked()
+                {
+                    move_request = Some((index, index + 1));
+                }
+                ui.separator();
+                if ui
+                    .add_enabled(
+                        count > 1,
+                        egui::Button::new(Text::SequenceTabCtxDelete.tr(locale)),
+                    )
+                    .clicked()
+                {
+                    delete_request = Some((sequence_id, name.clone()));
                 }
             });
         }
@@ -360,6 +427,30 @@ fn sequence_tab_bar(app: &mut App, ui: &mut egui::Ui) {
     }
     if let Some((index, current_name)) = rename_index {
         app.renaming_sequence = Some((index, current_name));
+    }
+    if let Some(index) = duplicate_index {
+        app.duplicate_sequence(index);
+    }
+    if let Some((from_index, target_index)) = move_request {
+        app.move_sequence(from_index, target_index);
+    }
+    if let Some((source_id, target_id)) = drag_move_request {
+        let source_index = app
+            .active_project()
+            .sequences
+            .iter()
+            .position(|sequence| sequence.id == source_id);
+        let target_index = app
+            .active_project()
+            .sequences
+            .iter()
+            .position(|sequence| sequence.id == target_id);
+        if let (Some(source_index), Some(target_index)) = (source_index, target_index) {
+            app.move_sequence(source_index, target_index);
+        }
+    }
+    if let Some(sequence) = delete_request {
+        app.deleting_sequence = Some(sequence);
     }
     if add_requested {
         app.add_sequence();

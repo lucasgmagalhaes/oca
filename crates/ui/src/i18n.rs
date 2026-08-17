@@ -379,7 +379,14 @@ text_catalog! {
     ExportSizeEstimate: pt_br = "~{size} estimado", en = "~{size} estimated";
     HomeCtxRename: pt_br = "Configurações do projeto...", en = "Project settings...";
     SequenceTabCtxRename: pt_br = "Renomear aba...", en = "Rename tab...";
+    SequenceTabCtxDuplicate: pt_br = "Duplicar aba", en = "Duplicate tab";
+    SequenceTabCtxMoveLeft: pt_br = "Mover para esquerda", en = "Move left";
+    SequenceTabCtxMoveRight: pt_br = "Mover para direita", en = "Move right";
+    SequenceTabCtxDelete: pt_br = "Excluir aba...", en = "Delete tab...";
+    SequenceTabDragHint: pt_br = "Arraste para reordenar", en = "Drag to reorder";
     RenameSequenceTitle: pt_br = "Renomear aba", en = "Rename tab";
+    DeleteSequenceTitle: pt_br = "Excluir aba", en = "Delete tab";
+    DeleteSequenceConfirm: pt_br = "Excluir", en = "Delete";
     RenameProjectTitle: pt_br = "Configurações do projeto", en = "Project settings";
     RenameProjectConfirm: pt_br = "Salvar", en = "Save";
     ProjectNameLabel: pt_br = "Nome", en = "Name";
@@ -492,6 +499,27 @@ pub fn sequence_name(locale: Locale, n: usize) -> String {
     match locale {
         Locale::PtBr => format!("Sequência {n}"),
         Locale::En => format!("Sequence {n}"),
+    }
+}
+
+/// Localized name assigned to a sequence duplicated from `source_name`.
+pub fn sequence_copy_name(locale: Locale, source_name: &str) -> String {
+    match locale {
+        Locale::PtBr => format!("Cópia de {source_name}"),
+        Locale::En => format!("{source_name} copy"),
+    }
+}
+
+/// Confirmation text for deleting a sequence. Kept here rather than in the modal so every
+/// user-visible sentence remains centralized with the rest of the locale catalog.
+pub fn delete_sequence_prompt(locale: Locale, name: &str) -> String {
+    match locale {
+        Locale::PtBr => format!(
+            "Excluir a aba \"{name}\"? A timeline e as configurações desta sequência serão removidas."
+        ),
+        Locale::En => format!(
+            "Delete the \"{name}\" tab? This sequence's timeline and settings will be removed."
+        ),
     }
 }
 

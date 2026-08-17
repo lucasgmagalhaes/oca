@@ -933,6 +933,10 @@ pub struct App {
     /// When `Some((seq_index, buf))`, a rename modal is shown for the active project's
     /// `sequences[seq_index]`. Committed on Enter/confirm, discarded on Escape/cancel.
     pub renaming_sequence: Option<(usize, String)>,
+    /// `(sequence_id, name)` staged while the destructive sequence-delete confirmation modal
+    /// is open. Stored by id rather than index so a reordered tab cannot make confirmation
+    /// delete a different sequence.
+    pub deleting_sequence: Option<(u64, String)>,
     /// A snapshot of `multi_selected_clip_ids`' per-layer `(TrackKind, ClipFormatting)`, plus a
     /// name buffer, staged while the "save as template" naming modal is open — captured at
     /// click time (`App::begin_save_layer_template`) so a selection change while the modal is
@@ -1118,6 +1122,7 @@ impl App {
             pending_export_conflict: None,
             renaming_project: None,
             renaming_sequence: None,
+            deleting_sequence: None,
             saving_layer_template: None,
             applying_layer_template: None,
             layer_templates_menu_open: false,
@@ -1360,21 +1365,97 @@ impl App {
         let project = self.active_project_mut();
         let n = project.sequences.len() + 1;
         project.new_sequence(crate::i18n::sequence_name(locale, n));
-        // Clip ids are only unique within a sequence (each one numbers its own clips from 1
-        // via next_clip_id), so a selection left over from the previous tab could otherwise
-        // spuriously highlight an unrelated clip if the ids happen to collide.
-        self.selected_clip_id = None;
+        self.reset_sequence_context();
     }
 
     /// Switches the active project's tab to `index` — what clicking a tab in the Editor's tab
     /// bar does. A no-op if `index` is out of range.
     pub fn select_sequence(&mut self, index: usize) {
-        let project = self.active_project_mut();
-        if index < project.sequences.len() {
-            project.active_sequence = index;
-            // See add_sequence's comment on why a cross-sequence selection isn't safe to keep.
-            self.selected_clip_id = None;
+        if index >= self.active_project().sequences.len()
+            || index == self.active_project().active_sequence
+        {
+            return;
         }
+        self.active_project_mut().active_sequence = index;
+        self.reset_sequence_context();
+    }
+
+    /// Duplicates a sequence, including its complete timeline and export defaults, immediately
+    /// after the source tab and switches to the duplicate. The localized copy name stays in
+    /// the UI layer while [`Project::duplicate_sequence`] owns the data invariants.
+    pub fn duplicate_sequence(&mut self, index: usize) {
+        let Some(source_name) = self
+            .active_project()
+            .sequences
+            .get(index)
+            .map(|sequence| sequence.name.clone())
+        else {
+            return;
+        };
+        let name = crate::i18n::sequence_copy_name(self.locale, &source_name);
+        if self
+            .active_project_mut()
+            .duplicate_sequence(index, name)
+            .is_some()
+        {
+            self.reset_sequence_context();
+        }
+    }
+
+    /// Deletes a sequence by stable id. The core model refuses to remove the project's last
+    /// tab; a successful deletion switches to the nearest surviving tab and clears state tied
+    /// to the removed/previous sequence.
+    pub fn delete_sequence(&mut self, sequence_id: u64) {
+        let active_id_before =
+            self.active_project().sequences[self.active_project().active_sequence].id;
+        let Some(index) = self
+            .active_project()
+            .sequences
+            .iter()
+            .position(|sequence| sequence.id == sequence_id)
+        else {
+            return;
+        };
+        if self.active_project().sequences.len() <= 1 {
+            return;
+        }
+        if self.active_project_mut().remove_sequence(index) {
+            let active_id_after =
+                self.active_project().sequences[self.active_project().active_sequence].id;
+            if active_id_after != active_id_before {
+                self.reset_sequence_context();
+            }
+        }
+    }
+
+    /// Reorders tabs by index while preserving the active sequence's identity. Unlike a tab
+    /// switch this deliberately keeps selections/preview alive because their owning sequence
+    /// did not change, only its visual position did.
+    pub fn move_sequence(&mut self, from_index: usize, target_index: usize) {
+        let sequence_count = self.active_project().sequences.len();
+        if from_index >= sequence_count
+            || target_index >= sequence_count
+            || from_index == target_index
+        {
+            return;
+        }
+        self.active_project_mut()
+            .move_sequence(from_index, target_index);
+    }
+
+    /// Clears state whose ids/frames are scoped to the active sequence. Clip ids restart from
+    /// one in each tab, so retaining any of these across a switch could target an unrelated
+    /// clip with the same numeric id. Reordering does not call this because identity is stable.
+    fn reset_sequence_context(&mut self) {
+        self.selected_clip_id = None;
+        self.selected_text_clip_id = None;
+        self.selected_shape_clip_id = None;
+        self.multi_selected_clip_ids.clear();
+        self.drawing_shape_points = None;
+        self.picking_motion_track_region = false;
+        self.preview_playing = false;
+        self.preview_frozen_since = None;
+        self.invalidate_preview_rendering();
     }
 
     /// Returns the active tab's persisted export defaults. Keeping this as a copied value
@@ -1643,6 +1724,7 @@ impl eframe::App for App {
         self.show_prefs_modal(ui.ctx());
         self.show_rename_project_modal(ui.ctx());
         self.show_rename_sequence_modal(ui.ctx());
+        self.show_delete_sequence_modal(ui.ctx());
         self.show_export_conflict_modal(ui.ctx());
         self.show_save_layer_template_modal(ui.ctx());
         self.show_layer_templates_menu(ui.ctx());

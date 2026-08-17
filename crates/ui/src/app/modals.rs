@@ -214,6 +214,52 @@ impl App {
         }
     }
 
+    /// Confirms deletion of one sequence tab. The staged target is a stable sequence id, so
+    /// reordering can never make this modal delete a different tab. [`App::delete_sequence`]
+    /// and the core model both enforce the one-sequence minimum.
+    pub(super) fn show_delete_sequence_modal(&mut self, ctx: &egui::Context) {
+        let Some((sequence_id, name)) = self.deleting_sequence.clone() else {
+            return;
+        };
+        let locale = self.locale;
+        let modal = egui::Modal::new(egui::Id::new("delete_sequence_modal"));
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.label(
+                egui::RichText::new(i18n::Text::DeleteSequenceTitle.tr(locale))
+                    .size(15.0)
+                    .strong(),
+            );
+            ui.add_space(10.0);
+            ui.label(i18n::delete_sequence_prompt(locale, &name));
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .button(i18n::Text::DeleteSequenceConfirm.tr(locale))
+                    .clicked()
+                {
+                    confirmed = true;
+                }
+                if ui.button(i18n::Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if response.should_close() || cancelled {
+            self.deleting_sequence = None;
+            return;
+        }
+        if confirmed {
+            self.deleting_sequence = None;
+            self.delete_sequence(sequence_id);
+        }
+    }
+
     /// Writes the active project to a `<name>.autosave.ocproj` recovery file next to the
     /// project's own save file, subject to a 2-second idle debounce and a 30-second forced-save
     /// ceiling. Skips silently if the project has never been saved (no `file_path` yet) or

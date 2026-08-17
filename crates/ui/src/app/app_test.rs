@@ -284,6 +284,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         crash_detected: false,
         renaming_project: None::<(usize, String, String)>,
         renaming_sequence: None,
+        deleting_sequence: None,
         saving_layer_template: None,
         applying_layer_template: None,
         layer_templates_menu_open: false,
@@ -390,6 +391,111 @@ fn add_sequence_clears_a_stale_clip_selection() {
     app.add_sequence();
 
     assert_eq!(app.selected_clip_id, None);
+}
+
+#[test]
+fn duplicate_sequence_copies_the_tab_switches_to_it_and_clears_sequence_state() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.active_project_mut().timeline_mut().playhead_secs = 17.0;
+    app.selected_clip_id = Some(1);
+    app.selected_text_clip_id = Some(2);
+    app.selected_shape_clip_id = Some(3);
+    app.multi_selected_clip_ids.extend([1, 4]);
+    app.preview_clip_id = Some(1);
+    app.preview_overlay_clip_ids.push(2);
+    app.preview_playing = true;
+
+    app.duplicate_sequence(0);
+
+    assert_eq!(app.active_project().sequences.len(), 2);
+    assert_eq!(app.active_project().active_sequence, 1);
+    assert_eq!(app.active_project().sequences[1].id, 2);
+    assert_eq!(
+        app.active_project().sequences[1].name,
+        "Cópia de Sequence 1"
+    );
+    assert_eq!(app.active_project().timeline().playhead_secs, 17.0);
+    assert_eq!(app.selected_clip_id, None);
+    assert_eq!(app.selected_text_clip_id, None);
+    assert_eq!(app.selected_shape_clip_id, None);
+    assert!(app.multi_selected_clip_ids.is_empty());
+    assert_eq!(app.preview_clip_id, None);
+    assert!(app.preview_overlay_clip_ids.is_empty());
+    assert!(!app.preview_playing);
+}
+
+#[test]
+fn delete_sequence_removes_the_target_and_selects_a_surviving_neighbor() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_sequence();
+    let second_id = app.active_project().sequences[1].id;
+    app.selected_clip_id = Some(9);
+    app.selected_text_clip_id = Some(8);
+    app.selected_shape_clip_id = Some(7);
+
+    app.delete_sequence(second_id);
+
+    assert_eq!(app.active_project().sequences.len(), 1);
+    assert_eq!(app.active_project().active_sequence, 0);
+    assert_eq!(app.active_project().sequences[0].name, "Sequence 1");
+    assert_eq!(app.selected_clip_id, None);
+    assert_eq!(app.selected_text_clip_id, None);
+    assert_eq!(app.selected_shape_clip_id, None);
+}
+
+#[test]
+fn delete_sequence_refuses_to_remove_the_last_tab() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let only_id = app.active_project().sequences[0].id;
+
+    app.delete_sequence(only_id);
+
+    assert_eq!(app.active_project().sequences.len(), 1);
+    assert_eq!(app.active_project().active_sequence, 0);
+}
+
+#[test]
+fn deleting_an_inactive_sequence_preserves_the_active_sequence_state() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_sequence();
+    let inactive_id = app.active_project().sequences[0].id;
+    let active_id = app.active_project().sequences[1].id;
+    app.selected_clip_id = Some(42);
+    app.preview_clip_id = Some(42);
+
+    app.delete_sequence(inactive_id);
+
+    assert_eq!(app.active_project().sequences.len(), 1);
+    assert_eq!(app.active_project().sequences[0].id, active_id);
+    assert_eq!(app.active_project().active_sequence, 0);
+    assert_eq!(app.selected_clip_id, Some(42));
+    assert_eq!(app.preview_clip_id, Some(42));
+}
+
+#[test]
+fn move_sequence_reorders_tabs_while_preserving_active_identity_and_selection() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_sequence();
+    app.add_sequence();
+    app.select_sequence(0);
+    let active_id = app.active_project().sequences[0].id;
+    app.selected_clip_id = Some(42);
+
+    app.move_sequence(0, 2);
+
+    let names: Vec<&str> = app
+        .active_project()
+        .sequences
+        .iter()
+        .map(|sequence| sequence.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["Sequência 2", "Sequência 3", "Sequence 1"]);
+    assert_eq!(app.active_project().active_sequence, 2);
+    assert_eq!(
+        app.active_project().sequences[app.active_project().active_sequence].id,
+        active_id
+    );
+    assert_eq!(app.selected_clip_id, Some(42));
 }
 
 #[test]

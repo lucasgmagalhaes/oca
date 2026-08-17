@@ -98,6 +98,21 @@ fn track_summary_uses_plural_clips_otherwise() {
     assert_eq!(track_summary(Locale::En, 0, &tracks), "0 clips · V1/A1/A2");
 }
 
+#[test]
+fn sequence_copy_name_is_localized() {
+    assert_eq!(
+        sequence_copy_name(Locale::PtBr, "Cortes"),
+        "Cópia de Cortes"
+    );
+    assert_eq!(sequence_copy_name(Locale::En, "Cuts"), "Cuts copy");
+}
+
+#[test]
+fn delete_sequence_prompt_names_the_target_in_each_locale() {
+    assert!(delete_sequence_prompt(Locale::PtBr, "Cortes").contains("\"Cortes\""));
+    assert!(delete_sequence_prompt(Locale::En, "Cuts").contains("\"Cuts\""));
+}
+
 fn job(status: ExportJobStatus) -> ExportJob {
     ExportJob {
         id: 1,
