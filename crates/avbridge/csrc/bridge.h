@@ -233,6 +233,7 @@ EncodeStatus avbridge_encode_timeline_export(
    Track 0 is the background (drives the output duration and audio); tracks 1..n_tracks-1 are
    overlaid on top using avfilter's overlay filter whenever a clip from those tracks is active
    at the corresponding timeline position (determined by ClipSegment::timeline_start_secs).
+   Overlays are applied in ascending track order, so later tracks appear above earlier tracks.
    This function's initial audio comes from track 0 only; the core timeline renderer uses
    avbridge_mix_audio_timeline + avbridge_mux_video_audio afterward when tracks 1+ contribute
    sound.

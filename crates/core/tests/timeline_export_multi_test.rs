@@ -14,9 +14,9 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Multi-track compositing integration tests — `avbridge_encode_timeline_export_multi` had zero
-//! Rust coverage before this file, even though its two filter-string builders duplicate the same
+//! Rust coverage before this file, even though its filter-string builders duplicate the same
 //! geq-based Slide/Zoom-transition and Ken-Burns zoom fixes validated end-to-end for the
-//! single-track path in `timeline_export_test.rs`. These exercise the real two-track composite
+//! single-track path in `timeline_export_test.rs`. These exercise the real multi-track composite
 //! path (`resolve_timeline_segments_multi` + `render_export_job_multi`), not just the C string
 //! builders in isolation.
 
@@ -166,6 +166,47 @@ fn two_video_tracks_composite_into_one_export() {
     );
 
     assert_eq!(outcome, RenderOutcome::Completed);
+}
+
+#[test]
+fn three_video_tracks_composite_into_one_export() {
+    let asset = video_asset(1);
+    let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
+    let middle = track(2, "V2", vec![clip(2, 1, 0.0, 0.0, 0.5)]);
+    let top = track(3, "V3", vec![clip(3, 1, 0.0, 0.0, 0.5)]);
+    let sequence = sequence_with(vec![background, middle, top]);
+
+    let outcome = render_multi(
+        &sequence,
+        std::slice::from_ref(&asset),
+        "avcore_test_three_layer_composite_ok.mp4",
+    );
+
+    assert_eq!(outcome, RenderOutcome::Completed);
+}
+
+#[test]
+fn resolve_timeline_segments_multi_preserves_all_layer_order() {
+    let asset = video_asset(1);
+    let background = track(10, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
+    let mut middle_clip = clip(2, 1, 0.0, 0.0, 0.5);
+    middle_clip.layer_scale_x = 0.5;
+    let middle = track(20, "V2", vec![middle_clip]);
+    let mut top_clip = clip(3, 1, 0.0, 0.0, 0.5);
+    top_clip.layer_scale_x = 0.25;
+    let top = track(30, "V3", vec![top_clip]);
+    let sequence = sequence_with(vec![background, middle, top]);
+
+    let (track_segments, _canvas) = resolve_timeline_segments_multi(&sequence, &[asset]).unwrap();
+
+    assert_eq!(track_segments.len(), 3);
+    assert!(track_segments[0][0].video_filter.is_empty());
+    assert!(track_segments[1][0]
+        .video_filter
+        .contains("scale=iw*0.5000"));
+    assert!(track_segments[2][0]
+        .video_filter
+        .contains("scale=iw*0.2500"));
 }
 
 #[test]

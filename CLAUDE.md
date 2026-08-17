@@ -314,33 +314,20 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   a single/background track's clips never reach a compositing stage, so their alpha (from
   this or any other source, e.g. chroma_key/mask_shape) is always discarded by the final
   `format=yuv420p` conform regardless, same documented caveat those two already carry.
-  `timeline_export_multi.c`'s `init_overlay_graph` (previously a fixed 2-input
-  `[in0]<f0>[v0];[in1]<f1>[v1];[v0][v1]overlay=...` graph) now optionally takes a third
-  `vdec2`/`f2` pair, producing `[in0]<f0>[v0];[in1]<f1>[v1];[in2]<f2>,format=gray[m2];
-  [v1][m2]alphamerge[v1a];[v0][v1a]overlay=...` when a matte is present — a second
-  `OverlayDecoder` (`ov2`) opened/advanced exactly like the existing overlay-track decoder
-  (`ov1`), against a synthetic `ClipSegment` pointing at the matte file with its own 0-based
-  `source_in_secs`/`source_out_secs` (the matte's internal timeline, distinct from the
-  original clip's timeline/source coordinates — see `mask_video_path`'s doc comment in
-  `bridge.h` for the exact mapping). Falls back to compositing without the matte (not a hard
-  export failure) if the matte file can't be opened or the 3-input graph fails to build —
-  matches this codebase's general "an optional post-effect degrades gracefully rather than
-  aborting a multi-minute render" posture. `alphamerge` **replaces**, not combines with, any
-  alpha `f1`'s own chain already produced (e.g. simultaneous chroma_key/mask_shape on the same
-  clip) — combining multiple alpha sources on one clip isn't supported.
+  `timeline_export_multi.c`'s `init_overlay_graph` now builds a dynamic graph for every active
+  visible video layer instead of its old fixed V1+V2 shape. Track 0 remains the background;
+  tracks 1..N are decoded independently and folded through sequential `overlay` nodes in track
+  order, so V3 renders above V2, V4 above V3, and so on. The graph is rebuilt only when a layer
+  enters, leaves, or changes clip. Each overlay can independently add a matte decoder and
+  `alphamerge` input against a synthetic 0-based `ClipSegment`; stale matte files degrade to the
+  unmasked layer, and a graph failure involving mattes retries the active layer set without
+  optional matte inputs rather than aborting the whole export. `alphamerge` **replaces**, not
+  combines with, alpha already produced by chroma_key/mask_shape on that clip.
 
-  **Verification caveat:** this specific C work (the `init_overlay_graph` 3-input extension
-  and `matte_encode.c`) was written and reviewed carefully but could not be exercised against
-  a real render on any machine during development — same "this dev machine's FFmpeg build
-  can't open any encoder" gap noted below applies. It *was*, however, syntax/type-checked for
-  real: `gcc -fsyntax-only -I <ffmpeg include dir>` against each modified/new `.c` file
-  individually (works even when the full crate can't build, since it only needs the headers
-  the *specific* file includes — `filters.c`'s separate FFmpeg-7.1-only API usage doesn't
-  block syntax-checking files that don't call those functions) came back clean, and the
-  before/after brace/paren-count delta across the whole file matched exactly, both useful
-  fallback techniques when `cargo check`/`build` itself is blocked in a sandbox missing a
-  new-enough FFmpeg. Not a substitute for an actual render — treat the export-compositing path
-  here as unverified beyond static analysis until it's run for real once.
+  **Verification caveat:** the dynamic N-layer compositor is covered by a three-video-track
+  integration test and compiles against the real FFmpeg headers, but this machine's FFmpeg
+  build cannot open a video encoder, so the test cannot complete a real render here. Treat the
+  final encoded-pixel/z-order result as unverified until run on a machine with a working encoder.
 
   **Matte preview compositing now exists too.** `crate::preview::build_composite_branch`
   gained an `alphacombine` stage (gst-plugins-bad's `codecalpha` plugin — confirmed present via

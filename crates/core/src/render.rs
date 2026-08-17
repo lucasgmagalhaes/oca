@@ -802,9 +802,8 @@ pub fn resolve_timeline_segments_multi(
 ///
 /// When `track_segments.len() == 1`, delegates to [`render_export_job`] — no new C code is
 /// exercised.  When there are two or more tracks, calls
-/// `avbridge::encode_timeline_export_multi` which composites via an avfilter `overlay` chain.
-/// Only the first two tracks are composited in the current implementation; additional tracks
-/// are silently ignored by the C layer.
+/// `avbridge::encode_timeline_export_multi` which composites every active layer via a dynamic
+/// avfilter `overlay` chain. Track order is z-order: later tracks appear above earlier tracks.
 ///
 /// `on_progress` and `cancel` have the same contract as [`render_export_job`].
 pub fn render_export_job_multi(

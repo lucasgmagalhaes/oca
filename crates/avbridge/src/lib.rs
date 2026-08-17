@@ -743,8 +743,9 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
 /// position.
 ///
 /// When `n_tracks == 1`, delegates to [`encode_timeline_export`] unchanged — this is the
-/// guaranteed backward-compatible path that exercises no new C code. Additional tracks beyond
-/// index 1 are silently ignored in the current implementation (only two-input overlay is built).
+/// guaranteed backward-compatible path that exercises no new C code. With multiple tracks, all
+/// active layers are composited in ascending track order, so later tracks appear above earlier
+/// ones.
 /// Higher-level callers that need every track's audio use [`mix_audio_timeline`] after this
 /// render and [`mux_video_audio`] to replace the background-only stream without re-encoding
 /// video; this lower-level compositor intentionally retains its original track-0 contract.
