@@ -61,6 +61,24 @@ pub struct Project {
     /// project file shouldn't carry a stale path forward.
     #[serde(skip)]
     pub file_path: Option<PathBuf>,
+    /// The Editor's panel widths/timeline height, when `ui`'s `LayoutScope::PerProject` is
+    /// active — `request.md`'s Fase 3 "layout salvo por projeto ou por usuário" spec, the
+    /// per-project half (per-user persistence already lives in `ui::PrefsState`). `None` for
+    /// a project that's never been saved under the per-project scope (including every older
+    /// saved project, via `#[serde(default)]`) — `ui::App` falls back to the per-user prefs
+    /// values in that case rather than resetting to some arbitrary default.
+    #[serde(default)]
+    pub panel_layout: Option<PanelLayout>,
+}
+
+/// See [`Project::panel_layout`]. A plain value type — `core` has no opinion on layout scope
+/// itself (that's `ui::LayoutScope`), it just knows how to carry these three numbers along
+/// with the rest of a saved project.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PanelLayout {
+    pub lib_panel_width: f32,
+    pub props_panel_width: f32,
+    pub timeline_height: f32,
 }
 
 impl Project {

@@ -74,7 +74,7 @@ pub use persistence::{
 };
 pub use preview::{Preview, PreviewError};
 pub use probe::{probe_media, ProbeError, ProbedMedia};
-pub use project::{Project, Recency, Sequence};
+pub use project::{PanelLayout, Project, Recency, Sequence};
 pub use proxy::{ensure_proxy, PreviewQuality, ProxyError};
 pub use render::{
     apply_export_aspect_ratio, render_export, render_export_job, render_export_job_multi,
