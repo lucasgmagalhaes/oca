@@ -88,3 +88,97 @@ fn new_sequence_inherits_the_active_sequences_export_settings() {
     );
     assert_eq!(project.sequences[1].export_settings.target_lufs, -23.0);
 }
+
+#[test]
+fn duplicate_sequence_copies_the_complete_tab_with_a_fresh_id_and_name() {
+    let mut project = test_project();
+    project.sequences[0].timeline.playhead_secs = 12.5;
+    project.sequences[0].export_settings.aspect_ratio = ExportAspectRatio::Portrait;
+
+    let id = project
+        .duplicate_sequence(0, "Main copy".to_string())
+        .unwrap();
+
+    assert_eq!(id, 2);
+    assert_eq!(project.sequences.len(), 2);
+    assert_eq!(project.active_sequence, 1);
+    assert_eq!(project.sequences[1].id, 2);
+    assert_eq!(project.sequences[1].name, "Main copy");
+    assert_eq!(project.sequences[1].timeline.playhead_secs, 12.5);
+    assert_eq!(
+        project.sequences[1].export_settings.aspect_ratio,
+        ExportAspectRatio::Portrait
+    );
+}
+
+#[test]
+fn duplicate_sequence_is_a_no_op_for_an_out_of_range_index() {
+    let mut project = test_project();
+
+    assert_eq!(project.duplicate_sequence(4, "Copy".to_string()), None);
+    assert_eq!(project.sequences.len(), 1);
+    assert_eq!(project.active_sequence, 0);
+}
+
+#[test]
+fn remove_sequence_never_removes_the_projects_last_tab() {
+    let mut project = test_project();
+
+    assert!(!project.remove_sequence(0));
+    assert_eq!(project.sequences.len(), 1);
+    assert_eq!(project.active_sequence, 0);
+}
+
+#[test]
+fn removing_the_active_last_sequence_selects_its_previous_neighbor() {
+    let mut project = test_project();
+    project.new_sequence("Second".to_string());
+    project.new_sequence("Third".to_string());
+
+    assert!(project.remove_sequence(2));
+    assert_eq!(project.active_sequence, 1);
+    assert_eq!(project.sequences[1].name, "Second");
+}
+
+#[test]
+fn removing_a_sequence_before_the_active_one_preserves_the_active_identity() {
+    let mut project = test_project();
+    project.new_sequence("Second".to_string());
+    project.new_sequence("Third".to_string());
+    let active_id = project.sequences[2].id;
+
+    assert!(project.remove_sequence(0));
+    assert_eq!(project.active_sequence, 1);
+    assert_eq!(project.sequences[project.active_sequence].id, active_id);
+}
+
+#[test]
+fn move_sequence_reorders_tabs_without_changing_the_active_identity() {
+    let mut project = test_project();
+    project.new_sequence("Second".to_string());
+    project.new_sequence("Third".to_string());
+    project.active_sequence = 1;
+    let active_id = project.sequences[1].id;
+
+    assert!(project.move_sequence(0, 2));
+
+    let names: Vec<&str> = project
+        .sequences
+        .iter()
+        .map(|sequence| sequence.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["Second", "Third", "Main"]);
+    assert_eq!(project.sequences[project.active_sequence].id, active_id);
+}
+
+#[test]
+fn move_sequence_rejects_invalid_or_unchanged_positions() {
+    let mut project = test_project();
+    project.new_sequence("Second".to_string());
+
+    assert!(!project.move_sequence(0, 0));
+    assert!(!project.move_sequence(0, 5));
+    assert!(!project.move_sequence(5, 0));
+    assert_eq!(project.sequences[0].name, "Main");
+    assert_eq!(project.sequences[1].name, "Second");
+}

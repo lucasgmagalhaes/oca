@@ -145,4 +145,56 @@ impl Project {
         self.active_sequence = self.sequences.len() - 1;
         id
     }
+
+    /// Clones `sequences[index]` into a new tab immediately after it, assigns a fresh sequence
+    /// id, replaces the clone's name with `name`, and switches to it. Clip/track ids remain
+    /// unchanged because they are scoped to their owning sequence. Returns the fresh id, or
+    /// `None` when `index` is out of range.
+    pub fn duplicate_sequence(&mut self, index: usize, name: String) -> Option<u64> {
+        let mut duplicate = self.sequences.get(index)?.clone();
+        let id = self.sequences.iter().map(|s| s.id).max().unwrap_or(0) + 1;
+        duplicate.id = id;
+        duplicate.name = name;
+        let insert_at = index + 1;
+        self.sequences.insert(insert_at, duplicate);
+        self.active_sequence = insert_at;
+        Some(id)
+    }
+
+    /// Removes one sequence while preserving the invariant that every project has at least
+    /// one. If the active tab is removed, the tab now occupying that position becomes active,
+    /// falling back to the previous tab when the removed one was last. Returns whether a tab
+    /// was actually removed.
+    pub fn remove_sequence(&mut self, index: usize) -> bool {
+        if self.sequences.len() <= 1 || index >= self.sequences.len() {
+            return false;
+        }
+        self.sequences.remove(index);
+        self.active_sequence = match self.active_sequence.cmp(&index) {
+            std::cmp::Ordering::Less => self.active_sequence,
+            std::cmp::Ordering::Equal => index.min(self.sequences.len() - 1),
+            std::cmp::Ordering::Greater => self.active_sequence - 1,
+        };
+        true
+    }
+
+    /// Moves one sequence to `target_index`, keeping the currently active sequence active even
+    /// when indices shift around it. Returns `false` for invalid indices or a no-op move.
+    pub fn move_sequence(&mut self, from_index: usize, target_index: usize) -> bool {
+        if from_index >= self.sequences.len()
+            || target_index >= self.sequences.len()
+            || from_index == target_index
+        {
+            return false;
+        }
+        let active_id = self.sequences[self.active_sequence].id;
+        let sequence = self.sequences.remove(from_index);
+        self.sequences.insert(target_index, sequence);
+        self.active_sequence = self
+            .sequences
+            .iter()
+            .position(|sequence| sequence.id == active_id)
+            .expect("the active sequence is only reordered, never removed");
+        true
+    }
 }
