@@ -1,7 +1,7 @@
 # Graph Report - oca  (2026-08-17)
 
 ## Corpus Check
-- 160 files · ~233,031 words
+- 160 files · ~233,032 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `575d08ae`
+- Built from commit: `19e82616`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -164,7 +164,7 @@ Cohesion: 0.06
 Nodes (45): apply_formatting_overwrites_all_effect_fields(), clip(), formatting_roundtrip_preserves_all_fields(), has_vignette_is_true_above_zero(), is_color_filtered_is_true_for_any_filter_but_none(), is_cropped_is_true_when_any_crop_field_differs_from_the_full_frame(), is_masked_is_true_for_any_shape_but_none(), negative_gain_db_scales_linear_gain_below_unity() (+37 more)
 
 ### Community 5 - "PreviewError"
-Cohesion: 0.12
+Cohesion: 0.14
 Nodes (19): AppSink, AppSrc, BoolError, build_static_overlay_branch(), Preview, PreviewError, push_rgba_overlay_buffer(), Display (+11 more)
 
 ### Community 6 - "timeline.rs"
@@ -452,8 +452,8 @@ Cohesion: 0.25
 Nodes (6): App, generate_matte_one(), Path, PathBuf, Result, String
 
 ### Community 87 - "src/preview.rs"
-Cohesion: 0.27
-Nodes (17): attach_audio_mix_branch(), build_audio_filter_bin(), build_audio_mix_output(), build_chroma_key_element(), build_composite_branch(), build_mask_shape_stage(), build_uri_decodebin(), build_video_filter_bin() (+9 more)
+Cohesion: 0.26
+Nodes (17): attach_audio_mix_branch(), build_audio_filter_bin(), build_audio_mix_output(), build_chroma_key_element(), build_composite_branch(), build_mask_shape_stage(), build_uri_decodebin(), CompositeBranch (+9 more)
 
 ### Community 88 - "project_test.rs"
 Cohesion: 0.27
@@ -464,8 +464,8 @@ Cohesion: 0.38
 Nodes (4): Option, thumbnail_fps(), thumbnail_frame_index(), thumbnail_frame_time()
 
 ### Community 95 - ".open_composited_once"
-Cohesion: 0.47
-Nodes (4): CompositeBranch, Option, Path, Self
+Cohesion: 0.36
+Nodes (4): build_video_filter_bin(), Option, Path, Self
 
 ### Community 96 - "PrefsState"
 Cohesion: 0.24

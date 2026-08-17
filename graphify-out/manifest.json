@@ -140,12 +140,12 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1787002833.4069118,
+    "mtime": 1787003121.996108,
     "ast_hash": "6979e3d3368d4fda96a85094c32c669d",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1787002769.688378,
+    "mtime": 1787003121.9979913,
     "ast_hash": "7a1200ce1391fe2b09b0a6fc8fcc5223",
     "semantic_hash": ""
   },
@@ -165,7 +165,7 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/home.rs": {
-    "mtime": 1787002733.1603398,
+    "mtime": 1787003121.9986465,
     "ast_hash": "352d8f8049cdb9629f66f95d70178269",
     "semantic_hash": ""
   },
@@ -185,7 +185,7 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/prefs.rs": {
-    "mtime": 1787002769.6877165,
+    "mtime": 1787003121.9989412,
     "ast_hash": "29ce2c93c0c8a747ae9f8740110a131b",
     "semantic_hash": ""
   },
@@ -205,7 +205,7 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1787002821.6127822,
+    "mtime": 1787003122.0698388,
     "ast_hash": "c8281384828efaeda3ca6a6f75b83f14",
     "semantic_hash": ""
   },
@@ -480,8 +480,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/model_download.rs": {
-    "mtime": 1786985605.1695726,
-    "ast_hash": "85b3833e7943c73fade6958cd9b7adcc",
+    "mtime": 1787003236.4139585,
+    "ast_hash": "52940f0a7d96dd666a512a33f7ac466d",
     "semantic_hash": ""
   },
   "crates/core/src/text_metrics.rs": {
@@ -530,12 +530,12 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1787002855.5740528,
+    "mtime": 1787003121.9966617,
     "ast_hash": "b7bdafc27384bc56a68ebe7865c3bc86",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
-    "mtime": 1787002769.6870027,
+    "mtime": 1787003121.9970763,
     "ast_hash": "46d559187226779b07005a7ec878b7f6",
     "semantic_hash": ""
   },
@@ -725,8 +725,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/update_check.rs": {
-    "mtime": 1786985605.1819196,
-    "ast_hash": "badbd09056246704ce10b9f056a23095",
+    "mtime": 1787003236.4150226,
+    "ast_hash": "42aaa64295f51322b53d9faff04ba334",
     "semantic_hash": ""
   },
   "crates/core/tests/background_removal_test.rs": {
@@ -755,7 +755,7 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/update_check.rs": {
-    "mtime": 1787002833.4451568,
+    "mtime": 1787003121.9975398,
     "ast_hash": "56a600573f2ae6ab1e858ee35e0f3d3d",
     "semantic_hash": ""
   },

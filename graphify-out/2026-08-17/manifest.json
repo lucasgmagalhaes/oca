@@ -140,13 +140,13 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1787002220.1397502,
-    "ast_hash": "935c906a54ddfd9a8d6fb9e9d5e2e31d",
+    "mtime": 1787002833.4069118,
+    "ast_hash": "6979e3d3368d4fda96a85094c32c669d",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1787002153.1421654,
-    "ast_hash": "f79e9a3efcae579367c1fe930419d2e9",
+    "mtime": 1787002769.688378,
+    "ast_hash": "7a1200ce1391fe2b09b0a6fc8fcc5223",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -165,8 +165,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/home.rs": {
-    "mtime": 1786985605.2683594,
-    "ast_hash": "fa057fcf5d5b6fae87877d2248ffb654",
+    "mtime": 1787002733.1603398,
+    "ast_hash": "352d8f8049cdb9629f66f95d70178269",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/library.rs": {
@@ -185,8 +185,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/prefs.rs": {
-    "mtime": 1787002273.3174858,
-    "ast_hash": "3e060979b87a85a74f7770a6606c4eda",
+    "mtime": 1787002769.6877165,
+    "ast_hash": "29ce2c93c0c8a747ae9f8740110a131b",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/queue.rs": {
@@ -205,8 +205,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1787002250.6571481,
-    "ast_hash": "22b29374f4a2fa48cff488aa7e951d23",
+    "mtime": 1787002821.6127822,
+    "ast_hash": "c8281384828efaeda3ca6a6f75b83f14",
     "semantic_hash": ""
   },
   "README.md": {
@@ -530,13 +530,13 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1787002153.1386683,
-    "ast_hash": "5e1c33067cb0e135e1f4e76f58b6999a",
+    "mtime": 1787002855.5740528,
+    "ast_hash": "b7bdafc27384bc56a68ebe7865c3bc86",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
-    "mtime": 1787000437.8908265,
-    "ast_hash": "9d44a9576bba1b35d05cd1daba50b02b",
+    "mtime": 1787002769.6870027,
+    "ast_hash": "46d559187226779b07005a7ec878b7f6",
     "semantic_hash": ""
   },
   "crates/ui/src/app/model_download.rs": {
@@ -755,8 +755,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/update_check.rs": {
-    "mtime": 1786985605.2425857,
-    "ast_hash": "fbe7bffc696d314257c2ba7eb6938312",
+    "mtime": 1787002833.4451568,
+    "ast_hash": "56a600573f2ae6ab1e858ee35e0f3d3d",
     "semantic_hash": ""
   },
   "crates/core/src/youtube_download.rs": {
