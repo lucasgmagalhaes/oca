@@ -458,14 +458,26 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   the embedded `drawtext` half already happened on every export; pure string formatting over
   every `TextClip` across every `TrackKind::Text` track, sorted by start time; Editor toolbar's
   "Export .srt" button); music/SFX library scanning (no
-  bundled content, points at a user-configured folder); per-user Editor panel layout
-  (`PrefsState::lib_panel_width`/`props_panel_width`/`timeline_height`, the per-user half of
-  Fase 3's "layout salvo por projeto ou por usuário" — per-project persistence would need
-  `.ocproj` schema changes and isn't wired up). `App::save_prefs`'s background-thread write has
-  a synchronous twin, `App::save_prefs_sync`, called from `on_exit` specifically — a spawned
-  thread has no guarantee of finishing before the process actually exits, so a live-session-only
-  change like a dragged panel width (no save trigger short of opening Preferences otherwise)
-  needs a save that's guaranteed to complete before shutdown, not just kicked off.
+  bundled content, points at a user-configured folder); Editor panel layout, now savable either
+  per-user or per-project (`PrefsState::lib_panel_width`/`props_panel_width`/`timeline_height`
+  are the live, actively-dragged values — the per-user half of Fase 3's "layout salvo por
+  projeto ou por usuário", `App::save_prefs` capturing them into `PrefsState` at its own save
+  points same as always). **Per-project persistence now also exists:**
+  `avcore::Project::panel_layout` (`Option<PanelLayout>`, `.ocproj` schema addition,
+  `#[serde(default)]` so older saved projects load with `None`) plus `ui`'s
+  `PrefsState::layout_scope` (`LayoutScope::PerUser`/`PerProject`, a Preferences picker) —
+  under `PerProject`, `App::sync_panel_layout_into_active_project` captures the live values into
+  the active project right before it's serialized (explicit save and autosave both, not every
+  frame — writing on every frame would mark the project dirty continuously and defeat
+  `pump_autosave`'s own idle-debounce), and `App::load_panel_layout_for_active_project` applies
+  a project's own saved layout whenever it becomes active (`open_project`, autosave restore,
+  and `App::new` at startup) — falling back to whatever's already live (the per-user defaults)
+  when a project has never saved its own layout yet, rather than resetting to an arbitrary size.
+  `App::save_prefs`'s background-thread write has a synchronous twin, `App::save_prefs_sync`,
+  called from `on_exit` specifically — a spawned thread has no guarantee of finishing before the
+  process actually exits, so a live-session-only change like a dragged panel width (no save
+  trigger short of opening Preferences otherwise, under the per-user scope) needs a save that's
+  guaranteed to complete before shutdown, not just kicked off.
 
   **Copy/paste now preserves composite block membership.** `App::copy_selected_clip` used to
   capture only the one clicked clip even when it was a composite block member, so pasting always
