@@ -646,6 +646,115 @@ fn connect_decodebin_video_pad(decodebin: &gst::Element, target_sink: gst::Pad) 
     });
 }
 
+/// Wires a static rasterized `GRAY8` mask (`mask_gray`, from
+/// [`crate::overlay_render::render_mask_shape_gray8`]) onto `chain_tail`'s own output via
+/// `alphacombine`, returning the new final element ([`build_composite_branch`]'s next
+/// `chain_tail`). Mirrors that function's own background-removal-matte `alphacombine` stage,
+/// just with a static `appsrc`+`imagefreeze` pair standing in for a decoded matte file (no
+/// keyframes on `mask_shape`, so — like [`build_static_overlay_branch`]'s text/shape branches —
+/// one buffer pushed once is enough) — `alphacombine`'s `alpha` pad accepts `GRAY8` directly, so
+/// unlike the matte's own decode branch, no `videoconvert`/`capsfilter` stage is needed on this
+/// side at all.
+fn build_mask_shape_stage(
+    pipeline: &gst::Pipeline,
+    chain_tail: &gst::Element,
+    mask_gray: Vec<u8>,
+    (width, height): (u32, u32),
+) -> Result<gst::Element, PreviewError> {
+    let mask_caps = gst::Caps::builder("video/x-raw")
+        .field("format", "GRAY8")
+        .field("width", width as i32)
+        .field("height", height as i32)
+        // Same "still image" sentinel `build_static_overlay_branch` needs ahead of
+        // `imagefreeze` — its sink pad's caps template requires a `framerate` field.
+        .field("framerate", gst::Fraction::new(0, 1))
+        // Same explicit, identical colorimetry `build_composite_branch`'s matte stage needs
+        // on both its GRAY8 and I420 caps — `alphacombine` refuses to combine two inputs with
+        // mismatched color range otherwise ("Color range mismatch").
+        .field("colorimetry", "bt601")
+        .build();
+    let mask_appsrc = gst_app::AppSrc::builder()
+        .caps(&mask_caps)
+        .format(gst::Format::Time)
+        .build();
+    let mut buffer = gst::Buffer::with_size(mask_gray.len()).map_err(PreviewError::Compositing)?;
+    {
+        let buffer_mut = buffer.get_mut().expect("freshly created, uniquely owned");
+        buffer_mut.set_pts(gst::ClockTime::ZERO);
+        let mut map = buffer_mut
+            .map_writable()
+            .map_err(|_| PreviewError::PushBuffer(gst::FlowError::Error))?;
+        map.copy_from_slice(&mask_gray);
+    }
+    mask_appsrc
+        .push_buffer(buffer)
+        .map_err(PreviewError::PushBuffer)?;
+    mask_appsrc
+        .end_of_stream()
+        .map_err(PreviewError::PushBuffer)?;
+    let mask_appsrc = mask_appsrc.upcast::<gst::Element>();
+    let mask_imagefreeze = gst::ElementFactory::make("imagefreeze")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+
+    let sink_caps = gst::ElementFactory::make("capsfilter")
+        .property(
+            "caps",
+            gst::Caps::builder("video/x-raw")
+                .field("format", "I420")
+                .field("width", width as i32)
+                .field("height", height as i32)
+                .field("colorimetry", "bt601")
+                .build(),
+        )
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    let alphacombine = gst::ElementFactory::make("alphacombine")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    let post_convert = gst::ElementFactory::make("videoconvert")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+
+    pipeline
+        .add_many([
+            &mask_appsrc,
+            &mask_imagefreeze,
+            &sink_caps,
+            &alphacombine,
+            &post_convert,
+        ])
+        .map_err(PreviewError::Compositing)?;
+    mask_appsrc
+        .link(&mask_imagefreeze)
+        .map_err(PreviewError::Compositing)?;
+
+    chain_tail
+        .link(&sink_caps)
+        .map_err(PreviewError::Compositing)?;
+    let color_src = sink_caps
+        .static_pad("src")
+        .expect("capsfilter always has a src pad");
+    let color_sink = alphacombine
+        .static_pad("sink")
+        .expect("alphacombine always has a sink pad");
+    color_src.link(&color_sink).map_err(PreviewError::PadLink)?;
+
+    let alpha_src = mask_imagefreeze
+        .static_pad("src")
+        .expect("imagefreeze always has a src pad");
+    let alpha_sink = alphacombine
+        .static_pad("alpha")
+        .expect("alphacombine always has an alpha sink pad");
+    alpha_src.link(&alpha_sink).map_err(PreviewError::PadLink)?;
+
+    alphacombine
+        .link(&post_convert)
+        .map_err(PreviewError::Compositing)?;
+
+    Ok(post_convert)
+}
+
 /// One input (background or overlay) feeding [`Preview::open_composited`]'s `compositor`.
 struct CompositeBranch<'a> {
     path: &'a Path,
@@ -732,14 +841,6 @@ fn build_composite_branch(
             .map_err(PreviewError::CreateElement)?,
     );
 
-    // Background-removal matte — mirrors export's `ClipSegment::mask_video_path`/`alphamerge`
-    // stage: only meaningful on an overlay branch, only when a matte was actually generated for
-    // this clip. `alphacombine` (gst-plugins-bad's `codecalpha` plugin, confirmed present via
-    // `gst-inspect-1.0` on this dev machine) takes the `sink` pad's own video and the `alpha`
-    // pad's luma plane, producing an alpha-capable output (`A420`/etc.) — the GStreamer
-    // counterpart to avfilter's `alphamerge`. Both inputs are forced to the branch's own
-    // resolution so their planes line up regardless of the matte's own encoded size (see
-    // `crate::background_removal`'s doc comment on how it's generated).
     // At this point `chain` already holds this branch's complete pre-matte effects sequence
     // (layer scale, filter bin, chroma key, trailing videoconvert) — every element in it is
     // added/linked together, exactly once, by the single `add_many`/`link_many` call right
@@ -765,6 +866,30 @@ fn build_composite_branch(
         .last()
         .expect("chain always has at least the trailing videoconvert")
         .clone();
+
+    // Layer mask (ClipInstance::mask_shape) — same overlay-only gate as chroma key/matte (a
+    // single/background track's alpha never survives to the compositor regardless), applied via
+    // `alphacombine` exactly like the matte block below, just with a static rasterized GRAY8
+    // buffer (crate::overlay_render::render_mask_shape_gray8) standing in for a decoded matte
+    // file — mask_shape has no keyframes, so one buffer suffices, same as
+    // build_static_overlay_branch's text/shape branches. Runs *before* the matte block so a
+    // clip with both set gets the same "matte replaces, doesn't combine" precedence export's own
+    // `bridge.h` documents for `mask_video_path` (the matte's own alphacombine below forces its
+    // own I420 input from whatever this stage's alpha-carrying output negotiates down to,
+    // discarding this mask's alpha in the process).
+    let chain_tail = if branch.is_overlay && branch.clip.is_some_and(|c| c.is_masked()) {
+        let clip = branch.clip.expect("checked by is_some_and above");
+        let (width, height) = branch.resolution.unwrap_or(canvas);
+        let mask_gray = crate::overlay_render::render_mask_shape_gray8(
+            clip.mask_shape,
+            clip.mask_corner_radius,
+            width,
+            height,
+        );
+        build_mask_shape_stage(pipeline, &chain_tail, mask_gray, (width, height))?
+    } else {
+        chain_tail
+    };
 
     // Background-removal matte — mirrors export's `ClipSegment::mask_video_path`/`alphamerge`
     // stage: only meaningful on an overlay branch, only when a matte was actually generated for

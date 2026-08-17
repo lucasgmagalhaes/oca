@@ -42,7 +42,7 @@
 use fontdue::layout::{CoordinateSystem, GlyphRasterConfig, Layout, LayoutSettings, TextStyle};
 
 use crate::shape_render::point_in_polygon;
-use crate::timeline::{ShapeClip, ShapeKind, TextClip};
+use crate::timeline::{MaskShape, ShapeClip, ShapeKind, TextClip};
 
 /// Writes `[r, g, b, a]` at `(x, y)` into a `width`×`height` RGBA buffer, `a` already the final
 /// (straight, not premultiplied) alpha to store — glyphs/shape pixels don't overlap in practice
@@ -180,6 +180,58 @@ pub fn render_shape_clip_rgba(clip: &ShapeClip, canvas_width: u32, canvas_height
                     y as i64,
                     [r, g, b, a],
                 );
+            }
+        }
+    }
+    buf
+}
+
+/// Renders a [`crate::timeline::ClipInstance::mask_shape`] into a `canvas_width`×`canvas_height`
+/// single-channel `GRAY8` buffer — `255` inside the shape (visible), `0` outside (masked out) —
+/// for [`crate::preview::build_composite_branch`]'s `alphacombine` mask stage, the preview-side
+/// counterpart to export's `geq`-based alpha-clipping stage
+/// (`ClipInstance::video_filter_chain`'s `mask_shape` block). Mirrors that block's math
+/// term-for-term: [`MaskShape::Circle`] is a plain circle inscribed in `min(width, height)`;
+/// [`MaskShape::RoundedRect`] is a rounded-rect signed-distance test, `corner_radius` a
+/// `0.0..=1.0` fraction of `min(width, height)`. Static — no keyframes on `mask_shape`, so one
+/// buffer rendered once (like [`render_text_clip_rgba`]/[`render_shape_clip_rgba`]) covers the
+/// clip's whole visible span. Returns an all-zero (fully masked) buffer for
+/// [`MaskShape::None`] — callers gate on [`crate::timeline::ClipInstance::is_masked`]
+/// before calling this at all, so that case shouldn't be reached in practice.
+pub fn render_mask_shape_gray8(
+    mask_shape: MaskShape,
+    corner_radius: f32,
+    canvas_width: u32,
+    canvas_height: u32,
+) -> Vec<u8> {
+    let mut buf = vec![0u8; canvas_width as usize * canvas_height as usize];
+    if mask_shape == MaskShape::None {
+        return buf;
+    }
+
+    let w = canvas_width as f64;
+    let h = canvas_height as f64;
+    let cx = w / 2.0;
+    let cy = h / 2.0;
+    let minwh = w.min(h);
+
+    for y in 0..canvas_height {
+        for x in 0..canvas_width {
+            let dx = x as f64 + 0.5 - cx;
+            let dy = y as f64 + 0.5 - cy;
+            let inside = match mask_shape {
+                MaskShape::None => false,
+                MaskShape::Circle => dx * dx + dy * dy <= (minwh / 2.0).powi(2),
+                MaskShape::RoundedRect => {
+                    let radius = (corner_radius.clamp(0.0, 1.0) as f64 * minwh).min(minwh / 2.0);
+                    let outer_x = (dx.abs() - (w / 2.0 - radius)).max(0.0);
+                    let outer_y = (dy.abs() - (h / 2.0 - radius)).max(0.0);
+                    (outer_x * outer_x + outer_y * outer_y).sqrt() - radius <= 0.0
+                }
+            };
+            if inside {
+                let idx = (y * canvas_width + x) as usize;
+                buf[idx] = 255;
             }
         }
     }

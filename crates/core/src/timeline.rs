@@ -322,8 +322,10 @@ pub struct ClipInstance {
     /// ([`ClipInstance::video_filter_chain`]'s `geq`-based alpha stage) but, like
     /// [`ClipInstance::chroma_key_enabled`], only has a visible effect on a clip placed on an
     /// **overlay track** — a single/background track's final `format=yuv420p` conform drops
-    /// the alpha plane it produces. No live preview effect yet. `#[serde(default)]` so older
-    /// saved projects load unmasked.
+    /// the alpha plane it produces. Also wired into preview
+    /// (`crate::preview::build_mask_shape_stage`'s `alphacombine` stage, fed a static
+    /// `crate::overlay_render::render_mask_shape_gray8` buffer instead of a decoded file), same
+    /// overlay-only gate. `#[serde(default)]` so older saved projects load unmasked.
     #[serde(default)]
     pub mask_shape: MaskShape,
     /// Corner radius for [`MaskShape::RoundedRect`], as a fraction (`0.0..=1.0`) of the block's
