@@ -602,6 +602,14 @@ pub struct App {
     /// clip, don't retry every frame" apart from "the playhead moved onto a different clip, try
     /// again".
     preview_clip_id: Option<u64>,
+    /// Clip ids of the overlay-track branches [`App::ensure_preview_loaded`] last opened a
+    /// composited pipeline for, in the same order [`avcore::preview::Preview::open_composited`]
+    /// was given them (and the same order [`App::seek_preview`]/[`App::pump_preview_frame`]
+    /// must pass offsets to [`avcore::preview::Preview::seek_composited`] in). Empty when the
+    /// playhead's background clip has no overlay-track clips over it — `preview` is then a
+    /// plain [`avcore::preview::Preview::open`] single-clip pipeline instead, same as before
+    /// composited preview existed.
+    preview_overlay_clip_ids: Vec<u64>,
     /// Uploaded from the latest [`avcore::preview::Preview::current_frame`] each frame the
     /// Editor screen is shown; `None` until the first frame decodes. Reset whenever
     /// [`App::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
@@ -955,6 +963,7 @@ impl App {
             active_renders: HashMap::new(),
             preview: None,
             preview_clip_id: None,
+            preview_overlay_clip_ids: Vec::new(),
             preview_texture: None,
             preview_playing: false,
             preview_frozen_since: None,

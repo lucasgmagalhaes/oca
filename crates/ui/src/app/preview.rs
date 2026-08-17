@@ -19,22 +19,11 @@ pub(crate) fn frozen_playhead(
 }
 
 impl App {
-    /// Id of the clip covering the active sequence's timeline playhead, if any. Cheaper than
-    /// [`App::current_preview_clip`] — no clones — used by [`App::ensure_preview_loaded`]
-    /// for the early-exit check.
-    pub(super) fn current_preview_clip_id(&self) -> Option<u64> {
-        let timeline = self.active_project().timeline();
-        let track = timeline
-            .tracks
-            .iter()
-            .find(|t| t.kind == TrackKind::Video)?;
-        Some(track.clip_at(timeline.playhead_secs)?.id)
-    }
-
     /// The clip covering the active sequence's timeline playhead, and the asset it plays from,
     /// if both resolve — `None` if the video track is missing/empty, nothing covers the
     /// playhead ([`avcore::timeline::Track::clip_at`]), or the clip's `asset_id` isn't in the
-    /// media library.
+    /// media library. Always the *first* video track (background/track 0) — see
+    /// [`App::current_preview_overlay_clips`] for the rest.
     fn current_preview_clip(&self) -> Option<(ClipInstance, MediaAsset)> {
         let project = self.active_project();
         let timeline = project.timeline();
@@ -50,6 +39,56 @@ impl App {
         Some((clip.clone(), asset.clone()))
     }
 
+    /// Every overlay-track (video track index 1+, in track order — matches
+    /// [`avcore::render::resolve_timeline_segments_multi`]'s "track index = z-order"
+    /// convention) clip covering the playhead, with the asset it plays from — a track with
+    /// nothing at the playhead, or whose clip's asset doesn't resolve, is just skipped rather
+    /// than aborting the whole list, same "degrade gracefully" shape
+    /// [`App::current_preview_clip`] already has for the background track.
+    fn current_preview_overlay_clips(&self) -> Vec<(ClipInstance, MediaAsset)> {
+        let project = self.active_project();
+        let timeline = project.timeline();
+        timeline
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Video)
+            .skip(1)
+            .filter_map(|t| {
+                let clip = t.clip_at(timeline.playhead_secs)?;
+                let asset = project
+                    .media_library
+                    .iter()
+                    .find(|a| a.id == clip.asset_id)?;
+                Some((clip.clone(), asset.clone()))
+            })
+            .collect()
+    }
+
+    /// The resolved source path (proxy preferred) for a clip/asset pair, or `None` if it
+    /// doesn't exist on disk — the same "don't spin up a pipeline for a file that's known to be
+    /// missing" check [`App::ensure_preview_loaded`] already applied to the background clip.
+    fn preview_source_path(asset: &MediaAsset) -> Option<std::path::PathBuf> {
+        let path = asset
+            .proxy_path
+            .clone()
+            .unwrap_or_else(|| asset.source_path.clone());
+        path.exists().then_some(path)
+    }
+
+    /// This clip's own timeline-to-source offset at `playhead_secs`, honoring `frozen` (always
+    /// the held anchor frame) and `speed_factor` — the same math
+    /// [`App::ensure_preview_loaded`]/[`App::seek_preview`] already apply to the background
+    /// clip, pulled out so overlay branches can each compute their own independently (every
+    /// branch has its own trim points and may have its own `frozen`/`speed_factor`).
+    fn clip_seek_offset(clip: &ClipInstance, playhead_secs: f64) -> f64 {
+        if clip.frozen {
+            clip.source_in_secs
+        } else {
+            let speed = clip.speed_factor.max(0.01) as f64;
+            clip.source_in_secs + (playhead_secs - clip.start_secs) * speed
+        }
+    }
+
     /// Reopens the preview pipeline whenever the clip covering the timeline playhead
     /// ([`App::current_preview_clip`]) differs from the one last opened for
     /// (`preview_clip_id`) — called once per frame from the Editor's preview panel, right
@@ -63,59 +102,109 @@ impl App {
     /// (`preview_playing` was already `true`) so crossing a cut doesn't pause playback, just
     /// hitches while the new pipeline opens.
     pub fn ensure_preview_loaded(&mut self) {
-        let current_clip_id = self.current_preview_clip_id();
-        if current_clip_id == self.preview_clip_id {
+        let current = self.current_preview_clip();
+        let overlays = current
+            .is_some()
+            .then(|| self.current_preview_overlay_clips())
+            .unwrap_or_default();
+        let overlay_ids: Vec<u64> = overlays.iter().map(|(c, _)| c.id).collect();
+        let current_clip_id = current.as_ref().map(|(c, _)| c.id);
+        if current_clip_id == self.preview_clip_id && overlay_ids == self.preview_overlay_clip_ids {
             return;
         }
-        let current = self.current_preview_clip();
         self.preview = None;
         self.preview_texture = None;
-        // Not `current_clip_id` — that only checks the track/playhead, not whether the clip's
-        // asset actually resolves in the media library. `preview_clip_present()` (and the
-        // Editor's "preview unavailable" vs. plain placeholder choice) needs to tell "a clip is
-        // here but its pipeline failed to open" apart from "there's nothing to preview at all",
-        // and an unresolvable asset is the latter, not the former.
-        self.preview_clip_id = current.as_ref().map(|(clip, _)| clip.id);
+        // Not just the background id — `preview_clip_present()` (and the Editor's "preview
+        // unavailable" vs. plain placeholder choice) needs to tell "a clip is here but its
+        // pipeline failed to open" apart from "there's nothing to preview at all", and an
+        // unresolvable asset is the latter, not the former.
+        self.preview_clip_id = current_clip_id;
+        self.preview_overlay_clip_ids = overlay_ids;
 
         let Some((clip, asset)) = current else {
             self.preview_playing = false;
             return;
         };
-        let path = asset
-            .proxy_path
-            .clone()
-            .unwrap_or_else(|| asset.source_path.clone());
-        // A moved/deleted source file would otherwise still spin up a whole GStreamer pipeline
-        // just to watch it fail to open a file that isn't there.
-        if !path.exists() {
+        let Some(path) = Self::preview_source_path(&asset) else {
+            // A moved/deleted source file would otherwise still spin up a whole GStreamer
+            // pipeline just to watch it fail to open a file that isn't there.
             return;
-        }
+        };
+        let playhead = self.active_project().timeline().playhead_secs;
 
-        match avcore::preview::Preview::open(&path, Some(&clip)) {
+        let opened = if overlays.is_empty() {
+            avcore::preview::Preview::open(&path, Some(&clip))
+        } else {
+            let overlay_paths: Vec<Option<std::path::PathBuf>> = overlays
+                .iter()
+                .map(|(_, a)| Self::preview_source_path(a))
+                .collect();
+            // Every overlay clip needs a resolvable path too — falling back to the plain
+            // single-clip pipeline (background only) rather than silently dropping just the
+            // unresolvable overlay would misrepresent which clips are actually compositing.
+            if overlay_paths.iter().any(Option::is_none) {
+                avcore::preview::Preview::open(&path, Some(&clip))
+            } else {
+                let overlay_refs: Vec<(&std::path::Path, &ClipInstance)> = overlay_paths
+                    .iter()
+                    .zip(&overlays)
+                    .map(|(p, (c, _))| (p.as_deref().expect("checked above"), c))
+                    .collect();
+                avcore::preview::Preview::open_composited(&path, Some(&clip), &overlay_refs)
+            }
+        };
+
+        match opened {
             Ok(preview) => {
-                debug!(path = %path.display(), clip_id = clip.id, "preview pipeline opened");
-                let playhead = self.active_project().timeline().playhead_secs;
-                if clip.frozen {
-                    // Always show the held anchor frame (the frame at source_in_secs), never
-                    // whatever offset the playhead happens to be at within this clip — matches
-                    // export holding that same frame for the block's whole trimmed duration.
-                    if let Err(e) = preview.seek(clip.source_in_secs) {
-                        warn!(error = %e, "failed to seek newly opened frozen preview");
-                    }
-                    self.preview_frozen_since = self
-                        .preview_playing
-                        .then_some((std::time::Instant::now(), playhead));
-                } else {
-                    let speed = clip.speed_factor.max(0.01) as f64;
-                    let offset = clip.source_in_secs + (playhead - clip.start_secs) * speed;
-                    if let Err(e) = preview.seek_with_rate(offset, speed) {
-                        warn!(error = %e, "failed to seek newly opened preview");
-                    }
-                    self.preview_frozen_since = None;
-                    if self.preview_playing {
-                        if let Err(e) = preview.play() {
-                            warn!(error = %e, "failed to resume preview playback across a cut");
+                debug!(
+                    path = %path.display(),
+                    clip_id = clip.id,
+                    overlay_count = overlays.len(),
+                    "preview pipeline opened"
+                );
+                if overlays.is_empty() {
+                    if clip.frozen {
+                        // Always show the held anchor frame (the frame at source_in_secs),
+                        // never whatever offset the playhead happens to be at within this clip
+                        // — matches export holding that same frame for the block's whole
+                        // trimmed duration.
+                        if let Err(e) = preview.seek(clip.source_in_secs) {
+                            warn!(error = %e, "failed to seek newly opened frozen preview");
                         }
+                        self.preview_frozen_since = self
+                            .preview_playing
+                            .then_some((std::time::Instant::now(), playhead));
+                    } else {
+                        let speed = clip.speed_factor.max(0.01) as f64;
+                        let offset = Self::clip_seek_offset(&clip, playhead);
+                        if let Err(e) = preview.seek_with_rate(offset, speed) {
+                            warn!(error = %e, "failed to seek newly opened preview");
+                        }
+                        self.preview_frozen_since = None;
+                    }
+                } else {
+                    let mut offsets = vec![Self::clip_seek_offset(&clip, playhead)];
+                    offsets.extend(
+                        overlays
+                            .iter()
+                            .map(|(c, _)| Self::clip_seek_offset(c, playhead)),
+                    );
+                    if let Err(e) = preview.seek_composited(&offsets) {
+                        warn!(error = %e, "failed to seek newly opened composited preview");
+                    }
+                    // Composited playback doesn't honor per-branch speed_factor yet (see
+                    // Preview::open_composited's doc comment) — a frozen background clip still
+                    // gets the same wall-clock-driven playhead advance as the single-clip path,
+                    // uniformly across whatever overlays are compositing on top of it.
+                    self.preview_frozen_since = clip
+                        .frozen
+                        .then(|| self.preview_playing)
+                        .unwrap_or(false)
+                        .then_some((std::time::Instant::now(), playhead));
+                }
+                if self.preview_playing && !clip.frozen {
+                    if let Err(e) = preview.play() {
+                        warn!(error = %e, "failed to resume preview playback across a cut");
                     }
                 }
                 self.preview = Some(preview);
@@ -205,12 +294,45 @@ impl App {
             .filter(|(loaded_id, (clip, _))| *loaded_id == clip.id)
             .map(|(_, (clip, _))| clip);
 
-        match (&self.preview, same_clip) {
-            (Some(preview), Some(clip)) => {
+        // For a composited pipeline, the overlay set covering the playhead must also still
+        // match exactly what was opened for — a plain background-id match isn't enough once
+        // there are overlay branches, since the fast path below reuses the already-open
+        // pipeline's branches as-is rather than rebuilding them.
+        let overlays_still_match = self.preview_overlay_clip_ids.is_empty() || {
+            let timeline = self.active_project().timeline();
+            let overlay_ids: Vec<u64> = timeline
+                .tracks
+                .iter()
+                .filter(|t| t.kind == TrackKind::Video)
+                .skip(1)
+                .filter_map(|t| t.clip_at(position_secs).map(|c| c.id))
+                .collect();
+            overlay_ids == self.preview_overlay_clip_ids
+        };
+
+        match (&self.preview, same_clip.filter(|_| overlays_still_match)) {
+            (Some(preview), Some(clip)) if self.preview_overlay_clip_ids.is_empty() => {
                 let speed = clip.speed_factor.max(0.01) as f64;
-                let offset = clip.source_in_secs + (position_secs - clip.start_secs) * speed;
+                let offset = Self::clip_seek_offset(&clip, position_secs);
                 if let Err(e) = preview.seek_with_rate(offset, speed) {
                     warn!(error = %e, "failed to seek preview");
+                }
+                self.active_project_mut().timeline_mut().playhead_secs = position_secs;
+            }
+            (Some(preview), Some(clip)) => {
+                let timeline = self.active_project().timeline();
+                let mut offsets = vec![Self::clip_seek_offset(&clip, position_secs)];
+                offsets.extend(
+                    timeline
+                        .tracks
+                        .iter()
+                        .filter(|t| t.kind == TrackKind::Video)
+                        .skip(1)
+                        .filter_map(|t| t.clip_at(position_secs))
+                        .map(|c| Self::clip_seek_offset(c, position_secs)),
+                );
+                if let Err(e) = preview.seek_composited(&offsets) {
+                    warn!(error = %e, "failed to seek composited preview");
                 }
                 self.active_project_mut().timeline_mut().playhead_secs = position_secs;
             }
