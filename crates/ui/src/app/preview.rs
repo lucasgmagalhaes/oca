@@ -48,6 +48,16 @@ impl App {
         self.preview_shape_clip_ids.clear();
     }
 
+    /// Applies the persisted hardware-decoding preference and drops any currently-open
+    /// pipeline so the next Editor paint rebuilds it with the new decoder policy.
+    pub fn set_preview_hardware_decode(&mut self, enabled: bool) {
+        if self.prefs.preview_hardware_decode == enabled {
+            return;
+        }
+        self.prefs.preview_hardware_decode = enabled;
+        self.invalidate_preview_rendering();
+    }
+
     /// The clip covering the active sequence's timeline playhead, and the asset it plays from,
     /// if both resolve — `None` if the video track is missing/empty, nothing covers the
     /// playhead ([`avcore::timeline::Track::clip_at`]), or the clip's `asset_id` isn't in the
@@ -337,16 +347,21 @@ impl App {
                 .map(|c| (c, playhead - c.start_secs))
                 .collect();
             let shape_refs: Vec<&ShapeClip> = shape_clips.iter().collect();
-            avcore::preview::Preview::open_composited(
+            avcore::preview::Preview::open_composited_with_hardware_decode(
                 &path,
                 Some(&clip),
                 &overlay_refs,
                 &audio_refs,
                 &text_refs,
                 &shape_refs,
+                self.prefs.preview_hardware_decode,
             )
         } else {
-            avcore::preview::Preview::open(&path, Some(&clip))
+            avcore::preview::Preview::open_with_hardware_decode(
+                &path,
+                Some(&clip),
+                self.prefs.preview_hardware_decode,
+            )
         };
 
         match opened {
@@ -355,6 +370,7 @@ impl App {
                     path = %path.display(),
                     clip_id = clip.id,
                     overlay_count = overlays.len(),
+                    hardware_decode = self.prefs.preview_hardware_decode,
                     "preview pipeline opened"
                 );
                 if !composited {

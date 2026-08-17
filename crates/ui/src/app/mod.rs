@@ -241,6 +241,11 @@ pub struct PrefsState {
     /// for assets already imported; only newly imported files pick up the new setting.
     #[serde(default)]
     pub preview_quality: avcore::PreviewQuality,
+    /// Prefer GStreamer's hardware video decoders for Editor preview and scrubbing. Hardware
+    /// is enabled by default when available and falls back to software automatically; turning
+    /// this off forces software decoding for every preview pipeline.
+    #[serde(default = "default_preview_hardware_decode")]
+    pub preview_hardware_decode: bool,
     /// Whether local runtime telemetry (`request.md`'s Fase 7 "Telemetria de runtime" — import/
     /// export duration, sampled preview frame time, error events) is recorded to
     /// `telemetry.jsonl`. Stays on-device either way — this only controls whether it's
@@ -286,6 +291,10 @@ fn default_telemetry_enabled() -> bool {
     true
 }
 
+fn default_preview_hardware_decode() -> bool {
+    true
+}
+
 fn default_lib_panel_width() -> f32 {
     220.0
 }
@@ -317,6 +326,7 @@ impl Default for PrefsState {
             saved_layer_templates: Vec::new(),
             sound_library_path: String::new(),
             preview_quality: avcore::PreviewQuality::default(),
+            preview_hardware_decode: true,
             telemetry_enabled: true,
             lib_panel_width: default_lib_panel_width(),
             props_panel_width: default_props_panel_width(),

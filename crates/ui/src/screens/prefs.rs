@@ -139,6 +139,19 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 }
             });
             ui.add_space(10.0);
+            let mut hardware_decode = app.prefs.preview_hardware_decode;
+            if ui
+                .checkbox(&mut hardware_decode, Text::PrefsHardwareDecode.tr(locale))
+                .changed()
+            {
+                app.set_preview_hardware_decode(hardware_decode);
+            }
+            ui.label(
+                RichText::new(Text::PrefsHardwareDecodeHint.tr(locale))
+                    .size(11.0)
+                    .color(theme::TEXT_MUTED),
+            );
+            ui.add_space(10.0);
             ui.label(Text::PrefsOutputFolder.tr(locale));
             ui.horizontal(|ui| {
                 ui.add(

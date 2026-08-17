@@ -1200,6 +1200,39 @@ fn frozen_playhead_clamps_to_the_clip_end() {
 }
 
 #[test]
+fn preview_hardware_decode_is_enabled_by_default() {
+    assert!(PrefsState::default().preview_hardware_decode);
+}
+
+#[test]
+fn prefs_without_preview_hardware_decode_migrate_to_enabled() {
+    let mut legacy = serde_json::to_value(PrefsState::default()).unwrap();
+    legacy
+        .as_object_mut()
+        .unwrap()
+        .remove("preview_hardware_decode");
+
+    let migrated: PrefsState = serde_json::from_value(legacy).unwrap();
+
+    assert!(migrated.preview_hardware_decode);
+}
+
+#[test]
+fn changing_preview_hardware_decode_invalidates_preview_state() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.preview_clip_id = Some(7);
+    app.preview_overlay_clip_ids = vec![8];
+    app.preview_audio_clip_ids = vec![9];
+
+    app.set_preview_hardware_decode(false);
+
+    assert!(!app.prefs.preview_hardware_decode);
+    assert_eq!(app.preview_clip_id, None);
+    assert!(app.preview_overlay_clip_ids.is_empty());
+    assert!(app.preview_audio_clip_ids.is_empty());
+}
+
+#[test]
 fn ensure_preview_loaded_is_a_no_op_with_no_video_track() {
     let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 

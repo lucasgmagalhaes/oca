@@ -348,6 +348,8 @@ text_catalog! {
     PreviewQualityLow: pt_br = "360p", en = "360p";
     PreviewQualityMedium: pt_br = "480p", en = "480p";
     PreviewQualityHigh: pt_br = "720p", en = "720p";
+    PrefsHardwareDecode: pt_br = "Aceleração de hardware no preview", en = "Hardware-accelerated preview decoding";
+    PrefsHardwareDecodeHint: pt_br = "Usa VideoToolbox, NVDEC, Quick Sync ou VAAPI quando disponível e volta para CPU automaticamente.", en = "Uses VideoToolbox, NVDEC, Quick Sync, or VAAPI when available and falls back to CPU automatically.";
     Browse: pt_br = "Procurar", en = "Browse";
     PrefsProject: pt_br = "Projeto", en = "Project";
     PrefsAutosaveInterval: pt_br = "Intervalo de autosave", en = "Autosave interval";
