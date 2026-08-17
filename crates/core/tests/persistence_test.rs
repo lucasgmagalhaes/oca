@@ -139,6 +139,7 @@ fn fixture_project() -> Project {
                     visible: true,
                 }],
             },
+            export_settings: Default::default(),
         }],
         active_sequence: 0,
         file_path: None,
@@ -160,6 +161,7 @@ fn empty_project() -> Project {
                 tracks: vec![],
                 playhead_secs: 0.0,
             },
+            export_settings: Default::default(),
         }],
         active_sequence: 0,
         file_path: None,
@@ -186,6 +188,22 @@ fn round_trips_a_project_with_a_saved_panel_layout() {
     let bytes = to_ocproj_bytes(&original).unwrap();
     let restored = from_ocproj_bytes(&bytes).unwrap();
     assert_eq!(original, restored);
+}
+
+#[test]
+fn round_trips_per_sequence_export_settings() {
+    let mut original = fixture_project();
+    original.sequences[0].export_settings.aspect_ratio = avcore::ExportAspectRatio::Portrait;
+    original.sequences[0].export_settings.target_lufs = -23.0;
+
+    let bytes = to_ocproj_bytes(&original).unwrap();
+    let restored: Project = from_ocproj_bytes(&bytes).unwrap();
+
+    assert_eq!(
+        restored.sequences[0].export_settings.aspect_ratio,
+        avcore::ExportAspectRatio::Portrait
+    );
+    assert_eq!(restored.sequences[0].export_settings.target_lufs, -23.0);
 }
 
 /// Proves struct-map mode's field-level defaulting actually works end to end — not just that
@@ -274,6 +292,42 @@ fn projects_saved_before_panel_layout_load_with_no_layout() {
     let restored: Project = from_ocproj_bytes(&edited_bytes).unwrap();
 
     assert_eq!(restored.panel_layout, None);
+}
+
+#[test]
+fn projects_saved_before_sequence_export_settings_load_with_defaults() {
+    let original = fixture_project();
+    let bytes = to_ocproj_bytes(&original).unwrap();
+
+    let header_len = 5;
+    let mut msgpack = Vec::new();
+    std::io::Read::read_to_end(
+        &mut flate2::read::GzDecoder::new(&bytes[header_len..]),
+        &mut msgpack,
+    )
+    .unwrap();
+
+    let mut value = rmpv::decode::read_value(&mut &msgpack[..]).unwrap();
+    for sequence in as_array_field_mut(&mut value, "sequences") {
+        if let rmpv::Value::Map(pairs) = sequence {
+            pairs.retain(|(key, _)| key.as_str() != Some("export_settings"));
+        }
+    }
+
+    let mut edited_msgpack = Vec::new();
+    rmpv::encode::write_value(&mut edited_msgpack, &value).unwrap();
+    let mut edited_bytes = Vec::new();
+    edited_bytes.extend_from_slice(&bytes[..header_len]);
+    let mut encoder = flate2::write::GzEncoder::new(&mut edited_bytes, flate2::Compression::fast());
+    std::io::Write::write_all(&mut encoder, &edited_msgpack).unwrap();
+    encoder.finish().unwrap();
+
+    let restored: Project = from_ocproj_bytes(&edited_bytes).unwrap();
+
+    assert_eq!(
+        restored.sequences[0].export_settings,
+        avcore::SequenceExportSettings::default()
+    );
 }
 
 #[test]

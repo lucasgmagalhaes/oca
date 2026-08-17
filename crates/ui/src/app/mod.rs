@@ -915,10 +915,6 @@ pub struct App {
     /// `true` when a crash sentinel from a previous session was found at startup — consumed
     /// by [`App::ui`] to show a one-time toast, then cleared.
     crash_detected: bool,
-    /// Target aspect ratio selected in the export queue's "Add Export" row. Defaults to
-    /// `Original` (source dimensions). Persists between export invocations so the user doesn't
-    /// have to re-select it every time.
-    pub export_aspect_ratio: avcore::ExportAspectRatio,
     /// When `Some((index, name_buf, summary_buf))`, a project-settings modal is shown for
     /// `projects[index]` with editable name and summary fields. Committed on confirm, discarded
     /// on Escape/cancel.
@@ -1105,7 +1101,6 @@ impl App {
             last_autosave_instant: None,
             autosave_restore_pending: None,
             crash_detected,
-            export_aspect_ratio: avcore::ExportAspectRatio::default(),
             pending_export_conflict: None,
             renaming_project: None,
             renaming_sequence: None,
@@ -1314,6 +1309,10 @@ impl App {
     /// Builds an empty project with a fresh id and opens it — what "Novo projeto" does.
     pub fn create_new_project(&mut self, name: String) {
         let id = self.projects.iter().map(|p| p.id).max().unwrap_or(0) + 1;
+        let target_lufs = LUFS_PROFILES
+            .get(self.prefs.lufs_profile)
+            .map(|(_, target_lufs)| *target_lufs)
+            .unwrap_or_else(|| avcore::SequenceExportSettings::default().target_lufs);
         self.add_and_open_project(Project {
             id,
             name,
@@ -1326,6 +1325,10 @@ impl App {
                 timeline: avcore::Timeline {
                     tracks: Vec::new(),
                     playhead_secs: 0.0,
+                },
+                export_settings: avcore::SequenceExportSettings {
+                    aspect_ratio: avcore::ExportAspectRatio::Original,
+                    target_lufs,
                 },
             }],
             active_sequence: 0,
@@ -1358,6 +1361,31 @@ impl App {
             // See add_sequence's comment on why a cross-sequence selection isn't safe to keep.
             self.selected_clip_id = None;
         }
+    }
+
+    /// Returns the active tab's persisted export defaults. Keeping this as a copied value
+    /// avoids extending a project borrow through egui closures that may mutate the same app.
+    pub fn active_sequence_export_settings(&self) -> avcore::SequenceExportSettings {
+        self.active_project().sequences[self.active_project().active_sequence].export_settings
+    }
+
+    /// Updates the active tab's target aspect ratio and marks the project dirty for autosave.
+    pub fn set_active_sequence_export_aspect_ratio(
+        &mut self,
+        aspect_ratio: avcore::ExportAspectRatio,
+    ) {
+        let active_sequence = self.active_project().active_sequence;
+        self.active_project_mut().sequences[active_sequence]
+            .export_settings
+            .aspect_ratio = aspect_ratio;
+    }
+
+    /// Updates the active tab's normalization target and marks the project dirty for autosave.
+    pub fn set_active_sequence_target_lufs(&mut self, target_lufs: f32) {
+        let active_sequence = self.active_project().active_sequence;
+        self.active_project_mut().sequences[active_sequence]
+            .export_settings
+            .target_lufs = target_lufs;
     }
 
     /// Builds the snapshot [`App::save_prefs`]/[`App::save_prefs_sync`] persist — clones

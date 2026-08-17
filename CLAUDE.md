@@ -12,7 +12,8 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
 
 - **Fase 1-3 — done.** probe/export/loudness/proxy via avbridge FFI; GStreamer preview
   pipeline; full timeline editing (select/split/trim/drag/copy-paste/context menu/composite
-  blocks/multi-sequence tabs/resizable panels/filmstrip/waveforms); `.ocproj` save/load;
+  blocks/multi-sequence tabs with per-tab aspect-ratio/LUFS export defaults, resizable panels,
+  filmstrip/waveforms); `.ocproj` save/load;
   background import/export queue. The automatic export audio chain also runs `afftdn` noise
   reduction ahead of `loudnorm`/`alimiter` (`request.md`'s "redução de ruído... aplicada
   automaticamente antes da exportação", a CapCut-inspired addition beyond the original phased

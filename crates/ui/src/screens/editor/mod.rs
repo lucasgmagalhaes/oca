@@ -742,8 +742,8 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
         });
 }
 
-/// Draws the selected clip's video inside a canvas-space box sized to `app.export_aspect_ratio`
-/// (the same target dimensions export will actually use, via
+/// Draws the selected clip's video inside a canvas-space box sized to the active sequence's
+/// export aspect ratio (the same target dimensions export will actually use, via
 /// [`avcore::ExportAspectRatio::dims_or`]) and, when its position isn't already animated
 /// (`position_keyframes.len() <= 1`, the "static transform" case — see `request.md`'s Fase 4
 /// "Transformação de camadas" spec), lets the user drag it to set a single position keyframe.
@@ -769,7 +769,8 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
     let tex_aspect = tex_size.x / tex_size.y;
 
     let (canvas_w, canvas_h) = app
-        .export_aspect_ratio
+        .active_sequence_export_settings()
+        .aspect_ratio
         .dims_or((tex_size.x as u32, tex_size.y as u32));
     let canvas_aspect = canvas_w as f32 / canvas_h.max(1) as f32;
 

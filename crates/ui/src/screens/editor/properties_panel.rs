@@ -89,7 +89,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                 ui.add_space(6.0);
                 components::section_label(ui, Text::OnExport.tr(locale));
                 ui.horizontal_wrapped(|ui| {
-                    let (_, target) = crate::app::LUFS_PROFILES[app.prefs.lufs_profile];
+                    let target = app.active_sequence_export_settings().target_lufs;
                     components::tag_accent(
                         ui,
                         &format!("{} → {target:.0} LUFS", Text::NormalizeTo.tr(locale)),

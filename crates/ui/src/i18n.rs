@@ -374,6 +374,8 @@ text_catalog! {
     AutosaveRestore: pt_br = "Restaurar autosave", en = "Restore autosave";
     AutosaveDiscard: pt_br = "Descartar", en = "Discard";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
+    ExportLoudnessLabel: pt_br = "Loudness:", en = "Loudness:";
+    ExportLoudnessCustom: pt_br = "{value} LUFS (personalizado)", en = "{value} LUFS (custom)";
     ExportSizeEstimate: pt_br = "~{size} estimado", en = "~{size} estimated";
     HomeCtxRename: pt_br = "Configurações do projeto...", en = "Project settings...";
     SequenceTabCtxRename: pt_br = "Renomear aba...", en = "Rename tab...";

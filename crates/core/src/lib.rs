@@ -59,7 +59,7 @@ pub use avbridge::{
     AudioSegment, Canvas, ClipSegment, GpuEncoderPreference, ShapeSegment, TextSegment,
 };
 pub use background_removal::{encode_matte_video, segment_person, MatteEncodeError, SegmentError};
-pub use export::{ExportJob, ExportJobStatus};
+pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus};
 pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
@@ -77,13 +77,13 @@ pub use persistence::{
 };
 pub use preview::{Preview, PreviewError};
 pub use probe::{probe_media, ProbeError, ProbedMedia};
-pub use project::{PanelLayout, Project, Recency, Sequence};
+pub use project::{PanelLayout, Project, Recency, Sequence, SequenceExportSettings};
 pub use proxy::{ensure_proxy, PreviewQuality, ProxyError};
 pub use render::{
     apply_export_aspect_ratio, render_export, render_export_job, render_export_job_multi,
     render_export_job_multi_with_audio, render_timeline_export, resolve_audio_segments,
     resolve_shape_segments, resolve_text_segments, resolve_timeline_segments,
-    resolve_timeline_segments_multi, ExportAspectRatio, RenderError, RenderOutcome,
+    resolve_timeline_segments_multi, RenderError, RenderOutcome,
 };
 pub use shape_render::{build_shape_filter_desc, point_in_polygon, ShapeRenderInput};
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};

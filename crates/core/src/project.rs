@@ -17,6 +17,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::export::ExportAspectRatio;
 use crate::media::MediaAsset;
 use crate::timeline::Timeline;
 
@@ -29,15 +30,43 @@ pub enum Recency {
     DaysAgo(u32),
 }
 
-/// One editable cut within a project — its own timeline, independently zoomable/playable and
-/// shown as its own tab in the Editor (per `request.md`'s Fase 3 "abas de projeto" spec, e.g.
-/// one sequence for trimmed highlights, another for the full unedited recording). Every
-/// project has at least one.
+/// One editable cut within a project — its own timeline and export defaults, independently
+/// zoomable/playable and shown as its own tab in the Editor (per `request.md`'s Fase 3 "abas de
+/// projeto" spec, e.g. one sequence for trimmed highlights, another for the full unedited
+/// recording). Every project has at least one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Sequence {
     pub id: u64,
     pub name: String,
     pub timeline: Timeline,
+    /// Export defaults owned by this tab. A queued [`crate::ExportJob`] still snapshots the
+    /// resolved values, so later edits here never change a job already in flight.
+    #[serde(default)]
+    pub export_settings: SequenceExportSettings,
+}
+
+/// Persisted export choices for one [`Sequence`]. Output path and GPU preference remain
+/// app/job-level concerns; aspect ratio and normalization target describe the sequence's
+/// intended presentation and therefore follow the tab across saves and project switches.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SequenceExportSettings {
+    #[serde(default)]
+    pub aspect_ratio: ExportAspectRatio,
+    #[serde(default = "default_target_lufs")]
+    pub target_lufs: f32,
+}
+
+impl Default for SequenceExportSettings {
+    fn default() -> Self {
+        Self {
+            aspect_ratio: ExportAspectRatio::Original,
+            target_lufs: default_target_lufs(),
+        }
+    }
+}
+
+fn default_target_lufs() -> f32 {
+    -14.0
 }
 
 /// A single edit project: its imported media, its sequences, and display metadata for the
@@ -99,6 +128,11 @@ impl Project {
     /// what the Editor's tab bar "+" button does. Returns the new sequence's id.
     pub fn new_sequence(&mut self, name: String) -> u64 {
         let id = self.sequences.iter().map(|s| s.id).max().unwrap_or(0) + 1;
+        let export_settings = self
+            .sequences
+            .get(self.active_sequence)
+            .map(|sequence| sequence.export_settings)
+            .unwrap_or_default();
         self.sequences.push(Sequence {
             id,
             name,
@@ -106,6 +140,7 @@ impl Project {
                 tracks: Vec::new(),
                 playhead_secs: 0.0,
             },
+            export_settings,
         });
         self.active_sequence = self.sequences.len() - 1;
         id

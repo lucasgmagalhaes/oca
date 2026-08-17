@@ -81,9 +81,10 @@ current size every frame but aren't persisted across restarts yet, short of `req
 `avcore::project::Sequence`, each with its own `Timeline` — shown as a tab bar above the
 three-column body (`editor.rs::sequence_tab_bar`); every project always has at least one, and
 every clip-editing `OcaApp` method reads/writes through `Project::timeline`/`timeline_mut`
-(the active tab), never a `timeline` field directly. Export settings staying per-job rather
-than gaining a per-sequence default, and no rename/delete/reorder for tabs yet, are the two
-gaps short of `request.md`'s full "abas de projeto" spec. Importing files
+(the active tab), never a `timeline` field directly. Each sequence also persists its own
+`SequenceExportSettings` (aspect ratio + target LUFS); queued jobs snapshot those values, so
+later tab changes cannot alter an in-flight export. Tab deletion/reordering is the remaining
+gap short of `request.md`'s full "abas de projeto" spec. Importing files
 (`library.rs`/`OcaApp::spawn_import`)
 runs each file on its own background thread instead of blocking the UI — large source files
 used to freeze the app. Each file becomes usable in the media library as soon as its (cheap,

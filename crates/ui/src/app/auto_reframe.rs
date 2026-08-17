@@ -21,9 +21,9 @@ use super::{App, AutoReframeEvent};
 impl App {
     /// Runs auto-reframe against `selected_clip_id` on a background thread — what the
     /// properties panel's "Reenquadramento automático" button does. Targets the current
-    /// `export_aspect_ratio` (falling back to the source's own resolution for `Original`, same
-    /// as export itself — see [`avcore::ExportAspectRatio::dims_or`]). A no-op if nothing is
-    /// selected, no model is configured, or a run is already in flight.
+    /// active sequence's export aspect ratio (falling back to the source's own resolution for
+    /// `Original`, same as export itself — see [`avcore::ExportAspectRatio::dims_or`]). A no-op
+    /// if nothing is selected, no model is configured, or a run is already in flight.
     pub fn spawn_auto_reframe_selected_clip(&mut self) {
         if self.auto_reframing_clip_id.is_some() {
             return;
@@ -54,7 +54,10 @@ impl App {
             return;
         };
         let source_path = asset.source_path.clone();
-        let (target_w, target_h) = self.export_aspect_ratio.dims_or((source_w, source_h));
+        let (target_w, target_h) = self
+            .active_sequence_export_settings()
+            .aspect_ratio
+            .dims_or((source_w, source_h));
         let model_path = PathBuf::from(self.prefs.reframe_model_path.clone());
 
         self.auto_reframing_clip_id = Some(clip_id);

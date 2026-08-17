@@ -32,6 +32,7 @@ fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
                 tracks: Vec::new(),
                 playhead_secs: 0.0,
             },
+            export_settings: Default::default(),
         }],
         active_sequence: 0,
         file_path: None,
@@ -278,7 +279,6 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         last_autosave_instant: None,
         autosave_restore_pending: None,
         crash_detected: false,
-        export_aspect_ratio: avcore::ExportAspectRatio::default(),
         renaming_project: None::<(usize, String, String)>,
         renaming_sequence: None,
         saving_layer_template: None,
@@ -354,6 +354,20 @@ fn create_new_project_starts_at_one_when_no_projects_exist() {
 }
 
 #[test]
+fn create_new_project_uses_the_preferred_loudness_as_its_sequence_default() {
+    let mut app = test_app(Vec::new(), Vec::new());
+    app.prefs.lufs_profile = 2;
+
+    app.create_new_project("Broadcast".to_string());
+
+    assert_eq!(
+        app.active_sequence_export_settings().aspect_ratio,
+        avcore::ExportAspectRatio::Original
+    );
+    assert_eq!(app.active_sequence_export_settings().target_lufs, -23.0);
+}
+
+#[test]
 fn add_sequence_appends_a_named_tab_and_switches_to_it() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
 
@@ -391,6 +405,41 @@ fn select_sequence_is_a_no_op_for_an_out_of_range_index() {
     app.select_sequence(5);
 
     assert_eq!(app.active_project().active_sequence, 0);
+}
+
+#[test]
+fn export_settings_follow_the_active_sequence_without_leaking_between_tabs() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.set_active_sequence_export_aspect_ratio(avcore::ExportAspectRatio::Landscape);
+    app.set_active_sequence_target_lufs(-16.0);
+    app.add_sequence();
+    assert_eq!(
+        app.active_sequence_export_settings().aspect_ratio,
+        avcore::ExportAspectRatio::Landscape
+    );
+    assert_eq!(app.active_sequence_export_settings().target_lufs, -16.0);
+
+    app.set_active_sequence_export_aspect_ratio(avcore::ExportAspectRatio::Portrait);
+    app.set_active_sequence_target_lufs(-23.0);
+    app.select_sequence(0);
+
+    assert_eq!(
+        app.active_sequence_export_settings().aspect_ratio,
+        avcore::ExportAspectRatio::Landscape
+    );
+    assert_eq!(app.active_sequence_export_settings().target_lufs, -16.0);
+    assert_eq!(
+        app.active_project().sequences[1]
+            .export_settings
+            .aspect_ratio,
+        avcore::ExportAspectRatio::Portrait
+    );
+    assert_eq!(
+        app.active_project().sequences[1]
+            .export_settings
+            .target_lufs,
+        -23.0
+    );
 }
 
 #[test]
@@ -518,6 +567,32 @@ fn queue_export_starts_at_one_when_no_jobs_exist() {
     );
 
     assert_eq!(app.export_jobs[0].id, 1);
+}
+
+#[test]
+fn queued_job_keeps_the_sequence_export_snapshot_after_settings_change() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.set_active_sequence_export_aspect_ratio(avcore::ExportAspectRatio::Portrait);
+    app.set_active_sequence_target_lufs(-23.0);
+    let settings = app.active_sequence_export_settings();
+    let canvas = avcore::apply_export_aspect_ratio(test_canvas(), settings.aspect_ratio);
+    app.queue_export(
+        "Short".to_string(),
+        Vec::new(),
+        vec![],
+        vec![],
+        vec![],
+        canvas,
+        settings.target_lufs,
+        "short.mp4".to_string(),
+    );
+
+    app.set_active_sequence_export_aspect_ratio(avcore::ExportAspectRatio::Square);
+    app.set_active_sequence_target_lufs(-16.0);
+
+    assert_eq!(app.export_jobs[0].canvas.width, 1080);
+    assert_eq!(app.export_jobs[0].canvas.height, 1920);
+    assert_eq!(app.export_jobs[0].target_lufs, -23.0);
 }
 
 #[test]

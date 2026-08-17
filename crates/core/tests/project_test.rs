@@ -15,7 +15,7 @@
 
 use avcore::project::{Project, Sequence};
 use avcore::timeline::Timeline;
-use avcore::{MediaAsset, Recency};
+use avcore::{ExportAspectRatio, MediaAsset, Recency};
 
 fn test_project() -> Project {
     Project {
@@ -31,6 +31,7 @@ fn test_project() -> Project {
                 tracks: Vec::new(),
                 playhead_secs: 5.0,
             },
+            export_settings: Default::default(),
         }],
         active_sequence: 0,
         file_path: None,
@@ -71,4 +72,19 @@ fn new_sequence_ids_keep_increasing_after_multiple_calls() {
     let third_id = project.new_sequence("B".to_string());
 
     assert_eq!(third_id, 3);
+}
+
+#[test]
+fn new_sequence_inherits_the_active_sequences_export_settings() {
+    let mut project = test_project();
+    project.sequences[0].export_settings.aspect_ratio = ExportAspectRatio::Portrait;
+    project.sequences[0].export_settings.target_lufs = -23.0;
+
+    project.new_sequence("Short variant".to_string());
+
+    assert_eq!(
+        project.sequences[1].export_settings.aspect_ratio,
+        ExportAspectRatio::Portrait
+    );
+    assert_eq!(project.sequences[1].export_settings.target_lufs, -23.0);
 }

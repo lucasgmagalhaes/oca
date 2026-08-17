@@ -152,6 +152,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 ],
                 playhead_secs: 0.0,
             },
+            export_settings: Default::default(),
         }],
         active_sequence: 0,
         file_path: None,

@@ -99,6 +99,7 @@ fn sequence_with(tracks: Vec<Track>) -> Sequence {
             tracks,
             playhead_secs: 0.0,
         },
+        export_settings: Default::default(),
     }
 }
 

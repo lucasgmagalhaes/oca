@@ -38,6 +38,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 let project = app.active_project();
                 let sequence_name = project.sequences[project.active_sequence].name.clone();
                 let sequence = &project.sequences[project.active_sequence];
+                let export_settings = sequence.export_settings;
                 let resolved =
                     avcore::resolve_timeline_segments_multi(sequence, &project.media_library)
                         .and_then(|(track_segments, canvas)| {
@@ -68,9 +69,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     .on_disabled_hover_text(Text::AddExportNeedsClip.tr(locale));
                 if response.clicked() {
                     if let Ok((track_segments, audio_segments, canvas)) = resolved {
-                        let (_, target_lufs) = LUFS_PROFILES[app.prefs.lufs_profile];
                         let canvas =
-                            avcore::apply_export_aspect_ratio(canvas, app.export_aspect_ratio);
+                            avcore::apply_export_aspect_ratio(canvas, export_settings.aspect_ratio);
                         let active_sequence =
                             &app.active_project().sequences[app.active_project().active_sequence];
                         let text_segments =
@@ -97,7 +97,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                         text_segments,
                                         shape_segments,
                                         canvas,
-                                        target_lufs,
+                                        target_lufs: export_settings.target_lufs,
                                         output_path: output,
                                     });
                             } else {
@@ -108,7 +108,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                     text_segments,
                                     shape_segments,
                                     canvas,
-                                    target_lufs,
+                                    export_settings.target_lufs,
                                     output.display().to_string(),
                                 );
                             }
@@ -122,10 +122,39 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         .color(crate::theme::TEXT_MUTED),
                 );
                 for ratio in avcore::ExportAspectRatio::ALL {
-                    let selected = app.export_aspect_ratio == *ratio;
+                    let selected = export_settings.aspect_ratio == *ratio;
                     if ui.selectable_label(selected, ratio.label()).clicked() {
-                        app.export_aspect_ratio = *ratio;
+                        app.set_active_sequence_export_aspect_ratio(*ratio);
                     }
+                }
+                ui.add_space(8.0);
+                ui.label(
+                    eframe::egui::RichText::new(Text::ExportLoudnessLabel.tr(locale))
+                        .size(12.0)
+                        .color(crate::theme::TEXT_MUTED),
+                );
+                let mut target_lufs = export_settings.target_lufs;
+                let selected_label = LUFS_PROFILES
+                    .iter()
+                    .find(|(_, candidate)| (target_lufs - *candidate).abs() <= f32::EPSILON)
+                    .map(|(label, _)| (*label).to_string())
+                    .unwrap_or_else(|| {
+                        Text::ExportLoudnessCustom
+                            .tr(locale)
+                            .replace("{value}", &format!("{target_lufs:.0}"))
+                    });
+                let mut target_changed = false;
+                egui::ComboBox::from_id_salt("active_sequence_target_lufs")
+                    .selected_text(selected_label)
+                    .show_ui(ui, |ui| {
+                        for (label, candidate) in LUFS_PROFILES {
+                            target_changed |= ui
+                                .selectable_value(&mut target_lufs, candidate, label)
+                                .changed();
+                        }
+                    });
+                if target_changed {
+                    app.set_active_sequence_target_lufs(target_lufs);
                 }
                 if let Some(size_label) = size_estimate_label {
                     ui.add_space(6.0);

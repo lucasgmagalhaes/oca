@@ -131,6 +131,7 @@ fn sequence_with_text_track(clip: TextClip) -> Sequence {
             }],
             playhead_secs: 0.0,
         },
+        export_settings: Default::default(),
     }
 }
 
@@ -263,6 +264,7 @@ fn sequence_with_shape_track(clips: Vec<ShapeClip>) -> Sequence {
             }],
             playhead_secs: 0.0,
         },
+        export_settings: Default::default(),
     }
 }
 
