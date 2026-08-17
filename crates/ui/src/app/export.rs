@@ -13,7 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
@@ -376,26 +377,55 @@ pub(super) fn next_available_path(path: &std::path::Path) -> PathBuf {
     unreachable!("infinite range always yields a free name eventually")
 }
 
-/// Returns the platform-appropriate path for the oca export queue file, next to `prefs.oc`.
+/// Returns the platform-appropriate path for the compressed oca export queue, next to
+/// `prefs.oc`.
 fn queue_path() -> std::path::PathBuf {
+    super::prefs_path()
+        .parent()
+        .map(|d| d.join("queue.ocqueue"))
+        .unwrap_or_else(|| std::path::PathBuf::from("queue.ocqueue"))
+}
+
+/// Returns the old JSON queue path used before `.ocqueue`. It is read only when the binary file
+/// does not exist, then removed after a successful one-time migration.
+fn legacy_queue_path() -> std::path::PathBuf {
     super::prefs_path()
         .parent()
         .map(|d| d.join("queue.json"))
         .unwrap_or_else(|| std::path::PathBuf::from("queue.json"))
 }
 
-/// Saves `jobs` to `queue.json` on a background thread. `Rendering` jobs are written as
-/// `Queued` so they restart properly if the app is reopened mid-queue. Paused jobs remain
-/// paused but reset to 0%, because a process restart cannot retain partially encoded output.
-/// `Done` and `Failed` jobs are included for history display.
+/// Saves `jobs` to `queue.ocqueue`. Queue mutations are infrequent and the metadata is tiny,
+/// so this completes synchronously: unlike the old detached writer thread, a newer snapshot
+/// cannot be overwritten by an older thread that happens to finish later. The temporary file
+/// is created beside the destination and atomically persisted over it.
 pub(super) fn save_queue(jobs: &[ExportJob]) {
-    let snapshot = persisted_queue_snapshot(jobs);
     let path = queue_path();
-    std::thread::spawn(move || {
-        if let Ok(json) = serde_json::to_string_pretty(&snapshot) {
-            let _ = std::fs::write(&path, json.as_bytes());
-        }
-    });
+    if let Err(storage_error) = save_queue_to_path(jobs, &path) {
+        error!(path = %path.display(), error = %storage_error, "failed to save export queue");
+    }
+}
+
+pub(super) fn save_queue_to_path(
+    jobs: &[ExportJob],
+    path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let snapshot = persisted_queue_snapshot(jobs);
+    let bytes = avcore::to_ocqueue_bytes(&snapshot)?;
+    atomic_write(path, &bytes)
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path)?;
+    Ok(())
 }
 
 pub(super) fn persisted_queue_snapshot(jobs: &[ExportJob]) -> Vec<ExportJob> {
@@ -412,16 +442,54 @@ pub(super) fn persisted_queue_snapshot(jobs: &[ExportJob]) -> Vec<ExportJob> {
     snapshot
 }
 
-/// Loads the persisted queue from `queue.json`. Returns an empty vec if absent or unparseable.
-/// `Rendering` jobs are reset to `Queued`; `Paused` jobs stay paused at 0% until explicitly
-/// resumed, because the render worker and its partial output did not survive the process.
+/// Loads `queue.ocqueue`, falling back to a one-time migration from the old `queue.json` only
+/// when the binary file does not exist. A corrupt binary file never silently resurrects an
+/// older JSON snapshot. `Rendering` jobs are reset to `Queued`; `Paused` jobs stay paused at
+/// 0% until explicitly resumed, because workers and partial output do not survive the process.
 pub(super) fn load_queue() -> Vec<ExportJob> {
-    let path = queue_path();
-    let Ok(bytes) = std::fs::read(&path) else {
+    load_queue_from_paths(&queue_path(), &legacy_queue_path())
+}
+
+pub(super) fn load_queue_from_paths(path: &Path, legacy_path: &Path) -> Vec<ExportJob> {
+    match std::fs::read(path) {
+        Ok(bytes) => match avcore::from_ocqueue_bytes::<Vec<ExportJob>>(&bytes) {
+            Ok(jobs) => normalize_loaded_queue(jobs),
+            Err(storage_error) => {
+                error!(path = %path.display(), error = %storage_error, "failed to load export queue");
+                Vec::new()
+            }
+        },
+        Err(read_error) if read_error.kind() == std::io::ErrorKind::NotFound => {
+            migrate_legacy_queue(path, legacy_path)
+        }
+        Err(read_error) => {
+            error!(path = %path.display(), error = %read_error, "failed to read export queue");
+            Vec::new()
+        }
+    }
+}
+
+fn migrate_legacy_queue(path: &Path, legacy_path: &Path) -> Vec<ExportJob> {
+    let Ok(bytes) = std::fs::read(legacy_path) else {
         return Vec::new();
     };
-    let jobs: Vec<ExportJob> = serde_json::from_slice(&bytes).unwrap_or_default();
-    normalize_loaded_queue(jobs)
+    let Ok(jobs) = serde_json::from_slice::<Vec<ExportJob>>(&bytes) else {
+        error!(path = %legacy_path.display(), "failed to parse legacy export queue");
+        return Vec::new();
+    };
+    let jobs = normalize_loaded_queue(jobs);
+    match save_queue_to_path(&jobs, path) {
+        Ok(()) => {
+            if let Err(remove_error) = std::fs::remove_file(legacy_path) {
+                error!(path = %legacy_path.display(), error = %remove_error, "failed to remove migrated legacy export queue");
+            }
+            info!(legacy = %legacy_path.display(), path = %path.display(), "export queue migrated to .ocqueue");
+        }
+        Err(storage_error) => {
+            error!(path = %path.display(), error = %storage_error, "failed to migrate export queue");
+        }
+    }
+    jobs
 }
 
 pub(super) fn normalize_loaded_queue(mut jobs: Vec<ExportJob>) -> Vec<ExportJob> {

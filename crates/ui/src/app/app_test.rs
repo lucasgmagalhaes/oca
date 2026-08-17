@@ -628,6 +628,70 @@ fn loading_a_queue_preserves_a_paused_job_until_the_user_resumes_it() {
 }
 
 #[test]
+fn ocqueue_file_atomically_replaces_the_previous_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("queue.ocqueue");
+    export::save_queue_to_path(&[test_job(1, ExportJobStatus::Done)], &path).unwrap();
+    export::save_queue_to_path(
+        &[test_job(2, ExportJobStatus::Rendering { percent: 55 })],
+        &path,
+    )
+    .unwrap();
+
+    let bytes = std::fs::read(&path).unwrap();
+    let jobs: Vec<ExportJob> = avcore::from_ocqueue_bytes(&bytes).unwrap();
+
+    assert_eq!(&bytes[..4], b"OCQU");
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].id, 2);
+    assert_eq!(jobs[0].status, ExportJobStatus::Queued);
+}
+
+#[test]
+fn loading_migrates_the_legacy_json_queue_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("queue.ocqueue");
+    let legacy_path = dir.path().join("queue.json");
+    let legacy_jobs = vec![
+        test_job(1, ExportJobStatus::Paused { percent: 65 }),
+        test_job(2, ExportJobStatus::Rendering { percent: 30 }),
+    ];
+    std::fs::write(&legacy_path, serde_json::to_vec(&legacy_jobs).unwrap()).unwrap();
+
+    let loaded = export::load_queue_from_paths(&path, &legacy_path);
+
+    assert_eq!(loaded[0].status, ExportJobStatus::Paused { percent: 0 });
+    assert_eq!(loaded[1].status, ExportJobStatus::Queued);
+    assert!(path.exists());
+    assert!(!legacy_path.exists());
+    let migrated: Vec<ExportJob> =
+        avcore::from_ocqueue_bytes(&std::fs::read(path).unwrap()).unwrap();
+    assert_eq!(migrated.len(), loaded.len());
+    assert_eq!(migrated[0].id, loaded[0].id);
+    assert_eq!(migrated[0].status, loaded[0].status);
+    assert_eq!(migrated[1].id, loaded[1].id);
+    assert_eq!(migrated[1].status, loaded[1].status);
+}
+
+#[test]
+fn a_corrupt_ocqueue_does_not_resurrect_an_older_json_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("queue.ocqueue");
+    let legacy_path = dir.path().join("queue.json");
+    std::fs::write(&path, b"corrupt").unwrap();
+    std::fs::write(
+        &legacy_path,
+        serde_json::to_vec(&vec![test_job(1, ExportJobStatus::Done)]).unwrap(),
+    )
+    .unwrap();
+
+    let loaded = export::load_queue_from_paths(&path, &legacy_path);
+
+    assert!(loaded.is_empty());
+    assert!(legacy_path.exists());
+}
+
+#[test]
 fn cancelling_a_paused_control_releases_its_waiter() {
     let control = Arc::new(export::RenderControl::new());
     control.pause();

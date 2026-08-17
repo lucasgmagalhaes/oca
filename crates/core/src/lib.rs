@@ -20,7 +20,7 @@
 //! wrappers that populate that model from real files ([`probe`], [`loudness`]), lightweight
 //! editing proxies ([`proxy`]), the normalized-export renderer ([`render`]), a GStreamer-based
 //! playback pipeline ([`preview`]), a local music/SFX catalog ([`sound_library`]), and
-//! `.ocproj` save/load — gzip-compressed MessagePack ([`persistence`]).
+//! `.ocproj`/`.ocqueue` save/load — gzip-compressed MessagePack ([`persistence`]).
 //!
 //! Nothing in this crate depends on `egui` or any GUI toolkit — `ui` is the only
 //! consumer, and it owns all presentation/formatting concerns (see its `i18n` module).
@@ -72,7 +72,8 @@ pub use motion_tracking::{
     rgba_to_gray, track_region, tracked_positions_to_keyframes, GrayFrame, TrackedPosition,
 };
 pub use persistence::{
-    from_ocproj_bytes, load_project_from_file, save_project_to_file, to_ocproj_bytes, PersistError,
+    from_ocproj_bytes, from_ocqueue_bytes, load_project_from_file, save_project_to_file,
+    to_ocproj_bytes, to_ocqueue_bytes, PersistError,
 };
 pub use preview::{Preview, PreviewError};
 pub use probe::{probe_media, ProbeError, ProbedMedia};

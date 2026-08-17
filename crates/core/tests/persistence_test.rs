@@ -17,7 +17,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use avcore::persistence::{
-    from_ocproj_bytes, load_project_from_file, save_project_to_file, to_ocproj_bytes, PersistError,
+    from_ocproj_bytes, from_ocqueue_bytes, load_project_from_file, save_project_to_file,
+    to_ocproj_bytes, to_ocqueue_bytes, PersistError,
 };
 use avcore::timeline::{
     ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
@@ -300,6 +301,36 @@ fn from_ocproj_bytes_rejects_an_unsupported_version() {
     bytes[4] = 99;
     assert!(matches!(
         from_ocproj_bytes::<Project>(&bytes),
+        Err(PersistError::Corrupt(_))
+    ));
+}
+
+#[test]
+fn ocqueue_round_trip_uses_its_own_magic_bytes() {
+    let original = vec![1_u64, 5, 9];
+
+    let bytes = to_ocqueue_bytes(&original).unwrap();
+    let restored: Vec<u64> = from_ocqueue_bytes(&bytes).unwrap();
+
+    assert_eq!(&bytes[..4], b"OCQU");
+    assert_eq!(restored, original);
+    assert!(matches!(
+        from_ocproj_bytes::<Vec<u64>>(&bytes),
+        Err(PersistError::Corrupt(_))
+    ));
+}
+
+#[test]
+fn from_ocqueue_bytes_rejects_malformed_and_unsupported_data() {
+    assert!(matches!(
+        from_ocqueue_bytes::<Vec<u64>>(b"not an ocqueue file"),
+        Err(PersistError::Corrupt(_))
+    ));
+
+    let mut bytes = to_ocqueue_bytes(&vec![1_u64]).unwrap();
+    bytes[4] = 99;
+    assert!(matches!(
+        from_ocqueue_bytes::<Vec<u64>>(&bytes),
         Err(PersistError::Corrupt(_))
     ));
 }

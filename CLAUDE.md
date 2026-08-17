@@ -450,7 +450,10 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
 - **Fase 5/6 — partially done.** Aspect ratio selection; prefs (`prefs.oc` — same
   gzip-compressed MessagePack framing `.ocproj` uses, via `avcore::to_ocproj_bytes`/
   `from_ocproj_bytes` generalized to any `Serialize`/`DeserializeOwned` value) + export queue
-  (`queue.json`, still plain JSON) persisted to the platform config dir; recent project list;
+  (`queue.ocqueue`, gzip-compressed MessagePack with its own `OCQU` magic/version header)
+  persisted to the platform config dir. Queue writes use a same-directory temporary file plus
+  atomic replacement, and startup migrates the old `queue.json` once without deleting it until
+  the binary write succeeds; recent project list;
   debounced autosave + restore modal; crash detection + panic hook; prefs modal; home screen
   context menu; file size estimate; structured logging; copy formatting (`Ctrl+Shift+C`/`V`);
   configurable key bindings; export job reordering and cooperative pause/resume (a queued job

@@ -13,15 +13,17 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Saves/loads any `Serialize + DeserializeOwned` value using the `.ocproj` binary format: a
-//! small magic/version header, then gzip-compressed MessagePack (struct-map mode). Struct-map
-//! mode keeps field names in the encoded bytes (unlike MessagePack's default compact/array
+//! Saves/loads any `Serialize + DeserializeOwned` value using oca's binary formats: a small
+//! format-specific magic/version header, then gzip-compressed MessagePack (struct-map mode).
+//! Struct-map mode keeps field names in the encoded bytes (unlike MessagePack's default compact/array
 //! mode), so `#[serde(default)]` on a field added after a value was last saved still works the
 //! same way it did for JSON — nearly every past feature in this codebase relies on that to let
 //! an older saved [`Project`] keep loading. The (de)serialization core
 //! ([`to_ocproj_bytes`]/[`from_ocproj_bytes`]) is generic — `ui`'s `PrefsState` reuses the exact
-//! same framing for its own `prefs.oc`, not just `Project`. [`save_project_to_file`]/
-//! [`load_project_from_file`] are thin `Project`-specific file-touching shells around it.
+//! same framing for its own `prefs.oc`, not just `Project`. Export queues use the same payload
+//! encoding with their own `OCQU` identity through [`to_ocqueue_bytes`]/
+//! [`from_ocqueue_bytes`]. [`save_project_to_file`]/[`load_project_from_file`] are thin
+//! `Project`-specific file-touching shells around the project framing.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -38,7 +40,10 @@ use crate::project::Project;
 /// Identifies an `.ocproj` file before we even try to gzip/msgpack-decode it, so a
 /// wrong-file/corrupt-file error says exactly that instead of surfacing an opaque gzip or
 /// msgpack failure.
-const MAGIC: &[u8; 4] = b"OCPJ";
+const PROJECT_MAGIC: &[u8; 4] = b"OCPJ";
+/// Identifies a compressed export-queue file (`queue.ocqueue`). Keeping this distinct from
+/// [`PROJECT_MAGIC`] makes wrong-file errors deterministic before deserialization.
+const QUEUE_MAGIC: &[u8; 4] = b"OCQU";
 /// Bumped only if the on-disk layout (header framing, not the `Project` schema itself —
 /// that's handled by `#[serde(default)]`) ever needs to change.
 const FORMAT_VERSION: u8 = 1;
@@ -48,35 +53,33 @@ pub enum PersistError {
     Io(std::io::Error),
     Encode(rmp_serde::encode::Error),
     Decode(rmp_serde::decode::Error),
-    /// Bytes that don't start with [`MAGIC`], or whose version byte isn't [`FORMAT_VERSION`].
+    /// Bytes that don't start with the expected magic, or whose version byte isn't
+    /// [`FORMAT_VERSION`].
     Corrupt(&'static str),
 }
 
 impl std::fmt::Display for PersistError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PersistError::Io(e) => write!(f, "failed to access the project file: {e}"),
-            PersistError::Encode(e) => write!(f, "failed to serialize the project: {e}"),
-            PersistError::Decode(e) => write!(f, "failed to parse the project: {e}"),
-            PersistError::Corrupt(msg) => write!(f, "not a valid .ocproj file: {msg}"),
+            PersistError::Io(e) => write!(f, "failed to access the oca data file: {e}"),
+            PersistError::Encode(e) => write!(f, "failed to serialize oca data: {e}"),
+            PersistError::Decode(e) => write!(f, "failed to parse oca data: {e}"),
+            PersistError::Corrupt(msg) => write!(f, "not a valid oca binary file: {msg}"),
         }
     }
 }
 
 impl std::error::Error for PersistError {}
 
-/// Serializes `value` to the `.ocproj` byte layout: `MAGIC` + version byte, then a gzip
-/// stream wrapping MessagePack (struct-map) bytes. Generic over any `Serialize` value — not
-/// just [`Project`] — so a second value type (e.g. `ui`'s `PrefsState`) can share the exact
-/// same binary framing without duplicating the encode/decode logic.
-pub fn to_ocproj_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, PersistError> {
+/// Shared encoder behind the project/prefs and queue framings.
+fn to_framed_bytes<T: Serialize>(value: &T, magic: &[u8; 4]) -> Result<Vec<u8>, PersistError> {
     let mut msgpack = Vec::new();
     value
         .serialize(&mut rmp_serde::Serializer::new(&mut msgpack).with_struct_map())
         .map_err(PersistError::Encode)?;
 
     let mut out = Vec::with_capacity(msgpack.len() / 2 + 5);
-    out.extend_from_slice(MAGIC);
+    out.extend_from_slice(magic);
     out.push(FORMAT_VERSION);
     let mut encoder = GzEncoder::new(&mut out, Compression::fast());
     encoder.write_all(&msgpack).map_err(PersistError::Io)?;
@@ -84,20 +87,45 @@ pub fn to_ocproj_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, PersistError>
     Ok(out)
 }
 
-/// Parses a value previously produced by [`to_ocproj_bytes`].
-pub fn from_ocproj_bytes<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, PersistError> {
-    if bytes.len() < MAGIC.len() + 1 || &bytes[..MAGIC.len()] != MAGIC {
+/// Shared decoder behind the project/prefs and queue framings.
+fn from_framed_bytes<T: DeserializeOwned>(
+    bytes: &[u8],
+    expected_magic: &[u8; 4],
+) -> Result<T, PersistError> {
+    if bytes.len() < expected_magic.len() + 1 || &bytes[..expected_magic.len()] != expected_magic {
         return Err(PersistError::Corrupt("bad magic bytes"));
     }
-    let version = bytes[MAGIC.len()];
+    let version = bytes[expected_magic.len()];
     if version != FORMAT_VERSION {
         return Err(PersistError::Corrupt("unsupported format version"));
     }
     let mut msgpack = Vec::new();
-    GzDecoder::new(&bytes[MAGIC.len() + 1..])
+    GzDecoder::new(&bytes[expected_magic.len() + 1..])
         .read_to_end(&mut msgpack)
         .map_err(PersistError::Io)?;
     rmp_serde::from_slice(&msgpack).map_err(PersistError::Decode)
+}
+
+/// Serializes `value` to the `.ocproj`/`prefs.oc` framing (`OCPJ` + version + compressed
+/// MessagePack).
+pub fn to_ocproj_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, PersistError> {
+    to_framed_bytes(value, PROJECT_MAGIC)
+}
+
+/// Parses a value previously produced by [`to_ocproj_bytes`].
+pub fn from_ocproj_bytes<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, PersistError> {
+    from_framed_bytes(bytes, PROJECT_MAGIC)
+}
+
+/// Serializes `value` to the `.ocqueue` framing (`OCQU` + version + compressed MessagePack).
+pub fn to_ocqueue_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, PersistError> {
+    to_framed_bytes(value, QUEUE_MAGIC)
+}
+
+/// Parses a value previously produced by [`to_ocqueue_bytes`]. Project/prefs files are rejected
+/// by their different magic bytes before MessagePack decoding begins.
+pub fn from_ocqueue_bytes<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, PersistError> {
+    from_framed_bytes(bytes, QUEUE_MAGIC)
 }
 
 /// Writes `project` to `path` as `.ocproj`, overwriting any existing file.
