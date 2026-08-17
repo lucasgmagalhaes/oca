@@ -33,6 +33,7 @@ pub mod loudness;
 pub mod media;
 pub mod model_download;
 pub mod motion_tracking;
+pub mod overlay_render;
 pub mod persistence;
 pub mod preview;
 pub mod probe;

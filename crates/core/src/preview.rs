@@ -28,7 +28,7 @@ use gstreamer_video as gst_video;
 
 use gst::prelude::*;
 
-use crate::timeline::{ClipInstance, ColorFilter};
+use crate::timeline::{ClipInstance, ColorFilter, ShapeClip, TextClip};
 
 #[derive(Debug)]
 pub enum PreviewError {
@@ -53,6 +53,9 @@ pub enum PreviewError {
     /// [`Preview::open_composited`]'s background input has no video stream to size the canvas
     /// from.
     NoBackgroundVideo,
+    /// Failed pushing a rasterized text/shape overlay buffer into its `appsrc`, or signalling
+    /// end-of-stream on it (see [`build_static_overlay_branch`]).
+    PushBuffer(gst::FlowError),
 }
 
 impl std::fmt::Display for PreviewError {
@@ -79,6 +82,9 @@ impl std::fmt::Display for PreviewError {
                     f,
                     "background input has no video stream to size the canvas from"
                 )
+            }
+            PreviewError::PushBuffer(e) => {
+                write!(f, "failed pushing a static overlay buffer: {e:?}")
             }
         }
     }
@@ -654,6 +660,79 @@ fn build_composite_branch(
     Ok(decodebin)
 }
 
+/// Builds one static text/shape overlay branch of [`Preview::open_composited`]'s pipeline:
+/// `appsrc` (pushed exactly one already-rasterized full-canvas RGBA buffer, see
+/// [`crate::overlay_render`]) through `imagefreeze` (repeats that single buffer indefinitely,
+/// deriving fresh timestamps off the pipeline's own clock) into a freshly requested `compositor`
+/// sink pad. Unlike [`build_composite_branch`], there's no keyframe animation and no seeking —
+/// [`TextClip`]/[`ShapeClip`] are both static for their whole visible span and have no source
+/// file of their own — so this needs neither a pad probe nor an entry in [`Preview::branches`].
+/// `rgba` already covers the whole canvas with the text/shape positioned within it (matching
+/// export's own absolute-pixel-position convention), so the compositor pad is placed at
+/// `(0, 0)` at the canvas's own size rather than needing per-pad position math.
+fn build_static_overlay_branch(
+    pipeline: &gst::Pipeline,
+    compositor: &gst::Element,
+    canvas: (u32, u32),
+    rgba: Vec<u8>,
+    zorder: u32,
+) -> Result<(), PreviewError> {
+    let (width, height) = canvas;
+    let caps = gst::Caps::builder("video/x-raw")
+        .field("format", "RGBA")
+        .field("width", width as i32)
+        .field("height", height as i32)
+        // `0/1` is the conventional "still image, not a real framerate" sentinel decoders like
+        // `jpegdec`/`pngdec` use ahead of `imagefreeze` — its sink pad's caps template requires
+        // a `framerate` field to negotiate at all (a fixed caps with none omitted entirely was
+        // rejected outright, confirmed empirically: `imagefreeze0:sink> caps ... not accepted`).
+        .field("framerate", gst::Fraction::new(0, 1))
+        .build();
+
+    let appsrc = gst_app::AppSrc::builder()
+        .caps(&caps)
+        .format(gst::Format::Time)
+        .build();
+    let mut buffer = gst::Buffer::with_size(rgba.len()).map_err(PreviewError::Compositing)?;
+    {
+        let buffer_mut = buffer.get_mut().expect("freshly created, uniquely owned");
+        buffer_mut.set_pts(gst::ClockTime::ZERO);
+        let mut map = buffer_mut
+            .map_writable()
+            .map_err(|_| PreviewError::PushBuffer(gst::FlowError::Error))?;
+        map.copy_from_slice(&rgba);
+    }
+    appsrc
+        .push_buffer(buffer)
+        .map_err(PreviewError::PushBuffer)?;
+    appsrc.end_of_stream().map_err(PreviewError::PushBuffer)?;
+
+    let imagefreeze = gst::ElementFactory::make("imagefreeze")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    let appsrc = appsrc.upcast::<gst::Element>();
+
+    pipeline
+        .add_many([&appsrc, &imagefreeze])
+        .map_err(PreviewError::Compositing)?;
+    gst::Element::link_many([&appsrc, &imagefreeze]).map_err(PreviewError::Compositing)?;
+
+    let sink_pad = compositor
+        .request_pad_simple("sink_%u")
+        .ok_or(PreviewError::RequestPad)?;
+    sink_pad.set_property("zorder", zorder);
+    sink_pad.set_property("xpos", 0i32);
+    sink_pad.set_property("ypos", 0i32);
+    sink_pad.set_property("alpha", 1.0f64);
+
+    let src_pad = imagefreeze
+        .static_pad("src")
+        .expect("imagefreeze always has a src pad");
+    src_pad.link(&sink_pad).map_err(PreviewError::PadLink)?;
+
+    Ok(())
+}
+
 /// A media pipeline loaded for preview playback — either a single file via `playbin`
 /// ([`Self::open`]) or a multi-track `compositor` pipeline ([`Self::open_composited`]). Owns
 /// the pipeline; dropping it tears the pipeline down (`State::Null`) so GStreamer releases any
@@ -757,10 +836,20 @@ impl Preview {
     /// expressed in pixels against — [`PreviewError::NoBackgroundVideo`] if it can't be probed.
     /// Known gap: every branch plays at a uniform rate `1.0` — `ClipInstance::speed_factor`
     /// isn't honored per-branch here yet, unlike the single-clip [`Self::seek_with_rate`] path.
+    ///
+    /// `text_overlays`/`shape_overlays` — the clips covering the playhead on any
+    /// [`crate::timeline::TrackKind::Text`]/[`crate::timeline::TrackKind::Shape`] track, if
+    /// any — are rasterized once each ([`crate::overlay_render`]) and composited on top of
+    /// every `overlays` video branch (drawn last, matching export's own text/shape
+    /// post-processing passes running after the main timeline composite). Static for the whole
+    /// branch lifetime, unlike `overlays`' video branches — neither clip type has keyframes or
+    /// a source file of its own to seek.
     pub fn open_composited(
         background_path: &Path,
         background_clip: Option<&ClipInstance>,
         overlays: &[(&Path, &ClipInstance)],
+        text_overlays: &[&TextClip],
+        shape_overlays: &[&ShapeClip],
     ) -> Result<Self, PreviewError> {
         gst::init().map_err(PreviewError::Init)?;
 
@@ -836,6 +925,18 @@ impl Preview {
                     zorder: (i + 1) as u32,
                 },
             )?);
+        }
+
+        let mut next_zorder = (overlays.len() + 1) as u32;
+        for clip in text_overlays {
+            let rgba = crate::overlay_render::render_text_clip_rgba(clip, canvas.0, canvas.1);
+            build_static_overlay_branch(&pipeline, &compositor, canvas, rgba, next_zorder)?;
+            next_zorder += 1;
+        }
+        for clip in shape_overlays {
+            let rgba = crate::overlay_render::render_shape_clip_rgba(clip, canvas.0, canvas.1);
+            build_static_overlay_branch(&pipeline, &compositor, canvas, rgba, next_zorder)?;
+            next_zorder += 1;
         }
 
         let pipeline = pipeline.upcast::<gst::Element>();

@@ -36,7 +36,10 @@ pub enum TrackKind {
 /// Rendered into the exported video via the `drawtext` avfilter in a post-processing pass
 /// after the main timeline encode — see `avbridge::apply_text_overlays`.
 ///
-/// Preview is not yet implemented — see the TODO in `core::preview`.
+/// Previewed via [`crate::overlay_render::render_text_clip_rgba`] and
+/// [`crate::preview::Preview::open_composited`]'s static overlay branches — base text only
+/// (no per-word highlight timing, and no line-wrap), same "approximate, not pixel-perfect"
+/// tolerance `preview` already has for its other partially-covered effects.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextClip {
     pub id: u64,
@@ -161,7 +164,8 @@ impl ShapeKind {
 /// Rendered the same way [`TextClip`] is — a `geq`-based post-processing pass after the main
 /// timeline encode, see `avcore::shape_render`/`avbridge::apply_shape_overlays`.
 ///
-/// Preview is not yet implemented, same gap as [`TextClip`]'s.
+/// Previewed via [`crate::overlay_render::render_shape_clip_rgba`], same static-overlay-branch
+/// mechanism as [`TextClip`]'s.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShapeClip {
     pub id: u64,

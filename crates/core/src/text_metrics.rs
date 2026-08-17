@@ -40,7 +40,7 @@ const DEFAULT_FONT_PATH: &str = "C:/Windows/Fonts/arial.ttf";
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 const DEFAULT_FONT_PATH: &str = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
 
-fn default_font() -> Option<&'static fontdue::Font> {
+pub(crate) fn default_font() -> Option<&'static fontdue::Font> {
     static FONT: OnceLock<Option<fontdue::Font>> = OnceLock::new();
     FONT.get_or_init(|| {
         let bytes = std::fs::read(Path::new(DEFAULT_FONT_PATH)).ok()?;
