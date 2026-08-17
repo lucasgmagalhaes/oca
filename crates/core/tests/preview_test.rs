@@ -81,6 +81,20 @@ fn opens_a_real_file_and_reports_duration() {
 }
 
 #[test]
+fn opens_with_hardware_decoding_allowed() {
+    let preview = Preview::open_with_hardware_decode(&fixture("video.mp4"), None, true).unwrap();
+
+    assert!(preview.current_frame().is_some());
+}
+
+#[test]
+fn opens_with_hardware_decoding_forced_off() {
+    let preview = Preview::open_with_hardware_decode(&fixture("video.mp4"), None, false).unwrap();
+
+    assert!(preview.current_frame().is_some());
+}
+
+#[test]
 fn play_then_pause_does_not_error() {
     let preview = Preview::open(&fixture("video.mp4"), None).unwrap();
     preview.play().unwrap();
@@ -404,6 +418,26 @@ fn open_composited_with_mask_shape_and_matte_composites_without_error() {
         .current_frame()
         .expect("a frame should be available right after preroll");
     assert_eq!((frame.width, frame.height), (320, 240));
+}
+
+#[test]
+fn open_composited_can_force_software_decoding() {
+    let bg = fixture("video.mp4");
+    let overlay = fixture("video.mp4");
+    let overlay_clip = clip();
+
+    let preview = Preview::open_composited_with_hardware_decode(
+        &bg,
+        None,
+        &[(overlay.as_path(), &overlay_clip)],
+        &[],
+        &[],
+        &[],
+        false,
+    )
+    .unwrap();
+
+    assert!(preview.current_frame().is_some());
 }
 
 #[test]

@@ -21,6 +21,7 @@
 //! egui exists.
 
 use std::path::Path;
+use std::sync::OnceLock;
 
 use gstreamer as gst;
 use gstreamer_app as gst_app;
@@ -29,6 +30,74 @@ use gstreamer_video as gst_video;
 use gst::prelude::*;
 
 use crate::timeline::{ClipInstance, ColorFilter, ShapeClip, TextClip, TransitionType};
+
+/// Hardware video decoder factories whose rank has been raised above the usual software
+/// decoders. GStreamer's decoder ranks are process-global, so this happens at most once; a
+/// pipeline whose caller disabled acceleration still opts out independently through
+/// `force-sw-decoders` instead of changing the ranks back underneath another live preview.
+static PRIORITIZED_HARDWARE_DECODERS: OnceLock<Vec<String>> = OnceLock::new();
+
+fn prioritize_hardware_video_decoders() -> &'static [String] {
+    PRIORITIZED_HARDWARE_DECODERS.get_or_init(|| {
+        let factories = gst::ElementFactory::factories_with_type(
+            gst::ElementFactoryType::DECODER
+                | gst::ElementFactoryType::MEDIA_VIDEO
+                | gst::ElementFactoryType::HARDWARE,
+            gst::Rank::NONE,
+        );
+        let preferred_rank = gst::Rank::PRIMARY + 1;
+        let mut names = Vec::new();
+        for factory in factories {
+            // `HARDWARE` is derived from the factory's Klass metadata. Keep the explicit check
+            // as a guard against plugins with overly broad or malformed metadata.
+            if !factory.klass().split('/').any(|part| part == "Hardware") {
+                continue;
+            }
+            if factory.rank() < preferred_rank {
+                factory.set_rank(preferred_rank);
+            }
+            names.push(factory.name().to_string());
+        }
+        if names.is_empty() {
+            tracing::debug!("no GStreamer hardware video decoder is available; using CPU");
+        } else {
+            tracing::info!(decoders = ?names, "prioritized GStreamer hardware video decoders");
+        }
+        names
+    })
+}
+
+fn configure_playbin_decoder_preference(playbin: &gst::Element, hardware_decode: bool) {
+    if hardware_decode {
+        prioritize_hardware_video_decoders();
+        return;
+    }
+
+    // `playbin` exposes the software-only switch as a member of its `flags` property rather
+    // than as a standalone bool (unlike `uridecodebin`). Preserve every existing default flag
+    // and add only `force-sw-decoders`.
+    let flags = playbin.property_value("flags");
+    let flags_class = gst::glib::FlagsClass::with_type(flags.type_())
+        .expect("playbin's flags property always has a registered flags type");
+    let flags = flags_class
+        .builder_with_value(flags)
+        .expect("playbin flags value matches its registered flags type")
+        .set_by_nick("force-sw-decoders")
+        .build()
+        .expect("playbin exposes the force-sw-decoders flag");
+    playbin.set_property_from_value("flags", &flags);
+}
+
+fn build_uri_decodebin(uri: &str, hardware_decode: bool) -> Result<gst::Element, PreviewError> {
+    if hardware_decode {
+        prioritize_hardware_video_decoders();
+    }
+    gst::ElementFactory::make("uridecodebin")
+        .property("uri", uri)
+        .property("force-sw-decoders", !hardware_decode)
+        .build()
+        .map_err(PreviewError::CreateElement)
+}
 
 #[derive(Debug)]
 pub enum PreviewError {
@@ -886,6 +955,7 @@ struct CompositeBranch<'a> {
     path: &'a Path,
     clip: Option<&'a ClipInstance>,
     resolution: Option<(u32, u32)>,
+    hardware_decode: bool,
     /// `false` for the background (track 0) branch — position/opacity keyframes only drive
     /// `compositor`'s pad properties on an overlay branch, matching export's own
     /// position/opacity-is-overlay-only convention (see `crate::keyframe` module docs).
@@ -911,10 +981,7 @@ fn build_composite_branch(
     branch: CompositeBranch,
 ) -> Result<(gst::Element, Option<gst::Element>), PreviewError> {
     let uri = gst::glib::filename_to_uri(branch.path, None).map_err(PreviewError::UriConversion)?;
-    let decodebin = gst::ElementFactory::make("uridecodebin")
-        .property("uri", uri.as_str())
-        .build()
-        .map_err(PreviewError::CreateElement)?;
+    let decodebin = build_uri_decodebin(uri.as_str(), branch.hardware_decode)?;
 
     let mut chain: Vec<gst::Element> = vec![gst::ElementFactory::make("videoconvert")
         .build()
@@ -1036,10 +1103,7 @@ fn build_composite_branch(
         let mask_path = Path::new(&clip.background_removal_mask_path);
         match gst::glib::filename_to_uri(mask_path, None) {
             Ok(uri) => {
-                let matte_decodebin = gst::ElementFactory::make("uridecodebin")
-                    .property("uri", uri.as_str())
-                    .build()
-                    .map_err(PreviewError::CreateElement)?;
+                let matte_decodebin = build_uri_decodebin(uri.as_str(), branch.hardware_decode)?;
                 let matte_convert = gst::ElementFactory::make("videoconvert")
                     .build()
                     .map_err(PreviewError::CreateElement)?;
@@ -1321,6 +1385,37 @@ impl Preview {
     /// probe and any filtering — for callers with no clip in scope at all (e.g. filmstrip
     /// thumbnail extraction, which always shows the raw source regardless of applied effects).
     pub fn open(path: &Path, clip: Option<&ClipInstance>) -> Result<Self, PreviewError> {
+        Self::open_with_hardware_decode(path, clip, true)
+    }
+
+    /// Opens a single-source preview while allowing the caller to disable hardware decoding.
+    /// Hardware acceleration is preferred when enabled and available; if decoder preroll
+    /// fails, the pipeline is rebuilt once with software-only decoding before returning an
+    /// error. This keeps [`Self::open`]'s default fast without sacrificing CPU compatibility.
+    pub fn open_with_hardware_decode(
+        path: &Path,
+        clip: Option<&ClipInstance>,
+        hardware_decode: bool,
+    ) -> Result<Self, PreviewError> {
+        gst::init().map_err(PreviewError::Init)?;
+        let hardware_decode = hardware_decode && !prioritize_hardware_video_decoders().is_empty();
+        match Self::open_once(path, clip, hardware_decode) {
+            Err(PreviewError::StateChange(error)) if hardware_decode => {
+                tracing::warn!(
+                    error = %error,
+                    "hardware preview decoder failed to preroll; retrying with CPU"
+                );
+                Self::open_once(path, clip, false)
+            }
+            result => result,
+        }
+    }
+
+    fn open_once(
+        path: &Path,
+        clip: Option<&ClipInstance>,
+        hardware_decode: bool,
+    ) -> Result<Self, PreviewError> {
         gst::init().map_err(PreviewError::Init)?;
 
         let uri = gst::glib::filename_to_uri(path, None).map_err(PreviewError::UriConversion)?;
@@ -1329,6 +1424,7 @@ impl Preview {
             .build()
             .map_err(PreviewError::CreateElement)?;
         pipeline.set_property("uri", uri.as_str());
+        configure_playbin_decoder_preference(&pipeline, hardware_decode);
 
         if let Some(clip) = clip {
             let resolution = avbridge::probe(path)
@@ -1452,6 +1548,70 @@ impl Preview {
         text_overlays: &[(&TextClip, f64)],
         shape_overlays: &[&ShapeClip],
     ) -> Result<Self, PreviewError> {
+        Self::open_composited_with_hardware_decode(
+            background_path,
+            background_clip,
+            overlays,
+            audio_overlays,
+            text_overlays,
+            shape_overlays,
+            true,
+        )
+    }
+
+    /// Opens a composited preview while allowing the caller to force every `uridecodebin`
+    /// branch to software decoding. Enabled hardware decoding gets the same one-time CPU retry
+    /// as [`Self::open_with_hardware_decode`] if pipeline preroll fails.
+    #[allow(clippy::too_many_arguments)]
+    pub fn open_composited_with_hardware_decode(
+        background_path: &Path,
+        background_clip: Option<&ClipInstance>,
+        overlays: &[(&Path, &ClipInstance)],
+        audio_overlays: &[(&Path, &ClipInstance)],
+        text_overlays: &[(&TextClip, f64)],
+        shape_overlays: &[&ShapeClip],
+        hardware_decode: bool,
+    ) -> Result<Self, PreviewError> {
+        gst::init().map_err(PreviewError::Init)?;
+        let hardware_decode = hardware_decode && !prioritize_hardware_video_decoders().is_empty();
+        match Self::open_composited_once(
+            background_path,
+            background_clip,
+            overlays,
+            audio_overlays,
+            text_overlays,
+            shape_overlays,
+            hardware_decode,
+        ) {
+            Err(PreviewError::StateChange(error)) if hardware_decode => {
+                tracing::warn!(
+                    error = %error,
+                    "hardware composited preview decoder failed to preroll; retrying with CPU"
+                );
+                Self::open_composited_once(
+                    background_path,
+                    background_clip,
+                    overlays,
+                    audio_overlays,
+                    text_overlays,
+                    shape_overlays,
+                    false,
+                )
+            }
+            result => result,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn open_composited_once(
+        background_path: &Path,
+        background_clip: Option<&ClipInstance>,
+        overlays: &[(&Path, &ClipInstance)],
+        audio_overlays: &[(&Path, &ClipInstance)],
+        text_overlays: &[(&TextClip, f64)],
+        shape_overlays: &[&ShapeClip],
+        hardware_decode: bool,
+    ) -> Result<Self, PreviewError> {
         gst::init().map_err(PreviewError::Init)?;
 
         let background_info = avbridge::probe(background_path).map_err(PreviewError::Probe)?;
@@ -1521,6 +1681,7 @@ impl Preview {
                 path: background_path,
                 clip: background_clip,
                 resolution: Some(canvas),
+                hardware_decode,
                 is_overlay: false,
                 zorder: 0,
             },
@@ -1554,6 +1715,7 @@ impl Preview {
                     path,
                     clip: Some(clip),
                     resolution,
+                    hardware_decode,
                     is_overlay: true,
                     zorder: (i + 1) as u32,
                 },
@@ -1580,10 +1742,7 @@ impl Preview {
         for ((path, clip), info) in audio_overlays.iter().zip(&audio_infos) {
             let uri =
                 gst::glib::filename_to_uri(path, None).map_err(PreviewError::UriConversion)?;
-            let decodebin = gst::ElementFactory::make("uridecodebin")
-                .property("uri", uri.as_str())
-                .build()
-                .map_err(PreviewError::CreateElement)?;
+            let decodebin = build_uri_decodebin(uri.as_str(), hardware_decode)?;
             pipeline
                 .add(&decodebin)
                 .map_err(PreviewError::Compositing)?;
