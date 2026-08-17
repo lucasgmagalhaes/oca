@@ -137,7 +137,7 @@ Performance é tratada como requisito, não como ajuste fino de última hora —
 
 - **Proxy de edição:** para material pesado (4K/2h), o preview usa uma cópia de baixa resolução (proxy) gerada na importação, mantendo a edição fluida; a exportação final sempre usa o arquivo original em qualidade cheia.
 - **Qualidade do preview selecionável:** menu de qualidade de visualização (ex.: 360p/480p/720p), com teto em 720p — o suficiente pra avaliar enquadramento, texto e cor sem forçar o preview a decodificar em resolução total e prejudicar o desempenho da edição. Usa o mesmo proxy do item acima; a exportação final nunca é afetada por essa escolha.
-- **Decode acelerado por hardware no preview:** não só no encode de exportação — usar VAAPI/NVDEC/Quick Sync também pra decodificar durante o preview e scrubbing, tirando carga da CPU.
+- **Decode acelerado por hardware no preview:** não só no encode de exportação — usar VideoToolbox/VAAPI/NVDEC/Quick Sync também pra decodificar durante o preview e scrubbing, tirando carga da CPU. Ativo por padrão quando houver decoder compatível, com fallback automático para CPU e uma opção nas preferências para forçar decode por software.
 - **Carregamento preguiçoso:** só decodifica/mantém em memória os frames próximos do playhead, não o clipe inteiro.
 - **Formato de projeto leve:** o JSON do projeto guarda referências aos arquivos originais, nunca copia mídia pra dentro do projeto.
 - **Build de release otimizado:** LTO, `opt-level=3` e strip de símbolos no binário final, pra reduzir tamanho do executável e tempo de inicialização.

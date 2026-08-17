@@ -25,8 +25,11 @@ of `preview_panel` and is a no-op once a pipeline is open or has already been tr
 current selection, so switching projects or launching the app doesn't pay GStreamer's open cost
 until the Editor screen's preview panel is actually painted. Decoded frames are uploaded to an
 egui texture every frame, and play/pause/seek (including a click-to-seek position slider) drive
-the pipeline — playback of the selected clip only, not
-yet full multi-clip timeline playback. Double-clicking an asset in the Editor's media library
+the pipeline. Hardware video decoders (VideoToolbox/NVDEC/Quick Sync/VAAPI) are preferred when
+available, fall back to CPU after a failed preroll, and can be disabled in Preferences; the
+setting is enabled by default and forces software decoding on every preview branch when off.
+Playback covers the active timeline composite at the playhead. Double-clicking an asset in the
+Editor's media library
 panel adds it to the timeline (`OcaApp::add_asset_to_timeline`) — appended, untrimmed, onto
 the first track of matching kind (auto-creating `"V1"`/`"A1"` if none exists yet). Dragging an
 asset out of the library and dropping it on the timeline strip does the same insert but at the

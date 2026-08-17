@@ -610,9 +610,18 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   reader; a vendor-specific one (NVML/etc.) is a bigger, hardware-dependent lift, same
   "hard wall" class as the GPU encoder ladder and the preview-only GStreamer gaps above.
 
-  **Not yet done (rest of Fase 7):** hardware-accelerated preview decode. Release binary
-  stripping is done — `[profile.release]` has `strip = true` alongside `opt-level = 3`/`lto =
-  true`.
+  **Hardware-accelerated preview decode is done.** `avcore::preview::Preview` discovers
+  GStreamer factories classified as hardware video decoders and raises their process-global
+  rank just above the normal software decoders, so `playbin`/`uridecodebin` actually prefer
+  VideoToolbox, NVDEC, Quick Sync, or VAAPI when the installed plugins and source codec allow
+  it. Every single-source, composited, audio-only, and background-removal matte decode branch
+  gets the same policy. `Preview::open_with_hardware_decode` and
+  `open_composited_with_hardware_decode` accept the per-pipeline choice; disabling it uses
+  GStreamer's verified `force-sw-decoders` control, while an enabled pipeline that fails during
+  preroll is rebuilt once in software-only mode. `PrefsState::preview_hardware_decode` exposes
+  this in Ajustes, defaults to `true` even when loading an older `prefs.oc`, and invalidates the
+  current Editor preview immediately when toggled. Release binary stripping is also done:
+  `[profile.release]` has `strip = true` alongside `opt-level = 3`/`lto = true`.
 
 - **Fase 8 — barely started (auto-update check-and-notify only).** `avcore::update_check` —
   `fetch_latest_release` hits GitHub's `repos/lucasgmagalhaes/oca/releases/latest` API
