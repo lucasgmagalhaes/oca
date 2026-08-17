@@ -381,6 +381,25 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     std::sync::atomic::Ordering::Relaxed,
                 );
             }
+            ui.add_space(10.0);
+            ui.label(Text::PrefsLayoutScope.tr(locale));
+            ui.horizontal(|ui| {
+                use crate::app::LayoutScope;
+                for (choice, label) in [
+                    (LayoutScope::PerUser, Text::LayoutScopePerUser),
+                    (LayoutScope::PerProject, Text::LayoutScopePerProject),
+                ] {
+                    if ui
+                        .selectable_label(app.prefs.layout_scope == choice, label.tr(locale))
+                        .clicked()
+                    {
+                        app.prefs.layout_scope = choice;
+                        if choice == LayoutScope::PerProject {
+                            app.load_panel_layout_for_active_project();
+                        }
+                    }
+                }
+            });
         });
         ui.add_space(14.0);
 

@@ -238,6 +238,7 @@ impl App {
         if !debounce_done && !ceiling_hit {
             return;
         }
+        self.sync_panel_layout_into_active_project();
         let bytes = match avcore::persistence::to_ocproj_bytes(self.active_project()) {
             Ok(b) => b,
             Err(_) => return,
@@ -276,6 +277,7 @@ impl App {
                         info!(path = %autosave_path.display(), "autosave restored");
                         *self.active_project_mut() = restored;
                         self.project_dirty = false;
+                        self.load_panel_layout_for_active_project();
                     }
                     self.autosave_restore_pending = None;
                 }

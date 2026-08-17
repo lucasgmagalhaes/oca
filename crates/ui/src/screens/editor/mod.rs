@@ -378,6 +378,7 @@ fn save_active_project(app: &mut App) {
     };
     let Some(path) = path else { return };
 
+    app.sync_panel_layout_into_active_project();
     match avcore::save_project_to_file(app.active_project(), &path) {
         Ok(()) => {
             tracing::info!(path = %path.display(), "project saved");

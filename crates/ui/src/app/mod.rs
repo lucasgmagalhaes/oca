@@ -260,6 +260,23 @@ pub struct PrefsState {
     pub props_panel_width: f32,
     #[serde(default = "default_timeline_height")]
     pub timeline_height: f32,
+    /// Which half of the "layout salvo por projeto ou por usuário" spec is active — whether
+    /// [`App::lib_panel_width`]/`props_panel_width`/`timeline_height` are captured back into
+    /// this per-user `PrefsState` (the default, matching this codebase's pre-existing
+    /// behavior) or into the active project's own `avcore::Project::panel_layout` instead
+    /// (`App::sync_panel_layout_into_active_project`), so different projects can each remember
+    /// their own layout. `#[serde(default)]` so an older saved `prefs.oc` loads as `PerUser`,
+    /// unchanged behavior.
+    #[serde(default)]
+    pub layout_scope: LayoutScope,
+}
+
+/// See [`PrefsState::layout_scope`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum LayoutScope {
+    #[default]
+    PerUser,
+    PerProject,
 }
 
 fn default_telemetry_enabled() -> bool {
@@ -301,6 +318,7 @@ impl Default for PrefsState {
             lib_panel_width: default_lib_panel_width(),
             props_panel_width: default_props_panel_width(),
             timeline_height: default_timeline_height(),
+            layout_scope: LayoutScope::default(),
         }
     }
 }
@@ -1098,6 +1116,9 @@ impl App {
         if !app.prefs.sound_library_path.is_empty() {
             app.rescan_sound_library();
         }
+        if !app.projects.is_empty() {
+            app.load_panel_layout_for_active_project();
+        }
         app.spawn_update_check();
         app
     }
@@ -1195,7 +1216,47 @@ impl App {
         );
         let asset_id = project.media_library.first().map(|a| a.id);
         self.select_asset(asset_id);
+        self.load_panel_layout_for_active_project();
         self.screen = Screen::Editor;
+    }
+
+    /// Loads the Editor's live panel-layout fields (`lib_panel_width`/`props_panel_width`/
+    /// `timeline_height`) for whichever project is now active — called from [`Self::open_project`]
+    /// so switching projects doesn't leave the previous project's dragged layout on screen.
+    /// Under [`LayoutScope::PerUser`] this is a no-op (the per-user `prefs` values already
+    /// apply to every project uniformly). Under [`LayoutScope::PerProject`], falls back to the
+    /// current live values (effectively the per-user defaults from `App::new`, unchanged) when
+    /// the newly active project has never saved its own layout yet, rather than resetting to
+    /// some arbitrary size.
+    pub(crate) fn load_panel_layout_for_active_project(&mut self) {
+        if self.prefs.layout_scope != LayoutScope::PerProject {
+            return;
+        }
+        if let Some(layout) = self.active_project().panel_layout {
+            self.lib_panel_width = layout.lib_panel_width;
+            self.props_panel_width = layout.props_panel_width;
+            self.timeline_height = layout.timeline_height;
+        }
+    }
+
+    /// Captures the Editor's live panel-layout fields back into the active project's own
+    /// `avcore::Project::panel_layout`, under [`LayoutScope::PerProject`] — called right before
+    /// serializing a project (explicit save and autosave both), mirroring how the per-user
+    /// scope's `App::save_prefs` already captures the same three fields into `prefs` at its own
+    /// save points. A no-op under [`LayoutScope::PerUser`] (nothing to capture — the per-user
+    /// scope never touches `Project::panel_layout` at all) or once nothing has changed.
+    pub(crate) fn sync_panel_layout_into_active_project(&mut self) {
+        if self.prefs.layout_scope != LayoutScope::PerProject {
+            return;
+        }
+        let layout = avcore::PanelLayout {
+            lib_panel_width: self.lib_panel_width,
+            props_panel_width: self.props_panel_width,
+            timeline_height: self.timeline_height,
+        };
+        if self.active_project().panel_layout != Some(layout) {
+            self.active_project_mut().panel_layout = Some(layout);
+        }
     }
 
     /// Selects `id` as the Editor's active clip and clears out whatever pipeline/texture/
@@ -1265,6 +1326,7 @@ impl App {
             }],
             active_sequence: 0,
             file_path: None,
+            panel_layout: None,
         });
     }
 
