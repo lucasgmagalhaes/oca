@@ -990,8 +990,9 @@ impl Preview {
     ///
     /// `background`'s resolution sizes the canvas every overlay's layer-scale/position math is
     /// expressed in pixels against — [`PreviewError::NoBackgroundVideo`] if it can't be probed.
-    /// Known gap: every branch plays at a uniform rate `1.0` — `ClipInstance::speed_factor`
-    /// isn't honored per-branch here yet, unlike the single-clip [`Self::seek_with_rate`] path.
+    /// Every branch's own `ClipInstance::speed_factor` is honored via
+    /// [`Self::seek_composited`]'s `rates` argument, called right after this returns — this
+    /// method itself only opens the pipeline (implicitly rate `1.0` until the first seek).
     ///
     /// `text_overlays`/`shape_overlays` — the clips covering the playhead on any
     /// [`crate::timeline::TrackKind::Text`]/[`crate::timeline::TrackKind::Shape`] track, if
@@ -1125,22 +1126,33 @@ impl Preview {
 
     /// Seeks a [`Self::open_composited`] pipeline's branches independently — `offsets[i]` is
     /// seconds within branch `i`'s own source file (background first, then `overlays` in the
-    /// order [`Self::open_composited`] was given), not a shared timeline position. A no-op for
-    /// any branch beyond `offsets`' length; extra offsets past [`Self::branches`]' length are
-    /// ignored. Returns the first branch's seek error, if any, after attempting every branch
-    /// (partial application is preferable to leaving some branches on their old offset with no
-    /// indication which).
+    /// order [`Self::open_composited`] was given), not a shared timeline position, and
+    /// `rates[i]` is that branch's own `ClipInstance::speed_factor` (missing/shorter than
+    /// `offsets` defaults to `1.0`) — each branch is seeked independently via
+    /// `Element::seek` (not `seek_simple`) sent directly to that branch's own `uridecodebin`,
+    /// same technique [`Self::seek_with_rate`] uses pipeline-wide for the single-clip path.
+    /// Seeking one element's own upstream segment doesn't affect any other branch's rate — this
+    /// closes the gap [`Self::open_composited`]'s doc comment used to describe as "every branch
+    /// plays at a uniform rate `1.0`". A no-op for any branch beyond `offsets`' length; extra
+    /// offsets/rates past [`Self::branches`]' length are ignored. Returns the first branch's
+    /// seek error, if any, after attempting every branch (partial application is preferable to
+    /// leaving some branches on their old offset/rate with no indication which).
     ///
     /// Any [`Self::matte_branches`] entry tied to a branch that got seeked here is seeked too,
-    /// to that branch's own offset minus its `source_in_secs` (the matte's own 0-based clip
-    /// timeline — see [`Self::matte_branches`]' doc comment) — the caller never passes a
-    /// separate offset for it.
-    pub fn seek_composited(&self, offsets: &[f64]) -> Result<(), PreviewError> {
+    /// at that same branch's own rate, to that branch's own offset minus its `source_in_secs`
+    /// (the matte's own 0-based clip timeline — see [`Self::matte_branches`]' doc comment) —
+    /// the caller never passes a separate offset or rate for it.
+    pub fn seek_composited(&self, offsets: &[f64], rates: &[f64]) -> Result<(), PreviewError> {
         let mut first_err = None;
-        for (branch, &offset) in self.branches.iter().zip(offsets) {
-            if let Err(e) = branch.seek_simple(
+        for (i, (branch, &offset)) in self.branches.iter().zip(offsets).enumerate() {
+            let rate = rates.get(i).copied().unwrap_or(1.0).max(0.01);
+            if let Err(e) = branch.seek(
+                rate,
                 gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+                gst::SeekType::Set,
                 gst::ClockTime::from_seconds_f64(offset.max(0.0)),
+                gst::SeekType::None,
+                gst::ClockTime::NONE,
             ) {
                 first_err.get_or_insert(PreviewError::Seek(e));
             }
@@ -1149,10 +1161,15 @@ impl Preview {
             let Some(&offset) = offsets.get(branch_index) else {
                 continue;
             };
+            let rate = rates.get(branch_index).copied().unwrap_or(1.0).max(0.01);
             let matte_offset = (offset - source_in_secs).max(0.0);
-            if let Err(e) = matte.seek_simple(
+            if let Err(e) = matte.seek(
+                rate,
                 gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+                gst::SeekType::Set,
                 gst::ClockTime::from_seconds_f64(matte_offset),
+                gst::SeekType::None,
+                gst::ClockTime::NONE,
             ) {
                 first_err.get_or_insert(PreviewError::Seek(e));
             }
