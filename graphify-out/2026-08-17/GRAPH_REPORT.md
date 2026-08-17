@@ -1,11 +1,11 @@
 # Graph Report - oca  (2026-08-17)
 
 ## Corpus Check
-- 157 files · ~226,965 words
+- 157 files · ~227,113 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2174 nodes · 4505 edges · 116 communities (107 shown, 9 thin omitted)
+- 2174 nodes · 4505 edges · 115 communities (106 shown, 9 thin omitted)
 - Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 285 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
@@ -109,7 +109,6 @@
 - property.rs
 - Position
 - test_asset
-- ShapeClip
 - breadcrumb.rs
 - ExportAspectRatio
 - split_keyframes_at
@@ -149,7 +148,7 @@
 ## Import Cycles
 - 2-file cycle: `crates/ui/src/app/mod.rs -> crates/ui/src/i18n.rs -> crates/ui/src/app/mod.rs`
 
-## Communities (116 total, 9 thin omitted)
+## Communities (115 total, 9 thin omitted)
 
 ### Community 0 - "keyframe_test.rs"
 Cohesion: 0.09
@@ -176,16 +175,16 @@ Cohesion: 0.08
 Nodes (46): AppSink, AppSrc, BoolError, attach_audio_mix_branch(), build_audio_filter_bin(), build_audio_mix_output(), build_chroma_key_element(), build_composite_branch() (+38 more)
 
 ### Community 6 - "timeline.rs"
-Cohesion: 0.09
-Nodes (10): ClipFormatting, ColorFilter, LayerTemplate, MaskShape, String, Vec, TextClip, TransitionType (+2 more)
+Cohesion: 0.10
+Nodes (9): ClipFormatting, ColorFilter, LayerTemplate, MaskShape, String, Vec, TextClip, TransitionType (+1 more)
 
 ### Community 7 - "encode_write_packet"
 Cohesion: 0.21
 Nodes (22): AVStream, avbridge_encode_export(), EncodeStatus, ProgressCallback, AudioFilterChain, AVCodecContext, AVFormatContext, AVFrame (+14 more)
 
 ### Community 8 - "overlay_render_test.rs"
-Cohesion: 0.17
-Nodes (21): a_highlighted_word_follows_the_base_layout_onto_the_next_line(), a_local_time_covered_by_no_word_leaves_only_the_base_color(), circle_mask_center_is_visible_and_corners_are_masked(), empty_text_produces_a_fully_transparent_buffer(), highlight_disabled_never_draws_the_highlight_color_even_within_a_words_window(), long_text_wraps_onto_multiple_lines_once_narrower_than_the_canvas(), non_empty_text_draws_at_least_one_opaque_pixel(), none_mask_shape_is_fully_masked_out() (+13 more)
+Cohesion: 0.13
+Nodes (28): a_highlighted_word_follows_the_base_layout_onto_the_next_line(), a_local_time_covered_by_no_word_leaves_only_the_base_color(), circle_mask_center_is_visible_and_corners_are_masked(), ellipse_center_pixel_is_opaque_and_corners_are_transparent(), empty_text_produces_a_fully_transparent_buffer(), highlight_disabled_never_draws_the_highlight_color_even_within_a_words_window(), long_text_wraps_onto_multiple_lines_once_narrower_than_the_canvas(), non_empty_text_draws_at_least_one_opaque_pixel() (+20 more)
 
 ### Community 9 - "Plano de Execução — oca (PacoPaçoca)"
 Cohesion: 0.06
@@ -352,8 +351,8 @@ Cohesion: 0.20
 Nodes (7): AVCodec, loudness_log_callback(), avbridge_encode_matte_video(), AVFrame, scale_video_frame(), MatteStatus, va_list
 
 ### Community 58 - "App"
-Cohesion: 0.14
-Nodes (5): App, Context, Option, PathBuf, Vec
+Cohesion: 0.13
+Nodes (6): App, frozen_playhead(), Context, Option, PathBuf, Vec
 
 ### Community 59 - "pcm_extract.c"
 Cohesion: 0.29
@@ -460,8 +459,8 @@ Cohesion: 0.52
 Nodes (6): new_sequence_appends_and_switches_to_it(), new_sequence_ids_keep_increasing_after_multiple_calls(), new_sequence_inherits_the_active_sequences_export_settings(), test_project(), timeline_mut_writes_the_active_sequence(), timeline_reads_the_active_sequence()
 
 ### Community 88 - "overlay_render.rs"
-Cohesion: 0.27
-Nodes (13): active_highlight_word_index(), blend_pixel(), draw_laid_out_text(), draw_rounded_background(), draw_text_segment_onto(), ellipse_inside(), render_text_segment_rgba(), Font (+5 more)
+Cohesion: 0.25
+Nodes (14): active_highlight_word_index(), blend_pixel(), draw_laid_out_text(), draw_rounded_background(), draw_text_segment_onto(), ellipse_inside(), put_pixel(), render_text_segment_rgba() (+6 more)
 
 ### Community 90 - "auto_reframe_one"
 Cohesion: 0.27
@@ -498,10 +497,6 @@ Nodes (4): f32, Lerp, Position, MotionTrackEvent
 ### Community 103 - "test_asset"
 Cohesion: 0.22
 Nodes (10): add_shape_clip_ids_stay_unique_past_an_existing_high_shape_clip_id(), ensure_preview_loaded_clears_state_once_the_playhead_moves_past_every_clip(), ensure_preview_loaded_resolves_the_clip_covering_the_playhead(), pump_import_queue_adds_the_asset_to_its_target_project_with_a_fresh_id(), pump_import_queue_applies_enrichment_to_the_asset_it_was_assigned(), pump_import_queue_targets_the_project_by_id_not_the_active_index(), Vec, test_asset() (+2 more)
-
-### Community 104 - "ShapeClip"
-Cohesion: 0.36
-Nodes (8): ellipse_center_pixel_is_opaque_and_corners_are_transparent(), rectangle_fills_its_whole_local_square_not_just_the_center(), sample_shape(), stroke_only_shape_leaves_its_own_center_transparent(), put_pixel(), render_shape_clip_rgba(), ShapeClip, shape_clip()
 
 ### Community 105 - "breadcrumb.rs"
 Cohesion: 0.39

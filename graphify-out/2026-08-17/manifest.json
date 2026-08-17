@@ -115,8 +115,8 @@
     "semantic_hash": ""
   },
   "crates/core/tests/preview_test.rs": {
-    "mtime": 1786993735.6665828,
-    "ast_hash": "9ea0eaaff0aab9812acef0c10cae3df2",
+    "mtime": 1786994019.300109,
+    "ast_hash": "e2b7268b52c42835e0441f3a0e08bf52",
     "semantic_hash": ""
   },
   "crates/core/tests/probe_test.rs": {

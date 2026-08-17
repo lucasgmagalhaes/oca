@@ -115,8 +115,8 @@
     "semantic_hash": ""
   },
   "crates/core/tests/preview_test.rs": {
-    "mtime": 1786994019.300109,
-    "ast_hash": "e2b7268b52c42835e0441f3a0e08bf52",
+    "mtime": 1786997646.8652287,
+    "ast_hash": "f268411369a56cf740fab2f6597e60e0",
     "semantic_hash": ""
   },
   "crates/core/tests/probe_test.rs": {
@@ -140,8 +140,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1786990822.9656029,
-    "ast_hash": "2c83e49ee5500a07292d17c9b64d3eb2",
+    "mtime": 1786997493.670033,
+    "ast_hash": "73e7399aa6b9bbd331836b21649638fd",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
@@ -205,8 +205,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786993704.4581368,
-    "ast_hash": "c6d8ccb30c35d822b0a9834e2989fffa",
+    "mtime": 1786997445.6078553,
+    "ast_hash": "4b87dbf956ec3b07618c86e651fae104",
     "semantic_hash": ""
   },
   "README.md": {
@@ -515,8 +515,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/clip_props.rs": {
-    "mtime": 1786985605.2137775,
-    "ast_hash": "3feda2672155ff9d1868406fc86d6fba",
+    "mtime": 1786997445.6060178,
+    "ast_hash": "75a2177d8dca3f857e127dae135e5d5a",
     "semantic_hash": ""
   },
   "crates/ui/src/app/export.rs": {
@@ -545,8 +545,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/preview.rs": {
-    "mtime": 1786993473.8458986,
-    "ast_hash": "5d5ad9113eaa162c1c70e88027e04d57",
+    "mtime": 1786997445.6068506,
+    "ast_hash": "1ccd1f472d6438271721f8272e7e5acf",
     "semantic_hash": ""
   },
   "crates/ui/src/app/timeline_ops.rs": {
@@ -862,6 +862,11 @@
   "crates/core/assets/fonts/playfair-display-sc/OFL.txt": {
     "mtime": 1786991653.779952,
     "ast_hash": "f0f54585c1e477d14f3492c67489c924",
+    "semantic_hash": ""
+  },
+  "crates/core/tests/fixtures/video_silent.mp4": {
+    "mtime": 1786997641.6213295,
+    "ast_hash": "e81ae1ec649ee063727fec9b6497377c",
     "semantic_hash": ""
   }
 }
