@@ -140,6 +140,7 @@ fn fixture_project() -> Project {
         }],
         active_sequence: 0,
         file_path: None,
+        panel_layout: None,
     }
 }
 
@@ -160,12 +161,26 @@ fn empty_project() -> Project {
         }],
         active_sequence: 0,
         file_path: None,
+        panel_layout: None,
     }
 }
 
 #[test]
 fn round_trips_a_project_through_ocproj() {
     let original = fixture_project();
+    let bytes = to_ocproj_bytes(&original).unwrap();
+    let restored = from_ocproj_bytes(&bytes).unwrap();
+    assert_eq!(original, restored);
+}
+
+#[test]
+fn round_trips_a_project_with_a_saved_panel_layout() {
+    let mut original = fixture_project();
+    original.panel_layout = Some(avcore::PanelLayout {
+        lib_panel_width: 250.0,
+        props_panel_width: 300.0,
+        timeline_height: 210.0,
+    });
     let bytes = to_ocproj_bytes(&original).unwrap();
     let restored = from_ocproj_bytes(&bytes).unwrap();
     assert_eq!(original, restored);
@@ -222,6 +237,41 @@ fn projects_saved_before_per_block_gain_load_at_unity_gain() {
         .flat_map(|sequence| &sequence.timeline.tracks)
         .flat_map(|track| &track.clips)
         .all(|clip| clip.gain_db == 0.0));
+}
+
+/// Same defaulting guarantee as the `gain_db` test above, for `Project::panel_layout` (added
+/// for `ui`'s per-project layout scope) — a project saved before this field existed at all
+/// should still load, with `panel_layout: None` rather than a deserialization error.
+#[test]
+fn projects_saved_before_panel_layout_load_with_no_layout() {
+    let original = fixture_project();
+    let bytes = to_ocproj_bytes(&original).unwrap();
+
+    let header_len = 5;
+    let mut msgpack = Vec::new();
+    std::io::Read::read_to_end(
+        &mut flate2::read::GzDecoder::new(&bytes[header_len..]),
+        &mut msgpack,
+    )
+    .unwrap();
+
+    let mut value = rmpv::decode::read_value(&mut &msgpack[..]).unwrap();
+    if let rmpv::Value::Map(pairs) = &mut value {
+        pairs.retain(|(key, _)| key.as_str() != Some("panel_layout"));
+    }
+
+    let mut edited_msgpack = Vec::new();
+    rmpv::encode::write_value(&mut edited_msgpack, &value).unwrap();
+
+    let mut edited_bytes = Vec::new();
+    edited_bytes.extend_from_slice(&bytes[..header_len]);
+    let mut encoder = flate2::write::GzEncoder::new(&mut edited_bytes, flate2::Compression::fast());
+    std::io::Write::write_all(&mut encoder, &edited_msgpack).unwrap();
+    encoder.finish().unwrap();
+
+    let restored: Project = from_ocproj_bytes(&edited_bytes).unwrap();
+
+    assert_eq!(restored.panel_layout, None);
 }
 
 #[test]

@@ -35,6 +35,7 @@ fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
         }],
         active_sequence: 0,
         file_path: None,
+        panel_layout: None,
     }
 }
 
@@ -189,6 +190,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         export_jobs,
         prefs: PrefsState::default(),
         telemetry_tx,
+        telemetry_enabled_flag: Arc::new(AtomicBool::new(true)),
         last_preview_frame_telemetry: None,
         render_tx,
         render_rx,
@@ -3846,4 +3848,82 @@ fn prefs_snapshot_prunes_recent_paths_that_no_longer_exist() {
         snapshot.recent_project_paths,
         vec![env!("CARGO_MANIFEST_DIR").to_string()]
     );
+}
+
+#[test]
+fn sync_panel_layout_is_a_no_op_under_per_user_scope() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.prefs.layout_scope = LayoutScope::PerUser;
+    app.lib_panel_width = 999.0;
+
+    app.sync_panel_layout_into_active_project();
+
+    assert_eq!(app.active_project().panel_layout, None);
+}
+
+#[test]
+fn sync_panel_layout_captures_live_values_under_per_project_scope() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.prefs.layout_scope = LayoutScope::PerProject;
+    app.lib_panel_width = 321.0;
+    app.props_panel_width = 456.0;
+    app.timeline_height = 111.0;
+
+    app.sync_panel_layout_into_active_project();
+
+    assert_eq!(
+        app.active_project().panel_layout,
+        Some(avcore::PanelLayout {
+            lib_panel_width: 321.0,
+            props_panel_width: 456.0,
+            timeline_height: 111.0,
+        })
+    );
+}
+
+#[test]
+fn load_panel_layout_is_a_no_op_under_per_user_scope() {
+    let mut project = test_project(1, Vec::new());
+    project.panel_layout = Some(avcore::PanelLayout {
+        lib_panel_width: 10.0,
+        props_panel_width: 20.0,
+        timeline_height: 30.0,
+    });
+    let mut app = test_app(vec![project], Vec::new());
+    app.prefs.layout_scope = LayoutScope::PerUser;
+    app.lib_panel_width = 999.0;
+
+    app.load_panel_layout_for_active_project();
+
+    assert_eq!(app.lib_panel_width, 999.0);
+}
+
+#[test]
+fn load_panel_layout_applies_the_active_projects_saved_layout() {
+    let mut project = test_project(1, Vec::new());
+    project.panel_layout = Some(avcore::PanelLayout {
+        lib_panel_width: 10.0,
+        props_panel_width: 20.0,
+        timeline_height: 30.0,
+    });
+    let mut app = test_app(vec![project], Vec::new());
+    app.prefs.layout_scope = LayoutScope::PerProject;
+    app.lib_panel_width = 999.0;
+
+    app.load_panel_layout_for_active_project();
+
+    assert_eq!(app.lib_panel_width, 10.0);
+    assert_eq!(app.props_panel_width, 20.0);
+    assert_eq!(app.timeline_height, 30.0);
+}
+
+#[test]
+fn load_panel_layout_keeps_live_values_when_project_has_no_saved_layout() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.prefs.layout_scope = LayoutScope::PerProject;
+    app.lib_panel_width = 999.0;
+
+    app.load_panel_layout_for_active_project();
+
+    assert_eq!(app.lib_panel_width, 999.0);
 }

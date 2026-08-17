@@ -154,6 +154,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
         }],
         active_sequence: 0,
         file_path: None,
+        panel_layout: None,
     }
 }
 
