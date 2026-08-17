@@ -234,9 +234,8 @@ impl App {
         self.about_open = false;
     }
 
-    /// Shows the installed version and the result of the startup release check. The releases
-    /// link stays useful even when the check is still running or failed, while an available
-    /// update links directly to that release's page.
+    /// Shows the installed version and drives the explicit download/install/restart flow. The
+    /// releases link stays useful throughout, including on unsupported platforms and failures.
     pub(super) fn show_about_modal(&mut self, ctx: &egui::Context) {
         if !self.about_open {
             return;
@@ -245,6 +244,8 @@ impl App {
         let locale = self.locale;
         let status = self.update_check_status.clone();
         let mut close = false;
+        let mut install = false;
+        let mut restart = false;
         let response = egui::Modal::new(egui::Id::new("about_modal")).show(ctx, |ui| {
             ui.set_width(380.0);
             ui.vertical_centered(|ui| {
@@ -287,6 +288,32 @@ impl App {
                         Text::UpdateAvailable.tr(locale),
                         update.version
                     ));
+                    if !avcore::auto_update_supported() || !update.auto_update_available {
+                        ui.add_space(4.0);
+                        ui.label(Text::AboutManualInstallOnly.tr(locale));
+                    }
+                    &update.html_url
+                }
+                super::UpdateCheckStatus::Installing(update) => {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(Text::AboutInstalling.tr(locale));
+                    });
+                    &update.html_url
+                }
+                super::UpdateCheckStatus::RestartRequired(update) => {
+                    ui.label(format!(
+                        "{} {}.",
+                        Text::AboutRestartRequired.tr(locale),
+                        update.version
+                    ));
+                    &update.html_url
+                }
+                super::UpdateCheckStatus::InstallFailed(update) => {
+                    ui.label(
+                        egui::RichText::new(Text::AboutInstallFailed.tr(locale))
+                            .color(theme::ERROR),
+                    );
                     &update.html_url
                 }
             };
@@ -297,9 +324,37 @@ impl App {
                 if ui.button(Text::WindowClose.tr(locale)).clicked() {
                     close = true;
                 }
+                match &status {
+                    super::UpdateCheckStatus::Available(update)
+                        if avcore::auto_update_supported() && update.auto_update_available =>
+                    {
+                        if ui.button(Text::AboutDownloadInstall.tr(locale)).clicked() {
+                            install = true;
+                        }
+                    }
+                    super::UpdateCheckStatus::InstallFailed(update)
+                        if avcore::auto_update_supported() && update.auto_update_available =>
+                    {
+                        if ui.button(Text::AboutRetryInstall.tr(locale)).clicked() {
+                            install = true;
+                        }
+                    }
+                    super::UpdateCheckStatus::RestartRequired(_)
+                        if ui.button(Text::AboutRestartNow.tr(locale)).clicked() =>
+                    {
+                        restart = true;
+                    }
+                    _ => {}
+                }
             });
         });
 
+        if install {
+            self.install_available_update();
+        }
+        if restart {
+            self.restart_after_update(ctx);
+        }
         if response.should_close() || close {
             self.close_about();
         }

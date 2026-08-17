@@ -555,9 +555,19 @@ enum MatteGenerationEvent {
 /// the UI thread. Every terminal result is sent because the About modal distinguishes a
 /// successful current-version result from a failed network request.
 enum UpdateCheckEvent {
-    NewerVersionAvailable { version: String, html_url: String },
+    NewerVersionAvailable {
+        version: String,
+        html_url: String,
+        auto_update_available: bool,
+    },
     UpToDate,
     Failed,
+    Installed {
+        update: AvailableUpdate,
+    },
+    InstallFailed {
+        update: AvailableUpdate,
+    },
 }
 
 /// A GitHub release newer than the running build, carried by
@@ -566,6 +576,7 @@ enum UpdateCheckEvent {
 pub struct AvailableUpdate {
     pub version: String,
     pub html_url: String,
+    pub auto_update_available: bool,
 }
 
 /// User-facing state of the one-shot GitHub Releases check. Keeping failure distinct from
@@ -577,6 +588,9 @@ pub enum UpdateCheckStatus {
     UpToDate,
     Failed,
     Available(AvailableUpdate),
+    Installing(AvailableUpdate),
+    RestartRequired(AvailableUpdate),
+    InstallFailed(AvailableUpdate),
 }
 
 /// A message from a background text-to-speech worker thread (see
@@ -988,10 +1002,9 @@ pub struct App {
     pub binding_capture: Option<BindableAction>,
     update_check_tx: UnboundedSender<UpdateCheckEvent>,
     update_check_rx: UnboundedReceiver<UpdateCheckEvent>,
-    /// Result of the startup GitHub Releases check. The Home screen shows a banner only for
-    /// [`UpdateCheckStatus::Available`]; the About modal also reports checking/current/failure
-    /// states without conflating them. Fase 8's "Versão e auto-update" remains scoped down to
-    /// check-and-notify — see `avcore::update_check`'s module doc comment.
+    /// Result of the startup GitHub Releases check and any user-requested install. The Home
+    /// screen shows a banner only for [`UpdateCheckStatus::Available`]; the About modal owns
+    /// download/install/retry/restart presentation.
     pub update_check_status: UpdateCheckStatus,
     /// Set when "Adicionar exportação" picked an output path that already exists — holds
     /// everything needed to queue the export once the user resolves the conflict via

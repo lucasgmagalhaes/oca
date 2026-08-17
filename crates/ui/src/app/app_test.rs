@@ -4380,6 +4380,7 @@ fn pump_update_check_sets_available_status_on_a_newer_version_event() {
         .send(UpdateCheckEvent::NewerVersionAvailable {
             version: "99.0.0".to_string(),
             html_url: "https://github.com/lucasgmagalhaes/oca/releases/tag/v99.0.0".to_string(),
+            auto_update_available: true,
         })
         .unwrap();
 
@@ -4390,6 +4391,7 @@ fn pump_update_check_sets_available_status_on_a_newer_version_event() {
         UpdateCheckStatus::Available(AvailableUpdate {
             version: "99.0.0".to_string(),
             html_url: "https://github.com/lucasgmagalhaes/oca/releases/tag/v99.0.0".to_string(),
+            auto_update_available: true,
         })
     );
 }
@@ -4418,6 +4420,50 @@ fn pump_update_check_distinguishes_up_to_date_from_failure() {
     app.pump_update_check();
 
     assert_eq!(app.update_check_status, UpdateCheckStatus::Failed);
+}
+
+#[test]
+fn pump_update_check_marks_an_installed_update_ready_to_restart() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let update = AvailableUpdate {
+        version: "99.0.0".to_string(),
+        html_url: "https://github.com/lucasgmagalhaes/oca/releases/tag/v99.0.0".to_string(),
+        auto_update_available: true,
+    };
+    app.update_check_tx
+        .send(UpdateCheckEvent::Installed {
+            update: update.clone(),
+        })
+        .unwrap();
+
+    app.pump_update_check();
+
+    assert_eq!(
+        app.update_check_status,
+        UpdateCheckStatus::RestartRequired(update)
+    );
+}
+
+#[test]
+fn pump_update_check_preserves_release_details_after_install_failure() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let update = AvailableUpdate {
+        version: "99.0.0".to_string(),
+        html_url: "https://github.com/lucasgmagalhaes/oca/releases/tag/v99.0.0".to_string(),
+        auto_update_available: true,
+    };
+    app.update_check_tx
+        .send(UpdateCheckEvent::InstallFailed {
+            update: update.clone(),
+        })
+        .unwrap();
+
+    app.pump_update_check();
+
+    assert_eq!(
+        app.update_check_status,
+        UpdateCheckStatus::InstallFailed(update)
+    );
 }
 
 #[test]

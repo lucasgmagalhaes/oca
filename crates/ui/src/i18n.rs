@@ -111,6 +111,15 @@ text_catalog! {
     AboutCheckingUpdates: pt_br = "Verificando atualizações...", en = "Checking for updates...";
     AboutUpToDate: pt_br = "Você está usando a versão mais recente.", en = "You are running the latest version.";
     AboutCheckFailed: pt_br = "Não foi possível verificar atualizações.", en = "Could not check for updates.";
+    AboutDownloadInstall: pt_br = "Baixar e instalar", en = "Download and install";
+    AboutInstalling: pt_br = "Baixando e instalando a atualização...", en = "Downloading and installing the update...";
+    AboutRestartRequired: pt_br = "Atualização instalada. Reinicie para usar a versão", en = "Update installed. Restart to use version";
+    AboutUpdateReadyToast: pt_br = "Atualização instalada. Abra Sobre o oca para reiniciar.", en = "Update installed. Open About oca to restart.";
+    AboutRestartNow: pt_br = "Reiniciar agora", en = "Restart now";
+    AboutInstallFailed: pt_br = "Não foi possível instalar a atualização.", en = "Could not install the update.";
+    AboutRetryInstall: pt_br = "Tentar novamente", en = "Try again";
+    AboutManualInstallOnly: pt_br = "A instalação automática está disponível no Windows e Linux. Baixe esta versão manualmente.", en = "Automatic installation is available on Windows and Linux. Download this version manually.";
+    AboutRestartFailed: pt_br = "Não foi possível reiniciar o aplicativo.", en = "Could not restart the application.";
     AboutViewReleases: pt_br = "Ver releases no GitHub →", en = "View GitHub releases →";
     NewProject: pt_br = "＋ Novo projeto", en = "＋ New project";
     OpenProject: pt_br = "Abrir projeto…", en = "Open project…";
