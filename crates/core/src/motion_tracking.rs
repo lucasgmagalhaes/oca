@@ -1,3 +1,18 @@
+// Copyright (C) 2026 by Lucas Gomes <lucasgsm88@gmail.com>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 2 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 //! Motion tracking — per `request.md`'s Fase 4 "Motion tracking": follow a subject's on-screen
 //! movement and use it to drive [`crate::timeline::ClipInstance::position_keyframes`], so a
 //! layer (e.g. a small webcam corner, or a graphic pinned to something in the footage) rides
