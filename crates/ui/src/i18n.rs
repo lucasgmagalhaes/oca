@@ -184,7 +184,7 @@ text_catalog! {
     YoutubeDownloadStart: pt_br = "Baixar", en = "Download";
     YoutubeDownloadCancel: pt_br = "Cancelar", en = "Cancel";
     YoutubeDownloadInProgress: pt_br = "Baixando…", en = "Downloading…";
-    YoutubeDownloadToolMissing: pt_br = "yt-dlp não encontrado no PATH — instale-o para usar este recurso.", en = "yt-dlp not found on PATH — install it to use this feature.";
+    YoutubeDownloadToolMissing: pt_br = "Componente de download do YouTube não encontrado — reinstale o aplicativo.", en = "YouTube download component not found — reinstall the app.";
     PrefsTtsModelPath: pt_br = "Caminho do modelo de texto-pra-fala", en = "Text-to-speech model path";
     PropOtherEffects: pt_br = "Outros efeitos", en = "Other effects";
     PropBlur: pt_br = "Blur", en = "Blur";
