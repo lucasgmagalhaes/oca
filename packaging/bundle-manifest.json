@@ -41,7 +41,7 @@
     {
       "name": "FFmpeg",
       "version": "8.1.2-44-g7c533d0f86",
-      "license": "LGPL-2.1-or-later",
+      "license": "LGPL-2.1-or-later on pinned Windows/Linux builds; GPL-3.0-or-later on the Homebrew macOS build",
       "bundle": "runtime/bin plus shared libav libraries",
       "windows_url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-17-13-05/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip",
       "windows_sha256": "681b9ca6d8f9be1e01d8873ad16f8a632f8a22b9653f1044837de6d5979b0fd6",
@@ -50,8 +50,8 @@
     },
     {
       "name": "GStreamer",
-      "version": "1.26.11 on Windows; Ubuntu 24.04 repository build on Linux",
-      "license": "LGPL-2.1-or-later",
+      "version": "1.26.11 on Windows; Ubuntu 24.04 repository build on Linux; Homebrew runner build on macOS",
+      "license": "LGPL-2.1-or-later core; plugin-specific licenses in the complete runtime",
       "bundle": "runtime/gstreamer including the plugin scanner and complete plugin set"
     },
     {
@@ -80,7 +80,11 @@
       "windows_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260814/cpython-3.10.21%2B20260814-x86_64-pc-windows-msvc-install_only.tar.gz",
       "windows_sha256": "9e2c77a2f2bfba3148b6e6c74679df571aa436d5b50113b01213fcd4cb803b70",
       "linux_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260814/cpython-3.10.21%2B20260814-x86_64-unknown-linux-gnu-install_only.tar.gz",
-      "linux_sha256": "391e2bbe4da892fd7dd9f773f42ad8eae82f33d3d4fc8f0025af80b4dfa134b3"
+      "linux_sha256": "391e2bbe4da892fd7dd9f773f42ad8eae82f33d3d4fc8f0025af80b4dfa134b3",
+      "macos_arm64_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260814/cpython-3.10.21%2B20260814-aarch64-apple-darwin-install_only.tar.gz",
+      "macos_arm64_sha256": "935e7112b2a567388d2f9d99eec2eb9957a7b6098248f10890073dc870537514",
+      "macos_x86_64_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260814/cpython-3.10.21%2B20260814-x86_64-apple-darwin-install_only.tar.gz",
+      "macos_x86_64_sha256": "1f2b5c7fd75ccb6bbb02078562c148470aea61fdea41442f0199ea9cbdad1a8d"
     },
     {
       "name": "yt-dlp",
@@ -106,7 +110,11 @@
       "windows_url": "https://github.com/denoland/deno/releases/download/v2.9.5/deno-x86_64-pc-windows-msvc.zip",
       "windows_sha256": "171efab55ac6b9881fd53ee4c20f8bf3bb1340ffc618483746909014db12216a",
       "linux_url": "https://github.com/denoland/deno/releases/download/v2.9.5/deno-x86_64-unknown-linux-gnu.zip",
-      "linux_sha256": "8b010a3b1a4a0188a67cdb8a7a27348b2a501af78aec7fc74f2ace167368d530"
+      "linux_sha256": "8b010a3b1a4a0188a67cdb8a7a27348b2a501af78aec7fc74f2ace167368d530",
+      "macos_arm64_url": "https://github.com/denoland/deno/releases/download/v2.9.5/deno-aarch64-apple-darwin.zip",
+      "macos_arm64_sha256": "b796aadd131f6930560c1ee040cf0d6f53933fbb987464e9ff46bd7ea4830615",
+      "macos_x86_64_url": "https://github.com/denoland/deno/releases/download/v2.9.5/deno-x86_64-apple-darwin.zip",
+      "macos_x86_64_sha256": "c1b8b89a81e91b2a8b3f96def3195d08cfe3a105651da7908d53061f7140510d"
     },
     {
       "name": "Application fonts",
@@ -119,6 +127,18 @@
       "version": "6.7.1",
       "license": "Inno Setup License",
       "bundle": "build-time only; compiles the validated Windows tree into a configurable installer"
+    },
+    {
+      "name": "dpkg-deb",
+      "version": "Ubuntu 24.04 dpkg suite",
+      "license": "GPL-2.0-or-later",
+      "bundle": "build-time only; compiles the validated Linux tree into the Debian package"
+    },
+    {
+      "name": "Apple codesign and hdiutil",
+      "version": "macOS 15 runner toolchain",
+      "license": "Apple SDK license",
+      "bundle": "build-time only; signs the application and creates the macOS disk image"
     },
     {
       "name": "appimagetool",
@@ -139,6 +159,7 @@
   ],
   "system_contract": {
     "windows": ["Windows 10 22H2 or newer", "Universal C Runtime", "GPU vendor driver when hardware acceleration is selected"],
-    "linux": ["Linux kernel 4.18 or newer", "glibc 2.28 or newer", "working X11/Wayland/OpenGL stack", "FUSE for direct AppImage execution or AppImage extract-and-run"]
+    "linux": ["Linux kernel 4.18 or newer", "glibc 2.28 or newer", "working X11/Wayland/OpenGL stack", "FUSE for direct AppImage execution or AppImage extract-and-run"],
+    "macos": ["macOS 15 or newer", "Apple Silicon for aarch64 package or Intel for x86_64 package", "GPU driver supplied by macOS"]
   }
 }
