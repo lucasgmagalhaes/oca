@@ -205,8 +205,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1787057082.4709516,
-    "ast_hash": "981f3a8b86258d57669174fb6b69fcaa",
+    "mtime": 1787062201.958164,
+    "ast_hash": "eaa32266685688c8ae983e26f9d78fba",
     "semantic_hash": ""
   },
   "README.md": {
@@ -235,8 +235,8 @@
     "semantic_hash": ""
   },
   "features/request.md": {
-    "mtime": 1787057082.4701557,
-    "ast_hash": "607ca1579f54079a128b656d61eff9ea",
+    "mtime": 1787062201.9566844,
+    "ast_hash": "8cbece443cb12029ce13dc1f66c4f416",
     "semantic_hash": ""
   },
   "ui.html": {
@@ -745,8 +745,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/youtube_download.rs": {
-    "mtime": 1787056608.7623606,
-    "ast_hash": "7077c098869e8ffbdee51ae283bb6f78",
+    "mtime": 1787058275.3263612,
+    "ast_hash": "79e1a4ef37ab71c10a351dd2db3c5d2b",
     "semantic_hash": ""
   },
   "crates/ui/src/app/youtube_download.rs": {
@@ -775,8 +775,8 @@
     "semantic_hash": ""
   },
   "crates/ytbridge/build.rs": {
-    "mtime": 1787056319.9432578,
-    "ast_hash": "ddf70b5b963b18e429b6a95357cb24fb",
+    "mtime": 1787060064.8469121,
+    "ast_hash": "1c1fcc7309bf95227319496215d01d82",
     "semantic_hash": ""
   },
   "crates/ytbridge/setup-python-runtime.ps1": {
@@ -785,8 +785,8 @@
     "semantic_hash": ""
   },
   "crates/ytbridge/setup-python-runtime.sh": {
-    "mtime": 1787056319.9410155,
-    "ast_hash": "09b2d0119039d0327cef09a0674c36eb",
+    "mtime": 1787058003.1806386,
+    "ast_hash": "fb9351a42c4139e44d21f00f51d3c677",
     "semantic_hash": ""
   },
   "crates/core/src/overlay_render.rs": {
@@ -870,13 +870,13 @@
     "semantic_hash": ""
   },
   "docs/auto-update.md": {
-    "mtime": 1787057190.0727134,
-    "ast_hash": "750f027fdbc111ca8a46d3aa19a76e97",
+    "mtime": 1787062201.9558713,
+    "ast_hash": "353258ee62a754b26ddb6ee607594156",
     "semantic_hash": ""
   },
   "crates/core/src/bundle.rs": {
-    "mtime": 1787040705.7664447,
-    "ast_hash": "3a63c2f07b4b534fca42912938b0c7f9",
+    "mtime": 1787062486.485444,
+    "ast_hash": "c5b4828ba26926ee3441f80ce8b3f516",
     "semantic_hash": ""
   },
   "crates/core/tests/bundle_test.rs": {
@@ -895,8 +895,8 @@
     "semantic_hash": ""
   },
   "packaging/bundle-manifest.json": {
-    "mtime": 1787057082.4665983,
-    "ast_hash": "b6f92b143c71248b944dc7bfea332c7d",
+    "mtime": 1787062434.93834,
+    "ast_hash": "f9ec093520a20e20589efc455e4451ec",
     "semantic_hash": ""
   },
   "packaging/fetch_models.py": {
@@ -915,18 +915,58 @@
     "semantic_hash": ""
   },
   "packaging/validate_bundle.py": {
-    "mtime": 1787056572.1929164,
-    "ast_hash": "62e041060fa3422007566e1f9795c758",
+    "mtime": 1787058230.5832436,
+    "ast_hash": "cfbfce7ef3162fc37740340360a8f26b",
     "semantic_hash": ""
   },
   ".github/workflows/release.yml": {
-    "mtime": 1787057215.6103864,
-    "ast_hash": "dc3d4c3eaf3e2b6e1c722425f4666bbf",
+    "mtime": 1787062151.1387317,
+    "ast_hash": "530024e0d895e4b129d8e6d897738388",
     "semantic_hash": ""
   },
   "docs/dependency-bundle.md": {
-    "mtime": 1787057190.0717924,
-    "ast_hash": "13e14de25aa01b9c141a92e6a28c0149",
+    "mtime": 1787062434.9390721,
+    "ast_hash": "ac25083f38fd9ecda1f900f3a047a746",
+    "semantic_hash": ""
+  },
+  "packaging/assemble_macos.sh": {
+    "mtime": 1787061062.1653543,
+    "ast_hash": "cf9bbd6fb01133aefdeac345eec73b50",
+    "semantic_hash": ""
+  },
+  "packaging/build_deb.sh": {
+    "mtime": 1787057592.7814338,
+    "ast_hash": "4a6a2b6be9b41a4a21eb49d6e0016518",
+    "semantic_hash": ""
+  },
+  "packaging/build_dmg.sh": {
+    "mtime": 1787062026.8646612,
+    "ast_hash": "8a0032cb79f40a6d60d6c73327cd6e8a",
+    "semantic_hash": ""
+  },
+  "packaging/bundle_macos_dylibs.py": {
+    "mtime": 1787060825.8717198,
+    "ast_hash": "e10f06e37e11e9c93a2fbddd45aa6158",
+    "semantic_hash": ""
+  },
+  "packaging/sign_macos_app.sh": {
+    "mtime": 1787061442.453677,
+    "ast_hash": "6b49e7e44f2f63248e12f8c1f8e86b37",
+    "semantic_hash": ""
+  },
+  "packaging/tests/test_deb_package.py": {
+    "mtime": 1787062562.9882922,
+    "ast_hash": "ca1fdb84fc141bdf2c138a8c87e0587b",
+    "semantic_hash": ""
+  },
+  "packaging/tests/test_inno_i18n.py": {
+    "mtime": 1787062118.5146012,
+    "ast_hash": "00b71f2a12730caab37148153743329e",
+    "semantic_hash": ""
+  },
+  "packaging/validate_deb.py": {
+    "mtime": 1787057592.782224,
+    "ast_hash": "6c3ae21390dec679973023fc4dea8dd6",
     "semantic_hash": ""
   }
 }
