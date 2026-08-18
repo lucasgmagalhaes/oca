@@ -19,8 +19,9 @@
 //! against — pinned via `.cargo/config.toml`'s `PYO3_PYTHON`), `DLLs/` (compiled stdlib C
 //! extension modules — `_socket`, `_ssl`, etc.; without these, `import socket` and anything
 //! built on it, including `yt_dlp` itself, fails with `ModuleNotFoundError`), and `Lib/`
-//! (pure-Python stdlib plus `Lib/site-packages/yt_dlp`, pip-installed into the vendored
-//! runtime by the setup script). Without this, `cargo build`'s `ytbridge.exe` would only run
+//! (pure-Python stdlib plus the verified `yt_dlp` and `yt_dlp_ejs` packages), and `tools/deno`
+//! (the JavaScript runtime yt-dlp uses for current YouTube extraction). Without this,
+//! `cargo build`'s `ytbridge.exe` would only run
 //! on the machine that built it, and only by accident (whatever Python happened to be on that
 //! machine's `PATH` at the time) — this makes a normal `cargo build -p ytbridge` produce a
 //! fully self-contained, runnable binary with no separate Python install needed, confirmed by
@@ -78,11 +79,19 @@ fn main() {
         );
         copy_dir_all(&runtime_dir.join("DLLs"), &target_dir.join("DLLs"));
         copy_dir_all(&runtime_dir.join("Lib"), &target_dir.join("Lib"));
+        copy_file(
+            &runtime_dir.join("tools").join("deno.exe"),
+            &target_dir.join("deno.exe"),
+        );
     } else {
         // Linux's install_only layout keeps the stdlib (incl. lib-dynload/'s compiled C
         // extensions) and the shared library together under lib/ — one copy covers both, unlike
         // Windows' split DLLs/ + Lib/.
         copy_dir_all(&runtime_dir.join("lib"), &target_dir.join("lib"));
+        copy_file(
+            &runtime_dir.join("tools").join("deno"),
+            &target_dir.join("deno"),
+        );
         // rpath so the copied ytbridge binary finds libpython3.10.so.1.0 in ./lib next to it
         // without needing LD_LIBRARY_PATH set by whatever spawns it.
         println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/lib");
