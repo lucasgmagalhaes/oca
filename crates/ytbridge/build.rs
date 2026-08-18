@@ -16,7 +16,7 @@
 //! Copies the runtime pieces of the vendored `python-build-standalone` distribution
 //! (`vendor/python-runtime/` at the workspace root — fetched by `setup-python-runtime.ps1`,
 //! not checked in) next to `ytbridge`'s own build output: `python310.dll` (what `pyo3` linked
-//! against — pinned via `.cargo/config.toml`'s `PYO3_PYTHON`), `DLLs/` (compiled stdlib C
+//! against — selected through `PYO3_PYTHON` by the Makefile/CI), `DLLs/` (compiled stdlib C
 //! extension modules — `_socket`, `_ssl`, etc.; without these, `import socket` and anything
 //! built on it, including `yt_dlp` itself, fails with `ModuleNotFoundError`), and `Lib/`
 //! (pure-Python stdlib plus the verified `yt_dlp` and `yt_dlp_ejs` packages), and `tools/deno`
@@ -27,19 +27,18 @@
 //! fully self-contained, runnable binary with no separate Python install needed, confirmed by
 //! running it with the system `PATH` stripped of every Python installation.
 //!
-//! Windows and Linux (`python-build-standalone`'s `install_only` tarball layout differs between
+//! Windows and Unix (`python-build-standalone`'s `install_only` tarball layout differs between
 //! the two: Windows is flat (`python.exe`, `python310.dll`, `DLLs/`, `Lib/`) while Linux nests
 //! everything under `bin/`/`lib/` and links the interpreter against a shared
 //! `libpython3.10.so.1.0` instead of baking the stdlib C-extensions into a separate `DLLs/`
-//! folder — both branches below mirror `setup-python-runtime.ps1`/`.sh` respectively). macOS is
-//! still unhandled (Fase 8 packaging hasn't started at all yet per `CLAUDE.md`, and there's no
-//! current plan to support macOS).
+//! folder. macOS uses the same `bin/`/`lib/` shape with `.dylib` binaries. The branches below
+//! mirror `setup-python-runtime.ps1`/`.sh` respectively.
 
 use std::path::{Path, PathBuf};
 
 fn main() {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    if target_os != "windows" && target_os != "linux" {
+    if target_os != "windows" && target_os != "linux" && target_os != "macos" {
         return;
     }
 
@@ -84,7 +83,7 @@ fn main() {
             &target_dir.join("deno.exe"),
         );
     } else {
-        // Linux's install_only layout keeps the stdlib (incl. lib-dynload/'s compiled C
+        // Unix install_only layouts keep the stdlib (incl. lib-dynload/'s compiled C
         // extensions) and the shared library together under lib/ — one copy covers both, unlike
         // Windows' split DLLs/ + Lib/.
         copy_dir_all(&runtime_dir.join("lib"), &target_dir.join("lib"));
@@ -92,9 +91,23 @@ fn main() {
             &runtime_dir.join("tools").join("deno"),
             &target_dir.join("deno"),
         );
-        // rpath so the copied ytbridge binary finds libpython3.10.so.1.0 in ./lib next to it
-        // without needing LD_LIBRARY_PATH set by whatever spawns it.
-        println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/lib");
+        // python-build-standalone records its build-time `/install/lib` in sysconfig. PyO3
+        // consequently asks the linker for libpython there even though the extracted runtime
+        // lives under vendor/python-runtime. Supply the real location explicitly.
+        println!(
+            "cargo:rustc-link-search=native={}",
+            runtime_dir.join("lib").display()
+        );
+        if target_os == "linux" {
+            // The copied ytbridge binary finds libpython3.10.so.1.0 in ./lib next to it.
+            println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/lib");
+        } else {
+            // The first path supports target/<profile>; the second supports Oca.app, where the
+            // private stdlib lives under Contents/Resources/python and libpython is bundled in
+            // Contents/Frameworks by the release assembler.
+            println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/lib");
+            println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../Frameworks");
+        }
     }
 
     println!("cargo:rerun-if-changed={}", runtime_dir.display());

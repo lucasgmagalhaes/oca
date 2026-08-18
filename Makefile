@@ -27,11 +27,19 @@ ifeq ($(_OS),Darwin)
   export FFMPEG_DIR
   export PKG_CONFIG_PATH
   export PATH := $(FFMPEG_DIR)/lib:$(_BREW_PREFIX)/bin:$(PATH)
+  ifneq ($(wildcard $(CURDIR)/vendor/python-runtime/bin/python3.10),)
+    PYO3_PYTHON ?= $(CURDIR)/vendor/python-runtime/bin/python3.10
+    export PYO3_PYTHON
+  endif
 else ifeq ($(_OS),Linux)
   # Linux — pkg-config handles discovery; FFMPEG_DIR falls back to /usr.
   FFMPEG_DIR ?= $(shell pkg-config --variable=prefix libavformat 2>/dev/null || echo /usr)
   export FFMPEG_DIR
   export PATH := $(FFMPEG_DIR)/bin:$(PATH)
+  ifneq ($(wildcard $(CURDIR)/vendor/python-runtime/bin/python3.10),)
+    PYO3_PYTHON ?= $(CURDIR)/vendor/python-runtime/bin/python3.10
+    export PYO3_PYTHON
+  endif
 else
   # Windows — set FFMPEG_DIR and PKG_CONFIG_PATH in your environment before
   # running make, or override them on the command line:
@@ -45,6 +53,10 @@ else
   export FFMPEG_DIR
   export PKG_CONFIG_PATH
   export PATH := $(FFMPEG_DIR)/bin;$(PATH)
+  ifneq ($(wildcard $(CURDIR)/vendor/python-runtime/python.exe),)
+    PYO3_PYTHON ?= $(CURDIR)/vendor/python-runtime/python.exe
+    export PYO3_PYTHON
+  endif
 endif
 
 .PHONY: build release run debug test test-core test-app test-xtask test-e2e bench fmt fmt-check lint graph docs check clean
