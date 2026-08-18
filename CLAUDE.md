@@ -226,10 +226,8 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   tested, no ONNX). `detect_faces()` runs UltraFace `version-RFB-320`
   (`Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB`, MIT) via the `ort` crate
   (`download-binaries` feature — **statically links** `onnxruntime` into the binary, not a
-  runtime `.dll`). Model isn't bundled with the installer yet —
-  `avcore::model_download::download_reframe_model` fetches it on demand into
-  `<prefs dir>/models/`, same shape as the Whisper model download (both share
-  `model_download.rs`'s `download_file()` helper). Falls back to a centered crop (with a
+  runtime `.dll`). The model ships under `resources/models/`; there is no runtime model
+  downloader. Falls back to a centered crop (with a
   toast) when no face is found. **Confirmed working end-to-end** on this dev machine: a real
   inference pass against the downloaded model succeeded on the `core` test fixture (0 faces
   found, as expected for a fixture with no real face in it).
@@ -270,9 +268,8 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   **AI background removal (inference, matte generation, and export wiring all done —
   preview still not):** `avcore::background_removal::segment_person` runs MODNet
   (`ZHKKKe/MODNet`, ONNX export by `yakhyo/modnet`, Apache-2.0) against one decoded frame,
-  returning a per-pixel alpha matte. Model isn't bundled yet —
-  `avcore::model_download::download_background_removal_model` fetches it on demand, same shape
-  as the Whisper/reframe model downloads. **Confirmed working end-to-end** on this dev machine:
+  returning a per-pixel alpha matte. The model ships under `resources/models/`; there is no
+  runtime model downloader. **Confirmed working end-to-end** on this dev machine:
   real inference against the downloaded model succeeded on a synthetic frame.
 
   **Matte generation (`ui`):** `App::spawn_generate_matte_for_selected_clip`
@@ -364,8 +361,8 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   (BOS/EOS/interspersed-PAD) and ONNX I/O contract (`input`/`input_lengths`/`scales` ->
   `output`) confirmed against a real downloaded voice, not guessed. **Confirmed working
   end-to-end** on this dev machine: real synthesis of a Portuguese sentence produced a WAV with
-  real (non-silent, non-garbage) audio content. Model isn't bundled yet —
-  `avcore::download_tts_voice` fetches both the `.onnx` and its `.onnx.json` sidecar on demand.
+  real (non-silent, non-garbage) audio content. Release bundles include both the `.onnx` and
+  its `.onnx.json` sidecar; there is no runtime model downloader.
   UI: Mídia screen's "Texto-pra-fala" button opens a text modal; "Gerar" synthesizes on a
   background thread and imports the resulting WAV through the exact same pipeline as a
   drag-and-drop import ([`App::spawn_import`]) — no separate asset-creation path needed.
@@ -482,8 +479,8 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   frame-progress callbacks, so a pause requested after the primary encode reaches 100% may only
   be visible briefly before that already-running post-pass completes); output-folder
   overwrite/rename/cancel
-  prompt; live word-highlight subtitles with shared multiline preview/export layout; Whisper subtitles (model fetched
-  on demand via `avcore::model_download`, not bundled); standalone `.srt` subtitle export
+  prompt; live word-highlight subtitles with shared multiline preview/export layout; Whisper subtitles (Base model
+  included in release bundles); standalone `.srt` subtitle export
   (`avcore::export_srt`, `request.md`'s "arquivo `.srt` separado" half of the subtitle ask —
   the embedded RGBA-overlay half already happens on every export; pure string formatting over
   every `TextClip` across every `TrackKind::Text` track, sorted by start time; Editor toolbar's
@@ -623,7 +620,7 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   current Editor preview immediately when toggled. Release binary stripping is also done:
   `[profile.release]` has `strip = true` alongside `opt-level = 3`/`lto = true`.
 
-- **Fase 8 — started (About modal plus in-place auto-update).** `avcore::update_check` —
+- **Fase 8 — release bundles and auto-update implemented.** `avcore::update_check` —
   `fetch_latest_release` hits GitHub's `repos/lucasgmagalhaes/oca/releases/latest` API
   (`ureq::get` + manual `serde_json::from_str`, not `ureq`'s own `into_json` — that's gated
   behind a `json` feature this crate doesn't enable); `is_newer` does a pure, panic-free
@@ -632,43 +629,59 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   failed/available distinct; only `Available` produces the Home banner, while the About modal
   reports every state without claiming the app is current after a network failure. Ajustes'
   footer opens that modal, which shows `CARGO_PKG_VERSION` as the installed version and links
-  either directly to the newer release or to the project's releases page. On Windows/Linux,
-  releases containing the exact `oca-<Rust target>.zip`/`.tar.gz` asset expose an explicit
-  download/install action. `self_update` runs on a worker, the selected asset is validated before
+  either directly to the newer release or to the project's releases page. Linux AppImage
+  releases containing the exact `oca-<Rust target>-appimage.tar.gz` asset expose an explicit
+  download/install action. Native Windows/Linux bundles retain the full-release link because
+  replacing only their executable would leave bundled models/libraries stale. `self_update`
+  runs on a worker, the selected asset is validated before
   download, replacement is atomic, failures retain retry/manual-download choices, and a completed
   install waits for an explicit restart so normal eframe shutdown still persists preferences.
   Linux AppImage launches use a distinct `-appimage.tar.gz` asset and replace/restart through
   `$APPIMAGE`, not the read-only executable path inside the mounted image.
   The release archive contract and publishing checklist live in `docs/auto-update.md`.
-  **Not started at all:**
-  installers/packaging for Windows/Linux, bundled engines (FFmpeg/GStreamer/Whisper/TTS/ONNX
-  Runtime), VAAPI GPU encode on Linux, configurable install location. **Verification caveat:**
+  `.github/workflows/release.yml` builds tagged Windows/Linux releases and publishes the exact
+  archive names consumed by auto-update. Both portable trees are assembled from
+  `packaging/bundle-manifest.json`: pinned model/engine URLs and SHA-256 values, FFmpeg LGPL,
+  the complete installed GStreamer plugin set and scanner, Whisper Base, UltraFace, MODNet,
+  Piper pt-BR, eSpeak data, private CPython/yt-dlp/yt-dlp-ejs/Deno and Linux AppImage
+  runtime. The app only
+  resolves local `resources/models` files (Preferences retains manual override paths); all
+  model-download code and UI were removed. `packaging/validate_bundle.py` blocks publication
+  when a required payload is absent. Full inventory: `docs/dependency-bundle.md`.
+  The Windows job also compiles the validated portable tree with Inno Setup 6.7.1 into a
+  configurable, offline installer with shortcuts and uninstallation; ZIP users keep the same
+  tree as a portable option. **Still not started:** `.deb` and VAAPI GPU encode on Linux.
+  **Verification caveat:**
   this dev environment's outbound network proxy blocks direct calls to `api.github.com`
   (returns its own "GitHub access is not enabled for this session" error, not a real GitHub
-  response), so `fetch_latest_release` itself could not be exercised against the real API here
-  — every `ureq` call it makes mirrors `model_download.rs`'s already-working
-  `download_whisper_model` pattern exactly (`ureq::get(url).header(...).call()`), and the JSON
-  shape/User-Agent-header requirement match GitHub's documented API, but this is unverified
+  response), so `fetch_latest_release` itself could not be exercised against the real API here.
+  Its JSON shape/User-Agent-header requirement match GitHub's documented API, but this is unverified
   beyond that, same "implemented carefully, not run for real" caveat this file already carries
   for a few other network/hardware-dependent features.
 
-  **Python runtime for `ytbridge` (YouTube download) — build-time bundling done, installer-time
-  bundling not yet.** `crates/ytbridge` needs a Python 3 + `yt_dlp` to actually run. Instead of
+  **Python runtime for `ytbridge` (YouTube download) — fully bundled.** `crates/ytbridge` needs
+  Python 3 + `yt_dlp` to actually run. Instead of
   requiring one already installed on every dev/build machine (the "matches whatever's on PATH"
   fragility every other approach here would have), `crates/ytbridge/setup-python-runtime.ps1`
   fetches a self-contained [`python-build-standalone`](https://github.com/astral-sh/python-build-standalone)
   distribution (currently CPython 3.10.21, Windows x86_64 MSVC `install_only` build — no system
   install, no registry entries) into `vendor/python-runtime/` (gitignored, one-time per clone)
-  and `pip install`s `yt_dlp` straight into it. `.cargo/config.toml`'s `PYO3_PYTHON` env var
+  and installs checksum-pinned `yt_dlp` 2026.07.04 plus its exact `yt_dlp_ejs` 0.8.0
+  package and Deno 2.9.5 straight into it. Current yt-dlp requires an external JavaScript
+  runtime and matching EJS scripts for full YouTube support, so treating either as optional
+  would leave a release that starts successfully but fails on common videos.
+  `.cargo/config.toml`'s `PYO3_PYTHON` env var
   points `ytbridge`'s own build at that exact `python.exe`, so it always links against a known,
   pinned interpreter rather than the build machine's own. `crates/ytbridge/build.rs` then
   copies `python310.dll`, `DLLs/` (compiled stdlib C-extension modules — `_socket`, `_ssl`,
   etc.; missing these was the first real bug hit here, `import socket` failing with
   `ModuleNotFoundError` since `yt_dlp` pulls it in transitively) and `Lib/` (stdlib +
-  `site-packages/yt_dlp`) next to `ytbridge.exe` on every `cargo build -p ytbridge` — so a
+  `site-packages/yt_dlp` + `site-packages/yt_dlp_ejs`) and Deno next to `ytbridge.exe` on every
+  `cargo build -p ytbridge` — so a
   normal build already produces a fully self-contained, runnable binary, no separate Python
   needed at all. `avcore::youtube_download::download_youtube` sets `PYTHONHOME` on the spawned
-  process to `ytbridge`'s own directory (not relying on CPython's own DLL-relative-path
+  process to `ytbridge`'s own directory and prepends that directory to `PATH` (so yt-dlp finds
+  the verified bundled Deno, not a system copy), without relying on CPython's own DLL-relative-path
   auto-detection, unverified for an embedding host like this) so it finds that bundled runtime
   specifically. **Confirmed working end-to-end** on this dev machine: ran the real
   `cargo build`-produced `ytbridge.exe` with the system `PATH` stripped down to bare Windows
@@ -677,7 +690,8 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   **Linux dev/CI build now also bundles its own Python runtime**, mirroring the Windows path:
   `crates/ytbridge/setup-python-runtime.sh` fetches the `x86_64-unknown-linux-gnu`
   `install_only` tarball (same `PYTHON_VERSION`/`RELEASE_TAG` as the `.ps1` twin) into
-  `vendor/python-runtime/` and pip-installs `yt_dlp` into it; `build.rs` now branches on
+  `vendor/python-runtime/` and copies checksum-pinned `yt_dlp` and `yt_dlp_ejs` release
+  packages plus Deno into it without dependency resolution; `build.rs` now branches on
   `CARGO_CFG_TARGET_OS` — Linux's `install_only` layout keeps the stdlib (incl. `lib-dynload/`'s
   compiled C-extensions) and `libpython3.10.so.1.0` together under one `lib/` dir (no separate
   `DLLs/`/`Lib/` split like Windows), so one `copy_dir_all` covers both, plus a
@@ -693,13 +707,9 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   target toolchain — the Linux branch has not been exercised against a real Linux build or
   `x86_64-unknown-linux-gnu` tarball on any machine.
 
-  **Not yet done:** actually packaging `vendor/python-runtime/` *inside* the Windows
-  installer/Linux AppImage themselves — there is no installer at all yet (see "Not started at
-  all" above), so this only fixes local dev/CI builds so far, not an end user's install. Until
-  packaged, `App::youtube_download_error` surfaces a clear `YoutubeDownloadToolMissing`-style
-  message when `ytbridge` isn't found or crashes, so the feature degrades to "visibly
-  unavailable" rather than silently broken — or, before the earlier `ytbridge`-isolation fix,
-  taking the rest of the app down with it.
+  The Windows and Linux release assemblers copy this runtime, Deno and `ytbridge` into every
+  portable bundle; bundle validation fails when any component is absent, when a model hash
+  differs, or when reported runtime versions drift from the manifest.
 
 - **Custom title bar (ad hoc, not from `request.md`).** `main.rs`'s `NativeOptions` now sets
   `.with_decorations(false)` — no OS window chrome. `screens::breadcrumb::show` (still the

@@ -146,6 +146,11 @@ Performance é tratada como requisito, não como ajuste fino de última hora —
 
 ## Fase 8 — Empacotamento
 
+> **Status:** bundles portáteis automatizados para Windows e Linux/AppImage concluídos. Todos os
+> modelos e runtimes listados abaixo são montados no CI com SHA-256 e validados antes da
+> publicação; o app não baixa modelos sob demanda. O instalador Inno Setup para Windows permite
+> escolher a pasta. Pendentes: pacote `.deb` e encode VAAPI.
+
 - **Build e instalador para Windows e Linux.** GUI nativa (`egui`/`iced`/`Slint`) e GStreamer já são multiplataforma por natureza, então a maior parte do trabalho extra fica no empacotamento, não no código do app em si.
   - Windows: instalador `.msi`/`.exe`.
   - Linux: **AppImage** como formato principal (roda em qualquer distro sem instalar nada do sistema, mais parecido com "baixou, rodou" do Windows); pacote `.deb` como alternativa pra quem prefere instalar via gerenciador de pacotes.

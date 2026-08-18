@@ -16,7 +16,9 @@ When you need to update FFmpeg (e.g., for bug fixes, new features, or security p
 
 ### 1. Choose a Release
 
-Visit https://github.com/BtbN/FFmpeg-Builds/releases and select a release tag (e.g., `2025-01-15-12-55`).
+Visit https://github.com/BtbN/FFmpeg-Builds/releases and select an immutable `autobuild-*` tag.
+Use matching versioned `linux64-lgpl-shared` and `win64-lgpl-shared` assets, never the mutable
+`latest` release or a GPL/nonfree variant.
 
 ### 2. Download Assets and Compute Checksums
 
@@ -24,16 +26,18 @@ Download both platform-specific assets and compute their SHA256 checksums:
 
 #### Windows (PowerShell)
 ```powershell
-$releaseTag = "2025-01-15-12-55"  # Replace with your chosen tag
-$uri = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$releaseTag/ffmpeg-master-latest-win64-gpl-shared.zip"
+$releaseTag = "autobuild-YYYY-MM-DD-HH-MM"
+$asset = "ffmpeg-<build-id>-win64-lgpl-shared-<major>.zip"
+$uri = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$releaseTag/$asset"
 Invoke-WebRequest -Uri $uri -OutFile ffmpeg-win64.zip
 (Get-FileHash -Algorithm SHA256 ffmpeg-win64.zip).Hash
 ```
 
 #### Linux (bash)
 ```bash
-release_tag="2025-01-15-12-55"  # Replace with your chosen tag
-uri="https://github.com/BtbN/FFmpeg-Builds/releases/download/${release_tag}/ffmpeg-master-latest-linux64-gpl-shared.tar.xz"
+release_tag="autobuild-YYYY-MM-DD-HH-MM"
+asset="ffmpeg-<build-id>-linux64-lgpl-shared-<major>.tar.xz"
+uri="https://github.com/BtbN/FFmpeg-Builds/releases/download/${release_tag}/${asset}"
 curl -fsSL -o ffmpeg-linux64.tar.xz "$uri"
 sha256sum ffmpeg-linux64.tar.xz
 ```
@@ -45,10 +49,14 @@ Edit `.github/workflows/ci.yml` and update the `env` section at the top:
 ```yaml
 env:
   CARGO_TERM_COLOR: always
-  FFMPEG_RELEASE_TAG: "2025-01-15-12-55"  # Your chosen release tag
+  FFMPEG_RELEASE_TAG: "autobuild-YYYY-MM-DD-HH-MM"
+  FFMPEG_BUILD_ID: "n<version>-<revision>-g<commit>"
   FFMPEG_WIN64_SHA256: "abc123..."         # SHA256 from step 2 (Windows)
   FFMPEG_LINUX64_SHA256: "def456..."       # SHA256 from step 2 (Linux)
 ```
+
+Update the FFmpeg entry in `packaging/bundle-manifest.json` with the same version, immutable
+URLs and checksums so regular CI and release packaging cannot drift.
 
 **Important:** All three values must be updated together. The checksums must match the specific release tag.
 
