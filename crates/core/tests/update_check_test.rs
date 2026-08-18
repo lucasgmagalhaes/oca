@@ -18,8 +18,8 @@
 //! than mutating the test runner's executable.
 
 use avcore::{
-    auto_update_supported, expected_update_asset_name, is_newer, release_supports_auto_update,
-    UpdatePackage,
+    auto_update_supported, expected_update_asset_name, is_newer, package_supports_atomic_update,
+    release_supports_auto_update, UpdatePackage,
 };
 
 #[test]
@@ -113,8 +113,11 @@ fn linux_appimage_uses_a_distinct_tar_gz_release_asset() {
 fn runtime_support_matches_the_packaged_platform_contract() {
     assert_eq!(
         auto_update_supported(),
-        cfg!(any(target_os = "windows", target_os = "linux"))
+        cfg!(target_os = "linux")
+            && std::env::var_os("APPIMAGE").is_some_and(|path| !path.is_empty())
     );
+    assert!(!package_supports_atomic_update(UpdatePackage::NativeBinary));
+    assert!(package_supports_atomic_update(UpdatePackage::LinuxAppImage));
 }
 
 #[test]
@@ -130,9 +133,14 @@ fn auto_update_requires_an_exact_target_asset_name() {
         "x86_64-pc-windows-msvc",
         UpdatePackage::NativeBinary,
     ));
-    assert!(release_supports_auto_update(
+    assert!(!release_supports_auto_update(
         assets,
         "x86_64-unknown-linux-gnu",
         UpdatePackage::NativeBinary,
+    ));
+    assert!(release_supports_auto_update(
+        ["oca-x86_64-unknown-linux-gnu-appimage.tar.gz"],
+        "x86_64-unknown-linux-gnu",
+        UpdatePackage::LinuxAppImage,
     ));
 }

@@ -27,11 +27,11 @@
 
 pub mod auto_reframe;
 pub mod background_removal;
+pub mod bundle;
 pub mod export;
 pub mod keyframe;
 pub mod loudness;
 pub mod media;
-pub mod model_download;
 pub mod motion_tracking;
 pub mod overlay_render;
 pub mod persistence;
@@ -57,15 +57,14 @@ pub use auto_reframe::{
 };
 pub use avbridge::{AudioSegment, Canvas, ClipSegment, GpuEncoderPreference, ShapeSegment};
 pub use background_removal::{encode_matte_video, segment_person, MatteEncodeError, SegmentError};
+pub use bundle::{
+    bundled_resource_path, bundled_resources_dir, configure_bundled_runtime, resource_path_in,
+    validate_bundled_resources, BundledResource, MissingBundleResources,
+};
 pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus};
 pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
-pub use model_download::{
-    download_background_removal_model, download_reframe_model, download_tts_voice,
-    download_whisper_model, BackgroundRemovalModel, DownloadError, DownloadOutcome, ReframeModel,
-    TtsVoice, WhisperModelSize,
-};
 pub use motion_tracking::{
     rgba_to_gray, track_region, tracked_positions_to_keyframes, GrayFrame, TrackedPosition,
 };
@@ -97,8 +96,8 @@ pub use timeline::{
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
 pub use update_check::{
     apply_update, auto_update_supported, expected_update_asset_name, fetch_latest_release,
-    is_newer, release_supports_auto_update, restart_application, ApplyUpdateError,
-    ApplyUpdateOutcome, LatestRelease, UpdateCheckError, UpdatePackage,
+    is_newer, package_supports_atomic_update, release_supports_auto_update, restart_application,
+    ApplyUpdateError, ApplyUpdateOutcome, LatestRelease, UpdateCheckError, UpdatePackage,
 };
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};
 pub use youtube_download::{

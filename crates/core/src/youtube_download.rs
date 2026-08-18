@@ -208,6 +208,18 @@ pub fn download_youtube(
     // python.exe/python3 itself).
     if let Some(dir) = bridge.parent() {
         cmd.env("PYTHONHOME", dir);
+        cmd.env("PYTHONNOUSERSITE", "1");
+        cmd.env("PYTHONDONTWRITEBYTECODE", "1");
+        cmd.env("DENO_NO_UPDATE_CHECK", "1");
+        let mut paths = vec![dir.to_path_buf()];
+        if let Some(existing) = std::env::var_os("PATH") {
+            paths.extend(std::env::split_paths(&existing));
+        }
+        if let Ok(path) = std::env::join_paths(paths) {
+            // Deno is shipped beside ytbridge. Prepending this directory ensures yt-dlp uses
+            // that verified runtime instead of depending on a machine-wide installation.
+            cmd.env("PATH", path);
+        }
     }
     let mut child: Child = cmd
         .stdin(Stdio::null())

@@ -30,9 +30,8 @@
 //!   yourself and leaving it centered.
 //!
 //! **Model:** UltraFace `version-RFB-320` (`Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB`,
-//! MIT), downloaded on demand via [`crate::model_download::download_reframe_model`] — same "not
-//! bundled in the installer yet" gap as the Whisper model (see `request.md`'s Fase 8 packaging
-//! plan, "ONNX Runtime... empacotados junto"). Input/output tensor shapes and the
+//! MIT), shipped in the release bundle under `resources/models/`; the application never
+//! downloads it at runtime. Input/output tensor shapes and the
 //! `(pixel - 127) / 128` normalization come from the model's own published spec, not guessed.
 //! **Unverified:** no machine this has been developed on has actually run `ort` against this
 //! model file end-to-end (no ONNX Runtime binary confirmed working here) — same caveat class as

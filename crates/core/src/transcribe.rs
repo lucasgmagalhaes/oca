@@ -19,10 +19,8 @@
 //! subprocess, same FFI-not-shell-out approach as every other `avbridge` call), then run
 //! through Whisper's inference to produce timestamped segments.
 //!
-//! The model file itself isn't bundled — see `request.md`'s Fase 8 packaging notes ("Modelo do
-//! Whisper... incluídos no instalador"), not yet implemented. Callers pass a path to an
-//! already-downloaded GGML model (e.g. `ggml-base.bin` from
-//! <https://huggingface.co/ggerganov/whisper.cpp>).
+//! Release bundles include Whisper Base under `resources/models/`; callers still pass the path
+//! explicitly so tests and advanced users can supply another compatible GGML model.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};

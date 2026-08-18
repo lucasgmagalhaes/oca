@@ -43,18 +43,16 @@ fontdue = "0.9"
 # for the native export post-pass. PNG is the only enabled codec; preview consumes the same
 # buffers directly without encoding them.
 image = { version = "0.25.10", default-features = false, features = ["png"] }
-# Blocking HTTP client for downloading Whisper GGML model files on demand — rustls (pure Rust)
-# TLS backend, no OpenSSL/C toolchain. Verified against a real huggingface.co download before
-# depending on it (got a real 200 with the exact known Content-Length back).
+# Blocking HTTP client used only for the explicit GitHub release update check. Models and
+# runtimes are never fetched by the application; release assembly supplies those locally.
 ureq = "3"
 # In-place GitHub Releases updater. Both archive formats are enabled because published Windows
 # builds use zip while Linux builds use tar.gz. The ureq + rustls path reuses the workspace's
 # pure-Rust HTTP/TLS stack instead of introducing OpenSSL or a second blocking HTTP client.
 self_update = { version = "0.44", default-features = false, features = ["ureq", "rustls", "archive-tar", "archive-zip", "compression-flate2", "compression-zip-deflate"] }
 # ONNX Runtime bindings for auto-reframe's face-detection model (see `auto_reframe`).
-# `download-binaries` fetches a prebuilt ONNX Runtime dynamic library at build time — same
-# "not bundled in the installer yet" gap the Whisper model has, see `request.md`'s Fase 8
-# packaging plan ("ONNX Runtime... empacotados junto").
+# `download-binaries` fetches a checksum-pinned ONNX Runtime archive at build time; this feature
+# set statically links it, so release bundles need no separate ONNX Runtime DLL/shared object.
 ort = { version = "2.0.0-rc.13", features = ["download-binaries"] }
 # Text-to-speech (`text_to_speech`): espeak-ng phonemization for Piper voice models. Builds
 # espeak-ng from vendored C source via cmake (needs CMake + LIBCLANG_PATH — bindgen — on the

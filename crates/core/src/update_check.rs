@@ -16,8 +16,11 @@
 //! Checks GitHub Releases and applies a selected release to the running installation.
 //!
 //! The lightweight check remains a single request per app launch. Applying is always initiated
-//! explicitly by the user and delegates the archive download, extraction, and atomic executable
-//! replacement to `self_update`. Release assets follow one strict contract: an archive named
+//! explicitly by the user and delegates the archive download, extraction, and atomic replacement
+//! to `self_update`. Since release bundles now contain native libraries and models, in-place
+//! update is offered only for AppImage, where replacing one file replaces the complete bundle.
+//! Native portable ZIP/TAR installations use the release page's full-package download instead.
+//! Release assets follow one strict contract: an archive named
 //! `oca-<Rust target triple>.zip` on Windows, `oca-<Rust target triple>.tar.gz` for a native
 //! Linux binary, or `oca-<Rust target triple>-appimage.tar.gz` when running from AppImage. The
 //! exact asset is validated before replacement so `self_update`'s permissive substring fallback
@@ -114,7 +117,7 @@ impl std::fmt::Display for ApplyUpdateError {
             Self::UnsupportedPlatform => {
                 write!(
                     f,
-                    "automatic updates are supported only on Windows and Linux"
+                    "automatic updates require an atomically replaceable AppImage bundle"
                 )
             }
             Self::InvalidVersion => write!(f, "release version is invalid"),
@@ -169,9 +172,13 @@ pub fn fetch_latest_release() -> Result<LatestRelease, UpdateCheckError> {
     })
 }
 
-/// Whether this build can replace itself from a packaged GitHub release.
-pub const fn auto_update_supported() -> bool {
-    cfg!(any(target_os = "windows", target_os = "linux"))
+/// Whether this installation can atomically replace its complete dependency bundle.
+pub fn auto_update_supported() -> bool {
+    cfg!(target_os = "linux") && package_supports_atomic_update(UpdatePackage::current())
+}
+
+pub const fn package_supports_atomic_update(package: UpdatePackage) -> bool {
+    matches!(package, UpdatePackage::LinuxAppImage)
 }
 
 /// Exact release-asset name for a Rust target triple. Kept public and pure so release tooling
@@ -198,6 +205,9 @@ pub fn release_supports_auto_update<'a>(
     target: &str,
     package: UpdatePackage,
 ) -> bool {
+    if !package_supports_atomic_update(package) {
+        return false;
+    }
     let Some(expected) = expected_update_asset_name(target, package) else {
         return false;
     };
@@ -224,6 +234,9 @@ pub fn apply_update(version: &str) -> Result<ApplyUpdateOutcome, ApplyUpdateErro
 
     let target = self_update::get_target();
     let package = UpdatePackage::current();
+    if !package_supports_atomic_update(package) {
+        return Err(ApplyUpdateError::UnsupportedPlatform);
+    }
     let expected =
         expected_update_asset_name(target, package).ok_or(ApplyUpdateError::UnsupportedPlatform)?;
     let tag = format!("v{normalized}");

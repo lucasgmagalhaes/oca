@@ -28,9 +28,8 @@
 //! compositing has there.
 //!
 //! **Model:** MODNet (`ZHKKKe/MODNet`, "photographic" weights ported to ONNX by
-//! `yakhyo/modnet`, Apache-2.0), downloaded on demand via
-//! [`crate::model_download::download_background_removal_model`] — same "not bundled in the
-//! installer yet" gap as the Whisper and UltraFace models. Preprocessing (resize so both
+//! `yakhyo/modnet`, Apache-2.0), shipped in the release bundle under `resources/models/`; the
+//! application never downloads it at runtime. Preprocessing (resize so both
 //! dimensions are multiples of 32 targeting ~512px on the constrained side, `(pixel/255 - 0.5) /
 //! 0.5` normalization, RGB/CHW) and postprocessing (single-channel matte in `0.0..=1.0`, resized
 //! back to the source frame) come from that repo's own `onnx_inference.py`/`modnet_onnx.py`
