@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=oca
+GenericName=Video Editor
+GenericName[pt_BR]=Editor de vídeo
+Comment=Edit gameplay footage locally
+Comment[pt_BR]=Edite vídeos de gameplay localmente
+TryExec=oca
+Exec=oca
+Icon=oca
+Categories=AudioVideo;Video;
+Terminal=false
