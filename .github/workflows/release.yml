@@ -1,0 +1,154 @@
+name: Release complete bundles
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  GSTREAMER_VERSION: "1.26.11"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install native build tools
+        shell: pwsh
+        run: choco install pkgconfiglite cmake llvm -y --no-progress
+      - name: Install GStreamer SDK and runtime
+        uses: blinemedical/setup-gstreamer@v1.4.0
+        with:
+          version: ${{ env.GSTREAMER_VERSION }}
+          arch: x86_64
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Prepare verified private Python runtime
+        shell: pwsh
+        run: ./crates/ytbridge/setup-python-runtime.ps1
+
+      - name: Download verified LGPL FFmpeg SDK/runtime
+        shell: pwsh
+        run: |
+          $manifest = Get-Content packaging/bundle-manifest.json | ConvertFrom-Json
+          $ffmpeg = $manifest.native_dependencies | Where-Object name -eq "FFmpeg"
+          Invoke-WebRequest $ffmpeg.windows_url -OutFile ffmpeg.zip
+          $actual = (Get-FileHash ffmpeg.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $ffmpeg.windows_sha256) { throw "FFmpeg SHA-256 mismatch" }
+          Expand-Archive ffmpeg.zip ffmpeg-extracted
+          $inner = Get-ChildItem ffmpeg-extracted -Directory | Select-Object -First 1
+          Move-Item $inner.FullName ffmpeg-dev
+          "FFMPEG_DIR=$((Resolve-Path ffmpeg-dev).Path)" >> $env:GITHUB_ENV
+          "$((Resolve-Path ffmpeg-dev/bin).Path)" >> $env:GITHUB_PATH
+
+      - name: Build release binaries
+        run: cargo build --workspace --release --locked
+
+      - name: Assemble and validate complete bundle
+        shell: pwsh
+        run: |
+          $gst = $env:GSTREAMER_1_0_ROOT_MSVC_X86_64
+          if (-not $gst) { throw "GStreamer root was not exported by setup-gstreamer" }
+          ./packaging/assemble_windows.ps1 `
+            -BuildDir target/release `
+            -FfmpegDir $env:FFMPEG_DIR `
+            -GStreamerDir $gst `
+            -OutputDir dist/oca
+          Compress-Archive -Path dist/oca/* -DestinationPath oca-x86_64-pc-windows-msvc.zip
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-release
+          path: oca-x86_64-pc-windows-msvc.zip
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install native build and complete GStreamer runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake clang libclang-dev pkg-config patchelf \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
+            gstreamer1.0-libav gstreamer1.0-tools
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Prepare verified private Python runtime
+        run: bash ./crates/ytbridge/setup-python-runtime.sh
+
+      - name: Download verified LGPL FFmpeg SDK/runtime
+        run: |
+          url=$(python3 -c 'import json; print(next(x for x in json.load(open("packaging/bundle-manifest.json"))["native_dependencies"] if x["name"] == "FFmpeg")["linux_url"])')
+          expected=$(python3 -c 'import json; print(next(x for x in json.load(open("packaging/bundle-manifest.json"))["native_dependencies"] if x["name"] == "FFmpeg")["linux_sha256"])')
+          curl -fL "$url" -o ffmpeg.tar.xz
+          echo "$expected  ffmpeg.tar.xz" | sha256sum --check
+          tar -xf ffmpeg.tar.xz
+          mv ffmpeg-* ffmpeg-dev
+          echo "FFMPEG_DIR=$PWD/ffmpeg-dev" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$PWD/ffmpeg-dev/lib" >> "$GITHUB_ENV"
+          echo "PYO3_PYTHON=$PWD/vendor/python-runtime/bin/python3.10" >> "$GITHUB_ENV"
+
+      - name: Build release binaries
+        run: cargo build --workspace --release --locked
+
+      - name: Assemble and validate complete portable tree
+        run: |
+          ./packaging/assemble_linux.sh target/release "$FFMPEG_DIR" dist/oca
+          tar -C dist/oca -czf oca-x86_64-unknown-linux-gnu.tar.gz .
+
+      - name: Build verified AppImage
+        run: |
+          cp -a dist/oca dist/Oca.AppDir
+          cp packaging/linux-launcher.sh dist/Oca.AppDir/AppRun
+          cp packaging/oca.desktop dist/Oca.AppDir/oca.desktop
+          cp logo.png dist/Oca.AppDir/oca.png
+          chmod +x dist/Oca.AppDir/AppRun
+          appimagetool_url=$(python3 -c 'import json; print(next(x for x in json.load(open("packaging/bundle-manifest.json"))["native_dependencies"] if x["name"] == "appimagetool")["url"])')
+          appimagetool_sha=$(python3 -c 'import json; print(next(x for x in json.load(open("packaging/bundle-manifest.json"))["native_dependencies"] if x["name"] == "appimagetool")["sha256"])')
+          runtime_url=$(python3 -c 'import json; print(next(x for x in json.load(open("packaging/bundle-manifest.json"))["native_dependencies"] if x["name"] == "AppImage type-2 runtime")["url"])')
+          runtime_sha=$(python3 -c 'import json; print(next(x for x in json.load(open("packaging/bundle-manifest.json"))["native_dependencies"] if x["name"] == "AppImage type-2 runtime")["sha256"])')
+          curl -fL "$appimagetool_url" -o appimagetool
+          echo "$appimagetool_sha  appimagetool" | sha256sum --check
+          curl -fL "$runtime_url" -o runtime-x86_64
+          echo "$runtime_sha  runtime-x86_64" | sha256sum --check
+          chmod +x appimagetool
+          APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 ./appimagetool \
+            --runtime-file runtime-x86_64 dist/Oca.AppDir oca.AppImage
+          tar -czf oca-x86_64-unknown-linux-gnu-appimage.tar.gz oca.AppImage
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-release
+          path: |
+            oca-x86_64-unknown-linux-gnu.tar.gz
+            oca-x86_64-unknown-linux-gnu-appimage.tar.gz
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: "*-release"
+          merge-multiple: true
+      - name: Publish immutable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag --generate-notes \
+            oca-x86_64-pc-windows-msvc.zip \
+            oca-x86_64-unknown-linux-gnu.tar.gz \
+            oca-x86_64-unknown-linux-gnu-appimage.tar.gz
