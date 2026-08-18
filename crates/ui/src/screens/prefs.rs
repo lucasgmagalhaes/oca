@@ -165,51 +165,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.add_space(10.0);
             ui.label(Text::PrefsWhisperModelPath.tr(locale));
-            if app.model_download_kind == Some(crate::app::ModelKind::Whisper) {
-                let (downloaded, total) = app.model_download_progress.unwrap_or((0, 0));
-                ui.horizontal(|ui| {
-                    if total > 0 {
-                        ui.add(
-                            egui::ProgressBar::new(downloaded as f32 / total as f32)
-                                .desired_width(300.0)
-                                .show_percentage(),
-                        );
-                    } else {
-                        ui.add(
-                            egui::ProgressBar::new(0.0)
-                                .desired_width(300.0)
-                                .text(format!("{:.1} MB", downloaded as f64 / 1_048_576.0)),
-                        );
-                    }
-                    if ui.button(Text::CancelJob.tr(locale)).clicked() {
-                        app.request_cancel_model_download();
-                    }
-                });
-            } else {
-                ui.horizontal(|ui| {
-                    for size in avcore::WhisperModelSize::ALL {
-                        let label = format!("{} (~{} MB)", size_label(size), size.approx_size_mb());
-                        if ui.button(label).clicked() {
-                            app.spawn_download_whisper_model(size);
-                        }
-                    }
-                });
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut app.prefs.whisper_model_path)
-                            .desired_width(400.0),
-                    );
-                    if ui.button(Text::Browse.tr(locale)).clicked() {
-                        if let Some(file) = rfd::FileDialog::new()
-                            .add_filter("GGML model", &["bin"])
-                            .pick_file()
-                        {
-                            app.prefs.whisper_model_path = file.display().to_string();
-                        }
-                    }
-                });
-            }
+            model_path_row(ui, &mut app.prefs.whisper_model_path, &["bin"], locale);
             ui.add_space(10.0);
             ui.label(Text::PrefsSoundLibraryPath.tr(locale));
             ui.horizontal(|ui| {
@@ -226,139 +182,18 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.add_space(10.0);
             ui.label(Text::PrefsReframeModelPath.tr(locale));
-            if app.model_download_kind == Some(crate::app::ModelKind::Reframe) {
-                let (downloaded, total) = app.model_download_progress.unwrap_or((0, 0));
-                ui.horizontal(|ui| {
-                    if total > 0 {
-                        ui.add(
-                            egui::ProgressBar::new(downloaded as f32 / total as f32)
-                                .desired_width(300.0)
-                                .show_percentage(),
-                        );
-                    } else {
-                        ui.add(
-                            egui::ProgressBar::new(0.0)
-                                .desired_width(300.0)
-                                .text(format!("{:.1} MB", downloaded as f64 / 1_048_576.0)),
-                        );
-                    }
-                    if ui.button(Text::CancelJob.tr(locale)).clicked() {
-                        app.request_cancel_model_download();
-                    }
-                });
-            } else {
-                ui.horizontal(|ui| {
-                    if ui.button(Text::DownloadReframeModel.tr(locale)).clicked() {
-                        app.spawn_download_reframe_model();
-                    }
-                });
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut app.prefs.reframe_model_path)
-                            .desired_width(400.0),
-                    );
-                    if ui.button(Text::Browse.tr(locale)).clicked() {
-                        if let Some(file) = rfd::FileDialog::new()
-                            .add_filter("ONNX model", &["onnx"])
-                            .pick_file()
-                        {
-                            app.prefs.reframe_model_path = file.display().to_string();
-                        }
-                    }
-                });
-            }
+            model_path_row(ui, &mut app.prefs.reframe_model_path, &["onnx"], locale);
             ui.add_space(10.0);
             ui.label(Text::PrefsBackgroundRemovalModelPath.tr(locale));
-            if app.model_download_kind == Some(crate::app::ModelKind::BackgroundRemoval) {
-                let (downloaded, total) = app.model_download_progress.unwrap_or((0, 0));
-                ui.horizontal(|ui| {
-                    if total > 0 {
-                        ui.add(
-                            egui::ProgressBar::new(downloaded as f32 / total as f32)
-                                .desired_width(300.0)
-                                .show_percentage(),
-                        );
-                    } else {
-                        ui.add(
-                            egui::ProgressBar::new(0.0)
-                                .desired_width(300.0)
-                                .text(format!("{:.1} MB", downloaded as f64 / 1_048_576.0)),
-                        );
-                    }
-                    if ui.button(Text::CancelJob.tr(locale)).clicked() {
-                        app.request_cancel_model_download();
-                    }
-                });
-            } else {
-                ui.horizontal(|ui| {
-                    if ui
-                        .button(Text::DownloadBackgroundRemovalModel.tr(locale))
-                        .clicked()
-                    {
-                        app.spawn_download_background_removal_model();
-                    }
-                });
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut app.prefs.background_removal_model_path)
-                            .desired_width(400.0),
-                    );
-                    if ui.button(Text::Browse.tr(locale)).clicked() {
-                        if let Some(file) = rfd::FileDialog::new()
-                            .add_filter("ONNX model", &["onnx"])
-                            .pick_file()
-                        {
-                            app.prefs.background_removal_model_path = file.display().to_string();
-                        }
-                    }
-                });
-            }
+            model_path_row(
+                ui,
+                &mut app.prefs.background_removal_model_path,
+                &["onnx"],
+                locale,
+            );
             ui.add_space(10.0);
             ui.label(Text::PrefsTtsModelPath.tr(locale));
-            if app.model_download_kind == Some(crate::app::ModelKind::Tts) {
-                let (downloaded, total) = app.model_download_progress.unwrap_or((0, 0));
-                ui.horizontal(|ui| {
-                    if total > 0 {
-                        ui.add(
-                            egui::ProgressBar::new(downloaded as f32 / total as f32)
-                                .desired_width(300.0)
-                                .show_percentage(),
-                        );
-                    } else {
-                        ui.add(
-                            egui::ProgressBar::new(0.0)
-                                .desired_width(300.0)
-                                .text(format!("{:.1} MB", downloaded as f64 / 1_048_576.0)),
-                        );
-                    }
-                    if ui.button(Text::CancelJob.tr(locale)).clicked() {
-                        app.request_cancel_model_download();
-                    }
-                });
-            } else {
-                ui.horizontal(|ui| {
-                    if ui.button(Text::DownloadTtsVoice.tr(locale)).clicked() {
-                        app.spawn_download_tts_voice();
-                    }
-                });
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut app.prefs.tts_model_path)
-                            .desired_width(400.0),
-                    );
-                    if ui.button(Text::Browse.tr(locale)).clicked() {
-                        if let Some(file) = rfd::FileDialog::new()
-                            .add_filter("ONNX model", &["onnx"])
-                            .pick_file()
-                        {
-                            app.prefs.tts_model_path = file.display().to_string();
-                        }
-                    }
-                });
-            }
+            model_path_row(ui, &mut app.prefs.tts_model_path, &["onnx"], locale);
         });
         ui.add_space(14.0);
 
@@ -572,10 +407,30 @@ fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
     }
 }
 
-fn size_label(size: avcore::WhisperModelSize) -> &'static str {
-    match size {
-        avcore::WhisperModelSize::Tiny => "Tiny",
-        avcore::WhisperModelSize::Base => "Base",
-        avcore::WhisperModelSize::Small => "Small",
-    }
+fn model_path_row(ui: &mut egui::Ui, path: &mut String, extensions: &[&str], locale: Locale) {
+    ui.horizontal(|ui| {
+        ui.add(egui::TextEdit::singleline(path).desired_width(400.0));
+        if ui.button(Text::Browse.tr(locale)).clicked() {
+            if let Some(file) = rfd::FileDialog::new()
+                .add_filter(Text::ModelFile.tr(locale), extensions)
+                .pick_file()
+            {
+                *path = file.display().to_string();
+            }
+        }
+    });
+    let available = std::path::Path::new(path).is_file();
+    ui.label(
+        RichText::new(if available {
+            Text::BundledResourceAvailable.tr(locale)
+        } else {
+            Text::BundledResourceMissing.tr(locale)
+        })
+        .size(11.0)
+        .color(if available {
+            theme::ACCENT
+        } else {
+            theme::ERROR
+        }),
+    );
 }

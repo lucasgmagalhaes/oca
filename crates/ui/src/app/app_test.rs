@@ -179,7 +179,6 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
     let (tts_tx, tts_rx) = mpsc::unbounded_channel();
     let (youtube_download_tx, youtube_download_rx) = mpsc::unbounded_channel();
-    let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
     let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
     let (telemetry_tx, _telemetry_rx) = mpsc::unbounded_channel();
     let (update_check_tx, update_check_rx) = mpsc::unbounded_channel();
@@ -250,11 +249,6 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         youtube_download_progress: 0.0,
         youtube_download_error: None,
         youtube_download_cancel: None,
-        model_download_tx,
-        model_download_rx,
-        model_download_progress: None,
-        model_download_kind: None,
-        cancel_model_download: None,
         selected_clip_id: None,
         selected_text_clip_id: None,
         text_color_edit: None,

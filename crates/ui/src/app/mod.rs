@@ -19,7 +19,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -43,7 +43,6 @@ pub mod export;
 mod import;
 mod layer_templates;
 mod modals;
-mod model_download;
 mod motion_tracking;
 mod preview;
 mod sound_library;
@@ -198,29 +197,21 @@ pub struct PrefsState {
     /// [`avcore::GpuEncoderPreference`].
     #[serde(default)]
     pub gpu_encoder: avcore::GpuEncoderPreference,
-    /// Path to a local GGML Whisper model file (e.g. `ggml-base.bin`) for automatic
-    /// transcription ([`App::spawn_transcribe`]). Empty when not configured — the model isn't
-    /// bundled with the app (see `avcore::transcribe`'s module docs), so this is a one-time
-    /// manual setup step in Preferences.
+    /// Path to the bundled GGML Whisper Base model, or an optional user override.
     #[serde(default)]
     pub whisper_model_path: String,
     /// Path to a local UltraFace ONNX model file for auto-reframe
-    /// ([`App::spawn_auto_reframe_selected_clip`]). Empty when not configured — same one-time
-    /// manual setup step as `whisper_model_path` above (see `avcore::auto_reframe`'s module
-    /// docs for why it isn't bundled yet).
+    /// ([`App::spawn_auto_reframe_selected_clip`]), or an optional user override.
     #[serde(default)]
     pub reframe_model_path: String,
     /// Path to a local MODNet ONNX model file for AI background removal
-    /// (`avcore::background_removal::segment_person`). Empty when not configured — same
-    /// one-time manual setup step as `whisper_model_path`/`reframe_model_path` above (see
-    /// `avcore::background_removal`'s module docs for why it isn't bundled yet).
+    /// (`avcore::background_removal::segment_person`), or an optional user override.
     #[serde(default)]
     pub background_removal_model_path: String,
     /// Path to a local Piper voice `.onnx` model file for text-to-speech
     /// (`avcore::text_to_speech::synthesize`). Its `.onnx.json` config sidecar is expected right
-    /// next to it (`<this path>.json`), same layout `avcore::download_tts_voice` downloads into.
-    /// Empty when not configured — same one-time manual setup step as the other model paths
-    /// above (see `avcore::text_to_speech`'s module docs for why it isn't bundled yet).
+    /// next to it (`<this path>.json`). Defaults to the bundled pt-BR voice and may be
+    /// overridden with a compatible local voice.
     #[serde(default)]
     pub tts_model_path: String,
     /// Saved layer-group templates (`request.md`'s Fase 4 "Templates de grupo de camadas") —
@@ -510,16 +501,6 @@ enum TranscribeEvent {
     },
 }
 
-/// Which model a [`ModelDownloadEvent::Done`] belongs to — [`App::pump_model_download`] routes
-/// the finished path to the matching `prefs` field.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ModelKind {
-    Whisper,
-    Reframe,
-    BackgroundRemoval,
-    Tts,
-}
-
 /// A message from a background auto-reframe worker thread (see
 /// [`App::spawn_auto_reframe_selected_clip`]) back to the UI thread.
 enum AutoReframeEvent {
@@ -614,17 +595,6 @@ pub enum YoutubeFormatChoice {
 enum YoutubeDownloadEvent {
     Progress(f32),
     Done { path: PathBuf },
-    Failed { message: String },
-}
-
-/// A message from a background model-download worker thread (see
-/// [`App::spawn_download_whisper_model`]/[`App::spawn_download_reframe_model`]) back to the UI
-/// thread. Only one download can run at a time ([`App::cancel_model_download`] gates that), so
-/// a single shared channel/progress state covers every downloadable model.
-enum ModelDownloadEvent {
-    Progress { downloaded: u64, total: u64 },
-    Done { kind: ModelKind, path: PathBuf },
-    Cancelled,
     Failed { message: String },
 }
 
@@ -845,18 +815,6 @@ pub struct App {
     /// inline in the modal rather than as a toast, since the modal stays open for a retry.
     pub youtube_download_error: Option<String>,
     youtube_download_cancel: Option<Arc<AtomicBool>>,
-    model_download_tx: UnboundedSender<ModelDownloadEvent>,
-    model_download_rx: UnboundedReceiver<ModelDownloadEvent>,
-    /// `Some((downloaded_bytes, total_bytes))` while a model download is running —
-    /// `total_bytes` is `0` if the server didn't report a `Content-Length` yet. `None` when no
-    /// download is in flight. Preferences shows a progress bar in place of the size picker
-    /// while this is `Some`.
-    pub model_download_progress: Option<(u64, u64)>,
-    /// Which model `model_download_progress` belongs to — since only one download runs at a
-    /// time, Preferences uses this to show the progress bar in the right section (Whisper's or
-    /// auto-reframe's) instead of both.
-    pub(crate) model_download_kind: Option<ModelKind>,
-    cancel_model_download: Option<Arc<AtomicBool>>,
     /// The timeline clip currently highlighted in the Editor's timeline strip, if any — a
     /// separate concept from `selected_asset_id` (that's the media-library selection driving
     /// the preview panel; this is a placed [`avcore::timeline::ClipInstance`]). `Delete`
@@ -1025,7 +983,8 @@ impl App {
         }
         // Write the sentinel — deleted on clean exit via on_exit(). Survives a crash.
         let _ = std::fs::write(&sentinel, b"");
-        let prefs = load_prefs();
+        let mut prefs = load_prefs();
+        apply_bundled_model_defaults(&mut prefs);
         // Captured before `prefs` itself is moved into the struct literal below.
         let lib_panel_width = prefs.lib_panel_width;
         let props_panel_width = prefs.props_panel_width;
@@ -1052,7 +1011,6 @@ impl App {
         let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
         let (tts_tx, tts_rx) = mpsc::unbounded_channel();
         let (youtube_download_tx, youtube_download_rx) = mpsc::unbounded_channel();
-        let (model_download_tx, model_download_rx) = mpsc::unbounded_channel();
         let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
         let (telemetry_tx, telemetry_rx) = mpsc::unbounded_channel();
         telemetry::spawn_telemetry_writer(telemetry_rx, telemetry::telemetry_path());
@@ -1129,11 +1087,6 @@ impl App {
             youtube_download_progress: 0.0,
             youtube_download_error: None,
             youtube_download_cancel: None,
-            model_download_tx,
-            model_download_rx,
-            model_download_progress: None,
-            model_download_kind: None,
-            cancel_model_download: None,
             selected_clip_id: None,
             selected_text_clip_id: None,
             text_color_edit: None,
@@ -1601,13 +1554,29 @@ fn sentinel_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("oca.running"))
 }
 
-/// Directory downloaded Whisper models are saved into — next to `prefs.oc`, same convention
-/// as [`sentinel_path`]/`queue_path`.
-pub(self) fn models_dir() -> PathBuf {
-    prefs_path()
-        .parent()
-        .map(|d| d.join("models"))
-        .unwrap_or_else(|| PathBuf::from("models"))
+fn apply_bundled_model_defaults(prefs: &mut PrefsState) {
+    fn use_bundled(path: &mut String, resource: avcore::BundledResource) {
+        if !path.trim().is_empty() && Path::new(path).is_file() {
+            return;
+        }
+        if let Some(bundled) = avcore::bundled_resource_path(resource) {
+            *path = bundled.display().to_string();
+        }
+    }
+
+    use_bundled(
+        &mut prefs.whisper_model_path,
+        avcore::BundledResource::WhisperBase,
+    );
+    use_bundled(
+        &mut prefs.reframe_model_path,
+        avcore::BundledResource::Reframe,
+    );
+    use_bundled(
+        &mut prefs.background_removal_model_path,
+        avcore::BundledResource::BackgroundRemoval,
+    );
+    use_bundled(&mut prefs.tts_model_path, avcore::BundledResource::TtsVoice);
 }
 
 /// Where [`App::spawn_generate_tts`] writes its synthesized WAV files before importing them —
@@ -1714,7 +1683,6 @@ impl eframe::App for App {
         self.pump_matte_generation();
         self.pump_text_to_speech();
         self.pump_youtube_download();
-        self.pump_model_download();
         self.pump_update_check();
         self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());

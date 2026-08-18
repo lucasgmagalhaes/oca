@@ -118,7 +118,7 @@ text_catalog! {
     AboutRestartNow: pt_br = "Reiniciar agora", en = "Restart now";
     AboutInstallFailed: pt_br = "Não foi possível instalar a atualização.", en = "Could not install the update.";
     AboutRetryInstall: pt_br = "Tentar novamente", en = "Try again";
-    AboutManualInstallOnly: pt_br = "A instalação automática está disponível no Windows e Linux. Baixe esta versão manualmente.", en = "Automatic installation is available on Windows and Linux. Download this version manually.";
+    AboutManualInstallOnly: pt_br = "A instalação automática requer o pacote AppImage no Linux. Baixe o pacote completo desta versão.", en = "Automatic installation requires the Linux AppImage package. Download this version's complete bundle.";
     AboutRestartFailed: pt_br = "Não foi possível reiniciar o aplicativo.", en = "Could not restart the application.";
     AboutViewReleases: pt_br = "Ver releases no GitHub →", en = "View GitHub releases →";
     NewProject: pt_br = "＋ Novo projeto", en = "＋ New project";
@@ -196,16 +196,14 @@ text_catalog! {
     BackgroundRemovalExportNote: pt_br = "afeta a exportação só em blocos de faixas de overlay (não na faixa de fundo) — clique em \"Gerar máscara\" antes de exportar.", en = "only affects export on overlay-track blocks (not the background track) — click \"Generate matte\" before exporting.";
     BackgroundRemovalGenerateMatte: pt_br = "Gerar máscara", en = "Generate matte";
     BackgroundRemovalGenerating: pt_br = "Gerando máscara...", en = "Generating matte...";
-    BackgroundRemovalNoModelConfigured: pt_br = "Nenhum modelo de remoção de fundo configurado — baixe um em Ajustes primeiro.", en = "No background removal model configured — download one in Preferences first.";
-    DownloadBackgroundRemovalModel: pt_br = "Baixar modelo de remoção de fundo", en = "Download background removal model";
+    BackgroundRemovalNoModelConfigured: pt_br = "O modelo de remoção de fundo não está disponível no pacote.", en = "The background removal model is missing from the application bundle.";
     PrefsBackgroundRemovalModelPath: pt_br = "Caminho do modelo de remoção de fundo", en = "Background removal model path";
     TtsButton: pt_br = "🔊 Texto-pra-fala", en = "🔊 Text-to-speech";
     TtsModalTitle: pt_br = "Texto-pra-fala", en = "Text-to-speech";
     TtsGenerate: pt_br = "Gerar", en = "Generate";
-    TtsNoModelConfigured: pt_br = "Nenhum modelo de voz configurado — baixe um em Ajustes primeiro.", en = "No voice model configured — download one in Preferences first.";
+    TtsNoModelConfigured: pt_br = "O modelo de voz não está disponível no pacote.", en = "The voice model is missing from the application bundle.";
     TtsGenerationFailed: pt_br = "Falha ao gerar narração", en = "Narration generation failed";
     TtsGenerating: pt_br = "Gerando narração…", en = "Generating narration…";
-    DownloadTtsVoice: pt_br = "Baixar voz de texto-pra-fala", en = "Download text-to-speech voice";
     YoutubeDownloadButton: pt_br = "⭳ Baixar do YouTube", en = "⭳ Download from YouTube";
     YoutubeDownloadModalTitle: pt_br = "Baixar do YouTube", en = "Download from YouTube";
     YoutubeDownloadUrlHint: pt_br = "Link do vídeo", en = "Video URL";
@@ -293,16 +291,18 @@ text_catalog! {
     ProxyReady: pt_br = "Proxy 540p", en = "540p proxy";
     TranscribeAction: pt_br = "Transcrever", en = "Transcribe";
     TranscribeInProgress: pt_br = "Transcrevendo...", en = "Transcribing...";
-    TranscribeNoModelConfigured: pt_br = "Configure o modelo Whisper em Ajustes antes de transcrever.", en = "Set up the Whisper model in Preferences before transcribing.";
+    TranscribeNoModelConfigured: pt_br = "O modelo Whisper não está disponível no pacote.", en = "The Whisper model is missing from the application bundle.";
     TranscribeNoSpeechFound: pt_br = "Nenhuma fala reconhecida no áudio.", en = "No speech recognized in the audio.";
     PrefsWhisperModelPath: pt_br = "Modelo Whisper (legendas automáticas)", en = "Whisper model (automatic subtitles)";
     PrefsSoundLibraryPath: pt_br = "Pasta da biblioteca de música/SFX", en = "Music/SFX library folder";
     PrefsReframeModelPath: pt_br = "Modelo de reenquadramento automático", en = "Auto-reframe model";
-    DownloadReframeModel: pt_br = "Baixar modelo (≈2 MB)", en = "Download model (≈2 MB)";
+    ModelFile: pt_br = "Arquivo de modelo", en = "Model file";
+    BundledResourceAvailable: pt_br = "Recurso local disponível (incluído no pacote ou override).", en = "Local resource available (bundled or override).";
+    BundledResourceMissing: pt_br = "Recurso obrigatório ausente do pacote.", en = "Required resource is missing from the bundle.";
 
     AutoReframeAction: pt_br = "Reenquadramento automático", en = "Auto-reframe";
     AutoReframeInProgress: pt_br = "Reenquadrando...", en = "Reframing...";
-    AutoReframeNoModelConfigured: pt_br = "Configure o modelo de reenquadramento em Ajustes antes de usar.", en = "Set up the auto-reframe model in Preferences before using this.";
+    AutoReframeNoModelConfigured: pt_br = "O modelo de reenquadramento não está disponível no pacote.", en = "The auto-reframe model is missing from the application bundle.";
     AutoReframeNoSubjectFound: pt_br = "Nenhum rosto detectado — recorte centralizado aplicado.", en = "No face detected — applied a centered crop instead.";
 
     MotionTrackAction: pt_br = "Rastrear movimento", en = "Track motion";

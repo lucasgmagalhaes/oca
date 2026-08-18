@@ -32,6 +32,9 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 fn main() -> eframe::Result<()> {
+    // Must happen before GStreamer/ytbridge are initialized so packaged runtimes are selected
+    // instead of similarly named system installations.
+    avcore::configure_bundled_runtime();
     init_logging();
     install_panic_hook();
 

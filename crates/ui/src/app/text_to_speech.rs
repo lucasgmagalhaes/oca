@@ -83,7 +83,7 @@ impl App {
 }
 
 /// Runs on [`App::spawn_generate_tts`]'s background thread — loads the voice config next to
-/// `model_path` (`<model_path>.json`, the layout [`avcore::download_tts_voice`] downloads into),
+/// `model_path` (`<model_path>.json`, the layout shipped in the release bundle),
 /// synthesizes `text`, and writes the result as a uniquely-named WAV under `out_dir`.
 fn generate_tts_one(model_path: &Path, text: &str, out_dir: &Path) -> Result<PathBuf, String> {
     let config_path = PathBuf::from(format!("{}.json", model_path.display()));
