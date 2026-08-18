@@ -30,7 +30,9 @@ jobs:
 
       - name: Prepare verified private Python runtime
         shell: pwsh
-        run: ./crates/ytbridge/setup-python-runtime.ps1
+        run: |
+          ./crates/ytbridge/setup-python-runtime.ps1
+          "PYO3_PYTHON=$((Resolve-Path vendor/python-runtime/python.exe).Path)" >> $env:GITHUB_ENV
 
       - name: Download verified LGPL FFmpeg SDK/runtime
         shell: pwsh
@@ -64,6 +66,7 @@ jobs:
       - name: Build Inno Setup installer from the validated bundle
         shell: pwsh
         run: |
+          python packaging/tests/test_inno_i18n.py
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "Pinned Inno Setup compiler is unavailable" }
           $compilerVersion = (Get-Item $iscc).VersionInfo.ProductVersion
@@ -128,6 +131,16 @@ jobs:
           ./packaging/assemble_linux.sh target/release "$FFMPEG_DIR" dist/oca
           tar -C dist/oca -czf oca-x86_64-unknown-linux-gnu.tar.gz .
 
+      - name: Build and validate Debian package
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 \
+            | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "ui"))')
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          python3 packaging/tests/test_deb_package.py
+          ./packaging/build_deb.sh dist/oca "$version" "oca_${version}_amd64.deb"
+          python3 packaging/validate_deb.py "oca_${version}_amd64.deb" --version "$version"
+
       - name: Build verified AppImage
         run: |
           cp -a dist/oca dist/Oca.AppDir
@@ -154,11 +167,111 @@ jobs:
           path: |
             oca-x86_64-unknown-linux-gnu.tar.gz
             oca-x86_64-unknown-linux-gnu-appimage.tar.gz
+            oca_*_amd64.deb
+          if-no-files-found: error
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            architecture: arm64
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            architecture: x86_64
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    env:
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install native build and media runtimes
+        run: brew install cmake ffmpeg gstreamer
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Prepare verified private Python runtime
+        run: bash ./crates/ytbridge/setup-python-runtime.sh
+
+      - name: Export native build paths
+        run: |
+          brew_prefix="$(brew --prefix)"
+          echo "FFMPEG_DIR=$(brew --prefix ffmpeg)" >> "$GITHUB_ENV"
+          echo "GSTREAMER_DIR=$(brew --prefix gstreamer)" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=${brew_prefix}/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "PYO3_PYTHON=$PWD/vendor/python-runtime/bin/python3.10" >> "$GITHUB_ENV"
+
+      - name: Import optional Developer ID certificate
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ] || [ -z "$MACOS_CERTIFICATE_PASSWORD" ]; then
+            echo "No Developer ID certificate configured; using ad-hoc signing."
+            exit 0
+          fi
+          certificate="$RUNNER_TEMP/oca-developer-id.p12"
+          keychain="$RUNNER_TEMP/oca-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$certificate"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          identity="$(security find-identity -v -p codesigning "$keychain" \
+            | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' | head -1)"
+          [ -n "$identity" ] || { echo "Developer ID Application identity not found" >&2; exit 1; }
+          echo "OCA_CODESIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+
+      - name: Build release binaries
+        run: cargo build --workspace --release --locked
+
+      - name: Assemble and validate macOS application
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 \
+            | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "ui"))')
+          mkdir -p dist/macos
+          ./packaging/assemble_macos.sh \
+            target/release "$FFMPEG_DIR" "$GSTREAMER_DIR" \
+            vendor/python-runtime dist/macos/Oca.app \
+            dist/macos/DEPENDENCIES.json "$version" "${{ matrix.architecture }}"
+          ./packaging/build_dmg.sh \
+            dist/macos/Oca.app dist/macos/DEPENDENCIES.json \
+            "oca-${{ matrix.target }}.dmg"
+
+      - name: Sign and optionally notarize disk image
+        run: |
+          asset="oca-${{ matrix.target }}.dmg"
+          if [ -n "${OCA_CODESIGN_IDENTITY:-}" ]; then
+            codesign --force --timestamp --sign "$OCA_CODESIGN_IDENTITY" "$asset"
+          fi
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ] \
+            || [ -z "$APPLE_TEAM_ID" ] || [ -z "${OCA_CODESIGN_IDENTITY:-}" ]; then
+            echo "Apple notarization credentials are incomplete; publishing the validated DMG without notarization."
+            exit 0
+          fi
+          xcrun notarytool submit "$asset" --wait \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID"
+          xcrun stapler staple "$asset"
+          xcrun stapler validate "$asset"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-${{ matrix.architecture }}-release
+          path: oca-${{ matrix.target }}.dmg
           if-no-files-found: error
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, linux]
+    needs: [windows, linux, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -174,4 +287,7 @@ jobs:
             oca-x86_64-pc-windows-msvc.zip \
             oca-x86_64-pc-windows-msvc-setup.exe \
             oca-x86_64-unknown-linux-gnu.tar.gz \
-            oca-x86_64-unknown-linux-gnu-appimage.tar.gz
+            oca-x86_64-unknown-linux-gnu-appimage.tar.gz \
+            oca_*_amd64.deb \
+            oca-aarch64-apple-darwin.dmg \
+            oca-x86_64-apple-darwin.dmg
