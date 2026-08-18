@@ -10,9 +10,8 @@
 # end-to-end signal this test wants, since it can only fire after the model successfully loaded
 # and ran a real inference pass.
 #
-# Requires a UltraFace ONNX model downloaded to REFRAME_MODEL_PATH (see
-# avcore::model_download::download_reframe_model / Preferences' "Baixar modelo" button) —
-# skipped if absent, same shape as any other environment-dependent e2e precondition.
+# Requires the UltraFace ONNX model from a release bundle (or an explicit OCA_RESOURCE_DIR) —
+# skipped when running against a source-tree build whose resources have not been assembled.
 from __future__ import annotations
 
 import os
@@ -28,9 +27,8 @@ from test_layer_transform import (
     _select_the_clip,
 )
 
-REFRAME_MODEL_PATH = (
-    Path(os.environ["APPDATA"]) / "oca" / "models" / "version-RFB-320_simplified.onnx"
-)
+RESOURCE_DIR = Path(os.environ.get("OCA_RESOURCE_DIR", "target/debug/resources"))
+REFRAME_MODEL_PATH = RESOURCE_DIR / "models" / "version-RFB-320_simplified.onnx"
 
 
 def _set_reframe_model_path(oca_window):
@@ -47,7 +45,7 @@ def _set_reframe_model_path(oca_window):
 
 @pytest.mark.skipif(
     not REFRAME_MODEL_PATH.exists(),
-    reason=f"auto-reframe model not downloaded at {REFRAME_MODEL_PATH}",
+    reason=f"auto-reframe model not bundled at {REFRAME_MODEL_PATH}",
 )
 def test_auto_reframe_button_runs_detection_without_crashing(oca_window):
     _set_reframe_model_path(oca_window)
