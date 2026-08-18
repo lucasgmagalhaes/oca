@@ -69,10 +69,21 @@ pub fn bundled_resources_dir() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("OCA_RESOURCE_DIR") {
         return Some(PathBuf::from(path));
     }
-    std::env::current_exe()
-        .ok()?
-        .parent()
-        .map(|dir| dir.join("resources"))
+    resources_dir_for_executable(&std::env::current_exe().ok()?)
+}
+
+fn resources_dir_for_executable(executable: &Path) -> Option<PathBuf> {
+    let executable_dir = executable.parent()?;
+    if executable_dir
+        .file_name()
+        .is_some_and(|name| name == "MacOS")
+    {
+        let contents = executable_dir.parent()?;
+        if contents.file_name().is_some_and(|name| name == "Contents") {
+            return Some(contents.join("Resources"));
+        }
+    }
+    Some(executable_dir.join("resources"))
 }
 
 /// Returns a required resource only when it is already present locally.
@@ -133,5 +144,27 @@ pub fn configure_bundled_runtime() {
         if let Ok(joined) = std::env::join_paths(paths) {
             std::env::set_var("PATH", joined);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resources_dir_for_executable;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn macos_app_uses_the_contents_resources_directory() {
+        assert_eq!(
+            resources_dir_for_executable(Path::new("/Applications/Oca.app/Contents/MacOS/oca")),
+            Some(PathBuf::from("/Applications/Oca.app/Contents/Resources"))
+        );
+    }
+
+    #[test]
+    fn portable_layout_keeps_resources_next_to_the_executable() {
+        assert_eq!(
+            resources_dir_for_executable(Path::new("/opt/oca/ui")),
+            Some(PathBuf::from("/opt/oca/resources"))
+        );
     }
 }

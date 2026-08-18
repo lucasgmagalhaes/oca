@@ -177,6 +177,20 @@ fn ytbridge_path() -> Option<PathBuf> {
     Some(dir.join(name))
 }
 
+fn python_home_for_bridge(bridge: &Path) -> Option<PathBuf> {
+    let executable_dir = bridge.parent()?;
+    if executable_dir
+        .file_name()
+        .is_some_and(|name| name == "MacOS")
+    {
+        let contents = executable_dir.parent()?;
+        if contents.file_name().is_some_and(|name| name == "Contents") {
+            return Some(contents.join("Resources").join("python"));
+        }
+    }
+    Some(executable_dir.to_path_buf())
+}
+
 /// Whether the `ytbridge` helper binary is present — checked once up front so the UI can show
 /// a clear message instead of a generic spawn failure once a download is already underway.
 pub fn is_yt_dlp_available() -> bool {
@@ -202,12 +216,13 @@ pub fn download_youtube(
     let mut cmd = Command::new(&bridge);
     cmd.arg(target.target_arg()).arg(url).arg(dest_dir);
     // Points the bundled interpreter at its own vendored stdlib/site-packages next to the
-    // binary (Windows: python310.dll, DLLs/, Lib/; Linux: lib/ — see ytbridge's build.rs)
-    // instead of relying on CPython's own DLL-directory auto-detection, which isn't a
+    // binary (Windows: python310.dll, DLLs/, Lib/; Linux: lib/) or the conventional macOS
+    // Contents/Resources/python directory — see ytbridge's build.rs — instead of relying on
+    // CPython's own DLL-directory auto-detection, which isn't a
     // documented/verified behavior for an embedding host like this (as opposed to running
     // python.exe/python3 itself).
-    if let Some(dir) = bridge.parent() {
-        cmd.env("PYTHONHOME", dir);
+    if let (Some(dir), Some(python_home)) = (bridge.parent(), python_home_for_bridge(&bridge)) {
+        cmd.env("PYTHONHOME", python_home);
         cmd.env("PYTHONNOUSERSITE", "1");
         cmd.env("PYTHONDONTWRITEBYTECODE", "1");
         cmd.env("DENO_NO_UPDATE_CHECK", "1");
@@ -276,5 +291,23 @@ mod tests {
     #[test]
     fn mp3_bitrate_target_args_encode_kbps() {
         assert_eq!(Mp3Bitrate::K192.target_arg(), "mp3:192");
+    }
+
+    #[test]
+    fn macos_app_uses_the_private_python_resources_directory() {
+        assert_eq!(
+            python_home_for_bridge(Path::new("/Applications/Oca.app/Contents/MacOS/ytbridge")),
+            Some(PathBuf::from(
+                "/Applications/Oca.app/Contents/Resources/python"
+            ))
+        );
+    }
+
+    #[test]
+    fn portable_layout_uses_the_helper_directory_as_python_home() {
+        assert_eq!(
+            python_home_for_bridge(Path::new("/opt/oca/ytbridge")),
+            Some(PathBuf::from("/opt/oca"))
+        );
     }
 }
