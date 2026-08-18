@@ -12,6 +12,8 @@ executable, which would leave bundled libraries and models at an older version.
 | `x86_64-pc-windows-msvc` | `oca-x86_64-pc-windows-msvc.zip` | `ui.exe` |
 | `x86_64-unknown-linux-gnu` | `oca-x86_64-unknown-linux-gnu.tar.gz` | `ui` |
 | `x86_64-unknown-linux-gnu` (AppImage) | `oca-x86_64-unknown-linux-gnu-appimage.tar.gz` | `oca.AppImage` |
+| `aarch64-apple-darwin` | `oca-aarch64-apple-darwin.dmg` | `Oca.app/Contents/MacOS/oca` |
+| `x86_64-apple-darwin` | `oca-x86_64-apple-darwin.dmg` | `Oca.app/Contents/MacOS/oca` |
 
 Additional architectures use the same `oca-<target>.<extension>` convention, with the
 `-appimage` suffix for AppImage packages. The AppImage archive must preserve its executable bit.
@@ -27,6 +29,9 @@ Windows releases also publish `oca-x86_64-pc-windows-msvc-setup.exe`. This offli
 installer embeds the same validated payload as the portable ZIP and supports installation-folder
 selection, shortcuts and uninstallation. It does not download dependencies during setup. The
 application links Windows users to the release page so they can install the complete new bundle.
+Linux releases additionally publish `oca_<version>_amd64.deb`. macOS releases are complete DMGs
+for Apple Silicon and Intel; update notifications link users to the matching release rather than
+mutating an installed signed application bundle in place.
 
 ## Application flow
 

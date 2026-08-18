@@ -146,14 +146,16 @@ Performance é tratada como requisito, não como ajuste fino de última hora —
 
 ## Fase 8 — Empacotamento
 
-> **Status:** bundles portáteis automatizados para Windows e Linux/AppImage concluídos. Todos os
+> **Status:** bundles e instaladores automatizados para Windows, Linux e macOS concluídos. Todos os
 > modelos e runtimes listados abaixo são montados no CI com SHA-256 e validados antes da
 > publicação; o app não baixa modelos sob demanda. O instalador Inno Setup para Windows permite
-> escolher a pasta. Pendentes: pacote `.deb` e encode VAAPI.
+> escolher a pasta e o idioma (inglês/pt-BR); Linux publica AppImage e `.deb`; macOS publica
+> DMGs nativos para Apple Silicon e Intel. Pendente: encode VAAPI.
 
-- **Build e instalador para Windows e Linux.** GUI nativa (`egui`/`iced`/`Slint`) e GStreamer já são multiplataforma por natureza, então a maior parte do trabalho extra fica no empacotamento, não no código do app em si.
+- **Build e instalador para Windows, Linux e macOS.** GUI nativa (`egui`/`iced`/`Slint`) e GStreamer já são multiplataforma por natureza, então a maior parte do trabalho extra fica no empacotamento, não no código do app em si.
   - Windows: instalador `.msi`/`.exe`.
   - Linux: **AppImage** como formato principal (roda em qualquer distro sem instalar nada do sistema, mais parecido com "baixou, rodou" do Windows); pacote `.deb` como alternativa pra quem prefere instalar via gerenciador de pacotes.
+  - macOS: `.app` dentro de DMG, em builds nativos separados para Apple Silicon e Intel.
 - **Motores embutidos no instalador:** nenhum motor nativo precisa ser baixado ou instalado à parte pelo usuário — vale pras duas plataformas.
   - libav (FFmpeg) — linkado estático na ponte C (`oca-avbridge`), viaja dentro do próprio executável.
   - GStreamer — os plugins usados (não o framework inteiro) empacotados junto do instalador, ao lado do executável.

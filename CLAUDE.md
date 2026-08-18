@@ -639,7 +639,7 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   Linux AppImage launches use a distinct `-appimage.tar.gz` asset and replace/restart through
   `$APPIMAGE`, not the read-only executable path inside the mounted image.
   The release archive contract and publishing checklist live in `docs/auto-update.md`.
-  `.github/workflows/release.yml` builds tagged Windows/Linux releases and publishes the exact
+  `.github/workflows/release.yml` builds tagged Windows/Linux/macOS releases and publishes the exact
   archive names consumed by auto-update. Both portable trees are assembled from
   `packaging/bundle-manifest.json`: pinned model/engine URLs and SHA-256 values, FFmpeg LGPL,
   the complete installed GStreamer plugin set and scanner, Whisper Base, UltraFace, MODNet,
@@ -649,8 +649,13 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   model-download code and UI were removed. `packaging/validate_bundle.py` blocks publication
   when a required payload is absent. Full inventory: `docs/dependency-bundle.md`.
   The Windows job also compiles the validated portable tree with Inno Setup 6.7.1 into a
-  configurable, offline installer with shortcuts and uninstallation; ZIP users keep the same
-  tree as a portable option. **Still not started:** `.deb` and VAAPI GPU encode on Linux.
+  configurable, bilingual (English/pt-BR), offline installer with shortcuts and uninstallation;
+  ZIP users keep the same tree as a portable option. Linux also publishes a root-owned `.deb`
+  that installs the validated tree under `/opt/oca`. macOS publishes native Apple Silicon and
+  Intel DMGs containing a conventional signed `Oca.app`; all non-system Mach-O dependencies,
+  models, GStreamer plugins, private Python/yt-dlp/EJS/Deno and FFmpeg are inside the app.
+  Developer ID signing/notarization is used when CI credentials are configured, with ad-hoc
+  signing retained for reproducible test artifacts. **Still not started:** VAAPI GPU encode on Linux.
   **Verification caveat:**
   this dev environment's outbound network proxy blocks direct calls to `api.github.com`
   (returns its own "GitHub access is not enabled for this session" error, not a real GitHub

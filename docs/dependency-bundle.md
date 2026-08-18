@@ -14,8 +14,8 @@ publication when any required runtime component is missing.
 
 | Component | Included form | Used by |
 |---|---|---|
-| FFmpeg 8.1 LGPL build | `ffmpeg` CLI, libav shared libraries | Native bridge, yt-dlp merge/extraction |
-| GStreamer (1.26.11 Windows; Ubuntu 24.04 runtime on Linux) | Core libraries, plugin scanner and complete installed plugin set | Preview, decoding and scrubbing |
+| FFmpeg (pinned 8.1 LGPL build on Windows/Linux; GPL-enabled Homebrew runner build on macOS) | `ffmpeg` CLI, libav shared libraries | Native bridge, yt-dlp merge/extraction |
+| GStreamer (LGPL core plus plugin-specific licenses; 1.26.11 Windows, Ubuntu 24.04 Linux, Homebrew macOS) | Core libraries, plugin scanner and complete installed plugin set | Preview, decoding and scrubbing |
 | ONNX Runtime 1.28 | Statically linked by `ort-sys` | Auto-reframe and background removal |
 | whisper.cpp | Statically linked by `whisper-rs` | Automatic subtitles |
 | Whisper Base | `resources/models/ggml-base.bin` | Automatic subtitles |
@@ -29,8 +29,10 @@ publication when any required runtime component is missing.
 | Deno 2.9.5 | Private executable beside `ytbridge` | JavaScript runtime required by current yt-dlp YouTube support |
 | Application fonts | Compiled into the Rust binary with `include_bytes!` | Titles, subtitles and text metrics |
 | Inno Setup 6.7.1 | Build-time compiler, not an installed runtime | Configurable Windows installer |
+| dpkg-deb | Build-time compiler, not an installed runtime | Debian package |
+| Apple codesign and hdiutil | macOS runner tools, not installed runtimes | Signed `.app` and compressed DMG |
 
-Each package also carries `resources/DEPENDENCIES.json`, generated directly from `Cargo.lock`
+Each portable Windows/Linux package also carries `resources/DEPENDENCIES.json`, generated directly from `Cargo.lock`
 and the bundle manifest. It inventories every Rust package with its exact version, registry
 source and checksum as well as every native/model dependency. It also records the path, size
 and SHA-256 of every actual file in the assembled payload, including shared libraries,
@@ -41,6 +43,8 @@ actual FFmpeg, GStreamer and Python versions reported by the assembled payload.
 It also records yt-dlp, yt-dlp EJS and Deno versions. Bundle validation recalculates every
 model's hash and rejects a runtime-version mismatch, so an accidental script/manifest drift
 cannot be published.
+The macOS DMG carries the same inventory as `DEPENDENCIES.json` beside `Oca.app`. Keeping it
+outside the signed app avoids changing the code signature after file hashes are generated.
 
 The Windows ZIP contains the DLLs beside `ui.exe`, where the Windows loader can resolve them.
 The Inno Setup installer contains that same validated tree and adds a configurable installation
@@ -49,8 +53,17 @@ downloads. Inno Setup itself is needed only on the release runner that compiles 
 and is not installed on end-user machines. The installer is currently unsigned; release signing
 requires configuring a Windows code-signing certificate in CI.
 The Linux portable tree uses a launcher that sets private library, plugin and tool paths before
-starting `ui-bin`; the AppImage wraps that exact validated tree. `OCA_RESOURCE_DIR` can override
+starting `ui-bin`; the AppImage and `.deb` wrap that exact validated tree. The Debian package
+installs it under `/opt/oca`, exposes `/usr/bin/oca`, registers an English/pt-BR desktop entry,
+and performs no network access in its maintainer scripts. `OCA_RESOURCE_DIR` can override
 the default `resources/`-beside-the-executable lookup for development and diagnostics.
+The macOS release has separate native Apple Silicon and Intel DMGs. `Oca.app` uses the standard
+`Contents/MacOS`, `Contents/Resources` and `Contents/Frameworks` layout. The assembler walks all
+Mach-O executables, libraries, Python extensions and GStreamer plugins recursively, copies every
+non-system dependency into the app, rewrites load paths to `@loader_path`, rejects architecture
+or external-path leaks, and signs the resulting bundle. Releases use Developer ID signing and
+Apple notarization when the corresponding CI secrets are configured; otherwise CI produces a
+validated ad-hoc-signed artifact suitable for testing but subject to Gatekeeper warnings.
 
 ## Deliberate system contract
 
@@ -65,11 +78,11 @@ Music and SFX are user media, not application dependencies, and are therefore no
 
 ## Release process
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`. It builds Windows and Linux from the
-same source revision, verifies every downloaded archive, assembles complete portable trees,
-validates them, creates the Windows portable ZIP, Windows Inno Setup executable, Linux tarball
-and Linux AppImage, then publishes those four assets to the matching GitHub Release. A manually dispatched workflow builds and retains
-the artifacts without publishing a release.
+Pushing a `v*` tag runs `.github/workflows/release.yml`. It builds Windows, Linux, Apple Silicon
+macOS and Intel macOS from the same source revision. It verifies downloaded archives, assembles
+and validates complete payloads, then publishes the Windows portable ZIP and bilingual Inno
+Setup installer, Linux tarball/AppImage/`.deb`, and both macOS DMGs. A manually dispatched
+workflow builds and retains the artifacts without publishing a release.
 
 To update a dependency, update its URL, version and SHA-256 in the manifest together. For
 FFmpeg, mirror the same pin in `.github/workflows/ci.yml`; see `.github/FFMPEG_UPDATE.md`.
