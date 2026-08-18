@@ -36,9 +36,22 @@ VersionInfoVersion={#AppVersion}
 VersionInfoDescription=oca video editor installer
 VersionInfoProductName=oca
 VersionInfoProductVersion={#AppVersion}
+ShowLanguageDialog=yes
+
+[Languages]
+Name: "en"; MessagesFile: "compiler:Default.isl"
+Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
+
+[CustomMessages]
+en.DesktopIcon=Create a desktop shortcut
+en.AdditionalShortcuts=Additional shortcuts:
+en.LaunchOca=Launch oca
+ptbr.DesktopIcon=Criar um atalho na área de trabalho
+ptbr.AdditionalShortcuts=Atalhos adicionais:
+ptbr.LaunchOca=Iniciar o oca
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:DesktopIcon}"; GroupDescription: "{cm:AdditionalShortcuts}"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -48,4 +61,4 @@ Name: "{autoprograms}\oca"; Filename: "{app}\ui.exe"; WorkingDir: "{app}"
 Name: "{autodesktop}\oca"; Filename: "{app}\ui.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\ui.exe"; Description: "Launch oca"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\ui.exe"; Description: "{cm:LaunchOca}"; Flags: nowait postinstall skipifsilent
