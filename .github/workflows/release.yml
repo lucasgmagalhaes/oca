@@ -61,10 +61,32 @@ jobs:
             -OutputDir dist/oca
           Compress-Archive -Path dist/oca/* -DestinationPath oca-x86_64-pc-windows-msvc.zip
 
+      - name: Build Inno Setup installer from the validated bundle
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Pinned Inno Setup compiler is unavailable" }
+          $compilerVersion = (Get-Item $iscc).VersionInfo.ProductVersion
+          if (-not $compilerVersion.StartsWith("6.7.1")) {
+            throw "Expected Inno Setup 6.7.1, found $compilerVersion"
+          }
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $version = ($metadata.packages | Where-Object name -eq "ui").version
+          if (-not $version) { throw "Could not resolve the UI package version" }
+          $source = (Resolve-Path dist/oca).Path
+          $output = Join-Path $PWD "dist\installer"
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          & $iscc "/DSourceDir=$source" "/DOutputDir=$output" "/DAppVersion=$version" `
+            packaging/windows-installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
+          Copy-Item (Join-Path $output "oca-x86_64-pc-windows-msvc-setup.exe") .
+
       - uses: actions/upload-artifact@v7
         with:
           name: windows-release
-          path: oca-x86_64-pc-windows-msvc.zip
+          path: |
+            oca-x86_64-pc-windows-msvc.zip
+            oca-x86_64-pc-windows-msvc-setup.exe
           if-no-files-found: error
 
   linux:
@@ -150,5 +172,6 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
             --verify-tag --generate-notes \
             oca-x86_64-pc-windows-msvc.zip \
+            oca-x86_64-pc-windows-msvc-setup.exe \
             oca-x86_64-unknown-linux-gnu.tar.gz \
             oca-x86_64-unknown-linux-gnu-appimage.tar.gz

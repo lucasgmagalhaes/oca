@@ -115,6 +115,12 @@
       "bundle": "embedded in ui through include_bytes"
     },
     {
+      "name": "Inno Setup",
+      "version": "6.7.1",
+      "license": "Inno Setup License",
+      "bundle": "build-time only; compiles the validated Windows tree into a configurable installer"
+    },
+    {
       "name": "appimagetool",
       "version": "continuous snapshot verified 2026-08-17",
       "license": "MIT",
