@@ -16,10 +16,16 @@
 #include "bridge.h"
 #include "bridge_internal.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavutil/hwcontext.h>
+
+#ifdef __linux__
+#include <unistd.h>
+#endif
 
 /* h264_qsv rejects AV_PIX_FMT_YUV420P as a direct software-frame input (empirically observed:
    "Specified pixel format yuv420p is not supported by the h264_qsv encoder", wants nv12/qsv
@@ -72,6 +78,118 @@ static AVCodecContext *try_open_encoder(const char *encoder_name, int canvas_wid
     return ctx;
 }
 
+/* Opens h264_vaapi with the hardware-frame pool required by that encoder. The ordinary
+   software encoders above consume the filter graph's AVFrame directly; VAAPI instead consumes
+   AV_PIX_FMT_VAAPI surfaces backed by a device. filters.c recognizes hw_frames_ctx and uploads
+   each NV12 software frame into this pool immediately before avcodec_send_frame(). */
+#ifdef __linux__
+static AVCodecContext *try_open_vaapi_device(const char *device_path, int canvas_width,
+                                              int canvas_height, AVRational canvas_fps,
+                                              int64_t canvas_bit_rate_bps, int global_header,
+                                              enum AVPixelFormat *out_filter_pix_fmt) {
+    const AVCodec *enc = avcodec_find_encoder_by_name("h264_vaapi");
+    AVBufferRef *device_ref = NULL;
+    AVBufferRef *frames_ref = NULL;
+    AVCodecContext *ctx = NULL;
+
+    if (!enc || av_hwdevice_ctx_create(&device_ref, AV_HWDEVICE_TYPE_VAAPI, device_path, NULL,
+                                        0) < 0) {
+        return NULL;
+    }
+
+    ctx = avcodec_alloc_context3(enc);
+    if (!ctx) {
+        goto fail;
+    }
+    ctx->width = canvas_width;
+    ctx->height = canvas_height;
+    ctx->pix_fmt = AV_PIX_FMT_VAAPI;
+    ctx->time_base = av_inv_q(canvas_fps);
+    ctx->framerate = canvas_fps;
+    ctx->gop_size = (canvas_fps.num / canvas_fps.den) * 2;
+    ctx->max_b_frames = 0;
+    ctx->bit_rate = canvas_bit_rate_bps;
+    if (global_header) {
+        ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    }
+
+    frames_ref = av_hwframe_ctx_alloc(device_ref);
+    if (!frames_ref) {
+        goto fail;
+    }
+    AVHWFramesContext *frames_ctx = (AVHWFramesContext *)frames_ref->data;
+    frames_ctx->format = AV_PIX_FMT_VAAPI;
+    frames_ctx->sw_format = AV_PIX_FMT_NV12;
+    frames_ctx->width = canvas_width;
+    frames_ctx->height = canvas_height;
+    frames_ctx->initial_pool_size = 20;
+    if (av_hwframe_ctx_init(frames_ref) < 0) {
+        goto fail;
+    }
+    ctx->hw_frames_ctx = av_buffer_ref(frames_ref);
+    if (!ctx->hw_frames_ctx || avcodec_open2(ctx, enc, NULL) < 0) {
+        goto fail;
+    }
+
+    av_buffer_unref(&frames_ref);
+    av_buffer_unref(&device_ref);
+    if (out_filter_pix_fmt) {
+        *out_filter_pix_fmt = AV_PIX_FMT_NV12;
+    }
+    return ctx;
+
+fail:
+    av_buffer_unref(&frames_ref);
+    av_buffer_unref(&device_ref);
+    avcodec_free_context(&ctx);
+    return NULL;
+}
+#endif
+
+/* Tries an explicit override first, then Linux DRM render nodes in deterministic order, and
+   finally FFmpeg's own default-device resolution. Vendor VAAPI drivers remain an operating-
+   system/GPU responsibility; absence or permission failure is intentionally just
+   "unavailable" so open_video_encoder can fall back to libopenh264. */
+static AVCodecContext *try_open_vaapi_encoder(int canvas_width, int canvas_height,
+                                               AVRational canvas_fps,
+                                               int64_t canvas_bit_rate_bps,
+                                               int global_header,
+                                               enum AVPixelFormat *out_filter_pix_fmt) {
+#ifdef __linux__
+    const char *override_path = getenv("OCA_VAAPI_DEVICE");
+    if (override_path && override_path[0]) {
+        return try_open_vaapi_device(override_path, canvas_width, canvas_height, canvas_fps,
+                                      canvas_bit_rate_bps, global_header,
+                                      out_filter_pix_fmt);
+    }
+
+    char render_node[64];
+    for (int node = 128; node <= 191; node++) {
+        snprintf(render_node, sizeof(render_node), "/dev/dri/renderD%d", node);
+        if (access(render_node, R_OK | W_OK) != 0) {
+            continue;
+        }
+        AVCodecContext *ctx = try_open_vaapi_device(
+            render_node, canvas_width, canvas_height, canvas_fps, canvas_bit_rate_bps,
+            global_header, out_filter_pix_fmt);
+        if (ctx) {
+            return ctx;
+        }
+    }
+
+    return try_open_vaapi_device(NULL, canvas_width, canvas_height, canvas_fps,
+                                  canvas_bit_rate_bps, global_header, out_filter_pix_fmt);
+#else
+    (void)canvas_width;
+    (void)canvas_height;
+    (void)canvas_fps;
+    (void)canvas_bit_rate_bps;
+    (void)global_header;
+    (void)out_filter_pix_fmt;
+    return NULL;
+#endif
+}
+
 AVCodecContext *open_video_encoder(GpuEncoderPreference preference, int canvas_width,
                                         int canvas_height, AVRational canvas_fps,
                                         int64_t canvas_bit_rate_bps, int global_header,
@@ -79,9 +197,10 @@ AVCodecContext *open_video_encoder(GpuEncoderPreference preference, int canvas_w
     static const char *const nvenc = "h264_nvenc";
     static const char *const quicksync = "h264_qsv";
     static const char *const amf = "h264_amf";
+    static const char *const vaapi = "h264_vaapi";
     static const char *const cpu = "libopenh264";
 
-    const char *hw_candidates[3] = {NULL, NULL, NULL};
+    const char *hw_candidates[4] = {NULL, NULL, NULL, NULL};
     int hw_candidate_count = 0;
     switch (preference) {
         case GPU_ENCODER_NVENC:
@@ -93,9 +212,13 @@ AVCodecContext *open_video_encoder(GpuEncoderPreference preference, int canvas_w
         case GPU_ENCODER_AMF:
             hw_candidates[hw_candidate_count++] = amf;
             break;
+        case GPU_ENCODER_VAAPI:
+            hw_candidates[hw_candidate_count++] = vaapi;
+            break;
         case GPU_ENCODER_AUTO:
             hw_candidates[hw_candidate_count++] = nvenc;
             hw_candidates[hw_candidate_count++] = quicksync;
+            hw_candidates[hw_candidate_count++] = vaapi;
             hw_candidates[hw_candidate_count++] = amf;
             break;
         case GPU_ENCODER_CPU:
@@ -104,9 +227,14 @@ AVCodecContext *open_video_encoder(GpuEncoderPreference preference, int canvas_w
     }
 
     for (int i = 0; i < hw_candidate_count; i++) {
-        AVCodecContext *ctx = try_open_encoder(hw_candidates[i], canvas_width, canvas_height,
-                                                canvas_fps, canvas_bit_rate_bps, global_header,
-                                                out_pix_fmt);
+        AVCodecContext *ctx = strcmp(hw_candidates[i], vaapi) == 0
+                                  ? try_open_vaapi_encoder(canvas_width, canvas_height,
+                                                           canvas_fps, canvas_bit_rate_bps,
+                                                           global_header, out_pix_fmt)
+                                  : try_open_encoder(hw_candidates[i], canvas_width,
+                                                     canvas_height, canvas_fps,
+                                                     canvas_bit_rate_bps, global_header,
+                                                     out_pix_fmt);
         if (ctx) {
             if (out_used_gpu) {
                 *out_used_gpu = 1;

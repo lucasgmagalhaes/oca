@@ -18,6 +18,7 @@
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/hwcontext.h>
 #include <libavutil/opt.h>
 
 void free_audio_filter_chain(AudioFilterChain *chain) {
@@ -149,7 +150,37 @@ end:
    to flush. */
 int encode_write_packet(AVFormatContext *out_ctx, AVCodecContext *enc_ctx,
                          AVStream *out_stream, AVFrame *frame, AVPacket *enc_pkt) {
-    int ret = avcodec_send_frame(enc_ctx, frame);
+    AVFrame *hw_frame = NULL;
+    AVFrame *frame_to_send = frame;
+
+    /* Hardware encoders such as h264_vaapi consume hardware surfaces rather than the NV12
+       software frames emitted by the filter graph. Upload only when the encoder exposes a
+       hardware-frame pool; audio and all existing software encoders keep the old zero-copy
+       path. avcodec_send_frame takes its own references, so the temporary surface can be
+       released immediately after the call. */
+    if (frame && enc_ctx->codec_type == AVMEDIA_TYPE_VIDEO && enc_ctx->hw_frames_ctx &&
+        frame->format != enc_ctx->pix_fmt) {
+        hw_frame = av_frame_alloc();
+        if (!hw_frame) return AVERROR(ENOMEM);
+        hw_frame->format = enc_ctx->pix_fmt;
+        hw_frame->width = frame->width;
+        hw_frame->height = frame->height;
+        int upload_ret = av_hwframe_get_buffer(enc_ctx->hw_frames_ctx, hw_frame, 0);
+        if (upload_ret >= 0) {
+            upload_ret = av_hwframe_transfer_data(hw_frame, frame, 0);
+        }
+        if (upload_ret >= 0) {
+            upload_ret = av_frame_copy_props(hw_frame, frame);
+        }
+        if (upload_ret < 0) {
+            av_frame_free(&hw_frame);
+            return upload_ret;
+        }
+        frame_to_send = hw_frame;
+    }
+
+    int ret = avcodec_send_frame(enc_ctx, frame_to_send);
+    av_frame_free(&hw_frame);
     if (ret < 0 && ret != AVERROR_EOF) return ret;
 
     while (1) {

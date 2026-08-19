@@ -276,6 +276,7 @@ fn every_gpu_encoder_preference_falls_back_to_a_working_export() {
         ("nvenc", GpuEncoderPreference::Nvenc),
         ("quicksync", GpuEncoderPreference::QuickSync),
         ("amf", GpuEncoderPreference::Amf),
+        ("vaapi", GpuEncoderPreference::Vaapi),
     ] {
         let out = std::env::temp_dir().join(format!("avbridge_test_gpu_encoder_{name}.mp4"));
         let cancel = AtomicBool::new(false);

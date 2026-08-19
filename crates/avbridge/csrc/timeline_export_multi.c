@@ -460,8 +460,9 @@ EncodeStatus avbridge_encode_timeline_export_multi(
     if (!out_ctx) return ENCODE_ERR_ALLOC_OUTPUT;
 
     /* Video encoder — same hardware-with-CPU-fallback setup as the single-track function.
-       venc_pix_fmt is whichever pixel format the opened encoder actually wants (yuv420p, or
-       nv12 for h264_qsv) — every filter graph built below must conform to it. */
+       venc_pix_fmt is the software pixel format the opened path wants (yuv420p, or nv12 for
+       h264_qsv and VAAPI's hardware upload) — every filter graph built below must conform to
+       it. */
     enum AVPixelFormat venc_pix_fmt = AV_PIX_FMT_YUV420P;
     const char *venc_pix_fmt_name = "yuv420p";
     {

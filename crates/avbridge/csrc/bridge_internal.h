@@ -27,8 +27,8 @@
 #include "bridge.h"
 
 typedef enum {
-    /* Try hardware encoders in a fixed order (NVENC, then Quick Sync, then AMF), falling back
-       to the CPU (libopenh264) encoder if none of them open successfully. */
+    /* Try hardware encoders in a fixed order (NVENC, Quick Sync, VAAPI, then AMF), falling
+       back to the CPU (libopenh264) encoder if none of them open successfully. */
     GPU_ENCODER_AUTO = 0,
     /* Force the CPU (libopenh264) encoder — no hardware attempt. */
     GPU_ENCODER_CPU = 1,
@@ -38,11 +38,14 @@ typedef enum {
     GPU_ENCODER_QUICKSYNC = 3,
     /* Force AMD AMF (h264_amf), falling back to CPU if it can't open. */
     GPU_ENCODER_AMF = 4,
+    /* Force Linux VAAPI (h264_vaapi), falling back to CPU if it can't open. */
+    GPU_ENCODER_VAAPI = 5,
 } GpuEncoderPreference;
 
 /* Opens a video H.264 encoder AVCodecContext sized for canvas_width/canvas_height/canvas_fps
    at canvas_bit_rate_bps, honoring `preference`. Tries the requested hardware encoder(s) first
-   (AUTO tries all three in a fixed order). Each candidate's requested pixel format comes from
+   (AUTO tries all four in a fixed order). Each software-frame candidate's requested pixel
+   format comes from
    gpu_encoder.c's pix_fmt_for_encoder_name(): AV_PIX_FMT_YUV420P for every encoder except
    h264_qsv, which gets AV_PIX_FMT_NV12 — the same format the existing filter chains already
    conform every segment to for the other encoders (see e.g. timeline_export.c's final
@@ -63,15 +66,21 @@ typedef enum {
    exercised against real GPU hardware in this environment. The CPU fallback path itself IS
    exercised end-to-end for every preference value (see encode_test.rs's
    every_gpu_encoder_preference_falls_back_to_a_working_export), since forcing any hardware
-   preference on this machine deterministically falls through to it.
+   preference on this machine deterministically falls through to it. VAAPI is different from
+   the other candidates: h264_vaapi consumes AV_PIX_FMT_VAAPI hardware surfaces. Its setup
+   creates a VAAPI device and an NV12-backed AVHWFramesContext; filters.c uploads the software
+   NV12 filter output into that pool before avcodec_send_frame. On Linux, OCA_VAAPI_DEVICE may
+   name an explicit render node; otherwise /dev/dri/renderD128..191 are tried before FFmpeg's
+   default device resolution. Missing drivers/devices/permissions all fall through to CPU.
 
    If none of the attempted encoders open, falls back to the CPU (libopenh264) encoder — the
    "fallback pro encode por CPU" from the Fase 5 spec. Sets *out_used_gpu to 1 if a hardware
    encoder was actually opened, 0 if the CPU fallback (or explicit GPU_ENCODER_CPU) was used.
-   If `out_pix_fmt` is non-NULL, sets it to the pixel format the opened encoder actually uses
-   (yuv420p or nv12) — callers must build their filter graph's final `format=...` conform
-   stage to target this instead of hardcoding yuv420p, or frames won't match what the encoder
-   was opened with. `global_header` should be nonzero when the output format wants
+   If `out_pix_fmt` is non-NULL, sets it to the software pixel format the filter graph must emit
+   (yuv420p or nv12). For VAAPI this deliberately differs from enc_ctx->pix_fmt
+   (AV_PIX_FMT_VAAPI), because encode_write_packet performs the software-to-hardware upload.
+   Callers must build their filter graph's final `format=...` conform stage to target this
+   instead of hardcoding yuv420p. `global_header` should be nonzero when the output format wants
    AV_CODEC_FLAG_GLOBAL_HEADER set (out_ctx->oformat->flags & AVFMT_GLOBALHEADER).
 
    Returns NULL only if even the CPU fallback couldn't open (should only happen if libopenh264

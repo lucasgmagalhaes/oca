@@ -582,7 +582,7 @@ pub struct Canvas {
 
 /// Which video encoder [`encode_timeline_export`]/[`encode_timeline_export_multi`] should use,
 /// mirroring `bridge_internal.h`'s `GpuEncoderPreference` (passed across the FFI boundary as
-/// the same plain `int` values). `Auto` tries hardware encoders (NVENC, then Quick Sync, then
+/// the same plain `int` values). `Auto` tries hardware encoders (NVENC, Quick Sync, VAAPI, then
 /// AMF) in order and falls back to the CPU (libopenh264) encoder if none open; the specific
 /// hardware variants force that one encoder, still falling back to CPU if it can't open (no
 /// compatible GPU/driver present) — the C side has no way to report back which one actually got
@@ -597,6 +597,7 @@ pub enum GpuEncoderPreference {
     Nvenc,
     QuickSync,
     Amf,
+    Vaapi,
 }
 
 impl GpuEncoderPreference {
@@ -607,6 +608,7 @@ impl GpuEncoderPreference {
             GpuEncoderPreference::Nvenc => 2,
             GpuEncoderPreference::QuickSync => 3,
             GpuEncoderPreference::Amf => 4,
+            GpuEncoderPreference::Vaapi => 5,
         }
     }
 }
