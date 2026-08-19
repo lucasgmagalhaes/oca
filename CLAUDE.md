@@ -543,9 +543,13 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   never itself changes how the clip looks — only moving it afterward does.
 
   **GPU encode — hardware success unverified.** `gpu_encoder.c`'s `open_video_encoder()`
-  tries NVENC/Quick Sync/AMF per `Prefs.gpu_encoder`, falling back to CPU (libopenh264) on
-  failure; `h264_qsv` correctly requests NV12 (not the yuv420p every other encoder uses) via
-  `pix_fmt_for_encoder_name()`. No machine this was developed on has NVENC/AMF hardware, and
+  tries NVENC/Quick Sync/VAAPI/AMF per `Prefs.gpu_encoder`, falling back to CPU (libopenh264)
+  on failure; `h264_qsv` correctly requests NV12 (not the yuv420p used by the software-frame
+  encoders). Linux `h264_vaapi` creates an NV12-backed `AVHWFramesContext` on
+  `OCA_VAAPI_DEVICE`, the first writable `/dev/dri/renderD128..191`, or FFmpeg's default VAAPI
+  device; `filters.c` uploads each filtered NV12 frame into its VAAPI surface pool immediately
+  before encoding. Missing devices, drivers or permissions retain the same CPU fallback. No
+  machine this was developed on has NVENC/AMF/VAAPI hardware, and
   this dev machine's FFmpeg build has neither `libopenh264` nor `h264_qsv` compiled in at
   all — every test that reaches `avcodec_open2`/`avcodec_send_frame` fails with
   `EncodeError::Encoder` here specifically, a pre-existing build gap, not a regression.
@@ -655,7 +659,9 @@ export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`
   Intel DMGs containing a conventional signed `Oca.app`; all non-system Mach-O dependencies,
   models, GStreamer plugins, private Python/yt-dlp/EJS/Deno and FFmpeg are inside the app.
   Developer ID signing/notarization is used when CI credentials are configured, with ad-hoc
-  signing retained for reproducible test artifacts. **Still not started:** VAAPI GPU encode on Linux.
+  signing retained for reproducible test artifacts. Linux VAAPI encode is implemented in the
+  same encoder ladder described above; vendor VAAPI drivers remain an optional host contract,
+  not part of the offline bundle.
   **Verification caveat:**
   this dev environment's outbound network proxy blocks direct calls to `api.github.com`
   (returns its own "GitHub access is not enabled for this session" error, not a real GitHub

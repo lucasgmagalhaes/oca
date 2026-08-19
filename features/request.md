@@ -110,7 +110,7 @@ Renderização nunca pode travar a edição.
 **Configurações de export**
 - **Proporção/dimensão de tela:** seleção de aspect ratio pra exportar (16:9, 9:16, 1:1 e outras), refletida ao vivo no preview antes de exportar.
 - **Preview de tamanho do arquivo:** estimativa do tamanho final atualizada conforme bitrate, duração e formato são ajustados, antes de confirmar a exportação.
-- **Encode por GPU:** opção de usar aceleração de hardware no encode final (NVENC na Nvidia, Quick Sync na Intel, AMF na AMD), acionada pela ponte C (`oca-avbridge`) da Fase 1 — com fallback pro encode por CPU quando a GPU não suportar o codec escolhido.
+- **Encode por GPU:** opção de usar aceleração de hardware no encode final (NVENC na Nvidia, Quick Sync na Intel, AMF na AMD e VAAPI para Intel/AMD no Linux), acionada pela ponte C (`oca-avbridge`) da Fase 1 — com fallback pro encode por CPU quando a GPU não suportar o codec escolhido.
 - **Local e nome do arquivo de exportação:** pasta de destino e nome do arquivo escolhidos diretamente no painel de export (além da pasta padrão configurável nas preferências). Verifica se já existe um arquivo com esse nome no destino antes de exportar — se existir, avisa e deixa escolher entre sobrescrever, renomear automaticamente (ex.: sufixo numérico) ou cancelar.
 
 **Caso de uso direto:** séries de cortes como a dos 50 chefes do Cuphead — dá pra enfileirar vários clipes pra exportação e seguir cortando o próximo enquanto os anteriores renderizam em background.
@@ -150,7 +150,7 @@ Performance é tratada como requisito, não como ajuste fino de última hora —
 > modelos e runtimes listados abaixo são montados no CI com SHA-256 e validados antes da
 > publicação; o app não baixa modelos sob demanda. O instalador Inno Setup para Windows permite
 > escolher a pasta e o idioma (inglês/pt-BR); Linux publica AppImage e `.deb`; macOS publica
-> DMGs nativos para Apple Silicon e Intel. Pendente: encode VAAPI.
+> DMGs nativos para Apple Silicon e Intel e encode VAAPI no Linux concluídos.
 
 - **Build e instalador para Windows, Linux e macOS.** GUI nativa (`egui`/`iced`/`Slint`) e GStreamer já são multiplataforma por natureza, então a maior parte do trabalho extra fica no empacotamento, não no código do app em si.
   - Windows: instalador `.msi`/`.exe`.
@@ -176,7 +176,7 @@ Performance é tratada como requisito, não como ajuste fino de última hora —
 | Linguagem | Rust |
 | Motor de mídia (decode/preview) | GStreamer via `gstreamer-rs` — lib nativa (bindings FFI), não subprocesso |
 | Probe de metadata | ponte C própria (`oca-avbridge`) sobre libavformat, linkada estática, chamada via FFI — sem subprocesso |
-| Encode final (exportação) | mesma ponte C (`oca-avbridge`) sobre libavcodec/NVENC/Quick Sync/AMF — sem subprocesso |
+| Encode final (exportação) | mesma ponte C (`oca-avbridge`) sobre libavcodec/NVENC/Quick Sync/AMF/VAAPI — sem subprocesso |
 | GUI | `egui` / `iced` / `Slint` (nativa, não webview) |
 | Efeitos/composição em tempo real | `wgpu` (Vulkan/Metal/DX12) para blur, shake, camadas e opacidade acelerados por GPU |
 | Legendas automáticas | Whisper (reconhecimento de fala local, com suporte a PT-BR) |

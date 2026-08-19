@@ -68,7 +68,9 @@ validated ad-hoc-signed artifact suitable for testing but subject to Gatekeeper 
 ## Deliberate system contract
 
 Operating-system kernels, the Windows Universal C Runtime, Linux glibc, graphics/display stacks
-and GPU vendor drivers are platform contracts rather than application payloads. Hardware
+and GPU vendor drivers are platform contracts rather than application payloads. Linux VAAPI
+encode discovers DRM render nodes under `/dev/dri` (or uses `OCA_VAAPI_DEVICE`) and therefore
+requires the matching Intel/AMD VAAPI driver and device permissions from the host. Hardware
 acceleration remains optional and falls back to CPU paths when a compatible vendor driver is not
 available. Explorer on Windows and `xdg-open` on Linux are optional desktop integrations used
 only by "open folder" actions; failure to find them does not affect editing or export. The exact
