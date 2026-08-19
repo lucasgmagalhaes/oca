@@ -211,6 +211,14 @@ jobs:
           echo "FFMPEG_DIR=$(pwd)/ffmpeg-dev" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$(pwd)/ffmpeg-dev/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
+      - name: Verify Linux VAAPI encoder is bundled
+        run: |
+          if ! ffmpeg-dev/bin/ffmpeg -hide_banner -encoders 2>/dev/null \
+              | grep '[[:space:]]h264_vaapi[[:space:]]' >/dev/null; then
+            echo "Pinned Linux FFmpeg build does not include h264_vaapi" >&2
+            exit 1
+          fi
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets
 

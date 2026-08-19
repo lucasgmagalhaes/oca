@@ -11,6 +11,12 @@ FFMPEG_DIR="$(cd "$2" && pwd)"
 OUTPUT_DIR="$3"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+if ! "$FFMPEG_DIR/bin/ffmpeg" -hide_banner -encoders 2>/dev/null \
+    | grep '[[:space:]]h264_vaapi[[:space:]]' >/dev/null; then
+    echo "FFmpeg runtime does not include the required h264_vaapi encoder" >&2
+    exit 1
+fi
+
 rm -rf -- "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/resources/runtime/bin" "$OUTPUT_DIR/resources/runtime/lib"
 cp "$BUILD_DIR/ui" "$BUILD_DIR/ytbridge" "$BUILD_DIR/deno" "$OUTPUT_DIR/"
