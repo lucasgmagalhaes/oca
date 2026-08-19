@@ -104,7 +104,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.add_space(10.0);
             ui.label(Text::PrefsGpuEncoder.tr(locale));
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 use avcore::GpuEncoderPreference as Gpu;
                 for (choice, label) in [
                     (Gpu::Auto, Text::GpuEncoderAuto),
@@ -112,6 +112,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     (Gpu::Nvenc, Text::GpuEncoderNvenc),
                     (Gpu::QuickSync, Text::GpuEncoderQuickSync),
                     (Gpu::Amf, Text::GpuEncoderAmf),
+                    (Gpu::Vaapi, Text::GpuEncoderVaapi),
                 ] {
                     if ui
                         .selectable_label(app.prefs.gpu_encoder == choice, label.tr(locale))

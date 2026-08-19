@@ -1200,6 +1200,27 @@ fn preview_hardware_decode_is_enabled_by_default() {
 }
 
 #[test]
+fn gpu_encoder_defaults_to_automatic_hardware_detection() {
+    assert_eq!(
+        PrefsState::default().gpu_encoder,
+        avcore::GpuEncoderPreference::Auto
+    );
+}
+
+#[test]
+fn vaapi_gpu_encoder_preference_roundtrips_through_preferences() {
+    let prefs = PrefsState {
+        gpu_encoder: avcore::GpuEncoderPreference::Vaapi,
+        ..PrefsState::default()
+    };
+
+    let encoded = serde_json::to_vec(&prefs).unwrap();
+    let decoded: PrefsState = serde_json::from_slice(&encoded).unwrap();
+
+    assert_eq!(decoded.gpu_encoder, avcore::GpuEncoderPreference::Vaapi);
+}
+
+#[test]
 fn prefs_without_preview_hardware_decode_migrate_to_enabled() {
     let mut legacy = serde_json::to_value(PrefsState::default()).unwrap();
     legacy

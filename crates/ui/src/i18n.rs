@@ -360,6 +360,7 @@ text_catalog! {
     GpuEncoderNvenc: pt_br = "NVIDIA (NVENC)", en = "NVIDIA (NVENC)";
     GpuEncoderQuickSync: pt_br = "Intel (Quick Sync)", en = "Intel (Quick Sync)";
     GpuEncoderAmf: pt_br = "AMD (AMF)", en = "AMD (AMF)";
+    GpuEncoderVaapi: pt_br = "Linux (VAAPI Intel/AMD)", en = "Linux (VAAPI Intel/AMD)";
     PrefsPreviewQuality: pt_br = "Qualidade do preview", en = "Preview quality";
     PreviewQualityLow: pt_br = "360p", en = "360p";
     PreviewQualityMedium: pt_br = "480p", en = "480p";

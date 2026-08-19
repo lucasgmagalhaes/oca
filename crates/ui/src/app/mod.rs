@@ -192,8 +192,9 @@ pub struct PrefsState {
     /// Key bindings for the four configurable editor shortcuts.
     #[serde(default)]
     pub key_bindings: KeyBindings,
-    /// Preferred video encoder for exports — hardware-accelerated (NVENC/Quick Sync/AMF) with
-    /// an automatic CPU (libopenh264) fallback, or a specific choice. See
+    /// Preferred video encoder for exports — hardware-accelerated
+    /// (NVENC/Quick Sync/AMF/VAAPI) with an automatic CPU (libopenh264) fallback, or a specific
+    /// choice. See
     /// [`avcore::GpuEncoderPreference`].
     #[serde(default)]
     pub gpu_encoder: avcore::GpuEncoderPreference,
