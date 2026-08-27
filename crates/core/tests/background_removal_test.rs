@@ -33,6 +33,7 @@ fn test_project(file_path: Option<PathBuf>) -> Project {
             timeline: Timeline {
                 tracks: Vec::new(),
                 playhead_secs: 0.0,
+                markers: Vec::new(),
             },
             export_settings: Default::default(),
         }],

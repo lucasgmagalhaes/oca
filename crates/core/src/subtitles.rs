@@ -106,6 +106,7 @@ mod tests {
                 visible: true,
             }],
             playhead_secs: 0.0,
+            markers: Vec::new(),
         }
     }
 

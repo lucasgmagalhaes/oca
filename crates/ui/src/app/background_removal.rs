@@ -14,7 +14,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use super::{App, MatteGenerationEvent};
 
@@ -128,32 +128,26 @@ fn generate_matte_one(
     if duration <= 0.0 {
         return Err("clip has zero duration".to_string());
     }
-    let sample_count = ((duration * SAMPLES_PER_SEC).round() as usize).clamp(2, MAX_SAMPLES);
+    let sample_times = avcore::FrameSampler::even_sample_times(
+        source_in_secs,
+        source_out_secs,
+        SAMPLES_PER_SEC,
+        2,
+        MAX_SAMPLES,
+    );
 
-    let preview = avcore::preview::Preview::open(source_path, None)
+    let sampler = avcore::FrameSampler::open(source_path, Duration::from_millis(20))
         .map_err(|e| format!("failed to open source for decoding: {e}"))?;
 
     // (luma matte per sample, only for samples that actually decoded within the deadline and
     // matched the first decoded frame's resolution) — same "a dropped sample just shrinks the
     // list" tolerance motion-tracking's own decode loop uses, rather than failing the whole run
     // over one slow/missing frame.
-    let mut luma_frames: Vec<Vec<u8>> = Vec::with_capacity(sample_count);
+    let mut luma_frames: Vec<Vec<u8>> = Vec::with_capacity(sample_times.len());
     let mut frame_w = 0u32;
     let mut frame_h = 0u32;
-    for i in 0..sample_count {
-        let t = source_in_secs + duration * (i as f64 / (sample_count - 1) as f64);
-        let _ = preview.seek(t.max(0.0));
-        let deadline = Instant::now() + Duration::from_millis(1500);
-        let frame = loop {
-            if let Some(f) = preview.current_frame() {
-                break Some(f);
-            }
-            if Instant::now() >= deadline {
-                break None;
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        };
-        let Some(frame) = frame else {
+    for &t in &sample_times {
+        let Some(frame) = sampler.sample(t, Duration::from_millis(1500)) else {
             continue;
         };
         if frame_w == 0 {

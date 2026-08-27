@@ -22,7 +22,7 @@ Sources: [CapCut Desktop Review 2026](https://bigvu.tv/blog/capcut-online-deskto
       surveyed. Directly relevant to oca's actual recording setup (game capture + webcam + mic
       as separate sources) — not a generic nice-to-have for this channel specifically.
       → `ROADMAP.md` P2.
-- [ ] **Named trim modes: Ripple / Roll / Slip / Slide.** Standard, distinctly-named tools in
+- [x] **Named trim modes: Ripple / Roll / Slip / Slide.** Standard, distinctly-named tools in
       Premiere/DaVinci/FCP, not just generic drag-to-trim:
       - *Ripple* — trim without leaving a gap, later clips shift to fill it.
       - *Roll* — move the cut point between two adjacent clips, total duration unchanged.
@@ -30,8 +30,9 @@ Sources: [CapCut Desktop Review 2026](https://bigvu.tv/blog/capcut-online-deskto
         timeline or changing its duration.
       - *Slide* — move a clip along the timeline, adjacent clips' in/out points adjust to
         absorb it, nothing else shifts.
-      oca's current trim (`request.md` Fase 3) is unclear on which of these it actually is —
-      confirm scope, then fill whichever are missing. → `ROADMAP.md` P2.
+      Confirmed oca's pre-existing trim covered none of these. All four implemented as their
+      own `EditorTool` modes — see `matrix/timeline-and-editing.md` for the exact scope.
+      → `ROADMAP.md` P2 item 11.
 - [ ] **Smart bins.** Rule-based media-pool folders that auto-populate by file type, flag,
       metadata field — DaVinci Resolve. Lower priority for a single-editor/small-team channel
       than for a studio pipeline, but real. → `ROADMAP.md` P4.

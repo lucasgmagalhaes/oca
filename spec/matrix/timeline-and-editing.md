@@ -40,12 +40,48 @@ sequence-management/copy-paste entries.
       (single or composite group) all snap to the nearest other clip's edge or the playhead
       (`Alt` to disable). Timeline markers aren't a target — no markers feature exists yet
       (P2 item 9). See `ROADMAP.md` P0.
-
-## Known gaps (not found anywhere in the codebase — confirm before assuming, but no evidence of
-## either in `graphify query "undo redo history stack snapping magnetic snap"`)
-
-- [ ] Review/comment markers on the timeline (plain note at a point — not to be confused with
-      opacity-keyframe markers).
+- [x] **Review/comment markers (P2 item 9).** `avcore::timeline::Marker`/`MarkerKind`
+      (Standard/ToDo/Chapter — Final Cut Pro's typed-marker model, not just a plain note; `ToDo`
+      tracks a `completed` flag) on `Timeline::markers`, `#[serde(default)]` so an older-saved
+      project still loads. `Timeline::add_marker`/`remove_marker`/`marker_mut`/`markers_sorted`
+      own the id-assignment/mutation invariants. `ui`: a searchable Timeline Index panel
+      (`App::show_timeline_index_panel`, toolbar's "🏷 Marcadores" toggle) — text search over
+      labels, per-marker kind picker, ToDo-complete checkbox, click-timestamp-to-seek, inline
+      label editing, add/remove. **Not done**: magnetic snap (P0 item 2) doesn't treat markers
+      as a snap target yet — that doc's own note said "revisit when it lands," this is the
+      revisit-later follow-up, not silently included here. No ruler tick-mark rendering on the
+      timeline strip itself either — the Timeline Index panel is the only way to see/navigate
+      markers today.
+- [x] **Named trim modes: Ripple / Roll / Slip / Slide (P2 item 11).** Confirmed (2026-08-27):
+      the existing trim (`ClipInstance::trim_start`/`trim_end`) and move (`Track::move_clip`)
+      matched none of the four named tools — trimming an edge never shifted neighboring clips
+      (no Ripple, no Roll), and there was no way to change which part of the source media shows
+      without also moving the clip or changing its duration (no Slip). All four now real,
+      distinct `EditorTool` toolbar modes:
+      - *Ripple* — `Track::ripple_trim_start`/`ripple_trim_end` trim one edge, then shift every
+        clip past the edited clip's own (pre-edit) `start_secs` by the same delta.
+      - *Roll* — `Track::roll_edit` moves the shared boundary between a clip and its
+        `next_clip_id` neighbor; both sides' trims are snapshotted first and rolled back
+        atomically if either refuses, so a rejected roll never leaves a half-edited pair.
+        Dragging either clip's edge at the seam produces the same edit
+        (`App::roll_edit_from_start_edge` resolves the *previous* neighbor when the later
+        clip's start edge was the one grabbed).
+      - *Slip* — `ClipInstance::slip` shifts `source_in_secs`/`source_out_secs` together,
+        leaving `start_secs`/duration untouched. Wired to a clip-body drag (not an edge drag)
+        while the Slip tool is active.
+      - *Slide* — `Track::slide_clip` moves a clip's `start_secs`, then asks its previous/next
+        neighbors (by pre-move position) to absorb the move via their own `trim_end`/
+        `trim_start`; also snapshotted and rolled back atomically on a refusal.
+      All four are pure, unit-tested `core` methods (`timeline_test.rs` — id assignment/
+      neighbor-walking, the happy path, and the atomic-rollback-on-refusal path for Roll and
+      Slide) plus a thin `ui` wiring layer (`App::ripple_trim_clip_start`/`_end`,
+      `roll_edit_clip`/`roll_edit_from_start_edge`, `slip_clip`, `slide_clip` in
+      `timeline_ops.rs`) dispatched from `timeline_panel.rs`'s existing edge-drag/body-drag
+      request handling based on `app.tool`. Verified via `cargo check -p core --tests`/
+      `-p ui --tests` (types/borrows, no link — see `CLAUDE.md`'s build-environment notes);
+      **not driven through a live/e2e build** — no visual confirmation that the drag
+      interactions feel right in the actual running app, same caveat magnetic snap's own entry
+      above already carries for UI-only interaction logic.
 
 ---
 

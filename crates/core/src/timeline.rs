@@ -1133,6 +1133,28 @@ impl ClipInstance {
         self.source_out_secs = new_source_out_secs;
         true
     }
+
+    /// Shifts which part of the source media this clip shows by `delta_secs`, without moving
+    /// it on the timeline or changing its duration — Premiere/DaVinci/FCP's "Slip" tool
+    /// (`ROADMAP.md` P2 item 11). `source_in_secs` and `source_out_secs` move together. No-op
+    /// (`false`) if that would push `source_in_secs` below zero, or (when
+    /// `max_source_out_secs` is known — the source asset's own duration) `source_out_secs`
+    /// past the end of the actual source media.
+    pub fn slip(&mut self, delta_secs: f64, max_source_out_secs: Option<f64>) -> bool {
+        let new_source_in_secs = self.source_in_secs + delta_secs;
+        let new_source_out_secs = self.source_out_secs + delta_secs;
+        if new_source_in_secs < 0.0 {
+            return false;
+        }
+        if let Some(max) = max_source_out_secs {
+            if new_source_out_secs > max {
+                return false;
+            }
+        }
+        self.source_in_secs = new_source_in_secs;
+        self.source_out_secs = new_source_out_secs;
+        true
+    }
 }
 
 fn default_true() -> bool {
@@ -1292,6 +1314,195 @@ impl Track {
         true
     }
 
+    /// The id of the clip immediately before `clip_id` on this track (the one with the
+    /// greatest `start_secs` that's still less than `clip_id`'s own) — `None` if `clip_id`
+    /// isn't on this track or is already the earliest one. Shared by the roll/slide edits
+    /// below to find which neighbor a shared edge/absorbed gap belongs to.
+    pub fn previous_clip_id(&self, clip_id: u64) -> Option<u64> {
+        let this_start = self.clips.iter().find(|c| c.id == clip_id)?.start_secs;
+        self.clips
+            .iter()
+            .filter(|c| c.id != clip_id && c.start_secs < this_start)
+            .max_by(|a, b| a.start_secs.total_cmp(&b.start_secs))
+            .map(|c| c.id)
+    }
+
+    /// The id of the clip immediately after `clip_id` on this track, by the mirror-image rule
+    /// [`Self::previous_clip_id`] uses.
+    pub fn next_clip_id(&self, clip_id: u64) -> Option<u64> {
+        let this_start = self.clips.iter().find(|c| c.id == clip_id)?.start_secs;
+        self.clips
+            .iter()
+            .filter(|c| c.id != clip_id && c.start_secs > this_start)
+            .min_by(|a, b| a.start_secs.total_cmp(&b.start_secs))
+            .map(|c| c.id)
+    }
+
+    /// Trims `clip_id`'s start to `new_start_secs`, then shifts every clip whose `start_secs`
+    /// is past `clip_id`'s own (pre-trim) start by the same delta — Premiere/DaVinci/FCP's
+    /// "Ripple" tool (`ROADMAP.md` P2 item 11): no gap is left behind, later clips slide to
+    /// fill it. No-op (`false`) if the clip isn't on this track or the underlying
+    /// [`ClipInstance::trim_start`] refuses the edit — nothing is shifted in that case.
+    pub fn ripple_trim_start(
+        &mut self,
+        clip_id: u64,
+        new_start_secs: f64,
+        min_duration_secs: f64,
+    ) -> bool {
+        let Some(index) = self.clips.iter().position(|c| c.id == clip_id) else {
+            return false;
+        };
+        let old_start_secs = self.clips[index].start_secs;
+        if !self.clips[index].trim_start(new_start_secs, min_duration_secs) {
+            return false;
+        }
+        let delta = new_start_secs - old_start_secs;
+        for clip in &mut self.clips {
+            if clip.id != clip_id && clip.start_secs > old_start_secs {
+                clip.start_secs = (clip.start_secs + delta).max(0.0);
+            }
+        }
+        true
+    }
+
+    /// [`Self::ripple_trim_start`]'s mirror for the clip's *end* edge: trims `clip_id`'s end to
+    /// `new_end_secs`, then shifts every clip whose `start_secs` is past `clip_id`'s own by the
+    /// resulting duration delta.
+    pub fn ripple_trim_end(
+        &mut self,
+        clip_id: u64,
+        new_end_secs: f64,
+        min_duration_secs: f64,
+        max_source_out_secs: Option<f64>,
+    ) -> bool {
+        let Some(index) = self.clips.iter().position(|c| c.id == clip_id) else {
+            return false;
+        };
+        let this_start = self.clips[index].start_secs;
+        let old_end_secs = this_start + self.clips[index].duration_secs();
+        if !self.clips[index].trim_end(new_end_secs, min_duration_secs, max_source_out_secs) {
+            return false;
+        }
+        let delta = new_end_secs - old_end_secs;
+        for clip in &mut self.clips {
+            if clip.id != clip_id && clip.start_secs > this_start {
+                clip.start_secs = (clip.start_secs + delta).max(0.0);
+            }
+        }
+        true
+    }
+
+    /// Moves the cut point between `clip_id` and its immediate next neighbor
+    /// ([`Self::next_clip_id`]) to `new_boundary_secs` — Premiere/DaVinci/FCP's "Roll" tool
+    /// (`ROADMAP.md` P2 item 11): `clip_id`'s end and the neighbor's start move together, so
+    /// the pair's combined timeline span (and every other clip's position) stays unchanged.
+    /// No-op (`false`) if `clip_id` has no next neighbor on this track, or the edit would
+    /// violate either clip's own trim bounds — applied atomically: a rejection on either side
+    /// leaves both clips exactly as they were, never a half-rolled pair.
+    pub fn roll_edit(
+        &mut self,
+        clip_id: u64,
+        new_boundary_secs: f64,
+        min_duration_secs: f64,
+        this_max_source_out_secs: Option<f64>,
+    ) -> bool {
+        let Some(index) = self.clips.iter().position(|c| c.id == clip_id) else {
+            return false;
+        };
+        let Some(next_id) = self.next_clip_id(clip_id) else {
+            return false;
+        };
+        let next_index = self
+            .clips
+            .iter()
+            .position(|c| c.id == next_id)
+            .expect("next_clip_id only ever returns an id present on this track");
+
+        let this_snapshot = self.clips[index].clone();
+        let next_snapshot = self.clips[next_index].clone();
+        let next_old_start = self.clips[next_index].start_secs;
+
+        let this_ok = self.clips[index].trim_end(
+            new_boundary_secs,
+            min_duration_secs,
+            this_max_source_out_secs,
+        );
+        let next_delta = new_boundary_secs - next_old_start;
+        let next_new_start = next_old_start + next_delta;
+        // trim_start never needs a max-source-out bound: it only moves source_in toward
+        // source_out (which stays fixed), never past it.
+        let next_ok =
+            this_ok && self.clips[next_index].trim_start(next_new_start, min_duration_secs);
+
+        if !next_ok {
+            self.clips[index] = this_snapshot;
+            self.clips[next_index] = next_snapshot;
+            return false;
+        }
+        true
+    }
+
+    /// Moves `clip_id` to `new_start_secs` on this track, keeping its own duration/source
+    /// range unchanged — Premiere/DaVinci/FCP's "Slide" tool (`ROADMAP.md` P2 item 11): the
+    /// immediate previous and next clips ([`Self::previous_clip_id`]/[`Self::next_clip_id`],
+    /// resolved against `clip_id`'s *pre-move* position) absorb the movement by adjusting their
+    /// own out/in points to meet `clip_id`'s new position, so nothing else on the track shifts.
+    /// No-op (`false`) if `new_start_secs` is negative, `clip_id` isn't on this track, or
+    /// either affected neighbor's own trim bounds would be violated — applied atomically, same
+    /// as [`Self::roll_edit`]. A neighbor that doesn't exist (`clip_id` is first/last on the
+    /// track) simply isn't adjusted on that side.
+    pub fn slide_clip(
+        &mut self,
+        clip_id: u64,
+        new_start_secs: f64,
+        min_duration_secs: f64,
+        prev_max_source_out_secs: Option<f64>,
+    ) -> bool {
+        if new_start_secs < 0.0 {
+            return false;
+        }
+        let Some(index) = self.clips.iter().position(|c| c.id == clip_id) else {
+            return false;
+        };
+        let this_duration = self.clips[index].duration_secs();
+        let new_end_secs = new_start_secs + this_duration;
+
+        let prev_index = self
+            .previous_clip_id(clip_id)
+            .and_then(|id| self.clips.iter().position(|c| c.id == id));
+        let next_index = self
+            .next_clip_id(clip_id)
+            .and_then(|id| self.clips.iter().position(|c| c.id == id));
+
+        let snapshots: Vec<(usize, ClipInstance)> = [Some(index), prev_index, next_index]
+            .into_iter()
+            .flatten()
+            .map(|i| (i, self.clips[i].clone()))
+            .collect();
+
+        let prev_ok = match prev_index {
+            Some(i) => {
+                self.clips[i].trim_end(new_start_secs, min_duration_secs, prev_max_source_out_secs)
+            }
+            None => true,
+        };
+        // next's trim_start never needs a max-source-out bound, same reasoning as roll_edit.
+        let next_ok = prev_ok
+            && match next_index {
+                Some(i) => self.clips[i].trim_start(new_end_secs, min_duration_secs),
+                None => true,
+            };
+
+        if !next_ok {
+            for (i, snapshot) in snapshots {
+                self.clips[i] = snapshot;
+            }
+            return false;
+        }
+        self.clips[index].start_secs = new_start_secs;
+        true
+    }
+
     /// The position, in seconds, where this track's last clip ends. `0.0` for an empty track —
     /// the natural "append here" position for a clip added to this track. Accounts for
     /// [`ClipInstance`]s, [`TextClip`]s, and [`ShapeClip`]s so every track kind reports its own
@@ -1316,11 +1527,48 @@ impl Track {
     }
 }
 
+/// A review/comment marker's category — Final Cut Pro's typed-marker model (per `ROADMAP.md`
+/// P2 item 9), not just a plain unstyled note: `ToDo` tracks a `completed` state a searchable
+/// Timeline Index panel can filter on, `Chapter` marks a navigable section boundary, `Standard`
+/// is a plain annotation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum MarkerKind {
+    #[default]
+    Standard,
+    ToDo,
+    Chapter,
+}
+
+impl MarkerKind {
+    pub const ALL: &'static [MarkerKind] =
+        &[MarkerKind::Standard, MarkerKind::ToDo, MarkerKind::Chapter];
+}
+
+/// One review/comment marker on the timeline — a point in time (not a clip, not tied to any
+/// particular track) with a short label and a [`MarkerKind`]. `id`s are unique within a
+/// [`Timeline`], same convention [`ClipInstance::id`]/[`TextClip::id`] already use.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Marker {
+    pub id: u64,
+    pub position_secs: f64,
+    pub label: String,
+    pub kind: MarkerKind,
+    /// Only meaningful for [`MarkerKind::ToDo`] — a searchable Timeline Index panel can filter
+    /// these out once resolved without deleting the marker (the review history stays visible).
+    #[serde(default)]
+    pub completed: bool,
+}
+
 /// A project's full set of tracks plus the current playhead position.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Timeline {
     pub tracks: Vec<Track>,
     pub playhead_secs: f64,
+    /// Review/comment markers — `#[serde(default)]` so a project saved before this field
+    /// existed still loads (empty marker list), per this crate's struct-map `.ocproj` format
+    /// (see `CLAUDE.md`).
+    #[serde(default)]
+    pub markers: Vec<Marker>,
 }
 
 impl Timeline {
@@ -1337,6 +1585,43 @@ impl Timeline {
             .iter()
             .map(Track::duration_secs)
             .fold(0.0, f64::max)
+    }
+
+    /// Adds a new [`Marker`] at `position_secs` (clamped to `0.0`) with `kind`, `label` empty
+    /// and `completed: false`, and returns its freshly assigned id — one past the highest
+    /// existing marker id, `1` if there are none yet, same "max + 1" convention every other
+    /// timeline entity's id assignment already uses (see `next_clip_id` in `ui`).
+    pub fn add_marker(&mut self, position_secs: f64, kind: MarkerKind) -> u64 {
+        let id = self.markers.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+        self.markers.push(Marker {
+            id,
+            position_secs: position_secs.max(0.0),
+            label: String::new(),
+            kind,
+            completed: false,
+        });
+        id
+    }
+
+    /// Removes the marker with `marker_id`, if any. `true` if a marker was actually removed.
+    pub fn remove_marker(&mut self, marker_id: u64) -> bool {
+        let before = self.markers.len();
+        self.markers.retain(|m| m.id != marker_id);
+        self.markers.len() != before
+    }
+
+    /// Mutable access to the marker with `marker_id`, if it exists.
+    pub fn marker_mut(&mut self, marker_id: u64) -> Option<&mut Marker> {
+        self.markers.iter_mut().find(|m| m.id == marker_id)
+    }
+
+    /// Every marker sorted by `position_secs` ascending — what a searchable Timeline Index
+    /// panel (and the ruler's own left-to-right tick rendering) both want, rather than
+    /// insertion order.
+    pub fn markers_sorted(&self) -> Vec<&Marker> {
+        let mut markers: Vec<&Marker> = self.markers.iter().collect();
+        markers.sort_by(|a, b| a.position_secs.total_cmp(&b.position_secs));
+        markers
     }
 
     /// Moves the clip with `clip_id` onto `target_track_id` at `new_start_secs`, removing it

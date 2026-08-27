@@ -31,6 +31,7 @@ fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
             timeline: Timeline {
                 tracks: Vec::new(),
                 playhead_secs: 0.0,
+                markers: Vec::new(),
             },
             export_settings: Default::default(),
         }],
@@ -197,6 +198,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         render_tx,
         render_rx,
         active_renders: HashMap::new(),
+        export_preview_cache: None,
         preview: None,
         preview_clip_id: None,
         preview_overlay_clip_ids: Vec::new(),
@@ -204,6 +206,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         preview_text_clip_ids: Vec::new(),
         preview_shape_clip_ids: Vec::new(),
         preview_texture: None,
+        scopes_enabled: false,
+        waveform_texture: None,
+        vectorscope_texture: None,
         preview_playing: false,
         preview_frozen_since: None,
         fullscreen_preview: false,
@@ -286,6 +291,8 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         saving_layer_template: None,
         applying_layer_template: None,
         layer_templates_menu_open: false,
+        timeline_index_open: false,
+        marker_search: String::new(),
         binding_capture: None,
         update_check_tx,
         update_check_rx,
@@ -747,6 +754,59 @@ fn queue_export_starts_at_one_when_no_jobs_exist() {
 }
 
 #[test]
+fn resolved_active_sequence_export_preview_resolves_the_active_sequences_clips() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 4.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.active_project_mut().media_library = vec![test_asset(1)];
+
+    let (track_segments, _audio_segments, canvas) =
+        app.resolved_active_sequence_export_preview().unwrap();
+
+    assert_eq!(track_segments.len(), 1);
+    assert_eq!(track_segments[0].len(), 1);
+    assert_eq!(canvas.width, 1920);
+}
+
+#[test]
+fn resolved_active_sequence_export_preview_ignores_a_playhead_only_change() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 4.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.active_project_mut().media_library = vec![test_asset(1)];
+
+    let (before, _, _) = app.resolved_active_sequence_export_preview().unwrap();
+    app.active_project_mut().timeline_mut().playhead_secs = 2.5;
+    let (after, _, _) = app.resolved_active_sequence_export_preview().unwrap();
+
+    assert_eq!(before.len(), after.len());
+    assert_eq!(
+        before[0][0].source_out_secs, after[0][0].source_out_secs,
+        "scrubbing must not change the resolved segments"
+    );
+}
+
+#[test]
+fn resolved_active_sequence_export_preview_picks_up_a_later_clip_edit() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 4.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.active_project_mut().media_library = vec![test_asset(1)];
+
+    let (before, ..) = app.resolved_active_sequence_export_preview().unwrap();
+    assert_eq!(before[0][0].source_out_secs, 4.0);
+
+    app.active_project_mut()
+        .timeline_mut()
+        .clip_mut(1)
+        .unwrap()
+        .source_out_secs = 6.0;
+    let (after, ..) = app.resolved_active_sequence_export_preview().unwrap();
+
+    assert_eq!(
+        after[0][0].source_out_secs, 6.0,
+        "a real clip edit must not be served a stale cached result"
+    );
+}
+
+#[test]
 fn queued_job_keeps_the_sequence_export_snapshot_after_settings_change() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
     app.set_active_sequence_export_aspect_ratio(avcore::ExportAspectRatio::Portrait);
@@ -773,6 +833,35 @@ fn queued_job_keeps_the_sequence_export_snapshot_after_settings_change() {
 }
 
 #[test]
+fn apply_platform_export_preset_sets_both_aspect_ratio_and_loudness_target() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    // Starts on defaults distinct from every preset's own settings, so this test can't pass by
+    // coincidence.
+    app.set_active_sequence_export_aspect_ratio(avcore::ExportAspectRatio::Landscape);
+    app.set_active_sequence_target_lufs(-23.0);
+
+    app.apply_platform_export_preset(avcore::PlatformExportPreset::TikTok);
+
+    let settings = app.active_sequence_export_settings();
+    assert_eq!(settings.aspect_ratio, avcore::ExportAspectRatio::Portrait);
+    assert_eq!(settings.target_lufs, -14.0);
+}
+
+#[test]
+fn apply_platform_export_preset_leaves_the_pickers_free_to_fine_tune_afterward() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.apply_platform_export_preset(avcore::PlatformExportPreset::InstagramReels);
+    app.set_active_sequence_export_aspect_ratio(avcore::ExportAspectRatio::Square);
+
+    assert_eq!(
+        app.active_sequence_export_settings().aspect_ratio,
+        avcore::ExportAspectRatio::Square,
+        "a manual pick after a preset must still take effect, not be locked by the preset"
+    );
+}
+
+#[test]
 fn cancel_export_job_removes_a_job_that_has_not_started_rendering() {
     let mut app = test_app(
         vec![test_project(1, Vec::new())],
@@ -782,6 +871,30 @@ fn cancel_export_job_removes_a_job_that_has_not_started_rendering() {
     app.cancel_export_job(1);
 
     assert!(app.export_jobs.is_empty());
+}
+
+#[test]
+fn match_loudness_across_queued_jobs_only_touches_queued_jobs() {
+    let mut app = test_app(
+        vec![test_project(1, Vec::new())],
+        vec![
+            test_job(1, ExportJobStatus::Queued),
+            test_job(2, ExportJobStatus::Rendering { percent: 40 }),
+            test_job(3, ExportJobStatus::Done),
+        ],
+    );
+
+    app.match_loudness_across_queued_jobs(-23.0);
+
+    assert_eq!(app.export_jobs[0].target_lufs, -23.0);
+    assert_eq!(
+        app.export_jobs[1].target_lufs, -14.0,
+        "an in-flight render already captured its own target -- changing it now would be a no-op lie"
+    );
+    assert_eq!(
+        app.export_jobs[2].target_lufs, -14.0,
+        "a finished job is done -- changing it would just be misleading"
+    );
 }
 
 #[test]
@@ -1251,6 +1364,25 @@ fn changing_preview_hardware_decode_invalidates_preview_state() {
 }
 
 #[test]
+fn invalidate_preview_rendering_drops_the_scope_textures_too() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let ctx = egui::Context::default();
+    let image = egui::ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
+    app.waveform_texture = Some(ctx.load_texture(
+        "waveform-test",
+        image.clone(),
+        egui::TextureOptions::default(),
+    ));
+    app.vectorscope_texture =
+        Some(ctx.load_texture("vectorscope-test", image, egui::TextureOptions::default()));
+
+    app.invalidate_preview_rendering();
+
+    assert!(app.waveform_texture.is_none());
+    assert!(app.vectorscope_texture.is_none());
+}
+
+#[test]
 fn ensure_preview_loaded_is_a_no_op_with_no_video_track() {
     let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 
@@ -1614,6 +1746,129 @@ fn trim_clip_end_is_bounded_by_the_source_assets_own_duration() {
         app.active_project().timeline().tracks[0].clips[0].source_out_secs,
         8.0
     );
+}
+
+#[test]
+fn ripple_trim_clip_start_shifts_only_later_clips() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 0.0, 5.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.ripple_trim_clip_start(2, 12.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    assert_eq!(tracks.clips[0].start_secs, 0.0);
+    let clip2 = tracks.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip2.start_secs, 12.0);
+    assert_eq!(clip2.source_in_secs, 2.0);
+}
+
+#[test]
+fn ripple_trim_clip_end_is_bounded_by_the_source_assets_own_duration() {
+    // test_asset's duration_secs is a fixed 10.0, so trimming clip 1's end past it must
+    // refuse -- same bound App::trim_clip_end already enforces.
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 8.0), test_clip(2, 8.0, 0.0, 5.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.ripple_trim_clip_end(1, 50.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    assert_eq!(tracks.clips[0].source_out_secs, 8.0);
+    assert_eq!(
+        tracks.clips[1].start_secs, 8.0,
+        "a refused trim must not shift the later clip either"
+    );
+}
+
+#[test]
+fn roll_edit_clip_moves_the_shared_boundary() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 2.0, 7.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.roll_edit_clip(1, 8.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    let clip1 = tracks.clips.iter().find(|c| c.id == 1).unwrap();
+    let clip2 = tracks.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip1.start_secs + clip1.duration_secs(), 8.0);
+    assert_eq!(clip2.start_secs, 8.0);
+}
+
+#[test]
+fn roll_edit_from_start_edge_resolves_the_previous_neighbor() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 2.0, 7.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    // Dragging clip 2's own start edge should produce the same roll as dragging clip 1's end.
+    app.roll_edit_from_start_edge(2, 8.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    let clip1 = tracks.clips.iter().find(|c| c.id == 1).unwrap();
+    let clip2 = tracks.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip1.start_secs + clip1.duration_secs(), 8.0);
+    assert_eq!(clip2.start_secs, 8.0);
+}
+
+#[test]
+fn slip_clip_shifts_source_range_without_moving_on_the_timeline() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 5.0, 1.0, 6.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.slip_clip(1, 1.0);
+
+    let clip = &app.active_project().timeline().tracks[0].clips[0];
+    assert_eq!(clip.start_secs, 5.0);
+    assert_eq!(clip.source_in_secs, 2.0);
+    assert_eq!(clip.source_out_secs, 7.0);
+}
+
+#[test]
+fn slide_clip_absorbs_the_move_into_both_neighbors() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![
+            test_clip(1, 0.0, 0.0, 6.0),
+            test_clip(2, 6.0, 0.0, 9.0),
+            test_clip(3, 15.0, 0.0, 5.0),
+        ],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.slide_clip(2, 8.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    let clip1 = tracks.clips.iter().find(|c| c.id == 1).unwrap();
+    let clip2 = tracks.clips.iter().find(|c| c.id == 2).unwrap();
+    let clip3 = tracks.clips.iter().find(|c| c.id == 3).unwrap();
+    assert_eq!(clip2.start_secs, 8.0);
+    assert_eq!(clip1.start_secs + clip1.duration_secs(), 8.0);
+    assert_eq!(clip3.start_secs, 17.0);
 }
 
 #[test]
@@ -4773,4 +5028,107 @@ fn load_panel_layout_keeps_live_values_when_project_has_no_saved_layout() {
     app.load_panel_layout_for_active_project();
 
     assert_eq!(app.lib_panel_width, 999.0);
+}
+
+#[test]
+fn toggle_timeline_index_flips_the_open_flag() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    assert!(!app.timeline_index_open);
+
+    app.toggle_timeline_index();
+    assert!(app.timeline_index_open);
+
+    app.toggle_timeline_index();
+    assert!(!app.timeline_index_open);
+}
+
+#[test]
+fn add_marker_at_playhead_places_it_at_the_current_playhead() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.active_project_mut().timeline_mut().playhead_secs = 12.5;
+
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::Chapter);
+
+    let timeline = app.active_project().timeline();
+    let marker = timeline.markers.iter().find(|m| m.id == id).unwrap();
+    assert_eq!(marker.position_secs, 12.5);
+    assert_eq!(marker.kind, avcore::MarkerKind::Chapter);
+}
+
+#[test]
+fn remove_marker_deletes_it() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::Standard);
+
+    app.remove_marker(id);
+
+    assert!(app.active_project().timeline().markers.is_empty());
+}
+
+#[test]
+fn set_marker_label_updates_the_right_marker() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::Standard);
+
+    app.set_marker_label(id, "Needs a re-take".to_string());
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(
+        timeline.markers.iter().find(|m| m.id == id).unwrap().label,
+        "Needs a re-take"
+    );
+}
+
+#[test]
+fn set_marker_kind_updates_the_right_marker() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::Standard);
+
+    app.set_marker_kind(id, avcore::MarkerKind::ToDo);
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(
+        timeline.markers.iter().find(|m| m.id == id).unwrap().kind,
+        avcore::MarkerKind::ToDo
+    );
+}
+
+#[test]
+fn toggle_marker_completed_flips_the_flag() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::ToDo);
+
+    app.toggle_marker_completed(id);
+    assert!(
+        app.active_project()
+            .timeline()
+            .markers
+            .iter()
+            .find(|m| m.id == id)
+            .unwrap()
+            .completed
+    );
+
+    app.toggle_marker_completed(id);
+    assert!(
+        !app.active_project()
+            .timeline()
+            .markers
+            .iter()
+            .find(|m| m.id == id)
+            .unwrap()
+            .completed
+    );
+}
+
+#[test]
+fn marker_mutations_are_no_ops_for_an_unknown_id() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.remove_marker(404);
+    app.set_marker_label(404, "x".to_string());
+    app.set_marker_kind(404, avcore::MarkerKind::Chapter);
+    app.toggle_marker_completed(404);
+
+    assert!(app.active_project().timeline().markers.is_empty());
 }

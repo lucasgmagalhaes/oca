@@ -50,10 +50,17 @@ Read [architecture/performance-and-caching.md](architecture/performance-and-cach
    fixed via a cheap `appsrc` buffer refresh. See `matrix/performance.md` for the full
    findings and what's still open (effect-property live preview updates, non-text overlay
    kinds).
-4. `[ ]` Versioned cache for the timeline→avfilter-graph resolution
-   (`resolve_timeline_segments_multi`) — rebuilds from scratch on every call today.
-5. `[ ]` Extract a shared `FrameSampler` primitive — auto-reframe, motion tracking, and
-   background-removal matte generation each reimplement their own seek-and-poll sampling loop.
+4. `[x]` Versioned cache for the timeline→avfilter-graph resolution
+   (`resolve_timeline_segments_multi`). The confirmed hot spot was `screens::queue::show`
+   recomputing it every UI frame the Fila screen is open, just for a size estimate — fixed via
+   `App::resolved_active_sequence_export_preview`'s value-equality cache. See
+   `matrix/performance.md` for what is/isn't covered.
+5. `[x]` Extract a shared `FrameSampler` primitive — `avcore::FrameSampler`
+   (`crates/core/src/frame_sampler.rs`) now backs auto-reframe, motion tracking,
+   background-removal matte generation, and (found during the same pass) thumbnail extraction,
+   which had the identical shape. Session-reuse for `background_removal::segment_person`'s ONNX
+   session is a related but separate gap, left open — see `architecture/performance-and-
+   caching.md` §5.
 
 ## P2 — High-Impact Parity
 
@@ -62,21 +69,51 @@ Read [matrix/effects-and-color.md](matrix/effects-and-color.md),
 
 6. `[ ]` Audio ducking (auto-lower music under speech) — `audio_mix.c`'s multi-branch mixing
    already provides the infra this builds on. Confirmed standard in CapCut/Premiere/DaVinci.
-7. `[ ]` Color scopes (waveform/vectorscope) for calibrated grading.
-8. `[ ]` Export presets per platform (YouTube Shorts / Instagram Reels / TikTok — resolution +
-   aspect + LUFS target bundled under one name).
-9. `[ ]` Review/comment markers on the timeline — consider Final Cut Pro's typed-marker +
-   searchable Timeline Index model, not just a plain note.
+   **Skipped over (2026-08-27), picked up item 8 first**: this needs new `avfilter` wiring
+   (`sidechaincompress` or equivalent) in `avbridge/csrc/audio_mix.c`, C code this sandbox
+   cannot even syntax-check right now — no FFmpeg dev headers present at all (worse than
+   `CLAUDE.md`'s documented "too-old packaged FFmpeg" gap; `pkg-config --cflags libavfilter`
+   finds nothing here). Picking this up blind, with zero compiler feedback on C changes, isn't
+   a reasonable risk to take — do this from an environment with FFmpeg dev headers available.
+7. `[x]` Color scopes (waveform/vectorscope) for calibrated grading. `avcore::scopes`
+   (pure pixel analysis, no new avfilter/GStreamer element) + an opt-in "📊" toggle on the
+   Editor preview panel. Grayscale-intensity simplification, not a calibrated-graticule
+   broadcast scope — see `matrix/effects-and-color.md` for the exact scope (pun intended) of
+   what shipped.
+8. `[x]` Export presets per platform (YouTube Shorts / Instagram Reels / TikTok — resolution +
+   aspect + LUFS target bundled under one name). `avcore::PlatformExportPreset`
+   (`crates/core/src/export.rs`) + `App::apply_platform_export_preset` + a one-click button row
+   on the Fila screen, above the existing aspect-ratio/LUFS pickers (which stay live afterward
+   for fine-tuning — a preset isn't a lock). All three presets currently resolve to the same
+   numbers (1080x1920, -14 LUFS, matching this codebase's own existing "YouTube" LUFS profile)
+   — a real current fact about these platforms' delivery specs, not a shortcut: each preset
+   still carries its own independent mapping, ready to diverge without a shape change. Pure
+   Rust/UI, no `avbridge` C changes — picked deliberately over item 6 for that reason.
+9. `[x]` Review/comment markers on the timeline — `avcore::timeline::Marker`/`MarkerKind`
+   (Standard/ToDo/Chapter, FCP's typed-marker model) + a searchable Timeline Index panel
+   (text search, click-to-seek, inline edit). Not done: markers as a magnetic-snap target, and
+   ruler tick-mark rendering — see `matrix/timeline-and-editing.md` for the exact scope.
 10. `[ ]` **Multicam editing** — sync footage from multiple sources (game capture, webcam, mic)
     by timecode or audio waveform, switch angles dynamically on one track. In all four editors
     surveyed (`matrix/competitor-parity.md`); directly matches this channel's actual multi-
-    source recording setup.
-11. `[ ]` **Named trim modes: Ripple / Roll / Slip / Slide** — confirm which of the four oca's
-    current trim tool actually covers, fill the rest. See `matrix/competitor-parity.md` for
-    the exact definition of each.
-12. `[ ]` **D3 — series-level loudness consistency** across an export-queue batch
-    (`architecture/differentiators.md`). Low effort, pure orchestration over LUFS analysis +
-    export queue, both already built.
+    source recording setup. **Skipped over (picked up item 11 first)**: a real implementation
+    needs an audio-cross-correlation sync algorithm, a new "multicam group"/angle-switching
+    data model, and export/preview wiring for switching sources mid-clip — a multi-part feature
+    too large to responsibly finish end-to-end (not just half-wired) in one pass. Do this as its
+    own dedicated task.
+11. `[x]` **Named trim modes: Ripple / Roll / Slip / Slide.** Confirmed: oca's existing trim/move
+    (`ClipInstance::trim_start`/`trim_end`, `Track::move_clip`) matched none of the four —
+    trimming an edge never touched neighboring clips at all (no ripple, no roll), and there was
+    no way to change source-in/out without moving the clip or changing its duration (no slip).
+    All four now implemented as their own `EditorTool` toolbar modes — see
+    `matrix/timeline-and-editing.md` for the exact scope and what's still unverified.
+12. `[x]` **D3 — series-level loudness consistency** across an export-queue batch
+    (`architecture/differentiators.md`). `App::match_loudness_across_queued_jobs` + a button row
+    on the Fila screen (shown once ≥2 `Queued` jobs exist) sets one target LUFS across every
+    not-yet-started job in the batch — each queued job otherwise keeps whatever `target_lufs`
+    its own sequence/tab happened to have when it was queued, so episode 1 and episode 5 of a
+    series could silently end up with mismatched targets. Pure orchestration, no new DSP —
+    reuses the existing per-job `target_lufs` field and `LUFS_PROFILES` picker.
 
 ## P3 — Differentiators
 

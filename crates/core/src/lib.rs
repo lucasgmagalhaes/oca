@@ -29,6 +29,7 @@ pub mod auto_reframe;
 pub mod background_removal;
 pub mod bundle;
 pub mod export;
+pub mod frame_sampler;
 pub mod keyframe;
 pub mod loudness;
 pub mod media;
@@ -40,6 +41,7 @@ pub mod probe;
 pub mod project;
 pub mod proxy;
 pub mod render;
+pub mod scopes;
 pub mod shape_render;
 pub mod sound_library;
 pub mod subtitles;
@@ -62,7 +64,8 @@ pub use bundle::{
     bundled_resource_path, bundled_resources_dir, configure_bundled_runtime, resource_path_in,
     validate_bundled_resources, BundledResource, MissingBundleResources,
 };
-pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus};
+pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus, PlatformExportPreset};
+pub use frame_sampler::FrameSampler;
 pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
@@ -83,6 +86,7 @@ pub use render::{
     resolve_shape_segments, resolve_text_segments, resolve_timeline_segments,
     resolve_timeline_segments_multi, RenderError, RenderOutcome, TextSegment,
 };
+pub use scopes::{luma_waveform_rgba, vectorscope_rgba};
 pub use shape_render::{build_shape_filter_desc, point_in_polygon, ShapeRenderInput};
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
 pub use subtitles::export_srt;
@@ -91,8 +95,8 @@ pub use text_to_speech::{
     load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
 };
 pub use timeline::{
-    ClipFormatting, ClipInstance, LayerTemplate, ShapeClip, ShapeKind, TextClip, TextFontFamily,
-    TextFontStyle, Timeline, Track, TrackKind,
+    ClipFormatting, ClipInstance, LayerTemplate, Marker, MarkerKind, ShapeClip, ShapeKind,
+    TextClip, TextFontFamily, TextFontStyle, Timeline, Track, TrackKind,
 };
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
 pub use update_check::{

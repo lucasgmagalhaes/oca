@@ -139,6 +139,7 @@ fn fixture_project() -> Project {
 
                     visible: true,
                 }],
+                markers: Vec::new(),
             },
             export_settings: Default::default(),
         }],
@@ -161,6 +162,7 @@ fn empty_project() -> Project {
             timeline: Timeline {
                 tracks: vec![],
                 playhead_secs: 0.0,
+                markers: Vec::new(),
             },
             export_settings: Default::default(),
         }],

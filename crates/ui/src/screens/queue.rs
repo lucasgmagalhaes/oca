@@ -37,14 +37,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let project = app.active_project();
                 let sequence_name = project.sequences[project.active_sequence].name.clone();
-                let sequence = &project.sequences[project.active_sequence];
-                let export_settings = sequence.export_settings;
-                let resolved =
-                    avcore::resolve_timeline_segments_multi(sequence, &project.media_library)
-                        .and_then(|(track_segments, canvas)| {
-                            avcore::resolve_audio_segments(sequence, &project.media_library)
-                                .map(|audio_segments| (track_segments, audio_segments, canvas))
-                        });
+                let export_settings = project.sequences[project.active_sequence].export_settings;
+                let resolved = app.resolved_active_sequence_export_preview();
                 let size_estimate_label = if let Ok((ref track_segments, _, ref canvas)) = resolved
                 {
                     let duration_secs: f64 = track_segments
@@ -115,6 +109,19 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         }
                     }
                 }
+                ui.add_space(8.0);
+                ui.label(
+                    eframe::egui::RichText::new(Text::ExportPlatformPresetLabel.tr(locale))
+                        .size(12.0)
+                        .color(crate::theme::TEXT_MUTED),
+                );
+                ui.horizontal(|ui| {
+                    for preset in avcore::PlatformExportPreset::ALL {
+                        if ui.button(preset.label()).clicked() {
+                            app.apply_platform_export_preset(*preset);
+                        }
+                    }
+                });
                 ui.add_space(8.0);
                 ui.label(
                     eframe::egui::RichText::new(Text::ExportAspectRatioLabel.tr(locale))
@@ -190,6 +197,33 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 );
             });
         ui.add_space(16.0);
+
+        // D3 -- series-level loudness consistency (ROADMAP.md P2 item 12): each queued job
+        // captured whatever target_lufs its own sequence happened to have set when it was
+        // queued, so a batch built from different sequences/tabs can end up with mismatched
+        // targets. Only worth offering with at least two Queued jobs -- there's no "batch" to
+        // make consistent otherwise, and a Rendering/Paused/Done/Failed job wouldn't be
+        // affected anyway (see App::match_loudness_across_queued_jobs's own doc comment).
+        let queued_count = app
+            .export_jobs
+            .iter()
+            .filter(|job| job.status == ExportJobStatus::Queued)
+            .count();
+        if queued_count >= 2 {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(Text::QueueMatchLoudnessLabel.tr(locale))
+                        .size(12.0)
+                        .color(theme::TEXT_MUTED),
+                );
+                for (label, target) in LUFS_PROFILES {
+                    if ui.button(label).clicked() {
+                        app.match_loudness_across_queued_jobs(target);
+                    }
+                }
+            });
+            ui.add_space(12.0);
+        }
 
         let mut move_up: Option<usize> = None;
         let mut move_down: Option<usize> = None;

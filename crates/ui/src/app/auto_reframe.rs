@@ -14,7 +14,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use super::{App, AutoReframeEvent};
 
@@ -150,24 +150,13 @@ fn auto_reframe_one(
 /// Decodes one frame from `path` at `at_secs`, undownscaled beyond a generous cap — face
 /// detection resizes to its own fixed 320x240 input regardless, so this only needs to be large
 /// enough that a small/distant face survives that resize as more than a couple of pixels.
-/// Same open/seek/poll shape as `import.rs`'s `extract_thumbnail`, just a different size cap and
-/// a different destination (a detector, not a UI texture).
+/// Uses [`avcore::FrameSampler`], same as `import.rs`'s `extract_thumbnail`, just a different
+/// size cap and a different destination (a detector, not a UI texture).
 const REFRAME_FRAME_MAX_DIM: u32 = 960;
 
 fn extract_frame(path: &Path, at_secs: f64) -> Option<(u32, u32, Vec<u8>)> {
-    let preview = avcore::preview::Preview::open(path, None).ok()?;
-    let _ = preview.seek(at_secs.max(0.0));
-
-    let deadline = Instant::now() + Duration::from_millis(1500);
-    let frame = loop {
-        if let Some(frame) = preview.current_frame() {
-            break frame;
-        }
-        if Instant::now() >= deadline {
-            return None;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
+    let sampler = avcore::FrameSampler::open(path, Duration::from_millis(20)).ok()?;
+    let frame = sampler.sample(at_secs, Duration::from_millis(1500))?;
 
     let scale = (REFRAME_FRAME_MAX_DIM as f32 / frame.width.max(frame.height) as f32).min(1.0);
     if scale >= 1.0 {

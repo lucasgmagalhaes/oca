@@ -133,6 +133,10 @@ text_catalog! {
     ToolSelect: pt_br = "Selecionar", en = "Select";
     ToolCut: pt_br = "Cortar / Split", en = "Cut / Split";
     ToolTrim: pt_br = "Aparar", en = "Trim";
+    ToolRipple: pt_br = "Ripple", en = "Ripple";
+    ToolRoll: pt_br = "Roll", en = "Roll";
+    ToolSlip: pt_br = "Slip", en = "Slip";
+    ToolSlide: pt_br = "Slide", en = "Slide";
     Export: pt_br = "⭳ Exportar", en = "⭳ Export";
     ExportSrt: pt_br = "Exportar .srt", en = "Export .srt";
     ExportSrtHint: pt_br = "Salva as legendas da timeline como um arquivo .srt separado.", en = "Saves the timeline's subtitles as a separate .srt file.";
@@ -333,6 +337,7 @@ text_catalog! {
     AddVideoTrack: pt_br = "＋ Adicionar faixa de vídeo", en = "＋ Add video track";
     QueueSubtitle: pt_br = "A edição continua responsiva enquanto os jobs renderizam em segundo plano. A fila persiste entre sessões.", en = "Editing stays responsive while jobs render in the background. The queue persists across sessions.";
     QueueTechNote: pt_br = "Nota técnica: cada job é um snapshot (bitrate/perfil/destino) tirado no momento em que entra na fila — mudanças no projeto ativo depois disso não afetam o job. Render roda em worker separado da UI (tokio::mpsc); 1 worker por padrão, configurável em Preferências.", en = "Technical note: each job is a snapshot (bitrate/profile/destination) taken the moment it enters the queue — later changes to the active project don't affect the job. Rendering runs in a worker separate from the UI (tokio::mpsc); 1 worker by default, configurable in Preferences.";
+    QueueMatchLoudnessLabel: pt_br = "Igualar loudness dos jobs na fila:", en = "Match loudness across queued jobs:";
     StatusRendering: pt_br = "Renderizando", en = "Rendering";
     StatusQueued: pt_br = "Na fila", en = "Queued";
     StatusPaused: pt_br = "Pausado", en = "Paused";
@@ -394,6 +399,16 @@ text_catalog! {
     AutosaveFound: pt_br = "Foi encontrado um autosave mais recente para este projeto. Deseja restaurá-lo?", en = "A more recent autosave was found for this project. Do you want to restore it?";
     AutosaveRestore: pt_br = "Restaurar autosave", en = "Restore autosave";
     AutosaveDiscard: pt_br = "Descartar", en = "Discard";
+    ExportPlatformPresetLabel: pt_br = "Predefinição de plataforma:", en = "Platform preset:";
+    PreviewScopesToggle: pt_br = "Waveform / Vetorscópio", en = "Waveform / Vectorscope";
+    TimelineIndexToggle: pt_br = "Marcadores", en = "Markers";
+    TimelineIndexTitle: pt_br = "Índice da timeline", en = "Timeline Index";
+    TimelineIndexSearchHint: pt_br = "Buscar marcadores...", en = "Search markers...";
+    TimelineIndexEmpty: pt_br = "Nenhum marcador encontrado.", en = "No markers found.";
+    TimelineIndexLabelHint: pt_br = "Descrição do marcador", en = "Marker description";
+    TimelineIndexAddStandard: pt_br = "+ Marcador", en = "+ Marker";
+    TimelineIndexAddToDo: pt_br = "+ Tarefa", en = "+ To Do";
+    TimelineIndexAddChapter: pt_br = "+ Capítulo", en = "+ Chapter";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
     ExportLoudnessLabel: pt_br = "Loudness:", en = "Loudness:";
     ExportLoudnessCustom: pt_br = "{value} LUFS (personalizado)", en = "{value} LUFS (custom)";

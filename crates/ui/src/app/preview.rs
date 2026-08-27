@@ -20,6 +20,13 @@ use tracing::{debug, error, warn};
 
 use super::App;
 
+/// Output resolution for [`App::pump_preview_frame`]'s waveform scope texture — wide enough to
+/// resolve per-column detail against a typical Editor panel width, short enough that the per-
+/// frame `avcore::luma_waveform_rgba` pass (opt-in via `scopes_enabled`) stays cheap.
+const SCOPE_WAVEFORM_SIZE: (u32, u32) = (256, 128);
+/// Output resolution (square) for the vectorscope texture.
+const SCOPE_VECTORSCOPE_SIZE: u32 = 128;
+
 /// Playhead for a frozen clip after `elapsed_secs` of wall-clock playback since
 /// `playhead_at_start`, clamped to the clip's own end (`clip_start_secs + clip_duration_secs`)
 /// — pulled out of [`App::pump_preview_frame`] as a pure function so the math is unit
@@ -41,6 +48,8 @@ impl App {
     pub fn invalidate_preview_rendering(&mut self) {
         self.preview = None;
         self.preview_texture = None;
+        self.waveform_texture = None;
+        self.vectorscope_texture = None;
         self.preview_clip_id = None;
         self.preview_overlay_clip_ids.clear();
         self.preview_audio_clip_ids.clear();
@@ -288,6 +297,8 @@ impl App {
         }
         self.preview = None;
         self.preview_texture = None;
+        self.waveform_texture = None;
+        self.vectorscope_texture = None;
         // Not just the background id — `preview_clip_present()` (and the Editor's "preview
         // unavailable" vs. plain placeholder choice) needs to tell "a clip is here but its
         // pipeline failed to open" apart from "there's nothing to preview at all", and an
@@ -685,6 +696,57 @@ impl App {
                 None => {
                     self.preview_texture =
                         Some(ctx.load_texture("preview", image, egui::TextureOptions::LINEAR));
+                }
+            }
+
+            if self.scopes_enabled {
+                let waveform_rgba = avcore::luma_waveform_rgba(
+                    &frame.rgba,
+                    frame.width,
+                    frame.height,
+                    SCOPE_WAVEFORM_SIZE.0,
+                    SCOPE_WAVEFORM_SIZE.1,
+                );
+                let waveform_image = egui::ColorImage::from_rgba_unmultiplied(
+                    [
+                        SCOPE_WAVEFORM_SIZE.0 as usize,
+                        SCOPE_WAVEFORM_SIZE.1 as usize,
+                    ],
+                    &waveform_rgba,
+                );
+                match &mut self.waveform_texture {
+                    Some(texture) => texture.set(waveform_image, egui::TextureOptions::LINEAR),
+                    None => {
+                        self.waveform_texture = Some(ctx.load_texture(
+                            "scope-waveform",
+                            waveform_image,
+                            egui::TextureOptions::LINEAR,
+                        ));
+                    }
+                }
+
+                let vectorscope_rgba = avcore::vectorscope_rgba(
+                    &frame.rgba,
+                    frame.width,
+                    frame.height,
+                    SCOPE_VECTORSCOPE_SIZE,
+                );
+                let vectorscope_image = egui::ColorImage::from_rgba_unmultiplied(
+                    [
+                        SCOPE_VECTORSCOPE_SIZE as usize,
+                        SCOPE_VECTORSCOPE_SIZE as usize,
+                    ],
+                    &vectorscope_rgba,
+                );
+                match &mut self.vectorscope_texture {
+                    Some(texture) => texture.set(vectorscope_image, egui::TextureOptions::LINEAR),
+                    None => {
+                        self.vectorscope_texture = Some(ctx.load_texture(
+                            "scope-vectorscope",
+                            vectorscope_image,
+                            egui::TextureOptions::LINEAR,
+                        ));
+                    }
                 }
             }
         }

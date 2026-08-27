@@ -42,6 +42,7 @@ mod color;
 pub mod export;
 mod import;
 mod layer_templates;
+mod markers;
 mod modals;
 mod motion_tracking;
 mod preview;
@@ -66,14 +67,28 @@ pub enum Screen {
     Queue,
 }
 
-/// The editor toolbar's active tool (Selecionar / Aparar). Currently just tracked for the
-/// toolbar's highlight state — Fase 3 wires it up to actual timeline interactions. Splitting
-/// ("Cortar") isn't a persistent mode like these two — it's a one-shot action, performed
-/// directly by [`App::split_at_playhead`].
+/// The editor toolbar's active tool. `Select`/`Trim` are just tracked for the toolbar's
+/// highlight state — dragging a clip's body/edge behaves the same regardless of which of
+/// those two is active (Fase 3 never ended up gating that on the tool selection). `Ripple`/
+/// `Roll`/`Slip`/`Slide` (`ROADMAP.md` P2 item 11 — Premiere/DaVinci/FCP's named trim modes)
+/// *do* change what a drag does — `screens::editor::timeline_panel` branches on `app.tool` when
+/// committing a trim-edge or clip-body drag. Splitting ("Cortar") isn't a persistent mode like
+/// any of these — it's a one-shot action, performed directly by [`App::split_at_playhead`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorTool {
     Select,
     Trim,
+    /// Trim without leaving a gap — later clips on the same track shift to fill it.
+    Ripple,
+    /// Move the cut point between two adjacent clips; their combined timeline span is
+    /// unchanged, just reallocated between them.
+    Roll,
+    /// Change which part of the source media a clip shows, without moving it on the timeline
+    /// or changing its duration.
+    Slip,
+    /// Move a clip along the timeline; its immediate neighbors' in/out points adjust to absorb
+    /// the move, nothing else shifts.
+    Slide,
 }
 
 /// A key + modifier combination that can be assigned to a bindable action. `key_name` is
@@ -683,6 +698,10 @@ pub struct App {
     /// A job id present here is the source of truth for "how many workers are busy right
     /// now" — [`App::pump_export_queue`] uses its length against `prefs.export_workers`.
     active_renders: HashMap<u64, Arc<export::RenderControl>>,
+    /// Cached result of resolving the active sequence's video tracks and media library into
+    /// export segments — see [`App::resolved_active_sequence_export_preview`]. `None` before
+    /// the Fila (export queue) screen's header has ever been drawn.
+    export_preview_cache: Option<export::ExportPreviewCache>,
     /// The GStreamer pipeline for the clip currently covering the active sequence's timeline
     /// playhead, if it could be opened (`None` before any project has a clip at the playhead,
     /// before it's been lazily opened, and when `Preview::open` failed, e.g. a source file
@@ -717,6 +736,16 @@ pub struct App {
     /// [`App::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
     /// frame from the previous one never lingers.
     pub preview_texture: Option<egui::TextureHandle>,
+    /// Whether the Editor preview panel's waveform/vectorscope color scopes are shown — off by
+    /// default, since computing both is a full pass over every pixel of every decoded frame
+    /// (see [`App::pump_preview_frame`]) and most edits don't need it.
+    pub scopes_enabled: bool,
+    /// Uploaded from [`avcore::luma_waveform_rgba`] alongside `preview_texture`, only while
+    /// [`App::scopes_enabled`] is set. `None` until the first frame decodes with scopes on, same
+    /// lazily-populated shape as `preview_texture` itself.
+    pub waveform_texture: Option<egui::TextureHandle>,
+    /// Same role as [`App::waveform_texture`], for [`avcore::vectorscope_rgba`].
+    pub vectorscope_texture: Option<egui::TextureHandle>,
     /// Whether the preview pipeline is in `Playing` state. `Preview` has no state getter of
     /// its own, so the Editor's play/pause button and [`App::pump_export_queue`]'s repaint
     /// cadence both rely on this instead.
@@ -993,6 +1022,12 @@ pub struct App {
     pub applying_layer_template: Option<(usize, Vec<Option<u64>>)>,
     /// Whether the toolbar's "Templates" list popup (pick one to apply, or delete it) is open.
     pub layer_templates_menu_open: bool,
+    /// Whether the Timeline Index panel (searchable review/comment marker list — `ROADMAP.md`
+    /// P2 item 9) is open.
+    pub timeline_index_open: bool,
+    /// Live text of the Timeline Index panel's search box — kept on `App` rather than as a
+    /// local in the modal-drawing function so it survives being closed and reopened.
+    pub marker_search: String,
     /// When `Some(action)`, the prefs modal is waiting for the next key press to set that
     /// action's binding. Pressing Escape clears it without changing the binding.
     pub binding_capture: Option<BindableAction>,
@@ -1073,6 +1108,7 @@ impl App {
             render_tx,
             render_rx,
             active_renders: HashMap::new(),
+            export_preview_cache: None,
             preview: None,
             preview_clip_id: None,
             preview_overlay_clip_ids: Vec::new(),
@@ -1080,6 +1116,9 @@ impl App {
             preview_text_clip_ids: Vec::new(),
             preview_shape_clip_ids: Vec::new(),
             preview_texture: None,
+            scopes_enabled: false,
+            waveform_texture: None,
+            vectorscope_texture: None,
             preview_playing: false,
             preview_frozen_since: None,
             fullscreen_preview: false,
@@ -1163,6 +1202,8 @@ impl App {
             saving_layer_template: None,
             applying_layer_template: None,
             layer_templates_menu_open: false,
+            timeline_index_open: false,
+            marker_search: String::new(),
             binding_capture: None,
             update_check_tx,
             update_check_rx,
@@ -1382,6 +1423,7 @@ impl App {
                 timeline: avcore::Timeline {
                     tracks: Vec::new(),
                     playhead_secs: 0.0,
+                    markers: Vec::new(),
                 },
                 export_settings: avcore::SequenceExportSettings {
                     aspect_ratio: avcore::ExportAspectRatio::Original,
@@ -1601,6 +1643,17 @@ impl App {
         self.active_project_mut().sequences[active_sequence]
             .export_settings
             .target_lufs = target_lufs;
+    }
+
+    /// Applies `preset`'s aspect ratio + loudness target to the active tab in one action — the
+    /// Fila (export queue) screen's platform-preset picker, so choosing "TikTok" sets both
+    /// fields correctly instead of the user needing to know the right combination themselves.
+    /// Still just calls the same two setters a manual pick would — the aspect-ratio and LUFS
+    /// pickers stay live afterward for fine-tuning, nothing about picking a preset locks them.
+    pub fn apply_platform_export_preset(&mut self, preset: avcore::PlatformExportPreset) {
+        let (aspect_ratio, target_lufs) = preset.settings();
+        self.set_active_sequence_export_aspect_ratio(aspect_ratio);
+        self.set_active_sequence_target_lufs(target_lufs);
     }
 
     /// Builds the snapshot [`App::save_prefs`]/[`App::save_prefs_sync`] persist — clones
@@ -1868,6 +1921,7 @@ impl eframe::App for App {
         self.show_apply_layer_template_modal(ui.ctx());
         self.show_tts_modal(ui.ctx());
         self.show_youtube_download_modal(ui.ctx());
+        self.show_timeline_index_panel(ui.ctx());
         self.show_toasts(ui.ctx());
     }
 

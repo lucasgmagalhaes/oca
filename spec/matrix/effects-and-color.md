@@ -46,10 +46,26 @@ for exact export-vs-preview wiring per effect).
 
 ## Known gaps
 
-- [ ] Color scopes (waveform/vectorscope) for calibrated grading — LUTs/filters exist, no way
-      to calibrate exposure/saturation precisely.
+- [x] Color scopes (waveform/vectorscope) for calibrated grading. `avcore::scopes`
+      (`luma_waveform_rgba`/`vectorscope_rgba`, `crates/core/src/scopes.rs`) — pure pixel
+      analysis against the already-decoded preview `VideoFrame`, no new avfilter/GStreamer
+      element needed. Toggled via the Editor preview panel's "📊" button
+      (`App::scopes_enabled`), computed opt-in inside `App::pump_preview_frame` alongside the
+      main preview texture upload (never on the hot path when off). **Simplification, not a
+      hard wall**: renders as a grayscale intensity image (BT.709 luma waveform, BT.601 Cb/Cr
+      vectorscope), not a green-phosphor trace with a calibrated IRE/hue graticule — accurate
+      for judging exposure/saturation spread at a glance, not a substitute for a calibrated
+      broadcast monitor. Core math verified against real `cargo test` execution in an isolated
+      scratch crate this session — this sandbox's own `core` crate still can't build end to end
+      (Ubuntu 24.04's packaged FFmpeg is too old for `avbridge/csrc/filters.c`, same documented
+      gap `CLAUDE.md` already calls out; rustc itself was upgraded 1.94→1.98 this session via
+      `rustup update`, and GStreamer dev headers installed via `apt`, which got a real
+      `cargo check -p core` all the way to that one pre-existing C failure — closer than any
+      prior session, still not a full build). The Editor panel wiring itself is implemented but
+      not visually verified (no way to drive the actual GUI in this environment).
 - [ ] Audio ducking (auto-lower music under speech) — `audio_mix.c` already has the multi-branch
-      mixing infra this would build on.
+      mixing infra this would build on. Needs new `avfilter` wiring in C this sandbox can't even
+      syntax-check right now (no FFmpeg dev headers reachable at all) — see `ROADMAP.md` P2 item 6.
 
 ---
 
