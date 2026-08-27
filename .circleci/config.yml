@@ -32,11 +32,9 @@ parameters:
   cargo-nextest-linux64-sha256:
     type: string
     default: "66786b9abe23920d022a182d1416b1bbc8130dd4872a9553d76985a1708dcd1e"
-  # cimg/rust bakes in a full rustc/cargo/rustfmt/clippy toolchain for this exact version, so
-  # the job doesn't re-run rustup's install script on every single build (the previous
-  # cimg/base + `curl sh.rustup.rs` setup did, downloading and installing the toolchain fresh
-  # each time). Pinned explicitly, same reproducibility reasoning as the FFmpeg/cargo-tool
-  # pins above — bump this deliberately rather than floating on "latest stable".
+  # Keep the toolchain explicit rather than floating on "stable". The Ubuntu 24.04 base image
+  # is selected separately below because ONNX Runtime's prebuilt static archive requires a
+  # newer glibc/libstdc++ than the Ubuntu 22.04-based cimg/rust image provides.
   rust-version:
     type: string
     default: "1.98.0"
@@ -44,7 +42,7 @@ parameters:
 executors:
   linux:
     docker:
-      - image: cimg/rust:<< pipeline.parameters.rust-version >>
+      - image: cimg/base:2026.01
     resource_class: medium
 
 commands:
@@ -52,6 +50,14 @@ commands:
   # whether the run is coverage or a parallel test partition.
   setup-native-deps:
     steps:
+      - run:
+          name: Install pinned Rust toolchain
+          command: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --default-toolchain << pipeline.parameters.rust-version >> \
+                --profile default
+            echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$BASH_ENV"
+
       # libclang/cmake are needed by bindgen-based build scripts in core's dependency tree —
       # espeak-rs-sys (espeak-ng phonemization, core/Cargo.toml) and whisper-rs (transcription)
       # both link vendored C/C++ sources through bindgen, which needs a real libclang.so to
