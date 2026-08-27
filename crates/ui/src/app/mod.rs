@@ -1608,6 +1608,17 @@ impl App {
             .target_lufs = target_lufs;
     }
 
+    /// Applies `preset`'s aspect ratio + loudness target to the active tab in one action — the
+    /// Fila (export queue) screen's platform-preset picker, so choosing "TikTok" sets both
+    /// fields correctly instead of the user needing to know the right combination themselves.
+    /// Still just calls the same two setters a manual pick would — the aspect-ratio and LUFS
+    /// pickers stay live afterward for fine-tuning, nothing about picking a preset locks them.
+    pub fn apply_platform_export_preset(&mut self, preset: avcore::PlatformExportPreset) {
+        let (aspect_ratio, target_lufs) = preset.settings();
+        self.set_active_sequence_export_aspect_ratio(aspect_ratio);
+        self.set_active_sequence_target_lufs(target_lufs);
+    }
+
     /// Builds the snapshot [`App::save_prefs`]/[`App::save_prefs_sync`] persist — clones
     /// `self.prefs` and copies in whatever live `App` state is meant to survive a restart but
     /// isn't edited through the Preferences modal itself (locale, Editor panel/timeline

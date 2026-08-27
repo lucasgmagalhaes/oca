@@ -111,6 +111,19 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 }
                 ui.add_space(8.0);
                 ui.label(
+                    eframe::egui::RichText::new(Text::ExportPlatformPresetLabel.tr(locale))
+                        .size(12.0)
+                        .color(crate::theme::TEXT_MUTED),
+                );
+                ui.horizontal(|ui| {
+                    for preset in avcore::PlatformExportPreset::ALL {
+                        if ui.button(preset.label()).clicked() {
+                            app.apply_platform_export_preset(*preset);
+                        }
+                    }
+                });
+                ui.add_space(8.0);
+                ui.label(
                     eframe::egui::RichText::new(Text::ExportAspectRatioLabel.tr(locale))
                         .size(12.0)
                         .color(crate::theme::TEXT_MUTED),
