@@ -105,6 +105,7 @@ mod tests {
                 shape_clips: Vec::new(),
                 visible: true,
                 audio_role: AudioRole::Unspecified,
+                color_label: None,
             }],
             playhead_secs: 0.0,
             markers: Vec::new(),
@@ -178,6 +179,7 @@ mod tests {
             shape_clips: Vec::new(),
             visible: true,
             audio_role: AudioRole::Unspecified,
+            color_label: None,
         });
 
         let srt = export_srt(&timeline);
