@@ -131,8 +131,7 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
     }
 
     /* Build one movie source and one timeline-enabled overlay node per pre-rasterized PNG, plus
-       an optional alpha-multiply colorchannelmixer stage for segments with an
-       opacity_keyframe_expr. */
+       an optional alpha-multiply geq stage for segments with an opacity_keyframe_expr. */
     {
         size_t filter_buf_size = (size_t)segment_count * TEXT_OVERLAY_SEG_MAX + 8;
         filter_str = av_malloc(filter_buf_size);
