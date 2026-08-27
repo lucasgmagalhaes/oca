@@ -48,6 +48,15 @@ const QUEUE_MAGIC: &[u8; 4] = b"OCQU";
 /// that's handled by `#[serde(default)]`) ever needs to change.
 const FORMAT_VERSION: u8 = 1;
 
+/// Upper bound on the *decompressed* size of an `.ocproj`/`.ocqueue`/`prefs.oc` payload —
+/// without this, [`from_framed_bytes`] would happily `read_to_end` an attacker-crafted or
+/// corrupted file's gzip stream with no limit, and gzip routinely achieves 1000:1+ compression
+/// ratios on repetitive input, so a tiny file could exhaust memory (a "gzip bomb" DoS) well
+/// before MessagePack decoding ever gets a chance to reject it. A real project's own data is
+/// plain numbers/strings/enums (paths, not embedded media) even for a large timeline with many
+/// keyframes, so 256 MiB is generous headroom, not a tight fit.
+const MAX_DECOMPRESSED_BYTES: u64 = 256 * 1024 * 1024;
+
 #[derive(Debug)]
 pub enum PersistError {
     Io(std::io::Error),
@@ -100,9 +109,16 @@ fn from_framed_bytes<T: DeserializeOwned>(
         return Err(PersistError::Corrupt("unsupported format version"));
     }
     let mut msgpack = Vec::new();
-    GzDecoder::new(&bytes[expected_magic.len() + 1..])
+    // Read one byte past the cap so an exactly-at-the-limit stream still succeeds while
+    // anything larger is caught here, before it's ever handed to the MessagePack decoder.
+    let decoder = GzDecoder::new(&bytes[expected_magic.len() + 1..]);
+    decoder
+        .take(MAX_DECOMPRESSED_BYTES + 1)
         .read_to_end(&mut msgpack)
         .map_err(PersistError::Io)?;
+    if msgpack.len() as u64 > MAX_DECOMPRESSED_BYTES {
+        return Err(PersistError::Corrupt("decompressed data too large"));
+    }
     rmp_serde::from_slice(&msgpack).map_err(PersistError::Decode)
 }
 
