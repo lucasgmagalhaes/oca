@@ -395,6 +395,7 @@ text_catalog! {
     AutosaveRestore: pt_br = "Restaurar autosave", en = "Restore autosave";
     AutosaveDiscard: pt_br = "Descartar", en = "Discard";
     ExportPlatformPresetLabel: pt_br = "Predefinição de plataforma:", en = "Platform preset:";
+    PreviewScopesToggle: pt_br = "Waveform / Vetorscópio", en = "Waveform / Vectorscope";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
     ExportLoudnessLabel: pt_br = "Loudness:", en = "Loudness:";
     ExportLoudnessCustom: pt_br = "{value} LUFS (personalizado)", en = "{value} LUFS (custom)";

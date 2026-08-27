@@ -721,6 +721,16 @@ pub struct App {
     /// [`App::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
     /// frame from the previous one never lingers.
     pub preview_texture: Option<egui::TextureHandle>,
+    /// Whether the Editor preview panel's waveform/vectorscope color scopes are shown — off by
+    /// default, since computing both is a full pass over every pixel of every decoded frame
+    /// (see [`App::pump_preview_frame`]) and most edits don't need it.
+    pub scopes_enabled: bool,
+    /// Uploaded from [`avcore::luma_waveform_rgba`] alongside `preview_texture`, only while
+    /// [`App::scopes_enabled`] is set. `None` until the first frame decodes with scopes on, same
+    /// lazily-populated shape as `preview_texture` itself.
+    pub waveform_texture: Option<egui::TextureHandle>,
+    /// Same role as [`App::waveform_texture`], for [`avcore::vectorscope_rgba`].
+    pub vectorscope_texture: Option<egui::TextureHandle>,
     /// Whether the preview pipeline is in `Playing` state. `Preview` has no state getter of
     /// its own, so the Editor's play/pause button and [`App::pump_export_queue`]'s repaint
     /// cadence both rely on this instead.
@@ -1085,6 +1095,9 @@ impl App {
             preview_text_clip_ids: Vec::new(),
             preview_shape_clip_ids: Vec::new(),
             preview_texture: None,
+            scopes_enabled: false,
+            waveform_texture: None,
+            vectorscope_texture: None,
             preview_playing: false,
             preview_frozen_since: None,
             fullscreen_preview: false,

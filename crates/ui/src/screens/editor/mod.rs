@@ -718,6 +718,16 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             {
                 app.toggle_fullscreen_preview();
             }
+            if ui
+                .selectable_label(
+                    app.scopes_enabled,
+                    RichText::new("📊").color(theme::TEXT_SECONDARY),
+                )
+                .on_hover_text(Text::PreviewScopesToggle.tr(locale))
+                .clicked()
+            {
+                app.scopes_enabled = !app.scopes_enabled;
+            }
         });
         if timeline_duration > 0.0 {
             let mut position = app.active_project().timeline().playhead_secs;
@@ -726,6 +736,17 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             if slider.changed() {
                 app.seek_preview(position);
             }
+        }
+        if app.scopes_enabled {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if let Some(texture) = &app.waveform_texture {
+                    ui.image((texture.id(), egui::vec2(200.0, 100.0)));
+                }
+                if let Some(texture) = &app.vectorscope_texture {
+                    ui.image((texture.id(), egui::vec2(100.0, 100.0)));
+                }
+            });
         }
     });
 }
