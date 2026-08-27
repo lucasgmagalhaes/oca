@@ -17,34 +17,47 @@ is plain safe Rust (a `Vec`-backed stack, no unsafe/FFI) — low risk, but **run
 `cargo test -p core --test undo_test` on a machine with GStreamer configured before trusting
 this beyond code review.**
 
-## Not done — next steps
+## Wired (this pass)
 
-1. **Wire `App::undo_stack: UndoStack`** (`crates/ui/src/app/mod.rs`, next to `PrefsState`).
-2. **`App::push_undo_snapshot()`** — clones `self.active_project().active_sequence()`'s
-   `Sequence` (need a `Project::active_sequence()` accessor if one doesn't already exist
-   alongside `active_project()`/`active_project_mut()`) and calls `self.undo_stack.push(...)`.
-3. **Call it before every timeline-mutating operation** in `crates/ui/src/app/timeline_ops.rs`
-   — `move_clip`, `trim_start`/`trim_end`, `split_clip_at`, `apply_formatting`, track add/
-   remove, keyframe add/remove, effect property changes. This is the bulk of the remaining
-   work: audit every call site that calls `active_project_mut()` for a timeline edit and add
-   the snapshot push immediately before it. Not every `active_project_mut()` call needs one —
-   only ones that mutate the *active sequence's timeline*, not e.g. panel-layout writes.
-4. **`App::undo()`/`App::redo()`** — read the active sequence, call `undo_stack.undo(current)`/
-   `.redo(current)`, replace the active sequence's `Sequence` with the result if `Some`.
-   Must also invalidate whatever cached preview state (`App::current_preview_*`,
-   `App::ensure_preview_loaded`'s reopen-detection ids) assumes the timeline hasn't changed
-   underneath it — same reopen path an external edit would trigger.
-5. **`App::undo_stack.clear()`** on every sequence switch (`reset_sequence_context`, per
-   `matrix/timeline-and-editing.md`'s existing sequence-tab-management entry) and on
-   project switch/open. History from one sequence context is meaningless applied to another.
-6. **Key bindings** — add `Undo`/`Redo` to `BindableAction` (`crates/ui/src/app/mod.rs`) and
-   `KeyBindings` (default `Ctrl+Z`/`Ctrl+Y` or `Ctrl+Shift+Z`), following the exact pattern
-   `AddOpacityMarker` already established (`#[serde(default = "...")]` on the new
-   `KeyBindings` field so an older saved `prefs.oc` still loads).
-7. **UI affordance** — toolbar undo/redo buttons reflecting `can_undo()`/`can_redo()` (disabled
-   state when empty), not just the key binding.
-8. **Update `spec/matrix/timeline-and-editing.md`** — flip the undo/redo gap entry to `[~]`
-   once wired, `[x]` once tested end to end through the UI.
+Items 1-2 and 4-7 below are done. `Project::active_sequence()`/`active_sequence_mut()`
+accessors added (`crates/core/src/project.rs`, next to `timeline()`/`timeline_mut()`).
+`App::undo_stack: avcore::undo::UndoStack` (`crates/ui/src/app/mod.rs`, next to
+`selected_clip_id`). `App::push_undo_snapshot()`/`undo()`/`redo()`/`can_undo()`/`can_redo()`
+added next to `reset_sequence_context`. `Undo`/`Redo` added to `BindableAction`/`KeyBindings`
+(default `Ctrl+Z`/`Ctrl+Y`), configurable in Preferences same as the other five. Toolbar's
+pre-existing dead `↺`/`↻` buttons (`screens/editor/mod.rs`) now call `undo()`/`redo()`,
+enabled state from `can_undo()`/`can_redo()`. `undo_stack.clear()` called from
+`reset_sequence_context` (covers `select_sequence`/`add_sequence`/`duplicate_sequence`/
+`delete_sequence`) and from `App::open_project`. Unit tests in `app_test.rs`
+(`undo_after_split_at_playhead_restores_the_unsplit_clip`, `undo_is_a_no_op_with_empty_history`,
+`selecting_a_sequence_clears_undo_history_from_the_previous_one`) plus the 7 `core` tests —
+**all verified passing** on a machine with GStreamer configured (`cargo test -p core --test
+undo_test`, `cargo test -p ui undo`), closing the "not verified" gap from the primitive-only
+pass.
+
+## Not done — remaining call sites (item 3)
+
+`push_undo_snapshot()` is wired into `timeline_ops.rs`'s single-shot mutations
+(`add_asset_to_timeline[_at]`, `split_at_playhead`, `delete_selected_clip`,
+`paste_clip_at_playhead`, `merge_into_composite`, `paste_selected_clip_formatting`,
+`add_video_track`, `add_text_track`/`add_text_clip`, `add_shape_track`/`add_shape_clip`/
+`finish_drawing_custom_shape`) and into the timeline strip's trim/move drags
+(`screens/editor/timeline_panel.rs`, pushed once on `drag_started()` — not inside
+`trim_clip_start`/`trim_clip_end`/`move_clip`/`move_clip_with_group`/`move_clip_to_track`
+themselves, since those are called every frame of a drag and a naive per-call push would
+record one undo step per frame instead of one per drag).
+
+**Not yet covered: effect-property setters in `crates/ui/src/app/clip_props.rs`** (gain, crop,
+mask, color/vignette/blur/etc., keyframe add/remove) and their sliders in
+`screens/editor/properties_panel.rs`. These all funnel through `App::with_selected_clip_mut`,
+but that dispatch point is called every frame while a slider is being dragged — pushing a
+snapshot inside it would spam one undo entry per frame, the same problem the trim/move drags
+avoid via `drag_started()`. Fixing this properly means the same drag-start-vs-continuous-drag
+split egui's `Response` gives `timeline_panel.rs` for free, but threaded through ~20+ individual
+slider/checkbox call sites in `properties_panel.rs` rather than one shared loop — a
+materially bigger, more error-prone change than the rest of this wiring pass, left for a
+follow-up rather than rushed. `toggle_track_visibility` also stays unwired — a display toggle,
+not timeline content, same category `panel_layout` writes are excluded for.
 
 ## Design note: why per-sequence, not per-project
 

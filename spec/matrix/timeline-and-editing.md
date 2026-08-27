@@ -35,8 +35,11 @@ sequence-management/copy-paste entries.
 ## Known gaps (not found anywhere in the codebase — confirm before assuming, but no evidence of
 ## either in `graphify query "undo redo history stack snapping magnetic snap"`)
 
-- [ ] **Undo/redo.** No command-history/undo-stack type found anywhere. Table stakes for any
-      timeline editor — see `ROADMAP.md` P0.
+- [~] **Undo/redo.** `core::undo::UndoStack` (snapshot-based) wired into `ui` — `Ctrl+Z`/`Ctrl+Y`,
+      toolbar buttons, covers clip add/split/delete/cut/copy/paste, trim/move drags, track/text/
+      shape-track add, composite merge, paste-formatting. Effect-property sliders and keyframe
+      add/remove (`ui::app::clip_props.rs`) not yet covered — see `architecture/undo-redo.md`
+      for what's left. See `ROADMAP.md` P0.
 - [ ] **Magnetic snap** while dragging (to playhead, other clip edges, markers). See
       `ROADMAP.md` P0 — also a dependency of D5 (beat-aligned cut snapping).
 - [ ] Review/comment markers on the timeline (plain note at a point — not to be confused with
