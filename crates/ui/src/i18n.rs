@@ -415,6 +415,9 @@ text_catalog! {
     SilenceReviewEmpty: pt_br = "Nenhum trecho de silêncio encontrado.", en = "No silent stretches found.";
     SilenceReviewGapLabel: pt_br = "{start} — {end} ({duration}s)", en = "{start} — {end} ({duration}s)";
     SilenceReviewApply: pt_br = "Aplicar cortes selecionados", en = "Apply selected cuts";
+    ExportCollabBundle: pt_br = "📦 Exportar pacote de colaboração...", en = "📦 Export Collaboration Bundle...";
+    ImportCollabBundle: pt_br = "📦 Importar pacote de colaboração...", en = "📦 Import Collaboration Bundle...";
+    CollabBundleExported: pt_br = "Pacote de colaboração exportado.", en = "Collaboration bundle exported.";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
     ExportLoudnessLabel: pt_br = "Loudness:", en = "Loudness:";
     ExportLoudnessCustom: pt_br = "{value} LUFS (personalizado)", en = "{value} LUFS (custom)";
