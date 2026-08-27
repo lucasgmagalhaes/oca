@@ -216,17 +216,16 @@ jobs:
             source "$BASH_ENV"
             cargo fmt --all -- --check
 
+      # No separate `cargo build --workspace` step: clippy uses a different rustc wrapper
+      # than plain build, so their target/ caches invalidate each other — running both back
+      # to back recompiles the whole workspace twice for no extra coverage (clippy's checks
+      # are a superset of build's). `cargo llvm-cov nextest` below still catches any build
+      # break, just as part of the coverage/test step rather than a separately labeled one.
       - run:
           name: Clippy
           command: |
             source "$BASH_ENV"
             cargo clippy --workspace --all-targets
-
-      - run:
-          name: Build
-          command: |
-            source "$BASH_ENV"
-            cargo build --workspace
 
       - run:
           name: Test with coverage
