@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use avcore::MediaAsset;
 use eframe::egui::{self, RichText};
 
-use crate::app::{thumbnail_frame_index, App};
+use crate::app::{thumbnail_frame_index, App, EditorTool};
 use crate::i18n::Text;
 use crate::theme;
 
@@ -786,13 +786,48 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         if drag_started_this_frame {
             app.push_undo_snapshot();
         }
+        // Ripple/Roll (ROADMAP.md P2 item 11) change what an edge drag commits as; every other
+        // tool (including Slip/Slide, which act on the clip *body* instead — see the drag loop
+        // below) falls back to the same plain trim edge-dragging has always done.
         for (clip_id, edge) in trim_requests {
-            match edge {
-                TrimEdge::Start(secs) => app.trim_clip_start(clip_id, secs),
-                TrimEdge::End(secs) => app.trim_clip_end(clip_id, secs),
+            match (app.tool, edge) {
+                (EditorTool::Ripple, TrimEdge::Start(secs)) => {
+                    app.ripple_trim_clip_start(clip_id, secs)
+                }
+                (EditorTool::Ripple, TrimEdge::End(secs)) => {
+                    app.ripple_trim_clip_end(clip_id, secs)
+                }
+                (EditorTool::Roll, TrimEdge::Start(secs)) => {
+                    app.roll_edit_from_start_edge(clip_id, secs)
+                }
+                (EditorTool::Roll, TrimEdge::End(secs)) => app.roll_edit_clip(clip_id, secs),
+                (_, TrimEdge::Start(secs)) => app.trim_clip_start(clip_id, secs),
+                (_, TrimEdge::End(secs)) => app.trim_clip_end(clip_id, secs),
             }
         }
         for drag in clip_drags {
+            // Slip/Slide (ROADMAP.md P2 item 11) act on the clip in place rather than moving
+            // it across tracks, so they skip the cross-track drop-target resolution below
+            // entirely — dragging a clip's body while either is active always edits it on its
+            // own track.
+            if app.tool == EditorTool::Slip {
+                let old_start_secs = app
+                    .active_project()
+                    .timeline()
+                    .tracks
+                    .iter()
+                    .flat_map(|t| &t.clips)
+                    .find(|c| c.id == drag.clip_id)
+                    .map(|c| c.start_secs);
+                if let Some(old_start_secs) = old_start_secs {
+                    app.slip_clip(drag.clip_id, drag.new_start_secs - old_start_secs);
+                }
+                continue;
+            }
+            if app.tool == EditorTool::Slide {
+                app.slide_clip(drag.clip_id, drag.new_start_secs);
+                continue;
+            }
             // Whichever track row's Y-range the pointer is currently over, if its kind
             // matches the dragged clip's own track — a video clip can't be dropped onto an
             // audio row or vice versa. Falls back to a same-track reposition if the pointer

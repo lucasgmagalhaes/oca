@@ -67,14 +67,28 @@ pub enum Screen {
     Queue,
 }
 
-/// The editor toolbar's active tool (Selecionar / Aparar). Currently just tracked for the
-/// toolbar's highlight state — Fase 3 wires it up to actual timeline interactions. Splitting
-/// ("Cortar") isn't a persistent mode like these two — it's a one-shot action, performed
-/// directly by [`App::split_at_playhead`].
+/// The editor toolbar's active tool. `Select`/`Trim` are just tracked for the toolbar's
+/// highlight state — dragging a clip's body/edge behaves the same regardless of which of
+/// those two is active (Fase 3 never ended up gating that on the tool selection). `Ripple`/
+/// `Roll`/`Slip`/`Slide` (`ROADMAP.md` P2 item 11 — Premiere/DaVinci/FCP's named trim modes)
+/// *do* change what a drag does — `screens::editor::timeline_panel` branches on `app.tool` when
+/// committing a trim-edge or clip-body drag. Splitting ("Cortar") isn't a persistent mode like
+/// any of these — it's a one-shot action, performed directly by [`App::split_at_playhead`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorTool {
     Select,
     Trim,
+    /// Trim without leaving a gap — later clips on the same track shift to fill it.
+    Ripple,
+    /// Move the cut point between two adjacent clips; their combined timeline span is
+    /// unchanged, just reallocated between them.
+    Roll,
+    /// Change which part of the source media a clip shows, without moving it on the timeline
+    /// or changing its duration.
+    Slip,
+    /// Move a clip along the timeline; its immediate neighbors' in/out points adjust to absorb
+    /// the move, nothing else shifts.
+    Slide,
 }
 
 /// A key + modifier combination that can be assigned to a bindable action. `key_name` is

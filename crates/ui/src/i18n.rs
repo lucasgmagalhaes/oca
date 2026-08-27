@@ -133,6 +133,10 @@ text_catalog! {
     ToolSelect: pt_br = "Selecionar", en = "Select";
     ToolCut: pt_br = "Cortar / Split", en = "Cut / Split";
     ToolTrim: pt_br = "Aparar", en = "Trim";
+    ToolRipple: pt_br = "Ripple", en = "Ripple";
+    ToolRoll: pt_br = "Roll", en = "Roll";
+    ToolSlip: pt_br = "Slip", en = "Slip";
+    ToolSlide: pt_br = "Slide", en = "Slide";
     Export: pt_br = "⭳ Exportar", en = "⭳ Export";
     ExportSrt: pt_br = "Exportar .srt", en = "Export .srt";
     ExportSrtHint: pt_br = "Salva as legendas da timeline como um arquivo .srt separado.", en = "Saves the timeline's subtitles as a separate .srt file.";

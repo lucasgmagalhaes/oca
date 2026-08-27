@@ -257,6 +257,16 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             app.split_at_playhead();
         }
         tool_button(app, ui, EditorTool::Trim, "⇔", Text::ToolTrim.tr(locale));
+        tool_button(
+            app,
+            ui,
+            EditorTool::Ripple,
+            "⇥",
+            Text::ToolRipple.tr(locale),
+        );
+        tool_button(app, ui, EditorTool::Roll, "⇄", Text::ToolRoll.tr(locale));
+        tool_button(app, ui, EditorTool::Slip, "↕", Text::ToolSlip.tr(locale));
+        tool_button(app, ui, EditorTool::Slide, "⇉", Text::ToolSlide.tr(locale));
         ui.separator();
         if ui
             .add_enabled(
