@@ -197,6 +197,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         render_tx,
         render_rx,
         active_renders: HashMap::new(),
+        export_preview_cache: None,
         preview: None,
         preview_clip_id: None,
         preview_overlay_clip_ids: Vec::new(),
@@ -744,6 +745,59 @@ fn queue_export_starts_at_one_when_no_jobs_exist() {
     );
 
     assert_eq!(app.export_jobs[0].id, 1);
+}
+
+#[test]
+fn resolved_active_sequence_export_preview_resolves_the_active_sequences_clips() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 4.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.active_project_mut().media_library = vec![test_asset(1)];
+
+    let (track_segments, _audio_segments, canvas) =
+        app.resolved_active_sequence_export_preview().unwrap();
+
+    assert_eq!(track_segments.len(), 1);
+    assert_eq!(track_segments[0].len(), 1);
+    assert_eq!(canvas.width, 1920);
+}
+
+#[test]
+fn resolved_active_sequence_export_preview_ignores_a_playhead_only_change() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 4.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.active_project_mut().media_library = vec![test_asset(1)];
+
+    let (before, _, _) = app.resolved_active_sequence_export_preview().unwrap();
+    app.active_project_mut().timeline_mut().playhead_secs = 2.5;
+    let (after, _, _) = app.resolved_active_sequence_export_preview().unwrap();
+
+    assert_eq!(before.len(), after.len());
+    assert_eq!(
+        before[0][0].source_out_secs, after[0][0].source_out_secs,
+        "scrubbing must not change the resolved segments"
+    );
+}
+
+#[test]
+fn resolved_active_sequence_export_preview_picks_up_a_later_clip_edit() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 4.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.active_project_mut().media_library = vec![test_asset(1)];
+
+    let (before, ..) = app.resolved_active_sequence_export_preview().unwrap();
+    assert_eq!(before[0][0].source_out_secs, 4.0);
+
+    app.active_project_mut()
+        .timeline_mut()
+        .clip_mut(1)
+        .unwrap()
+        .source_out_secs = 6.0;
+    let (after, ..) = app.resolved_active_sequence_export_preview().unwrap();
+
+    assert_eq!(
+        after[0][0].source_out_secs, 6.0,
+        "a real clip edit must not be served a stale cached result"
+    );
 }
 
 #[test]
