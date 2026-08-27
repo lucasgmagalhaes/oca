@@ -107,9 +107,13 @@ Read [matrix/effects-and-color.md](matrix/effects-and-color.md),
     no way to change source-in/out without moving the clip or changing its duration (no slip).
     All four now implemented as their own `EditorTool` toolbar modes — see
     `matrix/timeline-and-editing.md` for the exact scope and what's still unverified.
-12. `[ ]` **D3 — series-level loudness consistency** across an export-queue batch
-    (`architecture/differentiators.md`). Low effort, pure orchestration over LUFS analysis +
-    export queue, both already built.
+12. `[x]` **D3 — series-level loudness consistency** across an export-queue batch
+    (`architecture/differentiators.md`). `App::match_loudness_across_queued_jobs` + a button row
+    on the Fila screen (shown once ≥2 `Queued` jobs exist) sets one target LUFS across every
+    not-yet-started job in the batch — each queued job otherwise keeps whatever `target_lufs`
+    its own sequence/tab happened to have when it was queued, so episode 1 and episode 5 of a
+    series could silently end up with mismatched targets. Pure orchestration, no new DSP —
+    reuses the existing per-job `target_lufs` field and `LUFS_PROFILES` picker.
 
 ## P3 — Differentiators
 

@@ -25,11 +25,11 @@ Native FFI bridge over libavformat/libavcodec/libavfilter/libavutil (`crates/avb
 - [x] Python runtime + yt-dlp bridge (`crates/ytbridge`) for YouTube download — fully bundled
       (Windows confirmed working end-to-end with `PATH` stripped; Linux branch written,
       unverified on a real Linux build).
-
-## Known gap
-
-- [ ] Series-level/batch loudness matching (D3, `architecture/differentiators.md`) — per-clip
-      normalization exists, batch-level consistency across an export queue doesn't.
+- [x] Series-level/batch loudness matching (D3, `architecture/differentiators.md`) —
+      `App::match_loudness_across_queued_jobs` (`ui/src/app/export.rs`) sets one target LUFS
+      across every `Queued` export-queue job at once, from a button row on the Fila screen
+      (`ROADMAP.md` P2 item 12). Orchestration over the existing per-job `target_lufs` field,
+      no new normalization DSP.
 
 ---
 
