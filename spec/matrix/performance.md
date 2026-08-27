@@ -71,6 +71,27 @@ yet applied here — see the gaps below) live in `architecture/performance-and-c
       transitive deps in `Cargo.lock` require rustc ≥1.95/1.96 — a pre-existing environment gap,
       not a regression from this change; same "implemented, unverified in this environment"
       category as the FFmpeg/GPU-encoder notes in `CLAUDE.md`).
+      **Follow-up (2026-08-27)**: the live-element-property-update mechanism flagged above as a
+      follow-up is now partially done, scoped to color balance specifically —
+      `Preview::set_live_balance` pushes brightness/contrast/saturation to the already-built
+      `videobalance` element by name (`gst::Bin::by_name`, recursive, so it works for both the
+      single-clip and composited-overlay pipelines) instead of waiting for an incidental reopen,
+      wired from `App`'s shared `with_selected_clip_mut` dispatch path. Deliberately not
+      extended to every other effect property: most (blur, crop, pixelize, shake, chroma key,
+      mask, ...) only get their GStreamer element built at all once their own intensity/toggle
+      first goes non-neutral, so a live update for those needs restructuring the running filter
+      graph mid-playback, not just a property push — color balance was the one case where all
+      three properties (brightness/contrast/saturation) share a single element that, once built,
+      stays present across any further change among the three, making a plain `set_property`
+      push safe. Verified against a real GStreamer pipeline in a scratch crate depending on real
+      `avbridge` (this sandbox's `core` test binary itself can't link — the ONNX Runtime gap —
+      but `avbridge` alone can): the two no-op paths (no element was ever built; a mismatched
+      clip id) are confirmed correct for real. The positive path — finding and updating a real
+      element, and that doing so changes decoded output — isn't verified: this sandbox's
+      `playbin` never actually constructs a working video output branch at all
+      (`current_frame()` returns `None` for every clip here, confirmed against an unmodified
+      copy of `preview_test.rs`'s own pre-existing `opens_with_hardware_decoding_allowed` test),
+      the same class of GUI/hardware-dependent-verification gap as the note directly above.
 
 ---
 

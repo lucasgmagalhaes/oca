@@ -47,8 +47,28 @@ Read [architecture/performance-and-caching.md](architecture/performance-and-cach
    already skip a reopen (they just don't live-update the pipeline either, a separate gap);
    the one real hot-path violation found (text-clip property panel forcing a full pipeline
    reopen on every dragged-slider frame, bundling position/content with start/duration) is
-   fixed via a cheap `appsrc` buffer refresh. See `matrix/performance.md` for the full
-   findings and what's still open (effect-property live preview updates, non-text overlay
+   fixed via a cheap `appsrc` buffer refresh. **Partial follow-up**: color-balance sliders
+   (brightness/contrast/saturation — the confirmed hot-path violation's own motivating
+   example) now update live too, via `Preview::set_live_balance` pushing directly to the
+   already-built `videobalance` element (`gst::Bin::by_name`, named `oca_balance_{clip_id}`)
+   instead of waiting for an incidental reopen — deliberately scoped to just this one
+   property group, not the full "every effect setter" scope, which stays a materially
+   bigger lift (most effects' elements are only conditionally present at all — e.g. no
+   `gaussianblur` exists in the pipeline until `blur_intensity` first goes non-zero — so a
+   live update for those needs restructuring the running filter graph, not just a property
+   push; color balance was tractable specifically because brightness/contrast/saturation all
+   share one element that, once built, stays present across any further change among the
+   three). Verified against a real GStreamer pipeline in a scratch crate (this sandbox's
+   `core` test binary can't link — the ONNX Runtime gap — but `avbridge` alone can, so a
+   scratch crate depending on real `avbridge` + `gstreamer` proved the negative-path logic
+   for real): `set_live_balance` correctly declines when no element was built, and correctly
+   declines for a mismatched clip id. **Not verified**: that it finds/updates the element
+   once one exists, or that a push actually changes decoded output — this sandbox's `playbin`
+   never constructs a working video output branch at all (`current_frame()` returns `None`
+   for every clip, confirmed against an unmodified copy of `preview_test.rs`'s own
+   pre-existing test), the same GUI/hardware-dependent-verification limitation this codebase's
+   test suite already carries elsewhere. See `matrix/performance.md` for the full findings
+   and what's still open (every other effect-property's live preview update, non-text overlay
    kinds).
 4. `[x]` Versioned cache for the timeline→avfilter-graph resolution
    (`resolve_timeline_segments_multi`). The confirmed hot spot was `screens::queue::show`
