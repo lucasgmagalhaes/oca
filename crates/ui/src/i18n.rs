@@ -154,6 +154,8 @@ text_catalog! {
     ProxyAbsent: pt_br = "usando original", en = "using original";
     PropGain: pt_br = "Ganho do bloco", en = "Block gain";
     GainExportNote: pt_br = "aplicado na exportação (filtro volume) — sem efeito no preview ao vivo.", en = "applied on export (volume filter) — no live preview effect.";
+    PropGainKeyframes: pt_br = "Ganho (keyframes)", en = "Gain (keyframes)";
+    GainKeyframesExportNote: pt_br = "quando definido, substitui o ganho constante acima na exportação (fade/rampa de volume) — sem efeito no preview ao vivo.", en = "when set, overrides the constant gain above on export (volume fade/ramp) — no live preview effect.";
     PropFreeze: pt_br = "❄ Congelar quadro", en = "❄ Freeze frame";
     FreezeExportNote: pt_br = "aplicado na exportação — sem efeito no preview ao vivo.", en = "applied on export — no live preview effect.";
     PropDeflicker: pt_br = "✨ Remover flicker", en = "✨ Remove flicker";
