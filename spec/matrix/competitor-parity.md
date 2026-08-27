@@ -123,9 +123,9 @@ etc.) has a keyframe variant, and that `TextClip`/`ShapeClip` have no keyframe f
 
 - [ ] **Audio gain keyframes.** `gain_db` is a single constant per clip today — no fade/ramp
       within one clip. Every other surveyed editor supports audio volume automation/keyframes.
-      → `ROADMAP.md` P4 item 31 (in progress).
-- [ ] **Color grading keyframes.** Brightness/contrast/saturation ramping over a clip (e.g. a
-      slow color shift), not just a constant. → `ROADMAP.md` P4 item 32.
+      → `ROADMAP.md` P4 item 31 (done).
+- [x] **Color grading keyframes.** Brightness/contrast/saturation ramping over a clip (e.g. a
+      slow color shift), not just a constant. → `ROADMAP.md` P4 item 32 (done).
 - [ ] **Crop/pan keyframes.** `crop_x`/`crop_y`/`crop_w`/`crop_h` animated over a clip (e.g. a
       slow reveal/pan independent of `scale_keyframes`' zoom). → `ROADMAP.md` P4 item 33.
 - [ ] **Text/shape clip animation keyframes.** `TextClip`/`ShapeClip` have zero keyframe fields
