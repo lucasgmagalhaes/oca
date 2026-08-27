@@ -645,6 +645,9 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
     let mut clicked_id = None;
     let mut add_to_timeline_id = None;
     let mut dropped_asset = None;
+    let mut selected_bin_id = None;
+    let mut edited_bin_id = None;
+    let mut new_bin_clicked = false;
 
     egui::Frame::new()
         .inner_margin(egui::Margin::same(12))
@@ -652,9 +655,50 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
             ui.set_width(width);
             ui.set_height(height);
             ui.vertical(|ui| {
+                components::section_label(ui, Text::MediaLibrary.tr(app.locale));
+                // Smart bins (P4 item 22) -- a row of filter chips above the asset list. "All"
+                // clears the filter; each bin is click-to-select, double-click-to-edit (the
+                // rules, not the assets themselves -- there's nothing else to double-click a
+                // filter chip for).
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .selectable_label(
+                            app.active_smart_bin_id.is_none(),
+                            Text::SmartBinAll.tr(app.locale),
+                        )
+                        .clicked()
+                    {
+                        selected_bin_id = Some(None);
+                    }
+                    for bin in &app.active_project().smart_bins {
+                        let response =
+                            ui.selectable_label(app.active_smart_bin_id == Some(bin.id), &bin.name);
+                        if response.clicked() {
+                            selected_bin_id = Some(Some(bin.id));
+                        }
+                        if response.double_clicked() {
+                            edited_bin_id = Some(bin.id);
+                        }
+                    }
+                    if ui.button(Text::SmartBinNew.tr(app.locale)).clicked() {
+                        new_bin_clicked = true;
+                    }
+                });
+                ui.add_space(6.0);
+
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    components::section_label(ui, Text::MediaLibrary.tr(app.locale));
-                    for asset in &app.active_project().media_library {
+                    // Only the (small) bin rule is cloned here, not the assets it filters --
+                    // `active_project()` is borrowed again right below for the actual iteration,
+                    // which is fine since both borrows are immutable.
+                    let bin = app.active_smart_bin_id.and_then(|id| {
+                        app.active_project()
+                            .smart_bins
+                            .iter()
+                            .find(|b| b.id == id)
+                            .cloned()
+                    });
+                    let assets = app.active_project().media_library.iter();
+                    for asset in assets.filter(|a| bin.as_ref().is_none_or(|b| b.matches(a))) {
                         let selected = app.selected_asset_id == Some(asset.id);
                         let bg = if selected {
                             theme::ACCENT.gamma_multiply(0.18)
@@ -732,6 +776,15 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
     }
     if let Some(id) = add_to_timeline_id {
         app.add_asset_to_timeline(id);
+    }
+    if let Some(bin_id) = selected_bin_id {
+        app.active_smart_bin_id = bin_id;
+    }
+    if let Some(bin_id) = edited_bin_id {
+        app.begin_edit_smart_bin(bin_id);
+    }
+    if new_bin_clicked {
+        app.begin_new_smart_bin();
     }
 }
 

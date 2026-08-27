@@ -52,6 +52,7 @@ mod preview;
 mod scene_detection;
 mod shorts_pack;
 mod silence_review;
+mod smart_bins;
 mod sound_library;
 mod telemetry;
 mod text_to_speech;
@@ -993,6 +994,16 @@ pub struct App {
     /// (first group found, if any) the same way `selected_asset_id` resets on project switch,
     /// see [`App::open_project`].
     pub active_multicam_group_id: Option<u64>,
+    /// The smart bin (P4 item 22, "Smart bins") currently filtering the Library panel's asset
+    /// list — `None` shows every asset in `media_library`, unfiltered. Not persisted: resets to
+    /// `None` on project switch, same as `active_multicam_group_id`.
+    pub active_smart_bin_id: Option<u64>,
+    /// A draft [`avcore::SmartBin`] being created/edited, shown as a modal by
+    /// [`App::show_smart_bin_modal`] when `Some`. `id == 0` (never a real assigned id, which
+    /// starts at 1 — see [`avcore::Project::add_smart_bin`]) means "new bin, not yet created";
+    /// any other id means "editing that existing bin's rules in place." `None` when the modal
+    /// is closed.
+    pub editing_smart_bin: Option<avcore::SmartBin>,
     /// Set whenever [`App::active_project_mut`] is called; cleared after each autosave
     /// write. Guards [`App::pump_autosave`] from writing unchanged state to disk.
     project_dirty: bool,
@@ -1221,6 +1232,8 @@ impl App {
             formatting_clipboard: None,
             multi_selected_clip_ids: HashSet::new(),
             active_multicam_group_id: None,
+            active_smart_bin_id: None,
+            editing_smart_bin: None,
             toasts: Vec::new(),
             prefs_open: false,
             prev_prefs_open: false,
@@ -1351,6 +1364,7 @@ impl App {
         let multicam_group_id = project.timeline().multicam_groups.first().map(|g| g.id);
         self.select_asset(asset_id);
         self.active_multicam_group_id = multicam_group_id;
+        self.active_smart_bin_id = None;
         self.load_panel_layout_for_active_project();
         self.screen = Screen::Editor;
     }
@@ -1472,6 +1486,7 @@ impl App {
             active_sequence: 0,
             file_path: None,
             panel_layout: None,
+            smart_bins: Vec::new(),
         });
     }
 
@@ -1963,6 +1978,7 @@ impl eframe::App for App {
         self.show_youtube_download_modal(ui.ctx());
         self.show_timeline_index_panel(ui.ctx());
         self.show_silence_review_modal(ui.ctx());
+        self.show_smart_bin_modal(ui.ctx());
         self.show_toasts(ui.ctx());
     }
 

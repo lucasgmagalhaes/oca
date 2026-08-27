@@ -529,6 +529,21 @@ text_catalog! {
     MulticamGroupSynced: pt_br = "Grupo multicam sincronizado com {n} ângulos -- use as teclas 1-9 no playhead para trocar de ângulo.", en = "Multicam group synced with {n} angles -- use keys 1-9 at the playhead to switch angles.";
     MulticamNoActiveGroup: pt_br = "Nenhum grupo multicam ainda -- clique em \"Sincronizar multicam\" primeiro.", en = "No multicam group yet -- click \"Sync Multicam\" first.";
     MulticamSwitchFailed: pt_br = "Não foi possível trocar para o ângulo {n} nesta posição -- talvez essa fonte não tenha imagem aqui.", en = "Couldn't switch to angle {n} at this position -- that source may have no footage here.";
+    SmartBinAll: pt_br = "Tudo", en = "All";
+    SmartBinNew: pt_br = "+ Nova pasta", en = "+ New Bin";
+    SmartBinEditTitle: pt_br = "Pasta inteligente", en = "Smart bin";
+    SmartBinNameLabel: pt_br = "Nome", en = "Name";
+    SmartBinKindLabel: pt_br = "Tipo", en = "Type";
+    SmartBinKindAny: pt_br = "Qualquer", en = "Any";
+    SmartBinKindVideo: pt_br = "Vídeo", en = "Video";
+    SmartBinKindAudio: pt_br = "Áudio", en = "Audio";
+    SmartBinNameContainsLabel: pt_br = "Nome do arquivo contém", en = "File name contains";
+    SmartBinAudioLabel: pt_br = "Tem áudio", en = "Has audio";
+    SmartBinAudioAny: pt_br = "Tanto faz", en = "Either";
+    SmartBinAudioYes: pt_br = "Sim", en = "Yes";
+    SmartBinAudioNo: pt_br = "Não", en = "No";
+    SmartBinSave: pt_br = "Salvar", en = "Save";
+    SmartBinDelete: pt_br = "Excluir", en = "Delete";
 }
 
 /// The breadcrumb's title for `screen` (e.g. `Screen::Queue` -> "Fila de exportação" — longer
