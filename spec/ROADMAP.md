@@ -16,10 +16,12 @@ These undermine trust in *everything* built on top — an editor without undo is
 from losing work, and dragging without snap makes frame-precise cuts tedious for every future
 feature that touches the timeline.
 
-1. `[ ]` **Undo/redo.** No command-history/undo-stack exists anywhere (`matrix/
-   timeline-and-editing.md`). Needs a real command/mutation log over `Project`/`Timeline`
-   mutations — natural pairing with P1's dirty-flag mutation pipeline if that lands first
-   (same mutation-classification point could feed both).
+1. `[~]` **Undo/redo.** Core primitive done — `core::undo::UndoStack`, snapshot-based on
+   `Sequence` (real, unit tested, see [architecture/undo-redo.md](architecture/undo-redo.md)
+   for the design and exactly what's left). Not yet wired to `ui` — no call site pushes a
+   snapshot yet, no key binding, no toolbar button. **Not verified against a real build**
+   (no GStreamer in this dev sandbox) — run `cargo test -p core --test undo_test` on a machine
+   that can build `core` before trusting it beyond code review.
 2. `[ ]` **Magnetic snap** while dragging (playhead, other clip edges, markers). Blocks D5
    (beat-aligned snap, P3) — build the general mechanism first, D5 extends it.
 

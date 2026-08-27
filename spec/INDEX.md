@@ -36,6 +36,7 @@ spec/
 └── architecture/                     ← HOW to build it (principles, not per-feature status)
     ├── differentiators.md            (D1-D7: the proposed differentiator feature specs)
     ├── performance-and-caching.md    (dirty flags, versioned cache, hot-path rules — from nimble)
+    ├── undo-redo.md                  (P0 item 1: what's done, what's left, why per-sequence)
     └── rules-and-dod.md              (full text behind RULES.md's summary)
 ```
 
