@@ -89,6 +89,9 @@ criterion = "0.8.2"
 # Only for persistence_test.rs's defaulting test: hand-edits a decoded MessagePack map the
 # same way the previous JSON test hand-edited a serde_json::Value.
 rmpv = "1"
+# Only for persistence_test.rs's decompression-bomb-cap test: builds a raw gzip stream by hand
+# (bypassing to_ocproj_bytes) so the test can assert on the framing internals directly.
+flate2 = "1"
 
 [[bench]]
 name = "parsing"
