@@ -1697,6 +1697,42 @@ fn shape_clip_properties(
         changed = true;
     }
 
+    // Center position keyframes -- animate a pan/reveal over the shape's own on-timeline
+    // duration, overriding center_x/center_y above when non-empty (see
+    // ShapeClip::center_x_keyframes' doc comment).
+    let mut new_center_x_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropShapePosXKeyframes.tr(locale),
+        Text::ShapePositionKeyframesExportNote.tr(locale),
+        |ui| {
+            new_center_x_keyframes =
+                f32_keyframe_editor(ui, &sc.center_x_keyframes, 0.0..=1.0, 0.5, locale);
+            new_center_x_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_center_x_keyframes {
+            sc.center_x_keyframes = kfs;
+            changed = true;
+        }
+    }
+    let mut new_center_y_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropShapePosYKeyframes.tr(locale),
+        Text::ShapePositionKeyframesExportNote.tr(locale),
+        |ui| {
+            new_center_y_keyframes =
+                f32_keyframe_editor(ui, &sc.center_y_keyframes, 0.0..=1.0, 0.5, locale);
+            new_center_y_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_center_y_keyframes {
+            sc.center_y_keyframes = kfs;
+            changed = true;
+        }
+    }
+
     // Size
     ui.label(
         RichText::new(Text::PropShapeWidth.tr(locale))
