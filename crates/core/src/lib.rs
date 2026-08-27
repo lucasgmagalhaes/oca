@@ -42,6 +42,7 @@ pub mod probe;
 pub mod project;
 pub mod proxy;
 pub mod render;
+pub mod scene_detection;
 pub mod scopes;
 pub mod shape_render;
 pub mod silence_detection;
@@ -89,6 +90,7 @@ pub use render::{
     resolve_shape_segments, resolve_text_segments, resolve_timeline_segments,
     resolve_timeline_segments_multi, RenderError, RenderOutcome, TextSegment,
 };
+pub use scene_detection::{detect_scene_cuts, SceneCut, DEFAULT_SCENE_CUT_THRESHOLD};
 pub use scopes::{luma_waveform_rgba, vectorscope_rgba};
 pub use shape_render::{build_shape_filter_desc, point_in_polygon, ShapeRenderInput};
 pub use silence_detection::{

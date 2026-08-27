@@ -187,6 +187,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
     let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
     let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
+    let (scene_cut_detection_tx, scene_cut_detection_rx) = mpsc::unbounded_channel();
     let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
     let (tts_tx, tts_rx) = mpsc::unbounded_channel();
     let (youtube_download_tx, youtube_download_rx) = mpsc::unbounded_channel();
@@ -241,6 +242,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         motion_tracking_tx,
         motion_tracking_rx,
         motion_tracking_clip_id: None,
+        scene_cut_detection_tx,
+        scene_cut_detection_rx,
+        scene_cut_detection_clip_id: None,
         motion_track_center_x: 0.5,
         motion_track_center_y: 0.5,
         motion_track_width: 0.2,
@@ -5377,5 +5381,108 @@ fn import_collab_bundle_toasts_on_failure_instead_of_panicking() {
     app.import_collab_bundle(missing_zip, dest_project_path);
 
     assert!(app.projects.is_empty());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn apply_detected_scene_cuts_adds_numbered_chapter_markers_at_timeline_coordinates() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 100.0, 5.0, 15.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.locale = Locale::En;
+
+    app.apply_detected_scene_cuts(
+        1,
+        vec![
+            avcore::SceneCut {
+                at_secs: 8.0,
+                score: 0.5,
+            },
+            avcore::SceneCut {
+                at_secs: 12.0,
+                score: 0.6,
+            },
+        ],
+    );
+
+    let markers = app.active_project().timeline().markers_sorted();
+    assert_eq!(markers.len(), 2);
+    assert_eq!(markers[0].position_secs, 103.0);
+    assert_eq!(markers[0].label, "Chapter 1");
+    assert_eq!(markers[0].kind, avcore::MarkerKind::Chapter);
+    assert_eq!(markers[1].position_secs, 107.0);
+    assert_eq!(markers[1].label, "Chapter 2");
+}
+
+#[test]
+fn apply_detected_scene_cuts_numbering_continues_from_existing_chapters() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.locale = Locale::En;
+    app.active_project_mut()
+        .timeline_mut()
+        .add_marker(1.0, avcore::MarkerKind::Chapter);
+
+    app.apply_detected_scene_cuts(
+        1,
+        vec![avcore::SceneCut {
+            at_secs: 5.0,
+            score: 0.5,
+        }],
+    );
+
+    let markers = app.active_project().timeline().markers_sorted();
+    let new_marker = markers.iter().find(|m| m.position_secs == 5.0).unwrap();
+    assert_eq!(new_marker.label, "Chapter 2");
+}
+
+#[test]
+fn apply_detected_scene_cuts_is_a_no_op_for_an_unknown_clip() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.apply_detected_scene_cuts(
+        404,
+        vec![avcore::SceneCut {
+            at_secs: 1.0,
+            score: 0.5,
+        }],
+    );
+
+    assert!(app.active_project().timeline().markers.is_empty());
+}
+
+#[test]
+fn export_chapters_txt_writes_sorted_timecode_lines() {
+    let dir = std::env::temp_dir().join("oca_app_export_chapters_test");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let output_path = dir.join("chapters.txt");
+
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let timeline = app.active_project_mut().timeline_mut();
+    let later_id = timeline.add_marker(65.0, avcore::MarkerKind::Chapter);
+    timeline.marker_mut(later_id).unwrap().label = "Boss fight".to_string();
+    let earlier_id = timeline.add_marker(0.0, avcore::MarkerKind::Chapter);
+    timeline.marker_mut(earlier_id).unwrap().label = "Intro".to_string();
+    // A non-Chapter marker should never show up in the export.
+    timeline.add_marker(30.0, avcore::MarkerKind::Standard);
+
+    app.export_chapters_txt(output_path.clone());
+
+    let contents = std::fs::read_to_string(&output_path).unwrap();
+    assert_eq!(contents, "0:00 Intro\n1:05 Boss fight\n");
+}
+
+#[test]
+fn export_chapters_txt_toasts_instead_of_writing_when_no_chapters_exist() {
+    let dir = std::env::temp_dir().join("oca_app_export_chapters_test_empty");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let output_path = dir.join("chapters.txt");
+
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.export_chapters_txt(output_path.clone());
+
+    assert!(!output_path.exists());
     assert_eq!(app.toasts.len(), 1);
 }

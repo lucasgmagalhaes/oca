@@ -23,6 +23,16 @@ sub-sections).
       preview/export layout.
 - [x] Standalone `.srt` export (`avcore::export_srt`) — separate from the embedded-overlay
       subtitle path, which happens on every export regardless.
+- [x] **Scene-cut detection for chapter markers** (D4, `architecture/differentiators.md`,
+      `ROADMAP.md` P3 item 15) — no ML, same "no ML" family as motion tracking: mean absolute
+      luma difference between consecutive sampled frames (`avcore::detect_scene_cuts`), reusing
+      `motion_tracking::rgba_to_gray` for the grayscale conversion rather than a second copy.
+      Sampling itself reuses `avcore::FrameSampler`, same primitive motion tracking's own
+      background thread already uses (`spec/architecture/performance-and-caching.md` §5).
+      Detected cuts become non-destructive `MarkerKind::Chapter` markers (P2 item 9) rather than
+      a separate review modal — the existing Timeline Index panel's rename/delete already is the
+      review step. A plain-text `H:MM:SS Label` chapter-list export (YouTube's own format) is a
+      thin filter over the marker list.
 
 ## Known gaps
 

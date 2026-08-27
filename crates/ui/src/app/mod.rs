@@ -47,6 +47,7 @@ mod markers;
 mod modals;
 mod motion_tracking;
 mod preview;
+mod scene_detection;
 mod silence_review;
 mod sound_library;
 mod telemetry;
@@ -570,6 +571,15 @@ enum MotionTrackEvent {
     },
 }
 
+/// A message from a background scene-cut-detection worker thread (see
+/// [`App::spawn_detect_scene_cuts_for_selected_clip`]) back to the UI thread.
+enum SceneCutEvent {
+    Done {
+        clip_id: u64,
+        cuts: Vec<avcore::SceneCut>,
+    },
+}
+
 /// A message from a background AI-background-removal matte-generation worker thread (see
 /// [`App::spawn_generate_matte_for_selected_clip`]) back to the UI thread.
 enum MatteGenerationEvent {
@@ -815,6 +825,11 @@ pub struct App {
     /// The timeline clip id a background motion-tracking run is currently tracking, if any —
     /// only one runs at a time, same shape as `auto_reframing_clip_id`.
     pub motion_tracking_clip_id: Option<u64>,
+    scene_cut_detection_tx: UnboundedSender<SceneCutEvent>,
+    scene_cut_detection_rx: UnboundedReceiver<SceneCutEvent>,
+    /// The timeline clip id a background scene-cut-detection run (D4) is currently scanning, if
+    /// any — only one runs at a time, same shape as `motion_tracking_clip_id`.
+    pub scene_cut_detection_clip_id: Option<u64>,
     /// The tracked region's center, as a `0.0..=1.0` fraction of the *source* frame (same
     /// convention as `avcore::track_region`'s `initial_center_x_frac`/`_y`, not canvas/layer
     /// space) — user-editable via the properties panel's region controls next to the "Rastrear
@@ -1087,6 +1102,7 @@ impl App {
         let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
         let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
         let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
+        let (scene_cut_detection_tx, scene_cut_detection_rx) = mpsc::unbounded_channel();
         let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
         let (tts_tx, tts_rx) = mpsc::unbounded_channel();
         let (youtube_download_tx, youtube_download_rx) = mpsc::unbounded_channel();
@@ -1147,6 +1163,9 @@ impl App {
             motion_tracking_tx,
             motion_tracking_rx,
             motion_tracking_clip_id: None,
+            scene_cut_detection_tx,
+            scene_cut_detection_rx,
+            scene_cut_detection_clip_id: None,
             motion_track_center_x: 0.5,
             motion_track_center_y: 0.5,
             motion_track_width: 0.2,
@@ -1862,6 +1881,7 @@ impl eframe::App for App {
         self.pump_transcribe();
         self.pump_auto_reframe();
         self.pump_motion_tracking();
+        self.pump_scene_cut_detection();
         self.pump_matte_generation();
         self.pump_text_to_speech();
         self.pump_youtube_download();

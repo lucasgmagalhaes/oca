@@ -418,6 +418,12 @@ text_catalog! {
     ExportCollabBundle: pt_br = "📦 Exportar pacote de colaboração...", en = "📦 Export Collaboration Bundle...";
     ImportCollabBundle: pt_br = "📦 Importar pacote de colaboração...", en = "📦 Import Collaboration Bundle...";
     CollabBundleExported: pt_br = "Pacote de colaboração exportado.", en = "Collaboration bundle exported.";
+    DetectChapters: pt_br = "🎬 Detectar capítulos", en = "🎬 Detect Chapters";
+    SceneCutDetectionNone: pt_br = "Nenhum corte de cena detectado.", en = "No scene cuts detected.";
+    ChapterDefaultLabel: pt_br = "Capítulo {n}", en = "Chapter {n}";
+    ExportChapters: pt_br = "Exportar capítulos (.txt)", en = "Export chapters (.txt)";
+    ExportChaptersNone: pt_br = "Nenhum marcador de capítulo para exportar.", en = "No chapter markers to export.";
+    ExportChaptersDone: pt_br = "Capítulos exportados.", en = "Chapters exported.";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
     ExportLoudnessLabel: pt_br = "Loudness:", en = "Loudness:";
     ExportLoudnessCustom: pt_br = "{value} LUFS (personalizado)", en = "{value} LUFS (custom)";
