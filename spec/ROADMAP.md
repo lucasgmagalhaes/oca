@@ -353,6 +353,31 @@ not by default priority.
     Audio, file-name-contains text, has-audio Either/Yes/No, Save/Cancel/Delete). Verified via a
     real-execution scratch crate (same ONNX-link-gap workaround as multicam) — 5 passing tests on
     `SmartBin::matches`.
+27. `[ ]` Clip/track color labels — `matrix/competitor-parity.md`'s 2026-08-27 update. Present
+    in Premiere (clip), DaVinci Resolve (clip *and* track), FCP (clip). The cheapest gap in
+    that update: pure data (`color_label` field) + timeline-widget rendering, no `avbridge`/
+    GStreamer work — same cost tier as `Marker`/`SmartBin`, both already shipped.
+28. `[ ]` Detach/unlink audio from a clip (the mechanical precondition for J-cuts/L-cuts) —
+    `matrix/competitor-parity.md`. oca already supports independent audio-only clips on
+    separate tracks; the gap is specifically the one-click "mute the video clip's own audio,
+    place a synced audio-only clip on an Audio track" action. Reuses existing muting/track/
+    clip-creation primitives, no new render/preview pipeline work.
+29. `[ ]` Speed ramping — keyframed `speed_factor` instead of one constant per clip —
+    `matrix/competitor-parity.md`. Present in CapCut (curve editor), Premiere, DaVinci, FCP.
+    Reuses the existing `Keyframe<T>` infrastructure already backing position/scale/rotation/
+    opacity rather than a new animation system; needs an export-side `setpts` expression
+    driven by the curve and a preview pad-probe mirroring the existing scale-keyframe one.
+30. `[ ]` Real-time audio level meter (VU/peak) during playback — `matrix/competitor-parity.md`.
+    Present in Premiere (VU meters) and DaVinci (Fairlight LUFS/peak meter). Needs a pad probe
+    on the preview audio path (same pattern as the existing keyframe pad-probes, reading
+    instead of writing) plus a small meter widget in the Editor's preview panel — no ML, no
+    new avfilter/GStreamer element.
+
+Found but deliberately not added as a P4 item: **nested sequences / compound clips** (Premiere/
+DaVinci/FCP) — closer to Multicam's own tier of effort than to the four above (the render/
+preview pipeline would need to recurse into a sub-timeline resolved as one clip, not a bolt-on
+field). See `matrix/competitor-parity.md` for the full note — worth its own scoping pass if
+ever prioritized, not proposed here as a small item.
 
 ## P5 — Explicitly Deferred
 

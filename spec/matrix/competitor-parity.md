@@ -53,6 +53,66 @@ Sources: [CapCut Desktop Review 2026](https://bigvu.tv/blog/capcut-online-deskto
       matters; low priority otherwise. → `ROADMAP.md` P5 (deferred, same tier as voice-clone
       TTS — needs its own asset format).
 
+## New gaps found (2026-08-27 update — lower cost than the P5 tier)
+
+A second pass, prompted by "what's left that's cheaper than voice-clone TTS/render-farm/MOGRT-
+templates/real-time-AI-masking." Sources: [DaVinci Resolve free-tier feature rundown](https://electronics.alibaba.com/question/davinci-resolve-free-what-you-can-(and-can%E2%80%99t)-do-in-2026),
+[nested sequences vs. compound clips across Premiere/Resolve/FCP](https://www.steakunderwater.com/VFXPedia/__man/Resolve18-6/DaVinciResolve18_Manual_files/part1331.htm),
+[CapCut's curve-based speed ramp](https://www.capcut.com/tools/speed-ramp),
+[J-cut/L-cut split edits across Premiere/Resolve/FCP](https://www.miracamp.com/learn/video-editing/j-cuts-and-l-cuts),
+[detach/unlink audio across Resolve/FCP/Premiere](https://www.hollyland.com/blog/tips/unlink-audio-and-video-in-davinci-resolve),
+[clip/track color labels across Premiere/Resolve/FCP](https://www.tella.com/definition/clip-color-coding),
+[Premiere's audio VU meters](https://www.premiumbeat.com/blog/audio-meters-premiere-pro/),
+[Resolve's Fairlight loudness meter](https://blog.prosoundeffects.com/advanced-audio-editing-in-davinci-resolve).
+
+- [ ] **Clip/track color labels.** Assign a color to a clip or track for at-a-glance
+      organization — Premiere (clip labels), DaVinci Resolve (both clip *and* track color,
+      called out by users as something Premiere still lacks for tracks), Final Cut Pro (clip
+      labels via right-click). The cheapest gap found: no new algorithm, no `avbridge`/
+      GStreamer work — a `color_label: Option<[u8; 3]>` field on `Track`/`ClipInstance` plus a
+      colored tag/strip in the timeline widget. Same cost tier as `Marker`/`SmartBin`, both
+      already shipped this way.
+- [ ] **Detach/unlink audio from a clip** (the mechanical precondition for J-cuts/L-cuts —
+      split edits where audio and video change at different points, present in Premiere/
+      Resolve/FCP). oca already supports independent audio-only clips on separate `Audio`
+      tracks with their own trim range (used for mic/music/multicam), so the missing piece is
+      specifically the one-click action: given a video clip's own embedded audio, mute the
+      original (`gain_db` already supports this) and place a synced audio-only clip on an
+      `Audio` track pointing at the same asset — both then independently trimmable, same as
+      every surveyed editor's version of this. Reuses existing track/clip-creation and muting
+      primitives; no new render/preview pipeline work, since per-track independent clips
+      already mix correctly (`resolve_audio_segments`).
+- [ ] **Speed ramping (keyframed speed, not just a constant per clip).** `ClipInstance::
+      speed_factor` is a single `f32` today — no ramp within one clip (e.g. slow-mo easing
+      into normal speed), which CapCut (curve-based speed editor), Premiere, DaVinci, and FCP
+      all have in some form. A real, bounded gap: reuses the *existing* `Keyframe<T>`
+      infrastructure already backing position/scale/rotation/opacity (piecewise-linear
+      interpolation, `crate::keyframe::evaluate_keyframes`) rather than inventing a new
+      animation system — `speed_keyframes: Vec<Keyframe<f32>>` alongside the others, an export-
+      side `setpts` expression driven by the keyframe curve instead of a constant, and a preview
+      pad-probe mirroring `build_video_filter_bin`'s existing scale-keyframe `zoom_crop` probe
+      (same PTS-based re-evaluation-per-buffer technique, already proven in this codebase).
+- [ ] **Real-time audio level meter (VU/peak) during playback.** Live per-channel level display
+      while scrubbing/playing, not just the after-the-fact `LoudnessMetrics` this codebase
+      already computes at import/export time — Premiere's classic VU meters and DaVinci's
+      Fairlight LUFS/peak meter both do this live. Would need a pad probe on the preview
+      audio path sampling RMS/peak per buffer (conceptually the same pattern already used for
+      keyframe pad-probes, just reading instead of writing) plus a small meter widget in the
+      Editor's preview panel. Moderate, bounded cost — no ML, no new avfilter/GStreamer
+      element, no new file format.
+
+**Found but not included here** — bigger than the four above, closer to Multicam's own tier of
+effort than to Smart Bins': **nested sequences / compound clips** (Premiere, DaVinci, and FCP
+via its own compound-clip model all let a group of clips be edited as one sub-timeline, then
+dropped onto a parent timeline as a single clip — DaVinci's own manual describes this as
+functionally the same feature across all three, just named differently). oca's existing
+"composite blocks" (`matrix/timeline-and-editing.md`) group clips that move/trim/delete
+together but don't give the group its own independently-editable internal timeline or let it be
+dropped in as one clip elsewhere — a real gap, but closing it means the render/preview pipeline
+recursing into a sub-timeline resolved as if it were one clip, not a bolt-on field. Worth its
+own scoping pass if it's ever prioritized, same as Multicam was — not proposed as a small item
+here.
+
 ## Validates existing plans (found independently, matches what's already queued)
 
 - CapCut's "Long Video to Shorts" AI clip-suggestion feature is functionally the same idea as
