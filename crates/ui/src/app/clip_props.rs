@@ -317,6 +317,46 @@ impl App {
         self.with_selected_clip_mut(|clip| clip.gain_keyframes = keyframes);
     }
 
+    /// Replaces `selected_clip_id`'s brightness keyframes
+    /// ([`avcore::timeline::ClipInstance::brightness_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_position_keyframes`]. Values are clamped to
+    /// [`BRIGHTNESS_RANGE`], matching the constant `brightness` slider this overrides when
+    /// non-empty.
+    pub fn set_selected_clip_brightness_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf
+                .value
+                .clamp(*BRIGHTNESS_RANGE.start(), *BRIGHTNESS_RANGE.end());
+        }
+        self.with_selected_clip_mut(|clip| clip.brightness_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s contrast keyframes
+    /// ([`avcore::timeline::ClipInstance::contrast_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_position_keyframes`]. Values are clamped to
+    /// [`CONTRAST_RANGE`].
+    pub fn set_selected_clip_contrast_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf
+                .value
+                .clamp(*CONTRAST_RANGE.start(), *CONTRAST_RANGE.end());
+        }
+        self.with_selected_clip_mut(|clip| clip.contrast_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s saturation keyframes
+    /// ([`avcore::timeline::ClipInstance::saturation_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_position_keyframes`]. Values are clamped to
+    /// [`SATURATION_RANGE`].
+    pub fn set_selected_clip_saturation_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf
+                .value
+                .clamp(*SATURATION_RANGE.start(), *SATURATION_RANGE.end());
+        }
+        self.with_selected_clip_mut(|clip| clip.saturation_keyframes = keyframes);
+    }
+
     /// Adds one opacity keyframe at the current timeline playhead position, for the selected
     /// clip — what `Ctrl+O` (`request.md`'s Fase 6 key binding spec, "adicionar marcador de
     /// opacidade") does. The new marker's value is the clip's own current effective opacity at
