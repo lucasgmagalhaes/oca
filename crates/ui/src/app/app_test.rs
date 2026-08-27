@@ -827,6 +827,35 @@ fn queued_job_keeps_the_sequence_export_snapshot_after_settings_change() {
 }
 
 #[test]
+fn apply_platform_export_preset_sets_both_aspect_ratio_and_loudness_target() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    // Starts on defaults distinct from every preset's own settings, so this test can't pass by
+    // coincidence.
+    app.set_active_sequence_export_aspect_ratio(avcore::ExportAspectRatio::Landscape);
+    app.set_active_sequence_target_lufs(-23.0);
+
+    app.apply_platform_export_preset(avcore::PlatformExportPreset::TikTok);
+
+    let settings = app.active_sequence_export_settings();
+    assert_eq!(settings.aspect_ratio, avcore::ExportAspectRatio::Portrait);
+    assert_eq!(settings.target_lufs, -14.0);
+}
+
+#[test]
+fn apply_platform_export_preset_leaves_the_pickers_free_to_fine_tune_afterward() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.apply_platform_export_preset(avcore::PlatformExportPreset::InstagramReels);
+    app.set_active_sequence_export_aspect_ratio(avcore::ExportAspectRatio::Square);
+
+    assert_eq!(
+        app.active_sequence_export_settings().aspect_ratio,
+        avcore::ExportAspectRatio::Square,
+        "a manual pick after a preset must still take effect, not be locked by the preset"
+    );
+}
+
+#[test]
 fn cancel_export_job_removes_a_job_that_has_not_started_rendering() {
     let mut app = test_app(
         vec![test_project(1, Vec::new())],
