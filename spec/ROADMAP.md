@@ -158,7 +158,20 @@ not novel guesses — see `matrix/competitor-parity.md`.
     (export → import, including a fake proxy file surviving intact and resolving to a *new* path
     under the recipient's own cache dir) is covered by `core`'s integration tests and mirrored at
     the `App` level in `ui`.
-15. `[ ]` **D4 — automatic chapter markers from scene cuts.** Medium effort.
+15. `[x]` **D4 — automatic chapter markers from scene cuts** (`architecture/differentiators.md`).
+    `avcore::scene_detection::detect_scene_cuts` scores consecutive sampled-frame pairs by mean
+    absolute luma difference (reuses `motion_tracking::rgba_to_gray` for grayscale conversion,
+    `avcore::FrameSampler` for sampling — same primitives motion tracking's own background
+    thread already uses, not a new decode pass). Detected cuts become non-destructive
+    `MarkerKind::Chapter` markers (P2 item 9) rather than a separate accept/reject modal — the
+    existing Timeline Index panel's rename/delete already is the review step, since a marker
+    (unlike D1's ripple-delete) never mutates the timeline itself. `ui`: Editor toolbar's
+    "Detect Chapters" button (background thread, mirrors `motion_tracking.rs`'s split exactly)
+    and "Export chapters (.txt)" (plain-text `H:MM:SS Label` list, YouTube's own chapter
+    format). Verified the same way as D1/D7 above (`cargo check --workspace --all-targets` via
+    the temporary local FFmpeg shim); `core`'s frame-diff scoring and every `App`-level chapter
+    method are unit tested, but the actual FrameSampler-driven background thread isn't run
+    against real video in this sandbox.
 16. `[ ]` **D5 — beat-aligned cut snapping.** Medium effort. Depends on P0 item 2 (general
     snap mechanism).
 17. `[ ]` **D2 — highlight detection from audio spikes.** High effort. Unblocks D6.
