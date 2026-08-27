@@ -29,6 +29,7 @@ pub mod auto_reframe;
 pub mod background_removal;
 pub mod bundle;
 pub mod export;
+pub mod frame_sampler;
 pub mod keyframe;
 pub mod loudness;
 pub mod media;
@@ -63,6 +64,7 @@ pub use bundle::{
     validate_bundled_resources, BundledResource, MissingBundleResources,
 };
 pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus};
+pub use frame_sampler::FrameSampler;
 pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
