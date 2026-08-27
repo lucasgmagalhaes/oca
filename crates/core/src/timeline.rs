@@ -32,6 +32,24 @@ pub enum TrackKind {
     Shape,
 }
 
+/// What kind of audio source a [`Track`] carries — user-set metadata (a track header picker),
+/// not inferred. `Video`/`Audio` tracks both carry real audio (a video capture's own embedded
+/// game audio counts) and both can be tagged; `Text`/`Shape` tracks stay `Unspecified` since
+/// they never carry audio at all. Exists so a feature that needs to reason about *which* track
+/// is which audio source — D2 (`spec/architecture/differentiators.md`, highlight detection
+/// needs to correlate simultaneous game-audio + mic spikes) and, later, multicam sync — has an
+/// actual answer instead of guessing from track order or name. `#[default]` `Unspecified` so an
+/// untagged/older-saved project's tracks are simply invisible to those features rather than
+/// misclassified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum AudioRole {
+    #[default]
+    Unspecified,
+    GameAudio,
+    Mic,
+    Music,
+}
+
 /// Bundled font family used by a [`TextClip`]. Every family is shipped with oca under the
 /// SIL Open Font License, so projects render identically even when the host has no fonts
 /// installed. The actual font bytes are parsed lazily by [`crate::text_metrics`].
@@ -1187,6 +1205,11 @@ pub struct Track {
     /// deserializes as `true` via the serde default so existing projects are unaffected.
     #[serde(default = "default_true")]
     pub visible: bool,
+    /// Which audio source this track carries, if the user has said — see [`AudioRole`].
+    /// `#[serde(default)]` so a project saved before this field existed loads with every track
+    /// `Unspecified`, same as a never-tagged track in a new project.
+    #[serde(default)]
+    pub audio_role: AudioRole,
 }
 
 impl Track {

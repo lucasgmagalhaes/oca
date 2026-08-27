@@ -14,8 +14,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use avcore::timeline::{
-    ClipInstance, ColorFilter, MarkerKind, MaskShape, ShapeClip, ShapeKind, Timeline, Track,
-    TrackKind, TransitionType,
+    AudioRole, ClipInstance, ColorFilter, MarkerKind, MaskShape, ShapeClip, ShapeKind, Timeline,
+    Track, TrackKind, TransitionType,
 };
 use avcore::ClipFormatting;
 use avcore::{Keyframe, Position};
@@ -347,6 +347,7 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
                 shape_clips: vec![],
 
                 visible: true,
+                audio_role: AudioRole::Unspecified,
             },
             Track {
                 id: 2,
@@ -359,6 +360,7 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
                 shape_clips: vec![],
 
                 visible: true,
+                audio_role: AudioRole::Unspecified,
             },
         ],
         playhead_secs: 0.0,
@@ -379,6 +381,7 @@ fn track_with(clips: Vec<ClipInstance>) -> Track {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
     }
 }
 
@@ -1032,6 +1035,7 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
         },
         Track {
             id: 2,
@@ -1043,6 +1047,7 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
         },
     ]);
 
@@ -1066,6 +1071,7 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
         },
         Track {
             id: 2,
@@ -1077,6 +1083,7 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
         },
     ]);
 
@@ -1099,6 +1106,7 @@ fn move_clip_to_track_is_a_no_op_for_an_unknown_target_track() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
     }]);
 
     let moved = timeline.move_clip_to_track(1, 99, 5.0);
@@ -1120,6 +1128,7 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
         },
         Track {
             id: 2,
@@ -1131,6 +1140,7 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
         },
     ]);
 
@@ -1244,6 +1254,7 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
         },
         Track {
             id: 2,
@@ -1255,6 +1266,7 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
         },
     ]);
 
@@ -1277,6 +1289,7 @@ fn timeline_clip_mut_returns_none_for_an_unknown_id() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
     }]);
 
     assert!(timeline.clip_mut(99).is_none());

@@ -21,8 +21,8 @@ use avcore::persistence::{
     to_ocproj_bytes, to_ocqueue_bytes, PersistError,
 };
 use avcore::timeline::{
-    ClipInstance, ColorFilter, MaskShape, TextClip, TextFontFamily, TextFontStyle, Timeline, Track,
-    TrackKind, TransitionType,
+    AudioRole, ClipInstance, ColorFilter, MaskShape, TextClip, TextFontFamily, TextFontStyle,
+    Timeline, Track, TrackKind, TransitionType,
 };
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency, Sequence, TextSegment};
 
@@ -138,6 +138,7 @@ fn fixture_project() -> Project {
                     shape_clips: vec![],
 
                     visible: true,
+                    audio_role: AudioRole::Unspecified,
                 }],
                 markers: Vec::new(),
             },
@@ -199,6 +200,7 @@ fn project_with_styled_text() -> Project {
         }],
         shape_clips: vec![],
         visible: true,
+        audio_role: AudioRole::Unspecified,
     });
     project
 }

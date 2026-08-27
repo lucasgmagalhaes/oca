@@ -28,7 +28,7 @@ use avcore::render::{
     render_export_job_multi, resolve_audio_segments, resolve_timeline_segments_multi, RenderOutcome,
 };
 use avcore::timeline::{
-    ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
+    AudioRole, ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
 };
 use avcore::GpuEncoderPreference;
 use avcore::{probe_media, MediaAsset};
@@ -116,6 +116,7 @@ fn track(id: u64, name: &str, clips: Vec<ClipInstance>) -> Track {
         text_clips: vec![],
         shape_clips: vec![],
         visible: true,
+        audio_role: AudioRole::Unspecified,
     }
 }
 
@@ -240,6 +241,7 @@ fn resolve_audio_segments_includes_background_and_additional_audio_tracks() {
         text_clips: vec![],
         shape_clips: vec![],
         visible: true,
+        audio_role: AudioRole::Unspecified,
     };
     let sequence = sequence_with(vec![background, audio_track]);
 
@@ -275,6 +277,7 @@ fn resolve_audio_segments_ignores_hidden_audio_tracks() {
         text_clips: vec![],
         shape_clips: vec![],
         visible: false,
+        audio_role: AudioRole::Unspecified,
     };
     let sequence = sequence_with(vec![background, hidden_audio]);
 
