@@ -523,6 +523,9 @@ text_catalog! {
     PropShapeColor: pt_br = "Cor", en = "Color";
     PropShapePosX: pt_br = "Posição X", en = "Position X";
     PropShapePosY: pt_br = "Posição Y", en = "Position Y";
+    PropShapePosXKeyframes: pt_br = "Posição X (keyframes)", en = "Position X (keyframes)";
+    PropShapePosYKeyframes: pt_br = "Posição Y (keyframes)", en = "Position Y (keyframes)";
+    ShapePositionKeyframesExportNote: pt_br = "quando definido, substitui a posição constante desse eixo na exportação (recorte/panorâmica animados) — sem efeito no preview ao vivo.", en = "when set, overrides this axis's constant position on export (animated pan/reveal) — no live preview effect.";
     PropShapeWidth: pt_br = "Largura", en = "Width";
     PropShapeHeight: pt_br = "Altura", en = "Height";
     PropShapeRotation: pt_br = "Rotação", en = "Rotation";

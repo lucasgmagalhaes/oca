@@ -44,6 +44,7 @@
 //! test) is additionally unit tested as pure Rust math, which the generated expression string
 //! is built to mirror term-for-term.
 
+use crate::keyframe::{self, Keyframe};
 use crate::timeline::ShapeKind;
 
 /// Everything [`build_shape_filter_desc`] needs about one shape instance, decoupled from
@@ -54,6 +55,16 @@ pub struct ShapeRenderInput<'a> {
     /// Center, as a `0.0..=1.0` fraction of canvas width/height.
     pub center_x: f32,
     pub center_y: f32,
+    /// General keyframe animation for this shape's center position over its own on-timeline
+    /// duration, per the keyframe-expansion gap found while surveying what else the existing
+    /// keyframe system could drive (`spec/ROADMAP.md` P4 item 34) — independently overriding
+    /// `center_x`/`center_y` above when non-empty, same "keyframes win when present" relationship
+    /// every other keyframe field in this codebase already has with its own constant. Built into
+    /// a `T`-keyed expression via [`keyframe::shape_axis_expr`] — see that function's doc comment
+    /// for why `T` is offset by this shape's `start_secs` here, unlike every other keyframe
+    /// expression builder in this codebase.
+    pub center_x_keyframes: &'a [Keyframe<f32>],
+    pub center_y_keyframes: &'a [Keyframe<f32>],
     /// Size, as a `0.0..=1.0` fraction of canvas width/height.
     pub width: f32,
     pub height: f32,
@@ -80,8 +91,24 @@ const RAY_EPSILON: f64 = 1e-6;
 /// shape instance — ready to hand across the FFI boundary as [`avbridge::ShapeSegment`]'s
 /// `filter_desc`.
 pub fn build_shape_filter_desc(input: &ShapeRenderInput) -> String {
-    let cx = input.center_x as f64 * input.canvas_width as f64;
-    let cy = input.center_y as f64 * input.canvas_height as f64;
+    // `keyframe::shape_axis_expr` returns either a plain constant ("0.1234", no keyframes) or a
+    // `T`-keyed piecewise expression ("if(lt((T-...` -- either way, a fraction of canvas width/
+    // height, same unit `ShapeClip::center_x`/`center_y` already use, so it's multiplied up to
+    // pixels here exactly like the un-keyframed `input.center_x`/`center_y` used to be.
+    let cx_frac = keyframe::shape_axis_expr(
+        input.center_x_keyframes,
+        input.center_x,
+        input.start_secs,
+        input.duration_secs,
+    );
+    let cy_frac = keyframe::shape_axis_expr(
+        input.center_y_keyframes,
+        input.center_y,
+        input.start_secs,
+        input.duration_secs,
+    );
+    let cx = format!("(({cx_frac})*{})", input.canvas_width);
+    let cy = format!("(({cy_frac})*{})", input.canvas_height);
     let w_px = input.width as f64 * input.canvas_width as f64;
     let h_px = input.height as f64 * input.canvas_height as f64;
     let angle = (input.rotation_deg as f64).to_radians();
@@ -89,8 +116,8 @@ pub fn build_shape_filter_desc(input: &ShapeRenderInput) -> String {
 
     // Pixel coordinate (X,Y), rotated by -angle around the shape's center — so RX/RY are the
     // pixel's position in the shape's own unrotated local frame, in pixels relative to center.
-    let rx = format!("((X-{cx:.4})*{cos_a:.6}+(Y-{cy:.4})*{sin_a:.6})");
-    let ry = format!("(-(X-{cx:.4})*{sin_a:.6}+(Y-{cy:.4})*{cos_a:.6})");
+    let rx = format!("((X-{cx})*{cos_a:.6}+(Y-{cy})*{sin_a:.6})");
+    let ry = format!("(-(X-{cx})*{sin_a:.6}+(Y-{cy})*{cos_a:.6})");
 
     let outer = inside_expr(input.shape_kind, &rx, &ry, w_px, h_px);
     let inside = if input.stroke_thickness_px > 0.0 {

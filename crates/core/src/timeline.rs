@@ -284,6 +284,25 @@ pub struct ShapeClip {
     /// Center, as a `0.0..=1.0` fraction of canvas width/height.
     pub center_x: f32,
     pub center_y: f32,
+    /// General keyframe animation for this shape's center position over its own on-timeline
+    /// duration, per the keyframe-expansion gap found while surveying what else the existing
+    /// keyframe system could drive (`spec/ROADMAP.md` P4 item 34) — the first slice of that
+    /// item to ship, since `ShapeClip`'s export path (a self-contained `geq` expression built
+    /// entirely in Rust, see `crate::shape_render`) turned out to already support a `T`-keyed
+    /// per-pixel expression without any FFI/C changes, unlike `TextClip`'s pre-rasterized-PNG
+    /// overlay approach (not yet animatable, a materially bigger restructuring — still not
+    /// done). Each field independently overrides its own constant (`center_x`/`center_y`) when
+    /// non-empty, same "keyframes win when present" relationship every other keyframe field in
+    /// this codebase already has. Width/height/rotation keyframes for shapes are also not done
+    /// yet — animating those would mean reworking `shape_render`'s per-shape-kind geometry math
+    /// (`inside_expr`) to accept expressions instead of literal half-extents, a real risk to
+    /// that already visually-verified, un-re-verifiable-in-this-sandbox code (see
+    /// `crate::shape_render`'s own doc comment) that position animation alone doesn't touch.
+    /// `#[serde(default)]` so older saved projects load with no position animation.
+    #[serde(default)]
+    pub center_x_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub center_y_keyframes: Vec<Keyframe<f32>>,
     /// Size, as a `0.0..=1.0` fraction of canvas width/height — what dragging a resize handle
     /// changes.
     pub width: f32,

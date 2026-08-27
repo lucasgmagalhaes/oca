@@ -400,6 +400,38 @@ fn crop_filter_expr_animates_only_the_keyframed_axis() {
 }
 
 #[test]
+fn shape_axis_expr_is_a_plain_constant_for_no_keyframes() {
+    assert_eq!(shape_axis_expr(&[], 0.5, 1.0, 3.0), "0.5000");
+}
+
+#[test]
+fn shape_axis_expr_is_a_plain_constant_for_a_single_keyframe() {
+    let keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.25,
+    }];
+    assert_eq!(shape_axis_expr(&keyframes, 0.5, 1.0, 3.0), "0.2500");
+}
+
+#[test]
+fn shape_axis_expr_offsets_t_by_the_shapes_start_secs_when_animated() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.1,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.9,
+        },
+    ];
+    let expr = shape_axis_expr(&keyframes, 0.5, 2.5, 3.0);
+    assert!(expr.contains("(T-2.500000)"));
+    assert!(expr.contains("if(lt((T-2.500000),"));
+    assert!(expr.contains("if(between((T-2.500000),"));
+}
+
+#[test]
 fn opacity_alpha_ramp_expr_is_none_for_no_keyframes() {
     assert_eq!(opacity_alpha_ramp_expr(&[], 30, 1, 5.0), None);
 }
