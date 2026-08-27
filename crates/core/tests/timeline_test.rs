@@ -59,6 +59,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         scale_keyframes: vec![],
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
+        gain_keyframes: vec![],
         deflicker_enabled: false,
         lut_path: String::new(),
         layer_scale_x: 1.0,
@@ -827,7 +828,57 @@ fn new_clip_defaults_to_no_keyframes() {
     assert!(c.scale_keyframes.is_empty());
     assert!(c.rotation_keyframes.is_empty());
     assert!(c.opacity_keyframes.is_empty());
+    assert!(c.gain_keyframes.is_empty());
     assert!(!c.has_scale_keyframes());
+    assert!(!c.has_gain_keyframes());
+}
+
+#[test]
+fn split_clip_at_rescales_gain_keyframes_onto_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.gain_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: -20.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.0,
+        },
+    ];
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    assert!(track.clips[0].has_gain_keyframes());
+    assert!(track.clips[1].has_gain_keyframes());
+    assert_eq!(
+        track.clips[0].gain_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: -20.0
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: -10.0
+            },
+        ]
+    );
+    assert_eq!(
+        track.clips[1].gain_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: -10.0
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: 0.0
+            },
+        ]
+    );
 }
 
 #[test]
@@ -1215,6 +1266,10 @@ fn formatting_roundtrip_preserves_all_fields() {
     c.opacity_keyframes = vec![Keyframe {
         time_fraction: 0.5,
         value: 0.6,
+    }];
+    c.gain_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: -12.0,
     }];
     c.deflicker_enabled = true;
 

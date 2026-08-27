@@ -146,6 +146,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let scale_keyframes = clip.scale_keyframes.clone();
                     let rotation_keyframes = clip.rotation_keyframes.clone();
                     let opacity_keyframes = clip.opacity_keyframes.clone();
+                    let gain_keyframes = clip.gain_keyframes.clone();
                     if components::property_section(
                         ui,
                         Text::PropGain.tr(locale),
@@ -160,6 +161,27 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         },
                     ) {
                         app.set_selected_clip_gain(gain_db);
+                    }
+
+                    let mut new_gain_keyframes = None;
+                    if components::property_section(
+                        ui,
+                        Text::PropGainKeyframes.tr(locale),
+                        Text::GainKeyframesExportNote.tr(locale),
+                        |ui| {
+                            new_gain_keyframes = f32_keyframe_editor(
+                                ui,
+                                &gain_keyframes,
+                                GAIN_DB_RANGE,
+                                0.0,
+                                locale,
+                            );
+                            new_gain_keyframes.is_some()
+                        },
+                    ) {
+                        if let Some(kfs) = new_gain_keyframes {
+                            app.set_selected_clip_gain_keyframes(kfs);
+                        }
                     }
 
                     // "Congelar" only makes sense for a video block — audio clips have no

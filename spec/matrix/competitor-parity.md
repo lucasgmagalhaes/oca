@@ -113,6 +113,25 @@ recursing into a sub-timeline resolved as if it were one clip, not a bolt-on fie
 own scoping pass if it's ever prioritized, same as Multicam was — not proposed as a small item
 here.
 
+## New gaps found (2026-08-27 update — reusing the existing `Keyframe<T>` system)
+
+Prompted by "what else can the existing keyframe infrastructure (position/scale/rotation/
+opacity, piecewise-linear, `crate::keyframe::evaluate_keyframes`) drive that it doesn't yet."
+Not competitor-survey-sourced like the sections above — an internal capability audit, confirmed
+via grep that no other `ClipInstance` property (`gain_db`, brightness/contrast/saturation, crop,
+etc.) has a keyframe variant, and that `TextClip`/`ShapeClip` have no keyframe fields at all.
+
+- [ ] **Audio gain keyframes.** `gain_db` is a single constant per clip today — no fade/ramp
+      within one clip. Every other surveyed editor supports audio volume automation/keyframes.
+      → `ROADMAP.md` P4 item 31 (in progress).
+- [ ] **Color grading keyframes.** Brightness/contrast/saturation ramping over a clip (e.g. a
+      slow color shift), not just a constant. → `ROADMAP.md` P4 item 32.
+- [ ] **Crop/pan keyframes.** `crop_x`/`crop_y`/`crop_w`/`crop_h` animated over a clip (e.g. a
+      slow reveal/pan independent of `scale_keyframes`' zoom). → `ROADMAP.md` P4 item 33.
+- [ ] **Text/shape clip animation keyframes.** `TextClip`/`ShapeClip` have zero keyframe fields
+      today (a structural gap, not a missing effect) — every surveyed editor supports animating
+      text/graphic position/scale/opacity over time. → `ROADMAP.md` P4 item 34.
+
 ## Validates existing plans (found independently, matches what's already queued)
 
 - CapCut's "Long Video to Shorts" AI clip-suggestion feature is functionally the same idea as

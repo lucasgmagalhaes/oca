@@ -299,6 +299,47 @@ pub fn rotation_filter_angle_expr(
     ))
 }
 
+/// Builds the audio-gain-keyframe volume expression for FFmpeg's `volume` filter in
+/// `eval=frame` mode, keyed off `t` (elapsed seconds) like rotation since `volume`'s per-frame
+/// expression is evaluated through the same general per-option framework, not `geq`'s per-pixel
+/// one. `keyframes`' values are in **dB** (matching `ClipInstance::gain_db`'s existing unit),
+/// but `volume`'s expression mode evaluates to a **linear** multiplier, not dB — the `dB` suffix
+/// only works on literal constants, never on an expression string (verified against FFmpeg's
+/// own `volume` filter docs) — so each interpolated dB value is wrapped in `pow(10,X/20)` before
+/// being emitted. Note this means the ramp is linearly interpolated in **linear-gain** space
+/// between keyframe points (each dB value converted first, then lerped), not in dB space — same
+/// "transform, then let `piecewise_expr` lerp the transformed values" shape `rotation_filter_
+/// angle_expr` already uses for degrees->radians, chosen for consistency over re-deriving a
+/// dB-space lerp inside the expression string itself. Returns `None` if there's nothing to
+/// animate (0 keyframes, or every keyframe at 0 dB / unity gain).
+pub fn gain_filter_db_expr(
+    keyframes: &[Keyframe<f32>],
+    timeline_duration_secs: f64,
+) -> Option<String> {
+    if keyframes.is_empty() {
+        return None;
+    }
+    let db_to_linear = |db: f32| 10f32.powf(db / 20.0);
+    if keyframes.len() == 1 {
+        let linear = db_to_linear(keyframes[0].value);
+        return if (linear - 1.0).abs() <= 1e-4 {
+            None
+        } else {
+            Some(format!("{linear:.7}"))
+        };
+    }
+    let (sorted, all_default) = sorted_and_all_default(keyframes, db_to_linear, 1.0);
+    if all_default {
+        return None;
+    }
+    Some(piecewise_expr(
+        &sorted,
+        timeline_duration_secs,
+        "t",
+        db_to_linear,
+    ))
+}
+
 /// Builds the opacity-keyframe alpha expression (a bare `0.0..=1.0` ramp, *not* yet multiplied
 /// by any incoming `alpha(X,Y)` — the caller composes that, matching `mask_shape`'s existing
 /// alpha-composition convention in `ClipInstance::video_filter_chain`), keyed off `N` like

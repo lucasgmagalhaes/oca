@@ -372,6 +372,32 @@ not by default priority.
     on the preview audio path (same pattern as the existing keyframe pad-probes, reading
     instead of writing) plus a small meter widget in the Editor's preview panel — no ML, no
     new avfilter/GStreamer element.
+31. `[ ]` Audio gain keyframes (volume fade/ramp within one clip, not just a constant
+    `gain_db`) — found while surveying what else the existing `Keyframe<T>` infrastructure
+    could drive. Same shape as position/scale/rotation/opacity: `gain_keyframes: Vec<Keyframe<
+    f32>>` on `ClipInstance`, overriding the constant `gain_db` when non-empty. Export-side,
+    FFmpeg's `volume` filter's `eval=frame` expression mode evaluates to a *linear* multiplier
+    (not dB), so the dB-space keyframe curve needs `pow(10, X/20)` wrapping before being handed
+    to `volume=<expr>:eval=frame` — verified against FFmpeg's own filter docs, not assumed.
+    Crosses the `avbridge` FFI boundary (a new expression-string field on `AudioSegment`/
+    `RawAudioSegment`, and an `audio_mix.c` branch alongside the existing literal-`%.6fdB` path).
+32. `[ ]` Color grading keyframes (brightness/contrast/saturation ramping over a clip, not a
+    constant value) — same `Keyframe<T>` reuse as above, export-side via `eq`'s per-frame
+    expression mode (mirroring `rotation_filter_angle_expr`'s `t`-keyed shape); preview-side
+    could eventually piggyback on the just-shipped `Preview::set_live_balance` live-property
+    path (item 3's follow-up) once ramping-over-time rather than one-shot pushes is wired up.
+    Not started — queued after audio gain keyframes.
+33. `[ ]` Crop/pan keyframes (`crop_x`/`crop_y`/`crop_w`/`crop_h` animated over a clip, e.g. a
+    slow Ken-Burns pan/zoom independent of the existing `scale_keyframes` position/zoom pair) —
+    same `Keyframe<T>` reuse; export-side needs the same `geq`-based per-pixel expression
+    approach `scale_filter_expr` already uses instead of `crop`+`eval=frame` (documented
+    elsewhere in this repo as a real heap-corruption trap, not a style choice). Not started.
+34. `[ ]` Text/shape clip animation keyframes — `TextClip`/`ShapeClip` currently have *zero*
+    keyframe fields (position/scale/rotation/opacity keyframes only exist on `ClipInstance`
+    today), so this is a structural gap, not a one-field addition: needs the keyframe fields
+    added to both clip types plus their own export/preview expression wiring, mirroring
+    `ClipInstance`'s existing four. Largest of the four keyframe-expansion items found here —
+    not started.
 
 Found but deliberately not added as a P4 item: **nested sequences / compound clips** (Premiere/
 DaVinci/FCP) — closer to Multicam's own tier of effort than to the four above (the render/

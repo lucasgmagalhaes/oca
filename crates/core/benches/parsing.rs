@@ -121,6 +121,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 scale_keyframes: vec![],
                 rotation_keyframes: vec![],
                 opacity_keyframes: vec![],
+                gain_keyframes: vec![],
                 deflicker_enabled: false,
                 lut_path: String::new(),
                 layer_scale_x: 1.0,
