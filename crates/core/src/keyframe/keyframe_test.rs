@@ -355,6 +355,51 @@ fn color_balance_filter_expr_animates_only_the_keyframed_axis() {
 }
 
 #[test]
+fn crop_filter_expr_is_none_for_a_fully_uncropped_unanimated_frame() {
+    assert_eq!(
+        crop_filter_expr(&[], &[], &[], &[], 0.0, 0.0, 1.0, 1.0, 30, 1, 5.0),
+        None
+    );
+}
+
+#[test]
+fn crop_filter_expr_builds_a_geq_expression_for_a_static_crop_with_no_keyframes() {
+    let expr = crop_filter_expr(&[], &[], &[], &[], 0.1, 0.2, 0.5, 0.6, 30, 1, 5.0).unwrap();
+    assert!(expr.starts_with("geq="));
+    assert!(!expr.contains("if(lt(N,")); // no animation, just plain constants
+}
+
+#[test]
+fn crop_filter_expr_animates_only_the_keyframed_axis() {
+    let crop_x_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.5,
+        },
+    ];
+    let expr = crop_filter_expr(
+        &crop_x_keyframes,
+        &[],
+        &[],
+        &[],
+        0.0,
+        0.0,
+        0.5,
+        0.5,
+        30,
+        1,
+        5.0,
+    )
+    .unwrap();
+    assert!(expr.contains("if(lt(N,"));
+    assert!(expr.contains("if(between(N,"));
+}
+
+#[test]
 fn opacity_alpha_ramp_expr_is_none_for_no_keyframes() {
     assert_eq!(opacity_alpha_ramp_expr(&[], 30, 1, 5.0), None);
 }
