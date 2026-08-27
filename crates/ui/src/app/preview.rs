@@ -673,6 +673,18 @@ impl App {
         self.preview_clip_id.is_some()
     }
 
+    /// The live playback audio level (peak/RMS) for the Editor preview panel's meter widget —
+    /// `spec/ROADMAP.md` P4 item 30. Silent default (`AudioLevel::default()`) when no preview
+    /// pipeline is open at all, same as [`avcore::preview::Preview::current_audio_level`]
+    /// already reports when the pipeline is open but nothing has decoded yet (e.g. before the
+    /// first play) or the clip has no audio.
+    pub fn current_audio_level(&self) -> avcore::AudioLevel {
+        self.preview
+            .as_ref()
+            .map(|preview| preview.current_audio_level())
+            .unwrap_or_default()
+    }
+
     /// Pushes `clip_id`'s current brightness/contrast/saturation live into the running preview
     /// pipeline instead of waiting for the next incidental reopen — P1 item 3's remaining live-
     /// preview-update gap (`spec/matrix/performance.md`), scoped to just this one property
