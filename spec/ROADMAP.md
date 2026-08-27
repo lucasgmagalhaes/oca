@@ -353,10 +353,17 @@ not by default priority.
     Audio, file-name-contains text, has-audio Either/Yes/No, Save/Cancel/Delete). Verified via a
     real-execution scratch crate (same ONNX-link-gap workaround as multicam) — 5 passing tests on
     `SmartBin::matches`.
-27. `[ ]` Clip/track color labels — `matrix/competitor-parity.md`'s 2026-08-27 update. Present
+27. `[x]` Clip/track color labels — `matrix/competitor-parity.md`'s 2026-08-27 update. Present
     in Premiere (clip), DaVinci Resolve (clip *and* track), FCP (clip). The cheapest gap in
-    that update: pure data (`color_label` field) + timeline-widget rendering, no `avbridge`/
-    GStreamer work — same cost tier as `Marker`/`SmartBin`, both already shipped.
+    that update: pure data (`ClipInstance::color_label`/`Track::color_label`, `Option<[u8;3]>`)
+    + timeline-widget rendering, no `avbridge`/GStreamer work — same cost tier as `Marker`/
+    `SmartBin`, both already shipped. A fixed 6-swatch palette (matching Premiere/DaVinci/FCP's
+    own fixed-palette convention, not a free color picker) offered via a right-click context
+    menu on a timeline clip or the track-header name; clears via a "Limpar rótulo" entry.
+    Overrides the clip/track's usual kind-based fill color when set. Carried across
+    `Track::split_clip_at` (both halves keep the label, same as `transition_in`). Deliberately
+    excluded from `ClipFormatting` — an organizational tag, not a rendering style, same
+    reasoning `background_removal_mask_path` is excluded for a different reason.
 28. `[ ]` Detach/unlink audio from a clip (the mechanical precondition for J-cuts/L-cuts) —
     `matrix/competitor-parity.md`. oca already supports independent audio-only clips on
     separate tracks; the gap is specifically the one-click "mute the video clip's own audio,
