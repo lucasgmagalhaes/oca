@@ -588,6 +588,20 @@ pub struct ClipInstance {
     /// `#[serde(default)]` so older saved projects load fully opaque.
     #[serde(default)]
     pub opacity_keyframes: Vec<Keyframe<f32>>,
+    /// General keyframe animation for this block's audio gain, in **dB** (same unit as
+    /// [`ClipInstance::gain_db`]), per the keyframe-expansion gap found while surveying what
+    /// else the existing keyframe system could drive (`spec/ROADMAP.md` P4 item 31). Empty =
+    /// use the constant [`ClipInstance::gain_db`] unchanged (this field, when non-empty,
+    /// overrides that constant rather than combining with it — same "one or the other, not
+    /// both" relationship `scale_keyframes` has with the old `zoom_start`/`zoom_end`). Wired
+    /// into export (`crate::keyframe::gain_filter_db_expr`, via `avbridge::AudioSegment::
+    /// gain_keyframe_expr`) — FFmpeg's `volume` filter's `eval=frame` expression mode is a
+    /// linear multiplier, not dB, so the expression wraps each interpolated dB value in
+    /// `pow(10,X/20)`. Not yet wired into live preview — same "export first" shape several
+    /// other keyframe fields on this struct started with. `#[serde(default)]` so older saved
+    /// projects load with no gain animation (using the constant `gain_db` as before).
+    #[serde(default)]
+    pub gain_keyframes: Vec<Keyframe<f32>>,
     /// Path to a `.cube` 3D LUT file applied to this block's color grading, per `request.md`'s
     /// Fase 4 "Filtros de cor e LUTs" spec. Empty string = no LUT (the FFI-friendly analog of
     /// `Option<PathBuf>` this codebase already uses for other optional string fields, since a
@@ -703,6 +717,7 @@ pub struct ClipFormatting {
     pub scale_keyframes: Vec<Keyframe<f32>>,
     pub rotation_keyframes: Vec<Keyframe<f32>>,
     pub opacity_keyframes: Vec<Keyframe<f32>>,
+    pub gain_keyframes: Vec<Keyframe<f32>>,
     pub deflicker_enabled: bool,
     pub lut_path: String,
     pub layer_scale_x: f32,
@@ -829,6 +844,11 @@ impl ClipInstance {
     /// `true` if this block has any opacity keyframes.
     pub fn has_opacity_keyframes(&self) -> bool {
         !self.opacity_keyframes.is_empty()
+    }
+
+    /// `true` if this block has any audio gain keyframes (overriding the constant `gain_db`).
+    pub fn has_gain_keyframes(&self) -> bool {
+        !self.gain_keyframes.is_empty()
     }
 
     /// Builds this clip's scale/rotation/opacity keyframe avfilter fragment, spliced into the
@@ -1094,6 +1114,7 @@ impl ClipInstance {
             scale_keyframes: self.scale_keyframes.clone(),
             rotation_keyframes: self.rotation_keyframes.clone(),
             opacity_keyframes: self.opacity_keyframes.clone(),
+            gain_keyframes: self.gain_keyframes.clone(),
             deflicker_enabled: self.deflicker_enabled,
             lut_path: self.lut_path.clone(),
             layer_scale_x: self.layer_scale_x,
@@ -1135,6 +1156,7 @@ impl ClipInstance {
         self.scale_keyframes = f.scale_keyframes.clone();
         self.rotation_keyframes = f.rotation_keyframes.clone();
         self.opacity_keyframes = f.opacity_keyframes.clone();
+        self.gain_keyframes = f.gain_keyframes.clone();
         self.deflicker_enabled = f.deflicker_enabled;
         self.lut_path = f.lut_path.clone();
         self.layer_scale_x = f.layer_scale_x;
@@ -1263,6 +1285,8 @@ impl Track {
             keyframe::split_keyframes_at(&clip.rotation_keyframes, split_frac, 0.0);
         let (opacity_first, opacity_second) =
             keyframe::split_keyframes_at(&clip.opacity_keyframes, split_frac, 1.0);
+        let (gain_first, gain_second) =
+            keyframe::split_keyframes_at(&clip.gain_keyframes, split_frac, 0.0);
         let second_half = ClipInstance {
             id: new_clip_id,
             asset_id: clip.asset_id,
@@ -1305,6 +1329,7 @@ impl Track {
             scale_keyframes: scale_second,
             rotation_keyframes: rotation_second,
             opacity_keyframes: opacity_second,
+            gain_keyframes: gain_second,
             deflicker_enabled: clip.deflicker_enabled,
             lut_path: clip.lut_path.clone(),
             layer_scale_x: clip.layer_scale_x,
@@ -1322,6 +1347,7 @@ impl Track {
         clip.scale_keyframes = scale_first;
         clip.rotation_keyframes = rotation_first;
         clip.opacity_keyframes = opacity_first;
+        clip.gain_keyframes = gain_first;
         // Same staleness reasoning as the second half above — the original clip's own trimmed
         // range changed too.
         clip.background_removal_enabled = false;
