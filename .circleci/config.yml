@@ -106,9 +106,10 @@ commands:
             echo "export LIBCLANG_PATH=$libclang_path" >> "$BASH_ENV"
 
       - restore_cache:
+          name: Restore Cargo registry
           keys:
-            - cargo-registry-{{ checksum "Cargo.lock" }}
-            - cargo-registry-
+            - v2-cargo-registry-{{ checksum "Cargo.lock" }}
+            - v2-cargo-registry-
 
       # Separate from the cargo-registry cache above: these two binaries aren't in
       # Cargo.lock, so they're keyed on their own pinned versions instead.
@@ -237,11 +238,22 @@ commands:
 jobs:
   build-and-test:
     executor: linux
+    retention:
+      caches: 7d
     environment:
       CARGO_TERM_COLOR: always
     steps:
       - checkout
       - setup-native-deps
+
+      # Keep coverage/clippy artifacts separate from the regular nextest cache. The
+      # revision-specific key makes retries exact, while the prefix fallback lets Cargo
+      # incrementally rebuild from the latest successful revision on the same toolchain.
+      - restore_cache:
+          name: Restore quality build artifacts
+          keys:
+            - v2-cargo-target-quality-{{ arch }}-rust-<< pipeline.parameters.rust-version >>-{{ checksum "Cargo.lock" }}-{{ .Revision }}
+            - v2-cargo-target-quality-{{ arch }}-rust-<< pipeline.parameters.rust-version >>-{{ checksum "Cargo.lock" }}-
 
       - run:
           name: Check formatting
@@ -270,16 +282,26 @@ jobs:
           name: Test with coverage
           command: |
             source "$BASH_ENV"
-            cargo llvm-cov nextest --workspace --lcov --output-path lcov.info --profile ci
+            # Preserve instrumented build products across CI runs, but never reuse raw
+            # execution profiles: those belong only to the current test invocation.
+            find target/llvm-cov-target -type f -name '*.profraw' -delete 2>/dev/null || true
+            cargo llvm-cov nextest --workspace --no-clean --lcov --output-path lcov.info --profile ci
 
       - store_test_results:
           path: target/nextest/ci
 
       - save_cache:
-          key: cargo-registry-{{ checksum "Cargo.lock" }}
+          name: Save Cargo registry
+          key: v2-cargo-registry-{{ checksum "Cargo.lock" }}
           paths:
             - ~/.cargo/registry
-            - target
+
+      - save_cache:
+          name: Save quality build artifacts
+          key: v2-cargo-target-quality-{{ arch }}-rust-<< pipeline.parameters.rust-version >>-{{ checksum "Cargo.lock" }}-{{ .Revision }}
+          paths:
+            - target/debug
+            - target/llvm-cov-target
 
       - codecov/upload:
           file: lcov.info
@@ -292,11 +314,19 @@ jobs:
   test-fast:
     executor: linux
     parallelism: 2
+    retention:
+      caches: 7d
     environment:
       CARGO_TERM_COLOR: always
     steps:
       - checkout
       - setup-native-deps
+
+      - restore_cache:
+          name: Restore fast-test build artifacts
+          keys:
+            - v2-cargo-target-fast-{{ arch }}-rust-<< pipeline.parameters.rust-version >>-{{ checksum "Cargo.lock" }}-{{ .Revision }}
+            - v2-cargo-target-fast-{{ arch }}-rust-<< pipeline.parameters.rust-version >>-{{ checksum "Cargo.lock" }}-
 
       - run:
           name: Test (partitioned)
@@ -307,6 +337,14 @@ jobs:
 
       - store_test_results:
           path: target/nextest/ci
+
+      # Both shards compile the same workspace before filtering tests, so either shard's
+      # immutable cache is a complete warm start for the next revision.
+      - save_cache:
+          name: Save fast-test build artifacts
+          key: v2-cargo-target-fast-{{ arch }}-rust-<< pipeline.parameters.rust-version >>-{{ checksum "Cargo.lock" }}-{{ .Revision }}
+          paths:
+            - target/debug
 
 workflows:
   ci:
