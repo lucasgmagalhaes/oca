@@ -476,6 +476,8 @@ fn open_composited_with_text_and_shape_overlays_composites_without_error() {
         shape_kind: avcore::timeline::ShapeKind::Ellipse,
         center_x: 0.5,
         center_y: 0.5,
+        center_x_keyframes: vec![],
+        center_y_keyframes: vec![],
         width: 0.2,
         height: 0.2,
         rotation_deg: 0.0,

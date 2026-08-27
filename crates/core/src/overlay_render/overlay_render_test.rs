@@ -24,6 +24,8 @@ fn sample_shape(kind: ShapeKind) -> ShapeClip {
         shape_kind: kind,
         center_x: 0.5,
         center_y: 0.5,
+        center_x_keyframes: vec![],
+        center_y_keyframes: vec![],
         width: 0.4,
         height: 0.4,
         rotation_deg: 0.0,
