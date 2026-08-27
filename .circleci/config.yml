@@ -44,15 +44,31 @@ jobs:
               --default-toolchain stable --profile default
             echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$BASH_ENV"
 
+      # libclang/cmake are needed by bindgen-based build scripts in core's dependency tree —
+      # espeak-rs-sys (espeak-ng phonemization, core/Cargo.toml) and whisper-rs (transcription)
+      # both link vendored C/C++ sources through bindgen, which needs a real libclang.so to
+      # parse headers. GitHub's ubuntu-latest runner ships this preinstalled (CLAUDE.md never
+      # had to set LIBCLANG_PATH there); cimg/base doesn't, hence installing + pointing at it
+      # explicitly here.
       - run:
-          name: Install GStreamer
+          name: Install GStreamer, clang and cmake
           command: |
             sudo apt-get update
             sudo apt-get install -y \
               pkg-config \
               libgstreamer1.0-dev \
               libgstreamer-plugins-base1.0-dev \
-              libgstreamer-plugins-bad1.0-dev
+              libgstreamer-plugins-bad1.0-dev \
+              clang \
+              libclang-dev \
+              cmake
+
+            libclang_path=$(dirname "$(find /usr/lib -name 'libclang-*.so*' -o -name 'libclang.so*' 2>/dev/null | head -1)")
+            if [ -z "$libclang_path" ] || [ "$libclang_path" = "." ]; then
+              echo "Could not locate libclang.so under /usr/lib after installing libclang-dev" >&2
+              exit 1
+            fi
+            echo "export LIBCLANG_PATH=$libclang_path" >> "$BASH_ENV"
 
       - restore_cache:
           keys:
