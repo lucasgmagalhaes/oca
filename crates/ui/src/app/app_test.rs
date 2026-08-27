@@ -250,6 +250,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         youtube_download_error: None,
         youtube_download_cancel: None,
         selected_clip_id: None,
+        undo_stack: avcore::undo::UndoStack::new(),
         selected_text_clip_id: None,
         text_color_edit: None,
         selected_shape_clip_id: None,
@@ -1390,6 +1391,77 @@ fn split_at_playhead_is_a_no_op_when_nothing_covers_the_playhead() {
     app.split_at_playhead();
 
     assert_eq!(app.active_project().timeline().tracks[0].clips.len(), 1);
+}
+
+#[test]
+fn undo_after_split_at_playhead_restores_the_unsplit_clip() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.active_project_mut().timeline_mut().playhead_secs = 10.0;
+    assert!(!app.can_undo());
+
+    app.split_at_playhead();
+    assert_eq!(app.active_project().timeline().tracks[0].clips.len(), 2);
+    assert!(app.can_undo());
+    assert!(!app.can_redo());
+
+    app.undo();
+    assert_eq!(app.active_project().timeline().tracks[0].clips.len(), 1);
+    assert!(!app.can_undo());
+    assert!(app.can_redo());
+
+    app.redo();
+    assert_eq!(app.active_project().timeline().tracks[0].clips.len(), 2);
+    assert!(app.can_undo());
+    assert!(!app.can_redo());
+}
+
+#[test]
+fn undo_is_a_no_op_with_empty_history() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.undo();
+    assert_eq!(app.active_project().timeline().tracks[0].clips.len(), 1);
+}
+
+#[test]
+fn selecting_a_sequence_clears_undo_history_from_the_previous_one() {
+    let mut project = test_project_with_tracks(
+        1,
+        vec![test_track(
+            1,
+            TrackKind::Video,
+            vec![test_clip(1, 0.0, 0.0, 20.0)],
+        )],
+    );
+    project.new_sequence("Second".to_string());
+    project.active_sequence = 0;
+    let mut app = test_app(vec![project], Vec::new());
+    app.active_project_mut().timeline_mut().playhead_secs = 10.0;
+
+    app.split_at_playhead();
+    assert!(app.can_undo());
+
+    app.select_sequence(1);
+    assert!(!app.can_undo());
 }
 
 #[test]
