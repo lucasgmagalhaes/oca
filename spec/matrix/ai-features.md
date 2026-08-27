@@ -45,6 +45,17 @@ sub-sections).
       coarse time grid and flags simultaneous spikes. Non-destructive `MarkerKind::Highlight`
       markers, same review-via-Timeline-Index shape as D4's chapters. Unblocks D6 (`ROADMAP.md`
       item 18), which was waiting on this.
+- [x] **One-click shorts pack** (D6, `architecture/differentiators.md`, `ROADMAP.md` P3 item
+      18) — ties D2's Highlight markers, `avcore::extract_timeline_window` (new `core` primitive:
+      turns one `[start, end)` slice of a `Timeline` into its own standalone, rebased-to-zero
+      `Timeline`, splitting straddling Video/Audio clips precisely via the existing
+      `Track::split_clip_at` while only keeping Text/Shape overlays entirely inside the window),
+      and the existing multi-job export queue into one batch action. Confirmed three real scope
+      decisions with the user first (fixed window size around each highlight; reuse existing
+      auto-reframe/transcription rather than running either pipeline fresh per short) — see
+      `ROADMAP.md` item 18 for the full reasoning. `App::spawn_shorts_pack` resolves and queues
+      one `ExportAspectRatio::Portrait` job per highlight, skipping (not erroring on) a window
+      that resolves to zero clips.
 
 ## Known gaps
 

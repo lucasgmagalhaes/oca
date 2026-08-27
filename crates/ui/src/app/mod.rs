@@ -49,6 +49,7 @@ mod modals;
 mod motion_tracking;
 mod preview;
 mod scene_detection;
+mod shorts_pack;
 mod silence_review;
 mod sound_library;
 mod telemetry;

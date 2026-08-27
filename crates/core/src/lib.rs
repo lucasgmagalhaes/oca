@@ -53,6 +53,7 @@ pub mod telemetry;
 pub mod text_metrics;
 pub mod text_to_speech;
 pub mod timeline;
+pub mod timeline_window;
 pub mod transcribe;
 pub mod undo;
 pub mod update_check;
@@ -113,6 +114,7 @@ pub use timeline::{
     AudioRole, ClipFormatting, ClipInstance, LayerTemplate, Marker, MarkerKind, ShapeClip,
     ShapeKind, TextClip, TextFontFamily, TextFontStyle, Timeline, Track, TrackKind,
 };
+pub use timeline_window::extract_timeline_window;
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
 pub use update_check::{
     apply_update, auto_update_supported, expected_update_asset_name, fetch_latest_release,

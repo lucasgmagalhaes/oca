@@ -223,7 +223,42 @@ not novel guesses — see `matrix/competitor-parity.md`.
     the results (loses the "simultaneous" cross-correlation the doc specifically calls out). Left
     open rather than guessed at; resolved above once asked.
     </details>
-18. `[ ]` **D6 — one-click shorts pack.** High effort. Depends on D2 (now unblocked).
+18. `[x]` **D6 — one-click shorts pack** (`architecture/differentiators.md`). Confirmed three
+    scope decisions with the user before writing this — the biggest single item in P3, several
+    real design forks, not a blind-implementable reuse:
+    - **Highlight window size**: D2 only stores a single marker position per highlight, not a
+      range, so D6 needed its own heuristic — a fixed 5s lead-in + 10s reaction (15s total),
+      clamped to the sequence's own bounds, over a user-configurable setting (no new UI surface
+      needed).
+    - **Auto-reframe**: reuses whatever `position_keyframes` the windowed clip already carries
+      rather than running a fresh face-detection pass per short — a short whose source clip was
+      never auto-reframed just exports centered, a real documented gap, not a silently-forced
+      extra pipeline run.
+    - **Subtitles**: reuses existing transcribed `TextClip`s that fall inside the window rather
+      than triggering a fresh Whisper run — a never-transcribed source just exports without
+      subtitles, same reasoning as auto-reframe above.
+
+    `avcore::extract_timeline_window` (new `core` primitive, `timeline_window.rs`) turns one
+    `[start, end)` slice of a `Timeline` into its own standalone, rebased-to-zero `Timeline`:
+    Video/Audio clips straddling a boundary are split precisely via the existing
+    `Track::split_clip_at`; Text/Shape overlays skip splitting entirely (word-highlight timing is
+    relative to a `TextClip`'s own `start_secs`, so approximating a mid-clip split risks
+    desyncing captions from audio) — only overlay clips *entirely* inside the window are kept.
+    `App::spawn_shorts_pack` loops every `MarkerKind::Highlight` marker, extracts its window,
+    resolves it exactly the way "Adicionar exportação" resolves the whole sequence (forced to
+    `ExportAspectRatio::Portrait`), and queues it — a window that resolves to zero clips (e.g. it
+    landed entirely in a gap) is skipped, not treated as a hard error, and the toolbar's "Shorts
+    Pack" button reports a queued-vs-skipped summary toast.
+
+    Verified via `cargo check --workspace --all-targets` (temporary local FFmpeg shim);
+    `extract_timeline_window`'s split/boundary math was independently confirmed for real by
+    extracting `timeline.rs`/`keyframe.rs`/`timeline_window.rs` into a throwaway no-dependency
+    scratch crate and running its tests (this sandbox's `core` crate itself only type-checks —
+    the ONNX Runtime link gap blocks `cargo test` outright, see `CLAUDE.md`), plus new `App`-level
+    unit tests for the full extract-resolve-queue flow. **Not run against a live GUI session** —
+    the actual exported `.mp4` files (correct framing/timing/audio for a real windowed short)
+    haven't been visually verified, same caveat every UI-only change in this sandboxed
+    environment already carries.
 
 ## P4 — Hardware-Dependent / Confirmed Hard Walls / Lower-Priority Parity
 

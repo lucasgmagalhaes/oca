@@ -432,6 +432,9 @@ text_catalog! {
     HighlightDetectionNeedsBothRoles: pt_br = "Marque uma faixa como áudio do jogo e outra como microfone (cabeçalho da faixa) antes de detectar destaques.", en = "Tag one track as game audio and another as mic (track header) before detecting highlights.";
     HighlightDetectionNone: pt_br = "Nenhum destaque detectado.", en = "No highlights detected.";
     HighlightDefaultLabel: pt_br = "Destaque {n}", en = "Highlight {n}";
+    ShortsPack: pt_br = "🎞 Pacote de shorts", en = "🎞 Shorts Pack";
+    ShortsPackNoHighlights: pt_br = "Nenhum destaque detectado ainda -- use \"Detectar destaques\" primeiro.", en = "No highlights detected yet -- use \"Detect Highlights\" first.";
+    ShortsPackQueued: pt_br = "{queued} shorts enfileirados ({skipped} ignorados).", en = "{queued} shorts queued ({skipped} skipped).";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
     ExportLoudnessLabel: pt_br = "Loudness:", en = "Loudness:";
     ExportLoudnessCustom: pt_br = "{value} LUFS (personalizado)", en = "{value} LUFS (custom)";

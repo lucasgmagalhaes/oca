@@ -359,6 +359,15 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         if ui.button(Text::DetectHighlights.tr(locale)).clicked() {
             app.detect_highlights();
         }
+        if ui.button(Text::ShortsPack.tr(locale)).clicked() {
+            let mut dialog = rfd::FileDialog::new();
+            if !app.prefs.output_folder.is_empty() {
+                dialog = dialog.set_directory(&app.prefs.output_folder);
+            }
+            if let Some(output_dir) = dialog.pick_folder() {
+                app.spawn_shorts_pack(output_dir);
+            }
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button(Text::Export.tr(locale)).clicked() {
                 app.screen = crate::app::Screen::Queue;
