@@ -427,6 +427,29 @@ pub struct ClipInstance {
     pub crop_w: f32,
     #[serde(default = "default_crop_extent")]
     pub crop_h: f32,
+    /// General keyframe animation for this block's crop rectangle over time (a moving/resizing
+    /// pan window), per the keyframe-expansion gap found while surveying what else the existing
+    /// keyframe system could drive (`spec/ROADMAP.md` P4 item 33) — independent of
+    /// [`ClipInstance::scale_keyframes`]'s Ken-Burns zoom (a single symmetric zoom factor about
+    /// the frame center), this animates all four crop axes independently. Each field is
+    /// independent: a non-empty list overrides that axis's own constant field above (same
+    /// "keyframes win when present" relationship [`ClipInstance::gain_keyframes`] has with
+    /// `gain_db`). Wired into export ([`crate::keyframe::crop_filter_expr`], a `geq`-based
+    /// per-pixel approach — see that function's own doc comment for why, over `crop`+
+    /// `eval=frame`), spliced into [`ClipInstance::keyframe_video_filter_chain`] alongside
+    /// scale/rotation/opacity/color-balance rather than [`ClipInstance::video_filter_chain`]'s
+    /// own static `crop` stage, which this field being non-empty on any axis suppresses instead
+    /// of double-emitting (same pattern [`ClipInstance::brightness_keyframes`] established for
+    /// the static `eq` stage). Not yet wired into live preview. `#[serde(default)]` so older
+    /// saved projects load with no crop animation (using the constant fields as before).
+    #[serde(default)]
+    pub crop_x_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub crop_y_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub crop_w_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub crop_h_keyframes: Vec<Keyframe<f32>>,
     /// Layer mask shape ([`MaskShape::None`] by default — unmasked). Independent of the
     /// rectangular crop above; a block can be both cropped and masked. Wired into export
     /// ([`ClipInstance::video_filter_chain`]'s `geq`-based alpha stage) but, like
@@ -743,6 +766,10 @@ pub struct ClipFormatting {
     pub brightness_keyframes: Vec<Keyframe<f32>>,
     pub contrast_keyframes: Vec<Keyframe<f32>>,
     pub saturation_keyframes: Vec<Keyframe<f32>>,
+    pub crop_x_keyframes: Vec<Keyframe<f32>>,
+    pub crop_y_keyframes: Vec<Keyframe<f32>>,
+    pub crop_w_keyframes: Vec<Keyframe<f32>>,
+    pub crop_h_keyframes: Vec<Keyframe<f32>>,
     pub deflicker_enabled: bool,
     pub lut_path: String,
     pub layer_scale_x: f32,
@@ -885,14 +912,27 @@ impl ClipInstance {
             || !self.saturation_keyframes.is_empty()
     }
 
-    /// Builds this clip's scale/rotation/opacity/color-balance keyframe avfilter fragment,
+    /// `true` if this block has crop/pan keyframes on any of x/y/width/height — gates whether
+    /// [`Self::video_filter_chain`]'s static `crop` stage should defer to
+    /// [`Self::keyframe_video_filter_chain`]'s animated one instead.
+    pub fn has_crop_keyframes(&self) -> bool {
+        !self.crop_x_keyframes.is_empty()
+            || !self.crop_y_keyframes.is_empty()
+            || !self.crop_w_keyframes.is_empty()
+            || !self.crop_h_keyframes.is_empty()
+    }
+
+    /// Builds this clip's crop/scale/rotation/opacity/color-balance keyframe avfilter fragment,
     /// spliced into the per-clip chain before [`ClipInstance::video_filter_chain`]'s own stages
-    /// — the same position the old `zoom` stage used to occupy. `None` if none of the four are
+    /// — the same position the old `zoom` stage used to occupy. `None` if none of the five are
     /// animated. Position keyframes aren't part of this — they apply to the *overlay*
     /// compositing stage, not a per-clip filter (see [`keyframe::position_overlay_xy_expr`] and
-    /// `crate::render`). Color-balance keyframes running here (rather than in their usual
-    /// post-crop/deflicker/stabilization spot in `video_filter_chain`) is a real, narrow
-    /// ordering caveat — see [`ClipInstance::brightness_keyframes`]'s doc comment.
+    /// `crate::render`). Crop keyframes run first (mirroring the static `crop` stage's own
+    /// traditional "runs before every other effect" position in `video_filter_chain`, so a
+    /// crop/pan animation reframes the source before scale/rotate/color-balance operate on it).
+    /// Color-balance keyframes running here at all (rather than in their usual post-crop/
+    /// deflicker/stabilization spot in `video_filter_chain`) is a real, narrow ordering caveat —
+    /// see [`ClipInstance::brightness_keyframes`]'s doc comment.
     pub fn keyframe_video_filter_chain(
         &self,
         fps_num: u32,
@@ -900,6 +940,23 @@ impl ClipInstance {
         timeline_duration_secs: f64,
     ) -> Option<String> {
         let mut stages = Vec::new();
+        if self.has_crop_keyframes() {
+            if let Some(crop) = keyframe::crop_filter_expr(
+                &self.crop_x_keyframes,
+                &self.crop_y_keyframes,
+                &self.crop_w_keyframes,
+                &self.crop_h_keyframes,
+                self.crop_x,
+                self.crop_y,
+                self.crop_w,
+                self.crop_h,
+                fps_num,
+                fps_den,
+                timeline_duration_secs,
+            ) {
+                stages.push(crop);
+            }
+        }
         if let Some(scale) = keyframe::scale_filter_expr(
             &self.scale_keyframes,
             fps_num,
@@ -965,7 +1022,7 @@ impl ClipInstance {
     pub fn video_filter_chain(&self) -> String {
         let mut stages = Vec::new();
 
-        if self.is_cropped() {
+        if self.is_cropped() && !self.has_crop_keyframes() {
             stages.push(format!(
                 "crop=iw*{}:ih*{}:iw*{}:ih*{}",
                 self.crop_w, self.crop_h, self.crop_x, self.crop_y
@@ -1170,6 +1227,10 @@ impl ClipInstance {
             brightness_keyframes: self.brightness_keyframes.clone(),
             contrast_keyframes: self.contrast_keyframes.clone(),
             saturation_keyframes: self.saturation_keyframes.clone(),
+            crop_x_keyframes: self.crop_x_keyframes.clone(),
+            crop_y_keyframes: self.crop_y_keyframes.clone(),
+            crop_w_keyframes: self.crop_w_keyframes.clone(),
+            crop_h_keyframes: self.crop_h_keyframes.clone(),
             deflicker_enabled: self.deflicker_enabled,
             lut_path: self.lut_path.clone(),
             layer_scale_x: self.layer_scale_x,
@@ -1215,6 +1276,10 @@ impl ClipInstance {
         self.brightness_keyframes = f.brightness_keyframes.clone();
         self.contrast_keyframes = f.contrast_keyframes.clone();
         self.saturation_keyframes = f.saturation_keyframes.clone();
+        self.crop_x_keyframes = f.crop_x_keyframes.clone();
+        self.crop_y_keyframes = f.crop_y_keyframes.clone();
+        self.crop_w_keyframes = f.crop_w_keyframes.clone();
+        self.crop_h_keyframes = f.crop_h_keyframes.clone();
         self.deflicker_enabled = f.deflicker_enabled;
         self.lut_path = f.lut_path.clone();
         self.layer_scale_x = f.layer_scale_x;
@@ -1351,6 +1416,14 @@ impl Track {
             keyframe::split_keyframes_at(&clip.contrast_keyframes, split_frac, 1.0);
         let (saturation_first, saturation_second) =
             keyframe::split_keyframes_at(&clip.saturation_keyframes, split_frac, 1.0);
+        let (crop_x_first, crop_x_second) =
+            keyframe::split_keyframes_at(&clip.crop_x_keyframes, split_frac, 0.0);
+        let (crop_y_first, crop_y_second) =
+            keyframe::split_keyframes_at(&clip.crop_y_keyframes, split_frac, 0.0);
+        let (crop_w_first, crop_w_second) =
+            keyframe::split_keyframes_at(&clip.crop_w_keyframes, split_frac, 1.0);
+        let (crop_h_first, crop_h_second) =
+            keyframe::split_keyframes_at(&clip.crop_h_keyframes, split_frac, 1.0);
         let second_half = ClipInstance {
             id: new_clip_id,
             asset_id: clip.asset_id,
@@ -1397,6 +1470,10 @@ impl Track {
             brightness_keyframes: brightness_second,
             contrast_keyframes: contrast_second,
             saturation_keyframes: saturation_second,
+            crop_x_keyframes: crop_x_second,
+            crop_y_keyframes: crop_y_second,
+            crop_w_keyframes: crop_w_second,
+            crop_h_keyframes: crop_h_second,
             deflicker_enabled: clip.deflicker_enabled,
             lut_path: clip.lut_path.clone(),
             layer_scale_x: clip.layer_scale_x,
@@ -1418,6 +1495,10 @@ impl Track {
         clip.brightness_keyframes = brightness_first;
         clip.contrast_keyframes = contrast_first;
         clip.saturation_keyframes = saturation_first;
+        clip.crop_x_keyframes = crop_x_first;
+        clip.crop_y_keyframes = crop_y_first;
+        clip.crop_w_keyframes = crop_w_first;
+        clip.crop_h_keyframes = crop_h_first;
         // Same staleness reasoning as the second half above — the original clip's own trimmed
         // range changed too.
         clip.background_removal_enabled = false;

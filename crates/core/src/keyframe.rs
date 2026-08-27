@@ -299,6 +299,69 @@ pub fn rotation_filter_angle_expr(
     ))
 }
 
+/// Builds the crop/pan-keyframe avfilter fragment — a `geq` per-pixel inverse-sample
+/// generalizing [`scale_filter_expr`]'s single symmetric zoom to four independent axes (the
+/// sampled window's x, y, width, height), so a moving/resizing crop window can animate over a
+/// clip without the frame's own resolution changing frame-to-frame (a `geq`-based per-pixel
+/// approach is used here for the same reason `scale_filter_expr`'s own doc comment gives for
+/// avoiding `crop`/`scale` with `eval=frame` — see CLAUDE.md). `crop_x_keyframes`/
+/// `crop_y_keyframes` are the window's top-left corner as a fraction of frame width/height
+/// (`0.0..=1.0`); `crop_w_keyframes`/`crop_h_keyframes` are its size — same units and meaning as
+/// the existing static `ClipInstance::crop_x`/`crop_y`/`crop_w`/`crop_h` fields, each overridden
+/// independently when its own keyframe list is non-empty (same "keyframes win when present"
+/// relationship [`gain_filter_db_expr`] has with `gain_db`). Returns `None` only when nothing is
+/// animated on any axis and every constant is already the full, uncropped frame (`0,0,1,1`).
+#[allow(clippy::too_many_arguments)]
+pub fn crop_filter_expr(
+    crop_x_keyframes: &[Keyframe<f32>],
+    crop_y_keyframes: &[Keyframe<f32>],
+    crop_w_keyframes: &[Keyframe<f32>],
+    crop_h_keyframes: &[Keyframe<f32>],
+    crop_x: f32,
+    crop_y: f32,
+    crop_w: f32,
+    crop_h: f32,
+    fps_num: u32,
+    fps_den: u32,
+    timeline_duration_secs: f64,
+) -> Option<String> {
+    let animated = !crop_x_keyframes.is_empty()
+        || !crop_y_keyframes.is_empty()
+        || !crop_w_keyframes.is_empty()
+        || !crop_h_keyframes.is_empty();
+    if !animated && crop_x == 0.0 && crop_y == 0.0 && crop_w == 1.0 && crop_h == 1.0 {
+        return None;
+    }
+
+    let total_frames = (timeline_duration_secs * fps_num as f64 / fps_den.max(1) as f64).max(1.0);
+    let n_last = (total_frames - 1.0).max(1.0);
+    let identity = |v: f32| v;
+
+    let axis = |keyframes: &[Keyframe<f32>], constant: f32| -> String {
+        match keyframes.len() {
+            0 => format!("{constant:.7}"),
+            1 => format!("{:.7}", keyframes[0].value),
+            _ => {
+                let mut sorted = keyframes.to_vec();
+                sorted.sort_by(|a, b| a.time_fraction.total_cmp(&b.time_fraction));
+                piecewise_expr(&sorted, n_last, "N", identity)
+            }
+        }
+    };
+
+    let cx = axis(crop_x_keyframes, crop_x);
+    let cy = axis(crop_y_keyframes, crop_y);
+    let cw = axis(crop_w_keyframes, crop_w);
+    let ch = axis(crop_h_keyframes, crop_h);
+
+    let sx = format!("(({cx})*W+(X/W)*({cw})*W)");
+    let sy = format!("(({cy})*H+(Y/H)*({ch})*H)");
+    let inside = format!("(1-lt({sx},0))*lt({sx},W)*(1-lt({sy},0))*lt({sy},H)");
+    Some(format!(
+        "geq=lum='p({sx},{sy})*{inside}':cb='128+(cb({sx},{sy})-128)*{inside}':cr='128+(cr({sx},{sy})-128)*{inside}'"
+    ))
+}
+
 /// Builds the audio-gain-keyframe volume expression for FFmpeg's `volume` filter in
 /// `eval=frame` mode, keyed off `t` (elapsed seconds) like rotation since `volume`'s per-frame
 /// expression is evaluated through the same general per-option framework, not `geq`'s per-pixel
