@@ -22,11 +22,19 @@ parameters:
   cargo-nextest-version:
     type: string
     default: "0.9.143"
+  # cimg/rust bakes in a full rustc/cargo/rustfmt/clippy toolchain for this exact version, so
+  # the job doesn't re-run rustup's install script on every single build (the previous
+  # cimg/base + `curl sh.rustup.rs` setup did, downloading and installing the toolchain fresh
+  # each time). Pinned explicitly, same reproducibility reasoning as the FFmpeg/cargo-tool
+  # pins above — bump this deliberately rather than floating on "latest stable".
+  rust-version:
+    type: string
+    default: "1.98.0"
 
 executors:
   linux:
     docker:
-      - image: cimg/base:2026.01
+      - image: cimg/rust:<< pipeline.parameters.rust-version >>
     resource_class: medium
 
 jobs:
@@ -36,13 +44,6 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - checkout
-
-      - run:
-          name: Install Rust stable
-          command: |
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
-              --default-toolchain stable --profile default
-            echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$BASH_ENV"
 
       # libclang/cmake are needed by bindgen-based build scripts in core's dependency tree —
       # espeak-rs-sys (espeak-ng phonemization, core/Cargo.toml) and whisper-rs (transcription)
