@@ -185,7 +185,20 @@ not novel guesses — see `matrix/competitor-parity.md`.
     interaction isn't run against a live GUI session, same caveat every other timeline-panel
     interaction change in this file already carries.
 17. `[ ]` **D2 — highlight detection from audio spikes.** High effort. Unblocks D6.
-18. `[ ]` **D6 — one-click shorts pack.** High effort. Depends on D2.
+    **Investigated (2026-08-27), not started**: the doc's premise is "simultaneous game-audio +
+    mic spikes," but `Project`/`Timeline` has no structural game-audio-vs-mic distinction —
+    `create_new_project` starts with zero tracks, and Video/Audio track *kind* alone doesn't say
+    which audio track is the mic and which is a video asset's embedded game audio (the "V1"/
+    "A1"/"A2" names seen in test fixtures are just convention, not an enforced or even
+    UI-surfaced role). Scoring "two streams at once" needs *some* answer to "which track is
+    which" before any DSP gets written — either new per-track metadata (a "role" tag the user
+    sets, a real UI addition beyond this feature's own scope) or a scoped-down v1 that scores
+    every audio-bearing track independently and OR's the results (loses the "simultaneous"
+    cross-correlation the doc specifically calls out, but ships on the existing data model with
+    no new UI concept). This is a real design fork, not a blind-implementable reuse the way
+    D1/D4/D5 were — left open rather than guessed at.
+18. `[ ]` **D6 — one-click shorts pack.** High effort. Depends on D2, so blocked on the same
+    open question above.
 
 ## P4 — Hardware-Dependent / Confirmed Hard Walls / Lower-Priority Parity
 
