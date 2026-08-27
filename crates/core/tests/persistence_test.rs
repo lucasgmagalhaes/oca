@@ -148,6 +148,7 @@ fn fixture_project() -> Project {
         active_sequence: 0,
         file_path: None,
         panel_layout: None,
+        smart_bins: Vec::new(),
     }
 }
 
@@ -172,6 +173,7 @@ fn empty_project() -> Project {
         active_sequence: 0,
         file_path: None,
         panel_layout: None,
+        smart_bins: Vec::new(),
     }
 }
 

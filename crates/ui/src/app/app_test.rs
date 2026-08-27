@@ -39,6 +39,7 @@ fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
         active_sequence: 0,
         file_path: None,
         panel_layout: None,
+        smart_bins: Vec::new(),
     }
 }
 
@@ -293,6 +294,8 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         formatting_clipboard: None,
         multi_selected_clip_ids: HashSet::new(),
         active_multicam_group_id: None,
+        active_smart_bin_id: None,
+        editing_smart_bin: None,
         toasts: Vec::new(),
         prefs_open: false,
         prev_prefs_open: false,

@@ -33,9 +33,11 @@ Sources: [CapCut Desktop Review 2026](https://bigvu.tv/blog/capcut-online-deskto
       Confirmed oca's pre-existing trim covered none of these. All four implemented as their
       own `EditorTool` modes — see `matrix/timeline-and-editing.md` for the exact scope.
       → `ROADMAP.md` P2 item 11.
-- [ ] **Smart bins.** Rule-based media-pool folders that auto-populate by file type, flag,
-      metadata field — DaVinci Resolve. Lower priority for a single-editor/small-team channel
-      than for a studio pipeline, but real. → `ROADMAP.md` P4.
+- [x] **Smart bins.** Rule-based media-pool folders that auto-populate by kind/file-name/has-
+      audio — DaVinci Resolve. Lower priority for a single-editor/small-team channel than for a
+      studio pipeline, but real, and (unlike the rest of P4) pure filtering over data this
+      codebase already has, no special hardware or GStreamer element needed.
+      → `ROADMAP.md` P4 item 22.
 - [ ] **Real-time AI object masking.** Premiere Pro 2026 — arbitrary-object segmentation +
       tracking, not fixed-template block matching. A materially bigger lift than oca's current
       motion tracking (`matrix/ai-features.md`, SAD-based, no ML) — would need a real
