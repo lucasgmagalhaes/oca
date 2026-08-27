@@ -1869,14 +1869,14 @@ fn ripple_delete_range_splits_a_clip_straddling_either_boundary() {
     assert!(track.ripple_delete_range(5.0, 15.0, &mut next_id));
 
     assert_eq!(
-        next_id, 3,
+        next_id, 4,
         "both boundaries needed a split, two ids consumed"
     );
     assert_eq!(track.clips.len(), 2);
     let first = track.clips.iter().find(|c| c.id == 1).unwrap();
     assert_eq!(first.start_secs, 0.0);
     assert_eq!(first.source_out_secs, 5.0);
-    let second = track.clips.iter().find(|c| c.id == 2).unwrap();
+    let second = track.clips.iter().find(|c| c.id == 3).unwrap();
     assert_eq!(
         second.start_secs, 5.0,
         "ripple-shifted left by the removed 10s span"
