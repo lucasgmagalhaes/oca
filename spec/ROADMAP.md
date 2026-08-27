@@ -172,8 +172,18 @@ not novel guesses — see `matrix/competitor-parity.md`.
     the temporary local FFmpeg shim); `core`'s frame-diff scoring and every `App`-level chapter
     method are unit tested, but the actual FrameSampler-driven background thread isn't run
     against real video in this sandbox.
-16. `[ ]` **D5 — beat-aligned cut snapping.** Medium effort. Depends on P0 item 2 (general
-    snap mechanism).
+16. `[x]` **D5 — beat-aligned cut snapping** (`architecture/differentiators.md`).
+    `waveform_snap_points_for_clip` (`screens::editor::timeline_panel`) reuses
+    `avcore::clip_silence_gaps` (built for D1) purely as a "quiet moment finder": each detected
+    gap's midpoint is a candidate snap target, with a much shorter minimum gap (0.05s) than D1's
+    own cuttable-gap threshold (0.5s) — D5 wants any brief natural pause, not just a length worth
+    actually cutting. Wired into the two trim-edge (cut-point) drag handlers only, not the
+    whole-clip body-move handler — moving a clip doesn't cut audio. Every trim-driven
+    `EditorTool` (plain trim, Ripple, Roll) shares the same snapped value downstream, so one
+    change benefits all of them. Verified via `cargo check --workspace --all-targets` (temporary
+    local FFmpeg shim) plus new unit tests for the pure mapping function; the actual drag
+    interaction isn't run against a live GUI session, same caveat every other timeline-panel
+    interaction change in this file already carries.
 17. `[ ]` **D2 — highlight detection from audio spikes.** High effort. Unblocks D6.
 18. `[ ]` **D6 — one-click shorts pack.** High effort. Depends on D2.
 

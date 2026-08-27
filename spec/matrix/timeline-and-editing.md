@@ -40,6 +40,11 @@ sequence-management/copy-paste entries.
       (single or composite group) all snap to the nearest other clip's edge or the playhead
       (`Alt` to disable). Timeline markers aren't a target — no markers feature exists yet
       (P2 item 9). See `ROADMAP.md` P0.
+      **Extended (D5, `ROADMAP.md` P3 item 16):** clip trim specifically (not body move) also
+      snaps to waveform low-energy points — `waveform_snap_points_for_clip` reuses
+      `avcore::clip_silence_gaps` (D1) as a "quiet moment finder" with a much shorter minimum
+      gap (0.05s vs. D1's own 0.5s cuttable-gap threshold), so a dragged cut can land mid-pause
+      instead of mid-word/mid-sound-effect.
 - [x] **Review/comment markers (P2 item 9).** `avcore::timeline::Marker`/`MarkerKind`
       (Standard/ToDo/Chapter — Final Cut Pro's typed-marker model, not just a plain note; `ToDo`
       tracks a `completed` flag) on `Timeline::markers`, `#[serde(default)]` so an older-saved
