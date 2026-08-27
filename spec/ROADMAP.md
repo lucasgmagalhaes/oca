@@ -481,15 +481,35 @@ not by default priority.
     assumed), evaluated per pixel instead of once; a scratch-crate numeric check confirmed the
     new per-pixel formula produces the same sin/cos values the old precomputed literals did, at
     several angles, so this is not a behavior change in the unkeyframed (still the common) case.
-    **Explicitly still not done**: `TextClip` animation of any kind (its export path
-    pre-rasterizes a full-canvas PNG with position baked in at generation time, not a moving
-    overlay — animating it means restructuring that pipeline toward a small sprite +
-    `overlay=x=<expr>:y=<expr>`, a materially bigger lift, the largest remaining sub-item here).
     Verified: `shape_axis_expr`'s unit tests and `build_shape_filter_desc`/`inside_expr`
     animation tests (position, then size/rotation) all run for real in a scratch crate
     (`keyframe.rs`+`timeline.rs`+`shape_render.rs` have zero heavy deps) — 58/58 passing,
     including every pre-existing `shape_render` test (confirms the already-visually-verified
     static geometry math is unchanged).
+
+    **`TextClip` opacity keyframes also ship**, in a further follow-up: `TextClip`'s export path
+    pre-rasterizes a full-canvas PNG per segment with position baked in at generation time, not a
+    moving overlay — so position/scale animation stays out of scope (would mean restructuring
+    that pipeline toward a small sprite + `overlay=x=<expr>:y=<expr>`, a materially bigger lift).
+    Opacity is different: the raster already carries a real alpha channel, so a fade is just an
+    alpha *multiplier* applied to the existing pixels, no rasterization change needed.
+    `keyframe::text_opacity_alpha_expr` builds the same `T`-keyed-offset-by-`start_secs`
+    expression `shape_axis_expr` does; `avbridge_apply_text_overlays` splices a `geq` alpha
+    stage between the movie source and the overlay node when a segment's
+    `opacity_keyframe_expr` is non-empty. **Real, non-obvious finding from testing this against
+    this project's actual linked FFmpeg build** (`avbridge/tests/text_overlay_test.rs`, not just
+    reasoning from docs): `geq`'s alpha read-back function is spelled `alpha(X,Y)`, not `a(X,Y)`
+    as FFmpeg's own docs otherwise imply — `a(X,Y)` parses as "Unknown function" against the
+    real library. A `colorchannelmixer=aa=<expr>:eval=frame` alternative (no per-pixel read-back
+    needed at all) was tried first and ruled out the same way: that filter has no `eval` option
+    in this build. The full encode still fails in this sandbox with a `Pipeline` error — but
+    that reproduces identically on the *unmodified* (no-fade) code path too, confirming it's the
+    same pre-existing encoder-availability gap `CLAUDE.md` already documents elsewhere in this
+    codebase, not something this change introduced.
+
+    **Explicitly still not done**: `TextClip` position/scale/rotation animation (the pre-
+    rasterization restructuring described above, still the largest remaining sub-item in this
+    whole roadmap item).
 
 Found but deliberately not added as a P4 item: **nested sequences / compound clips** (Premiere/
 DaVinci/FCP) — closer to Multicam's own tier of effort than to the four above (the render/

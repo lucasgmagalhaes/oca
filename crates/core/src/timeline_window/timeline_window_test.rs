@@ -112,6 +112,7 @@ fn text_clip(id: u64, start_secs: f64, duration_secs: f64) -> TextClip {
         words: vec![],
         highlight_enabled: false,
         highlight_color_rgba: [255, 220, 0, 255],
+        opacity_keyframes: vec![],
     }
 }
 

@@ -119,6 +119,7 @@ fn text_clip(words: Vec<WordTiming>, highlight_enabled: bool) -> TextClip {
         words,
         highlight_enabled,
         highlight_color_rgba: [255, 220, 0, 255],
+        opacity_keyframes: vec![],
     }
 }
 

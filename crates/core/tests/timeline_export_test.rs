@@ -392,6 +392,7 @@ fn word_highlight_text_overlay_exports_without_error() {
             ],
             highlight_enabled: true,
             highlight_color_rgba: [255, 220, 0, 255],
+            opacity_keyframes: vec![],
         }],
         shape_clips: vec![],
         visible: true,

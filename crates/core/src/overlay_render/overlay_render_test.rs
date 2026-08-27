@@ -87,6 +87,7 @@ fn sample_text(text: &str) -> TextClip {
         words: Vec::<WordTiming>::new(),
         highlight_enabled: false,
         highlight_color_rgba: [255, 220, 0, 255],
+        opacity_keyframes: vec![],
     }
 }
 

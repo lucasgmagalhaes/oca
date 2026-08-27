@@ -418,13 +418,23 @@ typedef struct {
     double duration_secs;
     /* UTF-8, NUL-terminated path to a full-canvas RGBA PNG. Must not be NULL. */
     const char *overlay_path;
+    /* NULL or empty means "always fully opaque, same as before this field existed" -- a
+       complete geq-expression-language fragment (e.g. "if(lt((T-1.000000),..." from
+       avcore::keyframe::text_opacity_alpha_expr) multiplied against the PNG's own alpha
+       channel. See avbridge_apply_text_overlays' doc comment for where this is spliced in. */
+    const char *opacity_keyframe_expr;
 } TextSegment;
 
 /* Opens `in_path` (an already-rendered H.264/AAC mp4), composites PNG overlays for every
    segment in `segments` using an enable='between(t,start,end)' avfilter expression, and writes
    the result to `out_path`. Each overlay is already rasterized as a transparent PNG so preview
-   and export share the exact same font/background renderer. Video is decoded, filtered, and
-   re-encoded via libopenh264; audio is stream-copied unchanged.
+   and export share the exact same font/background renderer. When a segment's
+   opacity_keyframe_expr is non-empty, a geq stage multiplies the PNG's own alpha channel by that
+   expression right after the movie source, before the overlay node -- both are in the same
+   filtergraph with a shared time origin (t=0 at graph start, same as the main video), so the
+   geq's own per-pixel T there is timeline-absolute, matching what the expression was built
+   against. Video is decoded, filtered, and re-encoded via libopenh264; audio is stream-copied
+   unchanged.
    canvas_width/canvas_height and canvas_fps_num/den are
    used only to size the output encoder context — they must match the actual rendered video.
 

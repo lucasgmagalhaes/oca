@@ -211,6 +211,7 @@ fn project_with_styled_text() -> Project {
             words: vec![],
             highlight_enabled: false,
             highlight_color_rgba: [255, 220, 0, 255],
+            opacity_keyframes: vec![],
         }],
         shape_clips: vec![],
         visible: true,
@@ -502,6 +503,7 @@ fn queued_text_segments_without_a_glyph_range_load_as_whole_text() {
         glyph_byte_range: Some([4, 10]),
         pos_x: 0.1,
         pos_y: 0.8,
+        opacity_keyframe_expr: String::new(),
     }];
     let bytes = to_ocqueue_bytes(&original).unwrap();
     let mut msgpack = Vec::new();

@@ -427,6 +427,7 @@ name = "avbridge"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "image",
  "serde",
  "thiserror 2.0.20",
 ]

@@ -68,6 +68,8 @@ struct RawTextSegment {
     start_secs: f64,
     duration_secs: f64,
     overlay_path: *const c_char,
+    /// NULL or empty means "always fully opaque" — see `TextOverlaySegment::opacity_keyframe_expr`.
+    opacity_keyframe_expr: *const c_char,
 }
 
 #[repr(C)]
@@ -1403,6 +1405,11 @@ pub struct TextOverlaySegment {
     pub duration_secs: f64,
     /// Full-canvas transparent PNG containing the already-rasterized text/background.
     pub overlay_path: PathBuf,
+    /// Complete `geq`-expression-language fragment (built by
+    /// `avcore::keyframe::text_opacity_alpha_expr`) multiplied against the PNG's own alpha
+    /// channel — empty means "always fully opaque", the same visibility this overlay always had
+    /// before opacity keyframes existed.
+    pub opacity_keyframe_expr: String,
 }
 
 /// What [`apply_text_overlays`] failed on.
@@ -1457,20 +1464,30 @@ pub fn apply_text_overlays(
                 .map_err(TextOverlayError::InvalidPath)?,
         );
     }
+    let opacity_exprs: Vec<CString> = segments
+        .iter()
+        .map(|seg| {
+            CString::new(seg.opacity_keyframe_expr.as_bytes())
+                .map_err(TextOverlayError::InvalidPath)
+        })
+        .collect::<Result<_, _>>()?;
 
     let raw_segments: Vec<RawTextSegment> = segments
         .iter()
         .zip(c_paths.iter())
-        .map(|(seg, path)| RawTextSegment {
+        .zip(opacity_exprs.iter())
+        .map(|((seg, path), opacity_expr)| RawTextSegment {
             start_secs: seg.start_secs,
             duration_secs: seg.duration_secs,
             overlay_path: path.as_ptr(),
+            opacity_keyframe_expr: opacity_expr.as_ptr(),
         })
         .collect();
 
-    // SAFETY: all pointers (c_in, c_out, raw_segments' path pointers from c_paths) are valid
-    // NUL-terminated C strings held alive for the full duration of this call. raw_segments is a
-    // contiguous Vec<RawTextSegment> with segment_count entries, never mutated during the call.
+    // SAFETY: all pointers (c_in, c_out, raw_segments' path/expr pointers from c_paths/
+    // opacity_exprs) are valid NUL-terminated C strings held alive for the full duration of this
+    // call. raw_segments is a contiguous Vec<RawTextSegment> with segment_count entries, never
+    // mutated during the call.
     let status = unsafe {
         avbridge_apply_text_overlays(
             c_in.as_ptr(),
