@@ -364,11 +364,16 @@ not by default priority.
     `Track::split_clip_at` (both halves keep the label, same as `transition_in`). Deliberately
     excluded from `ClipFormatting` — an organizational tag, not a rendering style, same
     reasoning `background_removal_mask_path` is excluded for a different reason.
-28. `[ ]` Detach/unlink audio from a clip (the mechanical precondition for J-cuts/L-cuts) —
-    `matrix/competitor-parity.md`. oca already supports independent audio-only clips on
-    separate tracks; the gap is specifically the one-click "mute the video clip's own audio,
-    place a synced audio-only clip on an Audio track" action. Reuses existing muting/track/
-    clip-creation primitives, no new render/preview pipeline work.
+28. `[x]` Detach/unlink audio from a clip (the mechanical precondition for J-cuts/L-cuts) —
+    `matrix/competitor-parity.md`. `App::detach_audio_from_selected_clip` mutes the video
+    clip's own audio (`gain_db` set to `GAIN_DB_RANGE`'s floor — no separate "muted" flag exists,
+    so muting reuses the existing gain primitive as scoped) and places a new clip on an Audio
+    track pointing at the same asset, with the same trim range and timeline placement, at unity
+    gain — both then independently trimmable. Reused a factored-out `default_clip_instance`
+    helper (previously duplicated between `add_asset_to_timeline`/`add_asset_to_timeline_at`)
+    rather than adding a third copy. No new render/preview pipeline work — per-track independent
+    clips already mix correctly. Triggered via a "Destacar áudio" entry in the timeline clip's
+    context menu, enabled only for Video-track clips.
 29. `[ ]` Speed ramping — keyframed `speed_factor` instead of one constant per clip —
     `matrix/competitor-parity.md`. Present in CapCut (curve editor), Premiere, DaVinci, FCP.
     Reuses the existing `Keyframe<T>` infrastructure already backing position/scale/rotation/

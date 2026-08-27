@@ -72,7 +72,7 @@ templates/real-time-AI-masking." Sources: [DaVinci Resolve free-tier feature run
       GStreamer work — a `color_label: Option<[u8; 3]>` field on `Track`/`ClipInstance` plus a
       colored tag/strip in the timeline widget. Same cost tier as `Marker`/`SmartBin`, both
       already shipped this way. → `ROADMAP.md` P4 item 27 (done).
-- [ ] **Detach/unlink audio from a clip** (the mechanical precondition for J-cuts/L-cuts —
+- [x] **Detach/unlink audio from a clip** (the mechanical precondition for J-cuts/L-cuts —
       split edits where audio and video change at different points, present in Premiere/
       Resolve/FCP). oca already supports independent audio-only clips on separate `Audio`
       tracks with their own trim range (used for mic/music/multicam), so the missing piece is
@@ -81,7 +81,7 @@ templates/real-time-AI-masking." Sources: [DaVinci Resolve free-tier feature run
       `Audio` track pointing at the same asset — both then independently trimmable, same as
       every surveyed editor's version of this. Reuses existing track/clip-creation and muting
       primitives; no new render/preview pipeline work, since per-track independent clips
-      already mix correctly (`resolve_audio_segments`).
+      already mix correctly (`resolve_audio_segments`). → `ROADMAP.md` P4 item 28 (done).
 - [ ] **Speed ramping (keyframed speed, not just a constant per clip).** `ClipInstance::
       speed_factor` is a single `f32` today — no ramp within one clip (e.g. slow-mo easing
       into normal speed), which CapCut (curve-based speed editor), Premiere, DaVinci, and FCP
