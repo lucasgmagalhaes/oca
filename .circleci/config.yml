@@ -16,12 +16,22 @@ parameters:
   ffmpeg-linux64-sha256:
     type: string
     default: "194dc8d525ac8cea5a5ff2e6fd44754747e69af5a766e7a6727cce363bd65de6"
+  # Prebuilt binaries (not `cargo install`, which compiles from source and was taking ~3min
+  # per run on its own). SHA256s computed locally from the pinned release assets below —
+  # neither project publishes its own checksum file — same verify-before-use posture as the
+  # FFmpeg download above.
   cargo-llvm-cov-version:
     type: string
     default: "0.9.0"
+  cargo-llvm-cov-linux64-sha256:
+    type: string
+    default: "b068f7c98841aacb9c4f382b4a0c184ae82f49b56a32d442b429b2961c73be15"
   cargo-nextest-version:
     type: string
     default: "0.9.143"
+  cargo-nextest-linux64-sha256:
+    type: string
+    default: "66786b9abe23920d022a182d1416b1bbc8130dd4872a9553d76985a1708dcd1e"
   # cimg/rust bakes in a full rustc/cargo/rustfmt/clippy toolchain for this exact version, so
   # the job doesn't re-run rustup's install script on every single build (the previous
   # cimg/base + `curl sh.rustup.rs` setup did, downloading and installing the toolchain fresh
@@ -77,32 +87,48 @@ jobs:
             - cargo-registry-
 
       # Separate from the cargo-registry cache above: these two binaries aren't in
-      # Cargo.lock, so they're keyed on their own pinned versions instead. Without this,
-      # `cargo install` would recompile both from source on every single run.
+      # Cargo.lock, so they're keyed on their own pinned versions instead.
       - restore_cache:
           keys:
             - cargo-tools-<< pipeline.parameters.cargo-llvm-cov-version >>-<< pipeline.parameters.cargo-nextest-version >>
 
       - run:
-          name: Install cargo-llvm-cov and cargo-nextest
+          name: Download and verify cargo-llvm-cov and cargo-nextest (prebuilt binaries)
           command: |
-            source "$BASH_ENV"
             rustup component add llvm-tools-preview
 
-            installed_llvm_cov=$(cargo llvm-cov --version 2>/dev/null | awk '{print $2}' || true)
-            if [ "$installed_llvm_cov" != "<< pipeline.parameters.cargo-llvm-cov-version >>" ]; then
-              cargo install cargo-llvm-cov --locked --version "<< pipeline.parameters.cargo-llvm-cov-version >>"
+            mkdir -p cargo-tools
+            if [ -x cargo-tools/cargo-llvm-cov ] && [ -x cargo-tools/cargo-nextest ]; then
+              echo "cargo-llvm-cov/cargo-nextest already cached, skipping download."
+            else
+              llvm_cov_version="<< pipeline.parameters.cargo-llvm-cov-version >>"
+              llvm_cov_sha256="<< pipeline.parameters.cargo-llvm-cov-linux64-sha256 >>"
+              curl -fsSL -o llvm-cov.tar.gz "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v${llvm_cov_version}/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz"
+              actual=$(sha256sum llvm-cov.tar.gz | awk '{print $1}')
+              if [ "$actual" != "$llvm_cov_sha256" ]; then
+                echo "cargo-llvm-cov checksum mismatch! Expected: $llvm_cov_sha256, Got: $actual" >&2
+                exit 1
+              fi
+              tar -xzf llvm-cov.tar.gz -C cargo-tools
+
+              nextest_version="<< pipeline.parameters.cargo-nextest-version >>"
+              nextest_sha256="<< pipeline.parameters.cargo-nextest-linux64-sha256 >>"
+              curl -fsSL -o nextest.tar.gz "https://get.nexte.st/${nextest_version}/x86_64-unknown-linux-gnu.tar.gz"
+              actual=$(sha256sum nextest.tar.gz | awk '{print $1}')
+              if [ "$actual" != "$nextest_sha256" ]; then
+                echo "cargo-nextest checksum mismatch! Expected: $nextest_sha256, Got: $actual" >&2
+                exit 1
+              fi
+              tar -xzf nextest.tar.gz -C cargo-tools
+              chmod +x cargo-tools/cargo-llvm-cov cargo-tools/cargo-nextest
             fi
 
-            installed_nextest=$(cargo nextest --version 2>/dev/null | awk '{print $2}' || true)
-            if [ "$installed_nextest" != "<< pipeline.parameters.cargo-nextest-version >>" ]; then
-              cargo install cargo-nextest --locked --version "<< pipeline.parameters.cargo-nextest-version >>"
-            fi
+            echo "export PATH=$(pwd)/cargo-tools:\$PATH" >> "$BASH_ENV"
 
       - save_cache:
           key: cargo-tools-<< pipeline.parameters.cargo-llvm-cov-version >>-<< pipeline.parameters.cargo-nextest-version >>
           paths:
-            - ~/.cargo/bin
+            - cargo-tools
 
       - restore_cache:
           keys:
