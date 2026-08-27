@@ -87,6 +87,26 @@ sequence-management/copy-paste entries.
       **not driven through a live/e2e build** — no visual confirmation that the drag
       interactions feel right in the actual running app, same caveat magnetic snap's own entry
       above already carries for UI-only interaction logic.
+- [x] **Multicam editing (P2 item 10).** `avcore::timeline::MulticamGroup` — a `Timeline`
+      sidecar (member `Video` track ids, program/active track id, per-track sync offset
+      seconds), same non-invasive shape `Marker` uses; angles are ordinary `Video` tracks, no new
+      `TrackKind`. `Timeline::add_multicam_group` hides every non-program member
+      (`Track::visible = false`) so only the active angle renders/exports.
+      `Timeline::switch_multicam_angle` splits the program track's clip at the given time
+      (`Track::split_clip_at`) and retargets the new piece's `asset_id`/`source_in_secs`/
+      `source_out_secs` to the target angle's own footage at the sync-offset-adjusted equivalent
+      time — reuses existing split/retarget primitives, no new editing-model concept beyond the
+      group record itself. Sync offsets come from `avcore::multicam_sync` (RMS-envelope cross-
+      correlation over `avbridge::extract_pcm_16k_mono` PCM — audio-waveform sync only, not
+      timecode). `App::create_multicam_group_from_video_tracks` (Editor toolbar's "Sync
+      Multicam" button) builds the group from every `Video` track in the sequence;
+      `App::switch_multicam_angle_at_playhead`, wired to number keys 1-9, does the switch.
+      **Not done**: live multi-feed preview during scrub/playback — switching still only takes
+      effect on the materialized timeline clips, not a real-time multicam monitor; the preview
+      pipeline plays whichever one decoded source is active, same "no live preview effect yet"
+      gap most other per-clip effects have. Verified via a real-execution scratch crate (`core`'s
+      own test binary can't link in this sandbox — pre-existing ONNX Runtime gap — but
+      `timeline.rs`/`multicam_sync.rs` have zero heavy deps) rather than `cargo check`-only.
 - [x] **D1 — automatic silence/dead-air cut** (`architecture/differentiators.md`, `ROADMAP.md`
       P3 item 13). `Track::ripple_delete_range` is the general-purpose "ripple delete a timeline
       range" primitive this feature applies (split any clip straddling either boundary via the
