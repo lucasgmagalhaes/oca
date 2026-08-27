@@ -50,6 +50,19 @@ pub enum AudioRole {
     Music,
 }
 
+impl AudioRole {
+    /// Maps this role to the integer code used in [`avbridge::AudioSegment::duck_role`] and the
+    /// `AudioSegment.duck_role` C field (P2 item 6, "Audio ducking") — `Mic` is the sidechain
+    /// trigger, `Music` is what gets ducked under it, everything else mixes in unducked.
+    pub fn to_duck_role_code(self) -> u8 {
+        match self {
+            Self::Unspecified | Self::GameAudio => 0,
+            Self::Mic => 1,
+            Self::Music => 2,
+        }
+    }
+}
+
 /// Bundled font family used by a [`TextClip`]. Every family is shipped with oca under the
 /// SIL Open Font License, so projects render identically even when the host has no fonts
 /// installed. The actual font bytes are parsed lazily by [`crate::text_metrics`].

@@ -67,14 +67,25 @@ Read [architecture/performance-and-caching.md](architecture/performance-and-cach
 Read [matrix/effects-and-color.md](matrix/effects-and-color.md),
 [matrix/robustness.md](matrix/robustness.md), [matrix/competitor-parity.md](matrix/competitor-parity.md).
 
-6. `[ ]` Audio ducking (auto-lower music under speech) — `audio_mix.c`'s multi-branch mixing
-   already provides the infra this builds on. Confirmed standard in CapCut/Premiere/DaVinci.
-   **Skipped over (2026-08-27), picked up item 8 first**: this needs new `avfilter` wiring
-   (`sidechaincompress` or equivalent) in `avbridge/csrc/audio_mix.c`, C code this sandbox
-   cannot even syntax-check right now — no FFmpeg dev headers present at all (worse than
-   `CLAUDE.md`'s documented "too-old packaged FFmpeg" gap; `pkg-config --cflags libavfilter`
-   finds nothing here). Picking this up blind, with zero compiler feedback on C changes, isn't
-   a reasonable risk to take — do this from an environment with FFmpeg dev headers available.
+6. `[x]` Audio ducking (auto-lower music under speech). Reuses the existing `AudioRole`
+   (`Mic`/`Music`/`GameAudio`/`Unspecified`) rather than new per-track metadata:
+   `AudioRole::to_duck_role_code()` (core) maps it to a raw `u8` crossing the FFI boundary as
+   `AudioSegment::duck_role`, and `build_mix_graph` in `avbridge/csrc/audio_mix.c` routes every
+   `Music`-tagged branch through a `sidechaincompress` keyed by the mixed `Mic`-tagged branches
+   whenever both roles are present on the timeline — opt-in and additive, byte-identical to the
+   old flat `amix` otherwise. A trigger (mic) branch needs its audio in two places at once (the
+   sidechain control input *and* still audible in the final mix) but a filter output pad can
+   only be consumed once, so each trigger branch gets its own `asplit` feeding both consumers —
+   the bug that produced `AVERROR(EINVAL)` on the first attempt, found by real
+   `avfilter_graph_config` runs, not by re-reading the C. Verified for real, not just
+   syntax-checked: `crates/avbridge` has zero heavy dependencies (no ONNX/whisper/GStreamer), so
+   `cargo test -p avbridge --test audio_mix_test` fully links and runs in this sandbox against
+   real fixture media — three new integration tests cover single-branch-per-role, multiple
+   branches per role (the `music_mix`/`trigger_mix` sub-`amix` paths), and a target with no
+   trigger falling back to the original flat mix. `resolve_audio_segments` wiring covered in
+   `core`'s own test suite. The prior skip note (no FFmpeg dev headers, `pkg-config` found
+   nothing) no longer applies in this sandbox — `pkg-config --cflags/--modversion libavfilter`
+   both resolve now.
 7. `[x]` Color scopes (waveform/vectorscope) for calibrated grading. `avcore::scopes`
    (pure pixel analysis, no new avfilter/GStreamer element) + an opt-in "📊" toggle on the
    Editor preview panel. Grayscale-intensity simplification, not a calibrated-graticule

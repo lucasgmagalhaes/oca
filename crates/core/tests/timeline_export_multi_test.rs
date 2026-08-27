@@ -254,6 +254,45 @@ fn resolve_audio_segments_includes_background_and_additional_audio_tracks() {
     assert_eq!(segments[1].speed_factor, 1.25);
 }
 
+/// P2 item 6, "Audio ducking": `Track::audio_role` must reach each resolved `AudioSegment` as
+/// the raw `duck_role` code `avbridge`'s `build_mix_graph` switches on (0/Normal, 1/Mic-trigger,
+/// 2/Music-target) -- see `AudioRole::to_duck_role_code`.
+#[test]
+fn resolve_audio_segments_carries_the_track_audio_role_as_duck_role() {
+    let video = video_asset(1);
+    let mic = audio_asset(2);
+    let music = audio_asset(3);
+    let background = track(1, "V1", vec![clip(1, 1, 0.0, 0.0, 0.5)]);
+    let mic_track = Track {
+        id: 2,
+        name: "A1".to_string(),
+        kind: TrackKind::Audio,
+        clips: vec![clip(2, 2, 0.0, 0.0, 0.5)],
+        text_clips: vec![],
+        shape_clips: vec![],
+        visible: true,
+        audio_role: AudioRole::Mic,
+    };
+    let music_track = Track {
+        id: 3,
+        name: "A2".to_string(),
+        kind: TrackKind::Audio,
+        clips: vec![clip(3, 3, 0.0, 0.0, 0.5)],
+        text_clips: vec![],
+        shape_clips: vec![],
+        visible: true,
+        audio_role: AudioRole::Music,
+    };
+    let sequence = sequence_with(vec![background, mic_track, music_track]);
+
+    let segments = resolve_audio_segments(&sequence, &[video, mic, music]).unwrap();
+
+    assert_eq!(segments.len(), 3);
+    assert_eq!(segments[0].duck_role, 0); // background video track, Unspecified
+    assert_eq!(segments[1].duck_role, 1); // Mic -> trigger
+    assert_eq!(segments[2].duck_role, 2); // Music -> target
+}
+
 #[test]
 fn resolve_audio_segments_is_empty_without_an_additional_contributor() {
     let video = video_asset(1);

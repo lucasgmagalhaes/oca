@@ -474,6 +474,7 @@ pub fn resolve_audio_segments(
                 timeline_start_secs: clip.start_secs,
                 gain_db: clip.gain_db,
                 speed_factor: clip.speed_factor,
+                duck_role: track.audio_role.to_duck_role_code(),
             });
         }
     }

@@ -93,6 +93,11 @@ make check     # cargo check --workspace --all-targets (fast compile-only loop)
 Single test: `cargo test -p core --test probe_test measure_loudness` or
 `cargo test -p ui i18n::tests`.
 
+**Git hooks**: `npm install` (Node, one-time) sets up a husky pre-commit hook that runs
+`rustfmt`/`clang-format` on staged `.rs`/`.c`/`.h` files via `lint-staged` — see `package.json`
+and `.clang-format`. Skipping `npm install` just means no hook runs; `make fmt`/`cargo fmt`
+still work standalone.
+
 **End-to-end tests** (`e2e/`) drive the real `ui.exe` via Windows UI Automation
 (`pytest` + `pywinauto`, `backend="uia"`). One-time setup:
 `python -m pip install -r e2e/requirements.txt`. **Use a real Python, not a Windows Store

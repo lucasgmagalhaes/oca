@@ -63,9 +63,11 @@ for exact export-vs-preview wiring per effect).
       `cargo check -p core` all the way to that one pre-existing C failure — closer than any
       prior session, still not a full build). The Editor panel wiring itself is implemented but
       not visually verified (no way to drive the actual GUI in this environment).
-- [ ] Audio ducking (auto-lower music under speech) — `audio_mix.c` already has the multi-branch
-      mixing infra this would build on. Needs new `avfilter` wiring in C this sandbox can't even
-      syntax-check right now (no FFmpeg dev headers reachable at all) — see `ROADMAP.md` P2 item 6.
+- [x] Audio ducking (auto-lower music under speech) — `build_mix_graph` in `audio_mix.c` routes
+      `Music`-tagged branches through `sidechaincompress` keyed by `Mic`-tagged branches whenever
+      both `AudioRole`s are present, opt-in and additive over the prior flat `amix`. See
+      `ROADMAP.md` P2 item 6 for the full writeup, including the asplit-per-trigger-branch fix
+      for a filter-output-pad-consumed-twice bug found via real `avfilter_graph_config` runs.
 
 ---
 
