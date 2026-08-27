@@ -301,10 +301,25 @@ not by default priority.
     `matrix/engine.md`. Code path exists, never run against real hardware.
 20. `[ ]` GPU usage telemetry — `matrix/performance.md`. No cross-platform reader exists;
     needs a vendor-specific one (NVML/etc.).
-21. `[ ]` Preview support for vignette/glitch/deflicker/3D-LUT/stabilization —
-    `matrix/effects-and-color.md`. Confirmed no matching GStreamer element on the dev machine;
-    needs a custom-coded element or CPU-side frame processing, a materially bigger lift than
-    every other preview gap closed so far.
+21. `[~]` Preview support for vignette/glitch/deflicker/3D-LUT/stabilization —
+    `matrix/effects-and-color.md`. Confirmed no matching GStreamer element on the dev machine for
+    any of the five; a custom-coded element was never attempted (no way to visually verify a
+    GStreamer plugin in this sandbox). Instead, **partial**: `avcore::preview_effects` covers
+    3D LUT and vignette as CPU-side post-processing of the already-decoded preview frame — same
+    pattern `avcore::scopes` established for the waveform/vectorscope overlays. `Lut3D::parse`/
+    `load` read the standard `.cube` format with real trilinear interpolation (precise,
+    unit-tested, no visual-verification risk); the vignette is a simple radial-falloff
+    *approximation*, explicitly not FFmpeg's own cosine-based formula (reproducing that exactly
+    from `libavfilter` C source without being able to A/B it visually against export wasn't a
+    risk worth taking). `App::pump_preview_frame` applies both to the live preview texture only
+    — export is untouched, still the real `lut3d`/`vignette` `avfilter`s. **Explicitly still
+    not done**: glitch (no single well-specified "the" algorithm to approximate — a judgment
+    call this sandbox can't visually verify), deflicker and stabilization (both need *temporal*
+    state across multiple frames, a materially larger, stateful piece of work with its own
+    seek/scrub edge cases — not a natural extension of this per-frame-only module). Verified via
+    a real-execution scratch crate (`preview_effects.rs` has zero heavy deps) — 12 tests, one of
+    which caught a real bug in a *test's own* expected value (a coarse 2-point LUT interpolates
+    rather than reproducing the exact original channel value) before it could pass silently.
 22. `[x]` Smart bins (rule-based media-pool auto-organization) — real in DaVinci Resolve, but
     lower priority for a small/single-editor workflow than for a studio pipeline. The one P4 item
     tractable in this sandbox without special hardware or a missing GStreamer element (unlike 19-

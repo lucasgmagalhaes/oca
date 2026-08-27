@@ -682,11 +682,46 @@ impl App {
     /// position, continuing playback across the cut. Called once per frame from
     /// [`eframe::App::ui`], before the screens draw.
     pub(super) fn pump_preview_frame(&mut self, ctx: &egui::Context) {
+        // Read before borrowing `self.preview` below -- `current_preview_clip` is a method
+        // call, which needs an unencumbered `&self` the borrow checker can't reconcile with an
+        // already-live `&self.preview` borrow, even though the two fields are disjoint.
+        let (lut_path, vignette_intensity) = self
+            .current_preview_clip()
+            .map(|(clip, _)| (clip.lut_path, clip.vignette_intensity))
+            .unwrap_or_default();
+
         let Some(preview) = &self.preview else {
             return;
         };
 
-        if let Some(frame) = preview.current_frame() {
+        if let Some(mut frame) = preview.current_frame() {
+            // P4 item 21 (`spec/ROADMAP.md`) -- CPU-side preview approximation for the two
+            // effects with no matching GStreamer element on any dev machine checked (see
+            // `avcore::preview_effects`'s own doc comment for why only these two, and why this
+            // is an approximation, not bit-exact to the real `lut3d`/`vignette` avfilters export
+            // uses). Applied in place, before upload, so it costs nothing when neither is set.
+            if !lut_path.is_empty() {
+                let needs_reparse = self
+                    .preview_lut_cache
+                    .as_ref()
+                    .is_none_or(|(cached_path, _)| cached_path != &lut_path);
+                if needs_reparse {
+                    let parsed = avcore::Lut3D::load(std::path::Path::new(&lut_path)).ok();
+                    self.preview_lut_cache = Some((lut_path.clone(), parsed));
+                }
+                if let Some((_, Some(lut))) = &self.preview_lut_cache {
+                    avcore::apply_lut_to_rgba(&mut frame.rgba, lut);
+                }
+            }
+            if vignette_intensity > 0.0 {
+                avcore::apply_vignette_to_rgba(
+                    &mut frame.rgba,
+                    frame.width,
+                    frame.height,
+                    vignette_intensity,
+                );
+            }
+
             let image = egui::ColorImage::from_rgba_unmultiplied(
                 [frame.width as usize, frame.height as usize],
                 &frame.rgba,

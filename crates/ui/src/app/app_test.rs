@@ -220,6 +220,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         preview_text_clip_ids: Vec::new(),
         preview_shape_clip_ids: Vec::new(),
         preview_texture: None,
+        preview_lut_cache: None,
         scopes_enabled: false,
         waveform_texture: None,
         vectorscope_texture: None,

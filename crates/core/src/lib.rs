@@ -40,6 +40,7 @@ pub mod multicam_sync;
 pub mod overlay_render;
 pub mod persistence;
 pub mod preview;
+pub mod preview_effects;
 pub mod probe;
 pub mod project;
 pub mod proxy;
@@ -97,6 +98,7 @@ pub use persistence::{
     to_ocproj_bytes, to_ocqueue_bytes, PersistError,
 };
 pub use preview::{Preview, PreviewError};
+pub use preview_effects::{apply_lut_to_rgba, apply_vignette_to_rgba, Lut3D, LutParseError};
 pub use probe::{probe_media, ProbeError, ProbedMedia};
 pub use project::{PanelLayout, Project, Recency, Sequence, SequenceExportSettings};
 pub use proxy::{ensure_proxy, PreviewQuality, ProxyError};
