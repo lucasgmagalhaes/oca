@@ -67,6 +67,97 @@ impl App {
         self.invalidate_preview_rendering();
     }
 
+    /// Just the id [`App::current_preview_clip`] would resolve to, without cloning the
+    /// `ClipInstance`/`MediaAsset` — see [`App::ensure_preview_loaded`]'s doc comment for why
+    /// this cheap pass exists.
+    fn current_preview_clip_id(&self) -> Option<u64> {
+        let project = self.active_project();
+        let timeline = project.timeline();
+        let track = timeline
+            .tracks
+            .iter()
+            .find(|t| t.kind == TrackKind::Video && t.visible)?;
+        let clip = track.clip_at(timeline.playhead_secs)?;
+        project
+            .media_library
+            .iter()
+            .find(|a| a.id == clip.asset_id)?;
+        Some(clip.id)
+    }
+
+    /// Just the ids [`App::current_preview_overlay_clips`] would resolve to, without cloning.
+    fn current_preview_overlay_clip_ids(&self) -> Vec<u64> {
+        let project = self.active_project();
+        let timeline = project.timeline();
+        timeline
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Video && t.visible)
+            .skip(1)
+            .filter_map(|t| {
+                let clip = t.clip_at(timeline.playhead_secs)?;
+                project
+                    .media_library
+                    .iter()
+                    .find(|a| a.id == clip.asset_id)?;
+                Some(clip.id)
+            })
+            .collect()
+    }
+
+    /// Just the ids [`App::current_preview_audio_clips`] would resolve to, without cloning.
+    fn current_preview_audio_clip_ids(&self) -> Vec<u64> {
+        let project = self.active_project();
+        let timeline = project.timeline();
+        timeline
+            .tracks
+            .iter()
+            .filter(|track| track.kind == TrackKind::Audio && track.visible)
+            .filter_map(|track| {
+                let clip = track.clip_at(timeline.playhead_secs)?;
+                project
+                    .media_library
+                    .iter()
+                    .find(|asset| asset.id == clip.asset_id && asset.has_audio)?;
+                Some(clip.id)
+            })
+            .collect()
+    }
+
+    /// Just the ids [`App::current_preview_text_clips`] would resolve to, without cloning.
+    fn current_preview_text_clip_ids(&self) -> Vec<u64> {
+        let timeline = self.active_project().timeline();
+        timeline
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Text)
+            .filter_map(|t| {
+                t.text_clips.iter().find(|c| {
+                    timeline.playhead_secs >= c.start_secs
+                        && timeline.playhead_secs < c.start_secs + c.duration_secs
+                })
+            })
+            .map(|c| c.id)
+            .collect()
+    }
+
+    /// Just the ids [`App::current_preview_shape_clips`] would resolve to, without cloning.
+    fn current_preview_shape_clip_ids(&self) -> Vec<u64> {
+        let timeline = self.active_project().timeline();
+        timeline
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Shape)
+            .filter_map(|t| {
+                t.shape_clips.iter().find(|c| {
+                    timeline.playhead_secs >= c.start_secs
+                        && timeline.playhead_secs < c.start_secs + c.duration_secs
+                })
+            })
+            .map(|c| c.id)
+            .collect()
+    }
+
     /// The clip covering the active sequence's timeline playhead, and the asset it plays from,
     /// if both resolve — `None` if the video track is missing/empty, nothing covers the
     /// playhead ([`avcore::timeline::Track::clip_at`]), or the clip's `asset_id` isn't in the
@@ -85,6 +176,28 @@ impl App {
             .iter()
             .find(|a| a.id == clip.asset_id)?;
         Some((clip.clone(), asset.clone()))
+    }
+
+    /// Just [`ClipInstance::lut_path`]/[`ClipInstance::vignette_intensity`] for the clip at the
+    /// playhead, without [`App::current_preview_clip`]'s full `ClipInstance`/`MediaAsset` clone
+    /// (which includes every keyframe `Vec` on the clip) or its unused media-library lookup —
+    /// [`App::pump_preview_frame`] calls this every frame during playback and only ever reads
+    /// these two scalar fields, so paying for the rest was pure waste on the hottest UI-thread
+    /// path in the app. Defaults (`String::new()`, `0.0`) when nothing covers the playhead,
+    /// same as the `unwrap_or_default()` the caller used to apply to the full clone.
+    fn current_preview_clip_lut_and_vignette(&self) -> (String, f32) {
+        let timeline = self.active_project().timeline();
+        let Some(track) = timeline
+            .tracks
+            .iter()
+            .find(|t| t.kind == TrackKind::Video && t.visible)
+        else {
+            return (String::new(), 0.0);
+        };
+        let Some(clip) = track.clip_at(timeline.playhead_secs) else {
+            return (String::new(), 0.0);
+        };
+        (clip.lut_path.clone(), clip.vignette_intensity)
     }
 
     /// Every overlay-track (video track index 1+, in track order — matches
@@ -271,6 +384,22 @@ impl App {
     /// (`preview_playing` was already `true`) so crossing a cut doesn't pause playback, just
     /// hitches while the new pipeline opens.
     pub fn ensure_preview_loaded(&mut self) {
+        // Cheap id-only pass first -- called once per frame, including every frame of
+        // uninterrupted playback where nothing at the playhead has actually changed, so this
+        // avoids paying current_preview_clip()'s (and its overlay/audio/text/shape siblings')
+        // full ClipInstance/MediaAsset clone cost (every keyframe Vec on the clip, an asset
+        // clone entirely unused once ids are known to match) on the common no-op case. The full
+        // clone-based resolution below only runs when something actually changed, which is also
+        // exactly when a reopen needs that owned data anyway.
+        if self.current_preview_clip_id() == self.preview_clip_id
+            && self.current_preview_overlay_clip_ids() == self.preview_overlay_clip_ids
+            && self.current_preview_audio_clip_ids() == self.preview_audio_clip_ids
+            && self.current_preview_text_clip_ids() == self.preview_text_clip_ids
+            && self.current_preview_shape_clip_ids() == self.preview_shape_clip_ids
+        {
+            return;
+        }
+
         let current = self.current_preview_clip();
         let (overlays, audio_clips, text_clips, shape_clips) = if current.is_some() {
             (
@@ -287,14 +416,6 @@ impl App {
         let text_ids: Vec<u64> = text_clips.iter().map(|c| c.id).collect();
         let shape_ids: Vec<u64> = shape_clips.iter().map(|c| c.id).collect();
         let current_clip_id = current.as_ref().map(|(c, _)| c.id);
-        if current_clip_id == self.preview_clip_id
-            && overlay_ids == self.preview_overlay_clip_ids
-            && audio_ids == self.preview_audio_clip_ids
-            && text_ids == self.preview_text_clip_ids
-            && shape_ids == self.preview_shape_clip_ids
-        {
-            return;
-        }
         self.preview = None;
         self.preview_texture = None;
         self.waveform_texture = None;
@@ -721,13 +842,10 @@ impl App {
     /// position, continuing playback across the cut. Called once per frame from
     /// [`eframe::App::ui`], before the screens draw.
     pub(super) fn pump_preview_frame(&mut self, ctx: &egui::Context) {
-        // Read before borrowing `self.preview` below -- `current_preview_clip` is a method
-        // call, which needs an unencumbered `&self` the borrow checker can't reconcile with an
-        // already-live `&self.preview` borrow, even though the two fields are disjoint.
-        let (lut_path, vignette_intensity) = self
-            .current_preview_clip()
-            .map(|(clip, _)| (clip.lut_path, clip.vignette_intensity))
-            .unwrap_or_default();
+        // Read before borrowing `self.preview` below -- this is a method call, which needs an
+        // unencumbered `&self` the borrow checker can't reconcile with an already-live
+        // `&self.preview` borrow, even though the two fields are disjoint.
+        let (lut_path, vignette_intensity) = self.current_preview_clip_lut_and_vignette();
 
         let Some(preview) = &self.preview else {
             return;
