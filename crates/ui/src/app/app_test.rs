@@ -4704,6 +4704,8 @@ fn add_shape_clip_ids_stay_unique_past_an_existing_high_shape_clip_id() {
         shape_kind: avcore::timeline::ShapeKind::rectangle(),
         center_x: 0.5,
         center_y: 0.5,
+        center_x_keyframes: vec![],
+        center_y_keyframes: vec![],
         width: 0.3,
         height: 0.3,
         rotation_deg: 0.0,
