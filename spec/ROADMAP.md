@@ -69,9 +69,22 @@ Read [matrix/effects-and-color.md](matrix/effects-and-color.md),
 
 6. `[ ]` Audio ducking (auto-lower music under speech) — `audio_mix.c`'s multi-branch mixing
    already provides the infra this builds on. Confirmed standard in CapCut/Premiere/DaVinci.
+   **Skipped over (2026-08-27), picked up item 8 first**: this needs new `avfilter` wiring
+   (`sidechaincompress` or equivalent) in `avbridge/csrc/audio_mix.c`, C code this sandbox
+   cannot even syntax-check right now — no FFmpeg dev headers present at all (worse than
+   `CLAUDE.md`'s documented "too-old packaged FFmpeg" gap; `pkg-config --cflags libavfilter`
+   finds nothing here). Picking this up blind, with zero compiler feedback on C changes, isn't
+   a reasonable risk to take — do this from an environment with FFmpeg dev headers available.
 7. `[ ]` Color scopes (waveform/vectorscope) for calibrated grading.
-8. `[ ]` Export presets per platform (YouTube Shorts / Instagram Reels / TikTok — resolution +
-   aspect + LUFS target bundled under one name).
+8. `[x]` Export presets per platform (YouTube Shorts / Instagram Reels / TikTok — resolution +
+   aspect + LUFS target bundled under one name). `avcore::PlatformExportPreset`
+   (`crates/core/src/export.rs`) + `App::apply_platform_export_preset` + a one-click button row
+   on the Fila screen, above the existing aspect-ratio/LUFS pickers (which stay live afterward
+   for fine-tuning — a preset isn't a lock). All three presets currently resolve to the same
+   numbers (1080x1920, -14 LUFS, matching this codebase's own existing "YouTube" LUFS profile)
+   — a real current fact about these platforms' delivery specs, not a shortcut: each preset
+   still carries its own independent mapping, ready to diverge without a shape change. Pure
+   Rust/UI, no `avbridge` C changes — picked deliberately over item 6 for that reason.
 9. `[ ]` Review/comment markers on the timeline — consider Final Cut Pro's typed-marker +
    searchable Timeline Index model, not just a plain note.
 10. `[ ]` **Multicam editing** — sync footage from multiple sources (game capture, webcam, mic)
