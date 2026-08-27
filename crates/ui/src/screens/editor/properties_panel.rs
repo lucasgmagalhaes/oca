@@ -1020,6 +1020,10 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
     };
 
     let mut changed = false;
+    // Set alongside `changed` only for edits that can change which clip(s) cover the
+    // playhead (start/duration) — see the full-vs-cheap-refresh choice at the end of this
+    // function.
+    let mut structural_changed = false;
 
     // Text content
     ui.label(
@@ -1240,6 +1244,7 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
         .changed()
     {
         changed = true;
+        structural_changed = true;
     }
     ui.label(
         RichText::new(Text::PropTextDuration.tr(locale))
@@ -1256,6 +1261,7 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
         .changed()
     {
         changed = true;
+        structural_changed = true;
     }
 
     ui.add_space(6.0);
@@ -1265,7 +1271,14 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
             .color(theme::TEXT_MUTED),
     );
 
-    // Apply changes back to the clip in the active project.
+    // Apply changes back to the clip in the active project. `start_secs`/`duration_secs`
+    // (structural_changed) can change which clips cover the playhead, so those still force a
+    // full pipeline reopen via `ensure_preview_loaded`'s normal id-diffing path. Every other
+    // field here (text, font, color, background, position, highlight) only changes this
+    // clip's own rasterized look — if it's already part of the currently open composited
+    // preview, `refresh_preview_text_content` pushes a fresh buffer into its existing
+    // `appsrc` branch instead of tearing down and rebuilding the whole GStreamer pipeline
+    // (background decoder, compositor, every other branch) on every dragged slider frame.
     if changed {
         app.push_undo_snapshot_for_drag();
         let timeline = app.active_project_mut().timeline_mut();
@@ -1277,7 +1290,11 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
                 }
             }
         }
-        app.invalidate_preview_rendering();
+        if structural_changed {
+            app.invalidate_preview_rendering();
+        } else {
+            app.refresh_preview_text_content(tc_id);
+        }
     }
 }
 

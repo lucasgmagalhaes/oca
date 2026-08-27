@@ -42,9 +42,14 @@ feature that touches the timeline.
 
 Read [architecture/performance-and-caching.md](architecture/performance-and-caching.md).
 
-3. `[ ]` Dirty-flag mutation classification for timeline edits (position vs. content vs.
-   effect vs. track) — today likely every edit forces the same full-pipeline-reopen path in
-   preview; confirm, then fix.
+3. `[~]` Dirty-flag mutation classification for timeline edits (position vs. content vs.
+   effect vs. track). Confirmed the premise didn't hold as stated — position/effect edits
+   already skip a reopen (they just don't live-update the pipeline either, a separate gap);
+   the one real hot-path violation found (text-clip property panel forcing a full pipeline
+   reopen on every dragged-slider frame, bundling position/content with start/duration) is
+   fixed via a cheap `appsrc` buffer refresh. See `matrix/performance.md` for the full
+   findings and what's still open (effect-property live preview updates, non-text overlay
+   kinds).
 4. `[ ]` Versioned cache for the timeline→avfilter-graph resolution
    (`resolve_timeline_segments_multi`) — rebuilds from scratch on every call today.
 5. `[ ]` Extract a shared `FrameSampler` primitive — auto-reframe, motion tracking, and

@@ -198,7 +198,10 @@ impl App {
             TextColorTarget::Background => clip.background_rgba = edit.rgba,
             TextColorTarget::Highlight => clip.highlight_color_rgba = edit.rgba,
         }
-        self.invalidate_preview_rendering();
+        // A color is a content-only change, same category as font/text/position edits in
+        // `properties_panel::text_clip_properties` — a fresh raster into the already-open
+        // branch, not a full pipeline reopen.
+        self.refresh_preview_text_content(edit.clip_id);
         true
     }
 }
