@@ -473,6 +473,27 @@ fn from_ocproj_bytes_rejects_an_unsupported_version() {
 }
 
 #[test]
+fn from_ocproj_bytes_rejects_a_decompression_bomb() {
+    // Bypasses to_ocproj_bytes to build the raw gzip stream by hand: a run of zero bytes well
+    // past MAX_DECOMPRESSED_BYTES (256 MiB), which flate2 compresses down to a few KB -- the
+    // exact "tiny file, huge decompressed size" shape a real gzip-bomb DoS attempt would have.
+    use std::io::Write;
+    let mut bytes = b"OCPJ".to_vec();
+    bytes.push(1); // FORMAT_VERSION
+    let mut encoder = flate2::write::GzEncoder::new(&mut bytes, flate2::Compression::fast());
+    let chunk = vec![0u8; 1024 * 1024];
+    for _ in 0..(257) {
+        encoder.write_all(&chunk).unwrap();
+    }
+    encoder.finish().unwrap();
+
+    assert!(matches!(
+        from_ocproj_bytes::<Project>(&bytes),
+        Err(PersistError::Corrupt(_))
+    ));
+}
+
+#[test]
 fn ocqueue_round_trip_uses_its_own_magic_bytes() {
     let original = vec![1_u64, 5, 9];
 
