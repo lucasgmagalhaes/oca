@@ -16,13 +16,16 @@ These undermine trust in *everything* built on top — an editor without undo is
 from losing work, and dragging without snap makes frame-precise cuts tedious for every future
 feature that touches the timeline.
 
-1. `[~]` **Undo/redo.** `core::undo::UndoStack` wired into `ui` — `Ctrl+Z`/`Ctrl+Y`, toolbar
+1. `[x]` **Undo/redo.** `core::undo::UndoStack` wired into `ui` — `Ctrl+Z`/`Ctrl+Y`, toolbar
    buttons, covers clip add/split/delete/cut/copy/paste, trim/move drags, track/text/shape-
-   track add, composite merge, paste-formatting; `undo_stack.clear()` on sequence/project
-   switch. **Verified**: `cargo test -p core --test undo_test` (7/7) and `cargo test -p ui
-   undo` (3/3) both pass. Remaining: effect-property sliders and keyframe add/remove
-   (`ui::app::clip_props.rs`) aren't snapshot-covered yet — see
-   [architecture/undo-redo.md](architecture/undo-redo.md) for why and what's left.
+   track add, composite merge, paste-formatting, text-color-modal confirm, and every effect-
+   property slider/keyframe editor (gain/crop/mask/color/blur/etc., via a drag-coalescing
+   `push_undo_snapshot_for_drag` so a held slider is one undo step, not one per frame);
+   `undo_stack.clear()` on sequence/project switch. **Verified**: `cargo test -p core --test
+   undo_test` (7/7) and `cargo test -p ui` (239/239, including the drag-coalescing tests) pass;
+   the track-add/remove path is additionally covered by a live e2e smoke test against the real
+   compiled binary (`e2e/test_undo_redo.py`). See
+   [architecture/undo-redo.md](architecture/undo-redo.md) for the design.
 2. `[ ]` **Magnetic snap** while dragging (playhead, other clip edges, markers). Blocks D5
    (beat-aligned snap, P3) — build the general mechanism first, D5 extends it.
 

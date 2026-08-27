@@ -10,14 +10,7 @@ undo restores the pushed snapshot, redo restores what undo moved away from, a ne
 undo clears the redo branch (real editor semantics), undo-beyond-history returns `None` without
 touching redo, capacity bounds the stack by dropping the oldest entry, `clear` drops both.
 
-**Not yet verified against a real build** — this dev sandbox has no GStreamer install
-(`PKG_CONFIG_PATH` unset, matches `CLAUDE.md`'s own documented pre-existing gap for this
-platform), so `cargo test -p core` can't run here. Only `cargo fmt --check` ran clean. The code
-is plain safe Rust (a `Vec`-backed stack, no unsafe/FFI) — low risk, but **run
-`cargo test -p core --test undo_test` on a machine with GStreamer configured before trusting
-this beyond code review.**
-
-## Wired (this pass)
+## Wired
 
 Items 1-2 and 4-7 below are done. `Project::active_sequence()`/`active_sequence_mut()`
 accessors added (`crates/core/src/project.rs`, next to `timeline()`/`timeline_mut()`).
@@ -35,29 +28,44 @@ enabled state from `can_undo()`/`can_redo()`. `undo_stack.clear()` called from
 undo_test`, `cargo test -p ui undo`), closing the "not verified" gap from the primitive-only
 pass.
 
-## Not done — remaining call sites (item 3)
+## Call sites (item 3) — done
 
 `push_undo_snapshot()` is wired into `timeline_ops.rs`'s single-shot mutations
 (`add_asset_to_timeline[_at]`, `split_at_playhead`, `delete_selected_clip`,
-`paste_clip_at_playhead`, `merge_into_composite`, `paste_selected_clip_formatting`,
-`add_video_track`, `add_text_track`/`add_text_clip`, `add_shape_track`/`add_shape_clip`/
-`finish_drawing_custom_shape`) and into the timeline strip's trim/move drags
-(`screens/editor/timeline_panel.rs`, pushed once on `drag_started()` — not inside
-`trim_clip_start`/`trim_clip_end`/`move_clip`/`move_clip_with_group`/`move_clip_to_track`
-themselves, since those are called every frame of a drag and a naive per-call push would
-record one undo step per frame instead of one per drag).
+`paste_clip_at_playhead`, `merge_into_composite`, `add_video_track`, `add_text_track`/
+`add_text_clip`, `add_shape_track`/`add_shape_clip`/`finish_drawing_custom_shape`) and into
+`App::confirm_text_color_edit` (`crates/ui/src/app/color.rs`, the text-color modal's confirm
+button). The timeline strip's trim/move drags (`screens/editor/timeline_panel.rs`) push once on
+`drag_started()` — not inside `trim_clip_start`/`trim_clip_end`/`move_clip`/
+`move_clip_with_group`/`move_clip_to_track` themselves, since those run every frame of a drag.
 
-**Not yet covered: effect-property setters in `crates/ui/src/app/clip_props.rs`** (gain, crop,
-mask, color/vignette/blur/etc., keyframe add/remove) and their sliders in
-`screens/editor/properties_panel.rs`. These all funnel through `App::with_selected_clip_mut`,
-but that dispatch point is called every frame while a slider is being dragged — pushing a
-snapshot inside it would spam one undo entry per frame, the same problem the trim/move drags
-avoid via `drag_started()`. Fixing this properly means the same drag-start-vs-continuous-drag
-split egui's `Response` gives `timeline_panel.rs` for free, but threaded through ~20+ individual
-slider/checkbox call sites in `properties_panel.rs` rather than one shared loop — a
-materially bigger, more error-prone change than the rest of this wiring pass, left for a
-follow-up rather than rushed. `toggle_track_visibility` also stays unwired — a display toggle,
-not timeline content, same category `panel_layout` writes are excluded for.
+**Effect-property setters** (`crates/ui/src/app/clip_props.rs` — gain, crop, mask, color/
+vignette/blur/etc., keyframes) and their sliders in `screens/editor/properties_panel.rs`
+(~30 call sites, all funneling through `App::with_selected_clip_mut`, plus `text_clip_properties`/
+`shape_clip_properties`'s own single write-back each) are covered too, via a different mechanism
+than `drag_started()`: those setters are reached through several layers of `bool`-returning
+helpers (`components::property_section` etc.) that don't thread an `egui::Response` back to the
+caller, so there's no `Response` to call `drag_started()` on at the one place that could use it.
+Instead, `App::push_undo_snapshot_for_drag()` (next to `push_undo_snapshot`) tracks a stateful
+`undo_drag_active: bool` flag: the first setter call since the flag was last cleared pushes a
+snapshot and sets it; every subsequent call this same continuous drag re-fires (once per frame,
+same as `drag_started()` would see) is a no-op. `screens::editor::show` clears the flag once per
+frame whenever `ui.input(|i| i.pointer.any_down())` is `false` — i.e. once the drag actually
+ends — so the next drag (or an instant click, which clears the flag again the very next frame
+regardless) starts a fresh snapshot. Wired into the three shared mutation points:
+`App::with_selected_clip_mut` (`timeline_ops.rs` — covers every `set_selected_clip_*` setter,
+including all keyframe editors), and the `if changed { ... }` write-back in both
+`text_clip_properties` and `shape_clip_properties` (`properties_panel.rs`).
+
+Unit-tested in `app_test.rs`: `a_continuous_effect_property_drag_pushes_only_one_undo_step`
+(three simulated same-drag frames of `set_selected_clip_gain` collapse into one undo step that
+restores the pre-drag value, not just the last frame's increment) and
+`releasing_the_pointer_starts_a_fresh_undo_step_for_the_next_drag` (calling
+`end_undo_drag_tracking_if_pointer_released(false)` between two setter calls splits them into
+two separate undo steps).
+
+`toggle_track_visibility` stays unwired — a display toggle, not timeline content, same category
+`panel_layout` writes are excluded for.
 
 ## Design note: why per-sequence, not per-project
 

@@ -31,15 +31,15 @@ sequence-management/copy-paste entries.
       both stay in sync.
 - [x] Layer templates — save a configured camera/webcam/background layer group, reapply to a
       new short asking only for source clips per layer.
+- [x] **Undo/redo.** `core::undo::UndoStack` (snapshot-based) wired into `ui` — `Ctrl+Z`/`Ctrl+Y`,
+      toolbar buttons, covers clip add/split/delete/cut/copy/paste, trim/move drags, track/text/
+      shape-track add, composite merge, paste-formatting, text-color-modal confirm, and every
+      effect-property slider/keyframe editor (drag-coalesced into one undo step per drag, not
+      one per frame). See `architecture/undo-redo.md`, `ROADMAP.md` P0.
 
 ## Known gaps (not found anywhere in the codebase — confirm before assuming, but no evidence of
 ## either in `graphify query "undo redo history stack snapping magnetic snap"`)
 
-- [~] **Undo/redo.** `core::undo::UndoStack` (snapshot-based) wired into `ui` — `Ctrl+Z`/`Ctrl+Y`,
-      toolbar buttons, covers clip add/split/delete/cut/copy/paste, trim/move drags, track/text/
-      shape-track add, composite merge, paste-formatting. Effect-property sliders and keyframe
-      add/remove (`ui::app::clip_props.rs`) not yet covered — see `architecture/undo-redo.md`
-      for what's left. See `ROADMAP.md` P0.
 - [ ] **Magnetic snap** while dragging (to playhead, other clip edges, markers). See
       `ROADMAP.md` P0 — also a dependency of D5 (beat-aligned cut snapping).
 - [ ] Review/comment markers on the timeline (plain note at a point — not to be confused with
