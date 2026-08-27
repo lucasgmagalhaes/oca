@@ -41,6 +41,7 @@ pub mod probe;
 pub mod project;
 pub mod proxy;
 pub mod render;
+pub mod scopes;
 pub mod shape_render;
 pub mod sound_library;
 pub mod subtitles;
@@ -85,6 +86,7 @@ pub use render::{
     resolve_shape_segments, resolve_text_segments, resolve_timeline_segments,
     resolve_timeline_segments_multi, RenderError, RenderOutcome, TextSegment,
 };
+pub use scopes::{luma_waveform_rgba, vectorscope_rgba};
 pub use shape_render::{build_shape_filter_desc, point_in_polygon, ShapeRenderInput};
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
 pub use subtitles::export_srt;
