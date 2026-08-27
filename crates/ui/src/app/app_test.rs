@@ -47,6 +47,16 @@ fn test_project_with_tracks(id: u64, tracks: Vec<Track>) -> Project {
     project
 }
 
+fn test_project_with_tracks_and_assets(
+    id: u64,
+    tracks: Vec<Track>,
+    assets: Vec<MediaAsset>,
+) -> Project {
+    let mut project = test_project(id, assets);
+    project.timeline_mut().tracks = tracks;
+    project
+}
+
 fn test_track(id: u64, kind: TrackKind, clips: Vec<ClipInstance>) -> Track {
     Track {
         id,
@@ -5132,4 +5142,172 @@ fn marker_mutations_are_no_ops_for_an_unknown_id() {
     app.toggle_marker_completed(404);
 
     assert!(app.active_project().timeline().markers.is_empty());
+}
+
+fn silence_review_asset() -> MediaAsset {
+    // 20 one-second buckets, loud except a silent run [8, 12).
+    let mut peaks = vec![(-0.8, 0.8); 20];
+    for p in &mut peaks[8..12] {
+        *p = (0.0, 0.0);
+    }
+    MediaAsset {
+        duration_secs: 20.0,
+        waveform_peaks: Some(peaks),
+        ..test_asset(1)
+    }
+}
+
+#[test]
+fn begin_silence_review_maps_a_detected_gap_into_timeline_coordinates() {
+    // Clip shows source 5..15 starting at timeline 100 -- same setup as
+    // avcore::silence_detection's own clip_silence_gaps test, exercised here end-to-end
+    // through the App wrapper.
+    let track = test_track(1, TrackKind::Audio, vec![test_clip(1, 100.0, 5.0, 15.0)]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![silence_review_asset()],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.begin_silence_review();
+
+    let review = app.silence_review.as_ref().expect("review should open");
+    assert_eq!(review.track_id, 1);
+    assert_eq!(review.gaps.len(), 1);
+    assert_eq!(review.gaps[0].clip_id, 1);
+    assert_eq!(review.gaps[0].gap.start_secs, 103.0);
+    assert_eq!(review.gaps[0].gap.end_secs, 107.0);
+    assert!(review.gaps[0].accepted, "gaps default to accepted");
+}
+
+#[test]
+fn begin_silence_review_without_a_selected_clip_toasts_instead_of_opening() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.begin_silence_review();
+
+    assert!(app.silence_review.is_none());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn begin_silence_review_skips_clips_whose_asset_has_no_cached_waveform() {
+    let track = test_track(1, TrackKind::Audio, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![test_asset(1)],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.begin_silence_review();
+
+    assert!(app.silence_review.as_ref().unwrap().gaps.is_empty());
+}
+
+#[test]
+fn toggle_silence_gap_accepted_flips_only_the_targeted_entry() {
+    let track = test_track(1, TrackKind::Audio, vec![test_clip(1, 100.0, 5.0, 15.0)]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![silence_review_asset()],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.begin_silence_review();
+
+    app.toggle_silence_gap_accepted(0);
+
+    assert!(!app.silence_review.as_ref().unwrap().gaps[0].accepted);
+}
+
+#[test]
+fn apply_silence_review_ripple_deletes_only_accepted_gaps_and_closes_the_modal() {
+    // Two clips, each with its own silent run, on the same track.
+    let track = test_track(
+        1,
+        TrackKind::Audio,
+        vec![test_clip(1, 0.0, 0.0, 20.0), test_clip(2, 20.0, 0.0, 20.0)],
+    );
+    let mut asset2 = silence_review_asset();
+    asset2.id = 2;
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![silence_review_asset(), asset2],
+        )],
+        Vec::new(),
+    );
+    // clip 1 uses asset 1, clip 2 uses asset 2 -- fix up asset_id on the second clip.
+    app.active_project_mut().timeline_mut().tracks[0].clips[1].asset_id = 2;
+    app.selected_clip_id = Some(1);
+    app.begin_silence_review();
+    assert_eq!(app.silence_review.as_ref().unwrap().gaps.len(), 2);
+
+    // Reject the first clip's gap; only the second clip's 4s gap should actually be cut.
+    app.toggle_silence_gap_accepted(0);
+    app.apply_silence_review();
+
+    assert!(app.silence_review.is_none(), "modal closes after apply");
+    let track = &app.active_project().timeline().tracks[0];
+    assert_eq!(track.clips.len(), 2, "clip 1 kept whole, clip 2 split");
+    let total_duration: f64 = track.clips.iter().map(|c| c.duration_secs()).sum();
+    assert_eq!(
+        total_duration, 36.0,
+        "only the second clip's 4s silent run was removed (20 + 20 - 4)"
+    );
+}
+
+#[test]
+fn apply_silence_review_with_nothing_accepted_is_a_no_op() {
+    let track = test_track(1, TrackKind::Audio, vec![test_clip(1, 100.0, 5.0, 15.0)]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![silence_review_asset()],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.begin_silence_review();
+    app.toggle_silence_gap_accepted(0);
+
+    app.apply_silence_review();
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].duration_secs(),
+        10.0,
+        "nothing was accepted -- the clip is untouched"
+    );
+}
+
+#[test]
+fn close_silence_review_discards_the_staged_review() {
+    let track = test_track(1, TrackKind::Audio, vec![test_clip(1, 100.0, 5.0, 15.0)]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![silence_review_asset()],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.begin_silence_review();
+
+    app.close_silence_review();
+
+    assert!(app.silence_review.is_none());
 }
