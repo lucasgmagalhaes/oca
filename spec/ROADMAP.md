@@ -393,11 +393,25 @@ not by default priority.
     slow-to-fast, 2x→0.5x fast-to-slow, 4 steps each) rather than a custom-curve dialog — also
     deliberately out of scope for this pass. **Not done**: the smooth continuous-curve version;
     a UI for custom start/end speed and step count.
-30. `[ ]` Real-time audio level meter (VU/peak) during playback — `matrix/competitor-parity.md`.
-    Present in Premiere (VU meters) and DaVinci (Fairlight LUFS/peak meter). Needs a pad probe
-    on the preview audio path (same pattern as the existing keyframe pad-probes, reading
-    instead of writing) plus a small meter widget in the Editor's preview panel — no ML, no
-    new avfilter/GStreamer element.
+30. `[x]` Real-time audio level meter (VU/peak) during playback — `matrix/competitor-parity.md`.
+    Present in Premiere (VU meters) and DaVinci (Fairlight LUFS/peak meter). A pad probe on the
+    preview audio path (same pattern as the existing keyframe pad-probes, reading instead of
+    writing): `Preview::build_metering_audio_sink` wraps the real audio-sink element (both the
+    single-clip `playbin` path and the manually-built compositor audio-mix path) in a small
+    `audioconvert!capsfilter(F32LE)!sink` bin, forcing a known sample format so a buffer probe
+    on the capsfilter's src pad can parse raw f32 bytes directly and compute peak/RMS combined
+    across every channel (a flat sequence, not per-channel — matches this item's "small meter
+    widget" scope, not a full per-channel Fairlight-style meter). Stored in a shared
+    `Arc<Mutex<AudioLevel>>` updated from GStreamer's own streaming thread, read from the UI
+    thread via `Preview::current_audio_level()`. UI: a small peak/RMS bar in the Editor preview
+    panel's transport row, next to the scopes toggle, with the peak marker turning red above
+    0.98 amplitude to flag near-clipping. Verified via a scratch-crate real-execution check
+    (this sandbox's `core` test binary can't link — missing `libonnxruntime`): the metering
+    probe logic, run against a real audio fixture through a real GStreamer `playbin`, observed
+    real nonzero peak/RMS from actual decoded samples — audio decode/preroll works in this
+    sandbox, unlike video decode (confirmed separately: the same harness against a video
+    fixture failed with a missing-decoder-plugin error, the known pre-existing video-decode gap,
+    not a metering bug).
 31. `[x]` Audio gain keyframes (volume fade/ramp within one clip, not just a constant
     `gain_db`) — found while surveying what else the existing `Keyframe<T>` infrastructure
     could drive. Same shape as position/scale/rotation/opacity: `gain_keyframes: Vec<Keyframe<
