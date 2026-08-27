@@ -33,13 +33,21 @@ sub-sections).
       a separate review modal — the existing Timeline Index panel's rename/delete already is the
       review step. A plain-text `H:MM:SS Label` chapter-list export (YouTube's own format) is a
       thin filter over the marker list.
+- [x] **Highlight detection from audio spikes** (D2, `architecture/differentiators.md`,
+      `ROADMAP.md` P3 item 17) — no ML, same "correlate a signal against a threshold" family as
+      D1/D5. Needed a real "which track is which" answer first (`avcore::timeline::AudioRole` —
+      Unspecified/GameAudio/Mic/Music, user-set via the timeline track header) since
+      `Project`/`Timeline` had no such distinction; see `ROADMAP.md` item 17's preserved
+      investigation note. `avcore::highlight_detection::clip_amplitude_samples` maps a clip's
+      waveform into timeline-relative amplitude samples (D1's `clip_silence_gaps` mapping, every
+      bucket instead of only quiet runs); `detect_highlight_candidates` correlates a
+      `AudioRole::GameAudio` track's samples against a `AudioRole::Mic` track's onto a common
+      coarse time grid and flags simultaneous spikes. Non-destructive `MarkerKind::Highlight`
+      markers, same review-via-Timeline-Index shape as D4's chapters. Unblocks D6 (`ROADMAP.md`
+      item 18), which was waiting on this.
 
 ## Known gaps
 
-- [ ] Highlight detection from audio spikes (D2, `architecture/differentiators.md`) — no ML,
-      reuses waveform + loudness measurement already built.
-- [ ] Scene-cut chapter-marker detection (D4) — piggybacks on frames already decoded during
-      import/proxy.
 - [ ] Voice-clone TTS beyond the single bundled voice — explicitly out of scope for now, see
       `architecture/differentiators.md`.
 
