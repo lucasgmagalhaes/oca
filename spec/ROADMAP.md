@@ -374,11 +374,25 @@ not by default priority.
     rather than adding a third copy. No new render/preview pipeline work — per-track independent
     clips already mix correctly. Triggered via a "Destacar áudio" entry in the timeline clip's
     context menu, enabled only for Video-track clips.
-29. `[ ]` Speed ramping — keyframed `speed_factor` instead of one constant per clip —
-    `matrix/competitor-parity.md`. Present in CapCut (curve editor), Premiere, DaVinci, FCP.
-    Reuses the existing `Keyframe<T>` infrastructure already backing position/scale/rotation/
-    opacity rather than a new animation system; needs an export-side `setpts` expression
-    driven by the curve and a preview pad-probe mirroring the existing scale-keyframe one.
+29. `[~]` Speed ramping — `App::apply_speed_ramp_to_selected_clip` ships a **stepped**
+    approximation, not the smooth continuous curve CapCut/Premiere/DaVinci/FCP all have. A
+    deliberate scope decision (raised to and confirmed by the user, 2026-08-27): the smooth
+    version needs the export-side `setpts` filter's output PTS to be the *integral* of
+    `1/speed` over time, which for a piecewise-linear speed curve has no simple closed form
+    (needs a `log()` term per segment) — a real, easy-to-get-subtly-wrong derivation with no
+    way to render/verify it in this sandbox (no decode capability), unlike every other
+    `Keyframe<T>`-reusing item in this list. Shipped instead: splits the selected clip into N
+    equal-timeline-duration pieces (reusing the already-correct, already-tested
+    `Track::split_clip_at`, unchanged) and assigns each piece a constant `speed_factor`
+    linearly interpolated between a start/end speed (reusing the existing field, unchanged) —
+    a real, visible "staircase" speed ramp built entirely from primitives that were already
+    correct before this item, with zero new avfilter/geq/setpts math to get wrong. Since
+    `duration_secs()` depends on `speed_factor`, each piece's `start_secs` is reflowed left to
+    right after the speed assignment so the pieces stay contiguous. Triggered via a "Rampa de
+    velocidade" submenu in the timeline clip's context menu, with two fixed presets (0.5x→2x
+    slow-to-fast, 2x→0.5x fast-to-slow, 4 steps each) rather than a custom-curve dialog — also
+    deliberately out of scope for this pass. **Not done**: the smooth continuous-curve version;
+    a UI for custom start/end speed and step count.
 30. `[ ]` Real-time audio level meter (VU/peak) during playback — `matrix/competitor-parity.md`.
     Present in Premiere (VU meters) and DaVinci (Fairlight LUFS/peak meter). Needs a pad probe
     on the preview audio path (same pattern as the existing keyframe pad-probes, reading

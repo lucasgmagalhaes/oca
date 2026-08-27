@@ -272,6 +272,9 @@ text_catalog! {
     ContextMenuColorLabel: pt_br = "🎨 Rótulo de cor", en = "🎨 Color label";
     ContextMenuColorLabelClear: pt_br = "Limpar rótulo", en = "Clear label";
     ContextMenuDetachAudio: pt_br = "🎧 Destacar áudio", en = "🎧 Detach audio";
+    ContextMenuSpeedRamp: pt_br = "⏱ Rampa de velocidade", en = "⏱ Speed ramp";
+    SpeedRampSlowToFast: pt_br = "Lento → Rápido (0.5x → 2x)", en = "Slow → Fast (0.5x → 2x)";
+    SpeedRampFastToSlow: pt_br = "Rápido → Lento (2x → 0.5x)", en = "Fast → Slow (2x → 0.5x)";
     ContextMenuCopy: pt_br = "⧉ Copiar", en = "⧉ Copy";
     ContextMenuCut: pt_br = "✂ Recortar", en = "✂ Cut";
     ContextMenuPaste: pt_br = "📋 Colar no playhead", en = "📋 Paste at playhead";

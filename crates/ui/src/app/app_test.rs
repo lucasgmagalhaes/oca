@@ -5648,6 +5648,76 @@ fn detach_audio_is_a_no_op_for_a_non_video_clip() {
 }
 
 #[test]
+fn apply_speed_ramp_splits_into_contiguous_steps_with_interpolated_speed() {
+    // A clip from 10s..20s (10s long at 1.0x, the default speed_factor test_clip already uses).
+    let video_clip = test_clip(1, 10.0, 0.0, 10.0);
+    let video_track = test_track(1, TrackKind::Video, vec![video_clip]);
+    let mut app = test_app(
+        vec![test_project_with_tracks(1, vec![video_track])],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.apply_speed_ramp_to_selected_clip(0.5, 2.0, 4);
+
+    let mut clips = app.active_project().timeline().tracks[0].clips.clone();
+    clips.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
+    assert_eq!(clips.len(), 4);
+
+    // Speeds interpolate linearly from 0.5 to 2.0 across the 4 pieces.
+    let speeds: Vec<f32> = clips.iter().map(|c| c.speed_factor).collect();
+    assert_eq!(speeds, vec![0.5, 1.0, 1.5, 2.0]);
+
+    // The pieces stay contiguous (no gaps/overlaps) even though each one's duration_secs now
+    // differs from the others, since speed_factor changed per piece.
+    let mut cursor = 10.0;
+    for clip in &clips {
+        assert_eq!(clip.start_secs, cursor);
+        cursor += clip.duration_secs();
+    }
+
+    // Splitting at equal ORIGINAL (unramped) 2.5s boundaries means each piece's own trimmed
+    // source range is 2.5s wide, so its post-ramp duration is 2.5 / speed_factor.
+    for (clip, speed) in clips.iter().zip(&speeds) {
+        assert!((clip.duration_secs() - 2.5 / *speed as f64).abs() < 1e-9);
+    }
+}
+
+#[test]
+fn apply_speed_ramp_is_a_no_op_with_fewer_than_two_steps() {
+    let video_clip = test_clip(1, 10.0, 0.0, 10.0);
+    let video_track = test_track(1, TrackKind::Video, vec![video_clip]);
+    let mut app = test_app(
+        vec![test_project_with_tracks(1, vec![video_track])],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.apply_speed_ramp_to_selected_clip(0.5, 2.0, 1);
+
+    assert_eq!(app.active_project().timeline().tracks[0].clips.len(), 1);
+}
+
+#[test]
+fn apply_speed_ramp_clamps_to_speed_factor_range() {
+    let video_clip = test_clip(1, 10.0, 0.0, 10.0);
+    let video_track = test_track(1, TrackKind::Video, vec![video_clip]);
+    let mut app = test_app(
+        vec![test_project_with_tracks(1, vec![video_track])],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    // 10.0x and 0.01x are both outside SPEED_FACTOR_RANGE (0.25..=4.0).
+    app.apply_speed_ramp_to_selected_clip(10.0, 0.01, 2);
+
+    let mut clips = app.active_project().timeline().tracks[0].clips.clone();
+    clips.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
+    assert_eq!(clips[0].speed_factor, *SPEED_FACTOR_RANGE.end());
+    assert_eq!(clips[1].speed_factor, *SPEED_FACTOR_RANGE.start());
+}
+
+#[test]
 fn set_clip_color_label_none_clears_an_existing_label() {
     let mut clip = test_clip(1, 0.0, 0.0, 10.0);
     clip.color_label = Some([86, 156, 214]);

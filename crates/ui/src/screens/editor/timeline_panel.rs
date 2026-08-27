@@ -305,6 +305,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut multi_select_requests: Vec<u64> = Vec::new();
         let mut clip_color_label_requests: Vec<(u64, Option<[u8; 3]>)> = Vec::new();
         let mut detach_audio_requests: Vec<u64> = Vec::new();
+        let mut speed_ramp_requests: Vec<(u64, f32, f32)> = Vec::new();
         let mut paste_requested = false;
         let mut merge_into_composite_requested = false;
         let mut split_at_playhead_requested = false;
@@ -505,6 +506,16 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 detach_audio_requests.push(clip.id);
                                 ui.close();
                             }
+                            ui.menu_button(Text::ContextMenuSpeedRamp.tr(locale), |ui| {
+                                if ui.button(Text::SpeedRampSlowToFast.tr(locale)).clicked() {
+                                    speed_ramp_requests.push((clip.id, 0.5, 2.0));
+                                    ui.close();
+                                }
+                                if ui.button(Text::SpeedRampFastToSlow.tr(locale)).clicked() {
+                                    speed_ramp_requests.push((clip.id, 2.0, 0.5));
+                                    ui.close();
+                                }
+                            });
                             ui.separator();
                             if ui
                                 .button(Text::ContextMenuCopyFormatting.tr(locale))
@@ -965,6 +976,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         for clip_id in detach_audio_requests {
             app.selected_clip_id = Some(clip_id);
             app.detach_audio_from_selected_clip();
+        }
+        for (clip_id, start_speed, end_speed) in speed_ramp_requests {
+            app.selected_clip_id = Some(clip_id);
+            app.apply_speed_ramp_to_selected_clip(start_speed, end_speed, 4);
         }
         if split_at_playhead_requested {
             app.split_at_playhead();
