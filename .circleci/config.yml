@@ -59,7 +59,7 @@ commands:
       # had to set LIBCLANG_PATH there); cimg/base doesn't, hence installing + pointing at it
       # explicitly here.
       - run:
-          name: Install GStreamer, clang and cmake
+          name: Install GStreamer, Python, clang and cmake
           command: |
             sudo apt-get update
             sudo apt-get install -y \
@@ -67,9 +67,15 @@ commands:
               libgstreamer1.0-dev \
               libgstreamer-plugins-base1.0-dev \
               libgstreamer-plugins-bad1.0-dev \
+              python3-dev \
               clang \
               libclang-dev \
               cmake
+
+            # The image includes the Python 3.10 interpreter and versioned runtime library,
+            # but not the unversioned libpython3.10.so linker input required by pyo3's
+            # auto-initialize/embedding mode in ytbridge. python3-dev supplies the matching
+            # development library without pinning this config to the image's minor version.
 
             # Prefer the canonical llvm-<version>/lib dir: Ubuntu's libclang-dev pulls in a
             # versioned llvm-N package that ships the full generic-named set bindgen's
