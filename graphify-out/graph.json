@@ -1850,8 +1850,8 @@
       "source_location": "L593",
       "_origin": "ast",
       "id": "crates_avbridge_src_lib_gpuencoderpreference",
-      "community": 3,
-      "community_name": "avbridge/src/lib.rs",
+      "community": 66,
+      "community_name": "render.rs",
       "norm_label": "gpuencoderpreference"
     },
     {
@@ -1861,8 +1861,8 @@
       "source_location": "L604",
       "_origin": "ast",
       "id": "crates_avbridge_src_lib_gpuencoderpreference_as_c_int",
-      "community": 3,
-      "community_name": "avbridge/src/lib.rs",
+      "community": 66,
+      "community_name": "render.rs",
       "norm_label": ".as_c_int()"
     },
     {
@@ -1883,8 +1883,8 @@
       "source_location": "L749",
       "_origin": "ast",
       "id": "crates_avbridge_src_lib_encode_timeline_export_multi",
-      "community": 3,
-      "community_name": "avbridge/src/lib.rs",
+      "community": 66,
+      "community_name": "render.rs",
       "norm_label": "encode_timeline_export_multi()"
     },
     {
@@ -3677,7 +3677,7 @@
       "_origin": "ast",
       "id": "crates_core_src_export_exportaspectratio",
       "community": 67,
-      "community_name": "project.rs",
+      "community_name": "ExportAspectRatio",
       "norm_label": "exportaspectratio"
     },
     {
@@ -3688,7 +3688,7 @@
       "_origin": "ast",
       "id": "crates_core_src_export_exportaspectratio_label",
       "community": 67,
-      "community_name": "project.rs",
+      "community_name": "ExportAspectRatio",
       "norm_label": ".label()"
     },
     {
@@ -3699,7 +3699,7 @@
       "_origin": "ast",
       "id": "crates_core_src_export_exportaspectratio_dims_or",
       "community": 67,
-      "community_name": "project.rs",
+      "community_name": "ExportAspectRatio",
       "norm_label": ".dims_or()"
     },
     {
@@ -3775,8 +3775,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_keyframe_rs_t",
-      "community": 116,
-      "community_name": "split_keyframes_at",
+      "community": 55,
+      "community_name": "Keyframe",
       "norm_label": "t"
     },
     {
@@ -3786,7 +3786,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "crates_core_src_keyframe_position",
-      "community": 71,
+      "community": 77,
       "community_name": "Position",
       "norm_label": "position"
     },
@@ -3797,7 +3797,7 @@
       "source_location": "L55",
       "_origin": "ast",
       "id": "crates_core_src_keyframe_lerp",
-      "community": 71,
+      "community": 77,
       "community_name": "Position",
       "norm_label": "lerp"
     },
@@ -3808,7 +3808,7 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "crates_core_src_keyframe_f32",
-      "community": 71,
+      "community": 77,
       "community_name": "Position",
       "norm_label": "f32"
     },
@@ -3819,7 +3819,7 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "crates_core_src_keyframe_f32_lerp",
-      "community": 71,
+      "community": 77,
       "community_name": "Position",
       "norm_label": ".lerp()"
     },
@@ -3830,7 +3830,7 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "crates_core_src_keyframe_position_lerp",
-      "community": 71,
+      "community": 77,
       "community_name": "Position",
       "norm_label": ".lerp()"
     },
@@ -3841,8 +3841,8 @@
       "source_location": "L81",
       "_origin": "ast",
       "id": "crates_core_src_keyframe_evaluate_keyframes",
-      "community": 116,
-      "community_name": "split_keyframes_at",
+      "community": 55,
+      "community_name": "Keyframe",
       "norm_label": "evaluate_keyframes()"
     },
     {
@@ -3852,8 +3852,8 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "crates_core_src_keyframe_split_keyframes_at",
-      "community": 116,
-      "community_name": "split_keyframes_at",
+      "community": 55,
+      "community_name": "Keyframe",
       "norm_label": "split_keyframes_at()"
     },
     {
@@ -3863,8 +3863,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_keyframe_rs_vec",
-      "community": 116,
-      "community_name": "split_keyframes_at",
+      "community": 55,
+      "community_name": "Keyframe",
       "norm_label": "vec"
     },
     {
@@ -4061,8 +4061,8 @@
       "source_location": "L93",
       "_origin": "ast",
       "id": "crates_core_src_keyframe_keyframe_test_split_keyframes_at_is_empty_for_an_empty_input",
-      "community": 116,
-      "community_name": "split_keyframes_at",
+      "community": 0,
+      "community_name": "keyframe_test.rs",
       "norm_label": "split_keyframes_at_is_empty_for_an_empty_input()"
     },
     {
@@ -4072,8 +4072,8 @@
       "source_location": "L101",
       "_origin": "ast",
       "id": "crates_core_src_keyframe_keyframe_test_split_keyframes_at_rescales_and_inserts_a_matching_boundary_point",
-      "community": 116,
-      "community_name": "split_keyframes_at",
+      "community": 55,
+      "community_name": "Keyframe",
       "norm_label": "split_keyframes_at_rescales_and_inserts_a_matching_boundary_point()"
     },
     {
@@ -4083,8 +4083,8 @@
       "source_location": "L144",
       "_origin": "ast",
       "id": "crates_core_src_keyframe_keyframe_test_split_keyframes_at_drops_keyframes_that_land_on_the_other_side",
-      "community": 116,
-      "community_name": "split_keyframes_at",
+      "community": 0,
+      "community_name": "keyframe_test.rs",
       "norm_label": "split_keyframes_at_drops_keyframes_that_land_on_the_other_side()"
     },
     {
@@ -5480,8 +5480,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "crates_core_src_preview",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "src/preview.rs"
     },
     {
@@ -5491,8 +5491,8 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "crates_core_src_preview_prioritize_hardware_video_decoders",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "prioritize_hardware_video_decoders()"
     },
     {
@@ -5502,8 +5502,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_preview_rs_string",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "string"
     },
     {
@@ -5513,8 +5513,8 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "crates_core_src_preview_configure_playbin_decoder_preference",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "configure_playbin_decoder_preference()"
     },
     {
@@ -5524,8 +5524,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "element",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "element"
     },
     {
@@ -5535,8 +5535,8 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "crates_core_src_preview_build_uri_decodebin",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "build_uri_decodebin()"
     },
     {
@@ -5689,8 +5689,8 @@
       "source_location": "L217",
       "_origin": "ast",
       "id": "crates_core_src_preview_build_video_filter_bin",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "build_video_filter_bin()"
     },
     {
@@ -5701,7 +5701,7 @@
       "_origin": "ast",
       "id": "crates_core_src_preview_rs_option",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": "option"
     },
     {
@@ -5711,8 +5711,8 @@
       "source_location": "L679",
       "_origin": "ast",
       "id": "crates_core_src_preview_build_chroma_key_element",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "build_chroma_key_element()"
     },
     {
@@ -5722,8 +5722,8 @@
       "source_location": "L697",
       "_origin": "ast",
       "id": "crates_core_src_preview_gain_db_to_linear",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "gain_db_to_linear()"
     },
     {
@@ -5733,8 +5733,8 @@
       "source_location": "L706",
       "_origin": "ast",
       "id": "crates_core_src_preview_build_audio_filter_bin",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "build_audio_filter_bin()"
     },
     {
@@ -5744,8 +5744,8 @@
       "source_location": "L734",
       "_origin": "ast",
       "id": "crates_core_src_preview_connect_decodebin_audio_pad",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "connect_decodebin_audio_pad()"
     },
     {
@@ -5755,8 +5755,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "pad",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "pad"
     },
     {
@@ -5766,8 +5766,8 @@
       "source_location": "L756",
       "_origin": "ast",
       "id": "crates_core_src_preview_attach_audio_mix_branch",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "attach_audio_mix_branch()"
     },
     {
@@ -5777,8 +5777,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "pipeline",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "pipeline"
     },
     {
@@ -5788,8 +5788,8 @@
       "source_location": "L798",
       "_origin": "ast",
       "id": "crates_core_src_preview_build_audio_mix_output",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "build_audio_mix_output()"
     },
     {
@@ -5799,8 +5799,8 @@
       "source_location": "L825",
       "_origin": "ast",
       "id": "crates_core_src_preview_connect_decodebin_video_pad",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "connect_decodebin_video_pad()"
     },
     {
@@ -5810,8 +5810,8 @@
       "source_location": "L853",
       "_origin": "ast",
       "id": "crates_core_src_preview_build_mask_shape_stage",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "build_mask_shape_stage()"
     },
     {
@@ -5821,8 +5821,8 @@
       "source_location": "L954",
       "_origin": "ast",
       "id": "crates_core_src_preview_compositebranch",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 38,
+      "community_name": "Preview",
       "norm_label": "compositebranch"
     },
     {
@@ -5833,7 +5833,7 @@
       "_origin": "ast",
       "id": "crates_core_src_preview_rs_path",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": "path"
     },
     {
@@ -5843,8 +5843,8 @@
       "source_location": "L977",
       "_origin": "ast",
       "id": "crates_core_src_preview_build_composite_branch",
-      "community": 77,
-      "community_name": "src/preview.rs",
+      "community": 5,
+      "community_name": "PreviewError",
       "norm_label": "build_composite_branch()"
     },
     {
@@ -5898,8 +5898,8 @@
       "source_location": "L1355",
       "_origin": "ast",
       "id": "crates_core_src_preview_preview",
-      "community": 5,
-      "community_name": "PreviewError",
+      "community": 38,
+      "community_name": "Preview",
       "norm_label": "preview"
     },
     {
@@ -5909,8 +5909,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "appsink",
-      "community": 5,
-      "community_name": "PreviewError",
+      "community": 38,
+      "community_name": "Preview",
       "norm_label": "appsink"
     },
     {
@@ -5921,7 +5921,7 @@
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_open",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": ".open()"
     },
     {
@@ -5932,7 +5932,7 @@
       "_origin": "ast",
       "id": "crates_core_src_preview_rs_self",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": "self"
     },
     {
@@ -5943,7 +5943,7 @@
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_open_with_hardware_decode",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": ".open_with_hardware_decode()"
     },
     {
@@ -5954,7 +5954,7 @@
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_open_once",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": ".open_once()"
     },
     {
@@ -5965,7 +5965,7 @@
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_open_composited",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": ".open_composited()"
     },
     {
@@ -5976,7 +5976,7 @@
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_open_composited_with_hardware_decode",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": ".open_composited_with_hardware_decode()"
     },
     {
@@ -5987,7 +5987,7 @@
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_open_composited_once",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": ".open_composited_once()"
     },
     {
@@ -6008,8 +6008,8 @@
       "source_location": "L1879",
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_update_text_overlays",
-      "community": 5,
-      "community_name": "PreviewError",
+      "community": 58,
+      "community_name": "App",
       "norm_label": ".update_text_overlays()"
     },
     {
@@ -6019,8 +6019,8 @@
       "source_location": "L1914",
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_play",
-      "community": 5,
-      "community_name": "PreviewError",
+      "community": 38,
+      "community_name": "Preview",
       "norm_label": ".play()"
     },
     {
@@ -6030,8 +6030,8 @@
       "source_location": "L1921",
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_pause",
-      "community": 5,
-      "community_name": "PreviewError",
+      "community": 38,
+      "community_name": "Preview",
       "norm_label": ".pause()"
     },
     {
@@ -6064,7 +6064,7 @@
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_position_secs",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": ".position_secs()"
     },
     {
@@ -6075,7 +6075,7 @@
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_duration_secs",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": ".duration_secs()"
     },
     {
@@ -6085,8 +6085,8 @@
       "source_location": "L1987",
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_current_frame",
-      "community": 5,
-      "community_name": "PreviewError",
+      "community": 38,
+      "community_name": "Preview",
       "norm_label": ".current_frame()"
     },
     {
@@ -6096,8 +6096,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "drop",
-      "community": 5,
-      "community_name": "PreviewError",
+      "community": 38,
+      "community_name": "Preview",
       "norm_label": "drop"
     },
     {
@@ -6108,7 +6108,7 @@
       "_origin": "ast",
       "id": "crates_core_src_preview_preview_drop",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": ".drop()"
     },
     {
@@ -6305,8 +6305,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "crates_core_src_project",
-      "community": 67,
-      "community_name": "project.rs",
+      "community": 1,
+      "community_name": "Project",
       "norm_label": "project.rs"
     },
     {
@@ -6350,7 +6350,7 @@
       "_origin": "ast",
       "id": "crates_core_src_project_sequenceexportsettings",
       "community": 67,
-      "community_name": "project.rs",
+      "community_name": "ExportAspectRatio",
       "norm_label": "sequenceexportsettings"
     },
     {
@@ -6361,7 +6361,7 @@
       "_origin": "ast",
       "id": "crates_core_src_project_rs_default",
       "community": 67,
-      "community_name": "project.rs",
+      "community_name": "ExportAspectRatio",
       "norm_label": "default"
     },
     {
@@ -6371,8 +6371,8 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "crates_core_src_project_sequenceexportsettings_default",
-      "community": 67,
-      "community_name": "project.rs",
+      "community": 1,
+      "community_name": "Project",
       "norm_label": ".default()"
     },
     {
@@ -6382,8 +6382,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_project_rs_self",
-      "community": 67,
-      "community_name": "project.rs",
+      "community": 1,
+      "community_name": "Project",
       "norm_label": "self"
     },
     {
@@ -6393,8 +6393,8 @@
       "source_location": "L68",
       "_origin": "ast",
       "id": "crates_core_src_project_default_target_lufs",
-      "community": 67,
-      "community_name": "project.rs",
+      "community": 1,
+      "community_name": "Project",
       "norm_label": "default_target_lufs()"
     },
     {
@@ -6437,8 +6437,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_project_rs_pathbuf",
-      "community": 67,
-      "community_name": "project.rs",
+      "community": 1,
+      "community_name": "Project",
       "norm_label": "pathbuf"
     },
     {
@@ -6448,8 +6448,8 @@
       "source_location": "L107",
       "_origin": "ast",
       "id": "crates_core_src_project_panellayout",
-      "community": 67,
-      "community_name": "project.rs",
+      "community": 1,
+      "community_name": "Project",
       "norm_label": "panellayout"
     },
     {
@@ -7933,8 +7933,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "crates_core_src_text_metrics",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": "text_metrics.rs"
     },
     {
@@ -7944,8 +7944,8 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "crates_core_src_text_metrics_parse_font",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": "parse_font()"
     },
     {
@@ -7955,8 +7955,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "oncelock",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": "oncelock"
     },
     {
@@ -7966,8 +7966,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_text_metrics_rs_option",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": "option"
     },
     {
@@ -7977,8 +7977,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_text_metrics_rs_font",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": "font"
     },
     {
@@ -7988,8 +7988,8 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "crates_core_src_text_metrics_bundled_font",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": "bundled_font()"
     },
     {
@@ -8010,8 +8010,8 @@
       "source_location": "L108",
       "_origin": "ast",
       "id": "crates_core_src_text_metrics_text_width_px_with_font",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": "text_width_px_with_font()"
     },
     {
@@ -8032,8 +8032,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_text_metrics_rs_vec",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": "vec"
     },
     {
@@ -8043,8 +8043,8 @@
       "source_location": "L138",
       "_origin": "ast",
       "id": "crates_core_src_text_metrics_word_x_offsets_px_with_font",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": "word_x_offsets_px_with_font()"
     },
     {
@@ -8054,8 +8054,8 @@
       "source_location": "L163",
       "_origin": "ast",
       "id": "crates_core_src_text_metrics_word_byte_ranges",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": "word_byte_ranges()"
     },
     {
@@ -8637,8 +8637,8 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "crates_core_src_timeline_trackkind",
-      "community": 95,
-      "community_name": "ClipFormatting",
+      "community": 68,
+      "community_name": "App",
       "norm_label": "trackkind"
     },
     {
@@ -8648,8 +8648,8 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "crates_core_src_timeline_textfontfamily",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": "textfontfamily"
     },
     {
@@ -8659,8 +8659,8 @@
       "source_location": "L67",
       "_origin": "ast",
       "id": "crates_core_src_timeline_textfontfamily_supports_bold",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": ".supports_bold()"
     },
     {
@@ -8670,8 +8670,8 @@
       "source_location": "L77",
       "_origin": "ast",
       "id": "crates_core_src_timeline_textfontstyle",
-      "community": 90,
-      "community_name": "text_metrics.rs",
+      "community": 48,
+      "community_name": "text_metrics_test.rs",
       "norm_label": "textfontstyle"
     },
     {
@@ -8681,8 +8681,8 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "crates_core_src_timeline_textclip",
-      "community": 38,
-      "community_name": "TextClip",
+      "community": 58,
+      "community_name": "App",
       "norm_label": "textclip"
     },
     {
@@ -8692,8 +8692,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_timeline_rs_string",
-      "community": 95,
-      "community_name": "ClipFormatting",
+      "community": 42,
+      "community_name": "ClipInstance",
       "norm_label": "string"
     },
     {
@@ -8703,8 +8703,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_core_src_timeline_rs_vec",
-      "community": 95,
-      "community_name": "ClipFormatting",
+      "community": 42,
+      "community_name": "ClipInstance",
       "norm_label": "vec"
     },
     {
@@ -8736,8 +8736,8 @@
       "source_location": "L160",
       "_origin": "ast",
       "id": "crates_core_src_timeline_wordtiming",
-      "community": 6,
-      "community_name": "timeline.rs",
+      "community": 58,
+      "community_name": "App",
       "norm_label": "wordtiming"
     },
     {
@@ -8858,7 +8858,7 @@
       "_origin": "ast",
       "id": "crates_core_src_timeline_shapeclip",
       "community": 38,
-      "community_name": "TextClip",
+      "community_name": "Preview",
       "norm_label": "shapeclip"
     },
     {
@@ -8868,8 +8868,8 @@
       "source_location": "L273",
       "_origin": "ast",
       "id": "crates_core_src_timeline_maskshape",
-      "community": 6,
-      "community_name": "timeline.rs",
+      "community": 42,
+      "community_name": "ClipInstance",
       "norm_label": "maskshape"
     },
     {
@@ -8879,8 +8879,8 @@
       "source_location": "L284",
       "_origin": "ast",
       "id": "crates_core_src_timeline_colorfilter",
-      "community": 6,
-      "community_name": "timeline.rs",
+      "community": 42,
+      "community_name": "ClipInstance",
       "norm_label": "colorfilter"
     },
     {
@@ -8934,8 +8934,8 @@
       "source_location": "L643",
       "_origin": "ast",
       "id": "crates_core_src_timeline_clipformatting",
-      "community": 95,
-      "community_name": "ClipFormatting",
+      "community": 42,
+      "community_name": "ClipInstance",
       "norm_label": "clipformatting"
     },
     {
@@ -8945,8 +8945,8 @@
       "source_location": "L691",
       "_origin": "ast",
       "id": "crates_core_src_timeline_layertemplate",
-      "community": 95,
-      "community_name": "ClipFormatting",
+      "community": 42,
+      "community_name": "ClipInstance",
       "norm_label": "layertemplate"
     },
     {
@@ -10892,8 +10892,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "crates_core_tests_media_test",
-      "community": 134,
-      "community_name": "media_test.rs",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "media_test.rs"
     },
     {
@@ -10903,8 +10903,8 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "crates_core_tests_media_test_zero_seconds_is_zeroed_mm_ss",
-      "community": 134,
-      "community_name": "media_test.rs",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "zero_seconds_is_zeroed_mm_ss()"
     },
     {
@@ -10914,8 +10914,8 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "crates_core_tests_media_test_under_a_minute_pads_seconds",
-      "community": 134,
-      "community_name": "media_test.rs",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "under_a_minute_pads_seconds()"
     },
     {
@@ -10925,8 +10925,8 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "crates_core_tests_media_test_drops_the_hour_component_under_an_hour",
-      "community": 134,
-      "community_name": "media_test.rs",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "drops_the_hour_component_under_an_hour()"
     },
     {
@@ -10936,8 +10936,8 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "crates_core_tests_media_test_includes_hour_component_at_and_beyond_an_hour",
-      "community": 134,
-      "community_name": "media_test.rs",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "includes_hour_component_at_and_beyond_an_hour()"
     },
     {
@@ -10947,8 +10947,8 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "crates_core_tests_media_test_rounds_to_the_nearest_second",
-      "community": 134,
-      "community_name": "media_test.rs",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "rounds_to_the_nearest_second()"
     },
     {
@@ -10958,8 +10958,8 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "crates_core_tests_media_test_duration_label_delegates_to_format_timecode",
-      "community": 134,
-      "community_name": "media_test.rs",
+      "community": 12,
+      "community_name": "MediaAsset",
       "norm_label": "duration_label_delegates_to_format_timecode()"
     },
     {
@@ -14511,8 +14511,8 @@
       "source_location": "L136",
       "_origin": "ast",
       "id": "crates_ui_src_app_app_test_test_asset_with_kind",
-      "community": 12,
-      "community_name": "MediaAsset",
+      "community": 103,
+      "community_name": "test_asset",
       "norm_label": "test_asset_with_kind()"
     },
     {
@@ -17294,8 +17294,8 @@
       "source_location": "L109",
       "_origin": "ast",
       "id": "crates_ui_src_app_clip_props_app_set_selected_clip_mask",
-      "community": 6,
-      "community_name": "timeline.rs",
+      "community": 42,
+      "community_name": "ClipInstance",
       "norm_label": ".set_selected_clip_mask()"
     },
     {
@@ -17316,8 +17316,8 @@
       "source_location": "L130",
       "_origin": "ast",
       "id": "crates_ui_src_app_clip_props_app_set_selected_clip_color_filter",
-      "community": 6,
-      "community_name": "timeline.rs",
+      "community": 42,
+      "community_name": "ClipInstance",
       "norm_label": ".set_selected_clip_color_filter()"
     },
     {
@@ -17448,8 +17448,8 @@
       "source_location": "L277",
       "_origin": "ast",
       "id": "crates_ui_src_app_clip_props_app_set_selected_clip_position_keyframes",
-      "community": 49,
-      "community_name": "App",
+      "community": 77,
+      "community_name": "Position",
       "norm_label": ".set_selected_clip_position_keyframes()"
     },
     {
@@ -18471,7 +18471,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod",
-      "community": 73,
+      "community": 96,
       "community_name": "app/mod.rs",
       "norm_label": "app/mod.rs"
     },
@@ -18493,7 +18493,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_editortool",
-      "community": 73,
+      "community": 96,
       "community_name": "app/mod.rs",
       "norm_label": "editortool"
     },
@@ -18505,7 +18505,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_keycombo",
       "community": 73,
-      "community_name": "app/mod.rs",
+      "community_name": "PrefsState",
       "norm_label": "keycombo"
     },
     {
@@ -18516,7 +18516,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_rs_string",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "string"
     },
     {
@@ -18527,7 +18527,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_keycombo_matches",
       "community": 73,
-      "community_name": "app/mod.rs",
+      "community_name": "PrefsState",
       "norm_label": ".matches()"
     },
     {
@@ -18538,7 +18538,7 @@
       "_origin": "ast",
       "id": "inputstate",
       "community": 73,
-      "community_name": "app/mod.rs",
+      "community_name": "PrefsState",
       "norm_label": "inputstate"
     },
     {
@@ -18549,7 +18549,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_keycombo_display",
       "community": 56,
-      "community_name": ".add_and_open_project",
+      "community_name": ".new",
       "norm_label": ".display()"
     },
     {
@@ -18559,7 +18559,7 @@
       "source_location": "L114",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_bindableaction",
-      "community": 73,
+      "community": 96,
       "community_name": "app/mod.rs",
       "norm_label": "bindableaction"
     },
@@ -18571,7 +18571,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_keybindings",
       "community": 73,
-      "community_name": "app/mod.rs",
+      "community_name": "PrefsState",
       "norm_label": "keybindings"
     },
     {
@@ -18582,7 +18582,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_rs_default",
       "community": 73,
-      "community_name": "app/mod.rs",
+      "community_name": "PrefsState",
       "norm_label": "default"
     },
     {
@@ -18593,7 +18593,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_keybindings_default",
       "community": 73,
-      "community_name": "app/mod.rs",
+      "community_name": "PrefsState",
       "norm_label": ".default()"
     },
     {
@@ -18603,8 +18603,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_rs_self",
-      "community": 73,
-      "community_name": "app/mod.rs",
+      "community": 56,
+      "community_name": ".new",
       "norm_label": "self"
     },
     {
@@ -18615,7 +18615,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_default_add_opacity_marker_binding",
       "community": 73,
-      "community_name": "app/mod.rs",
+      "community_name": "PrefsState",
       "norm_label": "default_add_opacity_marker_binding()"
     },
     {
@@ -18626,7 +18626,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_default_undo_binding",
       "community": 73,
-      "community_name": "app/mod.rs",
+      "community_name": "PrefsState",
       "norm_label": "default_undo_binding()"
     },
     {
@@ -18637,7 +18637,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_default_redo_binding",
       "community": 73,
-      "community_name": "app/mod.rs",
+      "community_name": "PrefsState",
       "norm_label": "default_redo_binding()"
     },
     {
@@ -18648,7 +18648,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_prefsstate",
       "community": 73,
-      "community_name": "app/mod.rs",
+      "community_name": "PrefsState",
       "norm_label": "prefsstate"
     },
     {
@@ -18659,7 +18659,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_rs_vec",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "vec"
     },
     {
@@ -18670,7 +18670,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_layoutscope",
       "community": 73,
-      "community_name": "app/mod.rs",
+      "community_name": "PrefsState",
       "norm_label": "layoutscope"
     },
     {
@@ -18680,7 +18680,7 @@
       "source_location": "L309",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_default_telemetry_enabled",
-      "community": 73,
+      "community": 96,
       "community_name": "app/mod.rs",
       "norm_label": "default_telemetry_enabled()"
     },
@@ -18691,7 +18691,7 @@
       "source_location": "L313",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_default_preview_hardware_decode",
-      "community": 73,
+      "community": 96,
       "community_name": "app/mod.rs",
       "norm_label": "default_preview_hardware_decode()"
     },
@@ -18702,8 +18702,8 @@
       "source_location": "L317",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_default_lib_panel_width",
-      "community": 73,
-      "community_name": "app/mod.rs",
+      "community": 56,
+      "community_name": ".new",
       "norm_label": "default_lib_panel_width()"
     },
     {
@@ -18713,8 +18713,8 @@
       "source_location": "L321",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_default_props_panel_width",
-      "community": 73,
-      "community_name": "app/mod.rs",
+      "community": 56,
+      "community_name": ".new",
       "norm_label": "default_props_panel_width()"
     },
     {
@@ -18724,8 +18724,8 @@
       "source_location": "L325",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_default_timeline_height",
-      "community": 73,
-      "community_name": "app/mod.rs",
+      "community": 56,
+      "community_name": ".new",
       "norm_label": "default_timeline_height()"
     },
     {
@@ -18735,8 +18735,8 @@
       "source_location": "L330",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_prefsstate_default",
-      "community": 73,
-      "community_name": "app/mod.rs",
+      "community": 56,
+      "community_name": ".new",
       "norm_label": ".default()"
     },
     {
@@ -18747,7 +18747,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_renderevent",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "renderevent"
     },
     {
@@ -18758,7 +18758,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_importevent",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "importevent"
     },
     {
@@ -18779,8 +18779,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_rs_pathbuf",
-      "community": 110,
-      "community_name": "PathBuf",
+      "community": 96,
+      "community_name": "app/mod.rs",
       "norm_label": "pathbuf"
     },
     {
@@ -18791,7 +18791,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_transcribeevent",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "transcribeevent"
     },
     {
@@ -18802,7 +18802,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_autoreframeevent",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "autoreframeevent"
     },
     {
@@ -18813,7 +18813,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_motiontrackevent",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "motiontrackevent"
     },
     {
@@ -18824,7 +18824,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_mattegenerationevent",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "mattegenerationevent"
     },
     {
@@ -18835,7 +18835,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_updatecheckevent",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "updatecheckevent"
     },
     {
@@ -18846,7 +18846,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_availableupdate",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "availableupdate"
     },
     {
@@ -18857,7 +18857,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_updatecheckstatus",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "updatecheckstatus"
     },
     {
@@ -18868,7 +18868,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_ttsevent",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "ttsevent"
     },
     {
@@ -18878,7 +18878,7 @@
       "source_location": "L616",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_youtubeformatchoice",
-      "community": 73,
+      "community": 96,
       "community_name": "app/mod.rs",
       "norm_label": "youtubeformatchoice"
     },
@@ -18890,7 +18890,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_youtubedownloadevent",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "youtubedownloadevent"
     },
     {
@@ -18901,7 +18901,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_thumbnailready",
       "community": 96,
-      "community_name": "String",
+      "community_name": "app/mod.rs",
       "norm_label": "thumbnailready"
     },
     {
@@ -18933,7 +18933,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_rs_arc",
-      "community": 73,
+      "community": 96,
       "community_name": "app/mod.rs",
       "norm_label": "arc"
     },
@@ -18944,7 +18944,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_rs_atomicbool",
-      "community": 73,
+      "community": 96,
       "community_name": "app/mod.rs",
       "norm_label": "atomicbool"
     },
@@ -19032,8 +19032,8 @@
       "source_location": "L1015",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_app_new",
-      "community": 73,
-      "community_name": "app/mod.rs",
+      "community": 56,
+      "community_name": ".new",
       "norm_label": ".new()"
     },
     {
@@ -19043,8 +19043,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "creationcontext",
-      "community": 73,
-      "community_name": "app/mod.rs",
+      "community": 56,
+      "community_name": ".new",
       "norm_label": "creationcontext"
     },
     {
@@ -19066,7 +19066,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_app_ensure_active_project",
       "community": 56,
-      "community_name": ".add_and_open_project",
+      "community_name": ".new",
       "norm_label": ".ensure_active_project()"
     },
     {
@@ -19109,8 +19109,8 @@
       "source_location": "L1236",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_app_selected_clip_track_kind",
-      "community": 95,
-      "community_name": "ClipFormatting",
+      "community": 68,
+      "community_name": "App",
       "norm_label": ".selected_clip_track_kind()"
     },
     {
@@ -19176,7 +19176,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_app_add_and_open_project",
       "community": 56,
-      "community_name": ".add_and_open_project",
+      "community_name": ".new",
       "norm_label": ".add_and_open_project()"
     },
     {
@@ -19187,7 +19187,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_app_remove_project",
       "community": 56,
-      "community_name": ".add_and_open_project",
+      "community_name": ".new",
       "norm_label": ".remove_project()"
     },
     {
@@ -19198,7 +19198,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_app_create_new_project",
       "community": 56,
-      "community_name": ".add_and_open_project",
+      "community_name": ".new",
       "norm_label": ".create_new_project()"
     },
     {
@@ -19352,7 +19352,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_app_active_sequence_export_settings",
       "community": 67,
-      "community_name": "project.rs",
+      "community_name": "ExportAspectRatio",
       "norm_label": ".active_sequence_export_settings()"
     },
     {
@@ -19384,8 +19384,8 @@
       "source_location": "L1610",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_app_prefs_snapshot",
-      "community": 110,
-      "community_name": "PathBuf",
+      "community": 56,
+      "community_name": ".new",
       "norm_label": ".prefs_snapshot()"
     },
     {
@@ -19396,7 +19396,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_app_save_prefs",
       "community": 56,
-      "community_name": ".add_and_open_project",
+      "community_name": ".new",
       "norm_label": ".save_prefs()"
     },
     {
@@ -19406,8 +19406,8 @@
       "source_location": "L1655",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_app_save_prefs_sync",
-      "community": 110,
-      "community_name": "PathBuf",
+      "community": 56,
+      "community_name": ".new",
       "norm_label": ".save_prefs_sync()"
     },
     {
@@ -19417,8 +19417,8 @@
       "source_location": "L1672",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_sentinel_path",
-      "community": 110,
-      "community_name": "PathBuf",
+      "community": 96,
+      "community_name": "app/mod.rs",
       "norm_label": "sentinel_path()"
     },
     {
@@ -19428,8 +19428,8 @@
       "source_location": "L1679",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_apply_bundled_model_defaults",
-      "community": 73,
-      "community_name": "app/mod.rs",
+      "community": 56,
+      "community_name": ".new",
       "norm_label": "apply_bundled_model_defaults()"
     },
     {
@@ -19439,8 +19439,8 @@
       "source_location": "L1707",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_tts_output_dir",
-      "community": 110,
-      "community_name": "PathBuf",
+      "community": 96,
+      "community_name": "app/mod.rs",
       "norm_label": "tts_output_dir()"
     },
     {
@@ -19450,8 +19450,8 @@
       "source_location": "L1717",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_youtube_downloads_dir",
-      "community": 110,
-      "community_name": "PathBuf",
+      "community": 96,
+      "community_name": "app/mod.rs",
       "norm_label": "youtube_downloads_dir()"
     },
     {
@@ -19461,8 +19461,8 @@
       "source_location": "L1726",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_load_prefs",
-      "community": 73,
-      "community_name": "app/mod.rs",
+      "community": 56,
+      "community_name": ".new",
       "norm_label": "load_prefs()"
     },
     {
@@ -19472,8 +19472,8 @@
       "source_location": "L1742",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_prefs_path",
-      "community": 110,
-      "community_name": "PathBuf",
+      "community": 96,
+      "community_name": "app/mod.rs",
       "norm_label": "prefs_path()"
     },
     {
@@ -19517,7 +19517,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_app_ui",
       "community": 56,
-      "community_name": ".add_and_open_project",
+      "community_name": ".new",
       "norm_label": ".ui()"
     },
     {
@@ -19528,7 +19528,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_rs_ui",
       "community": 56,
-      "community_name": ".add_and_open_project",
+      "community_name": ".new",
       "norm_label": "ui"
     },
     {
@@ -19539,7 +19539,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_rs_frame",
       "community": 56,
-      "community_name": ".add_and_open_project",
+      "community_name": ".new",
       "norm_label": "frame"
     },
     {
@@ -19549,8 +19549,8 @@
       "source_location": "L1874",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_app_on_exit",
-      "community": 110,
-      "community_name": "PathBuf",
+      "community": 109,
+      "community_name": "Option",
       "norm_label": ".on_exit()"
     },
     {
@@ -19560,8 +19560,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "crates_ui_src_app_mod_rs_context",
-      "community": 110,
-      "community_name": "PathBuf",
+      "community": 109,
+      "community_name": "Option",
       "norm_label": "context"
     },
     {
@@ -19858,7 +19858,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_motion_tracking",
       "community": 71,
-      "community_name": "Position",
+      "community_name": "motion_track_one",
       "norm_label": "app/motion_tracking.rs"
     },
     {
@@ -19869,7 +19869,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_motion_tracking_app",
       "community": 71,
-      "community_name": "Position",
+      "community_name": "motion_track_one",
       "norm_label": "app"
     },
     {
@@ -19880,7 +19880,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_motion_tracking_app_start_picking_motion_track_region",
       "community": 71,
-      "community_name": "Position",
+      "community_name": "motion_track_one",
       "norm_label": ".start_picking_motion_track_region()"
     },
     {
@@ -19891,7 +19891,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_motion_tracking_app_stop_picking_motion_track_region",
       "community": 71,
-      "community_name": "Position",
+      "community_name": "motion_track_one",
       "norm_label": ".stop_picking_motion_track_region()"
     },
     {
@@ -19902,7 +19902,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_motion_tracking_app_spawn_motion_track_selected_clip",
       "community": 71,
-      "community_name": "Position",
+      "community_name": "motion_track_one",
       "norm_label": ".spawn_motion_track_selected_clip()"
     },
     {
@@ -19913,7 +19913,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_motion_tracking_app_pump_motion_tracking",
       "community": 71,
-      "community_name": "Position",
+      "community_name": "motion_track_one",
       "norm_label": ".pump_motion_tracking()"
     },
     {
@@ -19924,7 +19924,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_motion_tracking_motion_track_one",
       "community": 71,
-      "community_name": "Position",
+      "community_name": "motion_track_one",
       "norm_label": "motion_track_one()"
     },
     {
@@ -19935,7 +19935,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_motion_tracking_rs_path",
       "community": 71,
-      "community_name": "Position",
+      "community_name": "motion_track_one",
       "norm_label": "path"
     },
     {
@@ -19946,7 +19946,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_motion_tracking_rs_vec",
       "community": 71,
-      "community_name": "Position",
+      "community_name": "motion_track_one",
       "norm_label": "vec"
     },
     {
@@ -19956,8 +19956,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "crates_ui_src_app_preview",
-      "community": 58,
-      "community_name": "App",
+      "community": 6,
+      "community_name": "timeline.rs",
       "norm_label": "app/preview.rs"
     },
     {
@@ -19967,8 +19967,8 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "crates_ui_src_app_preview_frozen_playhead",
-      "community": 58,
-      "community_name": "App",
+      "community": 6,
+      "community_name": "timeline.rs",
       "norm_label": "frozen_playhead()"
     },
     {
@@ -21211,7 +21211,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_youtube_download_app",
       "community": 110,
-      "community_name": "PathBuf",
+      "community_name": "App",
       "norm_label": "app"
     },
     {
@@ -21222,7 +21222,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_youtube_download_app_open_youtube_modal",
       "community": 110,
-      "community_name": "PathBuf",
+      "community_name": "App",
       "norm_label": ".open_youtube_modal()"
     },
     {
@@ -21233,7 +21233,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_youtube_download_app_close_youtube_modal",
       "community": 110,
-      "community_name": "PathBuf",
+      "community_name": "App",
       "norm_label": ".close_youtube_modal()"
     },
     {
@@ -21244,7 +21244,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_youtube_download_app_spawn_youtube_download",
       "community": 110,
-      "community_name": "PathBuf",
+      "community_name": "App",
       "norm_label": ".spawn_youtube_download()"
     },
     {
@@ -21255,7 +21255,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_youtube_download_app_request_cancel_youtube_download",
       "community": 110,
-      "community_name": "PathBuf",
+      "community_name": "App",
       "norm_label": ".request_cancel_youtube_download()"
     },
     {
@@ -21266,7 +21266,7 @@
       "_origin": "ast",
       "id": "crates_ui_src_app_youtube_download_app_pump_youtube_download",
       "community": 110,
-      "community_name": "PathBuf",
+      "community_name": "App",
       "norm_label": ".pump_youtube_download()"
     },
     {
@@ -22546,10 +22546,32 @@
       "norm_label": "trimedge"
     },
     {
+      "label": "snap_to_nearest()",
+      "file_type": "code",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
+      "source_location": "L56",
+      "_origin": "ast",
+      "id": "crates_ui_src_screens_editor_timeline_panel_snap_to_nearest",
+      "community": 78,
+      "community_name": "timeline_panel.rs",
+      "norm_label": "snap_to_nearest()"
+    },
+    {
+      "label": "snap_move_start()",
+      "file_type": "code",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
+      "source_location": "L71",
+      "_origin": "ast",
+      "id": "crates_ui_src_screens_editor_timeline_panel_snap_move_start",
+      "community": 78,
+      "community_name": "timeline_panel.rs",
+      "norm_label": "snap_move_start()"
+    },
+    {
       "label": "visible_tile_range()",
       "file_type": "code",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L48",
+      "source_location": "L99",
       "_origin": "ast",
       "id": "crates_ui_src_screens_editor_timeline_panel_visible_tile_range",
       "community": 78,
@@ -22571,7 +22593,7 @@
       "label": "filmstrip_frame_index_for_tile()",
       "file_type": "code",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L65",
+      "source_location": "L116",
       "_origin": "ast",
       "id": "crates_ui_src_screens_editor_timeline_panel_filmstrip_frame_index_for_tile",
       "community": 78,
@@ -22593,7 +22615,7 @@
       "label": "timeline_panel()",
       "file_type": "code",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L75",
+      "source_location": "L126",
       "_origin": "ast",
       "id": "crates_ui_src_screens_editor_timeline_panel_timeline_panel",
       "community": 78,
@@ -22626,7 +22648,7 @@
       "label": "ThumbnailDrawWork",
       "file_type": "code",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L748",
+      "source_location": "L857",
       "_origin": "ast",
       "id": "crates_ui_src_screens_editor_timeline_panel_thumbnaildrawwork",
       "community": 78,
@@ -22648,7 +22670,7 @@
       "label": "draw_filmstrip()",
       "file_type": "code",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L753",
+      "source_location": "L862",
       "_origin": "ast",
       "id": "crates_ui_src_screens_editor_timeline_panel_draw_filmstrip",
       "community": 78,
@@ -22703,7 +22725,7 @@
       "label": "draw_frozen_poster()",
       "file_type": "code",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L816",
+      "source_location": "L925",
       "_origin": "ast",
       "id": "crates_ui_src_screens_editor_timeline_panel_draw_frozen_poster",
       "community": 78,
@@ -22714,7 +22736,7 @@
       "label": "draw_waveform()",
       "file_type": "code",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L886",
+      "source_location": "L995",
       "_origin": "ast",
       "id": "crates_ui_src_screens_editor_timeline_panel_draw_waveform",
       "community": 78,
@@ -22736,7 +22758,7 @@
       "label": "draw_keyframe_markers()",
       "file_type": "code",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L933",
+      "source_location": "L1042",
       "_origin": "ast",
       "id": "crates_ui_src_screens_editor_timeline_panel_draw_keyframe_markers",
       "community": 78,
@@ -22747,7 +22769,7 @@
       "label": "draw_playhead()",
       "file_type": "code",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L976",
+      "source_location": "L1085",
       "_origin": "ast",
       "id": "crates_ui_src_screens_editor_timeline_panel_draw_playhead",
       "community": 78,
@@ -22758,7 +22780,7 @@
       "label": "shape_kind_glyph()",
       "file_type": "code",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L996",
+      "source_location": "L1105",
       "_origin": "ast",
       "id": "crates_ui_src_screens_editor_timeline_panel_shape_kind_glyph",
       "community": 78,
@@ -22769,7 +22791,7 @@
       "label": "color_filter_tint()",
       "file_type": "code",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L1011",
+      "source_location": "L1120",
       "_origin": "ast",
       "id": "crates_ui_src_screens_editor_timeline_panel_color_filter_tint",
       "community": 78,
@@ -22830,6 +22852,83 @@
       "community": 78,
       "community_name": "timeline_panel.rs",
       "norm_label": "repeated_tile_centers_on_the_same_source_frame_share_a_cache_key()"
+    },
+    {
+      "label": "snap_to_nearest_snaps_within_the_pixel_threshold()",
+      "file_type": "code",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L50",
+      "_origin": "ast",
+      "id": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_to_nearest_snaps_within_the_pixel_threshold",
+      "community": 78,
+      "community_name": "timeline_panel.rs",
+      "norm_label": "snap_to_nearest_snaps_within_the_pixel_threshold()"
+    },
+    {
+      "label": "snap_to_nearest_leaves_a_candidate_outside_the_threshold_untouched()",
+      "file_type": "code",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L55",
+      "_origin": "ast",
+      "id": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_to_nearest_leaves_a_candidate_outside_the_threshold_untouched",
+      "community": 78,
+      "community_name": "timeline_panel.rs",
+      "norm_label": "snap_to_nearest_leaves_a_candidate_outside_the_threshold_untouched()"
+    },
+    {
+      "label": "snap_to_nearest_is_a_no_op_with_no_targets()",
+      "file_type": "code",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L60",
+      "_origin": "ast",
+      "id": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_to_nearest_is_a_no_op_with_no_targets",
+      "community": 78,
+      "community_name": "timeline_panel.rs",
+      "norm_label": "snap_to_nearest_is_a_no_op_with_no_targets()"
+    },
+    {
+      "label": "snap_move_start_snaps_the_clips_leading_edge()",
+      "file_type": "code",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L65",
+      "_origin": "ast",
+      "id": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_move_start_snaps_the_clips_leading_edge",
+      "community": 78,
+      "community_name": "timeline_panel.rs",
+      "norm_label": "snap_move_start_snaps_the_clips_leading_edge()"
+    },
+    {
+      "label": "snap_move_start_snaps_the_clips_trailing_edge()",
+      "file_type": "code",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L71",
+      "_origin": "ast",
+      "id": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_move_start_snaps_the_clips_trailing_edge",
+      "community": 78,
+      "community_name": "timeline_panel.rs",
+      "norm_label": "snap_move_start_snaps_the_clips_trailing_edge()"
+    },
+    {
+      "label": "snap_move_start_prefers_whichever_edge_needs_the_smaller_adjustment()",
+      "file_type": "code",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L78",
+      "_origin": "ast",
+      "id": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_move_start_prefers_whichever_edge_needs_the_smaller_adjustment",
+      "community": 78,
+      "community_name": "timeline_panel.rs",
+      "norm_label": "snap_move_start_prefers_whichever_edge_needs_the_smaller_adjustment()"
+    },
+    {
+      "label": "snap_move_start_is_a_no_op_when_neither_edge_is_in_range()",
+      "file_type": "code",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L85",
+      "_origin": "ast",
+      "id": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_move_start_is_a_no_op_when_neither_edge_is_in_range",
+      "community": 78,
+      "community_name": "timeline_panel.rs",
+      "norm_label": "snap_move_start_is_a_no_op_when_neither_edge_is_in_range()"
     },
     {
       "label": "home.rs",
@@ -25136,7 +25235,7 @@
       "_origin": "ast",
       "id": "agents",
       "community": 79,
-      "community_name": "ROADMAP.md",
+      "community_name": "INDEX.md",
       "norm_label": "agents.md"
     },
     {
@@ -25224,7 +25323,7 @@
       "_origin": "ast",
       "id": "claude",
       "community": 79,
-      "community_name": "ROADMAP.md",
+      "community_name": "INDEX.md",
       "norm_label": "claude.md"
     },
     {
@@ -25510,7 +25609,7 @@
       "_origin": "ast",
       "id": "docs_plano",
       "community": 79,
-      "community_name": "ROADMAP.md",
+      "community_name": "INDEX.md",
       "norm_label": "plano.md"
     },
     {
@@ -25521,7 +25620,7 @@
       "_origin": "ast",
       "id": "docs_plano_plano_de_execu\u00e7\u00e3o",
       "community": 79,
-      "community_name": "ROADMAP.md",
+      "community_name": "INDEX.md",
       "norm_label": "plano de execucao"
     },
     {
@@ -25840,7 +25939,7 @@
       "_origin": "ast",
       "id": "features_request",
       "community": 79,
-      "community_name": "ROADMAP.md",
+      "community_name": "INDEX.md",
       "norm_label": "request.md"
     },
     {
@@ -25982,7 +26081,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_index",
-      "community": 132,
+      "community": 79,
       "community_name": "INDEX.md",
       "norm_label": "index.md"
     },
@@ -26038,7 +26137,7 @@
       "_origin": "ast",
       "id": "spec_roadmap",
       "community": 79,
-      "community_name": "ROADMAP.md",
+      "community_name": "INDEX.md",
       "norm_label": "roadmap.md"
     },
     {
@@ -26067,7 +26166,7 @@
       "label": "P1 \u2014 Performance Infrastructure",
       "file_type": "document",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L32",
+      "source_location": "L41",
       "_origin": "ast",
       "id": "spec_roadmap_p1_performance_infrastructure",
       "community": 115,
@@ -26078,7 +26177,7 @@
       "label": "P2 \u2014 High-Impact Parity",
       "file_type": "document",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L44",
+      "source_location": "L53",
       "_origin": "ast",
       "id": "spec_roadmap_p2_high_impact_parity",
       "community": 115,
@@ -26089,7 +26188,7 @@
       "label": "P3 \u2014 Differentiators",
       "file_type": "document",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L67",
+      "source_location": "L76",
       "_origin": "ast",
       "id": "spec_roadmap_p3_differentiators",
       "community": 115,
@@ -26100,7 +26199,7 @@
       "label": "P4 \u2014 Hardware-Dependent / Confirmed Hard Walls / Lower-Priority Parity",
       "file_type": "document",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L83",
+      "source_location": "L92",
       "_origin": "ast",
       "id": "spec_roadmap_p4_hardware_dependent_confirmed_hard_walls_lower_priority_parity",
       "community": 115,
@@ -26111,7 +26210,7 @@
       "label": "P5 \u2014 Explicitly Deferred",
       "file_type": "document",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L100",
+      "source_location": "L109",
       "_origin": "ast",
       "id": "spec_roadmap_p5_explicitly_deferred",
       "community": 115,
@@ -26125,7 +26224,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_rules",
-      "community": 132,
+      "community": 79,
       "community_name": "INDEX.md",
       "norm_label": "rules.md"
     },
@@ -26136,7 +26235,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_rules_mandatory_rules_read_before_implementing_anything_from_roadmap_md",
-      "community": 132,
+      "community": 79,
       "community_name": "INDEX.md",
       "norm_label": "mandatory rules (read before implementing anything from roadmap.md)"
     },
@@ -26147,7 +26246,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "spec_rules_definition_of_done_short_form",
-      "community": 132,
+      "community": 79,
       "community_name": "INDEX.md",
       "norm_label": "definition of done (short form)"
     },
@@ -26158,8 +26257,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_architecture_differentiators",
-      "community": 79,
-      "community_name": "ROADMAP.md",
+      "community": 106,
+      "community_name": "Differentiator Features (beyond `features/request.md`)",
       "norm_label": "differentiators.md"
     },
     {
@@ -26232,7 +26331,7 @@
       "label": "D6 \u2014 One-click shorts pack",
       "file_type": "document",
       "source_file": "spec/architecture/differentiators.md",
-      "source_location": "L66",
+      "source_location": "L67",
       "_origin": "ast",
       "id": "spec_architecture_differentiators_d6_one_click_shorts_pack",
       "community": 106,
@@ -26243,7 +26342,7 @@
       "label": "D7 \u2014 Lightweight collaboration package",
       "file_type": "document",
       "source_file": "spec/architecture/differentiators.md",
-      "source_location": "L76",
+      "source_location": "L77",
       "_origin": "ast",
       "id": "spec_architecture_differentiators_d7_lightweight_collaboration_package",
       "community": 106,
@@ -26254,7 +26353,7 @@
       "label": "Explicitly out of scope (for now)",
       "file_type": "document",
       "source_file": "spec/architecture/differentiators.md",
-      "source_location": "L86",
+      "source_location": "L87",
       "_origin": "ast",
       "id": "spec_architecture_differentiators_explicitly_out_of_scope_for_now",
       "community": 106,
@@ -26268,8 +26367,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_architecture_performance_and_caching",
-      "community": 79,
-      "community_name": "ROADMAP.md",
+      "community": 111,
+      "community_name": "Performance & Caching Patterns (ported from nimble)",
       "norm_label": "performance-and-caching.md"
     },
     {
@@ -26356,7 +26455,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_architecture_rules_and_dod",
-      "community": 132,
+      "community": 79,
       "community_name": "INDEX.md",
       "norm_label": "rules-and-dod.md"
     },
@@ -26368,7 +26467,7 @@
       "_origin": "ast",
       "id": "spec_architecture_rules_and_dod_mandatory_rules_definition_of_done",
       "community": 132,
-      "community_name": "INDEX.md",
+      "community_name": "Mandatory Rules & Definition of Done",
       "norm_label": "mandatory rules & definition of done"
     },
     {
@@ -26379,7 +26478,7 @@
       "_origin": "ast",
       "id": "spec_architecture_rules_and_dod_before_writing_code",
       "community": 132,
-      "community_name": "INDEX.md",
+      "community_name": "Mandatory Rules & Definition of Done",
       "norm_label": "before writing code"
     },
     {
@@ -26390,7 +26489,7 @@
       "_origin": "ast",
       "id": "spec_architecture_rules_and_dod_definition_of_done",
       "community": 132,
-      "community_name": "INDEX.md",
+      "community_name": "Mandatory Rules & Definition of Done",
       "norm_label": "definition of done"
     },
     {
@@ -26401,7 +26500,7 @@
       "_origin": "ast",
       "id": "spec_architecture_rules_and_dod_keeping_the_spec_in_sync",
       "community": 132,
-      "community_name": "INDEX.md",
+      "community_name": "Mandatory Rules & Definition of Done",
       "norm_label": "keeping the spec in sync"
     },
     {
@@ -26477,8 +26576,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_matrix_ai_features",
-      "community": 132,
-      "community_name": "INDEX.md",
+      "community": 90,
+      "community_name": "ai-features.md",
       "norm_label": "ai-features.md"
     },
     {
@@ -26488,8 +26587,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_matrix_ai_features_ai_features",
-      "community": 132,
-      "community_name": "INDEX.md",
+      "community": 90,
+      "community_name": "ai-features.md",
       "norm_label": "ai features"
     },
     {
@@ -26499,8 +26598,8 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "spec_matrix_ai_features_known_gaps",
-      "community": 132,
-      "community_name": "INDEX.md",
+      "community": 90,
+      "community_name": "ai-features.md",
       "norm_label": "known gaps"
     },
     {
@@ -26664,7 +26763,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_matrix_engine",
-      "community": 132,
+      "community": 79,
       "community_name": "INDEX.md",
       "norm_label": "engine.md"
     },
@@ -26675,7 +26774,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_matrix_engine_engine_avbridge_probe_export_loudness_proxy_gpu_encode",
-      "community": 132,
+      "community": 79,
       "community_name": "INDEX.md",
       "norm_label": "engine \u2014 avbridge (probe/export/loudness/proxy/gpu encode)"
     },
@@ -26686,7 +26785,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "spec_matrix_engine_known_gap",
-      "community": 132,
+      "community": 79,
       "community_name": "INDEX.md",
       "norm_label": "known gap"
     },
@@ -26697,8 +26796,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_matrix_packaging",
-      "community": 132,
-      "community_name": "INDEX.md",
+      "community": 95,
+      "community_name": "packaging.md",
       "norm_label": "packaging.md"
     },
     {
@@ -26708,8 +26807,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_matrix_packaging_packaging_distribution",
-      "community": 132,
-      "community_name": "INDEX.md",
+      "community": 95,
+      "community_name": "packaging.md",
       "norm_label": "packaging & distribution"
     },
     {
@@ -26719,8 +26818,8 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "spec_matrix_packaging_verification_caveats_real_not_silently_assumed",
-      "community": 132,
-      "community_name": "INDEX.md",
+      "community": 95,
+      "community_name": "packaging.md",
       "norm_label": "verification caveats (real, not silently assumed)"
     },
     {
@@ -26763,8 +26862,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_matrix_preview_pipeline",
-      "community": 132,
-      "community_name": "INDEX.md",
+      "community": 116,
+      "community_name": "preview-pipeline.md",
       "norm_label": "preview-pipeline.md"
     },
     {
@@ -26774,8 +26873,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "spec_matrix_preview_pipeline_preview_pipeline_gstreamer",
-      "community": 132,
-      "community_name": "INDEX.md",
+      "community": 116,
+      "community_name": "preview-pipeline.md",
       "norm_label": "preview pipeline (gstreamer)"
     },
     {
@@ -26785,8 +26884,8 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "spec_matrix_preview_pipeline_verification_posture_real_not_assumed",
-      "community": 132,
-      "community_name": "INDEX.md",
+      "community": 116,
+      "community_name": "preview-pipeline.md",
       "norm_label": "verification posture (real, not assumed)"
     },
     {
@@ -26797,7 +26896,7 @@
       "_origin": "ast",
       "id": "spec_matrix_robustness",
       "community": 79,
-      "community_name": "ROADMAP.md",
+      "community_name": "INDEX.md",
       "norm_label": "robustness.md"
     },
     {
@@ -26808,7 +26907,7 @@
       "_origin": "ast",
       "id": "spec_matrix_robustness_robustness",
       "community": 79,
-      "community_name": "ROADMAP.md",
+      "community_name": "INDEX.md",
       "norm_label": "robustness"
     },
     {
@@ -26819,7 +26918,7 @@
       "_origin": "ast",
       "id": "spec_matrix_robustness_known_gaps",
       "community": 79,
-      "community_name": "ROADMAP.md",
+      "community_name": "INDEX.md",
       "norm_label": "known gaps"
     },
     {
@@ -26859,7 +26958,7 @@
       "label": "Known gaps (not found anywhere in the codebase \u2014 confirm before assuming, but no evidence of",
       "file_type": "document",
       "source_file": "spec/matrix/timeline-and-editing.md",
-      "source_location": "L40",
+      "source_location": "L44",
       "_origin": "ast",
       "id": "spec_matrix_timeline_and_editing_known_gaps_not_found_anywhere_in_the_codebase_confirm_before_assuming_but_no_evidence_of",
       "community": 131,
@@ -26870,7 +26969,7 @@
       "label": "either in `graphify query \"undo redo history stack snapping magnetic snap\"`)",
       "file_type": "document",
       "source_file": "spec/matrix/timeline-and-editing.md",
-      "source_location": "L41",
+      "source_location": "L45",
       "_origin": "ast",
       "id": "spec_matrix_timeline_and_editing_either_in_graphify_query_undo_redo_history_stack_snapping_magnetic_snap",
       "community": 131,
@@ -39244,7 +39343,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L753",
+      "source_location": "L862",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -39256,7 +39355,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L816",
+      "source_location": "L925",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -52244,7 +52343,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L996",
+      "source_location": "L1105",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -52496,7 +52595,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L1011",
+      "source_location": "L1120",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -53085,7 +53184,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L933",
+      "source_location": "L1042",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -74491,7 +74590,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L836",
+      "source_location": "L945",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_draw_frozen_poster",
@@ -74503,7 +74602,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L72",
+      "source_location": "L123",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_filmstrip_frame_index_for_tile",
@@ -79780,7 +79879,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L1011",
+      "source_location": "L1120",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel",
@@ -79791,7 +79890,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L753",
+      "source_location": "L862",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel",
@@ -79802,7 +79901,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L816",
+      "source_location": "L925",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel",
@@ -79813,7 +79912,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L933",
+      "source_location": "L1042",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel",
@@ -79824,7 +79923,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L976",
+      "source_location": "L1085",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel",
@@ -79835,7 +79934,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L886",
+      "source_location": "L995",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel",
@@ -79846,7 +79945,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L65",
+      "source_location": "L116",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel",
@@ -79881,7 +79980,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L996",
+      "source_location": "L1105",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel",
@@ -79892,7 +79991,29 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L748",
+      "source_location": "L71",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "crates_ui_src_screens_editor_timeline_panel",
+      "target": "crates_ui_src_screens_editor_timeline_panel_snap_move_start",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
+      "source_location": "L56",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "crates_ui_src_screens_editor_timeline_panel",
+      "target": "crates_ui_src_screens_editor_timeline_panel_snap_to_nearest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
+      "source_location": "L857",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel",
@@ -79903,7 +80024,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L75",
+      "source_location": "L126",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel",
@@ -79925,7 +80046,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L48",
+      "source_location": "L99",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel",
@@ -79949,7 +80070,43 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L775",
+      "source_location": "L77",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "crates_ui_src_screens_editor_timeline_panel_snap_move_start",
+      "target": "crates_ui_src_screens_editor_timeline_panel_snap_to_nearest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
+      "source_location": "L190",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel",
+      "target": "crates_ui_src_screens_editor_timeline_panel_snap_to_nearest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
+      "source_location": "L417",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel",
+      "target": "crates_ui_src_screens_editor_timeline_panel_snap_move_start",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
+      "source_location": "L884",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_draw_filmstrip",
@@ -79961,7 +80118,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L842",
+      "source_location": "L951",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_draw_frozen_poster",
@@ -79984,7 +80141,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L48",
+      "source_location": "L99",
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
@@ -79996,7 +80153,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L886",
+      "source_location": "L995",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80009,7 +80166,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L788",
+      "source_location": "L897",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_draw_filmstrip",
@@ -80020,7 +80177,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L65",
+      "source_location": "L116",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80056,7 +80213,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L1011",
+      "source_location": "L1120",
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
@@ -80069,7 +80226,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L399",
+      "source_location": "L508",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel",
@@ -80081,7 +80238,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L375",
+      "source_location": "L484",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel",
@@ -80093,7 +80250,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L362",
+      "source_location": "L471",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel",
@@ -80105,7 +80262,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L469",
+      "source_location": "L578",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel",
@@ -80117,7 +80274,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L114",
+      "source_location": "L196",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel",
@@ -80129,7 +80286,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L388",
+      "source_location": "L497",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel",
@@ -80140,7 +80297,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L75",
+      "source_location": "L126",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80152,7 +80309,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L75",
+      "source_location": "L126",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80165,7 +80322,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L572",
+      "source_location": "L681",
       "weight": 1.0,
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel",
@@ -80176,7 +80333,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L976",
+      "source_location": "L1085",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80188,7 +80345,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L753",
+      "source_location": "L862",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80200,7 +80357,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L816",
+      "source_location": "L925",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80212,7 +80369,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L750",
+      "source_location": "L859",
       "weight": 1.0,
       "context": "field",
       "_origin": "ast",
@@ -80224,7 +80381,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L753",
+      "source_location": "L862",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80236,7 +80393,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L753",
+      "source_location": "L862",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80248,7 +80405,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L753",
+      "source_location": "L862",
       "weight": 1.0,
       "context": "generic_arg",
       "_origin": "ast",
@@ -80260,7 +80417,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L753",
+      "source_location": "L862",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80272,7 +80429,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L816",
+      "source_location": "L925",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80284,7 +80441,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L816",
+      "source_location": "L925",
       "weight": 1.0,
       "context": "generic_arg",
       "_origin": "ast",
@@ -80296,7 +80453,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L816",
+      "source_location": "L925",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80308,7 +80465,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L933",
+      "source_location": "L1042",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80320,7 +80477,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L886",
+      "source_location": "L995",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80332,7 +80489,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L816",
+      "source_location": "L925",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80344,7 +80501,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L933",
+      "source_location": "L1042",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80356,7 +80513,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L976",
+      "source_location": "L1085",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80368,7 +80525,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L886",
+      "source_location": "L995",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80380,7 +80537,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L886",
+      "source_location": "L995",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
@@ -80392,7 +80549,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "crates/ui/src/screens/editor/timeline_panel.rs",
-      "source_location": "L1011",
+      "source_location": "L1120",
       "weight": 1.0,
       "context": "generic_arg",
       "_origin": "ast",
@@ -80420,6 +80577,83 @@
       "_origin": "ast",
       "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test",
       "target": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_repeated_tile_centers_on_the_same_source_frame_share_a_cache_key",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L85",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test",
+      "target": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_move_start_is_a_no_op_when_neither_edge_is_in_range",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L78",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test",
+      "target": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_move_start_prefers_whichever_edge_needs_the_smaller_adjustment",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L65",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test",
+      "target": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_move_start_snaps_the_clips_leading_edge",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L71",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test",
+      "target": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_move_start_snaps_the_clips_trailing_edge",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L60",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test",
+      "target": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_to_nearest_is_a_no_op_with_no_targets",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L55",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test",
+      "target": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_to_nearest_leaves_a_candidate_outside_the_threshold_untouched",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "crates/ui/src/screens/editor/timeline_panel/timeline_panel_test.rs",
+      "source_location": "L50",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test",
+      "target": "crates_ui_src_screens_editor_timeline_panel_timeline_panel_test_snap_to_nearest_snaps_within_the_pixel_threshold",
       "confidence_score": 1.0
     },
     {
@@ -84687,7 +84921,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "spec/matrix/timeline-and-editing.md",
-      "source_location": "L50",
+      "source_location": "L52",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_matrix_timeline_and_editing",
@@ -84731,7 +84965,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L69",
+      "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_roadmap",
@@ -84742,7 +84976,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L34",
+      "source_location": "L43",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_roadmap",
@@ -84764,7 +84998,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L47",
+      "source_location": "L56",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_roadmap",
@@ -84775,7 +85009,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L46",
+      "source_location": "L55",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_roadmap",
@@ -84786,7 +85020,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L47",
+      "source_location": "L56",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_roadmap",
@@ -84830,7 +85064,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L32",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_roadmap_roadmap_actionable_queue",
@@ -84841,7 +85075,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L44",
+      "source_location": "L53",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_roadmap_roadmap_actionable_queue",
@@ -84852,7 +85086,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L67",
+      "source_location": "L76",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_roadmap_roadmap_actionable_queue",
@@ -84863,7 +85097,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L83",
+      "source_location": "L92",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_roadmap_roadmap_actionable_queue",
@@ -84874,7 +85108,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "spec/ROADMAP.md",
-      "source_location": "L100",
+      "source_location": "L109",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_roadmap_roadmap_actionable_queue",
@@ -84984,7 +85218,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "spec/architecture/differentiators.md",
-      "source_location": "L66",
+      "source_location": "L67",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_architecture_differentiators_differentiator_features_beyond_features_request_md",
@@ -84995,7 +85229,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "spec/architecture/differentiators.md",
-      "source_location": "L76",
+      "source_location": "L77",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_architecture_differentiators_differentiator_features_beyond_features_request_md",
@@ -85006,7 +85240,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "spec/architecture/differentiators.md",
-      "source_location": "L86",
+      "source_location": "L87",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_architecture_differentiators_differentiator_features_beyond_features_request_md",
@@ -85468,7 +85702,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "spec/matrix/timeline-and-editing.md",
-      "source_location": "L41",
+      "source_location": "L45",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_matrix_timeline_and_editing_timeline_editing",
@@ -85479,7 +85713,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "spec/matrix/timeline-and-editing.md",
-      "source_location": "L40",
+      "source_location": "L44",
       "weight": 1.0,
       "_origin": "ast",
       "source": "spec_matrix_timeline_and_editing_timeline_editing",
@@ -86181,5 +86415,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "f3b9565d6a37d4858669c42779d7329032ebdb8c"
+  "built_at_commit": "0e993687f798f6e50704fa6b4305ea70a84f75d1"
 }
