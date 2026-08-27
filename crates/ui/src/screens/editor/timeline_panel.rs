@@ -26,7 +26,29 @@ use crate::theme;
 /// go from several-projects-wide overview down to frame-accurate editing.
 const MIN_PX_PER_SEC: f32 = 0.5;
 const MAX_PX_PER_SEC: f32 = 60.0;
-const TRACK_LABEL_WIDTH: f32 = 50.0;
+const TRACK_LABEL_WIDTH: f32 = 86.0;
+
+/// Icon for a track's [`avcore::AudioRole`] (D2, `spec/architecture/differentiators.md`) — the
+/// track header's role picker, and its own collapsed `ComboBox` display.
+fn audio_role_icon(role: avcore::AudioRole) -> &'static str {
+    match role {
+        avcore::AudioRole::Unspecified => "–",
+        avcore::AudioRole::GameAudio => "🎮",
+        avcore::AudioRole::Mic => "🎤",
+        avcore::AudioRole::Music => "🎵",
+    }
+}
+
+/// Hover text for the role picker's collapsed state — the icon alone is too terse to stand
+/// alone.
+fn audio_role_label(role: avcore::AudioRole, locale: crate::i18n::Locale) -> &'static str {
+    match role {
+        avcore::AudioRole::Unspecified => Text::AudioRoleUnspecified.tr(locale),
+        avcore::AudioRole::GameAudio => Text::AudioRoleGameAudio.tr(locale),
+        avcore::AudioRole::Mic => Text::AudioRoleMic.tr(locale),
+        avcore::AudioRole::Music => Text::AudioRoleMusic.tr(locale),
+    }
+}
 
 /// A clip body drag in progress: which clip, where it started from, and where the pointer
 /// currently is — resolved into a same-track reposition or a cross-track move once every
@@ -275,6 +297,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut clip_drags: Vec<ClipDrag> = Vec::new();
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
         let mut toggle_track_visibility_requests: Vec<u64> = Vec::new();
+        let mut track_audio_role_requests: Vec<(u64, avcore::AudioRole)> = Vec::new();
         // Set the first time a trim/move drag starts this frame — `app` is immutably borrowed
         // for the whole track/clip iteration below, so the undo snapshot itself is pushed once,
         // after that borrow ends, rather than inline at the drag_started() check.
@@ -309,6 +332,38 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 ))
                                 .truncate(),
                             );
+                            // D2 (`spec/architecture/differentiators.md`): which audio source
+                            // this track carries, if any — Text/Shape tracks never carry audio,
+                            // so they don't get the picker at all.
+                            if matches!(
+                                track.kind,
+                                avcore::timeline::TrackKind::Video
+                                    | avcore::timeline::TrackKind::Audio
+                            ) {
+                                let mut role = track.audio_role;
+                                egui::ComboBox::from_id_salt(("track_audio_role", track_id))
+                                    .selected_text(audio_role_icon(role))
+                                    .width(28.0)
+                                    .show_ui(ui, |ui| {
+                                        for candidate in [
+                                            avcore::AudioRole::Unspecified,
+                                            avcore::AudioRole::GameAudio,
+                                            avcore::AudioRole::Mic,
+                                            avcore::AudioRole::Music,
+                                        ] {
+                                            ui.selectable_value(
+                                                &mut role,
+                                                candidate,
+                                                audio_role_icon(candidate),
+                                            );
+                                        }
+                                    })
+                                    .response
+                                    .on_hover_text(audio_role_label(role, locale));
+                                if role != track.audio_role {
+                                    track_audio_role_requests.push((track_id, role));
+                                }
+                            }
                         },
                     );
                     let (track_rect, _resp) = ui.allocate_exact_size(
@@ -827,6 +882,9 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         for track_id in toggle_track_visibility_requests {
             app.toggle_track_visibility(track_id);
+        }
+        for (track_id, role) in track_audio_role_requests {
+            app.set_track_audio_role(track_id, role);
         }
         for clip_id in delete_requests {
             app.selected_clip_id = Some(clip_id);

@@ -706,6 +706,18 @@ impl App {
             track.visible = !track.visible;
         }
     }
+
+    /// Sets the `AudioRole` on the track with `track_id` — what the timeline track header's
+    /// role picker does (D2, `spec/architecture/differentiators.md`: highlight detection needs
+    /// to know which track is the mic vs. game audio). Not undo-tracked, same as
+    /// [`Self::toggle_track_visibility`] — metadata about a track, not an edit to its content.
+    /// A no-op if the track isn't found.
+    pub fn set_track_audio_role(&mut self, track_id: u64, role: avcore::AudioRole) {
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(track) = timeline.tracks.iter_mut().find(|t| t.id == track_id) {
+            track.audio_role = role;
+        }
+    }
 }
 
 /// Appends a brand-new, always-fresh empty track of `kind` to `timeline` — unlike
