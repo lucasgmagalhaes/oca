@@ -29,10 +29,18 @@ for exact export-vs-preview wiring per effect).
 
 ## Confirmed hard wall — no matching GStreamer element exists on the dev machine at all
 
-- [ ] vignette, glitch, deflicker, LUTs (3D `.cube` specifically), stabilization preview
-      (`deshake`/`opencvvideostab` all checked via real `gst-inspect-1.0`). Each needs a
-      custom-coded GStreamer element or CPU-side frame processing — materially bigger lift than
-      every other preview gap closed so far (those all reused stock elements).
+- [~] vignette, glitch, deflicker, LUTs (3D `.cube` specifically), stabilization preview
+      (`deshake`/`opencvvideostab` all checked via real `gst-inspect-1.0`). Still true for a real
+      GStreamer element for any of the five — a custom-coded one was never attempted (no way to
+      visually verify a GStreamer plugin in this sandbox). **Partial CPU-side fallback**:
+      `avcore::preview_effects` post-processes the already-decoded preview frame (same pattern
+      the waveform/vectorscope scopes above use) for LUT (precise, real trilinear interpolation
+      of the `.cube` data) and vignette (a simple radial-falloff *approximation*, not FFmpeg's
+      own cosine formula — see `ROADMAP.md` P4 item 21 for why matching that exactly wasn't
+      attempted). Glitch/deflicker/stabilization remain fully undone — glitch has no single
+      well-specified algorithm to approximate, and the other two need temporal state across
+      frames, a materially larger piece of work. See `ROADMAP.md` P4 item 21 for the full
+      writeup.
 
 ## Text, shapes
 
