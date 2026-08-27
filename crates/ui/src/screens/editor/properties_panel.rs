@@ -1404,6 +1404,25 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
         changed = true;
     }
 
+    // Opacity keyframes -- fade the text in/out over its own on-timeline duration (see
+    // TextClip::opacity_keyframes' doc comment).
+    let mut new_opacity_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropTextOpacityKeyframes.tr(locale),
+        Text::TextOpacityKeyframesExportNote.tr(locale),
+        |ui| {
+            new_opacity_keyframes =
+                f32_keyframe_editor(ui, &tc.opacity_keyframes, 0.0..=1.0, 1.0, locale);
+            new_opacity_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_opacity_keyframes {
+            tc.opacity_keyframes = kfs;
+            changed = true;
+        }
+    }
+
     // Start and duration
     ui.label(
         RichText::new(Text::PropTextStart.tr(locale))

@@ -541,6 +541,8 @@ text_catalog! {
     PropShapeRotation: pt_br = "Rotação", en = "Rotation";
     PropShapeRotationKeyframes: pt_br = "Rotação (keyframes)", en = "Rotation (keyframes)";
     ShapeRotationKeyframesExportNote: pt_br = "quando definido, substitui a rotação constante na exportação (giro animado) — sem efeito no preview ao vivo.", en = "when set, overrides the constant rotation on export (animated spin) — no live preview effect.";
+    PropTextOpacityKeyframes: pt_br = "Opacidade (keyframes)", en = "Opacity (keyframes)";
+    TextOpacityKeyframesExportNote: pt_br = "cria um fade de entrada/saída no texto durante a exportação — sem efeito no preview ao vivo.", en = "creates a fade in/out for the text on export — no live preview effect.";
     PropShapeStroke: pt_br = "Espessura do contorno (px)", en = "Outline thickness (px)";
     PropShapeStrokeHint: pt_br = "0 = preenchido", en = "0 = filled";
     PropShapeDuration: pt_br = "Duração (s)", en = "Duration (s)";

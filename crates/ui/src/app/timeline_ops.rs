@@ -1060,6 +1060,7 @@ impl App {
             words: Vec::new(),
             highlight_enabled: false,
             highlight_color_rgba: [255, 220, 0, 255],
+            opacity_keyframes: vec![],
         });
         self.selected_clip_id = None;
         self.selected_shape_clip_id = None;
