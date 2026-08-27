@@ -293,12 +293,8 @@ pub struct ShapeClip {
     /// overlay approach (not yet animatable, a materially bigger restructuring — still not
     /// done). Each field independently overrides its own constant (`center_x`/`center_y`) when
     /// non-empty, same "keyframes win when present" relationship every other keyframe field in
-    /// this codebase already has. Width/height/rotation keyframes for shapes are also not done
-    /// yet — animating those would mean reworking `shape_render`'s per-shape-kind geometry math
-    /// (`inside_expr`) to accept expressions instead of literal half-extents, a real risk to
-    /// that already visually-verified, un-re-verifiable-in-this-sandbox code (see
-    /// `crate::shape_render`'s own doc comment) that position animation alone doesn't touch.
-    /// `#[serde(default)]` so older saved projects load with no position animation.
+    /// this codebase already has. `#[serde(default)]` so older saved projects load with no
+    /// position animation.
     #[serde(default)]
     pub center_x_keyframes: Vec<Keyframe<f32>>,
     #[serde(default)]
@@ -307,8 +303,31 @@ pub struct ShapeClip {
     /// changes.
     pub width: f32,
     pub height: f32,
+    /// General keyframe animation for width/height over this shape's own on-timeline duration —
+    /// the rest of `spec/ROADMAP.md` P4 item 34's `ShapeClip` scope, shipped after position
+    /// animation. `shape_render::inside_expr`'s geometry math (`ellipse_inside_expr`/
+    /// `polygon_inside_expr`) was reworked to accept `geq`-expression-language sub-expressions
+    /// for the half-extents instead of literal `f64`s, so the same multiply-through-avoid-
+    /// division trick the static case always used still applies verbatim — an unkeyframed
+    /// `width`/`height` degenerates back to the same plain numeric literal
+    /// `keyframe::shape_axis_expr` already returns for the unkeyframed position case, so the
+    /// static-shape math is unchanged in that (still the common) case. `#[serde(default)]` so
+    /// older saved projects load with no size animation.
+    #[serde(default)]
+    pub width_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub height_keyframes: Vec<Keyframe<f32>>,
     /// Clockwise rotation around the shape's own center, in degrees.
     pub rotation_deg: f32,
+    /// General keyframe animation for `rotation_deg` over this shape's own on-timeline
+    /// duration — the last piece of P4 item 34's `ShapeClip` scope. Unlike width/height, this
+    /// doesn't touch `inside_expr` at all: only the local-frame rotation (`rx`/`ry` in
+    /// `shape_render::build_shape_filter_desc`) changes, from Rust-precomputed `sin`/`cos`
+    /// literals to `geq`'s own `sin(...)`/`cos(...)`/`PI` expression-language functions (all
+    /// confirmed present in FFmpeg's expression evaluator, not assumed) evaluated per pixel.
+    /// `#[serde(default)]` so older saved projects load with no rotation animation.
+    #[serde(default)]
+    pub rotation_keyframes: Vec<Keyframe<f32>>,
     /// RGBA fill/stroke color: `[r, g, b, a]`, each 0–255. Alpha 255 = fully opaque.
     pub color_rgba: [u8; 4],
     /// Outline thickness in pixels. `0.0` = filled shape; `> 0.0` = outline only, that thick
