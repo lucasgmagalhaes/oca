@@ -683,6 +683,10 @@ pub struct App {
     /// A job id present here is the source of truth for "how many workers are busy right
     /// now" — [`App::pump_export_queue`] uses its length against `prefs.export_workers`.
     active_renders: HashMap<u64, Arc<export::RenderControl>>,
+    /// Cached result of resolving the active sequence's video tracks and media library into
+    /// export segments — see [`App::resolved_active_sequence_export_preview`]. `None` before
+    /// the Fila (export queue) screen's header has ever been drawn.
+    export_preview_cache: Option<export::ExportPreviewCache>,
     /// The GStreamer pipeline for the clip currently covering the active sequence's timeline
     /// playhead, if it could be opened (`None` before any project has a clip at the playhead,
     /// before it's been lazily opened, and when `Preview::open` failed, e.g. a source file
@@ -1073,6 +1077,7 @@ impl App {
             render_tx,
             render_rx,
             active_renders: HashMap::new(),
+            export_preview_cache: None,
             preview: None,
             preview_clip_id: None,
             preview_overlay_clip_ids: Vec::new(),

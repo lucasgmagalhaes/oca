@@ -37,14 +37,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let project = app.active_project();
                 let sequence_name = project.sequences[project.active_sequence].name.clone();
-                let sequence = &project.sequences[project.active_sequence];
-                let export_settings = sequence.export_settings;
-                let resolved =
-                    avcore::resolve_timeline_segments_multi(sequence, &project.media_library)
-                        .and_then(|(track_segments, canvas)| {
-                            avcore::resolve_audio_segments(sequence, &project.media_library)
-                                .map(|audio_segments| (track_segments, audio_segments, canvas))
-                        });
+                let export_settings = project.sequences[project.active_sequence].export_settings;
+                let resolved = app.resolved_active_sequence_export_preview();
                 let size_estimate_label = if let Ok((ref track_segments, _, ref canvas)) = resolved
                 {
                     let duration_secs: f64 = track_segments
