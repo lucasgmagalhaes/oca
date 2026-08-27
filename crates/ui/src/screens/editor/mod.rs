@@ -45,6 +45,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let copy_fmt_combo = app.prefs.key_bindings.copy_formatting.clone();
     let paste_fmt_combo = app.prefs.key_bindings.paste_formatting.clone();
     let add_opacity_marker_combo = app.prefs.key_bindings.add_opacity_marker.clone();
+    let undo_combo = app.prefs.key_bindings.undo.clone();
+    let redo_combo = app.prefs.key_bindings.redo.clone();
 
     let ctrl_s_pressed = ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S));
     if ctrl_s_pressed {
@@ -89,6 +91,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let add_opacity_marker_pressed = ui.input(|i| add_opacity_marker_combo.matches(i));
     if add_opacity_marker_pressed {
         app.add_opacity_marker_at_playhead();
+    }
+    let undo_pressed = ui.input(|i| undo_combo.matches(i));
+    if undo_pressed {
+        app.undo();
+    }
+    let redo_pressed = ui.input(|i| redo_combo.matches(i));
+    if redo_pressed {
+        app.redo();
     }
 
     ui.vertical(|ui| {
@@ -291,8 +301,20 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             }
         }
         ui.separator();
-        let _ = ui.button("↺");
-        let _ = ui.button("↻");
+        if ui
+            .add_enabled(app.can_undo(), egui::Button::new("↺"))
+            .on_hover_text(Text::ShortcutUndo.tr(locale))
+            .clicked()
+        {
+            app.undo();
+        }
+        if ui
+            .add_enabled(app.can_redo(), egui::Button::new("↻"))
+            .on_hover_text(Text::ShortcutRedo.tr(locale))
+            .clicked()
+        {
+            app.redo();
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button(Text::Export.tr(locale)).clicked() {
                 app.screen = crate::app::Screen::Queue;

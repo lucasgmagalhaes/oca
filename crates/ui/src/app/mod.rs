@@ -117,6 +117,8 @@ pub enum BindableAction {
     CopyFormatting,
     PasteFormatting,
     AddOpacityMarker,
+    Undo,
+    Redo,
 }
 
 /// User-configurable key bindings for the five main editor shortcuts. Persisted as part of
@@ -133,6 +135,13 @@ pub struct KeyBindings {
     /// serialized `KeyBindings`) loading correctly instead of failing outright.
     #[serde(default = "default_add_opacity_marker_binding")]
     pub add_opacity_marker: KeyCombo,
+    /// `Ctrl+Z` by default — see [`crate::app::App::undo`]. Added after the other five, so
+    /// `#[serde(default)]` keeps an older saved `prefs.oc` loading correctly.
+    #[serde(default = "default_undo_binding")]
+    pub undo: KeyCombo,
+    /// `Ctrl+Y` by default — see [`crate::app::App::redo`].
+    #[serde(default = "default_redo_binding")]
+    pub redo: KeyCombo,
 }
 
 impl Default for KeyBindings {
@@ -159,6 +168,8 @@ impl Default for KeyBindings {
                 key_name: "V".to_string(),
             },
             add_opacity_marker: default_add_opacity_marker_binding(),
+            undo: default_undo_binding(),
+            redo: default_redo_binding(),
         }
     }
 }
@@ -168,6 +179,22 @@ fn default_add_opacity_marker_binding() -> KeyCombo {
         ctrl: true,
         shift: false,
         key_name: "O".to_string(),
+    }
+}
+
+fn default_undo_binding() -> KeyCombo {
+    KeyCombo {
+        ctrl: true,
+        shift: false,
+        key_name: "Z".to_string(),
+    }
+}
+
+fn default_redo_binding() -> KeyCombo {
+    KeyCombo {
+        ctrl: true,
+        shift: false,
+        key_name: "Y".to_string(),
     }
 }
 
@@ -821,6 +848,10 @@ pub struct App {
     /// the preview panel; this is a placed [`avcore::timeline::ClipInstance`]). `Delete`
     /// removes whichever clip this points at.
     pub selected_clip_id: Option<u64>,
+    /// Snapshot-based undo/redo history for the active sequence's timeline (`spec/ROADMAP.md`
+    /// P0 item 1, `spec/architecture/undo-redo.md`) — scoped to one sequence, cleared on every
+    /// sequence/project switch since history from one tab is meaningless applied to another.
+    pub undo_stack: avcore::undo::UndoStack,
     /// The text overlay clip currently selected on a text track, if any. Selecting a text clip
     /// clears `selected_clip_id`/`selected_shape_clip_id` and vice versa — only one kind of clip
     /// can be selected at a time. The properties panel shows text-clip controls when this is
@@ -1089,6 +1120,7 @@ impl App {
             youtube_download_error: None,
             youtube_download_cancel: None,
             selected_clip_id: None,
+            undo_stack: avcore::undo::UndoStack::new(),
             selected_text_clip_id: None,
             text_color_edit: None,
             selected_shape_clip_id: None,
@@ -1223,6 +1255,7 @@ impl App {
     /// what a project card click on the Início screen does.
     pub fn open_project(&mut self, index: usize) {
         self.active_project = index;
+        self.undo_stack.clear();
         let project = self.active_project();
         info!(
             project_id = project.id,
@@ -1452,6 +1485,60 @@ impl App {
         self.multi_selected_clip_ids.clear();
         self.drawing_shape_points = None;
         self.picking_motion_track_region = false;
+        self.preview_playing = false;
+        self.preview_frozen_since = None;
+        self.undo_stack.clear();
+        self.invalidate_preview_rendering();
+    }
+
+    /// Records the active sequence's current state as an undo point — call this immediately
+    /// *before* applying a timeline-mutating edit (move/trim/split/effect-change/track-add/...),
+    /// never after. See `spec/architecture/undo-redo.md` for which call sites need this.
+    pub(crate) fn push_undo_snapshot(&mut self) {
+        let sequence = self.active_project().active_sequence().clone();
+        self.undo_stack.push(sequence);
+    }
+
+    /// Whether [`App::undo`] would do anything — drives the toolbar undo button's enabled state.
+    pub fn can_undo(&self) -> bool {
+        self.undo_stack.can_undo()
+    }
+
+    /// Whether [`App::redo`] would do anything — drives the toolbar redo button's enabled state.
+    pub fn can_redo(&self) -> bool {
+        self.undo_stack.can_redo()
+    }
+
+    /// Restores the active sequence to its state before the last recorded edit — what `Ctrl+Z`/
+    /// the toolbar's undo button do. A no-op if there's nothing to undo. Clears clip selection
+    /// since the restored timeline may not contain the currently selected clip id, and
+    /// invalidates the preview pipeline so it reopens against the restored timeline.
+    pub fn undo(&mut self) {
+        let current = self.active_project().active_sequence().clone();
+        let Some(previous) = self.undo_stack.undo(current) else {
+            return;
+        };
+        *self.active_project_mut().active_sequence_mut() = previous;
+        self.selected_clip_id = None;
+        self.selected_text_clip_id = None;
+        self.selected_shape_clip_id = None;
+        self.multi_selected_clip_ids.clear();
+        self.preview_playing = false;
+        self.preview_frozen_since = None;
+        self.invalidate_preview_rendering();
+    }
+
+    /// The inverse of [`App::undo`] — what `Ctrl+Y`/the toolbar's redo button do.
+    pub fn redo(&mut self) {
+        let current = self.active_project().active_sequence().clone();
+        let Some(next) = self.undo_stack.redo(current) else {
+            return;
+        };
+        *self.active_project_mut().active_sequence_mut() = next;
+        self.selected_clip_id = None;
+        self.selected_text_clip_id = None;
+        self.selected_shape_clip_id = None;
+        self.multi_selected_clip_ids.clear();
         self.preview_playing = false;
         self.preview_frozen_since = None;
         self.invalidate_preview_rendering();

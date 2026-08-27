@@ -316,6 +316,8 @@ fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
                     BindableAction::AddOpacityMarker => {
                         app.prefs.key_bindings.add_opacity_marker = combo
                     }
+                    BindableAction::Undo => app.prefs.key_bindings.undo = combo,
+                    BindableAction::Redo => app.prefs.key_bindings.redo = combo,
                 }
                 app.binding_capture = None;
             }
@@ -327,7 +329,7 @@ fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
     }
 
     // Pre-compute display strings so we can borrow app freely inside the Grid closure.
-    let rows: [(BindableAction, Text, String); 5] = [
+    let rows: [(BindableAction, Text, String); 7] = [
         (
             BindableAction::PlayPause,
             Text::ShortcutPlayPause,
@@ -352,6 +354,16 @@ fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
             BindableAction::AddOpacityMarker,
             Text::ShortcutAddOpacityMarker,
             app.prefs.key_bindings.add_opacity_marker.display(),
+        ),
+        (
+            BindableAction::Undo,
+            Text::ShortcutUndo,
+            app.prefs.key_bindings.undo.display(),
+        ),
+        (
+            BindableAction::Redo,
+            Text::ShortcutRedo,
+            app.prefs.key_bindings.redo.display(),
         ),
     ];
     let binding_capture = app.binding_capture;

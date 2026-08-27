@@ -143,6 +143,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut clip_drags: Vec<ClipDrag> = Vec::new();
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
         let mut toggle_track_visibility_requests: Vec<u64> = Vec::new();
+        // Set the first time a trim/move drag starts this frame — `app` is immutably borrowed
+        // for the whole track/clip iteration below, so the undo snapshot itself is pushed once,
+        // after that borrow ends, rather than inline at the drag_started() check.
+        let mut drag_started_this_frame = false;
         let mut thumbnail_requests: Vec<(u64, i64)> = Vec::new();
         let mut thumbnail_touches: Vec<(u64, i64)> = Vec::new();
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -307,12 +311,18 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
                         }
+                        if left_response.drag_started() || right_response.drag_started() {
+                            drag_started_this_frame = true;
+                        }
                         if body_response.clicked() {
                             if ui.input(|i| i.modifiers.ctrl) {
                                 multi_select_requests.push(clip.id);
                             } else {
                                 clicked_clip_id = Some(clip.id);
                             }
+                        }
+                        if body_response.drag_started() {
+                            drag_started_this_frame = true;
                         }
                         if body_response.dragged() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -663,6 +673,9 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         if split_at_playhead_requested {
             app.split_at_playhead();
+        }
+        if drag_started_this_frame {
+            app.push_undo_snapshot();
         }
         for (clip_id, edge) in trim_requests {
             match edge {

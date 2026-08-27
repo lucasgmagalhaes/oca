@@ -28,6 +28,7 @@ impl App {
         let Some((kind, duration_secs)) = self.asset_kind_and_duration(asset_id) else {
             return;
         };
+        self.push_undo_snapshot();
         let timeline = self.active_project_mut().timeline_mut();
         let track_index = resolve_or_create_track(timeline, kind, None);
         let start_secs = timeline.tracks[track_index].duration_secs();
@@ -98,6 +99,7 @@ impl App {
         let Some((kind, duration_secs)) = self.asset_kind_and_duration(asset_id) else {
             return;
         };
+        self.push_undo_snapshot();
         let timeline = self.active_project_mut().timeline_mut();
         let track_index = resolve_or_create_track(timeline, kind, preferred_track_id);
         let clip_id = next_clip_id(timeline);
@@ -169,6 +171,7 @@ impl App {
     /// track at once (rather than just a clicked clip) keeps V1/A1/A2 in sync, which is the
     /// point of a gameplay edit. A no-op on any track where nothing covers the playhead.
     pub fn split_at_playhead(&mut self) {
+        self.push_undo_snapshot();
         let at_secs = self.active_project().timeline().playhead_secs;
         let mut next_id = self
             .active_project()
@@ -199,6 +202,7 @@ impl App {
         let Some(clip_id) = self.selected_clip_id else {
             return;
         };
+        self.push_undo_snapshot();
         let timeline = self.active_project_mut().timeline_mut();
         let composite_id = timeline
             .tracks
@@ -398,6 +402,7 @@ impl App {
         let Some((copied, kind)) = self.clipboard_clip.clone() else {
             return;
         };
+        self.push_undo_snapshot();
         let playhead_secs = self.active_project().timeline().playhead_secs;
         let timeline = self.active_project_mut().timeline_mut();
         let track_index = resolve_or_create_track(timeline, kind, None);
@@ -492,6 +497,7 @@ impl App {
         if self.multi_selected_clip_ids.len() < 2 {
             return;
         }
+        self.push_undo_snapshot();
         let ids = self.multi_selected_clip_ids.clone();
         let timeline = self.active_project_mut().timeline_mut();
         let Some(track) = timeline
@@ -540,6 +546,7 @@ impl App {
         let Some(formatting) = self.formatting_clipboard.clone() else {
             return;
         };
+        self.push_undo_snapshot();
         self.with_selected_clip_mut(|clip| clip.apply_formatting(&formatting));
     }
 
@@ -553,6 +560,7 @@ impl App {
     /// timeline with one video track "V1" gets a second track "V2". The new track is always
     /// visible and starts empty; the user drags clips onto it from the media library.
     pub fn add_video_track(&mut self) {
+        self.push_undo_snapshot();
         let timeline = self.active_project_mut().timeline_mut();
         create_new_track(timeline, TrackKind::Video);
     }
@@ -671,6 +679,7 @@ impl App {
     /// project has no sequences.
     pub fn add_text_track(&mut self) {
         use crate::i18n::Text;
+        self.push_undo_snapshot();
         let locale = self.locale;
         let track_id = {
             let timeline = self.active_project().timeline();
@@ -697,6 +706,7 @@ impl App {
     pub fn add_text_clip(&mut self) {
         use crate::i18n::Text;
 
+        self.push_undo_snapshot();
         let playhead_secs = self.active_project().timeline().playhead_secs;
         let default_text = Text::DefaultTextContent.tr(self.locale).to_string();
         let timeline = self.active_project_mut().timeline_mut();
@@ -731,6 +741,7 @@ impl App {
     /// [`App::add_text_track`].
     pub fn add_shape_track(&mut self) {
         use crate::i18n::Text;
+        self.push_undo_snapshot();
         let locale = self.locale;
         let track_id = {
             let timeline = self.active_project().timeline();
@@ -756,6 +767,7 @@ impl App {
     /// lasting 3 seconds. Auto-creates a shape track if none exists yet, matching manual text
     /// insertion. Selects the new clip immediately so the properties panel shows its controls.
     pub fn add_shape_clip(&mut self) {
+        self.push_undo_snapshot();
         let playhead_secs = self.active_project().timeline().playhead_secs;
         let timeline = self.active_project_mut().timeline_mut();
         let track_index = resolve_or_create_track(timeline, TrackKind::Shape, None);
@@ -826,6 +838,7 @@ impl App {
             return;
         }
         let points = self.drawing_shape_points.take().unwrap();
+        self.push_undo_snapshot();
 
         let min_x = points.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
         let max_x = points.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max);
