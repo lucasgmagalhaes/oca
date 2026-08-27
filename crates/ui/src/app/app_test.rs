@@ -5288,7 +5288,11 @@ fn apply_silence_review_ripple_deletes_only_accepted_gaps_and_closes_the_modal()
 
     assert!(app.silence_review.is_none(), "modal closes after apply");
     let track = &app.active_project().timeline().tracks[0];
-    assert_eq!(track.clips.len(), 2, "clip 1 kept whole, clip 2 split");
+    assert_eq!(
+        track.clips.len(),
+        3,
+        "clip 1 kept whole, clip 2 split in two"
+    );
     let total_duration: f64 = track.clips.iter().map(|c| c.duration_secs()).sum();
     assert_eq!(
         total_duration, 36.0,
