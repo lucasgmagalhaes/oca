@@ -44,6 +44,7 @@ impl App {
                 source_in_secs: 0.0,
                 source_out_secs: duration_secs,
                 composite_id: None,
+                color_label: None,
                 gain_db: 0.0,
                 frozen: false,
                 speed_factor: 1.0,
@@ -122,6 +123,7 @@ impl App {
                 source_in_secs: 0.0,
                 source_out_secs: duration_secs,
                 composite_id: None,
+                color_label: None,
                 gain_db: 0.0,
                 frozen: false,
                 speed_factor: 1.0,
@@ -235,6 +237,19 @@ impl App {
             }
         }
         self.selected_clip_id = None;
+    }
+
+    /// Sets `clip_id`'s color label ([`avcore::timeline::ClipInstance::color_label`]) — what
+    /// picking a swatch (or "Limpar") in the timeline clip's context menu does. Takes an
+    /// explicit `clip_id` rather than acting on `selected_clip_id` since the context menu can
+    /// set a label on a clip that isn't the current selection. A no-op if `clip_id` doesn't
+    /// exist.
+    pub fn set_clip_color_label(&mut self, clip_id: u64, color_label: Option<[u8; 3]>) {
+        self.push_undo_snapshot_for_drag();
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(clip) = timeline.clip_mut(clip_id) {
+            clip.color_label = color_label;
+        }
     }
 
     /// Calls `f` with a mutable borrow of the selected clip, if any — the shared dispatch path
@@ -598,6 +613,7 @@ impl App {
                     source_in_secs: source.source_in_secs,
                     source_out_secs: source.source_out_secs,
                     composite_id: new_composite_id,
+                    color_label: None,
                     gain_db: source.gain_db,
                     frozen: source.frozen,
                     speed_factor: source.speed_factor,
@@ -757,6 +773,17 @@ impl App {
             track.audio_role = role;
         }
     }
+
+    /// Sets `track_id`'s color label ([`avcore::timeline::Track::color_label`]) — what picking
+    /// a swatch (or "Limpar") in the timeline track header's context menu does. A no-op if
+    /// `track_id` doesn't exist.
+    pub fn set_track_color_label(&mut self, track_id: u64, color_label: Option<[u8; 3]>) {
+        self.push_undo_snapshot_for_drag();
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(track) = timeline.tracks.iter_mut().find(|t| t.id == track_id) {
+            track.color_label = color_label;
+        }
+    }
 }
 
 /// Appends a brand-new, always-fresh empty track of `kind` to `timeline` — unlike
@@ -786,6 +813,7 @@ pub(super) fn create_new_track(
         shape_clips: Vec::new(),
         visible: true,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     });
     timeline.tracks.len() - 1
 }
@@ -827,6 +855,7 @@ pub(super) fn resolve_or_create_track(
         shape_clips: Vec::new(),
         visible: true,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     });
     timeline.tracks.len() - 1
 }
@@ -884,6 +913,7 @@ impl App {
                 shape_clips: Vec::new(),
                 visible: true,
                 audio_role: AudioRole::Unspecified,
+                color_label: None,
             });
     }
 
@@ -947,6 +977,7 @@ impl App {
                 shape_clips: Vec::new(),
                 visible: true,
                 audio_role: AudioRole::Unspecified,
+                color_label: None,
             });
     }
 
