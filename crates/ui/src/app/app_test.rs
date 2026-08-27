@@ -31,6 +31,7 @@ fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
             timeline: Timeline {
                 tracks: Vec::new(),
                 playhead_secs: 0.0,
+                markers: Vec::new(),
             },
             export_settings: Default::default(),
         }],
@@ -290,6 +291,8 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         saving_layer_template: None,
         applying_layer_template: None,
         layer_templates_menu_open: false,
+        timeline_index_open: false,
+        marker_search: String::new(),
         binding_capture: None,
         update_check_tx,
         update_check_rx,
@@ -4878,4 +4881,107 @@ fn load_panel_layout_keeps_live_values_when_project_has_no_saved_layout() {
     app.load_panel_layout_for_active_project();
 
     assert_eq!(app.lib_panel_width, 999.0);
+}
+
+#[test]
+fn toggle_timeline_index_flips_the_open_flag() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    assert!(!app.timeline_index_open);
+
+    app.toggle_timeline_index();
+    assert!(app.timeline_index_open);
+
+    app.toggle_timeline_index();
+    assert!(!app.timeline_index_open);
+}
+
+#[test]
+fn add_marker_at_playhead_places_it_at_the_current_playhead() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.active_project_mut().timeline_mut().playhead_secs = 12.5;
+
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::Chapter);
+
+    let timeline = app.active_project().timeline();
+    let marker = timeline.markers.iter().find(|m| m.id == id).unwrap();
+    assert_eq!(marker.position_secs, 12.5);
+    assert_eq!(marker.kind, avcore::MarkerKind::Chapter);
+}
+
+#[test]
+fn remove_marker_deletes_it() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::Standard);
+
+    app.remove_marker(id);
+
+    assert!(app.active_project().timeline().markers.is_empty());
+}
+
+#[test]
+fn set_marker_label_updates_the_right_marker() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::Standard);
+
+    app.set_marker_label(id, "Needs a re-take".to_string());
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(
+        timeline.markers.iter().find(|m| m.id == id).unwrap().label,
+        "Needs a re-take"
+    );
+}
+
+#[test]
+fn set_marker_kind_updates_the_right_marker() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::Standard);
+
+    app.set_marker_kind(id, avcore::MarkerKind::ToDo);
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(
+        timeline.markers.iter().find(|m| m.id == id).unwrap().kind,
+        avcore::MarkerKind::ToDo
+    );
+}
+
+#[test]
+fn toggle_marker_completed_flips_the_flag() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::ToDo);
+
+    app.toggle_marker_completed(id);
+    assert!(
+        app.active_project()
+            .timeline()
+            .markers
+            .iter()
+            .find(|m| m.id == id)
+            .unwrap()
+            .completed
+    );
+
+    app.toggle_marker_completed(id);
+    assert!(
+        !app.active_project()
+            .timeline()
+            .markers
+            .iter()
+            .find(|m| m.id == id)
+            .unwrap()
+            .completed
+    );
+}
+
+#[test]
+fn marker_mutations_are_no_ops_for_an_unknown_id() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.remove_marker(404);
+    app.set_marker_label(404, "x".to_string());
+    app.set_marker_kind(404, avcore::MarkerKind::Chapter);
+    app.toggle_marker_completed(404);
+
+    assert!(app.active_project().timeline().markers.is_empty());
 }
