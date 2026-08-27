@@ -356,6 +356,9 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
                 app.export_chapters_txt(path);
             }
         }
+        if ui.button(Text::DetectHighlights.tr(locale)).clicked() {
+            app.detect_highlights();
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button(Text::Export.tr(locale)).clicked() {
                 app.screen = crate::app::Screen::Queue;

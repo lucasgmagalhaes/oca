@@ -41,6 +41,7 @@ mod clip_props;
 mod collab_bundle;
 mod color;
 pub mod export;
+mod highlight_detection;
 mod import;
 mod layer_templates;
 mod markers;
