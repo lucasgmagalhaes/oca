@@ -124,6 +124,17 @@ impl Project {
         &mut self.sequences[self.active_sequence].timeline
     }
 
+    /// The active tab itself — for whole-sequence operations (undo/redo snapshots) that
+    /// `timeline()` doesn't cover, since [`Sequence`] also carries `export_settings`.
+    pub fn active_sequence(&self) -> &Sequence {
+        &self.sequences[self.active_sequence]
+    }
+
+    /// Mutable counterpart of [`Project::active_sequence`].
+    pub fn active_sequence_mut(&mut self) -> &mut Sequence {
+        &mut self.sequences[self.active_sequence]
+    }
+
     /// Appends a new, empty sequence named `name` and switches `active_sequence` to it —
     /// what the Editor's tab bar "+" button does. Returns the new sequence's id.
     pub fn new_sequence(&mut self, name: String) -> u64 {
