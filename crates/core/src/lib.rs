@@ -48,6 +48,7 @@ pub mod text_metrics;
 pub mod text_to_speech;
 pub mod timeline;
 pub mod transcribe;
+pub mod undo;
 pub mod update_check;
 pub mod waveform;
 pub mod youtube_download;
