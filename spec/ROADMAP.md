@@ -89,8 +89,10 @@ Read [matrix/effects-and-color.md](matrix/effects-and-color.md),
    — a real current fact about these platforms' delivery specs, not a shortcut: each preset
    still carries its own independent mapping, ready to diverge without a shape change. Pure
    Rust/UI, no `avbridge` C changes — picked deliberately over item 6 for that reason.
-9. `[ ]` Review/comment markers on the timeline — consider Final Cut Pro's typed-marker +
-   searchable Timeline Index model, not just a plain note.
+9. `[x]` Review/comment markers on the timeline — `avcore::timeline::Marker`/`MarkerKind`
+   (Standard/ToDo/Chapter, FCP's typed-marker model) + a searchable Timeline Index panel
+   (text search, click-to-seek, inline edit). Not done: markers as a magnetic-snap target, and
+   ruler tick-mark rendering — see `matrix/timeline-and-editing.md` for the exact scope.
 10. `[ ]` **Multicam editing** — sync footage from multiple sources (game capture, webcam, mic)
     by timecode or audio waveform, switch angles dynamically on one track. In all four editors
     surveyed (`matrix/competitor-parity.md`); directly matches this channel's actual multi-

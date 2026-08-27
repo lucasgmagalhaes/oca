@@ -40,12 +40,18 @@ sequence-management/copy-paste entries.
       (single or composite group) all snap to the nearest other clip's edge or the playhead
       (`Alt` to disable). Timeline markers aren't a target — no markers feature exists yet
       (P2 item 9). See `ROADMAP.md` P0.
-
-## Known gaps (not found anywhere in the codebase — confirm before assuming, but no evidence of
-## either in `graphify query "undo redo history stack snapping magnetic snap"`)
-
-- [ ] Review/comment markers on the timeline (plain note at a point — not to be confused with
-      opacity-keyframe markers).
+- [x] **Review/comment markers (P2 item 9).** `avcore::timeline::Marker`/`MarkerKind`
+      (Standard/ToDo/Chapter — Final Cut Pro's typed-marker model, not just a plain note; `ToDo`
+      tracks a `completed` flag) on `Timeline::markers`, `#[serde(default)]` so an older-saved
+      project still loads. `Timeline::add_marker`/`remove_marker`/`marker_mut`/`markers_sorted`
+      own the id-assignment/mutation invariants. `ui`: a searchable Timeline Index panel
+      (`App::show_timeline_index_panel`, toolbar's "🏷 Marcadores" toggle) — text search over
+      labels, per-marker kind picker, ToDo-complete checkbox, click-timestamp-to-seek, inline
+      label editing, add/remove. **Not done**: magnetic snap (P0 item 2) doesn't treat markers
+      as a snap target yet — that doc's own note said "revisit when it lands," this is the
+      revisit-later follow-up, not silently included here. No ruler tick-mark rendering on the
+      timeline strip itself either — the Timeline Index panel is the only way to see/navigate
+      markers today.
 
 ---
 
