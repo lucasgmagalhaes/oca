@@ -196,7 +196,8 @@ fn waveform_snap_points_for_clip_catches_a_gap_shorter_than_d1s_own_cuttable_thr
 
     let points = waveform_snap_points_for_clip(&asset, &clip);
 
-    assert_eq!(points, vec![5.05]);
+    assert_eq!(points.len(), 1);
+    assert!((points[0] - 5.05).abs() < 1e-9);
 }
 
 #[test]
