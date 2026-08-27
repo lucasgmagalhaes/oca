@@ -318,6 +318,43 @@ fn gain_filter_db_expr_uses_t_for_an_animated_ramp() {
 }
 
 #[test]
+fn color_balance_filter_expr_is_none_when_everything_is_neutral() {
+    assert_eq!(
+        color_balance_filter_expr(&[], &[], &[], 0.0, 1.0, 1.0, 5.0),
+        None
+    );
+}
+
+#[test]
+fn color_balance_filter_expr_uses_constants_for_unanimated_axes() {
+    let expr = color_balance_filter_expr(&[], &[], &[], 0.3, 1.0, 1.0, 5.0).unwrap();
+    assert!(!expr.contains("eval=frame"));
+    assert!(expr.starts_with("eq=brightness=0.3"));
+    assert!(expr.contains("contrast=1.0000000"));
+    assert!(expr.contains("saturation=1.0000000"));
+}
+
+#[test]
+fn color_balance_filter_expr_animates_only_the_keyframed_axis() {
+    let brightness_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: -0.5,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.5,
+        },
+    ];
+    let expr =
+        color_balance_filter_expr(&brightness_keyframes, &[], &[], 0.0, 1.5, 1.0, 5.0).unwrap();
+    assert!(expr.contains("eval=frame"));
+    assert!(expr.contains("if(lt(t,"));
+    // The un-animated contrast axis still uses its own constant.
+    assert!(expr.contains("contrast=1.5000000"));
+}
+
+#[test]
 fn opacity_alpha_ramp_expr_is_none_for_no_keyframes() {
     assert_eq!(opacity_alpha_ramp_expr(&[], 30, 1, 5.0), None);
 }
