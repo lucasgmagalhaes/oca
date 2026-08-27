@@ -39,11 +39,11 @@ jobs:
             echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$BASH_ENV"
 
       - run:
-          name: Install cargo-llvm-cov
+          name: Install cargo-llvm-cov and cargo-nextest
           command: |
             source "$BASH_ENV"
             rustup component add llvm-tools-preview
-            cargo install cargo-llvm-cov --locked
+            cargo install cargo-llvm-cov cargo-nextest --locked
 
       - run:
           name: Install GStreamer
@@ -162,7 +162,10 @@ jobs:
           name: Test with coverage
           command: |
             source "$BASH_ENV"
-            cargo llvm-cov --workspace --lcov --output-path lcov.info
+            cargo llvm-cov nextest --workspace --lcov --output-path lcov.info --profile ci
+
+      - store_test_results:
+          path: target/nextest/ci
 
       - save_cache:
           key: cargo-registry-{{ checksum "Cargo.lock" }}
