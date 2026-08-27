@@ -205,6 +205,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         preview_text_clip_ids: Vec::new(),
         preview_shape_clip_ids: Vec::new(),
         preview_texture: None,
+        scopes_enabled: false,
+        waveform_texture: None,
+        vectorscope_texture: None,
         preview_playing: false,
         preview_frozen_since: None,
         fullscreen_preview: false,
@@ -1331,6 +1334,25 @@ fn changing_preview_hardware_decode_invalidates_preview_state() {
     assert_eq!(app.preview_clip_id, None);
     assert!(app.preview_overlay_clip_ids.is_empty());
     assert!(app.preview_audio_clip_ids.is_empty());
+}
+
+#[test]
+fn invalidate_preview_rendering_drops_the_scope_textures_too() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let ctx = egui::Context::default();
+    let image = egui::ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
+    app.waveform_texture = Some(ctx.load_texture(
+        "waveform-test",
+        image.clone(),
+        egui::TextureOptions::default(),
+    ));
+    app.vectorscope_texture =
+        Some(ctx.load_texture("vectorscope-test", image, egui::TextureOptions::default()));
+
+    app.invalidate_preview_rendering();
+
+    assert!(app.waveform_texture.is_none());
+    assert!(app.vectorscope_texture.is_none());
 }
 
 #[test]
