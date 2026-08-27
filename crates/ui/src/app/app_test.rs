@@ -874,6 +874,30 @@ fn cancel_export_job_removes_a_job_that_has_not_started_rendering() {
 }
 
 #[test]
+fn match_loudness_across_queued_jobs_only_touches_queued_jobs() {
+    let mut app = test_app(
+        vec![test_project(1, Vec::new())],
+        vec![
+            test_job(1, ExportJobStatus::Queued),
+            test_job(2, ExportJobStatus::Rendering { percent: 40 }),
+            test_job(3, ExportJobStatus::Done),
+        ],
+    );
+
+    app.match_loudness_across_queued_jobs(-23.0);
+
+    assert_eq!(app.export_jobs[0].target_lufs, -23.0);
+    assert_eq!(
+        app.export_jobs[1].target_lufs, -14.0,
+        "an in-flight render already captured its own target -- changing it now would be a no-op lie"
+    );
+    assert_eq!(
+        app.export_jobs[2].target_lufs, -14.0,
+        "a finished job is done -- changing it would just be misleading"
+    );
+}
+
+#[test]
 fn cancel_export_job_flags_an_active_render_instead_of_removing_it() {
     let mut app = test_app(
         vec![test_project(1, Vec::new())],
