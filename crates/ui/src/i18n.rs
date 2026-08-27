@@ -535,7 +535,12 @@ text_catalog! {
     ShapePositionKeyframesExportNote: pt_br = "quando definido, substitui a posição constante desse eixo na exportação (recorte/panorâmica animados) — sem efeito no preview ao vivo.", en = "when set, overrides this axis's constant position on export (animated pan/reveal) — no live preview effect.";
     PropShapeWidth: pt_br = "Largura", en = "Width";
     PropShapeHeight: pt_br = "Altura", en = "Height";
+    PropShapeWidthKeyframes: pt_br = "Largura (keyframes)", en = "Width (keyframes)";
+    PropShapeHeightKeyframes: pt_br = "Altura (keyframes)", en = "Height (keyframes)";
+    ShapeSizeKeyframesExportNote: pt_br = "quando definido, substitui o tamanho constante desse eixo na exportação (crescimento/redução animados) — sem efeito no preview ao vivo.", en = "when set, overrides this axis's constant size on export (animated grow/shrink) — no live preview effect.";
     PropShapeRotation: pt_br = "Rotação", en = "Rotation";
+    PropShapeRotationKeyframes: pt_br = "Rotação (keyframes)", en = "Rotation (keyframes)";
+    ShapeRotationKeyframesExportNote: pt_br = "quando definido, substitui a rotação constante na exportação (giro animado) — sem efeito no preview ao vivo.", en = "when set, overrides the constant rotation on export (animated spin) — no live preview effect.";
     PropShapeStroke: pt_br = "Espessura do contorno (px)", en = "Outline thickness (px)";
     PropShapeStrokeHint: pt_br = "0 = preenchido", en = "0 = filled";
     PropShapeDuration: pt_br = "Duração (s)", en = "Duration (s)";
