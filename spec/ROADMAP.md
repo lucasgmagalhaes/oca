@@ -50,8 +50,11 @@ Read [architecture/performance-and-caching.md](architecture/performance-and-cach
    fixed via a cheap `appsrc` buffer refresh. See `matrix/performance.md` for the full
    findings and what's still open (effect-property live preview updates, non-text overlay
    kinds).
-4. `[ ]` Versioned cache for the timeline→avfilter-graph resolution
-   (`resolve_timeline_segments_multi`) — rebuilds from scratch on every call today.
+4. `[x]` Versioned cache for the timeline→avfilter-graph resolution
+   (`resolve_timeline_segments_multi`). The confirmed hot spot was `screens::queue::show`
+   recomputing it every UI frame the Fila screen is open, just for a size estimate — fixed via
+   `App::resolved_active_sequence_export_preview`'s value-equality cache. See
+   `matrix/performance.md` for what is/isn't covered.
 5. `[ ]` Extract a shared `FrameSampler` primitive — auto-reframe, motion tracking, and
    background-removal matte generation each reimplement their own seek-and-poll sampling loop.
 

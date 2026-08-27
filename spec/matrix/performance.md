@@ -19,8 +19,24 @@ yet applied here — see the gaps below) live in `architecture/performance-and-c
 
 - [ ] GPU usage telemetry — `sysinfo` has no cross-platform GPU reader; a vendor-specific one
       (NVML/etc.) is hardware-dependent, same "hard wall" class as the GPU encoder ladder.
-- [ ] Versioned filter-graph cache (`architecture/performance-and-caching.md` §2) — the
-      timeline→avfilter-graph resolution path rebuilds from scratch on every call today.
+- [x] Versioned filter-graph cache (`architecture/performance-and-caching.md` §2) for
+      `resolve_timeline_segments_multi`/`resolve_audio_segments`. **Confirmed** (2026-08-27):
+      the only per-frame caller was `screens::queue::show` — the Fila (export queue) screen's
+      header recomputed both, from scratch, every single UI frame the screen was open, just to
+      show a file-size estimate (linear filter-chain string building + a linear media-library
+      scan per clip). `render.rs`'s own internal caller (`render_export_job`) only runs once per
+      queued job, not a hot path. Fixed with `App::resolved_active_sequence_export_preview`
+      (`ui/src/app/export.rs`) — a value-equality cache keyed on the active sequence's `id` +
+      `timeline.tracks` + the project's `media_library` (not the whole `Sequence`, so
+      `export_settings`/`name` edits don't spuriously invalidate it; not `playhead_secs`, so
+      scrubbing/playback — continuous per-frame mutation — doesn't either). No global version
+      counter threaded through every timeline mutator: `Track`/`ClipInstance`/`MediaAsset` all
+      already derive `PartialEq`, so a cache miss can never silently serve stale data the way a
+      forgotten `mark_dirty()` call site could — correctness by construction, at the cost of an
+      O(clips) equality check per frame instead of an O(1) version-counter compare (still far
+      cheaper than the string-building recompute it guards). Covered by 3 new `ui` unit tests
+      (`app_test.rs`) verifying a real clip edit is picked up (no stale-cache bug) and a
+      playhead-only change is not treated as a cache miss.
 - [~] Dirty-flag mutation classification (`architecture/performance-and-caching.md` §1, §6).
       **Confirmed** (2026-08-27): the premise that "every edit forces a full preview-pipeline
       reopen" doesn't hold across the board. `App::move_clip`/`trim_clip_start`/`trim_clip_end`
