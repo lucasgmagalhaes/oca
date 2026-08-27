@@ -48,6 +48,7 @@ pub mod scene_detection;
 pub mod scopes;
 pub mod shape_render;
 pub mod silence_detection;
+pub mod smart_bins;
 pub mod sound_library;
 pub mod subtitles;
 pub mod telemetry;
@@ -112,6 +113,7 @@ pub use silence_detection::{
     clip_silence_gaps, detect_silence_gaps, SilenceGap, DEFAULT_MIN_SILENCE_SECS,
     DEFAULT_SILENCE_THRESHOLD_LINEAR,
 };
+pub use smart_bins::SmartBin;
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
 pub use subtitles::export_srt;
 pub use telemetry::{record_event, ResourceSampler, TelemetryError, TelemetryEvent};
