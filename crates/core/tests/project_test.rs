@@ -30,6 +30,7 @@ fn test_project() -> Project {
             timeline: Timeline {
                 tracks: Vec::new(),
                 playhead_secs: 5.0,
+                markers: Vec::new(),
             },
             export_settings: Default::default(),
         }],

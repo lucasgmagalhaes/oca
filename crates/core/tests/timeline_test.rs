@@ -14,8 +14,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use avcore::timeline::{
-    ClipInstance, ColorFilter, MaskShape, ShapeClip, ShapeKind, Timeline, Track, TrackKind,
-    TransitionType,
+    ClipInstance, ColorFilter, MarkerKind, MaskShape, ShapeClip, ShapeKind, Timeline, Track,
+    TrackKind, TransitionType,
 };
 use avcore::ClipFormatting;
 use avcore::{Keyframe, Position};
@@ -328,6 +328,7 @@ fn empty_timeline_has_zero_duration() {
     let timeline = Timeline {
         tracks: vec![],
         playhead_secs: 0.0,
+        markers: Vec::new(),
     };
     assert_eq!(timeline.duration_secs(), 0.0);
 }
@@ -361,6 +362,7 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
             },
         ],
         playhead_secs: 0.0,
+        markers: Vec::new(),
     };
     // Track V1's second clip ends at 30 + (44 - 0) = 74.
     assert_eq!(timeline.duration_secs(), 74.0);
@@ -1013,6 +1015,7 @@ fn timeline_with(tracks: Vec<Track>) -> Timeline {
     Timeline {
         tracks,
         playhead_secs: 0.0,
+        markers: Vec::new(),
     }
 }
 
@@ -1277,4 +1280,78 @@ fn timeline_clip_mut_returns_none_for_an_unknown_id() {
     }]);
 
     assert!(timeline.clip_mut(99).is_none());
+}
+
+#[test]
+fn add_marker_assigns_ids_starting_at_one_and_clamps_a_negative_position() {
+    let mut timeline = timeline_with(vec![]);
+
+    let first = timeline.add_marker(5.0, MarkerKind::Standard);
+    let second = timeline.add_marker(-3.0, MarkerKind::ToDo);
+
+    assert_eq!(first, 1);
+    assert_eq!(second, 2);
+    assert_eq!(timeline.markers[0].position_secs, 5.0);
+    assert_eq!(timeline.markers[1].position_secs, 0.0);
+    assert_eq!(timeline.markers[1].kind, MarkerKind::ToDo);
+    assert!(!timeline.markers[1].completed);
+}
+
+#[test]
+fn add_marker_reuses_the_max_plus_one_id_even_after_a_removal() {
+    let mut timeline = timeline_with(vec![]);
+    let first = timeline.add_marker(0.0, MarkerKind::Standard);
+    let second = timeline.add_marker(1.0, MarkerKind::Standard);
+    timeline.remove_marker(second);
+
+    let third = timeline.add_marker(2.0, MarkerKind::Standard);
+
+    assert_eq!(first, 1);
+    assert_eq!(second, 2);
+    assert_eq!(
+        third, 2,
+        "the freed id 2 is reused since it's max(remaining) + 1"
+    );
+}
+
+#[test]
+fn remove_marker_reports_whether_anything_was_removed() {
+    let mut timeline = timeline_with(vec![]);
+    let id = timeline.add_marker(0.0, MarkerKind::Standard);
+
+    assert!(timeline.remove_marker(id));
+    assert!(timeline.markers.is_empty());
+    assert!(
+        !timeline.remove_marker(id),
+        "already removed, second call is a no-op"
+    );
+}
+
+#[test]
+fn marker_mut_edits_the_right_marker_and_none_for_an_unknown_id() {
+    let mut timeline = timeline_with(vec![]);
+    let id = timeline.add_marker(0.0, MarkerKind::ToDo);
+
+    timeline.marker_mut(id).unwrap().label = "Fix the intro".to_string();
+    timeline.marker_mut(id).unwrap().completed = true;
+
+    assert_eq!(timeline.markers[0].label, "Fix the intro");
+    assert!(timeline.markers[0].completed);
+    assert!(timeline.marker_mut(404).is_none());
+}
+
+#[test]
+fn markers_sorted_orders_by_position_regardless_of_insertion_order() {
+    let mut timeline = timeline_with(vec![]);
+    timeline.add_marker(10.0, MarkerKind::Standard);
+    timeline.add_marker(2.0, MarkerKind::Standard);
+    timeline.add_marker(6.0, MarkerKind::Standard);
+
+    let positions: Vec<f64> = timeline
+        .markers_sorted()
+        .iter()
+        .map(|m| m.position_secs)
+        .collect();
+
+    assert_eq!(positions, vec![2.0, 6.0, 10.0]);
 }

@@ -135,6 +135,7 @@ fn sequence_with_text_track(clip: TextClip) -> Sequence {
                 visible: true,
             }],
             playhead_secs: 0.0,
+            markers: Vec::new(),
         },
         export_settings: Default::default(),
     }
@@ -281,6 +282,7 @@ fn sequence_with_shape_track(clips: Vec<ShapeClip>) -> Sequence {
                 visible: true,
             }],
             playhead_secs: 0.0,
+            markers: Vec::new(),
         },
         export_settings: Default::default(),
     }
