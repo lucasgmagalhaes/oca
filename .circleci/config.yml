@@ -172,7 +172,7 @@ jobs:
 
       - codecov/upload:
           file: lcov.info
-          token: $CODECOV_TOKEN
+          token: CODECOV_TOKEN
 
 workflows:
   ci:
