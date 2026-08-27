@@ -372,7 +372,7 @@ not by default priority.
     on the preview audio path (same pattern as the existing keyframe pad-probes, reading
     instead of writing) plus a small meter widget in the Editor's preview panel — no ML, no
     new avfilter/GStreamer element.
-31. `[ ]` Audio gain keyframes (volume fade/ramp within one clip, not just a constant
+31. `[x]` Audio gain keyframes (volume fade/ramp within one clip, not just a constant
     `gain_db`) — found while surveying what else the existing `Keyframe<T>` infrastructure
     could drive. Same shape as position/scale/rotation/opacity: `gain_keyframes: Vec<Keyframe<
     f32>>` on `ClipInstance`, overriding the constant `gain_db` when non-empty. Export-side,
@@ -381,6 +381,10 @@ not by default priority.
     to `volume=<expr>:eval=frame` — verified against FFmpeg's own filter docs, not assumed.
     Crosses the `avbridge` FFI boundary (a new expression-string field on `AudioSegment`/
     `RawAudioSegment`, and an `audio_mix.c` branch alongside the existing literal-`%.6fdB` path).
+    Verified: `gain_filter_db_expr`'s unit tests run for real in a scratch crate; a real
+    `avbridge` integration test exercises the new `av_asprintf`-built `volume=<expr>:eval=frame`
+    path end-to-end against a real FFmpeg filter graph (`avfilter_graph_config` succeeding is
+    proof the expression syntax is valid, not just that the C compiles).
 32. `[x]` Color grading keyframes (brightness/contrast/saturation ramping over a clip, not a
     constant value) — `ClipInstance::brightness_keyframes`/`contrast_keyframes`/
     `saturation_keyframes`, each independently overriding its own constant field when non-empty
