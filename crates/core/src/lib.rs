@@ -63,7 +63,7 @@ pub use bundle::{
     bundled_resource_path, bundled_resources_dir, configure_bundled_runtime, resource_path_in,
     validate_bundled_resources, BundledResource, MissingBundleResources,
 };
-pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus};
+pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus, PlatformExportPreset};
 pub use frame_sampler::FrameSampler;
 pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
