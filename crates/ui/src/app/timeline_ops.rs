@@ -13,7 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-use avcore::timeline::{ClipInstance, ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind};
+use avcore::timeline::{
+    AudioRole, ClipInstance, ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind,
+};
 
 use super::App;
 
@@ -732,6 +734,7 @@ pub(super) fn create_new_track(
         text_clips: Vec::new(),
         shape_clips: Vec::new(),
         visible: true,
+        audio_role: AudioRole::Unspecified,
     });
     timeline.tracks.len() - 1
 }
@@ -772,6 +775,7 @@ pub(super) fn resolve_or_create_track(
         text_clips: Vec::new(),
         shape_clips: Vec::new(),
         visible: true,
+        audio_role: AudioRole::Unspecified,
     });
     timeline.tracks.len() - 1
 }
@@ -828,6 +832,7 @@ impl App {
                 text_clips: Vec::new(),
                 shape_clips: Vec::new(),
                 visible: true,
+                audio_role: AudioRole::Unspecified,
             });
     }
 
@@ -890,6 +895,7 @@ impl App {
                 text_clips: Vec::new(),
                 shape_clips: Vec::new(),
                 visible: true,
+                audio_role: AudioRole::Unspecified,
             });
     }
 

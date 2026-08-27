@@ -17,7 +17,7 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use avcore::timeline::{Track, TrackKind};
+use avcore::timeline::{AudioRole, Track, TrackKind};
 use avcore::TranscribeOutcome;
 
 use super::{timeline_ops::next_clip_id, App, TranscribeEvent};
@@ -112,6 +112,7 @@ impl App {
                     text_clips: Vec::new(),
                     shape_clips: Vec::new(),
                     visible: true,
+                    audio_role: AudioRole::Unspecified,
                 });
                 id
             }

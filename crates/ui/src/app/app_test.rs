@@ -14,7 +14,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use super::*;
-use avcore::timeline::{ClipInstance, Track, TrackKind};
+use avcore::timeline::{AudioRole, ClipInstance, Track, TrackKind};
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Recency, Sequence, Timeline};
 use eframe::egui;
 
@@ -68,6 +68,7 @@ fn test_track(id: u64, kind: TrackKind, clips: Vec<ClipInstance>) -> Track {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
     }
 }
 
