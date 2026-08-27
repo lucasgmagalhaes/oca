@@ -139,7 +139,25 @@ not novel guesses — see `matrix/competitor-parity.md`.
     launch the eframe app) — verified via `cargo check --workspace --all-targets` (temporary
     local FFmpeg-7.1 shim, see `CLAUDE.md`) and unit/integration tests covering the detection
     math, the ripple-delete edit, and every App-level review method.
-14. `[ ]` **D7 — lightweight collaboration package.** Low effort, no dependencies.
+14. `[x]` **D7 — lightweight collaboration package** (`architecture/differentiators.md`).
+    `avcore::collab_bundle::{export_collab_bundle, import_collab_bundle}` package a project's
+    `.ocproj` snapshot plus whatever editing proxies already exist in its proxy cache
+    (`avcore::proxy`) into one portable `.zip` — never the multi-GB source media. On import, each
+    asset's `proxy_path` is resolved by matching its `source_path`'s filename stem against the
+    unpacked proxy dir across every `PreviewQuality`, so the recipient's preview works
+    immediately even though the original source almost certainly isn't at that `source_path` on
+    their machine at all. `zip` added as a `default-features = false` dependency —
+    `CompressionMethod::Stored` is used explicitly since every entry (already-gzip-compressed
+    project bytes, already-encoded proxy `.mp4`s) is incompressible in practice, so no optional
+    codec needs linking. `ui`: Editor toolbar's "📦 Export Collaboration Bundle..." (save-file
+    dialog) and Início's "📦 Import Collaboration Bundle..." (pick `.zip`, then a destination
+    folder). **Not run against a live GUI session** — same verification ceiling as D1 above
+    (`cargo check --workspace --all-targets` via the temporary local FFmpeg shim, plus
+    `cargo check -p core --lib` actually linking and one `cargo test` attempt confirming the
+    ONNX Runtime link gap is the only remaining blocker to real execution here); the round-trip
+    (export → import, including a fake proxy file surviving intact and resolving to a *new* path
+    under the recipient's own cache dir) is covered by `core`'s integration tests and mirrored at
+    the `App` level in `ui`.
 15. `[ ]` **D4 — automatic chapter markers from scene cuts.** Medium effort.
 16. `[ ]` **D5 — beat-aligned cut snapping.** Medium effort. Depends on P0 item 2 (general
     snap mechanism).
