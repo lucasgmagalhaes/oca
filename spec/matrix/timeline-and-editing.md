@@ -82,6 +82,15 @@ sequence-management/copy-paste entries.
       **not driven through a live/e2e build** — no visual confirmation that the drag
       interactions feel right in the actual running app, same caveat magnetic snap's own entry
       above already carries for UI-only interaction logic.
+- [x] **D1 — automatic silence/dead-air cut** (`architecture/differentiators.md`, `ROADMAP.md`
+      P3 item 13). `Track::ripple_delete_range` is the general-purpose "ripple delete a timeline
+      range" primitive this feature applies (split any clip straddling either boundary via the
+      existing `split_clip_at`, drop what's fully inside, ripple the rest left) — reusable by
+      any future feature needing the same shape, not D1-specific despite living on `Track`.
+      Detection itself (`avcore::silence_detection`, built on `avcore::waveform` rather than
+      `avcore::loudness` — see `ROADMAP.md` item 13 for why) is a `core`-only concern with no
+      timeline-editing-model implications beyond the ripple-delete it feeds, so it isn't
+      repeated here in full.
 
 ---
 

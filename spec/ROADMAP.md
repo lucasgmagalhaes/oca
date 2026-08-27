@@ -122,8 +122,23 @@ effort and dependency, not by the doc's own numbering. CapCut's "Long Video to S
 Premiere's Auto Ducking independently confirm D2/D6 and P2 item 6 are competitively expected,
 not novel guesses — see `matrix/competitor-parity.md`.
 
-13. `[ ]` **D1 — automatic silence/dead-air cut.** Low effort, no dependencies. Highest
-    time-saved-per-effort of the set.
+13. `[x]` **D1 — automatic silence/dead-air cut** (`architecture/differentiators.md`). Built on
+    `avcore::waveform`'s per-bucket `(min, max)` peaks, not `avcore::loudness` as the doc
+    originally assumed — `measure_loudness` is a single-pass whole-file aggregate (one
+    LUFS/TruePeak/LRA report), not a time series, so it can't say *where* in a clip a silence
+    falls; `generate_waveform`'s peaks already are windowed amplitude data, and most assets have
+    them cached (`MediaAsset::waveform_peaks`) with no new decode pass needed.
+    `avcore::silence_detection::{detect_silence_gaps, clip_silence_gaps}` are pure, fully unit-
+    tested functions; `Track::ripple_delete_range` is the apply side (splits any clip straddling
+    a gap's boundaries, drops what's fully inside, ripples the rest left). `ui`'s toolbar
+    "Detect Silence" button + a review modal (`App::begin_silence_review`/
+    `toggle_silence_gap_accepted`/`apply_silence_review`/`close_silence_review`) lists every
+    detected gap with an accept/reject checkbox defaulting to accepted — nothing touches the
+    timeline until "Apply selected cuts" is pressed, per the doc's explicit "not a silent
+    auto-apply" requirement. Not yet run against a real GUI session (this environment can't
+    launch the eframe app) — verified via `cargo check --workspace --all-targets` (temporary
+    local FFmpeg-7.1 shim, see `CLAUDE.md`) and unit/integration tests covering the detection
+    math, the ripple-delete edit, and every App-level review method.
 14. `[ ]` **D7 — lightweight collaboration package.** Low effort, no dependencies.
 15. `[ ]` **D4 — automatic chapter markers from scene cuts.** Medium effort.
 16. `[ ]` **D5 — beat-aligned cut snapping.** Medium effort. Depends on P0 item 2 (general
