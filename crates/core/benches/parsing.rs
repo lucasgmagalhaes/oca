@@ -153,6 +153,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 ],
                 playhead_secs: 0.0,
                 markers: vec![],
+                multicam_groups: Vec::new(),
             },
             export_settings: Default::default(),
         }],

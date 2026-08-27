@@ -132,6 +132,7 @@ fn timeline_with_tracks(tracks: Vec<Track>) -> Timeline {
             kind: MarkerKind::Standard,
             completed: false,
         }],
+        multicam_groups: Vec::new(),
     }
 }
 

@@ -128,6 +128,7 @@ fn sequence_with(tracks: Vec<Track>) -> Sequence {
             tracks,
             playhead_secs: 0.0,
             markers: Vec::new(),
+            multicam_groups: Vec::new(),
         },
         export_settings: Default::default(),
     }

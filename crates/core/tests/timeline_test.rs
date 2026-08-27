@@ -13,6 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+use std::collections::HashMap;
+
 use avcore::timeline::{
     AudioRole, ClipInstance, ColorFilter, MarkerKind, MaskShape, ShapeClip, ShapeKind, Timeline,
     Track, TrackKind, TransitionType,
@@ -329,6 +331,7 @@ fn empty_timeline_has_zero_duration() {
         tracks: vec![],
         playhead_secs: 0.0,
         markers: Vec::new(),
+        multicam_groups: Vec::new(),
     };
     assert_eq!(timeline.duration_secs(), 0.0);
 }
@@ -365,6 +368,7 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
         ],
         playhead_secs: 0.0,
         markers: Vec::new(),
+        multicam_groups: Vec::new(),
     };
     // Track V1's second clip ends at 30 + (44 - 0) = 74.
     assert_eq!(timeline.duration_secs(), 74.0);
@@ -1019,6 +1023,7 @@ fn timeline_with(tracks: Vec<Track>) -> Timeline {
         tracks,
         playhead_secs: 0.0,
         markers: Vec::new(),
+        multicam_groups: Vec::new(),
     }
 }
 
@@ -1650,4 +1655,179 @@ fn ripple_delete_range_rejects_an_empty_or_inverted_range() {
     assert!(!track.ripple_delete_range(8.0, 3.0, &mut next_id));
     assert_eq!(next_id, 2);
     assert_eq!(track.clips.len(), 1);
+}
+
+// P2 item 10, "Multicam editing" -- MulticamGroup grouping/hiding and
+// Timeline::switch_multicam_angle's split+retarget logic.
+
+fn track_with_id_and_asset(id: u64, asset_id: u64, clips: Vec<ClipInstance>) -> Track {
+    let mut track = track_with(clips);
+    track.id = id;
+    for clip in &mut track.clips {
+        clip.asset_id = asset_id;
+    }
+    track
+}
+
+#[test]
+fn add_multicam_group_hides_every_member_except_the_program_track() {
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 20.0)]);
+    let angle_3 = track_with_id_and_asset(3, 30, vec![clip(3, 0.0, 0.0, 20.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2, angle_3]);
+
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2, 3], 1, HashMap::new())
+        .unwrap();
+
+    assert_eq!(timeline.multicam_groups.len(), 1);
+    assert_eq!(timeline.multicam_groups[0].id, group_id);
+    assert!(timeline.tracks[0].visible, "program track stays visible");
+    assert!(!timeline.tracks[1].visible, "non-program angle is hidden");
+    assert!(!timeline.tracks[2].visible, "non-program angle is hidden");
+}
+
+#[test]
+fn add_multicam_group_rejects_fewer_than_two_members_or_an_unknown_program_track() {
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 20.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+
+    assert!(timeline
+        .clone()
+        .add_multicam_group("Solo".to_string(), vec![1], 1, HashMap::new())
+        .is_none());
+    assert!(timeline
+        .add_multicam_group("Bad program".to_string(), vec![1, 2], 99, HashMap::new())
+        .is_none());
+    assert!(timeline.multicam_groups.is_empty());
+}
+
+#[test]
+fn remove_multicam_group_re_shows_every_member() {
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 20.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2], 1, HashMap::new())
+        .unwrap();
+    assert!(!timeline.tracks[1].visible);
+
+    assert!(timeline.remove_multicam_group(group_id));
+
+    assert!(timeline.tracks[1].visible, "hide is undone on removal");
+    assert!(timeline.multicam_groups.is_empty());
+}
+
+#[test]
+fn switch_multicam_angle_splits_the_program_clip_and_retargets_the_second_half() {
+    // Two in-sync (offset 0) 20s angles, different assets. Program (angle 1, asset 10) plays
+    // the whole 20s; switching to angle 2 (asset 20) at t=8 should leave [0, 8) on asset 10 and
+    // retarget [8, 20) to asset 20 at the same source position (no offset between them).
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 20.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2], 1, HashMap::new())
+        .unwrap();
+
+    let switched = timeline.switch_multicam_angle(group_id, 1, 8.0, 100);
+
+    assert!(switched);
+    let program_clips = &timeline.tracks[0].clips;
+    assert_eq!(program_clips.len(), 2);
+    assert_eq!(program_clips[0].id, 1);
+    assert_eq!(program_clips[0].asset_id, 10);
+    assert_eq!(program_clips[0].start_secs, 0.0);
+    assert_eq!(program_clips[0].source_out_secs, 8.0);
+    assert_eq!(program_clips[1].id, 100);
+    assert_eq!(
+        program_clips[1].asset_id, 20,
+        "retargeted to angle 2's asset"
+    );
+    assert_eq!(program_clips[1].start_secs, 8.0);
+    assert_eq!(
+        program_clips[1].source_in_secs, 8.0,
+        "same source position, 0 offset"
+    );
+    assert_eq!(program_clips[1].source_out_secs, 20.0);
+}
+
+#[test]
+fn switch_multicam_angle_accounts_for_a_nonzero_sync_offset() {
+    // Angle 2 started recording 2s *after* angle 1: for the same real-world moment,
+    // angle_2_time = angle_1_time - 2.0, i.e. offset(angle_2) = -2.0 relative to angle 1's 0.0.
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 18.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+    let mut offsets = HashMap::new();
+    offsets.insert(2u64, -2.0);
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2], 1, offsets)
+        .unwrap();
+
+    // Switching at t=8 on the program track's own clock -> angle 2's equivalent time is 8 - 2 = 6.
+    let switched = timeline.switch_multicam_angle(group_id, 1, 8.0, 100);
+
+    assert!(switched);
+    let switched_clip = &timeline.tracks[0].clips[1];
+    assert_eq!(switched_clip.source_in_secs, 6.0);
+}
+
+#[test]
+fn switch_multicam_angle_reuses_an_existing_boundary_without_a_redundant_split() {
+    let program = track_with_id_and_asset(
+        1,
+        10,
+        vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 0.0, 10.0)],
+    );
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(3, 0.0, 0.0, 20.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2], 1, HashMap::new())
+        .unwrap();
+
+    // 10.0 is already the boundary between clip 1 and clip 2 -- no split should occur.
+    let switched = timeline.switch_multicam_angle(group_id, 1, 10.0, 100);
+
+    assert!(switched);
+    assert_eq!(
+        timeline.tracks[0].clips.len(),
+        2,
+        "reused the existing boundary, did not add a third clip"
+    );
+    assert_eq!(timeline.tracks[0].clips[1].id, 2, "kept clip 2's own id");
+    assert_eq!(timeline.tracks[0].clips[1].asset_id, 20);
+}
+
+#[test]
+fn switch_multicam_angle_is_a_no_op_for_an_unknown_group_or_angle_index() {
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 20.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2], 1, HashMap::new())
+        .unwrap();
+
+    assert!(!timeline.switch_multicam_angle(999, 1, 8.0, 100));
+    assert!(!timeline.switch_multicam_angle(group_id, 5, 8.0, 100));
+    assert!(
+        !timeline.switch_multicam_angle(group_id, 0, 8.0, 100),
+        "angle 0 is already the program track"
+    );
+    assert_eq!(timeline.tracks[0].clips.len(), 1, "nothing was split");
+}
+
+#[test]
+fn switch_multicam_angle_is_a_no_op_when_the_target_angle_has_no_footage_at_that_time() {
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    // Angle 2 only covers [0, 5) -- nothing there at t=8.
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 5.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2], 1, HashMap::new())
+        .unwrap();
+
+    assert!(!timeline.switch_multicam_angle(group_id, 1, 8.0, 100));
+    assert_eq!(timeline.tracks[0].clips.len(), 1, "nothing was split");
 }

@@ -74,6 +74,7 @@ fn project_at(project_path: &PathBuf, assets: Vec<MediaAsset>) -> Project {
                 }],
                 playhead_secs: 0.0,
                 markers: vec![],
+                multicam_groups: Vec::new(),
             },
             export_settings: Default::default(),
         }],

@@ -31,6 +31,7 @@ fn test_project() -> Project {
                 tracks: Vec::new(),
                 playhead_secs: 5.0,
                 markers: Vec::new(),
+                multicam_groups: Vec::new(),
             },
             export_settings: Default::default(),
         }],
