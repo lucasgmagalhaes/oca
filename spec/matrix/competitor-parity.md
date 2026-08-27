@@ -90,14 +90,14 @@ templates/real-time-AI-masking." Sources: [DaVinci Resolve free-tier feature run
       `setpts` filter's output PTS to be the integral of `1/speed` over time, unverifiable in
       this sandbox (no decode capability); see `ROADMAP.md` P4 item 29 for the full reasoning
       and what's still not done.
-- [ ] **Real-time audio level meter (VU/peak) during playback.** Live per-channel level display
-      while scrubbing/playing, not just the after-the-fact `LoudnessMetrics` this codebase
-      already computes at import/export time — Premiere's classic VU meters and DaVinci's
-      Fairlight LUFS/peak meter both do this live. Would need a pad probe on the preview
-      audio path sampling RMS/peak per buffer (conceptually the same pattern already used for
-      keyframe pad-probes, just reading instead of writing) plus a small meter widget in the
-      Editor's preview panel. Moderate, bounded cost — no ML, no new avfilter/GStreamer
-      element, no new file format.
+- [x] **Real-time audio level meter (VU/peak) during playback.** Live level display while
+      scrubbing/playing, not just the after-the-fact `LoudnessMetrics` this codebase already
+      computes at import/export time — Premiere's classic VU meters and DaVinci's Fairlight
+      LUFS/peak meter both do this live. A pad probe on the preview audio path sampling RMS/peak
+      per buffer (the same pattern already used for keyframe pad-probes, reading instead of
+      writing) plus a small meter widget in the Editor's preview panel. Combined across channels
+      (flat sequence), not per-channel — matches this item's own "small meter widget" scope, not
+      a full Fairlight-style per-channel meter. → `ROADMAP.md` P4 item 30 (done).
 
 **Found but not included here** — bigger than the four above, closer to Multicam's own tier of
 effort than to Smart Bins': **nested sequences / compound clips** (Premiere, DaVinci, and FCP

@@ -188,6 +188,25 @@ fn current_frame_is_none_for_audio_only_input() {
     assert!(preview.current_frame().is_none());
 }
 
+/// `spec/ROADMAP.md` P4 item 30, "real-time audio level meter" — `current_audio_level()` stays
+/// at its silent default until the buffer probe `build_metering_audio_sink` installs has
+/// actually processed at least one real audio buffer, which merely opening/prerolling a
+/// pipeline (no playback started) doesn't guarantee.
+#[test]
+fn current_audio_level_defaults_to_silent_before_playback_advances() {
+    let preview = Preview::open(&fixture("audio.m4a"), None).unwrap();
+    let level = preview.current_audio_level();
+    assert_eq!(level, avcore::AudioLevel::default());
+    assert_eq!(level.peak, 0.0);
+    assert_eq!(level.rms, 0.0);
+}
+
+#[test]
+fn current_audio_level_defaults_to_silent_for_a_video_only_preview_too() {
+    let preview = Preview::open(&fixture("video.mp4"), None).unwrap();
+    assert_eq!(preview.current_audio_level(), avcore::AudioLevel::default());
+}
+
 #[test]
 fn a_neutral_clip_applies_no_filter_bin_and_frame_size_is_unchanged() {
     let preview = Preview::open(&fixture("video.mp4"), Some(&clip())).unwrap();

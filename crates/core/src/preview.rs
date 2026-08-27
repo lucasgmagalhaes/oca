@@ -809,8 +809,12 @@ fn attach_audio_mix_branch(
     Ok(())
 }
 
-/// Creates the shared mixed-audio output chain and returns its `audiomixer` input element.
-fn build_audio_mix_output(pipeline: &gst::Pipeline) -> Result<gst::Element, PreviewError> {
+/// Creates the shared mixed-audio output chain and returns its `audiomixer` input element,
+/// along with the live [`AudioLevel`] snapshot [`build_metering_audio_sink`] wires into the
+/// chain's own tail.
+fn build_audio_mix_output(
+    pipeline: &gst::Pipeline,
+) -> Result<(gst::Element, std::sync::Arc<std::sync::Mutex<AudioLevel>>), PreviewError> {
     let mixer = gst::ElementFactory::make("audiomixer")
         .build()
         .map_err(PreviewError::CreateElement)?;
@@ -823,12 +827,13 @@ fn build_audio_mix_output(pipeline: &gst::Pipeline) -> Result<gst::Element, Prev
     let sink = gst::ElementFactory::make("autoaudiosink")
         .build()
         .map_err(PreviewError::CreateElement)?;
+    let (metering_sink, audio_level) = build_metering_audio_sink(sink)?;
     pipeline
-        .add_many([&mixer, &convert, &resample, &sink])
+        .add_many([&mixer, &convert, &resample, &metering_sink])
         .map_err(PreviewError::Compositing)?;
-    gst::Element::link_many([&mixer, &convert, &resample, &sink])
+    gst::Element::link_many([&mixer, &convert, &resample, &metering_sink])
         .map_err(PreviewError::Compositing)?;
-    Ok(mixer)
+    Ok((mixer, audio_level))
 }
 
 /// Links `decodebin`'s first video output pad to `target_sink` once it appears — `decodebin`/
@@ -1363,6 +1368,94 @@ struct TextOverlayBranch {
     canvas_height: u32,
 }
 
+/// Real-time audio level snapshot (linear `0.0..=1.0` amplitude, not dBFS) computed from the
+/// preview's own downstream audio-sink pad probe — per `spec/ROADMAP.md` P4 item 30, "Real-time
+/// audio level meter (VU/peak) during playback". `peak` is the loudest single sample's absolute
+/// value seen in the most recently probed buffer; `rms` is that buffer's root-mean-square. Both
+/// are combined across every channel (a stereo/5.1 buffer's interleaved samples are treated as
+/// one flat sequence) rather than reported per channel, matching this feature's "small meter
+/// widget" scope rather than a full per-channel Fairlight-style meter.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct AudioLevel {
+    pub peak: f32,
+    pub rms: f32,
+}
+
+/// Builds a small `audioconvert ! capsfilter(F32LE) ! sink` bin usable as `playbin`'s
+/// `audio-sink` property ([`Preview::open`]) or in place of a bare sink element in a manually
+/// built pipeline ([`build_audio_mix_output`]) — forcing a known sample format lets the buffer
+/// probe below parse raw bytes directly instead of branching on whatever format the pipeline
+/// happened to negotiate. `sink` is the real output element (an `autoaudiosink`, or a
+/// `fakesink` fallback when no audio device is available). The returned `Arc<Mutex<AudioLevel>>`
+/// is updated from GStreamer's own streaming thread on every buffer — callers read it from the
+/// UI thread via [`Preview::current_audio_level`], never inside the probe itself.
+fn build_metering_audio_sink(
+    sink: gst::Element,
+) -> Result<(gst::Element, std::sync::Arc<std::sync::Mutex<AudioLevel>>), PreviewError> {
+    let convert = gst::ElementFactory::make("audioconvert")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    let capsfilter = gst::ElementFactory::make("capsfilter")
+        .property(
+            "caps",
+            gst::Caps::builder("audio/x-raw")
+                .field("format", "F32LE")
+                .build(),
+        )
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+
+    let bin = gst::Bin::new();
+    bin.add_many([&convert, &capsfilter, &sink])
+        .map_err(PreviewError::FilterBin)?;
+    gst::Element::link_many([&convert, &capsfilter, &sink]).map_err(PreviewError::FilterBin)?;
+    let sink_pad = convert
+        .static_pad("sink")
+        .expect("audioconvert always has a sink pad");
+    let ghost_sink = gst::GhostPad::with_target(&sink_pad).map_err(PreviewError::FilterBin)?;
+    bin.add_pad(&ghost_sink).map_err(PreviewError::FilterBin)?;
+
+    let level = std::sync::Arc::new(std::sync::Mutex::new(AudioLevel::default()));
+    let level_for_probe = level.clone();
+    let capsfilter_src = capsfilter
+        .static_pad("src")
+        .expect("capsfilter always has a src pad");
+    capsfilter_src.add_probe(gst::PadProbeType::BUFFER, move |_pad, info| {
+        if let Some(buffer) = info.buffer() {
+            if let Ok(map) = buffer.map_readable() {
+                let bytes = map.as_slice();
+                let sample_count = bytes.len() / 4;
+                let mut peak = 0.0f32;
+                let mut sum_sq = 0.0f64;
+                for i in 0..sample_count {
+                    let sample = f32::from_le_bytes([
+                        bytes[i * 4],
+                        bytes[i * 4 + 1],
+                        bytes[i * 4 + 2],
+                        bytes[i * 4 + 3],
+                    ]);
+                    let abs = sample.abs();
+                    if abs > peak {
+                        peak = abs;
+                    }
+                    sum_sq += (sample as f64) * (sample as f64);
+                }
+                let rms = if sample_count > 0 {
+                    (sum_sq / sample_count as f64).sqrt() as f32
+                } else {
+                    0.0
+                };
+                if let Ok(mut level) = level_for_probe.lock() {
+                    *level = AudioLevel { peak, rms };
+                }
+            }
+        }
+        gst::PadProbeReturn::Ok
+    });
+
+    Ok((bin.upcast::<gst::Element>(), level))
+}
+
 /// A media pipeline loaded for preview playback — either a single file via `playbin`
 /// ([`Self::open`]) or a multi-track `compositor` pipeline ([`Self::open_composited`]). Owns
 /// the pipeline; dropping it tears the pipeline down (`State::Null`) so GStreamer releases any
@@ -1387,6 +1480,11 @@ pub struct Preview {
     /// Replaceable `appsrc ! imagefreeze(allow-replace=true)` branches for active text clips.
     /// Their order and ids mirror `open_composited`'s `text_overlays` argument.
     text_overlay_branches: Vec<TextOverlayBranch>,
+    /// Live audio level, updated on GStreamer's own streaming thread by a buffer probe
+    /// [`build_metering_audio_sink`] installs just ahead of the real audio output element —
+    /// read from the UI thread via [`Self::current_audio_level`]. Per `spec/ROADMAP.md` P4
+    /// item 30.
+    audio_level: std::sync::Arc<std::sync::Mutex<AudioLevel>>,
 }
 
 impl Preview {
@@ -1477,7 +1575,8 @@ impl Preview {
         let audio_sink = gst::ElementFactory::make("autoaudiosink")
             .build()
             .map_err(PreviewError::CreateElement)?;
-        pipeline.set_property("audio-sink", &audio_sink);
+        let (metering_sink, mut audio_level) = build_metering_audio_sink(audio_sink)?;
+        pipeline.set_property("audio-sink", &metering_sink);
 
         pipeline
             .set_state(gst::State::Paused)
@@ -1496,7 +1595,9 @@ impl Preview {
             let fakesink = gst::ElementFactory::make("fakesink")
                 .build()
                 .map_err(PreviewError::CreateElement)?;
-            pipeline.set_property("audio-sink", &fakesink);
+            let (metering_fakesink, fakesink_audio_level) = build_metering_audio_sink(fakesink)?;
+            audio_level = fakesink_audio_level;
+            pipeline.set_property("audio-sink", &metering_fakesink);
             pipeline
                 .set_state(gst::State::Paused)
                 .map_err(PreviewError::StateChange)?;
@@ -1510,6 +1611,7 @@ impl Preview {
             branches: Vec::new(),
             matte_branches: Vec::new(),
             text_overlay_branches: Vec::new(),
+            audio_level,
         })
     }
 
@@ -1684,9 +1786,19 @@ impl Preview {
             .link(&video_sink)
             .map_err(PreviewError::Compositing)?;
 
-        let audio_mixer = has_any_audio
+        let (audio_mixer, audio_level) = match has_any_audio
             .then(|| build_audio_mix_output(&pipeline))
-            .transpose()?;
+            .transpose()?
+        {
+            Some((mixer, level)) => (Some(mixer), level),
+            // No audio anywhere in this composited timeline -- nothing ever updates the level,
+            // so it just stays at its silent default rather than needing an Option everywhere
+            // downstream.
+            None => (
+                None,
+                std::sync::Arc::new(std::sync::Mutex::new(AudioLevel::default())),
+            ),
+        };
 
         let (background_decodebin, background_matte) = build_composite_branch(
             &pipeline,
@@ -1827,6 +1939,7 @@ impl Preview {
             branches,
             matte_branches,
             text_overlay_branches,
+            audio_level,
         })
     }
 
@@ -2018,6 +2131,14 @@ impl Preview {
         self.pipeline
             .query_duration::<gst::ClockTime>()
             .map(|t| t.seconds_f64())
+    }
+
+    /// The most recently probed audio buffer's level — per `spec/ROADMAP.md` P4 item 30. Stays
+    /// at its silent default (`AudioLevel::default()`) until playback has actually pushed at
+    /// least one buffer through the audio sink (e.g. while merely paused/prerolled with no
+    /// audio track, or before the first buffer after a seek).
+    pub fn current_audio_level(&self) -> AudioLevel {
+        self.audio_level.lock().map(|l| *l).unwrap_or_default()
     }
 
     /// Pushes a live brightness/contrast/effective-saturation update to `clip_id`'s already-

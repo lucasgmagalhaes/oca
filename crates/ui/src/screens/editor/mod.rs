@@ -863,6 +863,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             {
                 app.scopes_enabled = !app.scopes_enabled;
             }
+            audio_level_meter(app, ui);
         });
         if timeline_duration > 0.0 {
             let mut position = app.active_project().timeline().playhead_secs;
@@ -884,6 +885,37 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             });
         }
     });
+}
+
+/// Small live peak/RMS bar for the Editor preview panel's transport row — `spec/ROADMAP.md`
+/// P4 item 30. Reads [`App::current_audio_level`] every frame the panel draws; stays visually
+/// flat at zero when no pipeline is open, playback is paused, or the current clip has no
+/// audio, same as any other VU meter idling on silence.
+fn audio_level_meter(app: &App, ui: &mut egui::Ui) {
+    let level = app.current_audio_level();
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(60.0, 14.0), egui::Sense::hover());
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    let painter = ui.painter();
+    painter.rect_filled(rect, 2.0, theme::SURFACE_2);
+    let peak = level.peak.clamp(0.0, 1.0);
+    let rms = level.rms.clamp(0.0, 1.0);
+    if rms > 0.0 {
+        let mut rms_rect = rect;
+        rms_rect.set_width(rect.width() * rms);
+        painter.rect_filled(rms_rect, 2.0, theme::ACCENT);
+    }
+    if peak > 0.0 {
+        let peak_x = rect.left() + rect.width() * peak;
+        let peak_color = if peak > 0.98 {
+            theme::ERROR
+        } else {
+            theme::ACCENT_2
+        };
+        painter.vline(peak_x, rect.y_range(), egui::Stroke::new(2.0, peak_color));
+    }
+    response.on_hover_text(Text::PreviewAudioLevelMeter.tr(app.locale));
 }
 
 /// Idle time (no pointer movement/click) before the fullscreen preview overlay's controls
