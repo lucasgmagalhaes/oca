@@ -5496,7 +5496,7 @@ fn export_chapters_txt_writes_sorted_timecode_lines() {
     app.export_chapters_txt(output_path.clone());
 
     let contents = std::fs::read_to_string(&output_path).unwrap();
-    assert_eq!(contents, "0:00 Intro\n1:05 Boss fight\n");
+    assert_eq!(contents, "00:00 Intro\n01:05 Boss fight\n");
 }
 
 #[test]
