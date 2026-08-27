@@ -344,6 +344,18 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         if ui.button(Text::DetectSilence.tr(locale)).clicked() {
             app.begin_silence_review();
         }
+        if ui.button(Text::DetectChapters.tr(locale)).clicked() {
+            app.spawn_detect_scene_cuts_for_selected_clip();
+        }
+        if ui.button(Text::ExportChapters.tr(locale)).clicked() {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("text", &["txt"])
+                .set_file_name("chapters.txt")
+                .save_file()
+            {
+                app.export_chapters_txt(path);
+            }
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button(Text::Export.tr(locale)).clicked() {
                 app.screen = crate::app::Screen::Queue;
