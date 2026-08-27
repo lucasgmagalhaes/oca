@@ -1725,6 +1725,129 @@ fn trim_clip_end_is_bounded_by_the_source_assets_own_duration() {
 }
 
 #[test]
+fn ripple_trim_clip_start_shifts_only_later_clips() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 0.0, 5.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.ripple_trim_clip_start(2, 12.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    assert_eq!(tracks.clips[0].start_secs, 0.0);
+    let clip2 = tracks.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip2.start_secs, 12.0);
+    assert_eq!(clip2.source_in_secs, 2.0);
+}
+
+#[test]
+fn ripple_trim_clip_end_is_bounded_by_the_source_assets_own_duration() {
+    // test_asset's duration_secs is a fixed 10.0, so trimming clip 1's end past it must
+    // refuse -- same bound App::trim_clip_end already enforces.
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 8.0), test_clip(2, 8.0, 0.0, 5.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.ripple_trim_clip_end(1, 50.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    assert_eq!(tracks.clips[0].source_out_secs, 8.0);
+    assert_eq!(
+        tracks.clips[1].start_secs, 8.0,
+        "a refused trim must not shift the later clip either"
+    );
+}
+
+#[test]
+fn roll_edit_clip_moves_the_shared_boundary() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 2.0, 7.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.roll_edit_clip(1, 8.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    let clip1 = tracks.clips.iter().find(|c| c.id == 1).unwrap();
+    let clip2 = tracks.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip1.start_secs + clip1.duration_secs(), 8.0);
+    assert_eq!(clip2.start_secs, 8.0);
+}
+
+#[test]
+fn roll_edit_from_start_edge_resolves_the_previous_neighbor() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 2.0, 7.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    // Dragging clip 2's own start edge should produce the same roll as dragging clip 1's end.
+    app.roll_edit_from_start_edge(2, 8.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    let clip1 = tracks.clips.iter().find(|c| c.id == 1).unwrap();
+    let clip2 = tracks.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip1.start_secs + clip1.duration_secs(), 8.0);
+    assert_eq!(clip2.start_secs, 8.0);
+}
+
+#[test]
+fn slip_clip_shifts_source_range_without_moving_on_the_timeline() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 5.0, 1.0, 6.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.slip_clip(1, 1.0);
+
+    let clip = &app.active_project().timeline().tracks[0].clips[0];
+    assert_eq!(clip.start_secs, 5.0);
+    assert_eq!(clip.source_in_secs, 2.0);
+    assert_eq!(clip.source_out_secs, 7.0);
+}
+
+#[test]
+fn slide_clip_absorbs_the_move_into_both_neighbors() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![
+            test_clip(1, 0.0, 0.0, 6.0),
+            test_clip(2, 6.0, 0.0, 9.0),
+            test_clip(3, 15.0, 0.0, 5.0),
+        ],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.slide_clip(2, 8.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    let clip1 = tracks.clips.iter().find(|c| c.id == 1).unwrap();
+    let clip2 = tracks.clips.iter().find(|c| c.id == 2).unwrap();
+    let clip3 = tracks.clips.iter().find(|c| c.id == 3).unwrap();
+    assert_eq!(clip2.start_secs, 8.0);
+    assert_eq!(clip1.start_secs + clip1.duration_secs(), 8.0);
+    assert_eq!(clip3.start_secs, 17.0);
+}
+
+#[test]
 fn move_clip_repositions_it_on_its_own_track() {
     let mut app = test_app(
         vec![test_project_with_tracks(
