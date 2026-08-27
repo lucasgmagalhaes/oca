@@ -1316,11 +1316,48 @@ impl Track {
     }
 }
 
+/// A review/comment marker's category — Final Cut Pro's typed-marker model (per `ROADMAP.md`
+/// P2 item 9), not just a plain unstyled note: `ToDo` tracks a `completed` state a searchable
+/// Timeline Index panel can filter on, `Chapter` marks a navigable section boundary, `Standard`
+/// is a plain annotation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum MarkerKind {
+    #[default]
+    Standard,
+    ToDo,
+    Chapter,
+}
+
+impl MarkerKind {
+    pub const ALL: &'static [MarkerKind] =
+        &[MarkerKind::Standard, MarkerKind::ToDo, MarkerKind::Chapter];
+}
+
+/// One review/comment marker on the timeline — a point in time (not a clip, not tied to any
+/// particular track) with a short label and a [`MarkerKind`]. `id`s are unique within a
+/// [`Timeline`], same convention [`ClipInstance::id`]/[`TextClip::id`] already use.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Marker {
+    pub id: u64,
+    pub position_secs: f64,
+    pub label: String,
+    pub kind: MarkerKind,
+    /// Only meaningful for [`MarkerKind::ToDo`] — a searchable Timeline Index panel can filter
+    /// these out once resolved without deleting the marker (the review history stays visible).
+    #[serde(default)]
+    pub completed: bool,
+}
+
 /// A project's full set of tracks plus the current playhead position.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Timeline {
     pub tracks: Vec<Track>,
     pub playhead_secs: f64,
+    /// Review/comment markers — `#[serde(default)]` so a project saved before this field
+    /// existed still loads (empty marker list), per this crate's struct-map `.ocproj` format
+    /// (see `CLAUDE.md`).
+    #[serde(default)]
+    pub markers: Vec<Marker>,
 }
 
 impl Timeline {
@@ -1337,6 +1374,43 @@ impl Timeline {
             .iter()
             .map(Track::duration_secs)
             .fold(0.0, f64::max)
+    }
+
+    /// Adds a new [`Marker`] at `position_secs` (clamped to `0.0`) with `kind`, `label` empty
+    /// and `completed: false`, and returns its freshly assigned id — one past the highest
+    /// existing marker id, `1` if there are none yet, same "max + 1" convention every other
+    /// timeline entity's id assignment already uses (see `next_clip_id` in `ui`).
+    pub fn add_marker(&mut self, position_secs: f64, kind: MarkerKind) -> u64 {
+        let id = self.markers.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+        self.markers.push(Marker {
+            id,
+            position_secs: position_secs.max(0.0),
+            label: String::new(),
+            kind,
+            completed: false,
+        });
+        id
+    }
+
+    /// Removes the marker with `marker_id`, if any. `true` if a marker was actually removed.
+    pub fn remove_marker(&mut self, marker_id: u64) -> bool {
+        let before = self.markers.len();
+        self.markers.retain(|m| m.id != marker_id);
+        self.markers.len() != before
+    }
+
+    /// Mutable access to the marker with `marker_id`, if it exists.
+    pub fn marker_mut(&mut self, marker_id: u64) -> Option<&mut Marker> {
+        self.markers.iter_mut().find(|m| m.id == marker_id)
+    }
+
+    /// Every marker sorted by `position_secs` ascending — what a searchable Timeline Index
+    /// panel (and the ruler's own left-to-right tick rendering) both want, rather than
+    /// insertion order.
+    pub fn markers_sorted(&self) -> Vec<&Marker> {
+        let mut markers: Vec<&Marker> = self.markers.iter().collect();
+        markers.sort_by(|a, b| a.position_secs.total_cmp(&b.position_secs));
+        markers
     }
 
     /// Moves the clip with `clip_id` onto `target_track_id` at `new_start_secs`, removing it

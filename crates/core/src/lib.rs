@@ -95,8 +95,8 @@ pub use text_to_speech::{
     load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
 };
 pub use timeline::{
-    ClipFormatting, ClipInstance, LayerTemplate, ShapeClip, ShapeKind, TextClip, TextFontFamily,
-    TextFontStyle, Timeline, Track, TrackKind,
+    ClipFormatting, ClipInstance, LayerTemplate, Marker, MarkerKind, ShapeClip, ShapeKind,
+    TextClip, TextFontFamily, TextFontStyle, Timeline, Track, TrackKind,
 };
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
 pub use update_check::{

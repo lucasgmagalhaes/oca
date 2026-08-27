@@ -150,6 +150,7 @@ impl Project {
             timeline: Timeline {
                 tracks: Vec::new(),
                 playhead_secs: 0.0,
+                markers: Vec::new(),
             },
             export_settings,
         });
