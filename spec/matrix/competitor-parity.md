@@ -126,8 +126,8 @@ etc.) has a keyframe variant, and that `TextClip`/`ShapeClip` have no keyframe f
       → `ROADMAP.md` P4 item 31 (done).
 - [x] **Color grading keyframes.** Brightness/contrast/saturation ramping over a clip (e.g. a
       slow color shift), not just a constant. → `ROADMAP.md` P4 item 32 (done).
-- [ ] **Crop/pan keyframes.** `crop_x`/`crop_y`/`crop_w`/`crop_h` animated over a clip (e.g. a
-      slow reveal/pan independent of `scale_keyframes`' zoom). → `ROADMAP.md` P4 item 33.
+- [x] **Crop/pan keyframes.** `crop_x`/`crop_y`/`crop_w`/`crop_h` animated over a clip (e.g. a
+      slow reveal/pan independent of `scale_keyframes`' zoom). → `ROADMAP.md` P4 item 33 (done).
 - [ ] **Text/shape clip animation keyframes.** `TextClip`/`ShapeClip` have zero keyframe fields
       today (a structural gap, not a missing effect) — every surveyed editor supports animating
       text/graphic position/scale/opacity over time. → `ROADMAP.md` P4 item 34.

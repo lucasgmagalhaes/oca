@@ -399,11 +399,22 @@ not by default priority.
     Verified: `color_balance_filter_expr`'s 3 new unit tests run for real in the same
     `keyframe.rs` scratch crate as `gain_filter_db_expr`'s (32/32 passing); new `video_filter_chain`/
     `split_clip_at` tests in `timeline_test.rs`.
-33. `[ ]` Crop/pan keyframes (`crop_x`/`crop_y`/`crop_w`/`crop_h` animated over a clip, e.g. a
-    slow Ken-Burns pan/zoom independent of the existing `scale_keyframes` position/zoom pair) —
-    same `Keyframe<T>` reuse; export-side needs the same `geq`-based per-pixel expression
-    approach `scale_filter_expr` already uses instead of `crop`+`eval=frame` (documented
-    elsewhere in this repo as a real heap-corruption trap, not a style choice). Not started.
+33. `[x]` Crop/pan keyframes (`crop_x`/`crop_y`/`crop_w`/`crop_h` animated over a clip, e.g. a
+    slow pan/reveal independent of the existing `scale_keyframes` symmetric zoom) —
+    `ClipInstance::crop_x_keyframes`/`crop_y_keyframes`/`crop_w_keyframes`/`crop_h_keyframes`,
+    each independently overriding its own constant field when non-empty. `keyframe::
+    crop_filter_expr` generalizes `scale_filter_expr`'s single-axis `geq`-based per-pixel inverse
+    sample (chosen over `crop`+`eval=frame` for the same real heap-corruption reason, see
+    CLAUDE.md) to four independent axes — the sampled window's x/y/width/height — so a moving/
+    resizing crop rectangle animates without the frame's own resolution changing frame-to-frame.
+    Spliced into `keyframe_video_filter_chain` *first* (before scale/rotation/opacity/color-
+    balance — crop reframes the source before those geometric/color stages operate on it, mirroring
+    the static `crop` stage's own traditional first-in-chain position) rather than `video_filter_
+    chain`'s own static `crop` stage, which `has_crop_keyframes()` now suppresses to avoid
+    double-emitting. Wired into `Track::split_clip_at`. Not yet wired into live preview.
+    Verified: `crop_filter_expr`'s 3 new unit tests run for real in the same `keyframe.rs`
+    scratch crate as the other keyframe expression builders' (35/35 passing); new
+    `video_filter_chain`/`split_clip_at` tests in `timeline_test.rs`.
 34. `[ ]` Text/shape clip animation keyframes — `TextClip`/`ShapeClip` currently have *zero*
     keyframe fields (position/scale/rotation/opacity keyframes only exist on `ClipInstance`
     today), so this is a structural gap, not a one-field addition: needs the keyframe fields
