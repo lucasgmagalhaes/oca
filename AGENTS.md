@@ -4,112 +4,21 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## What this is
 
-oca — a native Rust video editor (`egui`/`eframe`) for cutting gameplay
-footage for the PacoPaçoca YouTube channel. Its two headline features are automatic loudness
-normalization and export-that-matches-the-source-bitrate. Full phased execution plan:
-[`features/request.md`](features/request.md) (`docs/plano.md` used to be a diverging
-duplicate — it's now just a pointer back here, the one canonical copy).
+oca — a native Rust video editor (`egui`/`eframe`) for cutting gameplay footage for the
+PacoPaçoca YouTube channel. Headline features: automatic loudness normalization and
+export-that-matches-the-source-bitrate. Full phased plan: [`features/request.md`](features/request.md).
 
-Current status: the GUI shell (all five screens, navigable) and binary `.ocproj` project save/load are
-wired end-to-end from the UI (`home.rs` open dialog, `editor.rs` save). Probing
-(`avcore::probe`), export rendering (`avcore::render`), loudness measurement
-(`avcore::loudness`), and proxy generation (`avcore::proxy`) all go through
-`avbridge`, a native FFI bridge over libavformat/libavcodec/libavfilter/libswscale — no
-subprocess, no ffprobe/ffmpeg on PATH required for any of them (proxy uses `libopenh264` — BSD
-— since this LGPL FFmpeg build has no `libx264`/GPL). The GStreamer preview pipeline
-(`avcore::preview::Preview`) is wired into the Editor screen's preview panel (`ui/src/
-app.rs::OcaApp::{select_asset,ensure_preview_loaded,pump_preview_frame}` +
-`ui/src/screens/editor.rs::preview_panel`): clicking an asset in the media library selects it,
-but the pipeline itself opens lazily — `ensure_preview_loaded` runs once per frame from the top
-of `preview_panel` and is a no-op once a pipeline is open or has already been tried for the
-current selection, so switching projects or launching the app doesn't pay GStreamer's open cost
-until the Editor screen's preview panel is actually painted. Decoded frames are uploaded to an
-egui texture every frame, and play/pause/seek (including a click-to-seek position slider) drive
-the pipeline. Hardware video decoders (VideoToolbox/NVDEC/Quick Sync/VAAPI) are preferred when
-available, fall back to CPU after a failed preroll, and can be disabled in Preferences; the
-setting is enabled by default and forces software decoding on every preview branch when off.
-Playback covers the active timeline composite at the playhead. Double-clicking an asset in the
-Editor's media library
-panel adds it to the timeline (`OcaApp::add_asset_to_timeline`) — appended, untrimmed, onto
-the first track of matching kind (auto-creating `"V1"`/`"A1"` if none exists yet). Dragging an
-asset out of the library and dropping it on the timeline strip does the same insert but at the
-drop position, on whichever track row the pointer landed on
-(`OcaApp::add_asset_to_timeline_at`, `editor.rs::media_library_panel`/`timeline_panel` relaying
-the drop through `OcaApp::pending_asset_drop`) — both entry points share track
-resolution/creation via `resolve_or_create_track`. The timeline
-(`editor.rs::timeline_panel`) draws clips at their real `start_secs` position, video clips draw
-a filmstrip of distinct per-position poster frames (`editor.rs::draw_filmstrip`, one tile per
-on-screen column; each tile's frame is extracted lazily on a background thread once its
-source-frame key — quantized by the asset's frame rate and shared across every clip on that
-asset rather than per-clip — scrolls into view. Tile-center sampling follows the current
-timeline zoom, so zooming in requests denser source frames and zooming out spaces them farther
-apart. Only the painter-visible intersection is traversed; extraction is capped at 16 concurrent
-workers and textures use a 512-entry LRU cache instead of growing for the whole session),
-audio clips draw a min/max peak waveform (`avcore::waveform::generate_waveform`, a fixed
-`WAVEFORM_BUCKET_COUNT`-bucket table computed once per asset during import enrichment and
-resampled per pixel column at draw time — see `editor.rs::draw_waveform`), has a click/drag
-ruler that moves the playhead, and `Ctrl` + scroll zooms it
-(`OcaApp::timeline_px_per_sec`). Real editing, with no ripple (a cut/delete/move just leaves
-or closes a gap at the point of the edit, nothing downstream shifts) and no overlap checking
-(`avcore::timeline::Track`'s long-standing documented policy): clip select
-(`OcaApp::selected_clip_id`, separate from `selected_asset_id` which drives the preview
-panel), `Ctrl+B`/toolbar split-at-playhead across every track (`Track::split_clip_at` +
-`OcaApp::split_at_playhead`), `Delete` (`OcaApp::delete_selected_clip`), drag-trim either edge
-bounded by a minimum duration and (right edge) the source asset's own length
-(`ClipInstance::trim_start`/`trim_end`), and drag-move a clip's body — same-track reposition
-or onto a different same-`TrackKind` track, resolved by which row's Y-range the drag lands on
-(`Timeline::move_clip_to_track`/`Track::move_clip`), and `Ctrl+C`/`Ctrl+X`/`Ctrl+V`
-(`OcaApp::copy_selected_clip`/`cut_selected_clip`/`paste_clip_at_playhead`) copy, cut and paste
-a clip via a one-slot `OcaApp::clipboard_clip` — paste always lands at the playhead on a
-matching-kind track (auto-created if none exists) rather than wherever the clip was cut from, a
-known simplification. Not scoped to a project or sequence, so pasting into a different tab (or
-even a different project) "just works" — request.md's Fase 3 "copiar e colar entre abas" for
-free. Right-click a clip for a context menu with the same actions (per `request.md`'s Fase 3
-spec) plus delete; apply-effect is a follow-up once effects themselves exist. `Ctrl`+click 2+
-clips (`OcaApp::toggle_multi_select`) then the toolbar's "Mesclar em bloco" button
-(`OcaApp::merge_into_composite`) groups them into a composite block — `ClipInstance::composite_id`,
-shared by every member, not a distinct clip type — per `request.md`'s Fase 3 "blocos compostos"
-spec. A composite block then behaves as one clip for the operations that matter most: dragging
-any member moves the whole group by the same delta (`OcaApp::move_clip_with_group`), splitting
-one at the playhead keeps both halves in the group (`Track::split_clip_at`), and deleting one
-deletes all of them (`OcaApp::delete_selected_clip`). Two scope limits, both enforced rather
-than silently broken: a group can't span tracks (merging across tracks, or dragging a member
-onto a different track, is a no-op/falls back to a same-track move), and copy/paste doesn't
-replicate group membership yet (a pasted clip is always standalone). The Editor toolbar supports
-manual text overlays: "+ Add text" creates a three-second `TextClip` at the
-playhead and auto-creates a text track when needed. Text foreground, background, and spoken-word
-highlight colors share a transactional modal with an HSV selector, preset swatches, and manual
-HEX/RGB(A) input; cancelling does not dirty the project, while applying verifies the originating
-project and sequence before updating the clip. The Editor screen's three columns (media
-library / preview / properties) and the timeline strip are all resizable by dragging the
-divider between them (`editor.rs::resizable_divider`/`resizable_divider_horizontal`,
-`OcaApp::lib_panel_width`/`props_panel_width`/`timeline_height`) — sizes clamp to the window's
-current size every frame but aren't persisted across restarts yet, short of `request.md`'s
-"layout salvo por projeto ou por usuário". A project can hold multiple sequences (tabs) —
-`avcore::project::Sequence`, each with its own `Timeline` — shown as a tab bar above the
-three-column body (`editor.rs::sequence_tab_bar`); every project always has at least one, and
-every clip-editing `OcaApp` method reads/writes through `Project::timeline`/`timeline_mut`
-(the active tab), never a `timeline` field directly. Each sequence also persists its own
-`SequenceExportSettings` (aspect ratio + target LUFS); queued jobs snapshot those values, so
-later tab changes cannot alter an in-flight export. Tabs can be renamed, duplicated, deleted
-(with confirmation and a one-tab minimum), and reordered either by dragging or through
-left/right context-menu actions; reordering preserves the active sequence by id, while an
-actual tab switch clears clip/text/shape selections and invalidates the old preview so
-sequence-local ids cannot collide across tabs. Importing files
-(`library.rs`/`OcaApp::spawn_import`)
-runs each file on its own background thread instead of blocking the UI — large source files
-used to freeze the app. Each file becomes usable in the media library as soon as its (cheap,
-metadata-only) probe returns; loudness measurement, proxy generation, and waveform computation,
-all full decode passes that can take minutes, keep running afterward and patch the
-already-visible asset in place once done (`ImportEvent::AssetReady` then
-`ImportEvent::Enriched`, correlated by an `import_token` in `OcaApp::pending_enrichment`) —
-matching how other NLEs show an import instantly and refine it in the background, rather than
-blocking "imported" on every decode pass finishing first. A background export queue worker
-already runs (`OcaApp::pump_export_queue`
-dispatches `avcore::render_export` on a spawned thread, progress/done/failed/cancelled
-reported back over `tokio::mpsc`) — the queue panel doesn't yet support reordering/pausing
-jobs or persisting the queue across sessions. Check the plan doc for which phase a task
-belongs to before assuming a feature is live.
+## Status
+
+Fase 1-8 of the original phased plan are done — probe/export/loudness/proxy, timeline editing,
+effects/keyframes/AI features, export queue, robustness, performance work, and packaging/
+auto-update all shipped. **Detailed status now lives in `spec/`, not here** — start at
+[`spec/INDEX.md`](spec/INDEX.md), then [`spec/ROADMAP.md`](spec/ROADMAP.md) to pick up the next
+task. `spec/matrix/*.md` are done/needed checklists per area; `spec/matrix/changelog.md` is the
+old narrative status log (verification caveats, real bugs found) moved there verbatim;
+`spec/architecture/*.md` covers the proposed differentiator features and the performance/
+caching patterns ported from nimble (sibling project). Check `features/request.md` for the
+original plan's own wording before assuming a Fase-4+ feature is live.
 
 ## Commands
 
