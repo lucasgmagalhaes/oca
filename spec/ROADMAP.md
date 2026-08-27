@@ -415,12 +415,28 @@ not by default priority.
     Verified: `crop_filter_expr`'s 3 new unit tests run for real in the same `keyframe.rs`
     scratch crate as the other keyframe expression builders' (35/35 passing); new
     `video_filter_chain`/`split_clip_at` tests in `timeline_test.rs`.
-34. `[ ]` Text/shape clip animation keyframes — `TextClip`/`ShapeClip` currently have *zero*
-    keyframe fields (position/scale/rotation/opacity keyframes only exist on `ClipInstance`
-    today), so this is a structural gap, not a one-field addition: needs the keyframe fields
-    added to both clip types plus their own export/preview expression wiring, mirroring
-    `ClipInstance`'s existing four. Largest of the four keyframe-expansion items found here —
-    not started.
+34. `[~]` Text/shape clip animation keyframes — `TextClip`/`ShapeClip` had *zero* keyframe fields
+    (position/scale/rotation/opacity keyframes only existed on `ClipInstance` before this), so
+    this was a structural gap, not a one-field addition. **Partial**: `ShapeClip::
+    center_x_keyframes`/`center_y_keyframes` ship — `ShapeClip`'s export path (a self-contained
+    `geq` filter expression built entirely in Rust, `crate::shape_render`) turned out to already
+    support a `T`-keyed per-pixel expression with zero FFI/C changes (`geq` natively exposes `T`,
+    elapsed seconds, per pixel — confirmed against FFmpeg's own filter docs, not assumed).
+    `keyframe::shape_axis_expr` offsets `T` by the shape's own `start_secs` (the overlay is
+    composited onto the already-exported full video in a post-pass, not inside a per-clip filter
+    chain with its own PTS reset, so `T` is timeline-*absolute*, unlike every other `*_filter_
+    expr` builder in this module — a real, documented difference). **Explicitly still not done**:
+    `ShapeClip` width/height/rotation keyframes (would mean reworking `shape_render`'s per-shape-
+    kind geometry math — `inside_expr`'s ellipse/polygon tests — to accept expressions instead of
+    literal half-extents, a real risk to that already visually-verified, un-re-verifiable-in-
+    this-sandbox code that position animation alone doesn't touch); `TextClip` animation of any
+    kind (its export path pre-rasterizes a full-canvas PNG with position baked in at generation
+    time, not a moving overlay — animating it means restructuring that pipeline toward a small
+    sprite + `overlay=x=<expr>:y=<expr>`, a materially bigger lift, still the largest sub-item
+    here). Verified: `shape_axis_expr`'s 3 new unit tests and a new `build_shape_filter_desc`
+    animation test run for real in a scratch crate (`keyframe.rs`+`timeline.rs`+`shape_render.rs`
+    have zero heavy deps) — 53/53 passing, including every pre-existing `shape_render` test
+    (confirms the already-visually-verified static geometry math is unchanged).
 
 Found but deliberately not added as a P4 item: **nested sequences / compound clips** (Premiere/
 DaVinci/FCP) — closer to Multicam's own tier of effort than to the four above (the render/

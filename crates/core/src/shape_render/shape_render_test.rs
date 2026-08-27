@@ -102,6 +102,8 @@ fn fixture_input(shape_kind: &ShapeKind) -> ShapeRenderInput<'_> {
         shape_kind,
         center_x: 0.5,
         center_y: 0.5,
+        center_x_keyframes: &[],
+        center_y_keyframes: &[],
         width: 0.2,
         height: 0.2,
         rotation_deg: 0.0,
@@ -153,6 +155,26 @@ fn build_shape_filter_desc_bakes_in_the_visible_time_window() {
     let kind = ShapeKind::rectangle();
     let desc = build_shape_filter_desc(&fixture_input(&kind));
     assert!(desc.contains("between(t\\,1.0000\\,3.0000)"));
+}
+
+#[test]
+fn build_shape_filter_desc_animates_position_when_center_keyframes_are_present() {
+    let kind = ShapeKind::rectangle();
+    let mut input = fixture_input(&kind);
+    let center_x_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.2,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.8,
+        },
+    ];
+    input.center_x_keyframes = &center_x_keyframes;
+    let desc = build_shape_filter_desc(&input);
+    // fixture_input's start_secs is 1.0 -- the T offset this shape's keyframes are built around.
+    assert!(desc.contains("(T-1.000000)"));
 }
 
 #[test]

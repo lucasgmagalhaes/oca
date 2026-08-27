@@ -712,6 +712,8 @@ fn shape_clip_to_segment(
         shape_kind: &clip.shape_kind,
         center_x: clip.center_x,
         center_y: clip.center_y,
+        center_x_keyframes: &clip.center_x_keyframes,
+        center_y_keyframes: &clip.center_y_keyframes,
         width: clip.width,
         height: clip.height,
         rotation_deg: clip.rotation_deg,
