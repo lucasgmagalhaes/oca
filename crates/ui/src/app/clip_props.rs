@@ -357,6 +357,48 @@ impl App {
         self.with_selected_clip_mut(|clip| clip.saturation_keyframes = keyframes);
     }
 
+    /// Replaces `selected_clip_id`'s crop-x keyframes
+    /// ([`avcore::timeline::ClipInstance::crop_x_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_position_keyframes`]. Values are clamped to `[0.0, 1.0]`,
+    /// matching [`Self::set_selected_clip_crop`]'s existing constant clamp.
+    pub fn set_selected_clip_crop_x_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf.value.clamp(0.0, 1.0);
+        }
+        self.with_selected_clip_mut(|clip| clip.crop_x_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s crop-y keyframes
+    /// ([`avcore::timeline::ClipInstance::crop_y_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_crop_x_keyframes`].
+    pub fn set_selected_clip_crop_y_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf.value.clamp(0.0, 1.0);
+        }
+        self.with_selected_clip_mut(|clip| clip.crop_y_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s crop-width keyframes
+    /// ([`avcore::timeline::ClipInstance::crop_w_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_crop_x_keyframes`]. Values are floored at [`CROP_MIN_SIZE`],
+    /// matching [`Self::set_selected_clip_crop`]'s existing constant clamp.
+    pub fn set_selected_clip_crop_w_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf.value.clamp(CROP_MIN_SIZE, 1.0);
+        }
+        self.with_selected_clip_mut(|clip| clip.crop_w_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s crop-height keyframes
+    /// ([`avcore::timeline::ClipInstance::crop_h_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_crop_x_keyframes`].
+    pub fn set_selected_clip_crop_h_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf.value.clamp(CROP_MIN_SIZE, 1.0);
+        }
+        self.with_selected_clip_mut(|clip| clip.crop_h_keyframes = keyframes);
+    }
+
     /// Adds one opacity keyframe at the current timeline playhead position, for the selected
     /// clip — what `Ctrl+O` (`request.md`'s Fase 6 key binding spec, "adicionar marcador de
     /// opacidade") does. The new marker's value is the clip's own current effective opacity at
