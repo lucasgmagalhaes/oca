@@ -106,6 +106,25 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     if redo_pressed {
         app.redo();
     }
+    // Multicam angle switching (P2 item 10) -- 1..9 at the playhead, no modifier, matching
+    // every other bare-key editing shortcut above (Delete, split) rather than needing a
+    // configurable KeyCombo of its own.
+    const NUMBER_KEYS: [egui::Key; 9] = [
+        egui::Key::Num1,
+        egui::Key::Num2,
+        egui::Key::Num3,
+        egui::Key::Num4,
+        egui::Key::Num5,
+        egui::Key::Num6,
+        egui::Key::Num7,
+        egui::Key::Num8,
+        egui::Key::Num9,
+    ];
+    for (angle_index, key) in NUMBER_KEYS.into_iter().enumerate() {
+        if ui.input(|i| !i.modifiers.any() && i.key_pressed(key)) {
+            app.switch_multicam_angle_at_playhead(angle_index);
+        }
+    }
 
     ui.vertical(|ui| {
         toolbar(app, ui);
@@ -367,6 +386,13 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             if let Some(output_dir) = dialog.pick_folder() {
                 app.spawn_shorts_pack(output_dir);
             }
+        }
+        if ui
+            .button(Text::CreateMulticamGroup.tr(locale))
+            .on_hover_text("1-9")
+            .clicked()
+        {
+            app.create_multicam_group_from_video_tracks();
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button(Text::Export.tr(locale)).clicked() {

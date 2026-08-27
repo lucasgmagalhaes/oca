@@ -523,6 +523,12 @@ text_catalog! {
     PropShapeVertices: pt_br = "Vértices", en = "Vertices";
     ShapeVerticesHint: pt_br = "arraste os valores X/Y para desenhar uma forma personalizada — funciona em qualquer predefinição, já que todas são polígonos por baixo dos panos (exceto elipse/círculo).", en = "drag the X/Y values to draw a custom shape — works on any preset, since they're all polygons underneath (except ellipse/circle).";
     ShapeAddVertex: pt_br = "+ Adicionar vértice", en = "+ Add vertex";
+    CreateMulticamGroup: pt_br = "🎬 Sincronizar multicam", en = "🎬 Sync Multicam";
+    MulticamGroupNeedsTwoVideoTracks: pt_br = "Adicione pelo menos duas faixas de vídeo (os ângulos) antes de sincronizar um grupo multicam.", en = "Add at least two video tracks (the angles) before syncing a multicam group.";
+    MulticamGroupNeedsAudio: pt_br = "Cada ângulo precisa de uma faixa de áudio própria para a sincronização automática por forma de onda.", en = "Every angle needs its own audio track for automatic waveform-based sync.";
+    MulticamGroupSynced: pt_br = "Grupo multicam sincronizado com {n} ângulos -- use as teclas 1-9 no playhead para trocar de ângulo.", en = "Multicam group synced with {n} angles -- use keys 1-9 at the playhead to switch angles.";
+    MulticamNoActiveGroup: pt_br = "Nenhum grupo multicam ainda -- clique em \"Sincronizar multicam\" primeiro.", en = "No multicam group yet -- click \"Sync Multicam\" first.";
+    MulticamSwitchFailed: pt_br = "Não foi possível trocar para o ângulo {n} nesta posição -- talvez essa fonte não tenha imagem aqui.", en = "Couldn't switch to angle {n} at this position -- that source may have no footage here.";
 }
 
 /// The breadcrumb's title for `screen` (e.g. `Screen::Queue` -> "Fila de exportação" — longer
