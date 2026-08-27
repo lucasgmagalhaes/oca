@@ -1355,3 +1355,215 @@ fn markers_sorted_orders_by_position_regardless_of_insertion_order() {
 
     assert_eq!(positions, vec![2.0, 6.0, 10.0]);
 }
+
+// --- Named trim modes (ROADMAP.md P2 item 11): Ripple / Roll / Slip / Slide ---
+
+#[test]
+fn slip_shifts_source_in_and_out_together_without_moving_on_the_timeline() {
+    let mut c = clip(1, 5.0, 2.0, 8.0);
+
+    assert!(c.slip(1.0, None));
+
+    assert_eq!(
+        c.start_secs, 5.0,
+        "slip never moves the clip on the timeline"
+    );
+    assert_eq!(c.source_in_secs, 3.0);
+    assert_eq!(c.source_out_secs, 9.0);
+    assert_eq!(c.duration_secs(), 6.0, "duration is unchanged by a slip");
+}
+
+#[test]
+fn slip_refuses_to_push_source_in_below_zero() {
+    let mut c = clip(1, 5.0, 2.0, 8.0);
+
+    assert!(!c.slip(-3.0, None));
+    assert_eq!(
+        c.source_in_secs, 2.0,
+        "a refused slip leaves the clip untouched"
+    );
+    assert_eq!(c.source_out_secs, 8.0);
+}
+
+#[test]
+fn slip_refuses_to_push_source_out_past_the_assets_own_duration() {
+    let mut c = clip(1, 5.0, 2.0, 8.0);
+
+    assert!(!c.slip(5.0, Some(10.0)));
+    assert_eq!(c.source_out_secs, 8.0);
+}
+
+#[test]
+fn previous_and_next_clip_id_walk_the_track_by_position() {
+    let track = track_with(vec![clip(1, 0.0, 0.0, 6.0), clip(2, 6.0, 0.0, 9.0)]);
+
+    assert_eq!(track.previous_clip_id(2), Some(1));
+    assert_eq!(track.next_clip_id(1), Some(2));
+    assert_eq!(
+        track.previous_clip_id(1),
+        None,
+        "the earliest clip has no previous neighbor"
+    );
+    assert_eq!(
+        track.next_clip_id(2),
+        None,
+        "the latest clip has no next neighbor"
+    );
+    assert_eq!(
+        track.previous_clip_id(404),
+        None,
+        "an unknown id has no neighbors"
+    );
+}
+
+#[test]
+fn ripple_trim_start_shifts_only_clips_after_the_trimmed_clips_own_start() {
+    let mut track = track_with(vec![
+        clip(1, 0.0, 0.0, 10.0),
+        clip(2, 10.0, 0.0, 5.0),
+        clip(3, 15.0, 0.0, 5.0),
+    ]);
+
+    assert!(track.ripple_trim_start(2, 12.0, 0.1));
+
+    assert_eq!(
+        track.clips[0].start_secs, 0.0,
+        "clips before the edit point don't move"
+    );
+    let clip2 = track.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip2.start_secs, 12.0);
+    assert_eq!(clip2.source_in_secs, 2.0);
+    let clip3 = track.clips.iter().find(|c| c.id == 3).unwrap();
+    assert_eq!(
+        clip3.start_secs, 17.0,
+        "later clips shift by the same delta, no gap left"
+    );
+}
+
+#[test]
+fn ripple_trim_start_leaves_the_track_untouched_when_the_trim_itself_is_refused() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 0.0, 5.0)]);
+
+    // Shrinking clip 2 below the minimum duration refuses the underlying trim_start.
+    assert!(!track.ripple_trim_start(2, 14.95, 0.1));
+    assert_eq!(track.clips[1].start_secs, 10.0);
+}
+
+#[test]
+fn ripple_trim_end_shifts_only_clips_after_the_trimmed_clip() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 0.0, 5.0)]);
+
+    assert!(track.ripple_trim_end(1, 8.0, 0.1, None));
+
+    let clip1 = track.clips.iter().find(|c| c.id == 1).unwrap();
+    assert_eq!(clip1.source_out_secs, 8.0);
+    let clip2 = track.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(
+        clip2.start_secs, 8.0,
+        "shifted left by the 2s shrink, no gap left"
+    );
+}
+
+#[test]
+fn roll_edit_moves_the_shared_boundary_leaving_the_pairs_overall_span_unchanged() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 2.0, 7.0)]);
+
+    assert!(track.roll_edit(1, 8.0, 0.1, None));
+
+    let clip1 = track.clips.iter().find(|c| c.id == 1).unwrap();
+    assert_eq!(clip1.start_secs + clip1.duration_secs(), 8.0);
+    let clip2 = track.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(
+        clip2.start_secs, 8.0,
+        "the boundary landed exactly where clip 1's end did"
+    );
+    assert_eq!(
+        clip2.start_secs + clip2.duration_secs(),
+        15.0,
+        "the pair's overall span (0..15) is unchanged, just reallocated between them"
+    );
+}
+
+#[test]
+fn roll_edit_is_atomic_a_refused_neighbor_trim_leaves_both_clips_untouched() {
+    // clip 2's source_in_secs is already 0.0 -- rolling the boundary earlier would need it to
+    // show footage before its own start, which doesn't exist, so its trim_start must refuse.
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 0.0, 5.0)]);
+
+    assert!(!track.roll_edit(1, 8.0, 0.1, None));
+
+    assert_eq!(
+        track.clips[0].source_out_secs, 10.0,
+        "clip 1 must not be left half-rolled"
+    );
+    assert_eq!(
+        track.clips[1].start_secs, 10.0,
+        "clip 2 must not be left half-rolled either"
+    );
+}
+
+#[test]
+fn roll_edit_is_a_no_op_without_a_next_neighbor() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0)]);
+    assert!(!track.roll_edit(1, 8.0, 0.1, None));
+}
+
+#[test]
+fn slide_clip_absorbs_the_move_into_both_neighbors_without_changing_its_own_content() {
+    let mut track = track_with(vec![
+        clip(1, 0.0, 0.0, 6.0),
+        clip(2, 6.0, 0.0, 9.0),
+        clip(3, 15.0, 0.0, 5.0),
+    ]);
+
+    assert!(track.slide_clip(2, 8.0, 0.1, None));
+
+    let clip2 = track.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip2.start_secs, 8.0);
+    assert_eq!(
+        clip2.duration_secs(),
+        9.0,
+        "slide never changes the slid clip's own content"
+    );
+    let clip1 = track.clips.iter().find(|c| c.id == 1).unwrap();
+    assert_eq!(
+        clip1.start_secs + clip1.duration_secs(),
+        8.0,
+        "the previous clip's end absorbs the move, meeting clip 2's new start"
+    );
+    let clip3 = track.clips.iter().find(|c| c.id == 3).unwrap();
+    assert_eq!(
+        clip3.start_secs, 17.0,
+        "the next clip's start absorbs the move"
+    );
+    assert_eq!(
+        clip3.start_secs + clip3.duration_secs(),
+        20.0,
+        "the next clip's own end stays put -- nothing past it shifts"
+    );
+}
+
+#[test]
+fn slide_clip_is_atomic_a_refused_neighbor_trim_leaves_everything_untouched() {
+    // Sliding clip 2 to 8.0 would need clip 1 to extend to an 8s duration, which is fine, but
+    // clip 3's start would need to move to 17.0, shrinking it to a 3s duration -- refuse by
+    // asking for an impossibly high minimum duration so the whole edit rolls back.
+    let mut track = track_with(vec![
+        clip(1, 0.0, 0.0, 6.0),
+        clip(2, 6.0, 0.0, 9.0),
+        clip(3, 15.0, 0.0, 5.0),
+    ]);
+
+    assert!(!track.slide_clip(2, 8.0, 4.0, None));
+
+    assert_eq!(track.clips[0].source_out_secs, 6.0);
+    assert_eq!(track.clips[1].start_secs, 6.0);
+    assert_eq!(track.clips[2].start_secs, 15.0);
+}
+
+#[test]
+fn slide_clip_with_no_neighbors_just_moves_it() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 6.0)]);
+    assert!(track.slide_clip(1, 3.0, 0.1, None));
+    assert_eq!(track.clips[0].start_secs, 3.0);
+}
