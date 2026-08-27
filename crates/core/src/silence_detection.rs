@@ -167,7 +167,8 @@ mod tests {
     fn ignores_runs_shorter_than_the_minimum_duration() {
         let mut peaks = loud(10);
         peaks[4] = (0.0, 0.0);
-        let gaps = detect_silence_gaps(&peaks, 10.0, DEFAULT_SILENCE_THRESHOLD_LINEAR, 0.5);
+        // 10 buckets over 1 second -> the single silent bucket is only 0.1 seconds.
+        let gaps = detect_silence_gaps(&peaks, 1.0, DEFAULT_SILENCE_THRESHOLD_LINEAR, 0.5);
         assert!(gaps.is_empty());
     }
 
