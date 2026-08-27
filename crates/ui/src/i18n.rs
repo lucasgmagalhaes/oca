@@ -156,6 +156,10 @@ text_catalog! {
     GainExportNote: pt_br = "aplicado na exportação (filtro volume) — sem efeito no preview ao vivo.", en = "applied on export (volume filter) — no live preview effect.";
     PropGainKeyframes: pt_br = "Ganho (keyframes)", en = "Gain (keyframes)";
     GainKeyframesExportNote: pt_br = "quando definido, substitui o ganho constante acima na exportação (fade/rampa de volume) — sem efeito no preview ao vivo.", en = "when set, overrides the constant gain above on export (volume fade/ramp) — no live preview effect.";
+    PropBrightnessKeyframes: pt_br = "Brilho (keyframes)", en = "Brightness (keyframes)";
+    PropContrastKeyframes: pt_br = "Contraste (keyframes)", en = "Contrast (keyframes)";
+    PropSaturationKeyframes: pt_br = "Saturação (keyframes)", en = "Saturation (keyframes)";
+    ColorKeyframesExportNote: pt_br = "quando definido, substitui o valor constante desse eixo na exportação — sem efeito no preview ao vivo.", en = "when set, overrides this axis's constant value on export — no live preview effect.";
     PropFreeze: pt_br = "❄ Congelar quadro", en = "❄ Freeze frame";
     FreezeExportNote: pt_br = "aplicado na exportação — sem efeito no preview ao vivo.", en = "applied on export — no live preview effect.";
     PropDeflicker: pt_br = "✨ Remover flicker", en = "✨ Remove flicker";

@@ -381,12 +381,24 @@ not by default priority.
     to `volume=<expr>:eval=frame` — verified against FFmpeg's own filter docs, not assumed.
     Crosses the `avbridge` FFI boundary (a new expression-string field on `AudioSegment`/
     `RawAudioSegment`, and an `audio_mix.c` branch alongside the existing literal-`%.6fdB` path).
-32. `[ ]` Color grading keyframes (brightness/contrast/saturation ramping over a clip, not a
-    constant value) — same `Keyframe<T>` reuse as above, export-side via `eq`'s per-frame
-    expression mode (mirroring `rotation_filter_angle_expr`'s `t`-keyed shape); preview-side
-    could eventually piggyback on the just-shipped `Preview::set_live_balance` live-property
-    path (item 3's follow-up) once ramping-over-time rather than one-shot pushes is wired up.
-    Not started — queued after audio gain keyframes.
+32. `[x]` Color grading keyframes (brightness/contrast/saturation ramping over a clip, not a
+    constant value) — `ClipInstance::brightness_keyframes`/`contrast_keyframes`/
+    `saturation_keyframes`, each independently overriding its own constant field when non-empty
+    (same relationship `gain_keyframes` has with `gain_db`). `keyframe::color_balance_filter_expr`
+    builds the combined `eq=brightness=...:contrast=...:saturation=...[:eval=frame]` stage —
+    `eval=frame` only appended when at least one axis is actually animated, each un-animated axis
+    still using its own plain constant. Spliced into `keyframe_video_filter_chain` (alongside
+    scale/rotation/opacity) rather than `video_filter_chain`'s own static `eq` stage, which is
+    now suppressed whenever any color-grading keyframe list is non-empty (`has_color_keyframes`)
+    to avoid double-emitting. **Known caveat, documented in code**: this moves the animated `eq`
+    stage to the *front* of the per-clip filter chain instead of its usual post-crop/deflicker/
+    stabilization spot — a clip combining color-grading keyframes with crop/deflicker/
+    stabilization sees color grading applied to the pre-crop/pre-deflicker/pre-stabilization
+    frame. Preview-side piggybacking on `Preview::set_live_balance` (item 3's follow-up) is not
+    done — export only, same "export first" shape every other keyframe field started with.
+    Verified: `color_balance_filter_expr`'s 3 new unit tests run for real in the same
+    `keyframe.rs` scratch crate as `gain_filter_db_expr`'s (32/32 passing); new `video_filter_chain`/
+    `split_clip_at` tests in `timeline_test.rs`.
 33. `[ ]` Crop/pan keyframes (`crop_x`/`crop_y`/`crop_w`/`crop_h` animated over a clip, e.g. a
     slow Ken-Burns pan/zoom independent of the existing `scale_keyframes` position/zoom pair) —
     same `Keyframe<T>` reuse; export-side needs the same `geq`-based per-pixel expression

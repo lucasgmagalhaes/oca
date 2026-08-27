@@ -60,6 +60,9 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
         gain_keyframes: vec![],
+        brightness_keyframes: vec![],
+        contrast_keyframes: vec![],
+        saturation_keyframes: vec![],
         deflicker_enabled: false,
         lut_path: String::new(),
         layer_scale_x: 1.0,
@@ -829,8 +832,70 @@ fn new_clip_defaults_to_no_keyframes() {
     assert!(c.rotation_keyframes.is_empty());
     assert!(c.opacity_keyframes.is_empty());
     assert!(c.gain_keyframes.is_empty());
+    assert!(c.brightness_keyframes.is_empty());
+    assert!(c.contrast_keyframes.is_empty());
+    assert!(c.saturation_keyframes.is_empty());
     assert!(!c.has_scale_keyframes());
     assert!(!c.has_gain_keyframes());
+    assert!(!c.has_color_keyframes());
+}
+
+#[test]
+fn video_filter_chain_uses_the_static_eq_stage_with_no_color_keyframes() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.brightness = 0.3;
+    assert_eq!(
+        c.video_filter_chain(),
+        "eq=brightness=0.3:contrast=1:saturation=1"
+    );
+}
+
+#[test]
+fn video_filter_chain_suppresses_the_static_eq_stage_when_color_keyframes_are_present() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.brightness = 0.3;
+    c.brightness_keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: -0.5,
+    }];
+    // The static path defers entirely to keyframe_video_filter_chain -- no eq stage here, even
+    // though `brightness` is still non-neutral, so it never gets double-emitted.
+    assert_eq!(c.video_filter_chain(), "");
+}
+
+#[test]
+fn split_clip_at_rescales_color_keyframes_onto_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.brightness_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: -0.5,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.5,
+        },
+    ];
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    assert!(track.clips[0].has_color_keyframes());
+    assert!(track.clips[1].has_color_keyframes());
+    assert_eq!(
+        track.clips[0].brightness_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: -0.5
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: 0.0
+            },
+        ]
+    );
 }
 
 #[test]
@@ -1270,6 +1335,18 @@ fn formatting_roundtrip_preserves_all_fields() {
     c.gain_keyframes = vec![Keyframe {
         time_fraction: 0.5,
         value: -12.0,
+    }];
+    c.brightness_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: -0.2,
+    }];
+    c.contrast_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 1.3,
+    }];
+    c.saturation_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.7,
     }];
     c.deflicker_enabled = true;
 

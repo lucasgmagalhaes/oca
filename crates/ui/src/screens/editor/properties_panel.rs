@@ -147,6 +147,9 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let rotation_keyframes = clip.rotation_keyframes.clone();
                     let opacity_keyframes = clip.opacity_keyframes.clone();
                     let gain_keyframes = clip.gain_keyframes.clone();
+                    let brightness_keyframes = clip.brightness_keyframes.clone();
+                    let contrast_keyframes = clip.contrast_keyframes.clone();
+                    let saturation_keyframes = clip.saturation_keyframes.clone();
                     if components::property_section(
                         ui,
                         Text::PropGain.tr(locale),
@@ -466,6 +469,69 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                             },
                         ) {
                             app.set_selected_clip_color_adjust(brightness, contrast, saturation);
+                        }
+
+                        let mut new_brightness_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropBrightnessKeyframes.tr(locale),
+                            Text::ColorKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_brightness_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &brightness_keyframes,
+                                    BRIGHTNESS_RANGE,
+                                    0.0,
+                                    locale,
+                                );
+                                new_brightness_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_brightness_keyframes {
+                                app.set_selected_clip_brightness_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_contrast_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropContrastKeyframes.tr(locale),
+                            Text::ColorKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_contrast_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &contrast_keyframes,
+                                    CONTRAST_RANGE,
+                                    1.0,
+                                    locale,
+                                );
+                                new_contrast_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_contrast_keyframes {
+                                app.set_selected_clip_contrast_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_saturation_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropSaturationKeyframes.tr(locale),
+                            Text::ColorKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_saturation_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &saturation_keyframes,
+                                    SATURATION_RANGE,
+                                    1.0,
+                                    locale,
+                                );
+                                new_saturation_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_saturation_keyframes {
+                                app.set_selected_clip_saturation_keyframes(kfs);
+                            }
                         }
 
                         if components::property_section(
