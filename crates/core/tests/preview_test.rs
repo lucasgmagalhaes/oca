@@ -847,3 +847,29 @@ fn open_composited_mixes_an_audio_only_timeline_branch() {
     preview.play().unwrap();
     preview.pause().unwrap();
 }
+
+// P1 item 3's remaining live-preview-update gap (`spec/matrix/performance.md`):
+// Preview::set_live_balance pushes a brightness/contrast/saturation change to the already-built
+// `videobalance` element instead of needing a full pipeline reopen.
+
+/// A clip whose brightness/contrast/saturation are all neutral never gets a `videobalance`
+/// element built at all (see `build_video_filter_bin`) -- `set_live_balance` must not silently
+/// pretend it worked when there's nothing to update.
+#[test]
+fn set_live_balance_returns_false_when_no_element_was_built() {
+    let neutral_clip = clip();
+    let preview = Preview::open(&fixture("video.mp4"), Some(&neutral_clip)).unwrap();
+
+    assert!(!preview.set_live_balance(neutral_clip.id, 0.5, 1.0, 1.0));
+}
+
+/// A mismatched clip id (not the one the pipeline was actually built for) must not find some
+/// other clip's element by accident.
+#[test]
+fn set_live_balance_returns_false_for_a_mismatched_clip_id() {
+    let mut dark_clip = clip();
+    dark_clip.brightness = -0.5;
+    let preview = Preview::open(&fixture("video.mp4"), Some(&dark_clip)).unwrap();
+
+    assert!(!preview.set_live_balance(dark_clip.id + 1, 0.9, 1.0, 1.0));
+}
