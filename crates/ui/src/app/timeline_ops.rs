@@ -17,7 +17,7 @@ use avcore::timeline::{
     AudioRole, ClipInstance, ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind,
 };
 
-use super::{App, GAIN_DB_RANGE};
+use super::{App, GAIN_DB_RANGE, SPEED_FACTOR_RANGE};
 
 impl App {
     /// Appends `asset_id` to the timeline as a new, untrimmed clip — what double-clicking an
@@ -131,6 +131,91 @@ impl App {
                 source_in_secs,
                 source_out_secs,
             ));
+    }
+
+    /// Approximates a speed ramp on the selected clip as `steps` discrete segments, each a
+    /// constant [`avcore::timeline::ClipInstance::speed_factor`] linearly interpolated between
+    /// `start_speed` and `end_speed` — a stepped "staircase" ramp rather than a smooth curve,
+    /// per `spec/ROADMAP.md` P4 item 29. A true continuous speed curve needs the export-side
+    /// `setpts` filter's output PTS to be the *integral* of `1/speed` over time, which for a
+    /// piecewise-linear speed curve has no simple closed form (needs a `log()` term per
+    /// segment) — a real, easy-to-get-subtly-wrong derivation with no way to render/verify it
+    /// in this sandbox (no decode capability). This instead reuses two already-correct,
+    /// already-tested primitives unchanged: [`avcore::timeline::Track::split_clip_at`] (to
+    /// carve the clip into `steps` equal-timeline-duration pieces at its current, unramped
+    /// speed) and the existing `speed_factor` field (set per piece afterward). Since
+    /// [`avcore::timeline::ClipInstance::duration_secs`] depends on `speed_factor`, each
+    /// piece's new duration shifts where the next one needs to start to stay contiguous — this
+    /// reflows every piece's `start_secs` left to right after the speed changes, the same "no
+    /// auto-ripple, caller repositions" contract this codebase's other editing operations
+    /// already have (see [`App::delete_selected_clip`]). A no-op if nothing is selected,
+    /// `steps` is less than 2, or the clip has zero duration.
+    pub fn apply_speed_ramp_to_selected_clip(
+        &mut self,
+        start_speed: f32,
+        end_speed: f32,
+        steps: usize,
+    ) {
+        if steps < 2 {
+            return;
+        }
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        let Some(clip) = self.selected_clip() else {
+            return;
+        };
+        let (start_secs, original_duration_secs) = (clip.start_secs, clip.duration_secs());
+        if original_duration_secs <= 0.0 {
+            return;
+        }
+
+        self.push_undo_snapshot();
+        let timeline = self.active_project_mut().timeline_mut();
+        let mut next_id = timeline
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .map(|c| c.id)
+            .max()
+            .unwrap_or(0)
+            + 1;
+
+        // Split into `steps` equal-duration pieces (at the clip's still-unramped speed) by
+        // cutting at each internal boundary left to right, so an earlier split never shifts a
+        // later boundary's position.
+        let mut clip_ids = vec![clip_id];
+        for i in 1..steps {
+            let boundary = start_secs + original_duration_secs * (i as f64 / steps as f64);
+            for track in &mut timeline.tracks {
+                if track.split_clip_at(boundary, next_id) {
+                    clip_ids.push(next_id);
+                    next_id += 1;
+                    break;
+                }
+            }
+        }
+
+        // Assign each piece's ramped speed, then reflow start_secs left to right so the pieces
+        // stay contiguous despite each one's own duration now changing. Uses clip_ids.len()
+        // (not `steps`) as the interpolation denominator, in case a split above didn't take
+        // (e.g. a boundary landing exactly on an existing edge) and fewer pieces resulted.
+        let ramped_steps = clip_ids.len();
+        let mut cursor_secs = start_secs;
+        for (i, &id) in clip_ids.iter().enumerate() {
+            let t = if ramped_steps > 1 {
+                i as f32 / (ramped_steps - 1) as f32
+            } else {
+                0.0
+            };
+            let speed = (start_speed + (end_speed - start_speed) * t)
+                .clamp(*SPEED_FACTOR_RANGE.start(), *SPEED_FACTOR_RANGE.end());
+            if let Some(c) = timeline.clip_mut(id) {
+                c.speed_factor = speed;
+                c.start_secs = cursor_secs;
+                cursor_secs += c.duration_secs();
+            }
+        }
     }
 
     /// Looks up `asset_id` in the active project's media library and returns its track kind
