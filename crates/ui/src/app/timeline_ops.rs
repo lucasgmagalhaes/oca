@@ -234,9 +234,24 @@ impl App {
             return;
         };
         self.push_undo_snapshot_for_drag();
-        if let Some(clip) = self.active_project_mut().timeline_mut().clip_mut(clip_id) {
+        let balance = {
+            let Some(clip) = self.active_project_mut().timeline_mut().clip_mut(clip_id) else {
+                return;
+            };
             f(clip);
-        }
+            let effective_saturation =
+                if clip.color_filter == avcore::timeline::ColorFilter::BlackAndWhite {
+                    0.0
+                } else {
+                    clip.saturation
+                };
+            (clip.brightness, clip.contrast, effective_saturation)
+        };
+        // Cheap and harmless even for a setter that didn't touch color balance at all -- a
+        // no-op push of the clip's own unchanged values. See App::push_live_balance_update's
+        // doc comment for why this lives here rather than in each of the ~20 individual
+        // set_selected_clip_* setters.
+        self.push_live_balance_update(clip_id, balance.0, balance.1, balance.2);
     }
 
     /// Drags `clip_id`'s left edge to `new_start_secs` — what dragging the left handle on a

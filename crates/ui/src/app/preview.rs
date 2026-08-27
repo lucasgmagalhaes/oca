@@ -673,6 +673,33 @@ impl App {
         self.preview_clip_id.is_some()
     }
 
+    /// Pushes `clip_id`'s current brightness/contrast/saturation live into the running preview
+    /// pipeline instead of waiting for the next incidental reopen — P1 item 3's remaining live-
+    /// preview-update gap (`spec/matrix/performance.md`), scoped to just this one property
+    /// group (the confirmed hot-path violation that motivated it): color-balance sliders are
+    /// dragged continuously, and every other `set_selected_clip_*` effect setter already only
+    /// updates once something else happens to reopen the pipeline anyway, unchanged by this.
+    /// A silent no-op — same as the pre-existing behavior, not a new failure mode — if `clip_id`
+    /// isn't currently previewed at all (background or an overlay branch), or
+    /// [`avcore::preview::Preview::set_live_balance`] finds no live element to update yet (see
+    /// its own doc comment for when that happens).
+    pub(super) fn push_live_balance_update(
+        &mut self,
+        clip_id: u64,
+        brightness: f32,
+        contrast: f32,
+        effective_saturation: f32,
+    ) {
+        let is_previewed = self.preview_clip_id == Some(clip_id)
+            || self.preview_overlay_clip_ids.contains(&clip_id);
+        if !is_previewed {
+            return;
+        }
+        if let Some(preview) = &self.preview {
+            preview.set_live_balance(clip_id, brightness, contrast, effective_saturation);
+        }
+    }
+
     /// Pulls the latest decoded video frame (if any) into `preview_texture`, and — while
     /// playing — mirrors the pipeline's position into the active project's timeline playhead,
     /// converting from the clip-relative position `Preview` reports back to timeline time.
