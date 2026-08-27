@@ -340,6 +340,75 @@ pub fn gain_filter_db_expr(
     ))
 }
 
+/// One axis of [`color_balance_filter_expr`] — `None` means "nothing animated on this axis,
+/// caller falls back to its own constant field", the same shape `rotation_filter_angle_expr`/
+/// `opacity_alpha_ramp_expr` use for their own single-axis fast path.
+fn eq_axis_expr(
+    keyframes: &[Keyframe<f32>],
+    default: f32,
+    timeline_duration_secs: f64,
+) -> Option<String> {
+    if keyframes.is_empty() {
+        return None;
+    }
+    if keyframes.len() == 1 {
+        let v = keyframes[0].value;
+        return if (v - default).abs() <= 1e-4 {
+            None
+        } else {
+            Some(format!("{v:.7}"))
+        };
+    }
+    let identity = |v: f32| v;
+    let (sorted, all_default) = sorted_and_all_default(keyframes, identity, default);
+    if all_default {
+        return None;
+    }
+    Some(piecewise_expr(
+        &sorted,
+        timeline_duration_secs,
+        "t",
+        identity,
+    ))
+}
+
+/// Builds the `eq` filter's brightness/contrast/saturation stage, mixing constants with any
+/// per-axis keyframe animation independently — each axis's own keyframes (when non-empty and
+/// not already indistinguishable from neutral) override that axis's constant field, the same
+/// "keyframes win when present" relationship [`gain_filter_db_expr`] has with the constant
+/// `gain_db`. `eval=frame` is only appended when at least one axis is actually animated (a
+/// plain literal-valued `eq` stage doesn't need per-frame re-evaluation). Returns `None` only
+/// when there is nothing to draw at all — no keyframes on any axis and every constant is
+/// already neutral (`0.0`/`1.0`/`1.0`), matching `ClipInstance::video_filter_chain`'s
+/// pre-existing "only emit `eq` when something differs from neutral" guard.
+pub fn color_balance_filter_expr(
+    brightness_keyframes: &[Keyframe<f32>],
+    contrast_keyframes: &[Keyframe<f32>],
+    saturation_keyframes: &[Keyframe<f32>],
+    brightness: f32,
+    contrast: f32,
+    saturation: f32,
+    timeline_duration_secs: f64,
+) -> Option<String> {
+    let brightness_expr = eq_axis_expr(brightness_keyframes, 0.0, timeline_duration_secs);
+    let contrast_expr = eq_axis_expr(contrast_keyframes, 1.0, timeline_duration_secs);
+    let saturation_expr = eq_axis_expr(saturation_keyframes, 1.0, timeline_duration_secs);
+    let animated =
+        brightness_expr.is_some() || contrast_expr.is_some() || saturation_expr.is_some();
+
+    if !animated && brightness == 0.0 && contrast == 1.0 && saturation == 1.0 {
+        return None;
+    }
+
+    let b = brightness_expr.unwrap_or_else(|| format!("{brightness:.7}"));
+    let c = contrast_expr.unwrap_or_else(|| format!("{contrast:.7}"));
+    let s = saturation_expr.unwrap_or_else(|| format!("{saturation:.7}"));
+    let eval = if animated { ":eval=frame" } else { "" };
+    Some(format!(
+        "eq=brightness={b}:contrast={c}:saturation={s}{eval}"
+    ))
+}
+
 /// Builds the opacity-keyframe alpha expression (a bare `0.0..=1.0` ramp, *not* yet multiplied
 /// by any incoming `alpha(X,Y)` — the caller composes that, matching `mask_shape`'s existing
 /// alpha-composition convention in `ClipInstance::video_filter_chain`), keyed off `N` like

@@ -480,6 +480,28 @@ pub struct ClipInstance {
     /// `#[serde(default = ..)]` so older saved projects load unchanged.
     #[serde(default = "default_unity_multiplier")]
     pub saturation: f32,
+    /// General keyframe animation for this block's brightness/contrast/saturation over time, per
+    /// the keyframe-expansion gap found while surveying what else the existing keyframe system
+    /// could drive (`spec/ROADMAP.md` P4 item 32). Each field is independent: a non-empty list
+    /// overrides that axis's own constant field above (same "keyframes win when present"
+    /// relationship [`ClipInstance::gain_keyframes`] has with `gain_db`); an axis left empty
+    /// keeps using its constant. Wired into export
+    /// ([`crate::keyframe::color_balance_filter_expr`], spliced into
+    /// [`ClipInstance::keyframe_video_filter_chain`] alongside scale/rotation/opacity rather
+    /// than [`ClipInstance::video_filter_chain`]'s own static `eq` stage, which this field being
+    /// non-empty on any axis suppresses instead of double-emitting) — a real, narrow ordering
+    /// caveat: the animated `eq` stage runs at the *front* of the per-clip filter chain (with
+    /// scale/rotation/opacity) rather than its usual position after crop/deflicker/
+    /// stabilization, so a clip combining color-grading keyframes with any of those three sees
+    /// its color grading applied to the pre-crop/pre-deflicker/pre-stabilization frame instead.
+    /// Not yet wired into live preview. `#[serde(default)]` so older saved projects load with no
+    /// color-grading animation (using the constant fields as before).
+    #[serde(default)]
+    pub brightness_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub contrast_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub saturation_keyframes: Vec<Keyframe<f32>>,
     /// Sharpen strength for this block, `0.0..=1.0` (`0.0` is off) — per `request.md`'s Fase 4
     /// "Efeitos visuais" spec ("Nitidez (sharpen)"). Wired into export
     /// ([`ClipInstance::video_filter_chain`]'s `unsharp` stage); no live preview effect yet.
@@ -718,6 +740,9 @@ pub struct ClipFormatting {
     pub rotation_keyframes: Vec<Keyframe<f32>>,
     pub opacity_keyframes: Vec<Keyframe<f32>>,
     pub gain_keyframes: Vec<Keyframe<f32>>,
+    pub brightness_keyframes: Vec<Keyframe<f32>>,
+    pub contrast_keyframes: Vec<Keyframe<f32>>,
+    pub saturation_keyframes: Vec<Keyframe<f32>>,
     pub deflicker_enabled: bool,
     pub lut_path: String,
     pub layer_scale_x: f32,
@@ -851,11 +876,23 @@ impl ClipInstance {
         !self.gain_keyframes.is_empty()
     }
 
-    /// Builds this clip's scale/rotation/opacity keyframe avfilter fragment, spliced into the
-    /// per-clip chain before [`ClipInstance::video_filter_chain`]'s own stages — the same
-    /// position the old `zoom` stage used to occupy. `None` if none of the three are animated.
-    /// Position keyframes aren't part of this — they apply to the *overlay* compositing stage,
-    /// not a per-clip filter (see [`keyframe::position_overlay_xy_expr`] and `crate::render`).
+    /// `true` if this block has color-grading keyframes on any of brightness/contrast/
+    /// saturation — gates whether [`Self::video_filter_chain`]'s static `eq` stage should defer
+    /// to [`Self::keyframe_video_filter_chain`]'s animated one instead.
+    pub fn has_color_keyframes(&self) -> bool {
+        !self.brightness_keyframes.is_empty()
+            || !self.contrast_keyframes.is_empty()
+            || !self.saturation_keyframes.is_empty()
+    }
+
+    /// Builds this clip's scale/rotation/opacity/color-balance keyframe avfilter fragment,
+    /// spliced into the per-clip chain before [`ClipInstance::video_filter_chain`]'s own stages
+    /// — the same position the old `zoom` stage used to occupy. `None` if none of the four are
+    /// animated. Position keyframes aren't part of this — they apply to the *overlay*
+    /// compositing stage, not a per-clip filter (see [`keyframe::position_overlay_xy_expr`] and
+    /// `crate::render`). Color-balance keyframes running here (rather than in their usual
+    /// post-crop/deflicker/stabilization spot in `video_filter_chain`) is a real, narrow
+    /// ordering caveat — see [`ClipInstance::brightness_keyframes`]'s doc comment.
     pub fn keyframe_video_filter_chain(
         &self,
         fps_num: u32,
@@ -887,6 +924,19 @@ impl ClipInstance {
             stages.push(format!(
                 "format=yuva420p,geq=lum='p(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*({alpha_expr})'"
             ));
+        }
+        if self.has_color_keyframes() {
+            if let Some(eq) = keyframe::color_balance_filter_expr(
+                &self.brightness_keyframes,
+                &self.contrast_keyframes,
+                &self.saturation_keyframes,
+                self.brightness,
+                self.contrast,
+                self.saturation,
+                timeline_duration_secs,
+            ) {
+                stages.push(eq);
+            }
         }
         if stages.is_empty() {
             None
@@ -937,7 +987,9 @@ impl ClipInstance {
             let radius = (4.0 + self.stabilization_intensity.clamp(0.0, 1.0) * 60.0).round() as i32;
             stages.push(format!("deshake=rx={radius}:ry={radius}:edge=mirror"));
         }
-        if self.brightness != 0.0 || self.contrast != 1.0 || self.saturation != 1.0 {
+        if !self.has_color_keyframes()
+            && (self.brightness != 0.0 || self.contrast != 1.0 || self.saturation != 1.0)
+        {
             stages.push(format!(
                 "eq=brightness={}:contrast={}:saturation={}",
                 self.brightness, self.contrast, self.saturation
@@ -1115,6 +1167,9 @@ impl ClipInstance {
             rotation_keyframes: self.rotation_keyframes.clone(),
             opacity_keyframes: self.opacity_keyframes.clone(),
             gain_keyframes: self.gain_keyframes.clone(),
+            brightness_keyframes: self.brightness_keyframes.clone(),
+            contrast_keyframes: self.contrast_keyframes.clone(),
+            saturation_keyframes: self.saturation_keyframes.clone(),
             deflicker_enabled: self.deflicker_enabled,
             lut_path: self.lut_path.clone(),
             layer_scale_x: self.layer_scale_x,
@@ -1157,6 +1212,9 @@ impl ClipInstance {
         self.rotation_keyframes = f.rotation_keyframes.clone();
         self.opacity_keyframes = f.opacity_keyframes.clone();
         self.gain_keyframes = f.gain_keyframes.clone();
+        self.brightness_keyframes = f.brightness_keyframes.clone();
+        self.contrast_keyframes = f.contrast_keyframes.clone();
+        self.saturation_keyframes = f.saturation_keyframes.clone();
         self.deflicker_enabled = f.deflicker_enabled;
         self.lut_path = f.lut_path.clone();
         self.layer_scale_x = f.layer_scale_x;
@@ -1287,6 +1345,12 @@ impl Track {
             keyframe::split_keyframes_at(&clip.opacity_keyframes, split_frac, 1.0);
         let (gain_first, gain_second) =
             keyframe::split_keyframes_at(&clip.gain_keyframes, split_frac, 0.0);
+        let (brightness_first, brightness_second) =
+            keyframe::split_keyframes_at(&clip.brightness_keyframes, split_frac, 0.0);
+        let (contrast_first, contrast_second) =
+            keyframe::split_keyframes_at(&clip.contrast_keyframes, split_frac, 1.0);
+        let (saturation_first, saturation_second) =
+            keyframe::split_keyframes_at(&clip.saturation_keyframes, split_frac, 1.0);
         let second_half = ClipInstance {
             id: new_clip_id,
             asset_id: clip.asset_id,
@@ -1330,6 +1394,9 @@ impl Track {
             rotation_keyframes: rotation_second,
             opacity_keyframes: opacity_second,
             gain_keyframes: gain_second,
+            brightness_keyframes: brightness_second,
+            contrast_keyframes: contrast_second,
+            saturation_keyframes: saturation_second,
             deflicker_enabled: clip.deflicker_enabled,
             lut_path: clip.lut_path.clone(),
             layer_scale_x: clip.layer_scale_x,
@@ -1348,6 +1415,9 @@ impl Track {
         clip.rotation_keyframes = rotation_first;
         clip.opacity_keyframes = opacity_first;
         clip.gain_keyframes = gain_first;
+        clip.brightness_keyframes = brightness_first;
+        clip.contrast_keyframes = contrast_first;
+        clip.saturation_keyframes = saturation_first;
         // Same staleness reasoning as the second half above — the original clip's own trimmed
         // range changed too.
         clip.background_removal_enabled = false;
