@@ -57,6 +57,7 @@ struct RawAudioSegment {
     timeline_start_secs: f64,
     gain_db: f32,
     speed_factor: f32,
+    duck_role: c_int,
 }
 
 /// Mirror of `TextSegment` in `bridge.h` — one pre-rasterized text overlay image.
@@ -563,6 +564,16 @@ pub struct AudioSegment {
     pub timeline_start_secs: f64,
     pub gain_db: f32,
     pub speed_factor: f32,
+    /// Audio-ducking role (P2 item 6, "Auto Ducking"): `0` mixes in as-is, `1` is the sidechain
+    /// trigger (still plays itself, and ducks every `2` branch under it), `2` is ducked under
+    /// trigger branches via `sidechaincompress`. Built by `core`'s
+    /// `avcore::timeline::AudioRole::to_duck_role_code()` — this crate doesn't depend on `core`,
+    /// so it stays a raw code here rather than that enum, same convention
+    /// [`ClipSegment::transition_in`] already uses for `TransitionType`. `#[serde(default)]` so
+    /// an `.ocqueue` job persisted before this field existed loads as `0` (no ducking) rather
+    /// than failing to parse.
+    #[serde(default)]
+    pub duck_role: u8,
 }
 
 /// The fixed output frame size/rate every segment in an [`encode_timeline_export`] call is
@@ -947,6 +958,7 @@ pub fn mix_audio_timeline(
             timeline_start_secs: seg.timeline_start_secs,
             gain_db: seg.gain_db,
             speed_factor: seg.speed_factor,
+            duck_role: seg.duck_role as c_int,
         })
         .collect();
 

@@ -257,6 +257,12 @@ typedef struct {
     /* Per-clip gain and playback speed. */
     float gain_db;
     float speed_factor;
+    /* Audio-ducking role (P2 item 6, "Auto Ducking"): 0 = normal (mixed in as-is), 1 = trigger
+       (the sidechain signal that ducks target branches, and still plays itself), 2 = target
+       (ducked under trigger branches via sidechaincompress). Derived from the source track's
+       avcore::timeline::AudioRole (Mic -> trigger, Music -> target, everything else -> normal)
+       -- see audio_mix.c's build_mix_graph for the filter-graph topology this drives. */
+    int duck_role;
 } AudioSegment;
 
 typedef enum {

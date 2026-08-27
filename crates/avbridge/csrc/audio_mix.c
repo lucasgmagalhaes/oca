@@ -44,21 +44,28 @@ static int create_filter(AVFilterGraph *graph, AVFilterContext **ctx,
     return avfilter_graph_create_filter(ctx, filter, instance_name, args, NULL, graph);
 }
 
+/* AudioSegment::duck_role values (see bridge.h) -- P2 item 6, "audio ducking". */
+#define DUCK_ROLE_NORMAL 0
+#define DUCK_ROLE_TRIGGER 1 /* AudioRole::Mic -- the commentary that should duck music under it */
+#define DUCK_ROLE_TARGET 2  /* AudioRole::Music -- gets ducked when a trigger branch is loud */
+
 static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, int segment_count,
                            int valid_count, double timeline_duration_secs, float target_lufs,
                            AVFilterGraph **out_graph, AVFilterContext **out_sink) {
     int ret = 0;
     int branch = 0;
     AVFilterGraph *graph = avfilter_graph_alloc();
-    AVFilterContext *mix = NULL, *noise = NULL, *loudnorm = NULL, *limiter = NULL;
-    AVFilterContext *final_trim = NULL, *format = NULL, *sink = NULL;
+    AVFilterContext *final_mix = NULL, *mix_source = NULL, *noise = NULL, *loudnorm = NULL;
+    AVFilterContext *limiter = NULL, *final_trim = NULL, *format = NULL, *sink = NULL;
+    AVFilterContext **branch_ctx = NULL;
+    int *branch_duck_role = NULL;
     if (!graph) return AVERROR(ENOMEM);
 
+    branch_ctx = av_calloc((size_t)valid_count, sizeof(*branch_ctx));
+    branch_duck_role = av_calloc((size_t)valid_count, sizeof(*branch_duck_role));
+    if (!branch_ctx || !branch_duck_role) { ret = AVERROR(ENOMEM); goto fail; }
+
     char args[256];
-    snprintf(args, sizeof(args),
-             "inputs=%d:duration=longest:dropout_transition=0:normalize=0", valid_count);
-    ret = create_filter(graph, &mix, "amix", "mix", args);
-    if (ret < 0) goto fail;
 
     for (int i = 0; i < segment_count; i++) {
         if (!valid[i]) continue;
@@ -103,10 +110,148 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
             (ret = avfilter_link(trim, 0, pts, 0)) < 0 ||
             (ret = avfilter_link(pts, 0, tempo, 0)) < 0 ||
             (ret = avfilter_link(tempo, 0, volume, 0)) < 0 ||
-            (ret = avfilter_link(volume, 0, delay, 0)) < 0 ||
-            (ret = avfilter_link(delay, 0, mix, branch)) < 0) goto fail;
+            (ret = avfilter_link(volume, 0, delay, 0)) < 0) goto fail;
+
+        branch_ctx[branch] = delay;
+        branch_duck_role[branch] = seg->duck_role;
         branch++;
     }
+
+    /* Audio ducking (P2 item 6, spec/architecture/differentiators.md) -- auto-lowers music
+       under commentary, Premiere/CapCut/DaVinci's "Auto Ducking". Opt-in and additive: a
+       project that never tags a track's AudioRole (defaults to Unspecified) has zero DUCK_ROLE_
+       TARGET/TRIGGER branches, so it falls straight to the original flat amix below, byte-
+       identical to this function's behavior before ducking existed. Only routes through
+       sidechaincompress when there's at least one branch of *each* role -- ducking nothing
+       against nothing is meaningless. */
+    int target_count = 0, trigger_count = 0;
+    for (int i = 0; i < branch; i++) {
+        if (branch_duck_role[i] == DUCK_ROLE_TARGET) target_count++;
+        else if (branch_duck_role[i] == DUCK_ROLE_TRIGGER) trigger_count++;
+    }
+
+    if (target_count > 0 && trigger_count > 0) {
+        AVFilterContext *music_mix = NULL, *trigger_mix = NULL, *duck = NULL;
+        AVFilterContext *music_source = NULL, *trigger_source = NULL;
+
+        /* Each trigger (mic) branch feeds the sidechain control input *and* still has to play
+           in the final mix -- but a filter output pad can only ever be consumed once
+           (avfilter_link on an already-linked source pad fails with AVERROR(EINVAL)). Give
+           every trigger branch its own `asplit` so it has two independent output pads: pad 0
+           goes toward `duck`'s sidechain input, pad 1 goes straight to the final mix. Target
+           and normal branches each have exactly one consumer already, so they need no split. */
+        AVFilterContext **trigger_split = av_calloc((size_t)branch, sizeof(*trigger_split));
+        if (!trigger_split) { ret = AVERROR(ENOMEM); goto fail; }
+        for (int i = 0; i < branch; i++) {
+            if (branch_duck_role[i] != DUCK_ROLE_TRIGGER) continue;
+            char split_name[64];
+            snprintf(split_name, sizeof(split_name), "trigger_split_%d", i);
+            if ((ret = create_filter(graph, &trigger_split[i], "asplit", split_name, NULL)) < 0) {
+                av_free(trigger_split);
+                goto fail;
+            }
+            if ((ret = avfilter_link(branch_ctx[i], 0, trigger_split[i], 0)) < 0) {
+                av_free(trigger_split);
+                goto fail;
+            }
+        }
+
+        if (target_count == 1) {
+            for (int i = 0; i < branch; i++)
+                if (branch_duck_role[i] == DUCK_ROLE_TARGET) { music_source = branch_ctx[i]; break; }
+        } else {
+            snprintf(args, sizeof(args),
+                     "inputs=%d:duration=longest:dropout_transition=0:normalize=0", target_count);
+            if ((ret = create_filter(graph, &music_mix, "amix", "music_mix", args)) < 0) {
+                av_free(trigger_split);
+                goto fail;
+            }
+            int pad = 0;
+            for (int i = 0; i < branch; i++) {
+                if (branch_duck_role[i] != DUCK_ROLE_TARGET) continue;
+                if ((ret = avfilter_link(branch_ctx[i], 0, music_mix, pad++)) < 0) {
+                    av_free(trigger_split);
+                    goto fail;
+                }
+            }
+            music_source = music_mix;
+        }
+
+        if (trigger_count == 1) {
+            for (int i = 0; i < branch; i++)
+                if (branch_duck_role[i] == DUCK_ROLE_TRIGGER) { trigger_source = trigger_split[i]; break; }
+        } else {
+            snprintf(args, sizeof(args),
+                     "inputs=%d:duration=longest:dropout_transition=0:normalize=0", trigger_count);
+            if ((ret = create_filter(graph, &trigger_mix, "amix", "trigger_mix", args)) < 0) {
+                av_free(trigger_split);
+                goto fail;
+            }
+            int pad = 0;
+            for (int i = 0; i < branch; i++) {
+                if (branch_duck_role[i] != DUCK_ROLE_TRIGGER) continue;
+                if ((ret = avfilter_link(trigger_split[i], 0, trigger_mix, pad++)) < 0) {
+                    av_free(trigger_split);
+                    goto fail;
+                }
+            }
+            trigger_source = trigger_mix;
+        }
+
+        /* Pad 0 is the main signal being compressed (the music), pad 1 is the sidechain
+           control signal (the mic) -- sidechaincompress's own well-established, long-stable
+           2-input pad convention (confirmed against the linked libavfilter build: nb_inputs=2,
+           distinct from acompressor's single-input nb_inputs=1 variant of the same DSP). */
+        if ((ret = create_filter(graph, &duck, "sidechaincompress", "duck",
+                                 "threshold=0.05:ratio=8:attack=5:release=250:makeup=1:"
+                                 "link=average:detection=rms")) < 0) {
+            av_free(trigger_split);
+            goto fail;
+        }
+        if ((ret = avfilter_link(music_source, 0, duck, 0)) < 0 ||
+            (ret = avfilter_link(trigger_source, 0, duck, 1)) < 0) {
+            av_free(trigger_split);
+            goto fail;
+        }
+
+        /* Final mix: every non-music branch (Normal + Trigger, so the mic/commentary itself
+           still plays in the output, not just as a control signal) plus the one ducked-music
+           signal -- a music branch never appears here directly, only through `duck`. Trigger
+           branches use their split's second output pad, since pad 0 already feeds `duck`. */
+        int final_inputs = (branch - target_count) + 1;
+        snprintf(args, sizeof(args),
+                 "inputs=%d:duration=longest:dropout_transition=0:normalize=0", final_inputs);
+        if ((ret = create_filter(graph, &final_mix, "amix", "mix", args)) < 0) {
+            av_free(trigger_split);
+            goto fail;
+        }
+        int pad = 0;
+        for (int i = 0; i < branch; i++) {
+            if (branch_duck_role[i] == DUCK_ROLE_TARGET) continue;
+            AVFilterContext *src = branch_duck_role[i] == DUCK_ROLE_TRIGGER ? trigger_split[i] : branch_ctx[i];
+            int src_pad = branch_duck_role[i] == DUCK_ROLE_TRIGGER ? 1 : 0;
+            if ((ret = avfilter_link(src, src_pad, final_mix, pad++)) < 0) {
+                av_free(trigger_split);
+                goto fail;
+            }
+        }
+        av_free(trigger_split);
+        if ((ret = avfilter_link(duck, 0, final_mix, pad)) < 0) goto fail;
+        mix_source = final_mix;
+    } else {
+        snprintf(args, sizeof(args),
+                 "inputs=%d:duration=longest:dropout_transition=0:normalize=0", branch);
+        if ((ret = create_filter(graph, &final_mix, "amix", "mix", args)) < 0) goto fail;
+        for (int i = 0; i < branch; i++) {
+            if ((ret = avfilter_link(branch_ctx[i], 0, final_mix, i)) < 0) goto fail;
+        }
+        mix_source = final_mix;
+    }
+
+    av_free(branch_ctx);
+    av_free(branch_duck_role);
+    branch_ctx = NULL;
+    branch_duck_role = NULL;
 
     if ((ret = create_filter(graph, &noise, "afftdn", "noise", NULL)) < 0) goto fail;
     snprintf(args, sizeof(args), "I=%.1f:TP=-1.0:LRA=11", (double)target_lufs);
@@ -120,7 +265,7 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
         goto fail;
     if ((ret = create_filter(graph, &sink, "abuffersink", "out", NULL)) < 0) goto fail;
 
-    if ((ret = avfilter_link(mix, 0, noise, 0)) < 0 ||
+    if ((ret = avfilter_link(mix_source, 0, noise, 0)) < 0 ||
         (ret = avfilter_link(noise, 0, loudnorm, 0)) < 0 ||
         (ret = avfilter_link(loudnorm, 0, limiter, 0)) < 0 ||
         (ret = avfilter_link(limiter, 0, final_trim, 0)) < 0 ||
@@ -133,6 +278,8 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
     return 0;
 
 fail:
+    av_free(branch_ctx);
+    av_free(branch_duck_role);
     avfilter_graph_free(&graph);
     return ret;
 }
