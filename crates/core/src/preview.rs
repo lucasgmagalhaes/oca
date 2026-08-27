@@ -214,6 +214,16 @@ pub struct VideoFrame {
 /// uniform-alpha stage in here via the `alpha` element would just double-apply the same ramp.
 /// Every other caller (the single-clip [`Preview::open`] path, and a composited pipeline's
 /// background branch, which has nothing under it to blend against) keeps the old behavior.
+///
+/// The name [`build_video_filter_bin`] gives its `videobalance` element for `clip_id`, if it
+/// builds one at all — shared with [`Preview::set_live_balance`] so a later live update can
+/// find the exact same element again by name (`gst::Bin::by_name` searches recursively, so
+/// this works whether `clip_id` is the single-clip [`Preview::open`] pipeline's only clip or
+/// one branch of a [`Preview::open_composited`] pipeline).
+fn live_balance_element_name(clip_id: u64) -> String {
+    format!("oca_balance_{clip_id}")
+}
+
 fn build_video_filter_bin(
     clip: &ClipInstance,
     resolution: Option<(u32, u32)>,
@@ -507,7 +517,12 @@ fn build_video_filter_bin(
         clip.saturation as f64
     };
     if clip.brightness != 0.0 || clip.contrast != 1.0 || effective_saturation != 1.0 {
+        // Named per clip id (not left auto-generated) so a live properties-panel edit can find
+        // this exact element again later via Preview::set_live_balance -- P1 item 3's remaining
+        // live-preview-update gap (see that method's own doc comment for the full picture, and
+        // why only brightness/contrast/saturation get this treatment).
         let balance = gst::ElementFactory::make("videobalance")
+            .name(live_balance_element_name(clip.id))
             .property("brightness", clip.brightness as f64)
             .property("contrast", clip.contrast as f64)
             .property("saturation", effective_saturation)
@@ -2003,6 +2018,43 @@ impl Preview {
         self.pipeline
             .query_duration::<gst::ClockTime>()
             .map(|t| t.seconds_f64())
+    }
+
+    /// Pushes a live brightness/contrast/effective-saturation update to `clip_id`'s already-
+    /// built `videobalance` element (P1 item 3's remaining live-preview-update gap,
+    /// `spec/matrix/performance.md`), if one exists in the running pipeline right now — avoids
+    /// a full pipeline reopen for the single most common color-grading tweak, the one this
+    /// gap's own investigation singled out as a real, confirmed hot-path violation before this
+    /// method existed. `effective_saturation` is the caller's job to compute (`0.0` when
+    /// `ColorFilter::BlackAndWhite` overrides it, same as [`build_video_filter_bin`] itself
+    /// does) — this method is a plain property push, it doesn't re-derive that rule.
+    ///
+    /// Returns `false` (a no-op, not an error) if no such element exists: either
+    /// [`build_video_filter_bin`] was never given this clip at all (a probe/audio-only
+    /// pipeline, or an unresolvable overlay), or brightness/contrast/saturation were *all*
+    /// neutral when the pipeline was last built — the element is only created once at least one
+    /// of the three is non-default, and creating it now would mean restructuring the running
+    /// filter graph, not just setting a property, which this method deliberately doesn't
+    /// attempt. The caller's existing "next incidental reopen picks up the new value" fallback
+    /// (unchanged, was already the *only* behavior before this method existed) still applies
+    /// whenever this returns `false`.
+    pub fn set_live_balance(
+        &self,
+        clip_id: u64,
+        brightness: f32,
+        contrast: f32,
+        effective_saturation: f32,
+    ) -> bool {
+        let Some(bin) = self.pipeline.dynamic_cast_ref::<gst::Bin>() else {
+            return false;
+        };
+        let Some(balance) = bin.by_name(&live_balance_element_name(clip_id)) else {
+            return false;
+        };
+        balance.set_property("brightness", brightness as f64);
+        balance.set_property("contrast", contrast as f64);
+        balance.set_property("saturation", effective_saturation as f64);
+        true
     }
 
     /// The most recent video frame the pipeline has decoded, as packed RGBA. `None` if
