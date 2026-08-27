@@ -120,6 +120,7 @@ fn test_clip(
         source_in_secs,
         source_out_secs,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,

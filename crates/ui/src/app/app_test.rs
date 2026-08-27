@@ -71,6 +71,7 @@ fn test_track(id: u64, kind: TrackKind, clips: Vec<ClipInstance>) -> Track {
 
         visible: true,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     }
 }
 
@@ -82,6 +83,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         source_in_secs,
         source_out_secs,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -132,6 +134,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
 fn test_composite_clip(id: u64, start_secs: f64, composite_id: u64) -> ClipInstance {
     ClipInstance {
         composite_id: Some(composite_id),
+        color_label: None,
         ..test_clip(id, start_secs, 0.0, 10.0)
     }
 }
@@ -5527,6 +5530,59 @@ fn set_track_audio_role_is_a_no_op_for_an_unknown_track() {
     assert_eq!(
         app.active_project().timeline().tracks[0].audio_role,
         avcore::AudioRole::Unspecified
+    );
+}
+
+#[test]
+fn set_track_color_label_writes_the_label_on_the_targeted_track() {
+    let track = test_track(1, TrackKind::Audio, Vec::new());
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.set_track_color_label(1, Some([229, 83, 83]));
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].color_label,
+        Some([229, 83, 83])
+    );
+}
+
+#[test]
+fn set_track_color_label_is_a_no_op_for_an_unknown_track() {
+    let track = test_track(1, TrackKind::Audio, Vec::new());
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.set_track_color_label(404, Some([229, 83, 83]));
+
+    assert_eq!(app.active_project().timeline().tracks[0].color_label, None);
+}
+
+#[test]
+fn set_clip_color_label_writes_the_label_on_the_targeted_clip_regardless_of_selection() {
+    let clip = test_clip(1, 0.0, 0.0, 10.0);
+    let track = test_track(1, TrackKind::Video, vec![clip]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.selected_clip_id = None;
+
+    app.set_clip_color_label(1, Some([86, 156, 214]));
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].color_label,
+        Some([86, 156, 214])
+    );
+}
+
+#[test]
+fn set_clip_color_label_none_clears_an_existing_label() {
+    let mut clip = test_clip(1, 0.0, 0.0, 10.0);
+    clip.color_label = Some([86, 156, 214]);
+    let track = test_track(1, TrackKind::Video, vec![clip]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.set_clip_color_label(1, None);
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].color_label,
+        None
     );
 }
 

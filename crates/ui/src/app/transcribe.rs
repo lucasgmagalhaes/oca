@@ -113,6 +113,7 @@ impl App {
                     shape_clips: Vec::new(),
                     visible: true,
                     audio_role: AudioRole::Unspecified,
+                    color_label: None,
                 });
                 id
             }

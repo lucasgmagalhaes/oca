@@ -65,13 +65,13 @@ templates/real-time-AI-masking." Sources: [DaVinci Resolve free-tier feature run
 [Premiere's audio VU meters](https://www.premiumbeat.com/blog/audio-meters-premiere-pro/),
 [Resolve's Fairlight loudness meter](https://blog.prosoundeffects.com/advanced-audio-editing-in-davinci-resolve).
 
-- [ ] **Clip/track color labels.** Assign a color to a clip or track for at-a-glance
+- [x] **Clip/track color labels.** Assign a color to a clip or track for at-a-glance
       organization — Premiere (clip labels), DaVinci Resolve (both clip *and* track color,
       called out by users as something Premiere still lacks for tracks), Final Cut Pro (clip
       labels via right-click). The cheapest gap found: no new algorithm, no `avbridge`/
       GStreamer work — a `color_label: Option<[u8; 3]>` field on `Track`/`ClipInstance` plus a
       colored tag/strip in the timeline widget. Same cost tier as `Marker`/`SmartBin`, both
-      already shipped this way.
+      already shipped this way. → `ROADMAP.md` P4 item 27 (done).
 - [ ] **Detach/unlink audio from a clip** (the mechanical precondition for J-cuts/L-cuts —
       split edits where audio and video change at different points, present in Premiere/
       Resolve/FCP). oca already supports independent audio-only clips on separate `Audio`

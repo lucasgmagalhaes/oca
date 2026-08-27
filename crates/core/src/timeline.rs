@@ -386,6 +386,13 @@ pub struct ClipInstance {
     /// loads, every clip in it just standalone (`None`).
     #[serde(default)]
     pub composite_id: Option<u64>,
+    /// Optional RGB color label for this block, per `matrix/competitor-parity.md`'s 2026-08-27
+    /// update (`spec/ROADMAP.md` P4 item 27) — a purely cosmetic at-a-glance organization aid
+    /// (Premiere's clip labels, DaVinci's clip *and* track color), painted as the timeline
+    /// block's fill color in place of its usual kind-based color when set. `None` = use the
+    /// usual coloring. `#[serde(default)]` so older saved projects load with no label.
+    #[serde(default)]
+    pub color_label: Option<[u8; 3]>,
     /// Volume adjustment in decibels applied to this block's audio, independent of every other
     /// clip — per `request.md`'s Fase 4 "ganho de volume por bloco" spec. `0.0` is unity gain.
     /// Feeds the timeline waveform display (`ui`'s `draw_waveform`, scaled by
@@ -1389,6 +1396,13 @@ pub struct Track {
     /// `Unspecified`, same as a never-tagged track in a new project.
     #[serde(default)]
     pub audio_role: AudioRole,
+    /// Optional RGB color label for this track, per `matrix/competitor-parity.md`'s 2026-08-27
+    /// update (`spec/ROADMAP.md` P4 item 27) — DaVinci Resolve's track color, called out by
+    /// users as something Premiere still lacks. Purely cosmetic, same "at-a-glance
+    /// organization" role as [`ClipInstance::color_label`]. `None` = use the usual track-header
+    /// coloring. `#[serde(default)]` so older saved projects load with no label.
+    #[serde(default)]
+    pub color_label: Option<[u8; 3]>,
 }
 
 impl Track {
@@ -1452,6 +1466,7 @@ impl Track {
             // Splitting a composite member must not silently ungroup it from the rest of the
             // block.
             composite_id: clip.composite_id,
+            color_label: clip.color_label,
             gain_db: clip.gain_db,
             frozen: clip.frozen,
             speed_factor: clip.speed_factor,
