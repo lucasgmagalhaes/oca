@@ -28,6 +28,7 @@
 pub mod auto_reframe;
 pub mod background_removal;
 pub mod bundle;
+pub mod collab_bundle;
 pub mod export;
 pub mod frame_sampler;
 pub mod keyframe;
@@ -65,6 +66,7 @@ pub use bundle::{
     bundled_resource_path, bundled_resources_dir, configure_bundled_runtime, resource_path_in,
     validate_bundled_resources, BundledResource, MissingBundleResources,
 };
+pub use collab_bundle::{export_collab_bundle, import_collab_bundle, CollabBundleError};
 pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus, PlatformExportPreset};
 pub use frame_sampler::FrameSampler;
 pub use keyframe::{Keyframe, Position};

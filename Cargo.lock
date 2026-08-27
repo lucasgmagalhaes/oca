@@ -913,6 +913,7 @@ dependencies = [
  "unicode-segmentation",
  "ureq",
  "whisper-rs",
+ "zip",
 ]
 
 [[package]]

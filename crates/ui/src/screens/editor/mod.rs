@@ -362,6 +362,15 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             {
                 export_srt_for_active_sequence(app);
             }
+            if ui.button(Text::ExportCollabBundle.tr(locale)).clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("oca collaboration bundle", &["zip"])
+                    .set_file_name(format!("{}.zip", app.active_project().name))
+                    .save_file()
+                {
+                    app.export_collab_bundle(path);
+                }
+            }
         });
     });
 }

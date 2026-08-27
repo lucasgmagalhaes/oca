@@ -5311,3 +5311,71 @@ fn close_silence_review_discards_the_staged_review() {
 
     assert!(app.silence_review.is_none());
 }
+
+fn collab_bundle_scratch_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("oca_app_collab_bundle_test_{name}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn export_collab_bundle_writes_a_zip_and_toasts_success() {
+    let dir = collab_bundle_scratch_dir("export_ok");
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let output_path = dir.join("handoff.zip");
+
+    app.export_collab_bundle(output_path.clone());
+
+    assert!(output_path.exists());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn export_collab_bundle_toasts_on_failure_instead_of_panicking() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    // A parent directory that doesn't exist -- File::create fails.
+    let output_path = PathBuf::from("/nonexistent-oca-test-dir/handoff.zip");
+
+    app.export_collab_bundle(output_path);
+
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn import_collab_bundle_opens_the_project_with_its_new_file_path() {
+    let dir = collab_bundle_scratch_dir("import_ok");
+    let bundle_path = dir.join("handoff.zip");
+    let mut sender = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    sender.export_collab_bundle(bundle_path.clone());
+
+    let mut recipient = test_app(Vec::new(), Vec::new());
+    let dest_project_path = dir.join("recipient/project.ocproj");
+
+    recipient.import_collab_bundle(bundle_path, dest_project_path.clone());
+
+    assert_eq!(recipient.projects.len(), 1);
+    assert_eq!(
+        recipient.projects[0].file_path,
+        Some(dest_project_path.clone())
+    );
+    assert_eq!(
+        recipient.screen,
+        Screen::Editor,
+        "opens the imported project"
+    );
+    assert!(dest_project_path.exists());
+}
+
+#[test]
+fn import_collab_bundle_toasts_on_failure_instead_of_panicking() {
+    let mut app = test_app(Vec::new(), Vec::new());
+    let missing_zip = PathBuf::from("/nonexistent-oca-test-dir/handoff.zip");
+    let dest_project_path =
+        std::env::temp_dir().join("oca_app_collab_bundle_test_never_written.ocproj");
+
+    app.import_collab_bundle(missing_zip, dest_project_path);
+
+    assert!(app.projects.is_empty());
+    assert_eq!(app.toasts.len(), 1);
+}

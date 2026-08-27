@@ -71,6 +71,11 @@ hound = "3"
 # reader, and a vendor-specific one (NVML/etc.) is a bigger, hardware-dependent lift than this
 # slice covers. Default features only (no unneeded per-process listing).
 sysinfo = "0.39"
+# D7's collaboration-bundle archive format (`collab_bundle`). `default-features = false` since
+# every entry this crate ever writes (already-gzip-compressed `.ocproj` bytes, already-encoded
+# proxy `.mp4`s) is incompressible in practice -- `CompressionMethod::Stored` is used explicitly,
+# so none of zip's optional codecs (deflate/bzip2/lzma/zstd/xz/aes-crypto/ppmd) are needed.
+zip = { version = "6", default-features = false }
 
 [build-dependencies]
 # Not called directly by build.rs — listing it here forces Cargo to build espeak-rs-sys's own

@@ -30,6 +30,12 @@ Native FFI bridge over libavformat/libavcodec/libavfilter/libavutil (`crates/avb
       across every `Queued` export-queue job at once, from a button row on the Fila screen
       (`ROADMAP.md` P2 item 12). Orchestration over the existing per-job `target_lufs` field,
       no new normalization DSP.
+- [x] Lightweight collaboration bundle (D7, `architecture/differentiators.md`, `ROADMAP.md` P3
+      item 14) — `avcore::collab_bundle::{export_collab_bundle, import_collab_bundle}` package a
+      project's `.ocproj` plus its already-generated editing proxies into one portable `.zip`,
+      never the source media. Pure packaging over the existing proxy cache
+      (`proxy::cache_dir_for_project`) and `.ocproj` framing (`persistence`) — no new transcode
+      or serialization format. `ui`: Editor toolbar export button, Início import button.
 
 ---
 
