@@ -47,8 +47,28 @@ Read [architecture/performance-and-caching.md](architecture/performance-and-cach
    already skip a reopen (they just don't live-update the pipeline either, a separate gap);
    the one real hot-path violation found (text-clip property panel forcing a full pipeline
    reopen on every dragged-slider frame, bundling position/content with start/duration) is
-   fixed via a cheap `appsrc` buffer refresh. See `matrix/performance.md` for the full
-   findings and what's still open (effect-property live preview updates, non-text overlay
+   fixed via a cheap `appsrc` buffer refresh. **Partial follow-up**: color-balance sliders
+   (brightness/contrast/saturation — the confirmed hot-path violation's own motivating
+   example) now update live too, via `Preview::set_live_balance` pushing directly to the
+   already-built `videobalance` element (`gst::Bin::by_name`, named `oca_balance_{clip_id}`)
+   instead of waiting for an incidental reopen — deliberately scoped to just this one
+   property group, not the full "every effect setter" scope, which stays a materially
+   bigger lift (most effects' elements are only conditionally present at all — e.g. no
+   `gaussianblur` exists in the pipeline until `blur_intensity` first goes non-zero — so a
+   live update for those needs restructuring the running filter graph, not just a property
+   push; color balance was tractable specifically because brightness/contrast/saturation all
+   share one element that, once built, stays present across any further change among the
+   three). Verified against a real GStreamer pipeline in a scratch crate (this sandbox's
+   `core` test binary can't link — the ONNX Runtime gap — but `avbridge` alone can, so a
+   scratch crate depending on real `avbridge` + `gstreamer` proved the negative-path logic
+   for real): `set_live_balance` correctly declines when no element was built, and correctly
+   declines for a mismatched clip id. **Not verified**: that it finds/updates the element
+   once one exists, or that a push actually changes decoded output — this sandbox's `playbin`
+   never constructs a working video output branch at all (`current_frame()` returns `None`
+   for every clip, confirmed against an unmodified copy of `preview_test.rs`'s own
+   pre-existing test), the same GUI/hardware-dependent-verification limitation this codebase's
+   test suite already carries elsewhere. See `matrix/performance.md` for the full findings
+   and what's still open (every other effect-property's live preview update, non-text overlay
    kinds).
 4. `[x]` Versioned cache for the timeline→avfilter-graph resolution
    (`resolve_timeline_segments_multi`). The confirmed hot spot was `screens::queue::show`
@@ -301,10 +321,25 @@ not by default priority.
     `matrix/engine.md`. Code path exists, never run against real hardware.
 20. `[ ]` GPU usage telemetry — `matrix/performance.md`. No cross-platform reader exists;
     needs a vendor-specific one (NVML/etc.).
-21. `[ ]` Preview support for vignette/glitch/deflicker/3D-LUT/stabilization —
-    `matrix/effects-and-color.md`. Confirmed no matching GStreamer element on the dev machine;
-    needs a custom-coded element or CPU-side frame processing, a materially bigger lift than
-    every other preview gap closed so far.
+21. `[~]` Preview support for vignette/glitch/deflicker/3D-LUT/stabilization —
+    `matrix/effects-and-color.md`. Confirmed no matching GStreamer element on the dev machine for
+    any of the five; a custom-coded element was never attempted (no way to visually verify a
+    GStreamer plugin in this sandbox). Instead, **partial**: `avcore::preview_effects` covers
+    3D LUT and vignette as CPU-side post-processing of the already-decoded preview frame — same
+    pattern `avcore::scopes` established for the waveform/vectorscope overlays. `Lut3D::parse`/
+    `load` read the standard `.cube` format with real trilinear interpolation (precise,
+    unit-tested, no visual-verification risk); the vignette is a simple radial-falloff
+    *approximation*, explicitly not FFmpeg's own cosine-based formula (reproducing that exactly
+    from `libavfilter` C source without being able to A/B it visually against export wasn't a
+    risk worth taking). `App::pump_preview_frame` applies both to the live preview texture only
+    — export is untouched, still the real `lut3d`/`vignette` `avfilter`s. **Explicitly still
+    not done**: glitch (no single well-specified "the" algorithm to approximate — a judgment
+    call this sandbox can't visually verify), deflicker and stabilization (both need *temporal*
+    state across multiple frames, a materially larger, stateful piece of work with its own
+    seek/scrub edge cases — not a natural extension of this per-frame-only module). Verified via
+    a real-execution scratch crate (`preview_effects.rs` has zero heavy deps) — 12 tests, one of
+    which caught a real bug in a *test's own* expected value (a coarse 2-point LUT interpolates
+    rather than reproducing the exact original channel value) before it could pass silently.
 22. `[x]` Smart bins (rule-based media-pool auto-organization) — real in DaVinci Resolve, but
     lower priority for a small/single-editor workflow than for a studio pipeline. The one P4 item
     tractable in this sandbox without special hardware or a missing GStreamer element (unlike 19-
@@ -318,6 +353,80 @@ not by default priority.
     Audio, file-name-contains text, has-audio Either/Yes/No, Save/Cancel/Delete). Verified via a
     real-execution scratch crate (same ONNX-link-gap workaround as multicam) — 5 passing tests on
     `SmartBin::matches`.
+27. `[ ]` Clip/track color labels — `matrix/competitor-parity.md`'s 2026-08-27 update. Present
+    in Premiere (clip), DaVinci Resolve (clip *and* track), FCP (clip). The cheapest gap in
+    that update: pure data (`color_label` field) + timeline-widget rendering, no `avbridge`/
+    GStreamer work — same cost tier as `Marker`/`SmartBin`, both already shipped.
+28. `[ ]` Detach/unlink audio from a clip (the mechanical precondition for J-cuts/L-cuts) —
+    `matrix/competitor-parity.md`. oca already supports independent audio-only clips on
+    separate tracks; the gap is specifically the one-click "mute the video clip's own audio,
+    place a synced audio-only clip on an Audio track" action. Reuses existing muting/track/
+    clip-creation primitives, no new render/preview pipeline work.
+29. `[ ]` Speed ramping — keyframed `speed_factor` instead of one constant per clip —
+    `matrix/competitor-parity.md`. Present in CapCut (curve editor), Premiere, DaVinci, FCP.
+    Reuses the existing `Keyframe<T>` infrastructure already backing position/scale/rotation/
+    opacity rather than a new animation system; needs an export-side `setpts` expression
+    driven by the curve and a preview pad-probe mirroring the existing scale-keyframe one.
+30. `[ ]` Real-time audio level meter (VU/peak) during playback — `matrix/competitor-parity.md`.
+    Present in Premiere (VU meters) and DaVinci (Fairlight LUFS/peak meter). Needs a pad probe
+    on the preview audio path (same pattern as the existing keyframe pad-probes, reading
+    instead of writing) plus a small meter widget in the Editor's preview panel — no ML, no
+    new avfilter/GStreamer element.
+31. `[ ]` Audio gain keyframes (volume fade/ramp within one clip, not just a constant
+    `gain_db`) — found while surveying what else the existing `Keyframe<T>` infrastructure
+    could drive. Same shape as position/scale/rotation/opacity: `gain_keyframes: Vec<Keyframe<
+    f32>>` on `ClipInstance`, overriding the constant `gain_db` when non-empty. Export-side,
+    FFmpeg's `volume` filter's `eval=frame` expression mode evaluates to a *linear* multiplier
+    (not dB), so the dB-space keyframe curve needs `pow(10, X/20)` wrapping before being handed
+    to `volume=<expr>:eval=frame` — verified against FFmpeg's own filter docs, not assumed.
+    Crosses the `avbridge` FFI boundary (a new expression-string field on `AudioSegment`/
+    `RawAudioSegment`, and an `audio_mix.c` branch alongside the existing literal-`%.6fdB` path).
+32. `[x]` Color grading keyframes (brightness/contrast/saturation ramping over a clip, not a
+    constant value) — `ClipInstance::brightness_keyframes`/`contrast_keyframes`/
+    `saturation_keyframes`, each independently overriding its own constant field when non-empty
+    (same relationship `gain_keyframes` has with `gain_db`). `keyframe::color_balance_filter_expr`
+    builds the combined `eq=brightness=...:contrast=...:saturation=...[:eval=frame]` stage —
+    `eval=frame` only appended when at least one axis is actually animated, each un-animated axis
+    still using its own plain constant. Spliced into `keyframe_video_filter_chain` (alongside
+    scale/rotation/opacity) rather than `video_filter_chain`'s own static `eq` stage, which is
+    now suppressed whenever any color-grading keyframe list is non-empty (`has_color_keyframes`)
+    to avoid double-emitting. **Known caveat, documented in code**: this moves the animated `eq`
+    stage to the *front* of the per-clip filter chain instead of its usual post-crop/deflicker/
+    stabilization spot — a clip combining color-grading keyframes with crop/deflicker/
+    stabilization sees color grading applied to the pre-crop/pre-deflicker/pre-stabilization
+    frame. Preview-side piggybacking on `Preview::set_live_balance` (item 3's follow-up) is not
+    done — export only, same "export first" shape every other keyframe field started with.
+    Verified: `color_balance_filter_expr`'s 3 new unit tests run for real in the same
+    `keyframe.rs` scratch crate as `gain_filter_db_expr`'s (32/32 passing); new `video_filter_chain`/
+    `split_clip_at` tests in `timeline_test.rs`.
+33. `[x]` Crop/pan keyframes (`crop_x`/`crop_y`/`crop_w`/`crop_h` animated over a clip, e.g. a
+    slow pan/reveal independent of the existing `scale_keyframes` symmetric zoom) —
+    `ClipInstance::crop_x_keyframes`/`crop_y_keyframes`/`crop_w_keyframes`/`crop_h_keyframes`,
+    each independently overriding its own constant field when non-empty. `keyframe::
+    crop_filter_expr` generalizes `scale_filter_expr`'s single-axis `geq`-based per-pixel inverse
+    sample (chosen over `crop`+`eval=frame` for the same real heap-corruption reason, see
+    CLAUDE.md) to four independent axes — the sampled window's x/y/width/height — so a moving/
+    resizing crop rectangle animates without the frame's own resolution changing frame-to-frame.
+    Spliced into `keyframe_video_filter_chain` *first* (before scale/rotation/opacity/color-
+    balance — crop reframes the source before those geometric/color stages operate on it, mirroring
+    the static `crop` stage's own traditional first-in-chain position) rather than `video_filter_
+    chain`'s own static `crop` stage, which `has_crop_keyframes()` now suppresses to avoid
+    double-emitting. Wired into `Track::split_clip_at`. Not yet wired into live preview.
+    Verified: `crop_filter_expr`'s 3 new unit tests run for real in the same `keyframe.rs`
+    scratch crate as the other keyframe expression builders' (35/35 passing); new
+    `video_filter_chain`/`split_clip_at` tests in `timeline_test.rs`.
+34. `[ ]` Text/shape clip animation keyframes — `TextClip`/`ShapeClip` currently have *zero*
+    keyframe fields (position/scale/rotation/opacity keyframes only exist on `ClipInstance`
+    today), so this is a structural gap, not a one-field addition: needs the keyframe fields
+    added to both clip types plus their own export/preview expression wiring, mirroring
+    `ClipInstance`'s existing four. Largest of the four keyframe-expansion items found here —
+    not started.
+
+Found but deliberately not added as a P4 item: **nested sequences / compound clips** (Premiere/
+DaVinci/FCP) — closer to Multicam's own tier of effort than to the four above (the render/
+preview pipeline would need to recurse into a sub-timeline resolved as one clip, not a bolt-on
+field). See `matrix/competitor-parity.md` for the full note — worth its own scoping pass if
+ever prioritized, not proposed here as a small item.
 
 ## P5 — Explicitly Deferred
 

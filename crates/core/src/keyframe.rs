@@ -299,6 +299,179 @@ pub fn rotation_filter_angle_expr(
     ))
 }
 
+/// Builds the crop/pan-keyframe avfilter fragment — a `geq` per-pixel inverse-sample
+/// generalizing [`scale_filter_expr`]'s single symmetric zoom to four independent axes (the
+/// sampled window's x, y, width, height), so a moving/resizing crop window can animate over a
+/// clip without the frame's own resolution changing frame-to-frame (a `geq`-based per-pixel
+/// approach is used here for the same reason `scale_filter_expr`'s own doc comment gives for
+/// avoiding `crop`/`scale` with `eval=frame` — see CLAUDE.md). `crop_x_keyframes`/
+/// `crop_y_keyframes` are the window's top-left corner as a fraction of frame width/height
+/// (`0.0..=1.0`); `crop_w_keyframes`/`crop_h_keyframes` are its size — same units and meaning as
+/// the existing static `ClipInstance::crop_x`/`crop_y`/`crop_w`/`crop_h` fields, each overridden
+/// independently when its own keyframe list is non-empty (same "keyframes win when present"
+/// relationship [`gain_filter_db_expr`] has with `gain_db`). Returns `None` only when nothing is
+/// animated on any axis and every constant is already the full, uncropped frame (`0,0,1,1`).
+#[allow(clippy::too_many_arguments)]
+pub fn crop_filter_expr(
+    crop_x_keyframes: &[Keyframe<f32>],
+    crop_y_keyframes: &[Keyframe<f32>],
+    crop_w_keyframes: &[Keyframe<f32>],
+    crop_h_keyframes: &[Keyframe<f32>],
+    crop_x: f32,
+    crop_y: f32,
+    crop_w: f32,
+    crop_h: f32,
+    fps_num: u32,
+    fps_den: u32,
+    timeline_duration_secs: f64,
+) -> Option<String> {
+    let animated = !crop_x_keyframes.is_empty()
+        || !crop_y_keyframes.is_empty()
+        || !crop_w_keyframes.is_empty()
+        || !crop_h_keyframes.is_empty();
+    if !animated && crop_x == 0.0 && crop_y == 0.0 && crop_w == 1.0 && crop_h == 1.0 {
+        return None;
+    }
+
+    let total_frames = (timeline_duration_secs * fps_num as f64 / fps_den.max(1) as f64).max(1.0);
+    let n_last = (total_frames - 1.0).max(1.0);
+    let identity = |v: f32| v;
+
+    let axis = |keyframes: &[Keyframe<f32>], constant: f32| -> String {
+        match keyframes.len() {
+            0 => format!("{constant:.7}"),
+            1 => format!("{:.7}", keyframes[0].value),
+            _ => {
+                let mut sorted = keyframes.to_vec();
+                sorted.sort_by(|a, b| a.time_fraction.total_cmp(&b.time_fraction));
+                piecewise_expr(&sorted, n_last, "N", identity)
+            }
+        }
+    };
+
+    let cx = axis(crop_x_keyframes, crop_x);
+    let cy = axis(crop_y_keyframes, crop_y);
+    let cw = axis(crop_w_keyframes, crop_w);
+    let ch = axis(crop_h_keyframes, crop_h);
+
+    let sx = format!("(({cx})*W+(X/W)*({cw})*W)");
+    let sy = format!("(({cy})*H+(Y/H)*({ch})*H)");
+    let inside = format!("(1-lt({sx},0))*lt({sx},W)*(1-lt({sy},0))*lt({sy},H)");
+    Some(format!(
+        "geq=lum='p({sx},{sy})*{inside}':cb='128+(cb({sx},{sy})-128)*{inside}':cr='128+(cr({sx},{sy})-128)*{inside}'"
+    ))
+}
+
+/// Builds the audio-gain-keyframe volume expression for FFmpeg's `volume` filter in
+/// `eval=frame` mode, keyed off `t` (elapsed seconds) like rotation since `volume`'s per-frame
+/// expression is evaluated through the same general per-option framework, not `geq`'s per-pixel
+/// one. `keyframes`' values are in **dB** (matching `ClipInstance::gain_db`'s existing unit),
+/// but `volume`'s expression mode evaluates to a **linear** multiplier, not dB — the `dB` suffix
+/// only works on literal constants, never on an expression string (verified against FFmpeg's
+/// own `volume` filter docs) — so each interpolated dB value is wrapped in `pow(10,X/20)` before
+/// being emitted. Note this means the ramp is linearly interpolated in **linear-gain** space
+/// between keyframe points (each dB value converted first, then lerped), not in dB space — same
+/// "transform, then let `piecewise_expr` lerp the transformed values" shape `rotation_filter_
+/// angle_expr` already uses for degrees->radians, chosen for consistency over re-deriving a
+/// dB-space lerp inside the expression string itself. Returns `None` if there's nothing to
+/// animate (0 keyframes, or every keyframe at 0 dB / unity gain).
+pub fn gain_filter_db_expr(
+    keyframes: &[Keyframe<f32>],
+    timeline_duration_secs: f64,
+) -> Option<String> {
+    if keyframes.is_empty() {
+        return None;
+    }
+    let db_to_linear = |db: f32| 10f32.powf(db / 20.0);
+    if keyframes.len() == 1 {
+        let linear = db_to_linear(keyframes[0].value);
+        return if (linear - 1.0).abs() <= 1e-4 {
+            None
+        } else {
+            Some(format!("{linear:.7}"))
+        };
+    }
+    let (sorted, all_default) = sorted_and_all_default(keyframes, db_to_linear, 1.0);
+    if all_default {
+        return None;
+    }
+    Some(piecewise_expr(
+        &sorted,
+        timeline_duration_secs,
+        "t",
+        db_to_linear,
+    ))
+}
+
+/// One axis of [`color_balance_filter_expr`] — `None` means "nothing animated on this axis,
+/// caller falls back to its own constant field", the same shape `rotation_filter_angle_expr`/
+/// `opacity_alpha_ramp_expr` use for their own single-axis fast path.
+fn eq_axis_expr(
+    keyframes: &[Keyframe<f32>],
+    default: f32,
+    timeline_duration_secs: f64,
+) -> Option<String> {
+    if keyframes.is_empty() {
+        return None;
+    }
+    if keyframes.len() == 1 {
+        let v = keyframes[0].value;
+        return if (v - default).abs() <= 1e-4 {
+            None
+        } else {
+            Some(format!("{v:.7}"))
+        };
+    }
+    let identity = |v: f32| v;
+    let (sorted, all_default) = sorted_and_all_default(keyframes, identity, default);
+    if all_default {
+        return None;
+    }
+    Some(piecewise_expr(
+        &sorted,
+        timeline_duration_secs,
+        "t",
+        identity,
+    ))
+}
+
+/// Builds the `eq` filter's brightness/contrast/saturation stage, mixing constants with any
+/// per-axis keyframe animation independently — each axis's own keyframes (when non-empty and
+/// not already indistinguishable from neutral) override that axis's constant field, the same
+/// "keyframes win when present" relationship [`gain_filter_db_expr`] has with the constant
+/// `gain_db`. `eval=frame` is only appended when at least one axis is actually animated (a
+/// plain literal-valued `eq` stage doesn't need per-frame re-evaluation). Returns `None` only
+/// when there is nothing to draw at all — no keyframes on any axis and every constant is
+/// already neutral (`0.0`/`1.0`/`1.0`), matching `ClipInstance::video_filter_chain`'s
+/// pre-existing "only emit `eq` when something differs from neutral" guard.
+pub fn color_balance_filter_expr(
+    brightness_keyframes: &[Keyframe<f32>],
+    contrast_keyframes: &[Keyframe<f32>],
+    saturation_keyframes: &[Keyframe<f32>],
+    brightness: f32,
+    contrast: f32,
+    saturation: f32,
+    timeline_duration_secs: f64,
+) -> Option<String> {
+    let brightness_expr = eq_axis_expr(brightness_keyframes, 0.0, timeline_duration_secs);
+    let contrast_expr = eq_axis_expr(contrast_keyframes, 1.0, timeline_duration_secs);
+    let saturation_expr = eq_axis_expr(saturation_keyframes, 1.0, timeline_duration_secs);
+    let animated =
+        brightness_expr.is_some() || contrast_expr.is_some() || saturation_expr.is_some();
+
+    if !animated && brightness == 0.0 && contrast == 1.0 && saturation == 1.0 {
+        return None;
+    }
+
+    let b = brightness_expr.unwrap_or_else(|| format!("{brightness:.7}"));
+    let c = contrast_expr.unwrap_or_else(|| format!("{contrast:.7}"));
+    let s = saturation_expr.unwrap_or_else(|| format!("{saturation:.7}"));
+    let eval = if animated { ":eval=frame" } else { "" };
+    Some(format!(
+        "eq=brightness={b}:contrast={c}:saturation={s}{eval}"
+    ))
+}
+
 /// Builds the opacity-keyframe alpha expression (a bare `0.0..=1.0` ramp, *not* yet multiplied
 /// by any incoming `alpha(X,Y)` — the caller composes that, matching `mask_shape`'s existing
 /// alpha-composition convention in `ClipInstance::video_filter_chain`), keyed off `N` like

@@ -73,6 +73,14 @@ impl App {
                 scale_keyframes: vec![],
                 rotation_keyframes: vec![],
                 opacity_keyframes: vec![],
+                gain_keyframes: vec![],
+                brightness_keyframes: vec![],
+                contrast_keyframes: vec![],
+                saturation_keyframes: vec![],
+                crop_x_keyframes: vec![],
+                crop_y_keyframes: vec![],
+                crop_w_keyframes: vec![],
+                crop_h_keyframes: vec![],
                 deflicker_enabled: false,
                 lut_path: String::new(),
                 layer_scale_x: 1.0,
@@ -143,6 +151,14 @@ impl App {
                 scale_keyframes: vec![],
                 rotation_keyframes: vec![],
                 opacity_keyframes: vec![],
+                gain_keyframes: vec![],
+                brightness_keyframes: vec![],
+                contrast_keyframes: vec![],
+                saturation_keyframes: vec![],
+                crop_x_keyframes: vec![],
+                crop_y_keyframes: vec![],
+                crop_w_keyframes: vec![],
+                crop_h_keyframes: vec![],
                 deflicker_enabled: false,
                 lut_path: String::new(),
                 layer_scale_x: 1.0,
@@ -234,9 +250,24 @@ impl App {
             return;
         };
         self.push_undo_snapshot_for_drag();
-        if let Some(clip) = self.active_project_mut().timeline_mut().clip_mut(clip_id) {
+        let balance = {
+            let Some(clip) = self.active_project_mut().timeline_mut().clip_mut(clip_id) else {
+                return;
+            };
             f(clip);
-        }
+            let effective_saturation =
+                if clip.color_filter == avcore::timeline::ColorFilter::BlackAndWhite {
+                    0.0
+                } else {
+                    clip.saturation
+                };
+            (clip.brightness, clip.contrast, effective_saturation)
+        };
+        // Cheap and harmless even for a setter that didn't touch color balance at all -- a
+        // no-op push of the clip's own unchanged values. See App::push_live_balance_update's
+        // doc comment for why this lives here rather than in each of the ~20 individual
+        // set_selected_clip_* setters.
+        self.push_live_balance_update(clip_id, balance.0, balance.1, balance.2);
     }
 
     /// Drags `clip_id`'s left edge to `new_start_secs` — what dragging the left handle on a
@@ -596,6 +627,14 @@ impl App {
                     scale_keyframes: source.scale_keyframes,
                     rotation_keyframes: source.rotation_keyframes,
                     opacity_keyframes: source.opacity_keyframes,
+                    gain_keyframes: source.gain_keyframes,
+                    brightness_keyframes: source.brightness_keyframes,
+                    contrast_keyframes: source.contrast_keyframes,
+                    saturation_keyframes: source.saturation_keyframes,
+                    crop_x_keyframes: source.crop_x_keyframes,
+                    crop_y_keyframes: source.crop_y_keyframes,
+                    crop_w_keyframes: source.crop_w_keyframes,
+                    crop_h_keyframes: source.crop_h_keyframes,
                     deflicker_enabled: source.deflicker_enabled,
                     lut_path: source.lut_path,
                     layer_scale_x: source.layer_scale_x,

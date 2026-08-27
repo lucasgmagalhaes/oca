@@ -59,6 +59,14 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         scale_keyframes: vec![],
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
+        gain_keyframes: vec![],
+        brightness_keyframes: vec![],
+        contrast_keyframes: vec![],
+        saturation_keyframes: vec![],
+        crop_x_keyframes: vec![],
+        crop_y_keyframes: vec![],
+        crop_w_keyframes: vec![],
+        crop_h_keyframes: vec![],
         deflicker_enabled: false,
         lut_path: String::new(),
         layer_scale_x: 1.0,
@@ -827,7 +835,179 @@ fn new_clip_defaults_to_no_keyframes() {
     assert!(c.scale_keyframes.is_empty());
     assert!(c.rotation_keyframes.is_empty());
     assert!(c.opacity_keyframes.is_empty());
+    assert!(c.gain_keyframes.is_empty());
+    assert!(c.brightness_keyframes.is_empty());
+    assert!(c.contrast_keyframes.is_empty());
+    assert!(c.saturation_keyframes.is_empty());
+    assert!(c.crop_x_keyframes.is_empty());
+    assert!(c.crop_y_keyframes.is_empty());
+    assert!(c.crop_w_keyframes.is_empty());
+    assert!(c.crop_h_keyframes.is_empty());
     assert!(!c.has_scale_keyframes());
+    assert!(!c.has_gain_keyframes());
+    assert!(!c.has_color_keyframes());
+    assert!(!c.has_crop_keyframes());
+}
+
+#[test]
+fn video_filter_chain_uses_the_static_crop_stage_with_no_crop_keyframes() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.crop_x = 0.1;
+    c.crop_w = 0.5;
+    assert_eq!(c.video_filter_chain(), "crop=iw*0.5:ih*1:iw*0.1:ih*0");
+}
+
+#[test]
+fn video_filter_chain_suppresses_the_static_crop_stage_when_crop_keyframes_are_present() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.crop_x = 0.1;
+    c.crop_w = 0.5;
+    c.crop_x_keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: 0.2,
+    }];
+    assert_eq!(c.video_filter_chain(), "");
+}
+
+#[test]
+fn split_clip_at_rescales_crop_keyframes_onto_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.crop_x_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.4,
+        },
+    ];
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    assert!(track.clips[0].has_crop_keyframes());
+    assert!(track.clips[1].has_crop_keyframes());
+    assert_eq!(
+        track.clips[0].crop_x_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: 0.0
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: 0.2
+            },
+        ]
+    );
+}
+
+#[test]
+fn video_filter_chain_uses_the_static_eq_stage_with_no_color_keyframes() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.brightness = 0.3;
+    assert_eq!(
+        c.video_filter_chain(),
+        "eq=brightness=0.3:contrast=1:saturation=1"
+    );
+}
+
+#[test]
+fn video_filter_chain_suppresses_the_static_eq_stage_when_color_keyframes_are_present() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.brightness = 0.3;
+    c.brightness_keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: -0.5,
+    }];
+    // The static path defers entirely to keyframe_video_filter_chain -- no eq stage here, even
+    // though `brightness` is still non-neutral, so it never gets double-emitted.
+    assert_eq!(c.video_filter_chain(), "");
+}
+
+#[test]
+fn split_clip_at_rescales_color_keyframes_onto_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.brightness_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: -0.5,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.5,
+        },
+    ];
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    assert!(track.clips[0].has_color_keyframes());
+    assert!(track.clips[1].has_color_keyframes());
+    assert_eq!(
+        track.clips[0].brightness_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: -0.5
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: 0.0
+            },
+        ]
+    );
+}
+
+#[test]
+fn split_clip_at_rescales_gain_keyframes_onto_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.gain_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: -20.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.0,
+        },
+    ];
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    assert!(track.clips[0].has_gain_keyframes());
+    assert!(track.clips[1].has_gain_keyframes());
+    assert_eq!(
+        track.clips[0].gain_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: -20.0
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: -10.0
+            },
+        ]
+    );
+    assert_eq!(
+        track.clips[1].gain_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: -10.0
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: 0.0
+            },
+        ]
+    );
 }
 
 #[test]
@@ -1215,6 +1395,38 @@ fn formatting_roundtrip_preserves_all_fields() {
     c.opacity_keyframes = vec![Keyframe {
         time_fraction: 0.5,
         value: 0.6,
+    }];
+    c.gain_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: -12.0,
+    }];
+    c.brightness_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: -0.2,
+    }];
+    c.contrast_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 1.3,
+    }];
+    c.saturation_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.7,
+    }];
+    c.crop_x_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.15,
+    }];
+    c.crop_y_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.25,
+    }];
+    c.crop_w_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.6,
+    }];
+    c.crop_h_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.7,
     }];
     c.deflicker_enabled = true;
 

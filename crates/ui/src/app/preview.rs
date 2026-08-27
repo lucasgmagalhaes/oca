@@ -673,6 +673,33 @@ impl App {
         self.preview_clip_id.is_some()
     }
 
+    /// Pushes `clip_id`'s current brightness/contrast/saturation live into the running preview
+    /// pipeline instead of waiting for the next incidental reopen — P1 item 3's remaining live-
+    /// preview-update gap (`spec/matrix/performance.md`), scoped to just this one property
+    /// group (the confirmed hot-path violation that motivated it): color-balance sliders are
+    /// dragged continuously, and every other `set_selected_clip_*` effect setter already only
+    /// updates once something else happens to reopen the pipeline anyway, unchanged by this.
+    /// A silent no-op — same as the pre-existing behavior, not a new failure mode — if `clip_id`
+    /// isn't currently previewed at all (background or an overlay branch), or
+    /// [`avcore::preview::Preview::set_live_balance`] finds no live element to update yet (see
+    /// its own doc comment for when that happens).
+    pub(super) fn push_live_balance_update(
+        &mut self,
+        clip_id: u64,
+        brightness: f32,
+        contrast: f32,
+        effective_saturation: f32,
+    ) {
+        let is_previewed = self.preview_clip_id == Some(clip_id)
+            || self.preview_overlay_clip_ids.contains(&clip_id);
+        if !is_previewed {
+            return;
+        }
+        if let Some(preview) = &self.preview {
+            preview.set_live_balance(clip_id, brightness, contrast, effective_saturation);
+        }
+    }
+
     /// Pulls the latest decoded video frame (if any) into `preview_texture`, and — while
     /// playing — mirrors the pipeline's position into the active project's timeline playhead,
     /// converting from the clip-relative position `Preview` reports back to timeline time.
@@ -682,11 +709,46 @@ impl App {
     /// position, continuing playback across the cut. Called once per frame from
     /// [`eframe::App::ui`], before the screens draw.
     pub(super) fn pump_preview_frame(&mut self, ctx: &egui::Context) {
+        // Read before borrowing `self.preview` below -- `current_preview_clip` is a method
+        // call, which needs an unencumbered `&self` the borrow checker can't reconcile with an
+        // already-live `&self.preview` borrow, even though the two fields are disjoint.
+        let (lut_path, vignette_intensity) = self
+            .current_preview_clip()
+            .map(|(clip, _)| (clip.lut_path, clip.vignette_intensity))
+            .unwrap_or_default();
+
         let Some(preview) = &self.preview else {
             return;
         };
 
-        if let Some(frame) = preview.current_frame() {
+        if let Some(mut frame) = preview.current_frame() {
+            // P4 item 21 (`spec/ROADMAP.md`) -- CPU-side preview approximation for the two
+            // effects with no matching GStreamer element on any dev machine checked (see
+            // `avcore::preview_effects`'s own doc comment for why only these two, and why this
+            // is an approximation, not bit-exact to the real `lut3d`/`vignette` avfilters export
+            // uses). Applied in place, before upload, so it costs nothing when neither is set.
+            if !lut_path.is_empty() {
+                let needs_reparse = self
+                    .preview_lut_cache
+                    .as_ref()
+                    .is_none_or(|(cached_path, _)| cached_path != &lut_path);
+                if needs_reparse {
+                    let parsed = avcore::Lut3D::load(std::path::Path::new(&lut_path)).ok();
+                    self.preview_lut_cache = Some((lut_path.clone(), parsed));
+                }
+                if let Some((_, Some(lut))) = &self.preview_lut_cache {
+                    avcore::apply_lut_to_rgba(&mut frame.rgba, lut);
+                }
+            }
+            if vignette_intensity > 0.0 {
+                avcore::apply_vignette_to_rgba(
+                    &mut frame.rgba,
+                    frame.width,
+                    frame.height,
+                    vignette_intensity,
+                );
+            }
+
             let image = egui::ColorImage::from_rgba_unmultiplied(
                 [frame.width as usize, frame.height as usize],
                 &frame.rgba,

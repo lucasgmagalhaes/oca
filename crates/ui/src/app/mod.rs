@@ -752,6 +752,16 @@ pub struct App {
     /// [`App::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
     /// frame from the previous one never lingers.
     pub preview_texture: Option<egui::TextureHandle>,
+    /// Cache for [`App::pump_preview_frame`]'s CPU-side 3D LUT preview approximation (P4 item
+    /// 21, "Preview support for vignette/glitch/deflicker/3D-LUT/stabilization" —
+    /// `avcore::preview_effects`): `Some((path, parsed))` once `path` has been attempted, so a
+    /// static LUT selection doesn't reparse (or re-fail to parse) the `.cube` file every single
+    /// frame. Keyed by path (not clip id) since the same LUT file can be shared across clips;
+    /// invalidated by comparing `path` against the currently previewed clip's `lut_path` each
+    /// frame. `parsed` is `None` when `path` failed to parse — cached as a failure too, not
+    /// retried every frame. `None` (the outer `Option`) before any clip with a LUT has been
+    /// previewed yet.
+    preview_lut_cache: Option<(String, Option<avcore::Lut3D>)>,
     /// Whether the Editor preview panel's waveform/vectorscope color scopes are shown — off by
     /// default, since computing both is a full pass over every pixel of every decoded frame
     /// (see [`App::pump_preview_frame`]) and most edits don't need it.
@@ -1158,6 +1168,7 @@ impl App {
             preview_text_clip_ids: Vec::new(),
             preview_shape_clip_ids: Vec::new(),
             preview_texture: None,
+            preview_lut_cache: None,
             scopes_enabled: false,
             waveform_texture: None,
             vectorscope_texture: None,
