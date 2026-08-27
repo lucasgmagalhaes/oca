@@ -176,6 +176,22 @@ pub struct TextClip {
     /// rather than an invisible/transparent black.
     #[serde(default = "default_highlight_color")]
     pub highlight_color_rgba: [u8; 4],
+    /// General opacity fade over this clip's own on-timeline duration — the first (and, for
+    /// this pass, only) slice of P4 item 34's `TextClip` scope, per `spec/ROADMAP.md`. Position/
+    /// scale/rotation animation stay out of scope: `TextClip`'s export path pre-rasterizes a
+    /// full-canvas RGBA PNG per segment (`crate::overlay_render::render_text_segment_rgba`),
+    /// with position/size baked into the raster itself at generation time, not a moving overlay
+    /// — animating those would mean restructuring toward a small sprite +
+    /// `overlay=x=<expr>:y=<expr>`, a materially bigger lift. Opacity is different: the raster
+    /// already carries a real alpha channel (transparent background around the text/background
+    /// box), so a fade is just an alpha *multiplier* applied to the existing pixels in
+    /// `avbridge::apply_text_overlays`'s filter graph (`keyframe::text_opacity_alpha_expr`) —
+    /// zero changes to the Rust-side rasterization or highlight-layout code this doc comment's
+    /// sibling fields depend on. Empty means "no fade, same static visibility window as
+    /// before" — the exact same filter graph an unanimated `TextClip` always had.
+    /// `#[serde(default)]` so older saved projects load with no fade.
+    #[serde(default)]
+    pub opacity_keyframes: Vec<Keyframe<f32>>,
 }
 
 fn default_text_background_padding() -> f32 {

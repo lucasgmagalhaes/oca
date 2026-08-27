@@ -502,6 +502,54 @@ pub fn shape_axis_expr(
     piecewise_expr(&sorted, duration_secs, &var, |v| v)
 }
 
+/// Builds the `TextClip` opacity-keyframe alpha-multiplier expression for
+/// `avbridge::apply_text_overlays`'s per-segment `geq` alpha stage (`crate::render`'s
+/// `text_clip_to_segments`) — a fade curve over this clip's own on-timeline duration, `T`-keyed
+/// and offset by `start_secs` exactly like [`shape_axis_expr`] (both are post-pass overlay
+/// stages composited onto the already-exported full video, so `T` is timeline-absolute).
+///
+/// Two other mechanisms were tried and ruled out by real tests against this project's linked
+/// FFmpeg build before landing on this one (`avbridge/tests/text_overlay_test.rs` exercises the
+/// real filtergraph, not just this string builder): `geq`'s alpha read-back function is spelled
+/// `alpha(X,Y)`, not `a(X,Y)` as FFmpeg's own docs otherwise imply (`a(X,Y)` parses as "Unknown
+/// function" against the real library); `colorchannelmixer`'s `aa` coefficient looked like a
+/// simpler no-per-pixel-read-back alternative, but that filter has no `eval` option at all in
+/// this build ("Could not set non-existent option 'eval'"), so its `t`/`n` per-frame variables
+/// were never reachable. Neither of those turned out to be a version-specific fluke worth a
+/// bigger workaround — `alpha(X,Y)` inside `geq` works, confirmed for real, so this stays
+/// `T`-keyed like every other post-pass overlay builder in this module rather than carrying a
+/// second `t`-keyed convention for no remaining reason.
+///
+/// Unlike `shape_axis_expr`, returns `None` when there's nothing to animate (0 keyframes, or
+/// every keyframe fully opaque) — same "skip the stage entirely" convention as
+/// [`opacity_alpha_ramp_expr`]/[`gain_filter_db_expr`], so an unanimated `TextClip` gets the
+/// exact same filter graph it always has (no new stage, zero risk to the already-shipped
+/// static-text rasterization/highlight pipeline).
+pub fn text_opacity_alpha_expr(
+    keyframes: &[Keyframe<f32>],
+    start_secs: f64,
+    duration_secs: f64,
+) -> Option<String> {
+    if keyframes.is_empty() {
+        return None;
+    }
+    let clamp_opacity = |v: f32| v.clamp(0.0, 1.0);
+    if keyframes.len() == 1 {
+        let a = clamp_opacity(keyframes[0].value);
+        return if (a - 1.0).abs() <= 1e-4 {
+            None
+        } else {
+            Some(format!("{a:.7}"))
+        };
+    }
+    let (sorted, all_default) = sorted_and_all_default(keyframes, clamp_opacity, 1.0);
+    if all_default {
+        return None;
+    }
+    let var = format!("(T-{start_secs:.6})");
+    Some(piecewise_expr(&sorted, duration_secs, &var, clamp_opacity))
+}
+
 /// Builds the opacity-keyframe alpha expression (a bare `0.0..=1.0` ramp, *not* yet multiplied
 /// by any incoming `alpha(X,Y)` — the caller composes that, matching `mask_shape`'s existing
 /// alpha-composition convention in `ClipInstance::video_filter_chain`), keyed off `N` like
