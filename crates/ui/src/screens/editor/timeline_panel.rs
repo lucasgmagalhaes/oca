@@ -96,6 +96,36 @@ fn snap_move_start(
     }
 }
 
+/// Minimum gap `waveform_snap_points_for_clip` looks for — much shorter than D1's own
+/// cuttable-gap threshold (`avcore::DEFAULT_MIN_SILENCE_SECS`, 0.5s): a brief natural pause
+/// between words is exactly the kind of moment a cut should snap to, not just a length worth
+/// actually cutting.
+const WAVEFORM_SNAP_MIN_GAP_SECS: f64 = 0.05;
+
+/// D5 (`spec/architecture/differentiators.md`): every low-energy-moment snap point for `clip`,
+/// in timeline-relative seconds — the midpoint of each gap `avcore::clip_silence_gaps` detects
+/// against `asset`'s waveform. Reuses `clip_silence_gaps` (built for D1's silence-cut detection)
+/// purely as a "quiet moment finder" here — a snap target, not something to cut. Empty if
+/// `asset` has no cached waveform yet.
+fn waveform_snap_points_for_clip(
+    asset: &MediaAsset,
+    clip: &avcore::timeline::ClipInstance,
+) -> Vec<f64> {
+    let Some(peaks) = &asset.waveform_peaks else {
+        return Vec::new();
+    };
+    avcore::clip_silence_gaps(
+        peaks,
+        asset.duration_secs,
+        clip,
+        avcore::DEFAULT_SILENCE_THRESHOLD_LINEAR,
+        WAVEFORM_SNAP_MIN_GAP_SECS,
+    )
+    .into_iter()
+    .map(|gap| (gap.start_secs + gap.end_secs) / 2.0)
+    .collect()
+}
+
 fn visible_tile_range(
     clip_left: f32,
     clip_right: f32,
@@ -157,6 +187,26 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 .iter()
                 .filter(|(id, _, _)| *id != exclude_id)
                 .flat_map(|(_, start, end)| [*start, *end])
+                .collect()
+        };
+
+        // D5 (`spec/architecture/differentiators.md`): waveform low-energy points as an extra
+        // snap target for trim-edge (cut-point) drags specifically, not whole-clip moves — a
+        // dragged cut should be able to magnetically land mid-pause instead of mid-word/mid-
+        // sound-effect. See `waveform_snap_points_for_clip`'s own doc comment for the mechanism.
+        let waveform_snap_targets: Vec<f64> = {
+            let project = app.active_project();
+            project
+                .timeline()
+                .tracks
+                .iter()
+                .flat_map(|t| &t.clips)
+                .flat_map(|clip| {
+                    let asset = project.media_library.iter().find(|a| a.id == clip.asset_id);
+                    asset
+                        .map(|asset| waveform_snap_points_for_clip(asset, clip))
+                        .unwrap_or_default()
+                })
                 .collect()
         };
 
@@ -436,6 +486,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             let secs = ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
                             let mut targets = snap_targets_excluding(clip.id);
                             targets.push(playhead_secs);
+                            targets.extend(&waveform_snap_targets);
                             let secs = if snap_enabled {
                                 snap_to_nearest(secs, &targets, px_per_sec)
                             } else {
@@ -447,6 +498,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             let secs = ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
                             let mut targets = snap_targets_excluding(clip.id);
                             targets.push(playhead_secs);
+                            targets.extend(&waveform_snap_targets);
                             let secs = if snap_enabled {
                                 snap_to_nearest(secs, &targets, px_per_sec)
                             } else {
