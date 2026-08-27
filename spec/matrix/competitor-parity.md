@@ -65,14 +65,14 @@ templates/real-time-AI-masking." Sources: [DaVinci Resolve free-tier feature run
 [Premiere's audio VU meters](https://www.premiumbeat.com/blog/audio-meters-premiere-pro/),
 [Resolve's Fairlight loudness meter](https://blog.prosoundeffects.com/advanced-audio-editing-in-davinci-resolve).
 
-- [ ] **Clip/track color labels.** Assign a color to a clip or track for at-a-glance
+- [x] **Clip/track color labels.** Assign a color to a clip or track for at-a-glance
       organization — Premiere (clip labels), DaVinci Resolve (both clip *and* track color,
       called out by users as something Premiere still lacks for tracks), Final Cut Pro (clip
       labels via right-click). The cheapest gap found: no new algorithm, no `avbridge`/
       GStreamer work — a `color_label: Option<[u8; 3]>` field on `Track`/`ClipInstance` plus a
       colored tag/strip in the timeline widget. Same cost tier as `Marker`/`SmartBin`, both
-      already shipped this way.
-- [ ] **Detach/unlink audio from a clip** (the mechanical precondition for J-cuts/L-cuts —
+      already shipped this way. → `ROADMAP.md` P4 item 27 (done).
+- [x] **Detach/unlink audio from a clip** (the mechanical precondition for J-cuts/L-cuts —
       split edits where audio and video change at different points, present in Premiere/
       Resolve/FCP). oca already supports independent audio-only clips on separate `Audio`
       tracks with their own trim range (used for mic/music/multicam), so the missing piece is
@@ -81,25 +81,23 @@ templates/real-time-AI-masking." Sources: [DaVinci Resolve free-tier feature run
       `Audio` track pointing at the same asset — both then independently trimmable, same as
       every surveyed editor's version of this. Reuses existing track/clip-creation and muting
       primitives; no new render/preview pipeline work, since per-track independent clips
-      already mix correctly (`resolve_audio_segments`).
-- [ ] **Speed ramping (keyframed speed, not just a constant per clip).** `ClipInstance::
-      speed_factor` is a single `f32` today — no ramp within one clip (e.g. slow-mo easing
-      into normal speed), which CapCut (curve-based speed editor), Premiere, DaVinci, and FCP
-      all have in some form. A real, bounded gap: reuses the *existing* `Keyframe<T>`
-      infrastructure already backing position/scale/rotation/opacity (piecewise-linear
-      interpolation, `crate::keyframe::evaluate_keyframes`) rather than inventing a new
-      animation system — `speed_keyframes: Vec<Keyframe<f32>>` alongside the others, an export-
-      side `setpts` expression driven by the keyframe curve instead of a constant, and a preview
-      pad-probe mirroring `build_video_filter_bin`'s existing scale-keyframe `zoom_crop` probe
-      (same PTS-based re-evaluation-per-buffer technique, already proven in this codebase).
-- [ ] **Real-time audio level meter (VU/peak) during playback.** Live per-channel level display
-      while scrubbing/playing, not just the after-the-fact `LoudnessMetrics` this codebase
-      already computes at import/export time — Premiere's classic VU meters and DaVinci's
-      Fairlight LUFS/peak meter both do this live. Would need a pad probe on the preview
-      audio path sampling RMS/peak per buffer (conceptually the same pattern already used for
-      keyframe pad-probes, just reading instead of writing) plus a small meter widget in the
-      Editor's preview panel. Moderate, bounded cost — no ML, no new avfilter/GStreamer
-      element, no new file format.
+      already mix correctly (`resolve_audio_segments`). → `ROADMAP.md` P4 item 28 (done).
+- [~] **Speed ramping (keyframed speed, not just a constant per clip).** `ClipInstance::
+      speed_factor` is a single `f32` — CapCut (curve-based speed editor), Premiere, DaVinci,
+      and FCP all have a *smooth* speed curve. Shipped as a **stepped** approximation instead
+      (splits the clip into N pieces via `Track::split_clip_at`, each a constant `speed_factor`
+      linearly interpolated between a start/end speed) — the smooth version needs the export
+      `setpts` filter's output PTS to be the integral of `1/speed` over time, unverifiable in
+      this sandbox (no decode capability); see `ROADMAP.md` P4 item 29 for the full reasoning
+      and what's still not done.
+- [x] **Real-time audio level meter (VU/peak) during playback.** Live level display while
+      scrubbing/playing, not just the after-the-fact `LoudnessMetrics` this codebase already
+      computes at import/export time — Premiere's classic VU meters and DaVinci's Fairlight
+      LUFS/peak meter both do this live. A pad probe on the preview audio path sampling RMS/peak
+      per buffer (the same pattern already used for keyframe pad-probes, reading instead of
+      writing) plus a small meter widget in the Editor's preview panel. Combined across channels
+      (flat sequence), not per-channel — matches this item's own "small meter widget" scope, not
+      a full Fairlight-style per-channel meter. → `ROADMAP.md` P4 item 30 (done).
 
 **Found but not included here** — bigger than the four above, closer to Multicam's own tier of
 effort than to Smart Bins': **nested sequences / compound clips** (Premiere, DaVinci, and FCP
@@ -130,9 +128,11 @@ etc.) has a keyframe variant, and that `TextClip`/`ShapeClip` have no keyframe f
       slow reveal/pan independent of `scale_keyframes`' zoom). → `ROADMAP.md` P4 item 33 (done).
 - [~] **Text/shape clip animation keyframes.** `TextClip`/`ShapeClip` had zero keyframe fields
       (a structural gap, not a missing effect) — every surveyed editor supports animating
-      text/graphic position/scale/opacity over time. → `ROADMAP.md` P4 item 34 (partial —
-      `ShapeClip` position keyframes ship; `ShapeClip` scale/rotation and all of `TextClip`
-      animation still not done).
+      text/graphic position/scale/opacity over time. → `ROADMAP.md` P4 item 34 (partial — all of
+      `ShapeClip` (position, size, rotation) keyframes ship, plus `TextClip` opacity keyframes
+      (a fade, reusing the raster's existing alpha channel — no rasterization change); `TextClip`
+      position/scale/rotation animation still not done, a materially bigger lift — its export
+      path pre-rasterizes a full-canvas PNG, not a moving overlay).
 
 ## Validates existing plans (found independently, matches what's already queued)
 

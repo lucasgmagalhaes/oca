@@ -432,6 +432,54 @@ fn shape_axis_expr_offsets_t_by_the_shapes_start_secs_when_animated() {
 }
 
 #[test]
+fn text_opacity_alpha_expr_is_none_for_no_keyframes() {
+    assert_eq!(text_opacity_alpha_expr(&[], 1.0, 3.0), None);
+}
+
+#[test]
+fn text_opacity_alpha_expr_is_none_when_every_keyframe_is_fully_opaque() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 1.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 1.0,
+        },
+    ];
+    assert_eq!(text_opacity_alpha_expr(&keyframes, 1.0, 3.0), None);
+}
+
+#[test]
+fn text_opacity_alpha_expr_clamps_a_single_keyframe() {
+    let keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: 1.5,
+    }];
+    assert_eq!(
+        text_opacity_alpha_expr(&keyframes, 1.0, 3.0),
+        Some("1.0000000".to_string())
+    );
+}
+
+#[test]
+fn text_opacity_alpha_expr_offsets_t_by_start_secs_for_a_fade() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 1.0,
+        },
+    ];
+    let expr = text_opacity_alpha_expr(&keyframes, 2.0, 4.0).unwrap();
+    assert!(expr.contains("(T-2.000000)"));
+}
+
+#[test]
 fn opacity_alpha_ramp_expr_is_none_for_no_keyframes() {
     assert_eq!(opacity_alpha_ramp_expr(&[], 30, 1, 5.0), None);
 }

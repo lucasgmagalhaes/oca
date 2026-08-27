@@ -287,6 +287,7 @@ pub fn render_text_clip_rgba(
         glyph_byte_range: None,
         pos_x: clip.pos_x,
         pos_y: clip.pos_y,
+        opacity_keyframe_expr: String::new(),
     };
     let mut buf = render_text_segment_rgba(&base, canvas_width, canvas_height);
 

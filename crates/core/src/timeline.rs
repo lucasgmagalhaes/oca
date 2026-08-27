@@ -176,6 +176,22 @@ pub struct TextClip {
     /// rather than an invisible/transparent black.
     #[serde(default = "default_highlight_color")]
     pub highlight_color_rgba: [u8; 4],
+    /// General opacity fade over this clip's own on-timeline duration — the first (and, for
+    /// this pass, only) slice of P4 item 34's `TextClip` scope, per `spec/ROADMAP.md`. Position/
+    /// scale/rotation animation stay out of scope: `TextClip`'s export path pre-rasterizes a
+    /// full-canvas RGBA PNG per segment (`crate::overlay_render::render_text_segment_rgba`),
+    /// with position/size baked into the raster itself at generation time, not a moving overlay
+    /// — animating those would mean restructuring toward a small sprite +
+    /// `overlay=x=<expr>:y=<expr>`, a materially bigger lift. Opacity is different: the raster
+    /// already carries a real alpha channel (transparent background around the text/background
+    /// box), so a fade is just an alpha *multiplier* applied to the existing pixels in
+    /// `avbridge::apply_text_overlays`'s filter graph (`keyframe::text_opacity_alpha_expr`) —
+    /// zero changes to the Rust-side rasterization or highlight-layout code this doc comment's
+    /// sibling fields depend on. Empty means "no fade, same static visibility window as
+    /// before" — the exact same filter graph an unanimated `TextClip` always had.
+    /// `#[serde(default)]` so older saved projects load with no fade.
+    #[serde(default)]
+    pub opacity_keyframes: Vec<Keyframe<f32>>,
 }
 
 fn default_text_background_padding() -> f32 {
@@ -293,12 +309,8 @@ pub struct ShapeClip {
     /// overlay approach (not yet animatable, a materially bigger restructuring — still not
     /// done). Each field independently overrides its own constant (`center_x`/`center_y`) when
     /// non-empty, same "keyframes win when present" relationship every other keyframe field in
-    /// this codebase already has. Width/height/rotation keyframes for shapes are also not done
-    /// yet — animating those would mean reworking `shape_render`'s per-shape-kind geometry math
-    /// (`inside_expr`) to accept expressions instead of literal half-extents, a real risk to
-    /// that already visually-verified, un-re-verifiable-in-this-sandbox code (see
-    /// `crate::shape_render`'s own doc comment) that position animation alone doesn't touch.
-    /// `#[serde(default)]` so older saved projects load with no position animation.
+    /// this codebase already has. `#[serde(default)]` so older saved projects load with no
+    /// position animation.
     #[serde(default)]
     pub center_x_keyframes: Vec<Keyframe<f32>>,
     #[serde(default)]
@@ -307,8 +319,31 @@ pub struct ShapeClip {
     /// changes.
     pub width: f32,
     pub height: f32,
+    /// General keyframe animation for width/height over this shape's own on-timeline duration —
+    /// the rest of `spec/ROADMAP.md` P4 item 34's `ShapeClip` scope, shipped after position
+    /// animation. `shape_render::inside_expr`'s geometry math (`ellipse_inside_expr`/
+    /// `polygon_inside_expr`) was reworked to accept `geq`-expression-language sub-expressions
+    /// for the half-extents instead of literal `f64`s, so the same multiply-through-avoid-
+    /// division trick the static case always used still applies verbatim — an unkeyframed
+    /// `width`/`height` degenerates back to the same plain numeric literal
+    /// `keyframe::shape_axis_expr` already returns for the unkeyframed position case, so the
+    /// static-shape math is unchanged in that (still the common) case. `#[serde(default)]` so
+    /// older saved projects load with no size animation.
+    #[serde(default)]
+    pub width_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub height_keyframes: Vec<Keyframe<f32>>,
     /// Clockwise rotation around the shape's own center, in degrees.
     pub rotation_deg: f32,
+    /// General keyframe animation for `rotation_deg` over this shape's own on-timeline
+    /// duration — the last piece of P4 item 34's `ShapeClip` scope. Unlike width/height, this
+    /// doesn't touch `inside_expr` at all: only the local-frame rotation (`rx`/`ry` in
+    /// `shape_render::build_shape_filter_desc`) changes, from Rust-precomputed `sin`/`cos`
+    /// literals to `geq`'s own `sin(...)`/`cos(...)`/`PI` expression-language functions (all
+    /// confirmed present in FFmpeg's expression evaluator, not assumed) evaluated per pixel.
+    /// `#[serde(default)]` so older saved projects load with no rotation animation.
+    #[serde(default)]
+    pub rotation_keyframes: Vec<Keyframe<f32>>,
     /// RGBA fill/stroke color: `[r, g, b, a]`, each 0–255. Alpha 255 = fully opaque.
     pub color_rgba: [u8; 4],
     /// Outline thickness in pixels. `0.0` = filled shape; `> 0.0` = outline only, that thick
@@ -386,6 +421,13 @@ pub struct ClipInstance {
     /// loads, every clip in it just standalone (`None`).
     #[serde(default)]
     pub composite_id: Option<u64>,
+    /// Optional RGB color label for this block, per `matrix/competitor-parity.md`'s 2026-08-27
+    /// update (`spec/ROADMAP.md` P4 item 27) — a purely cosmetic at-a-glance organization aid
+    /// (Premiere's clip labels, DaVinci's clip *and* track color), painted as the timeline
+    /// block's fill color in place of its usual kind-based color when set. `None` = use the
+    /// usual coloring. `#[serde(default)]` so older saved projects load with no label.
+    #[serde(default)]
+    pub color_label: Option<[u8; 3]>,
     /// Volume adjustment in decibels applied to this block's audio, independent of every other
     /// clip — per `request.md`'s Fase 4 "ganho de volume por bloco" spec. `0.0` is unity gain.
     /// Feeds the timeline waveform display (`ui`'s `draw_waveform`, scaled by
@@ -1389,6 +1431,13 @@ pub struct Track {
     /// `Unspecified`, same as a never-tagged track in a new project.
     #[serde(default)]
     pub audio_role: AudioRole,
+    /// Optional RGB color label for this track, per `matrix/competitor-parity.md`'s 2026-08-27
+    /// update (`spec/ROADMAP.md` P4 item 27) — DaVinci Resolve's track color, called out by
+    /// users as something Premiere still lacks. Purely cosmetic, same "at-a-glance
+    /// organization" role as [`ClipInstance::color_label`]. `None` = use the usual track-header
+    /// coloring. `#[serde(default)]` so older saved projects load with no label.
+    #[serde(default)]
+    pub color_label: Option<[u8; 3]>,
 }
 
 impl Track {
@@ -1452,6 +1501,7 @@ impl Track {
             // Splitting a composite member must not silently ungroup it from the rest of the
             // block.
             composite_id: clip.composite_id,
+            color_label: clip.color_label,
             gain_db: clip.gain_db,
             frozen: clip.frozen,
             speed_factor: clip.speed_factor,

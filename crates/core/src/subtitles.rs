@@ -91,6 +91,7 @@ mod tests {
             words: Vec::new(),
             highlight_enabled: false,
             highlight_color_rgba: [255, 220, 0, 255],
+            opacity_keyframes: vec![],
         }
     }
 
@@ -105,6 +106,7 @@ mod tests {
                 shape_clips: Vec::new(),
                 visible: true,
                 audio_role: AudioRole::Unspecified,
+                color_label: None,
             }],
             playhead_secs: 0.0,
             markers: Vec::new(),
@@ -178,6 +180,7 @@ mod tests {
             shape_clips: Vec::new(),
             visible: true,
             audio_role: AudioRole::Unspecified,
+            color_label: None,
         });
 
         let srt = export_srt(&timeline);

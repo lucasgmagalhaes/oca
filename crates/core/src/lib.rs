@@ -97,7 +97,7 @@ pub use persistence::{
     from_ocproj_bytes, from_ocqueue_bytes, load_project_from_file, save_project_to_file,
     to_ocproj_bytes, to_ocqueue_bytes, PersistError,
 };
-pub use preview::{Preview, PreviewError};
+pub use preview::{AudioLevel, Preview, PreviewError};
 pub use preview_effects::{apply_lut_to_rgba, apply_vignette_to_rgba, Lut3D, LutParseError};
 pub use probe::{probe_media, ProbeError, ProbedMedia};
 pub use project::{PanelLayout, Project, Recency, Sequence, SequenceExportSettings};

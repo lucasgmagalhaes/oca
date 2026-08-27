@@ -269,6 +269,12 @@ text_catalog! {
     TimelineEmpty: pt_br = "Este projeto ainda não tem clipes na timeline.", en = "This project doesn't have any clips on the timeline yet.";
     ContextMenuSplit: pt_br = "✂ Dividir no playhead", en = "✂ Split at playhead";
     ContextMenuDelete: pt_br = "🗑 Excluir", en = "🗑 Delete";
+    ContextMenuColorLabel: pt_br = "🎨 Rótulo de cor", en = "🎨 Color label";
+    ContextMenuColorLabelClear: pt_br = "Limpar rótulo", en = "Clear label";
+    ContextMenuDetachAudio: pt_br = "🎧 Destacar áudio", en = "🎧 Detach audio";
+    ContextMenuSpeedRamp: pt_br = "⏱ Rampa de velocidade", en = "⏱ Speed ramp";
+    SpeedRampSlowToFast: pt_br = "Lento → Rápido (0.5x → 2x)", en = "Slow → Fast (0.5x → 2x)";
+    SpeedRampFastToSlow: pt_br = "Rápido → Lento (2x → 0.5x)", en = "Fast → Slow (2x → 0.5x)";
     ContextMenuCopy: pt_br = "⧉ Copiar", en = "⧉ Copy";
     ContextMenuCut: pt_br = "✂ Recortar", en = "✂ Cut";
     ContextMenuPaste: pt_br = "📋 Colar no playhead", en = "📋 Paste at playhead";
@@ -412,6 +418,7 @@ text_catalog! {
     AutosaveDiscard: pt_br = "Descartar", en = "Discard";
     ExportPlatformPresetLabel: pt_br = "Predefinição de plataforma:", en = "Platform preset:";
     PreviewScopesToggle: pt_br = "Waveform / Vetorscópio", en = "Waveform / Vectorscope";
+    PreviewAudioLevelMeter: pt_br = "Nível de áudio (pico / RMS)", en = "Audio level (peak / RMS)";
     TimelineIndexToggle: pt_br = "Marcadores", en = "Markers";
     TimelineIndexTitle: pt_br = "Índice da timeline", en = "Timeline Index";
     TimelineIndexSearchHint: pt_br = "Buscar marcadores...", en = "Search markers...";
@@ -528,7 +535,14 @@ text_catalog! {
     ShapePositionKeyframesExportNote: pt_br = "quando definido, substitui a posição constante desse eixo na exportação (recorte/panorâmica animados) — sem efeito no preview ao vivo.", en = "when set, overrides this axis's constant position on export (animated pan/reveal) — no live preview effect.";
     PropShapeWidth: pt_br = "Largura", en = "Width";
     PropShapeHeight: pt_br = "Altura", en = "Height";
+    PropShapeWidthKeyframes: pt_br = "Largura (keyframes)", en = "Width (keyframes)";
+    PropShapeHeightKeyframes: pt_br = "Altura (keyframes)", en = "Height (keyframes)";
+    ShapeSizeKeyframesExportNote: pt_br = "quando definido, substitui o tamanho constante desse eixo na exportação (crescimento/redução animados) — sem efeito no preview ao vivo.", en = "when set, overrides this axis's constant size on export (animated grow/shrink) — no live preview effect.";
     PropShapeRotation: pt_br = "Rotação", en = "Rotation";
+    PropShapeRotationKeyframes: pt_br = "Rotação (keyframes)", en = "Rotation (keyframes)";
+    ShapeRotationKeyframesExportNote: pt_br = "quando definido, substitui a rotação constante na exportação (giro animado) — sem efeito no preview ao vivo.", en = "when set, overrides the constant rotation on export (animated spin) — no live preview effect.";
+    PropTextOpacityKeyframes: pt_br = "Opacidade (keyframes)", en = "Opacity (keyframes)";
+    TextOpacityKeyframesExportNote: pt_br = "cria um fade de entrada/saída no texto durante a exportação — sem efeito no preview ao vivo.", en = "creates a fade in/out for the text on export — no live preview effect.";
     PropShapeStroke: pt_br = "Espessura do contorno (px)", en = "Outline thickness (px)";
     PropShapeStrokeHint: pt_br = "0 = preenchido", en = "0 = filled";
     PropShapeDuration: pt_br = "Duração (s)", en = "Duration (s)";

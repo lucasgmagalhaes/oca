@@ -119,6 +119,7 @@ fn text_clip(words: Vec<WordTiming>, highlight_enabled: bool) -> TextClip {
         words,
         highlight_enabled,
         highlight_color_rgba: [255, 220, 0, 255],
+        opacity_keyframes: vec![],
     }
 }
 
@@ -136,6 +137,7 @@ fn sequence_with_text_track(clip: TextClip) -> Sequence {
                 shape_clips: vec![],
                 visible: true,
                 audio_role: AudioRole::Unspecified,
+                color_label: None,
             }],
             playhead_secs: 0.0,
             markers: Vec::new(),
@@ -265,6 +267,9 @@ fn shape_clip(id: u64, start_secs: f64, duration_secs: f64) -> ShapeClip {
         center_y: 0.5,
         center_x_keyframes: vec![],
         center_y_keyframes: vec![],
+        width_keyframes: vec![],
+        height_keyframes: vec![],
+        rotation_keyframes: vec![],
         width: 0.3,
         height: 0.3,
         rotation_deg: 0.0,
@@ -287,6 +292,7 @@ fn sequence_with_shape_track(clips: Vec<ShapeClip>) -> Sequence {
                 shape_clips: clips,
                 visible: true,
                 audio_role: AudioRole::Unspecified,
+                color_label: None,
             }],
             playhead_secs: 0.0,
             markers: Vec::new(),

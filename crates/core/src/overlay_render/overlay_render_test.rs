@@ -26,6 +26,9 @@ fn sample_shape(kind: ShapeKind) -> ShapeClip {
         center_y: 0.5,
         center_x_keyframes: vec![],
         center_y_keyframes: vec![],
+        width_keyframes: vec![],
+        height_keyframes: vec![],
+        rotation_keyframes: vec![],
         width: 0.4,
         height: 0.4,
         rotation_deg: 0.0,
@@ -84,6 +87,7 @@ fn sample_text(text: &str) -> TextClip {
         words: Vec::<WordTiming>::new(),
         highlight_enabled: false,
         highlight_color_rgba: [255, 220, 0, 255],
+        opacity_keyframes: vec![],
     }
 }
 

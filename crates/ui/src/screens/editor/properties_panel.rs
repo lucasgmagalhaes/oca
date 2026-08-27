@@ -1404,6 +1404,25 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
         changed = true;
     }
 
+    // Opacity keyframes -- fade the text in/out over its own on-timeline duration (see
+    // TextClip::opacity_keyframes' doc comment).
+    let mut new_opacity_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropTextOpacityKeyframes.tr(locale),
+        Text::TextOpacityKeyframesExportNote.tr(locale),
+        |ui| {
+            new_opacity_keyframes =
+                f32_keyframe_editor(ui, &tc.opacity_keyframes, 0.0..=1.0, 1.0, locale);
+            new_opacity_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_opacity_keyframes {
+            tc.opacity_keyframes = kfs;
+            changed = true;
+        }
+    }
+
     // Start and duration
     ui.label(
         RichText::new(Text::PropTextStart.tr(locale))
@@ -1763,6 +1782,42 @@ fn shape_clip_properties(
         changed = true;
     }
 
+    // Size keyframes -- animate a grow/shrink over the shape's own on-timeline duration,
+    // overriding width/height above when non-empty (see ShapeClip::width_keyframes' doc
+    // comment).
+    let mut new_width_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropShapeWidthKeyframes.tr(locale),
+        Text::ShapeSizeKeyframesExportNote.tr(locale),
+        |ui| {
+            new_width_keyframes =
+                f32_keyframe_editor(ui, &sc.width_keyframes, 0.01..=1.0, sc.width, locale);
+            new_width_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_width_keyframes {
+            sc.width_keyframes = kfs;
+            changed = true;
+        }
+    }
+    let mut new_height_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropShapeHeightKeyframes.tr(locale),
+        Text::ShapeSizeKeyframesExportNote.tr(locale),
+        |ui| {
+            new_height_keyframes =
+                f32_keyframe_editor(ui, &sc.height_keyframes, 0.01..=1.0, sc.height, locale);
+            new_height_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_height_keyframes {
+            sc.height_keyframes = kfs;
+            changed = true;
+        }
+    }
+
     // Rotation
     ui.label(
         RichText::new(Text::PropShapeRotation.tr(locale))
@@ -1774,6 +1829,31 @@ fn shape_clip_properties(
         .changed()
     {
         changed = true;
+    }
+
+    // Rotation keyframes -- animate a spin over the shape's own on-timeline duration,
+    // overriding rotation_deg above when non-empty (see ShapeClip::rotation_keyframes' doc
+    // comment).
+    let mut new_rotation_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropShapeRotationKeyframes.tr(locale),
+        Text::ShapeRotationKeyframesExportNote.tr(locale),
+        |ui| {
+            new_rotation_keyframes = f32_keyframe_editor(
+                ui,
+                &sc.rotation_keyframes,
+                0.0..=360.0,
+                sc.rotation_deg,
+                locale,
+            );
+            new_rotation_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_rotation_keyframes {
+            sc.rotation_keyframes = kfs;
+            changed = true;
+        }
     }
 
     // Outline thickness

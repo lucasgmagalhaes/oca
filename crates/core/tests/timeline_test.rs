@@ -30,6 +30,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         source_in_secs,
         source_out_secs,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -359,6 +360,7 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
 
                 visible: true,
                 audio_role: AudioRole::Unspecified,
+                color_label: None,
             },
             Track {
                 id: 2,
@@ -372,6 +374,7 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
 
                 visible: true,
                 audio_role: AudioRole::Unspecified,
+                color_label: None,
             },
         ],
         playhead_secs: 0.0,
@@ -394,6 +397,7 @@ fn track_with(clips: Vec<ClipInstance>) -> Track {
 
         visible: true,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     }
 }
 
@@ -429,6 +433,9 @@ fn track_duration_accounts_for_shape_clips() {
         center_y: 0.5,
         center_x_keyframes: vec![],
         center_y_keyframes: vec![],
+        width_keyframes: vec![],
+        height_keyframes: vec![],
+        rotation_keyframes: vec![],
         width: 0.3,
         height: 0.3,
         rotation_deg: 0.0,
@@ -831,6 +838,26 @@ fn split_clip_at_keeps_transition_on_both_halves() {
 }
 
 #[test]
+fn new_clip_defaults_to_no_color_label() {
+    let c = clip(1, 0.0, 0.0, 10.0);
+    assert_eq!(c.color_label, None);
+}
+
+#[test]
+fn split_clip_at_keeps_the_color_label_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.color_label = Some([229, 83, 83]);
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert_eq!(half.color_label, Some([229, 83, 83]));
+    }
+}
+
+#[test]
 fn new_clip_defaults_to_no_keyframes() {
     let c = clip(1, 0.0, 0.0, 10.0);
     assert!(c.position_keyframes.is_empty());
@@ -1223,6 +1250,7 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
         Track {
             id: 2,
@@ -1235,6 +1263,7 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
     ]);
 
@@ -1259,6 +1288,7 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
         Track {
             id: 2,
@@ -1271,6 +1301,7 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
     ]);
 
@@ -1294,6 +1325,7 @@ fn move_clip_to_track_is_a_no_op_for_an_unknown_target_track() {
 
         visible: true,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     }]);
 
     let moved = timeline.move_clip_to_track(1, 99, 5.0);
@@ -1316,6 +1348,7 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
         Track {
             id: 2,
@@ -1328,6 +1361,7 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
     ]);
 
@@ -1474,6 +1508,7 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
         Track {
             id: 2,
@@ -1486,6 +1521,7 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
     ]);
 
@@ -1509,6 +1545,7 @@ fn timeline_clip_mut_returns_none_for_an_unknown_id() {
 
         visible: true,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     }]);
 
     assert!(timeline.clip_mut(99).is_none());

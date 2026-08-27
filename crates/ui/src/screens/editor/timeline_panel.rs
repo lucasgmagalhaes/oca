@@ -28,6 +28,19 @@ const MIN_PX_PER_SEC: f32 = 0.5;
 const MAX_PX_PER_SEC: f32 = 60.0;
 const TRACK_LABEL_WIDTH: f32 = 86.0;
 
+/// Fixed color-label swatches offered in the clip/track "Rótulo de cor" context menu — per
+/// `spec/ROADMAP.md` P4 item 27, matching Premiere/DaVinci/FCP's own fixed-palette convention
+/// (a free color picker would let two clips end up with visually indistinguishable colors,
+/// defeating the "recognize at a glance" point of a label).
+const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
+    [229, 83, 83],   // red
+    [230, 145, 56],  // orange
+    [230, 200, 56],  // yellow
+    [96, 189, 104],  // green
+    [86, 156, 214],  // blue
+    [178, 108, 219], // purple
+];
+
 /// Icon for a track's [`avcore::AudioRole`] (D2, `spec/architecture/differentiators.md`) — the
 /// track header's role picker, and its own collapsed `ComboBox` display.
 fn audio_role_icon(role: avcore::AudioRole) -> &'static str {
@@ -290,6 +303,9 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut copy_formatting_requests: Vec<u64> = Vec::new();
         let mut paste_formatting_requests: Vec<u64> = Vec::new();
         let mut multi_select_requests: Vec<u64> = Vec::new();
+        let mut clip_color_label_requests: Vec<(u64, Option<[u8; 3]>)> = Vec::new();
+        let mut detach_audio_requests: Vec<u64> = Vec::new();
+        let mut speed_ramp_requests: Vec<(u64, f32, f32)> = Vec::new();
         let mut paste_requested = false;
         let mut merge_into_composite_requested = false;
         let mut split_at_playhead_requested = false;
@@ -298,6 +314,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
         let mut toggle_track_visibility_requests: Vec<u64> = Vec::new();
         let mut track_audio_role_requests: Vec<(u64, avcore::AudioRole)> = Vec::new();
+        let mut track_color_label_requests: Vec<(u64, Option<[u8; 3]>)> = Vec::new();
         // Set the first time a trim/move drag starts this frame — `app` is immutably borrowed
         // for the whole track/clip iteration below, so the undo snapshot itself is pushed once,
         // after that borrow ends, rather than inline at the drag_started() check.
@@ -322,16 +339,37 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             {
                                 toggle_track_visibility_requests.push(track_id);
                             }
-                            ui.add(
+                            let name_response = ui.add(
                                 egui::Label::new(RichText::new(&track.name).size(11.0).color(
-                                    if visible {
+                                    if let Some([r, g, b]) = track.color_label {
+                                        egui::Color32::from_rgb(r, g, b)
+                                    } else if visible {
                                         theme::TEXT_SECONDARY
                                     } else {
                                         theme::TEXT_MUTED
                                     },
                                 ))
-                                .truncate(),
+                                .truncate()
+                                .sense(egui::Sense::click()),
                             );
+                            name_response.context_menu(|ui| {
+                                for &[r, g, b] in CLIP_COLOR_LABEL_PALETTE {
+                                    let swatch = egui::Color32::from_rgb(r, g, b);
+                                    if ui.add(egui::Button::new("  ").fill(swatch)).clicked() {
+                                        track_color_label_requests
+                                            .push((track_id, Some([r, g, b])));
+                                        ui.close();
+                                    }
+                                }
+                                ui.separator();
+                                if ui
+                                    .button(Text::ContextMenuColorLabelClear.tr(locale))
+                                    .clicked()
+                                {
+                                    track_color_label_requests.push((track_id, None));
+                                    ui.close();
+                                }
+                            });
                             // D2 (`spec/architecture/differentiators.md`): which audio source
                             // this track carries, if any — Text/Shape tracks never carry audio,
                             // so they don't get the picker at all.
@@ -379,18 +417,23 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             egui::pos2(x, track_rect.top()),
                             egui::vec2(w, track_rect.height()),
                         );
-                        let color = match (track.kind, track.name.as_str()) {
-                            (avcore::timeline::TrackKind::Video, _) => theme::SURFACE_2,
-                            (avcore::timeline::TrackKind::Audio, "A2") => {
-                                theme::ACCENT_2.gamma_multiply(0.6)
+                        let color = if let Some([r, g, b]) = clip.color_label {
+                            egui::Color32::from_rgb(r, g, b)
+                        } else {
+                            match (track.kind, track.name.as_str()) {
+                                (avcore::timeline::TrackKind::Video, _) => theme::SURFACE_2,
+                                (avcore::timeline::TrackKind::Audio, "A2") => {
+                                    theme::ACCENT_2.gamma_multiply(0.6)
+                                }
+                                (avcore::timeline::TrackKind::Audio, _) => {
+                                    theme::ACCENT.gamma_multiply(0.5)
+                                }
+                                // Text/Shape tracks carry text_clips/shape_clips, not clips —
+                                // these arms satisfy exhaustiveness but are never reached at
+                                // runtime.
+                                (avcore::timeline::TrackKind::Text, _) => theme::SURFACE_2,
+                                (avcore::timeline::TrackKind::Shape, _) => theme::SURFACE_2,
                             }
-                            (avcore::timeline::TrackKind::Audio, _) => {
-                                theme::ACCENT.gamma_multiply(0.5)
-                            }
-                            // Text/Shape tracks carry text_clips/shape_clips, not clips — these
-                            // arms satisfy exhaustiveness but are never reached at runtime.
-                            (avcore::timeline::TrackKind::Text, _) => theme::SURFACE_2,
-                            (avcore::timeline::TrackKind::Shape, _) => theme::SURFACE_2,
                         };
 
                         // Narrow strips at each edge, on top of the body's click zone, so a
@@ -457,6 +500,22 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 merge_into_composite_requested = true;
                                 ui.close();
                             }
+                            if track.kind == avcore::timeline::TrackKind::Video
+                                && ui.button(Text::ContextMenuDetachAudio.tr(locale)).clicked()
+                            {
+                                detach_audio_requests.push(clip.id);
+                                ui.close();
+                            }
+                            ui.menu_button(Text::ContextMenuSpeedRamp.tr(locale), |ui| {
+                                if ui.button(Text::SpeedRampSlowToFast.tr(locale)).clicked() {
+                                    speed_ramp_requests.push((clip.id, 0.5, 2.0));
+                                    ui.close();
+                                }
+                                if ui.button(Text::SpeedRampFastToSlow.tr(locale)).clicked() {
+                                    speed_ramp_requests.push((clip.id, 2.0, 0.5));
+                                    ui.close();
+                                }
+                            });
                             ui.separator();
                             if ui
                                 .button(Text::ContextMenuCopyFormatting.tr(locale))
@@ -475,6 +534,24 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 paste_formatting_requests.push(clip.id);
                                 ui.close();
                             }
+                            ui.separator();
+                            ui.menu_button(Text::ContextMenuColorLabel.tr(locale), |ui| {
+                                for &[r, g, b] in CLIP_COLOR_LABEL_PALETTE {
+                                    let swatch = egui::Color32::from_rgb(r, g, b);
+                                    if ui.add(egui::Button::new("  ").fill(swatch)).clicked() {
+                                        clip_color_label_requests.push((clip.id, Some([r, g, b])));
+                                        ui.close();
+                                    }
+                                }
+                                ui.separator();
+                                if ui
+                                    .button(Text::ContextMenuColorLabelClear.tr(locale))
+                                    .clicked()
+                                {
+                                    clip_color_label_requests.push((clip.id, None));
+                                    ui.close();
+                                }
+                            });
                             ui.separator();
                             if ui.button(Text::ContextMenuDelete.tr(locale)).clicked() {
                                 delete_requests.push(clip.id);
@@ -886,9 +963,23 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         for (track_id, role) in track_audio_role_requests {
             app.set_track_audio_role(track_id, role);
         }
+        for (track_id, color_label) in track_color_label_requests {
+            app.set_track_color_label(track_id, color_label);
+        }
         for clip_id in delete_requests {
             app.selected_clip_id = Some(clip_id);
             app.delete_selected_clip();
+        }
+        for (clip_id, color_label) in clip_color_label_requests {
+            app.set_clip_color_label(clip_id, color_label);
+        }
+        for clip_id in detach_audio_requests {
+            app.selected_clip_id = Some(clip_id);
+            app.detach_audio_from_selected_clip();
+        }
+        for (clip_id, start_speed, end_speed) in speed_ramp_requests {
+            app.selected_clip_id = Some(clip_id);
+            app.apply_speed_ramp_to_selected_clip(start_speed, end_speed, 4);
         }
         if split_at_playhead_requested {
             app.split_at_playhead();

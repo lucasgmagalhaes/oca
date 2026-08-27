@@ -113,6 +113,7 @@ impl App {
                     shape_clips: Vec::new(),
                     visible: true,
                     audio_role: AudioRole::Unspecified,
+                    color_label: None,
                 });
                 id
             }
@@ -152,6 +153,7 @@ impl App {
                 words,
                 highlight_enabled,
                 highlight_color_rgba: [255, 220, 0, 255],
+                opacity_keyframes: vec![],
             });
         }
     }

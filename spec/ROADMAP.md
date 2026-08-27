@@ -353,26 +353,66 @@ not by default priority.
     Audio, file-name-contains text, has-audio Either/Yes/No, Save/Cancel/Delete). Verified via a
     real-execution scratch crate (same ONNX-link-gap workaround as multicam) — 5 passing tests on
     `SmartBin::matches`.
-27. `[ ]` Clip/track color labels — `matrix/competitor-parity.md`'s 2026-08-27 update. Present
+27. `[x]` Clip/track color labels — `matrix/competitor-parity.md`'s 2026-08-27 update. Present
     in Premiere (clip), DaVinci Resolve (clip *and* track), FCP (clip). The cheapest gap in
-    that update: pure data (`color_label` field) + timeline-widget rendering, no `avbridge`/
-    GStreamer work — same cost tier as `Marker`/`SmartBin`, both already shipped.
-28. `[ ]` Detach/unlink audio from a clip (the mechanical precondition for J-cuts/L-cuts) —
-    `matrix/competitor-parity.md`. oca already supports independent audio-only clips on
-    separate tracks; the gap is specifically the one-click "mute the video clip's own audio,
-    place a synced audio-only clip on an Audio track" action. Reuses existing muting/track/
-    clip-creation primitives, no new render/preview pipeline work.
-29. `[ ]` Speed ramping — keyframed `speed_factor` instead of one constant per clip —
-    `matrix/competitor-parity.md`. Present in CapCut (curve editor), Premiere, DaVinci, FCP.
-    Reuses the existing `Keyframe<T>` infrastructure already backing position/scale/rotation/
-    opacity rather than a new animation system; needs an export-side `setpts` expression
-    driven by the curve and a preview pad-probe mirroring the existing scale-keyframe one.
-30. `[ ]` Real-time audio level meter (VU/peak) during playback — `matrix/competitor-parity.md`.
-    Present in Premiere (VU meters) and DaVinci (Fairlight LUFS/peak meter). Needs a pad probe
-    on the preview audio path (same pattern as the existing keyframe pad-probes, reading
-    instead of writing) plus a small meter widget in the Editor's preview panel — no ML, no
-    new avfilter/GStreamer element.
-31. `[ ]` Audio gain keyframes (volume fade/ramp within one clip, not just a constant
+    that update: pure data (`ClipInstance::color_label`/`Track::color_label`, `Option<[u8;3]>`)
+    + timeline-widget rendering, no `avbridge`/GStreamer work — same cost tier as `Marker`/
+    `SmartBin`, both already shipped. A fixed 6-swatch palette (matching Premiere/DaVinci/FCP's
+    own fixed-palette convention, not a free color picker) offered via a right-click context
+    menu on a timeline clip or the track-header name; clears via a "Limpar rótulo" entry.
+    Overrides the clip/track's usual kind-based fill color when set. Carried across
+    `Track::split_clip_at` (both halves keep the label, same as `transition_in`). Deliberately
+    excluded from `ClipFormatting` — an organizational tag, not a rendering style, same
+    reasoning `background_removal_mask_path` is excluded for a different reason.
+28. `[x]` Detach/unlink audio from a clip (the mechanical precondition for J-cuts/L-cuts) —
+    `matrix/competitor-parity.md`. `App::detach_audio_from_selected_clip` mutes the video
+    clip's own audio (`gain_db` set to `GAIN_DB_RANGE`'s floor — no separate "muted" flag exists,
+    so muting reuses the existing gain primitive as scoped) and places a new clip on an Audio
+    track pointing at the same asset, with the same trim range and timeline placement, at unity
+    gain — both then independently trimmable. Reused a factored-out `default_clip_instance`
+    helper (previously duplicated between `add_asset_to_timeline`/`add_asset_to_timeline_at`)
+    rather than adding a third copy. No new render/preview pipeline work — per-track independent
+    clips already mix correctly. Triggered via a "Destacar áudio" entry in the timeline clip's
+    context menu, enabled only for Video-track clips.
+29. `[~]` Speed ramping — `App::apply_speed_ramp_to_selected_clip` ships a **stepped**
+    approximation, not the smooth continuous curve CapCut/Premiere/DaVinci/FCP all have. A
+    deliberate scope decision (raised to and confirmed by the user, 2026-08-27): the smooth
+    version needs the export-side `setpts` filter's output PTS to be the *integral* of
+    `1/speed` over time, which for a piecewise-linear speed curve has no simple closed form
+    (needs a `log()` term per segment) — a real, easy-to-get-subtly-wrong derivation with no
+    way to render/verify it in this sandbox (no decode capability), unlike every other
+    `Keyframe<T>`-reusing item in this list. Shipped instead: splits the selected clip into N
+    equal-timeline-duration pieces (reusing the already-correct, already-tested
+    `Track::split_clip_at`, unchanged) and assigns each piece a constant `speed_factor`
+    linearly interpolated between a start/end speed (reusing the existing field, unchanged) —
+    a real, visible "staircase" speed ramp built entirely from primitives that were already
+    correct before this item, with zero new avfilter/geq/setpts math to get wrong. Since
+    `duration_secs()` depends on `speed_factor`, each piece's `start_secs` is reflowed left to
+    right after the speed assignment so the pieces stay contiguous. Triggered via a "Rampa de
+    velocidade" submenu in the timeline clip's context menu, with two fixed presets (0.5x→2x
+    slow-to-fast, 2x→0.5x fast-to-slow, 4 steps each) rather than a custom-curve dialog — also
+    deliberately out of scope for this pass. **Not done**: the smooth continuous-curve version;
+    a UI for custom start/end speed and step count.
+30. `[x]` Real-time audio level meter (VU/peak) during playback — `matrix/competitor-parity.md`.
+    Present in Premiere (VU meters) and DaVinci (Fairlight LUFS/peak meter). A pad probe on the
+    preview audio path (same pattern as the existing keyframe pad-probes, reading instead of
+    writing): `Preview::build_metering_audio_sink` wraps the real audio-sink element (both the
+    single-clip `playbin` path and the manually-built compositor audio-mix path) in a small
+    `audioconvert!capsfilter(F32LE)!sink` bin, forcing a known sample format so a buffer probe
+    on the capsfilter's src pad can parse raw f32 bytes directly and compute peak/RMS combined
+    across every channel (a flat sequence, not per-channel — matches this item's "small meter
+    widget" scope, not a full per-channel Fairlight-style meter). Stored in a shared
+    `Arc<Mutex<AudioLevel>>` updated from GStreamer's own streaming thread, read from the UI
+    thread via `Preview::current_audio_level()`. UI: a small peak/RMS bar in the Editor preview
+    panel's transport row, next to the scopes toggle, with the peak marker turning red above
+    0.98 amplitude to flag near-clipping. Verified via a scratch-crate real-execution check
+    (this sandbox's `core` test binary can't link — missing `libonnxruntime`): the metering
+    probe logic, run against a real audio fixture through a real GStreamer `playbin`, observed
+    real nonzero peak/RMS from actual decoded samples — audio decode/preroll works in this
+    sandbox, unlike video decode (confirmed separately: the same harness against a video
+    fixture failed with a missing-decoder-plugin error, the known pre-existing video-decode gap,
+    not a metering bug).
+31. `[x]` Audio gain keyframes (volume fade/ramp within one clip, not just a constant
     `gain_db`) — found while surveying what else the existing `Keyframe<T>` infrastructure
     could drive. Same shape as position/scale/rotation/opacity: `gain_keyframes: Vec<Keyframe<
     f32>>` on `ClipInstance`, overriding the constant `gain_db` when non-empty. Export-side,
@@ -381,6 +421,10 @@ not by default priority.
     to `volume=<expr>:eval=frame` — verified against FFmpeg's own filter docs, not assumed.
     Crosses the `avbridge` FFI boundary (a new expression-string field on `AudioSegment`/
     `RawAudioSegment`, and an `audio_mix.c` branch alongside the existing literal-`%.6fdB` path).
+    Verified: `gain_filter_db_expr`'s unit tests run for real in a scratch crate; a real
+    `avbridge` integration test exercises the new `av_asprintf`-built `volume=<expr>:eval=frame`
+    path end-to-end against a real FFmpeg filter graph (`avfilter_graph_config` succeeding is
+    proof the expression syntax is valid, not just that the C compiles).
 32. `[x]` Color grading keyframes (brightness/contrast/saturation ramping over a clip, not a
     constant value) — `ClipInstance::brightness_keyframes`/`contrast_keyframes`/
     `saturation_keyframes`, each independently overriding its own constant field when non-empty
@@ -417,26 +461,55 @@ not by default priority.
     `video_filter_chain`/`split_clip_at` tests in `timeline_test.rs`.
 34. `[~]` Text/shape clip animation keyframes — `TextClip`/`ShapeClip` had *zero* keyframe fields
     (position/scale/rotation/opacity keyframes only existed on `ClipInstance` before this), so
-    this was a structural gap, not a one-field addition. **Partial**: `ShapeClip::
-    center_x_keyframes`/`center_y_keyframes` ship — `ShapeClip`'s export path (a self-contained
-    `geq` filter expression built entirely in Rust, `crate::shape_render`) turned out to already
-    support a `T`-keyed per-pixel expression with zero FFI/C changes (`geq` natively exposes `T`,
-    elapsed seconds, per pixel — confirmed against FFmpeg's own filter docs, not assumed).
-    `keyframe::shape_axis_expr` offsets `T` by the shape's own `start_secs` (the overlay is
-    composited onto the already-exported full video in a post-pass, not inside a per-clip filter
-    chain with its own PTS reset, so `T` is timeline-*absolute*, unlike every other `*_filter_
-    expr` builder in this module — a real, documented difference). **Explicitly still not done**:
-    `ShapeClip` width/height/rotation keyframes (would mean reworking `shape_render`'s per-shape-
-    kind geometry math — `inside_expr`'s ellipse/polygon tests — to accept expressions instead of
-    literal half-extents, a real risk to that already visually-verified, un-re-verifiable-in-
-    this-sandbox code that position animation alone doesn't touch); `TextClip` animation of any
-    kind (its export path pre-rasterizes a full-canvas PNG with position baked in at generation
-    time, not a moving overlay — animating it means restructuring that pipeline toward a small
-    sprite + `overlay=x=<expr>:y=<expr>`, a materially bigger lift, still the largest sub-item
-    here). Verified: `shape_axis_expr`'s 3 new unit tests and a new `build_shape_filter_desc`
-    animation test run for real in a scratch crate (`keyframe.rs`+`timeline.rs`+`shape_render.rs`
-    have zero heavy deps) — 53/53 passing, including every pre-existing `shape_render` test
-    (confirms the already-visually-verified static geometry math is unchanged).
+    this was a structural gap, not a one-field addition. **Partial, now covers all of
+    `ShapeClip`**: `center_x_keyframes`/`center_y_keyframes` (position) and, in a follow-up
+    pass, `width_keyframes`/`height_keyframes`/`rotation_keyframes` (size/rotation) all ship —
+    `ShapeClip`'s export path (a self-contained `geq` filter expression built entirely in Rust,
+    `crate::shape_render`) turned out to already support a `T`-keyed per-pixel expression with
+    zero FFI/C changes (`geq` natively exposes `T`, elapsed seconds, per pixel — confirmed
+    against FFmpeg's own filter docs, not assumed). `keyframe::shape_axis_expr` offsets `T` by
+    the shape's own `start_secs` (the overlay is composited onto the already-exported full video
+    in a post-pass, not inside a per-clip filter chain with its own PTS reset, so `T` is
+    timeline-*absolute*, unlike every other `*_filter_expr` builder in this module — a real,
+    documented difference). The size/rotation follow-up reworked `shape_render::inside_expr`'s
+    ellipse/polygon geometry math to accept `geq`-expression-language sub-expressions for the
+    half-extents instead of literal `f64`s — the multiply-through-avoid-division trick the
+    static case always used generalizes verbatim, so an unkeyframed width/height still
+    degenerates to the same plain numeric literal as before. Rotation swaps the old
+    Rust-precomputed `sin_a`/`cos_a` literals for `geq`'s own `sin()`/`cos()`/`PI`
+    expression-language functions (confirmed present via FFmpeg's `eval.c`-backed docs, not
+    assumed), evaluated per pixel instead of once; a scratch-crate numeric check confirmed the
+    new per-pixel formula produces the same sin/cos values the old precomputed literals did, at
+    several angles, so this is not a behavior change in the unkeyframed (still the common) case.
+    Verified: `shape_axis_expr`'s unit tests and `build_shape_filter_desc`/`inside_expr`
+    animation tests (position, then size/rotation) all run for real in a scratch crate
+    (`keyframe.rs`+`timeline.rs`+`shape_render.rs` have zero heavy deps) — 58/58 passing,
+    including every pre-existing `shape_render` test (confirms the already-visually-verified
+    static geometry math is unchanged).
+
+    **`TextClip` opacity keyframes also ship**, in a further follow-up: `TextClip`'s export path
+    pre-rasterizes a full-canvas PNG per segment with position baked in at generation time, not a
+    moving overlay — so position/scale animation stays out of scope (would mean restructuring
+    that pipeline toward a small sprite + `overlay=x=<expr>:y=<expr>`, a materially bigger lift).
+    Opacity is different: the raster already carries a real alpha channel, so a fade is just an
+    alpha *multiplier* applied to the existing pixels, no rasterization change needed.
+    `keyframe::text_opacity_alpha_expr` builds the same `T`-keyed-offset-by-`start_secs`
+    expression `shape_axis_expr` does; `avbridge_apply_text_overlays` splices a `geq` alpha
+    stage between the movie source and the overlay node when a segment's
+    `opacity_keyframe_expr` is non-empty. **Real, non-obvious finding from testing this against
+    this project's actual linked FFmpeg build** (`avbridge/tests/text_overlay_test.rs`, not just
+    reasoning from docs): `geq`'s alpha read-back function is spelled `alpha(X,Y)`, not `a(X,Y)`
+    as FFmpeg's own docs otherwise imply — `a(X,Y)` parses as "Unknown function" against the
+    real library. A `colorchannelmixer=aa=<expr>:eval=frame` alternative (no per-pixel read-back
+    needed at all) was tried first and ruled out the same way: that filter has no `eval` option
+    in this build. The full encode still fails in this sandbox with a `Pipeline` error — but
+    that reproduces identically on the *unmodified* (no-fade) code path too, confirming it's the
+    same pre-existing encoder-availability gap `CLAUDE.md` already documents elsewhere in this
+    codebase, not something this change introduced.
+
+    **Explicitly still not done**: `TextClip` position/scale/rotation animation (the pre-
+    rasterization restructuring described above, still the largest remaining sub-item in this
+    whole roadmap item).
 
 Found but deliberately not added as a P4 item: **nested sequences / compound clips** (Premiere/
 DaVinci/FCP) — closer to Multicam's own tier of effort than to the four above (the render/

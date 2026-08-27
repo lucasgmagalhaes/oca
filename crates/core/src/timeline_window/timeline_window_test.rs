@@ -32,6 +32,7 @@ fn clip(
         source_in_secs,
         source_out_secs,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -89,6 +90,7 @@ fn video_track(clips: Vec<crate::timeline::ClipInstance>) -> Track {
         shape_clips: vec![],
         visible: true,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     }
 }
 
@@ -110,6 +112,7 @@ fn text_clip(id: u64, start_secs: f64, duration_secs: f64) -> TextClip {
         words: vec![],
         highlight_enabled: false,
         highlight_color_rgba: [255, 220, 0, 255],
+        opacity_keyframes: vec![],
     }
 }
 
@@ -123,6 +126,9 @@ fn shape_clip(id: u64, start_secs: f64, duration_secs: f64) -> ShapeClip {
         center_y: 0.5,
         center_x_keyframes: vec![],
         center_y_keyframes: vec![],
+        width_keyframes: vec![],
+        height_keyframes: vec![],
+        rotation_keyframes: vec![],
         width: 0.3,
         height: 0.3,
         rotation_deg: 0.0,

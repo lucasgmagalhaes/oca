@@ -58,6 +58,7 @@ fn clip(id: u64, asset_id: u64) -> ClipInstance {
         source_in_secs: 0.0,
         source_out_secs: 10.0,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -147,6 +148,7 @@ fn fixture_project() -> Project {
 
                     visible: true,
                     audio_role: AudioRole::Unspecified,
+                    color_label: None,
                 }],
                 markers: Vec::new(),
                 multicam_groups: Vec::new(),
@@ -209,10 +211,12 @@ fn project_with_styled_text() -> Project {
             words: vec![],
             highlight_enabled: false,
             highlight_color_rgba: [255, 220, 0, 255],
+            opacity_keyframes: vec![],
         }],
         shape_clips: vec![],
         visible: true,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     });
     project
 }
@@ -499,6 +503,7 @@ fn queued_text_segments_without_a_glyph_range_load_as_whole_text() {
         glyph_byte_range: Some([4, 10]),
         pos_x: 0.1,
         pos_y: 0.8,
+        opacity_keyframe_expr: String::new(),
     }];
     let bytes = to_ocqueue_bytes(&original).unwrap();
     let mut msgpack = Vec::new();

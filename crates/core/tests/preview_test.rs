@@ -32,6 +32,7 @@ fn clip() -> ClipInstance {
         source_in_secs: 0.0,
         source_out_secs: 1.0,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -185,6 +186,25 @@ fn current_frame_returns_correctly_sized_rgba() {
 fn current_frame_is_none_for_audio_only_input() {
     let preview = Preview::open(&fixture("audio.m4a"), None).unwrap();
     assert!(preview.current_frame().is_none());
+}
+
+/// `spec/ROADMAP.md` P4 item 30, "real-time audio level meter" — `current_audio_level()` stays
+/// at its silent default until the buffer probe `build_metering_audio_sink` installs has
+/// actually processed at least one real audio buffer, which merely opening/prerolling a
+/// pipeline (no playback started) doesn't guarantee.
+#[test]
+fn current_audio_level_defaults_to_silent_before_playback_advances() {
+    let preview = Preview::open(&fixture("audio.m4a"), None).unwrap();
+    let level = preview.current_audio_level();
+    assert_eq!(level, avcore::AudioLevel::default());
+    assert_eq!(level.peak, 0.0);
+    assert_eq!(level.rms, 0.0);
+}
+
+#[test]
+fn current_audio_level_defaults_to_silent_for_a_video_only_preview_too() {
+    let preview = Preview::open(&fixture("video.mp4"), None).unwrap();
+    assert_eq!(preview.current_audio_level(), avcore::AudioLevel::default());
 }
 
 #[test]
@@ -468,6 +488,7 @@ fn open_composited_with_text_and_shape_overlays_composites_without_error() {
         words: vec![],
         highlight_enabled: false,
         highlight_color_rgba: [255, 220, 0, 255],
+        opacity_keyframes: vec![],
     };
     let shape_clip = avcore::timeline::ShapeClip {
         id: 2,
@@ -478,6 +499,9 @@ fn open_composited_with_text_and_shape_overlays_composites_without_error() {
         center_y: 0.5,
         center_x_keyframes: vec![],
         center_y_keyframes: vec![],
+        width_keyframes: vec![],
+        height_keyframes: vec![],
+        rotation_keyframes: vec![],
         width: 0.2,
         height: 0.2,
         rotation_deg: 0.0,
@@ -526,6 +550,7 @@ fn composited_text_highlight_replaces_its_buffer_during_playback() {
         ],
         highlight_enabled: true,
         highlight_color_rgba: [255, 0, 255, 255],
+        opacity_keyframes: vec![],
     };
 
     let mut preview =
@@ -597,6 +622,7 @@ fn refresh_text_overlay_redraws_a_content_only_edit_without_reopening_the_pipeli
         words: Vec::new(),
         highlight_enabled: false,
         highlight_color_rgba: [255, 220, 0, 255],
+        opacity_keyframes: vec![],
     };
 
     let mut preview =
