@@ -47,14 +47,11 @@ executors:
       - image: cimg/rust:<< pipeline.parameters.rust-version >>
     resource_class: medium
 
-jobs:
-  build-and-test:
-    executor: linux
-    environment:
-      CARGO_TERM_COLOR: always
+commands:
+  # Shared by both jobs below: native toolchain/library setup that has nothing to do with
+  # whether the run is coverage or a parallel test partition.
+  setup-native-deps:
     steps:
-      - checkout
-
       # libclang/cmake are needed by bindgen-based build scripts in core's dependency tree —
       # espeak-rs-sys (espeak-ng phonemization, core/Cargo.toml) and whisper-rs (transcription)
       # both link vendored C/C++ sources through bindgen, which needs a real libclang.so to
@@ -210,6 +207,15 @@ jobs:
               exit 1
             fi
 
+jobs:
+  build-and-test:
+    executor: linux
+    environment:
+      CARGO_TERM_COLOR: always
+    steps:
+      - checkout
+      - setup-native-deps
+
       - run:
           name: Check formatting
           command: |
@@ -227,6 +233,12 @@ jobs:
             source "$BASH_ENV"
             cargo clippy --workspace --all-targets
 
+      # Runs the full, unpartitioned suite deliberately: cargo-llvm-cov's own nextest
+      # integration has no supported way to merge coverage instrumentation collected across
+      # separate --partition shards (open upstream issue: taiki-e/cargo-llvm-cov#281 — each
+      # partition only sees its own subset of tests, so a partitioned coverage run would
+      # under-report real coverage). See the `test-fast` job below for parallel test
+      # execution without coverage.
       - run:
           name: Test with coverage
           command: |
@@ -246,7 +258,31 @@ jobs:
           file: lcov.info
           token: CODECOV_TOKEN
 
+  # Fast, parallel pass/fail feedback via nextest's native CI partitioning (not coverage —
+  # see the comment on build-and-test's "Test with coverage" step for why the two don't mix).
+  # store_test_results here also feeds CircleCI's timing-based "Smarter Testing" balancing for
+  # future runs of this job.
+  test-fast:
+    executor: linux
+    parallelism: 2
+    environment:
+      CARGO_TERM_COLOR: always
+    steps:
+      - checkout
+      - setup-native-deps
+
+      - run:
+          name: Test (partitioned)
+          command: |
+            source "$BASH_ENV"
+            node=$((CIRCLE_NODE_INDEX + 1))
+            cargo nextest run --workspace --profile ci --partition "count:${node}/${CIRCLE_NODE_TOTAL}"
+
+      - store_test_results:
+          path: target/nextest/ci
+
 workflows:
   ci:
     jobs:
       - build-and-test
+      - test-fast
