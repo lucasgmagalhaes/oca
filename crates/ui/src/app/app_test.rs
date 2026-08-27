@@ -251,6 +251,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         youtube_download_cancel: None,
         selected_clip_id: None,
         undo_stack: avcore::undo::UndoStack::new(),
+        undo_drag_active: false,
         selected_text_clip_id: None,
         text_color_edit: None,
         selected_shape_clip_id: None,
@@ -1391,6 +1392,77 @@ fn split_at_playhead_is_a_no_op_when_nothing_covers_the_playhead() {
     app.split_at_playhead();
 
     assert_eq!(app.active_project().timeline().tracks[0].clips.len(), 1);
+}
+
+#[test]
+fn a_continuous_effect_property_drag_pushes_only_one_undo_step() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    assert!(!app.can_undo());
+
+    // Simulates egui re-firing the slider's setter every frame while the pointer stays down
+    // (see App::push_undo_snapshot_for_drag's doc comment) — three "frames" of the same drag.
+    app.set_selected_clip_gain(1.0);
+    app.set_selected_clip_gain(2.0);
+    app.set_selected_clip_gain(3.0);
+    assert!(app.can_undo());
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].gain_db,
+        3.0
+    );
+
+    app.undo();
+    // One undo step undoes the whole drag, back to the value before it started, not just the
+    // last frame's increment.
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].gain_db,
+        0.0
+    );
+    assert!(!app.can_undo());
+}
+
+#[test]
+fn releasing_the_pointer_starts_a_fresh_undo_step_for_the_next_drag() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 20.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_gain(1.0);
+    app.end_undo_drag_tracking_if_pointer_released(false);
+    app.set_selected_clip_gain(2.0);
+
+    assert!(app.can_undo());
+    app.undo();
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].gain_db,
+        1.0
+    );
+    assert!(app.can_undo());
+    app.undo();
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].gain_db,
+        0.0
+    );
+    assert!(!app.can_undo());
 }
 
 #[test]
@@ -4285,6 +4357,25 @@ fn text_color_edit_commits_each_supported_target_only_on_confirmation() {
     assert_eq!(clip.color_rgba, [1, 2, 3, 4]);
     assert_eq!(clip.background_rgba, [5, 6, 7, 8]);
     assert_eq!(clip.highlight_color_rgba, [9, 10, 11, 12]);
+}
+
+#[test]
+fn confirming_a_text_color_edit_pushes_an_undo_step() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_text_clip();
+    let clip_id = app.selected_text_clip_id.unwrap();
+    app.undo_stack.clear(); // discard the snapshot add_text_clip() itself pushed.
+
+    app.begin_text_color_edit(clip_id, TextColorTarget::Foreground, [255, 255, 255, 255]);
+    app.text_color_edit.as_mut().unwrap().rgba = [1, 2, 3, 4];
+    assert!(app.confirm_text_color_edit());
+
+    assert!(app.can_undo());
+    app.undo();
+    assert_eq!(
+        app.active_project().timeline().tracks[0].text_clips[0].color_rgba,
+        [255, 255, 255, 255]
+    );
 }
 
 #[test]
