@@ -423,6 +423,42 @@ impl App {
         }
     }
 
+    /// Applies a content-only edit (text/font/color/background/position/highlight — anything
+    /// but `start_secs`/`duration_secs`) on `clip_id` to the live preview without tearing down
+    /// the pipeline: pushes a freshly rasterized buffer into the already-open text branch when
+    /// `clip_id` is part of the currently loaded composited preview
+    /// (`preview_text_clip_ids`). A no-op otherwise — nothing is open yet, or this clip
+    /// isn't currently composited — the caller's edit still lands in the project timeline
+    /// either way, just without a live visual update until the pipeline next reopens (e.g. the
+    /// playhead moving onto/off this clip). Mirrors the "position shouldn't force a rebuild"
+    /// shape [`App::seek_preview`]'s fast path already has, applied to styling edits instead of
+    /// scrubbing.
+    pub(crate) fn refresh_preview_text_content(&mut self, clip_id: u64) {
+        if !self.preview_text_clip_ids.contains(&clip_id) {
+            return;
+        }
+        let playhead = self.active_project().timeline().playhead_secs;
+        let Some(clip) = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Text)
+            .flat_map(|t| &t.text_clips)
+            .find(|c| c.id == clip_id)
+            .cloned()
+        else {
+            return;
+        };
+        let Some(preview) = self.preview.as_mut() else {
+            return;
+        };
+        let local_time_secs = playhead - clip.start_secs;
+        if let Err(error) = preview.refresh_text_overlay(&clip, local_time_secs) {
+            warn!(%error, "failed to refresh preview text style edit");
+        }
+    }
+
     /// Toggles play/pause on the current preview pipeline. A no-op if nothing is selected or
     /// the pipeline failed to open. A frozen clip's underlying pipeline stays `Paused`
     /// regardless — only [`App::preview_frozen_since`] starts/stops, driving the playhead
