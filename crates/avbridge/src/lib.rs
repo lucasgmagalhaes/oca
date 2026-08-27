@@ -57,6 +57,8 @@ struct RawAudioSegment {
     timeline_start_secs: f64,
     gain_db: f32,
     speed_factor: f32,
+    /// NULL or empty means "use gain_db unchanged" — see `AudioSegment::gain_keyframe_expr`.
+    gain_keyframe_expr: *const c_char,
     duck_role: c_int,
 }
 
@@ -564,6 +566,13 @@ pub struct AudioSegment {
     pub timeline_start_secs: f64,
     pub gain_db: f32,
     pub speed_factor: f32,
+    /// FFmpeg `volume` filter expression (linear multiplier, `t`-keyed from this segment's own
+    /// trim start) driving a keyframed gain ramp instead of the constant `gain_db` above — built
+    /// by `avcore::keyframe::gain_filter_db_expr` from a `ClipInstance`'s `gain_keyframes`. Empty
+    /// string means "use `gain_db` unchanged" (the common case — no keyframed gain). `#[serde(
+    /// default)]` so an `.ocqueue` job persisted before this field existed loads with no ramp.
+    #[serde(default)]
+    pub gain_keyframe_expr: String,
     /// Audio-ducking role (P2 item 6, "Auto Ducking"): `0` mixes in as-is, `1` is the sidechain
     /// trigger (still plays itself, and ducks every `2` branch under it), `2` is ducked under
     /// trigger branches via `sidechaincompress`. Built by `core`'s
@@ -948,16 +957,24 @@ pub fn mix_audio_timeline(
                 .map_err(AudioMixError::InvalidPath)
         })
         .collect::<Result<_, _>>()?;
+    let gain_exprs: Vec<CString> = segments
+        .iter()
+        .map(|seg| {
+            CString::new(seg.gain_keyframe_expr.as_bytes()).map_err(AudioMixError::InvalidPath)
+        })
+        .collect::<Result<_, _>>()?;
     let raw: Vec<RawAudioSegment> = segments
         .iter()
         .zip(&paths)
-        .map(|(seg, path)| RawAudioSegment {
+        .zip(&gain_exprs)
+        .map(|((seg, path), gain_expr)| RawAudioSegment {
             source_path: path.as_ptr(),
             source_in_secs: seg.source_in_secs,
             source_out_secs: seg.source_out_secs,
             timeline_start_secs: seg.timeline_start_secs,
             gain_db: seg.gain_db,
             speed_factor: seg.speed_factor,
+            gain_keyframe_expr: gain_expr.as_ptr(),
             duck_role: seg.duck_role as c_int,
         })
         .collect();

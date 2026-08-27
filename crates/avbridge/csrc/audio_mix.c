@@ -14,6 +14,7 @@
 #include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
 #include <libavformat/avformat.h>
+#include <libavutil/avstring.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/opt.h>
 
@@ -36,9 +37,8 @@ static int source_has_audio(const char *path, int *open_failed) {
     return found;
 }
 
-static int create_filter(AVFilterGraph *graph, AVFilterContext **ctx,
-                         const char *filter_name, const char *instance_name,
-                         const char *args) {
+static int create_filter(AVFilterGraph *graph, AVFilterContext **ctx, const char *filter_name,
+                         const char *instance_name, const char *args) {
     const AVFilter *filter = avfilter_get_by_name(filter_name);
     if (!filter) return AVERROR_FILTER_NOT_FOUND;
     return avfilter_graph_create_filter(ctx, filter, instance_name, args, NULL, graph);
@@ -63,7 +63,10 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
 
     branch_ctx = av_calloc((size_t)valid_count, sizeof(*branch_ctx));
     branch_duck_role = av_calloc((size_t)valid_count, sizeof(*branch_duck_role));
-    if (!branch_ctx || !branch_duck_role) { ret = AVERROR(ENOMEM); goto fail; }
+    if (!branch_ctx || !branch_duck_role) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
 
     char args[256];
 
@@ -76,15 +79,21 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
 
         snprintf(name, sizeof(name), "movie_%d", branch);
         const AVFilter *movie_filter = avfilter_get_by_name("amovie");
-        if (!movie_filter) { ret = AVERROR_FILTER_NOT_FOUND; goto fail; }
+        if (!movie_filter) {
+            ret = AVERROR_FILTER_NOT_FOUND;
+            goto fail;
+        }
         movie = avfilter_graph_alloc_filter(graph, movie_filter, name);
-        if (!movie) { ret = AVERROR(ENOMEM); goto fail; }
+        if (!movie) {
+            ret = AVERROR(ENOMEM);
+            goto fail;
+        }
         ret = av_opt_set(movie, "filename", seg->source_path, AV_OPT_SEARCH_CHILDREN);
         if (ret < 0 || (ret = avfilter_init_str(movie, NULL)) < 0) goto fail;
 
         snprintf(name, sizeof(name), "trim_%d", branch);
-        snprintf(args, sizeof(args), "start=%.9f:end=%.9f",
-                 seg->source_in_secs, seg->source_out_secs);
+        snprintf(args, sizeof(args), "start=%.9f:end=%.9f", seg->source_in_secs,
+                 seg->source_out_secs);
         if ((ret = create_filter(graph, &trim, "atrim", name, args)) < 0) goto fail;
 
         snprintf(name, sizeof(name), "pts_%d", branch);
@@ -98,8 +107,24 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
         if ((ret = create_filter(graph, &tempo, "atempo", name, args)) < 0) goto fail;
 
         snprintf(name, sizeof(name), "volume_%d", branch);
-        snprintf(args, sizeof(args), "volume=%.6fdB", (double)seg->gain_db);
-        if ((ret = create_filter(graph, &volume, "volume", name, args)) < 0) goto fail;
+        if (seg->gain_keyframe_expr && seg->gain_keyframe_expr[0] != '\0') {
+            /* Expression mode: a keyframed gain ramp built by
+               avcore::keyframe::gain_filter_db_expr, already a linear multiplier (volume's
+               `eval=frame` expressions are linear, not dB -- see that function's own doc
+               comment) -- an arbitrary-length string, unlike the fixed-size `args` buffer used
+               for every other filter here, so it's built with av_asprintf instead of snprintf. */
+            char *expr_args = av_asprintf("volume=%s:eval=frame", seg->gain_keyframe_expr);
+            if (!expr_args) {
+                ret = AVERROR(ENOMEM);
+                goto fail;
+            }
+            ret = create_filter(graph, &volume, "volume", name, expr_args);
+            av_free(expr_args);
+        } else {
+            snprintf(args, sizeof(args), "volume=%.6fdB", (double)seg->gain_db);
+            ret = create_filter(graph, &volume, "volume", name, args);
+        }
+        if (ret < 0) goto fail;
 
         double delay_ms = fmax(0.0, seg->timeline_start_secs * 1000.0);
         snprintf(name, sizeof(name), "delay_%d", branch);
@@ -110,7 +135,8 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
             (ret = avfilter_link(trim, 0, pts, 0)) < 0 ||
             (ret = avfilter_link(pts, 0, tempo, 0)) < 0 ||
             (ret = avfilter_link(tempo, 0, volume, 0)) < 0 ||
-            (ret = avfilter_link(volume, 0, delay, 0)) < 0) goto fail;
+            (ret = avfilter_link(volume, 0, delay, 0)) < 0)
+            goto fail;
 
         branch_ctx[branch] = delay;
         branch_duck_role[branch] = seg->duck_role;
@@ -126,8 +152,10 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
        against nothing is meaningless. */
     int target_count = 0, trigger_count = 0;
     for (int i = 0; i < branch; i++) {
-        if (branch_duck_role[i] == DUCK_ROLE_TARGET) target_count++;
-        else if (branch_duck_role[i] == DUCK_ROLE_TRIGGER) trigger_count++;
+        if (branch_duck_role[i] == DUCK_ROLE_TARGET)
+            target_count++;
+        else if (branch_duck_role[i] == DUCK_ROLE_TRIGGER)
+            trigger_count++;
     }
 
     if (target_count > 0 && trigger_count > 0) {
@@ -141,7 +169,10 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
            goes toward `duck`'s sidechain input, pad 1 goes straight to the final mix. Target
            and normal branches each have exactly one consumer already, so they need no split. */
         AVFilterContext **trigger_split = av_calloc((size_t)branch, sizeof(*trigger_split));
-        if (!trigger_split) { ret = AVERROR(ENOMEM); goto fail; }
+        if (!trigger_split) {
+            ret = AVERROR(ENOMEM);
+            goto fail;
+        }
         for (int i = 0; i < branch; i++) {
             if (branch_duck_role[i] != DUCK_ROLE_TRIGGER) continue;
             char split_name[64];
@@ -158,7 +189,10 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
 
         if (target_count == 1) {
             for (int i = 0; i < branch; i++)
-                if (branch_duck_role[i] == DUCK_ROLE_TARGET) { music_source = branch_ctx[i]; break; }
+                if (branch_duck_role[i] == DUCK_ROLE_TARGET) {
+                    music_source = branch_ctx[i];
+                    break;
+                }
         } else {
             snprintf(args, sizeof(args),
                      "inputs=%d:duration=longest:dropout_transition=0:normalize=0", target_count);
@@ -179,7 +213,10 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
 
         if (trigger_count == 1) {
             for (int i = 0; i < branch; i++)
-                if (branch_duck_role[i] == DUCK_ROLE_TRIGGER) { trigger_source = trigger_split[i]; break; }
+                if (branch_duck_role[i] == DUCK_ROLE_TRIGGER) {
+                    trigger_source = trigger_split[i];
+                    break;
+                }
         } else {
             snprintf(args, sizeof(args),
                      "inputs=%d:duration=longest:dropout_transition=0:normalize=0", trigger_count);
@@ -219,8 +256,8 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
            signal -- a music branch never appears here directly, only through `duck`. Trigger
            branches use their split's second output pad, since pad 0 already feeds `duck`. */
         int final_inputs = (branch - target_count) + 1;
-        snprintf(args, sizeof(args),
-                 "inputs=%d:duration=longest:dropout_transition=0:normalize=0", final_inputs);
+        snprintf(args, sizeof(args), "inputs=%d:duration=longest:dropout_transition=0:normalize=0",
+                 final_inputs);
         if ((ret = create_filter(graph, &final_mix, "amix", "mix", args)) < 0) {
             av_free(trigger_split);
             goto fail;
@@ -228,7 +265,8 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
         int pad = 0;
         for (int i = 0; i < branch; i++) {
             if (branch_duck_role[i] == DUCK_ROLE_TARGET) continue;
-            AVFilterContext *src = branch_duck_role[i] == DUCK_ROLE_TRIGGER ? trigger_split[i] : branch_ctx[i];
+            AVFilterContext *src =
+                branch_duck_role[i] == DUCK_ROLE_TRIGGER ? trigger_split[i] : branch_ctx[i];
             int src_pad = branch_duck_role[i] == DUCK_ROLE_TRIGGER ? 1 : 0;
             if ((ret = avfilter_link(src, src_pad, final_mix, pad++)) < 0) {
                 av_free(trigger_split);
@@ -239,8 +277,8 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
         if ((ret = avfilter_link(duck, 0, final_mix, pad)) < 0) goto fail;
         mix_source = final_mix;
     } else {
-        snprintf(args, sizeof(args),
-                 "inputs=%d:duration=longest:dropout_transition=0:normalize=0", branch);
+        snprintf(args, sizeof(args), "inputs=%d:duration=longest:dropout_transition=0:normalize=0",
+                 branch);
         if ((ret = create_filter(graph, &final_mix, "amix", "mix", args)) < 0) goto fail;
         for (int i = 0; i < branch; i++) {
             if ((ret = avfilter_link(branch_ctx[i], 0, final_mix, i)) < 0) goto fail;
@@ -257,7 +295,8 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
     snprintf(args, sizeof(args), "I=%.1f:TP=-1.0:LRA=11", (double)target_lufs);
     if ((ret = create_filter(graph, &loudnorm, "loudnorm", "loudnorm", args)) < 0) goto fail;
     if ((ret = create_filter(graph, &limiter, "alimiter", "limiter",
-                             "limit=0.95:attack=5:release=50")) < 0) goto fail;
+                             "limit=0.95:attack=5:release=50")) < 0)
+        goto fail;
     snprintf(args, sizeof(args), "end=%.9f", timeline_duration_secs);
     if ((ret = create_filter(graph, &final_trim, "atrim", "timeline_trim", args)) < 0) goto fail;
     if ((ret = create_filter(graph, &format, "aformat", "format",
@@ -271,7 +310,8 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
         (ret = avfilter_link(limiter, 0, final_trim, 0)) < 0 ||
         (ret = avfilter_link(final_trim, 0, format, 0)) < 0 ||
         (ret = avfilter_link(format, 0, sink, 0)) < 0 ||
-        (ret = avfilter_graph_config(graph, NULL)) < 0) goto fail;
+        (ret = avfilter_graph_config(graph, NULL)) < 0)
+        goto fail;
 
     *out_graph = graph;
     *out_sink = sink;
@@ -284,9 +324,9 @@ fail:
     return ret;
 }
 
-AudioMixStatus avbridge_mix_audio_timeline(
-    const AudioSegment *segments, int segment_count, double timeline_duration_secs,
-    const char *out_path, float target_lufs, const uint8_t *cancel) {
+AudioMixStatus avbridge_mix_audio_timeline(const AudioSegment *segments, int segment_count,
+                                           double timeline_duration_secs, const char *out_path,
+                                           float target_lufs, const uint8_t *cancel) {
     if (!segments || segment_count <= 0) return AUDIO_MIX_ERR_NO_AUDIO;
 
     AudioMixStatus status = AUDIO_MIX_OK;
@@ -311,27 +351,42 @@ AudioMixStatus avbridge_mix_audio_timeline(
             goto cleanup;
         }
     }
-    if (valid_count == 0) { status = AUDIO_MIX_ERR_NO_AUDIO; goto cleanup; }
+    if (valid_count == 0) {
+        status = AUDIO_MIX_ERR_NO_AUDIO;
+        goto cleanup;
+    }
 
-    if (build_mix_graph(segments, valid, segment_count, valid_count,
-                        timeline_duration_secs, target_lufs, &graph, &sink) < 0) {
+    if (build_mix_graph(segments, valid, segment_count, valid_count, timeline_duration_secs,
+                        target_lufs, &graph, &sink) < 0) {
         status = AUDIO_MIX_ERR_FILTER_GRAPH;
         goto cleanup;
     }
 
     avformat_alloc_output_context2(&out_ctx, NULL, NULL, out_path);
-    if (!out_ctx) { status = AUDIO_MIX_ERR_ALLOC_OUTPUT; goto cleanup; }
+    if (!out_ctx) {
+        status = AUDIO_MIX_ERR_ALLOC_OUTPUT;
+        goto cleanup;
+    }
     const AVCodec *encoder = avcodec_find_encoder(AV_CODEC_ID_AAC);
-    if (!encoder) { status = AUDIO_MIX_ERR_ENCODER; goto cleanup; }
+    if (!encoder) {
+        status = AUDIO_MIX_ERR_ENCODER;
+        goto cleanup;
+    }
     enc_ctx = avcodec_alloc_context3(encoder);
-    if (!enc_ctx) { status = AUDIO_MIX_ERR_ENCODER; goto cleanup; }
+    if (!enc_ctx) {
+        status = AUDIO_MIX_ERR_ENCODER;
+        goto cleanup;
+    }
     enc_ctx->sample_rate = 48000;
     enc_ctx->sample_fmt = AV_SAMPLE_FMT_FLTP;
     av_channel_layout_default(&enc_ctx->ch_layout, 2);
     enc_ctx->bit_rate = 192000;
     enc_ctx->time_base = (AVRational){1, 48000};
     if (out_ctx->oformat->flags & AVFMT_GLOBALHEADER) enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-    if (avcodec_open2(enc_ctx, encoder, NULL) < 0) { status = AUDIO_MIX_ERR_ENCODER; goto cleanup; }
+    if (avcodec_open2(enc_ctx, encoder, NULL) < 0) {
+        status = AUDIO_MIX_ERR_ENCODER;
+        goto cleanup;
+    }
     if (enc_ctx->frame_size > 0) av_buffersink_set_frame_size(sink, (unsigned)enc_ctx->frame_size);
 
     out_stream = avformat_new_stream(out_ctx, NULL);
@@ -352,14 +407,23 @@ AudioMixStatus avbridge_mix_audio_timeline(
 
     frame = av_frame_alloc();
     pkt = av_packet_alloc();
-    if (!frame || !pkt) { status = AUDIO_MIX_ERR_PIPELINE; goto cleanup; }
+    if (!frame || !pkt) {
+        status = AUDIO_MIX_ERR_PIPELINE;
+        goto cleanup;
+    }
     AVRational sink_tb = av_buffersink_get_time_base(sink);
     while (1) {
-        if (cancel && *cancel) { status = AUDIO_MIX_CANCELLED; goto cleanup; }
+        if (cancel && *cancel) {
+            status = AUDIO_MIX_CANCELLED;
+            goto cleanup;
+        }
         int ret = av_buffersink_get_frame(sink, frame);
         if (ret == AVERROR_EOF) break;
         if (ret == AVERROR(EAGAIN)) continue;
-        if (ret < 0) { status = AUDIO_MIX_ERR_PIPELINE; goto cleanup; }
+        if (ret < 0) {
+            status = AUDIO_MIX_ERR_PIPELINE;
+            goto cleanup;
+        }
         frame->pts = av_rescale_q(frame->pts, sink_tb, enc_ctx->time_base);
         if (encode_write_packet(out_ctx, enc_ctx, out_stream, frame, pkt) < 0) {
             av_frame_unref(frame);
@@ -379,7 +443,8 @@ cleanup:
     av_frame_free(&frame);
     avcodec_free_context(&enc_ctx);
     avfilter_graph_free(&graph);
-    if (out_ctx && !(out_ctx->oformat->flags & AVFMT_NOFILE) && out_ctx->pb) avio_closep(&out_ctx->pb);
+    if (out_ctx && !(out_ctx->oformat->flags & AVFMT_NOFILE) && out_ctx->pb)
+        avio_closep(&out_ctx->pb);
     if (out_ctx) avformat_free_context(out_ctx);
     av_free(valid);
     return status;
@@ -397,8 +462,8 @@ static int64_t packet_ts(const AVPacket *pkt) {
     return pkt->dts != AV_NOPTS_VALUE ? pkt->dts : pkt->pts;
 }
 
-MediaMuxStatus avbridge_mux_video_audio(
-    const char *video_path, const char *audio_path, const char *out_path) {
+MediaMuxStatus avbridge_mux_video_audio(const char *video_path, const char *audio_path,
+                                        const char *out_path) {
     AVFormatContext *video_ctx = NULL, *audio_ctx = NULL, *out_ctx = NULL;
     AVPacket *video_pkt = NULL, *audio_pkt = NULL;
     MediaMuxStatus status = MEDIA_MUX_OK;
@@ -409,10 +474,16 @@ MediaMuxStatus avbridge_mux_video_audio(
     }
     int video_idx = first_stream_index(video_ctx, AVMEDIA_TYPE_VIDEO);
     int audio_idx = first_stream_index(audio_ctx, AVMEDIA_TYPE_AUDIO);
-    if (video_idx < 0 || audio_idx < 0) { status = MEDIA_MUX_ERR_MISSING_STREAM; goto cleanup; }
+    if (video_idx < 0 || audio_idx < 0) {
+        status = MEDIA_MUX_ERR_MISSING_STREAM;
+        goto cleanup;
+    }
 
     avformat_alloc_output_context2(&out_ctx, NULL, NULL, out_path);
-    if (!out_ctx) { status = MEDIA_MUX_ERR_ALLOC_OUTPUT; goto cleanup; }
+    if (!out_ctx) {
+        status = MEDIA_MUX_ERR_ALLOC_OUTPUT;
+        goto cleanup;
+    }
     AVStream *video_out = avformat_new_stream(out_ctx, NULL);
     AVStream *audio_out = avformat_new_stream(out_ctx, NULL);
     if (!video_out || !audio_out ||
@@ -437,16 +508,21 @@ MediaMuxStatus avbridge_mux_video_audio(
 
     video_pkt = av_packet_alloc();
     audio_pkt = av_packet_alloc();
-    if (!video_pkt || !audio_pkt) { status = MEDIA_MUX_ERR_WRITE_FRAME; goto cleanup; }
+    if (!video_pkt || !audio_pkt) {
+        status = MEDIA_MUX_ERR_WRITE_FRAME;
+        goto cleanup;
+    }
     int have_video = read_next_stream_packet(video_ctx, video_idx, video_pkt);
     int have_audio = read_next_stream_packet(audio_ctx, audio_idx, audio_pkt);
     while (have_video || have_audio) {
-        int write_video = have_video && (!have_audio ||
-            av_compare_ts(packet_ts(video_pkt), video_ctx->streams[video_idx]->time_base,
-                          packet_ts(audio_pkt), audio_ctx->streams[audio_idx]->time_base) <= 0);
+        int write_video =
+            have_video &&
+            (!have_audio ||
+             av_compare_ts(packet_ts(video_pkt), video_ctx->streams[video_idx]->time_base,
+                           packet_ts(audio_pkt), audio_ctx->streams[audio_idx]->time_base) <= 0);
         AVPacket *pkt = write_video ? video_pkt : audio_pkt;
-        AVStream *in_stream = write_video ? video_ctx->streams[video_idx]
-                                          : audio_ctx->streams[audio_idx];
+        AVStream *in_stream =
+            write_video ? video_ctx->streams[video_idx] : audio_ctx->streams[audio_idx];
         AVStream *out_stream = write_video ? video_out : audio_out;
         pkt->stream_index = out_stream->index;
         av_packet_rescale_ts(pkt, in_stream->time_base, out_stream->time_base);
@@ -455,15 +531,18 @@ MediaMuxStatus avbridge_mux_video_audio(
             status = MEDIA_MUX_ERR_WRITE_FRAME;
             goto cleanup;
         }
-        if (write_video) have_video = read_next_stream_packet(video_ctx, video_idx, video_pkt);
-        else have_audio = read_next_stream_packet(audio_ctx, audio_idx, audio_pkt);
+        if (write_video)
+            have_video = read_next_stream_packet(video_ctx, video_idx, video_pkt);
+        else
+            have_audio = read_next_stream_packet(audio_ctx, audio_idx, audio_pkt);
     }
     if (av_write_trailer(out_ctx) < 0) status = MEDIA_MUX_ERR_WRITE_FRAME;
 
 cleanup:
     av_packet_free(&video_pkt);
     av_packet_free(&audio_pkt);
-    if (out_ctx && !(out_ctx->oformat->flags & AVFMT_NOFILE) && out_ctx->pb) avio_closep(&out_ctx->pb);
+    if (out_ctx && !(out_ctx->oformat->flags & AVFMT_NOFILE) && out_ctx->pb)
+        avio_closep(&out_ctx->pb);
     if (out_ctx) avformat_free_context(out_ctx);
     avformat_close_input(&video_ctx);
     avformat_close_input(&audio_ctx);
