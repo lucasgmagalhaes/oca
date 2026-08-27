@@ -1911,6 +1911,39 @@ impl Preview {
         Ok(updated)
     }
 
+    /// Re-rasterizes and replaces exactly one text branch's buffer, keyed by `clip.id` — unlike
+    /// [`Self::update_text_overlays`], which skips a clip whose active highlighted word hasn't
+    /// changed (the scrubbing/playback path), this always redraws: the caller here already
+    /// knows some other property (text/font/color/background/position/highlight) changed and
+    /// wants the new look reflected immediately, e.g. dragging a properties-panel slider. Still
+    /// far cheaper than a full pipeline reopen — one small `appsrc` buffer push instead of
+    /// tearing down and rebuilding the whole compositor graph (background decoder, every other
+    /// branch) on every dragged frame. `Ok(false)` if no branch is currently open for this clip
+    /// id — the caller falls back to a full reopen in that case.
+    pub fn refresh_text_overlay(
+        &mut self,
+        clip: &TextClip,
+        local_time_secs: f64,
+    ) -> Result<bool, PreviewError> {
+        let Some(branch) = self
+            .text_overlay_branches
+            .iter_mut()
+            .find(|branch| branch.clip_id == clip.id)
+        else {
+            return Ok(false);
+        };
+        let rgba = crate::overlay_render::render_text_clip_rgba(
+            clip,
+            branch.canvas_width,
+            branch.canvas_height,
+            local_time_secs,
+        );
+        push_rgba_overlay_buffer(&branch.appsrc, rgba)?;
+        branch.active_word_index =
+            crate::overlay_render::active_highlight_word_index(clip, local_time_secs);
+        Ok(true)
+    }
+
     pub fn play(&self) -> Result<(), PreviewError> {
         self.pipeline
             .set_state(gst::State::Playing)
