@@ -32,6 +32,7 @@ fn clip() -> ClipInstance {
         source_in_secs: 0.0,
         source_out_secs: 1.0,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,

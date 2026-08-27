@@ -58,6 +58,7 @@ fn clip(id: u64, asset_id: u64) -> ClipInstance {
         source_in_secs: 0.0,
         source_out_secs: 10.0,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -147,6 +148,7 @@ fn fixture_project() -> Project {
 
                     visible: true,
                     audio_role: AudioRole::Unspecified,
+                    color_label: None,
                 }],
                 markers: Vec::new(),
                 multicam_groups: Vec::new(),
@@ -213,6 +215,7 @@ fn project_with_styled_text() -> Project {
         shape_clips: vec![],
         visible: true,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     });
     project
 }

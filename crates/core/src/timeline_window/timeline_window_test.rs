@@ -32,6 +32,7 @@ fn clip(
         source_in_secs,
         source_out_secs,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -89,6 +90,7 @@ fn video_track(clips: Vec<crate::timeline::ClipInstance>) -> Track {
         shape_clips: vec![],
         visible: true,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     }
 }
 

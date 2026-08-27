@@ -54,6 +54,7 @@ fn clip(
         source_in_secs,
         source_out_secs,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -125,6 +126,7 @@ fn track(id: u64, name: &str, clips: Vec<ClipInstance>) -> Track {
         shape_clips: vec![],
         visible: true,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     }
 }
 
@@ -251,6 +253,7 @@ fn resolve_audio_segments_includes_background_and_additional_audio_tracks() {
         shape_clips: vec![],
         visible: true,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![background, audio_track]);
 
@@ -281,6 +284,7 @@ fn resolve_audio_segments_carries_the_track_audio_role_as_duck_role() {
         shape_clips: vec![],
         visible: true,
         audio_role: AudioRole::Mic,
+        color_label: None,
     };
     let music_track = Track {
         id: 3,
@@ -291,6 +295,7 @@ fn resolve_audio_segments_carries_the_track_audio_role_as_duck_role() {
         shape_clips: vec![],
         visible: true,
         audio_role: AudioRole::Music,
+        color_label: None,
     };
     let sequence = sequence_with(vec![background, mic_track, music_track]);
 
@@ -326,6 +331,7 @@ fn resolve_audio_segments_ignores_hidden_audio_tracks() {
         shape_clips: vec![],
         visible: false,
         audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![background, hidden_audio]);
 
