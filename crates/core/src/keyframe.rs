@@ -472,6 +472,36 @@ pub fn color_balance_filter_expr(
     ))
 }
 
+/// Builds one axis's value expression for `crate::shape_render::build_shape_filter_desc`'s `geq`
+/// formula — either a plain constant (no keyframes, or a single keyframe) or a `T`-keyed
+/// piecewise-linear expression animating a [`crate::timeline::ShapeClip`]'s position over its
+/// own on-timeline duration. Unlike every other `*_filter_expr` builder in this module, `T` here
+/// is the *timeline's absolute* time — a shape overlay is composited onto the already-exported
+/// full video in a post-processing pass (`avbridge::apply_shape_overlays`), not evaluated inside
+/// a per-clip filter chain with its own PTS reset — so keyframes are mapped through
+/// `(T - start_secs)` rather than a bare `T`, keeping `time_fraction` `0.0..=1.0` mean
+/// "0..`duration_secs` elapsed since this shape appeared", the same convention every other
+/// keyframe field in this codebase already uses. Always returns a usable expression string
+/// (never `None`) since `build_shape_filter_desc` needs *some* value for this axis regardless of
+/// whether it's animated.
+pub fn shape_axis_expr(
+    keyframes: &[Keyframe<f32>],
+    constant: f32,
+    start_secs: f64,
+    duration_secs: f64,
+) -> String {
+    if keyframes.is_empty() {
+        return format!("{constant:.4}");
+    }
+    if keyframes.len() == 1 {
+        return format!("{:.4}", keyframes[0].value);
+    }
+    let mut sorted = keyframes.to_vec();
+    sorted.sort_by(|a, b| a.time_fraction.total_cmp(&b.time_fraction));
+    let var = format!("(T-{start_secs:.6})");
+    piecewise_expr(&sorted, duration_secs, &var, |v| v)
+}
+
 /// Builds the opacity-keyframe alpha expression (a bare `0.0..=1.0` ramp, *not* yet multiplied
 /// by any incoming `alpha(X,Y)` — the caller composes that, matching `mask_shape`'s existing
 /// alpha-composition convention in `ClipInstance::video_filter_chain`), keyed off `N` like
