@@ -1503,6 +1503,48 @@ impl Track {
         true
     }
 
+    /// Removes the timeline range `[start_secs, end_secs)` from this track and ripples every
+    /// later clip left to close the gap — "ripple delete," what D1's silence-gap review
+    /// (`spec/architecture/differentiators.md`) applies to each accepted
+    /// [`crate::silence_detection::SilenceGap`]. Any clip straddling either boundary is split
+    /// first via [`Self::split_clip_at`] (each split, if performed, consumes one id from
+    /// `next_clip_id` and increments it — a no-op split at an exact boundary leaves it
+    /// untouched), then every clip now falling fully inside the range is dropped, and every
+    /// clip starting at or after `end_secs` shifts left by the removed span. Only `self.clips`
+    /// is affected, matching [`Self::ripple_trim_start`]/[`Self::ripple_trim_end`]'s existing
+    /// scope (text/shape overlay tracks are never video/audio tracks, so this never applies to
+    /// them). No-op (`false`, `next_clip_id` untouched) if `end_secs <= start_secs`.
+    pub fn ripple_delete_range(
+        &mut self,
+        start_secs: f64,
+        end_secs: f64,
+        next_clip_id: &mut u64,
+    ) -> bool {
+        if end_secs <= start_secs {
+            return false;
+        }
+
+        if self.split_clip_at(start_secs, *next_clip_id) {
+            *next_clip_id += 1;
+        }
+        if self.split_clip_at(end_secs, *next_clip_id) {
+            *next_clip_id += 1;
+        }
+
+        const EPSILON: f64 = 1e-6;
+        let removed_span = end_secs - start_secs;
+        self.clips.retain(|c| {
+            let c_end = c.start_secs + c.duration_secs();
+            !(c.start_secs >= start_secs - EPSILON && c_end <= end_secs + EPSILON)
+        });
+        for clip in &mut self.clips {
+            if clip.start_secs >= end_secs - EPSILON {
+                clip.start_secs = (clip.start_secs - removed_span).max(0.0);
+            }
+        }
+        true
+    }
+
     /// The position, in seconds, where this track's last clip ends. `0.0` for an empty track —
     /// the natural "append here" position for a clip added to this track. Accounts for
     /// [`ClipInstance`]s, [`TextClip`]s, and [`ShapeClip`]s so every track kind reports its own

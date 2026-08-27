@@ -43,6 +43,7 @@ pub mod proxy;
 pub mod render;
 pub mod scopes;
 pub mod shape_render;
+pub mod silence_detection;
 pub mod sound_library;
 pub mod subtitles;
 pub mod telemetry;
@@ -88,6 +89,10 @@ pub use render::{
 };
 pub use scopes::{luma_waveform_rgba, vectorscope_rgba};
 pub use shape_render::{build_shape_filter_desc, point_in_polygon, ShapeRenderInput};
+pub use silence_detection::{
+    clip_silence_gaps, detect_silence_gaps, SilenceGap, DEFAULT_MIN_SILENCE_SECS,
+    DEFAULT_SILENCE_THRESHOLD_LINEAR,
+};
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
 pub use subtitles::export_srt;
 pub use telemetry::{record_event, ResourceSampler, TelemetryError, TelemetryEvent};

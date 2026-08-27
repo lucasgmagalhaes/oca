@@ -151,6 +151,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                     make_track(3, "A2", TrackKind::Audio),
                 ],
                 playhead_secs: 0.0,
+                markers: vec![],
             },
             export_settings: Default::default(),
         }],

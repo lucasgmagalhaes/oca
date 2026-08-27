@@ -1567,3 +1567,74 @@ fn slide_clip_with_no_neighbors_just_moves_it() {
     assert!(track.slide_clip(1, 3.0, 0.1, None));
     assert_eq!(track.clips[0].start_secs, 3.0);
 }
+
+#[test]
+fn ripple_delete_range_drops_a_clip_fully_inside_the_range_and_ripples_later_clips_left() {
+    let mut track = track_with(vec![
+        clip(1, 0.0, 0.0, 5.0),
+        clip(2, 5.0, 0.0, 3.0),
+        clip(3, 8.0, 0.0, 5.0),
+    ]);
+    let mut next_id = 4;
+
+    assert!(track.ripple_delete_range(5.0, 8.0, &mut next_id));
+
+    assert_eq!(
+        track.clips.len(),
+        2,
+        "clip 2 (fully inside the range) is dropped"
+    );
+    assert!(track.clips.iter().any(|c| c.id == 1));
+    let clip3 = track.clips.iter().find(|c| c.id == 3).unwrap();
+    assert_eq!(clip3.start_secs, 5.0, "shifted left by the removed 3s span");
+    assert_eq!(next_id, 4, "no split was needed, no id consumed");
+}
+
+#[test]
+fn ripple_delete_range_splits_a_clip_straddling_either_boundary() {
+    // A single 20s clip; deleting [5, 15) should leave two remainders: [0,5) and [15,20)
+    // ripple-shifted left to close the 10s gap, i.e. starting at 0 and 5.
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 20.0)]);
+    let mut next_id = 2;
+
+    assert!(track.ripple_delete_range(5.0, 15.0, &mut next_id));
+
+    assert_eq!(
+        next_id, 3,
+        "both boundaries needed a split, two ids consumed"
+    );
+    assert_eq!(track.clips.len(), 2);
+    let first = track.clips.iter().find(|c| c.id == 1).unwrap();
+    assert_eq!(first.start_secs, 0.0);
+    assert_eq!(first.source_out_secs, 5.0);
+    let second = track.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(
+        second.start_secs, 5.0,
+        "ripple-shifted left by the removed 10s span"
+    );
+    assert_eq!(second.source_in_secs, 15.0);
+}
+
+#[test]
+fn ripple_delete_range_no_op_split_at_an_exact_boundary_consumes_no_id() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 5.0), clip(2, 5.0, 0.0, 5.0)]);
+    let mut next_id = 3;
+
+    // [0, 5) exactly matches clip 1's own span -- no clip straddles either boundary.
+    assert!(track.ripple_delete_range(0.0, 5.0, &mut next_id));
+
+    assert_eq!(next_id, 3, "no split was performed, id counter untouched");
+    assert_eq!(track.clips.len(), 1);
+    assert_eq!(track.clips[0].id, 2);
+    assert_eq!(track.clips[0].start_secs, 0.0);
+}
+
+#[test]
+fn ripple_delete_range_rejects_an_empty_or_inverted_range() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0)]);
+    let mut next_id = 2;
+    assert!(!track.ripple_delete_range(5.0, 5.0, &mut next_id));
+    assert!(!track.ripple_delete_range(8.0, 3.0, &mut next_id));
+    assert_eq!(next_id, 2);
+    assert_eq!(track.clips.len(), 1);
+}
