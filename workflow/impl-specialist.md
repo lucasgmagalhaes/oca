@@ -27,6 +27,7 @@ Execute **in the order below**, without skipping steps:
 
 2. Check the files listed in files_to_touch
    → Read each one to understand the current context.
+   → Route through `docs/code-quality/README.md` and load only the guides triggered by the task.
    → If you find the change will require touching files NOT listed:
      stop, inform the Manager, and wait for the breakdown to be updated.
 
@@ -57,6 +58,9 @@ Execute **in the order below**, without skipping steps:
 ---
 
 ## Code rules — Rust
+
+Apply `docs/code-quality/design-principles.md` and `docs/code-quality/rust.md`. Load
+`performance.md` or `security.md` only when their routing triggers match.
 
 - `unsafe`: add `// SAFETY: <justification>` above **every block**, no exceptions
 - No `unwrap()` or `expect()` in production code without a `// SAFETY:` comment
