@@ -55,8 +55,12 @@ Read [architecture/performance-and-caching.md](architecture/performance-and-cach
    recomputing it every UI frame the Fila screen is open, just for a size estimate — fixed via
    `App::resolved_active_sequence_export_preview`'s value-equality cache. See
    `matrix/performance.md` for what is/isn't covered.
-5. `[ ]` Extract a shared `FrameSampler` primitive — auto-reframe, motion tracking, and
-   background-removal matte generation each reimplement their own seek-and-poll sampling loop.
+5. `[x]` Extract a shared `FrameSampler` primitive — `avcore::FrameSampler`
+   (`crates/core/src/frame_sampler.rs`) now backs auto-reframe, motion tracking,
+   background-removal matte generation, and (found during the same pass) thumbnail extraction,
+   which had the identical shape. Session-reuse for `background_removal::segment_person`'s ONNX
+   session is a related but separate gap, left open — see `architecture/performance-and-
+   caching.md` §5.
 
 ## P2 — High-Impact Parity
 

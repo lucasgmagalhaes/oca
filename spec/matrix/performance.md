@@ -14,6 +14,9 @@ yet applied here — see the gaps below) live in `architecture/performance-and-c
 - [x] Runtime telemetry — import/export duration, preview frame time, CPU/RAM sampling
       (`sysinfo`-backed, 30s interval, own background thread), JSON-lines local file with
       size-based rotation (10 MiB), on-device only, toggleable in Preferences.
+- [x] Shared `avcore::FrameSampler` primitive (`architecture/performance-and-caching.md` §5) —
+      replaces four independent open/seek/poll-for-a-decoded-frame loops (`ui`'s auto-reframe,
+      motion tracking, background-removal matte generation, and thumbnail extraction).
 
 ## Known gaps
 
