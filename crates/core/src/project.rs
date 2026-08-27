@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::export::ExportAspectRatio;
 use crate::media::MediaAsset;
+use crate::smart_bins::SmartBin;
 use crate::timeline::Timeline;
 
 /// How long ago a project was last edited. Locale-neutral by design — the UI layer is
@@ -98,6 +99,10 @@ pub struct Project {
     /// values in that case rather than resetting to some arbitrary default.
     #[serde(default)]
     pub panel_layout: Option<PanelLayout>,
+    /// Rule-based media-pool folders (P4 item 22, "Smart bins") — `#[serde(default)]` so a
+    /// project saved before this field existed still loads (empty bin list).
+    #[serde(default)]
+    pub smart_bins: Vec<SmartBin>,
 }
 
 /// See [`Project::panel_layout`]. A plain value type — `core` has no opinion on layout scope
@@ -209,5 +214,25 @@ impl Project {
             .position(|sequence| sequence.id == active_id)
             .expect("the active sequence is only reordered, never removed");
         true
+    }
+
+    /// Adds a new, unnamed-rule [`SmartBin`] (see [`SmartBin::new`]) and returns its freshly
+    /// assigned id — "max + 1", the same convention every other entity id in this codebase uses.
+    pub fn add_smart_bin(&mut self, name: String) -> u64 {
+        let id = self.smart_bins.iter().map(|b| b.id).max().unwrap_or(0) + 1;
+        self.smart_bins.push(SmartBin::new(id, name));
+        id
+    }
+
+    /// Removes the smart bin with `bin_id`, if any. `true` if a bin was actually removed.
+    pub fn remove_smart_bin(&mut self, bin_id: u64) -> bool {
+        let before = self.smart_bins.len();
+        self.smart_bins.retain(|b| b.id != bin_id);
+        self.smart_bins.len() != before
+    }
+
+    /// Mutable access to the smart bin with `bin_id`, if it exists.
+    pub fn smart_bin_mut(&mut self, bin_id: u64) -> Option<&mut SmartBin> {
+        self.smart_bins.iter_mut().find(|b| b.id == bin_id)
     }
 }

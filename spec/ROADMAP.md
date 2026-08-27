@@ -305,8 +305,19 @@ not by default priority.
     `matrix/effects-and-color.md`. Confirmed no matching GStreamer element on the dev machine;
     needs a custom-coded element or CPU-side frame processing, a materially bigger lift than
     every other preview gap closed so far.
-22. `[ ]` Smart bins (rule-based media-pool auto-organization) — real in DaVinci Resolve, but
-    lower priority for a small/single-editor workflow than for a studio pipeline.
+22. `[x]` Smart bins (rule-based media-pool auto-organization) — real in DaVinci Resolve, but
+    lower priority for a small/single-editor workflow than for a studio pipeline. The one P4 item
+    tractable in this sandbox without special hardware or a missing GStreamer element (unlike 19-
+    21) — pure filtering over `Project::media_library`, no `avbridge`/GStreamer/GPU dependency.
+    `avcore::SmartBin` (`kind_filter`/`name_contains`/`requires_audio`, every set criterion
+    ANDed) + `Project::add_smart_bin`/`remove_smart_bin`/`smart_bin_mut`. Membership isn't
+    stored — `SmartBin::matches` is evaluated fresh against the live `media_library` every time,
+    same "recompute, don't cache" shape `Marker`/`MulticamGroup` already follow. Editor Library
+    panel: a filter-chip row above the asset list ("All" + one chip per bin, click-to-select/
+    double-click-to-edit) plus "+ New Bin", backed by a create/edit modal (name, kind Any/Video/
+    Audio, file-name-contains text, has-audio Either/Yes/No, Save/Cancel/Delete). Verified via a
+    real-execution scratch crate (same ONNX-link-gap workaround as multicam) — 5 passing tests on
+    `SmartBin::matches`.
 
 ## P5 — Explicitly Deferred
 

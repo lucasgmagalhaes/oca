@@ -81,6 +81,7 @@ fn project_at(project_path: &PathBuf, assets: Vec<MediaAsset>) -> Project {
         active_sequence: 0,
         file_path: Some(project_path.clone()),
         panel_layout: None,
+        smart_bins: Vec::new(),
     }
 }
 
