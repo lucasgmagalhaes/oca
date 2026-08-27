@@ -48,6 +48,20 @@ headers *that file* includes, so it stays clean for every file except `filters.c
 on Ubuntu's too-old packaged FFmpeg. It won't catch link-time or runtime/filtergraph-semantic
 issues, but it does catch real syntax/type errors no amount of manual review guarantees.
 
+**Two of this gap's usual co-blockers are actually fixable in a sandboxed session, worth trying
+before assuming a full build is out of reach**: a too-old bundled `rustc` (this repo's
+`Cargo.lock` can need a newer one than a session starts with) — try `rustup update stable` first,
+it may just work with no network restrictions beyond crates.io/static.rust-lang.org; and a
+missing `gstreamer-1.0` pkg-config file (`core`'s `preview` module) — `apt-get install
+libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev
+libgstreamer-plugins-good1.0-dev` (then `export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/
+pkgconfig`) resolved it in one session where apt had a working mirror. Neither fixes the
+FFmpeg-too-old `filters.c` gap itself, but both get a `cargo check -p core` past every *other*
+failure first, so the one true remaining blocker is confirmed in isolation rather than assumed.
+A pure-logic module with no `avbridge`/GStreamer dependency can still be fully verified despite
+all of this: copy just that file (plus its `#[cfg(test)]` module) into a throwaway scratch crate
+with no dependencies and `cargo test` it there — real execution, not just a parse check.
+
 **Do not remove `avbridge/build.rs`'s import-lib-renaming step.** GStreamer bundles its
 own FFmpeg (gst-libav) with identically named import libs — `build.rs` copies them into
 `OUT_DIR` under unique names to prevent silent ABI-mismatch linking at runtime.

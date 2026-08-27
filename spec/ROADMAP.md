@@ -75,7 +75,11 @@ Read [matrix/effects-and-color.md](matrix/effects-and-color.md),
    `CLAUDE.md`'s documented "too-old packaged FFmpeg" gap; `pkg-config --cflags libavfilter`
    finds nothing here). Picking this up blind, with zero compiler feedback on C changes, isn't
    a reasonable risk to take — do this from an environment with FFmpeg dev headers available.
-7. `[ ]` Color scopes (waveform/vectorscope) for calibrated grading.
+7. `[x]` Color scopes (waveform/vectorscope) for calibrated grading. `avcore::scopes`
+   (pure pixel analysis, no new avfilter/GStreamer element) + an opt-in "📊" toggle on the
+   Editor preview panel. Grayscale-intensity simplification, not a calibrated-graticule
+   broadcast scope — see `matrix/effects-and-color.md` for the exact scope (pun intended) of
+   what shipped.
 8. `[x]` Export presets per platform (YouTube Shorts / Instagram Reels / TikTok — resolution +
    aspect + LUFS target bundled under one name). `avcore::PlatformExportPreset`
    (`crates/core/src/export.rs`) + `App::apply_platform_export_preset` + a one-click button row
