@@ -91,6 +91,7 @@ mod tests {
             words: Vec::new(),
             highlight_enabled: false,
             highlight_color_rgba: [255, 220, 0, 255],
+            opacity_keyframes: vec![],
         }
     }
 

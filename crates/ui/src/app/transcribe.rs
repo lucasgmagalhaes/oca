@@ -153,6 +153,7 @@ impl App {
                 words,
                 highlight_enabled,
                 highlight_color_rgba: [255, 220, 0, 255],
+                opacity_keyframes: vec![],
             });
         }
     }
