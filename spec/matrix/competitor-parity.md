@@ -128,9 +128,10 @@ etc.) has a keyframe variant, and that `TextClip`/`ShapeClip` have no keyframe f
       slow reveal/pan independent of `scale_keyframes`' zoom). → `ROADMAP.md` P4 item 33 (done).
 - [~] **Text/shape clip animation keyframes.** `TextClip`/`ShapeClip` had zero keyframe fields
       (a structural gap, not a missing effect) — every surveyed editor supports animating
-      text/graphic position/scale/opacity over time. → `ROADMAP.md` P4 item 34 (partial —
-      `ShapeClip` position keyframes ship; `ShapeClip` scale/rotation and all of `TextClip`
-      animation still not done).
+      text/graphic position/scale/opacity over time. → `ROADMAP.md` P4 item 34 (partial — all of
+      `ShapeClip` (position, size, rotation) keyframes ship; `TextClip` animation of any kind
+      still not done, a materially bigger lift — its export path pre-rasterizes a full-canvas
+      PNG, not a moving overlay).
 
 ## Validates existing plans (found independently, matches what's already queued)
 
