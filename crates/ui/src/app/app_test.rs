@@ -5572,6 +5572,82 @@ fn set_clip_color_label_writes_the_label_on_the_targeted_clip_regardless_of_sele
 }
 
 #[test]
+fn detach_audio_mutes_the_video_clip_and_adds_a_synced_audio_clip() {
+    let video_clip = test_clip(1, 5.0, 1.0, 4.0);
+    let video_track = test_track(1, TrackKind::Video, vec![video_clip]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![video_track],
+            vec![test_asset(1)],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.detach_audio_from_selected_clip();
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks[0].clips[0].gain_db, *GAIN_DB_RANGE.start());
+    let audio_track = timeline
+        .tracks
+        .iter()
+        .find(|t| t.kind == TrackKind::Audio)
+        .expect("an audio track should have been created");
+    assert_eq!(audio_track.clips.len(), 1);
+    let detached = &audio_track.clips[0];
+    assert_eq!(detached.asset_id, 1);
+    assert_eq!(detached.start_secs, 5.0);
+    assert_eq!(detached.source_in_secs, 1.0);
+    assert_eq!(detached.source_out_secs, 4.0);
+    assert_eq!(detached.gain_db, 0.0);
+}
+
+#[test]
+fn detach_audio_is_a_no_op_when_the_asset_has_no_audio() {
+    let video_clip = test_clip(1, 5.0, 1.0, 4.0);
+    let video_track = test_track(1, TrackKind::Video, vec![video_clip]);
+    let mut silent_asset = test_asset(1);
+    silent_asset.has_audio = false;
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![video_track],
+            vec![silent_asset],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.detach_audio_from_selected_clip();
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks.len(), 1);
+    assert_eq!(timeline.tracks[0].clips[0].gain_db, 0.0);
+}
+
+#[test]
+fn detach_audio_is_a_no_op_for_a_non_video_clip() {
+    let audio_clip = test_clip(1, 5.0, 1.0, 4.0);
+    let audio_track = test_track(1, TrackKind::Audio, vec![audio_clip]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![audio_track],
+            vec![test_asset(1)],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.detach_audio_from_selected_clip();
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks.len(), 1);
+    assert_eq!(timeline.tracks[0].clips[0].gain_db, 0.0);
+}
+
+#[test]
 fn set_clip_color_label_none_clears_an_existing_label() {
     let mut clip = test_clip(1, 0.0, 0.0, 10.0);
     clip.color_label = Some([86, 156, 214]);

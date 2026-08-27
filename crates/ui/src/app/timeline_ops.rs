@@ -17,7 +17,7 @@ use avcore::timeline::{
     AudioRole, ClipInstance, ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind,
 };
 
-use super::App;
+use super::{App, GAIN_DB_RANGE};
 
 impl App {
     /// Appends `asset_id` to the timeline as a new, untrimmed clip — what double-clicking an
@@ -37,59 +37,13 @@ impl App {
         let clip_id = next_clip_id(timeline);
         timeline.tracks[track_index]
             .clips
-            .push(avcore::timeline::ClipInstance {
-                id: clip_id,
+            .push(default_clip_instance(
+                clip_id,
                 asset_id,
                 start_secs,
-                source_in_secs: 0.0,
-                source_out_secs: duration_secs,
-                composite_id: None,
-                color_label: None,
-                gain_db: 0.0,
-                frozen: false,
-                speed_factor: 1.0,
-                crop_x: 0.0,
-                crop_y: 0.0,
-                crop_w: 1.0,
-                crop_h: 1.0,
-                mask_shape: avcore::timeline::MaskShape::None,
-                mask_corner_radius: 0.0,
-                flipped_h: false,
-                color_filter: avcore::timeline::ColorFilter::None,
-                vignette_intensity: 0.0,
-                brightness: 0.0,
-                contrast: 1.0,
-                saturation: 1.0,
-                sharpen: 0.0,
-                chroma_key_enabled: false,
-                chroma_key_color: [0, 255, 0],
-                chroma_key_tolerance: 0.4,
-                blur_intensity: 0.0,
-                shake_intensity: 0.0,
-                glitch_intensity: 0.0,
-                pixelize_intensity: 0.0,
-                transition_in: avcore::timeline::TransitionType::None,
-                transition_duration_secs: 0.5,
-                position_keyframes: vec![],
-                scale_keyframes: vec![],
-                rotation_keyframes: vec![],
-                opacity_keyframes: vec![],
-                gain_keyframes: vec![],
-                brightness_keyframes: vec![],
-                contrast_keyframes: vec![],
-                saturation_keyframes: vec![],
-                crop_x_keyframes: vec![],
-                crop_y_keyframes: vec![],
-                crop_w_keyframes: vec![],
-                crop_h_keyframes: vec![],
-                deflicker_enabled: false,
-                lut_path: String::new(),
-                layer_scale_x: 1.0,
-                layer_scale_y: 1.0,
-                stabilization_intensity: 0.0,
-                background_removal_enabled: false,
-                background_removal_mask_path: String::new(),
-            });
+                0.0,
+                duration_secs,
+            ));
     }
 
     /// Inserts `asset_id` onto the timeline at `start_secs` — what dropping an asset dragged
@@ -116,59 +70,67 @@ impl App {
         let clip_id = next_clip_id(timeline);
         timeline.tracks[track_index]
             .clips
-            .push(avcore::timeline::ClipInstance {
-                id: clip_id,
+            .push(default_clip_instance(
+                clip_id,
                 asset_id,
                 start_secs,
-                source_in_secs: 0.0,
-                source_out_secs: duration_secs,
-                composite_id: None,
-                color_label: None,
-                gain_db: 0.0,
-                frozen: false,
-                speed_factor: 1.0,
-                crop_x: 0.0,
-                crop_y: 0.0,
-                crop_w: 1.0,
-                crop_h: 1.0,
-                mask_shape: avcore::timeline::MaskShape::None,
-                mask_corner_radius: 0.0,
-                flipped_h: false,
-                color_filter: avcore::timeline::ColorFilter::None,
-                vignette_intensity: 0.0,
-                brightness: 0.0,
-                contrast: 1.0,
-                saturation: 1.0,
-                sharpen: 0.0,
-                chroma_key_enabled: false,
-                chroma_key_color: [0, 255, 0],
-                chroma_key_tolerance: 0.4,
-                blur_intensity: 0.0,
-                shake_intensity: 0.0,
-                glitch_intensity: 0.0,
-                pixelize_intensity: 0.0,
-                transition_in: avcore::timeline::TransitionType::None,
-                transition_duration_secs: 0.5,
-                position_keyframes: vec![],
-                scale_keyframes: vec![],
-                rotation_keyframes: vec![],
-                opacity_keyframes: vec![],
-                gain_keyframes: vec![],
-                brightness_keyframes: vec![],
-                contrast_keyframes: vec![],
-                saturation_keyframes: vec![],
-                crop_x_keyframes: vec![],
-                crop_y_keyframes: vec![],
-                crop_w_keyframes: vec![],
-                crop_h_keyframes: vec![],
-                deflicker_enabled: false,
-                lut_path: String::new(),
-                layer_scale_x: 1.0,
-                layer_scale_y: 1.0,
-                stabilization_intensity: 0.0,
-                background_removal_enabled: false,
-                background_removal_mask_path: String::new(),
-            });
+                0.0,
+                duration_secs,
+            ));
+    }
+
+    /// Detaches this block's embedded audio onto a synced clip on its own Audio track — the
+    /// mechanical precondition for J-cuts/L-cuts (audio and video changing at different points),
+    /// per `spec/ROADMAP.md` P4 item 28. Mutes the video clip's own audio ([`ClipInstance::
+    /// gain_db`] set to [`GAIN_DB_RANGE`]'s floor — this codebase has no separate "muted" flag,
+    /// so muting reuses the existing gain primitive, the same reuse the roadmap item's own
+    /// scoping note calls for) and places a new clip on an Audio track pointing at the same
+    /// asset, with the same trim range and timeline placement, at unity gain. Both clips are
+    /// then independently trimmable — no render/preview pipeline change needed, since per-track
+    /// independent clips already mix correctly ([`avcore::render::resolve_audio_segments`]). A
+    /// no-op if nothing is selected, the selected clip isn't on a Video track, or its asset has
+    /// no audio.
+    pub fn detach_audio_from_selected_clip(&mut self) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        if self.selected_clip_track_kind() != Some(TrackKind::Video) {
+            return;
+        }
+        let Some(clip) = self.selected_clip() else {
+            return;
+        };
+        let (asset_id, start_secs, source_in_secs, source_out_secs) = (
+            clip.asset_id,
+            clip.start_secs,
+            clip.source_in_secs,
+            clip.source_out_secs,
+        );
+        let has_audio = self
+            .active_project()
+            .media_library
+            .iter()
+            .any(|a| a.id == asset_id && a.has_audio);
+        if !has_audio {
+            return;
+        }
+
+        self.push_undo_snapshot();
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(video_clip) = timeline.clip_mut(clip_id) {
+            video_clip.gain_db = *GAIN_DB_RANGE.start();
+        }
+        let track_index = resolve_or_create_track(timeline, TrackKind::Audio, None);
+        let new_clip_id = next_clip_id(timeline);
+        timeline.tracks[track_index]
+            .clips
+            .push(default_clip_instance(
+                new_clip_id,
+                asset_id,
+                start_secs,
+                source_in_secs,
+                source_out_secs,
+            ));
     }
 
     /// Looks up `asset_id` in the active project's media library and returns its track kind
@@ -816,6 +778,73 @@ pub(super) fn create_new_track(
         color_label: None,
     });
     timeline.tracks.len() - 1
+}
+
+/// Builds a fresh, entirely-default `ClipInstance` at `start_secs`, trimmed to
+/// `source_in_secs..source_out_secs` of `asset_id` — the shared literal [`App::
+/// add_asset_to_timeline`], [`App::add_asset_to_timeline_at`], and [`App::
+/// detach_audio_from_selected_clip`] all build a new clip from, differing only in which asset,
+/// trim range, and placement they start it at.
+fn default_clip_instance(
+    id: u64,
+    asset_id: u64,
+    start_secs: f64,
+    source_in_secs: f64,
+    source_out_secs: f64,
+) -> ClipInstance {
+    ClipInstance {
+        id,
+        asset_id,
+        start_secs,
+        source_in_secs,
+        source_out_secs,
+        composite_id: None,
+        color_label: None,
+        gain_db: 0.0,
+        frozen: false,
+        speed_factor: 1.0,
+        crop_x: 0.0,
+        crop_y: 0.0,
+        crop_w: 1.0,
+        crop_h: 1.0,
+        mask_shape: avcore::timeline::MaskShape::None,
+        mask_corner_radius: 0.0,
+        flipped_h: false,
+        color_filter: avcore::timeline::ColorFilter::None,
+        vignette_intensity: 0.0,
+        brightness: 0.0,
+        contrast: 1.0,
+        saturation: 1.0,
+        sharpen: 0.0,
+        chroma_key_enabled: false,
+        chroma_key_color: [0, 255, 0],
+        chroma_key_tolerance: 0.4,
+        blur_intensity: 0.0,
+        shake_intensity: 0.0,
+        glitch_intensity: 0.0,
+        pixelize_intensity: 0.0,
+        transition_in: avcore::timeline::TransitionType::None,
+        transition_duration_secs: 0.5,
+        position_keyframes: vec![],
+        scale_keyframes: vec![],
+        rotation_keyframes: vec![],
+        opacity_keyframes: vec![],
+        gain_keyframes: vec![],
+        brightness_keyframes: vec![],
+        contrast_keyframes: vec![],
+        saturation_keyframes: vec![],
+        crop_x_keyframes: vec![],
+        crop_y_keyframes: vec![],
+        crop_w_keyframes: vec![],
+        crop_h_keyframes: vec![],
+        deflicker_enabled: false,
+        lut_path: String::new(),
+        layer_scale_x: 1.0,
+        layer_scale_y: 1.0,
+        stabilization_intensity: 0.0,
+        background_removal_enabled: false,
+        background_removal_mask_path: String::new(),
+    }
 }
 
 /// Finds the track to place a new clip of `kind` on, for [`App::add_asset_to_timeline`] and

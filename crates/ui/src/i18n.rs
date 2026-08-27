@@ -271,6 +271,7 @@ text_catalog! {
     ContextMenuDelete: pt_br = "🗑 Excluir", en = "🗑 Delete";
     ContextMenuColorLabel: pt_br = "🎨 Rótulo de cor", en = "🎨 Color label";
     ContextMenuColorLabelClear: pt_br = "Limpar rótulo", en = "Clear label";
+    ContextMenuDetachAudio: pt_br = "🎧 Destacar áudio", en = "🎧 Detach audio";
     ContextMenuCopy: pt_br = "⧉ Copiar", en = "⧉ Copy";
     ContextMenuCut: pt_br = "✂ Recortar", en = "✂ Cut";
     ContextMenuPaste: pt_br = "📋 Colar no playhead", en = "📋 Paste at playhead";

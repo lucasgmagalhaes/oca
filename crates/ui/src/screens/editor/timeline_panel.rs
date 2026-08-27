@@ -304,6 +304,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut paste_formatting_requests: Vec<u64> = Vec::new();
         let mut multi_select_requests: Vec<u64> = Vec::new();
         let mut clip_color_label_requests: Vec<(u64, Option<[u8; 3]>)> = Vec::new();
+        let mut detach_audio_requests: Vec<u64> = Vec::new();
         let mut paste_requested = false;
         let mut merge_into_composite_requested = false;
         let mut split_at_playhead_requested = false;
@@ -496,6 +497,12 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 .clicked()
                             {
                                 merge_into_composite_requested = true;
+                                ui.close();
+                            }
+                            if track.kind == avcore::timeline::TrackKind::Video
+                                && ui.button(Text::ContextMenuDetachAudio.tr(locale)).clicked()
+                            {
+                                detach_audio_requests.push(clip.id);
                                 ui.close();
                             }
                             ui.separator();
@@ -954,6 +961,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         for (clip_id, color_label) in clip_color_label_requests {
             app.set_clip_color_label(clip_id, color_label);
+        }
+        for clip_id in detach_audio_requests {
+            app.selected_clip_id = Some(clip_id);
+            app.detach_audio_from_selected_clip();
         }
         if split_at_playhead_requested {
             app.split_at_playhead();
