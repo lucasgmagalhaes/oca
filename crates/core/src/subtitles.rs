@@ -108,6 +108,7 @@ mod tests {
             }],
             playhead_secs: 0.0,
             markers: Vec::new(),
+            multicam_groups: Vec::new(),
         }
     }
 

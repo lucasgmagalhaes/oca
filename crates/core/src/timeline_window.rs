@@ -46,6 +46,7 @@ pub fn extract_timeline_window(
             tracks: Vec::new(),
             playhead_secs: 0.0,
             markers: Vec::new(),
+            multicam_groups: Vec::new(),
         };
     }
 
@@ -59,6 +60,7 @@ pub fn extract_timeline_window(
         tracks,
         playhead_secs: 0.0,
         markers: Vec::new(),
+        multicam_groups: Vec::new(),
     }
 }
 

@@ -104,14 +104,34 @@ Read [matrix/effects-and-color.md](matrix/effects-and-color.md),
    (Standard/ToDo/Chapter, FCP's typed-marker model) + a searchable Timeline Index panel
    (text search, click-to-seek, inline edit). Not done: markers as a magnetic-snap target, and
    ruler tick-mark rendering — see `matrix/timeline-and-editing.md` for the exact scope.
-10. `[ ]` **Multicam editing** — sync footage from multiple sources (game capture, webcam, mic)
-    by timecode or audio waveform, switch angles dynamically on one track. In all four editors
-    surveyed (`matrix/competitor-parity.md`); directly matches this channel's actual multi-
-    source recording setup. **Skipped over (picked up item 11 first)**: a real implementation
-    needs an audio-cross-correlation sync algorithm, a new "multicam group"/angle-switching
-    data model, and export/preview wiring for switching sources mid-clip — a multi-part feature
-    too large to responsibly finish end-to-end (not just half-wired) in one pass. Do this as its
-    own dedicated task.
+10. `[x]` **Multicam editing** — sync footage from multiple sources (game capture, webcam, mic),
+    switch angles dynamically. Scoped to the smallest end-to-end vertical slice that's honestly
+    "shipped," not half-wired: angles are ordinary `Video` tracks (no new `TrackKind`), grouped
+    by a new `avcore::timeline::MulticamGroup` sidecar record (member tracks, program/active
+    track, per-track sync offsets) — same non-invasive shape `Marker` uses.
+    - **Sync**: audio-waveform only (not timecode — no code in this repo reads embedded
+      timecode/creation-time metadata, and waveform sync alone satisfies "sync by audio").
+      `avcore::multicam_sync` cross-correlates each track's first clip's audio (via the
+      already-existing `avbridge::extract_pcm_16k_mono`, previously whisper.cpp-only) against a
+      reference track — a coarse RMS envelope + bounded lag search, not full-resolution
+      correlation (too slow over a multi-minute recording). Pure Rust, no new `avbridge`/C code.
+    - **Switching**: `Timeline::switch_multicam_angle` splits the program track's clip at the
+      playhead (`Track::split_clip_at`, already used by D1/D6) and retargets the new piece's
+      `asset_id`/`source_in_secs`/`source_out_secs` to the target angle's footage at the
+      sync-offset-adjusted equivalent time — reuses existing editing primitives end to end,
+      no new avfilter/C wiring. `App::create_multicam_group_from_video_tracks` (Editor toolbar's
+      "Sync Multicam" button) builds the group; number keys 1-9 at the playhead switch angles.
+    - **Export correctness falls out for free**: once a switch is materialized as an ordinary
+      same-track clip split, `resolve_timeline_segments_multi`/`resolve_audio_segments` already
+      produce correct segments — no `render.rs` changes needed.
+    - **Explicitly not done** (documented, not silently missing): live multi-feed preview during
+      scrub/playback — still plays one decoded source, same "no live preview effect yet" gap
+      every other per-clip effect has; a real multicam monitor needs GStreamer multi-branch
+      preview-pipeline work, a separate and larger task. Verified via a real-execution scratch-
+      crate (this sandbox's `core` test binary can't *link* — the pre-existing ONNX Runtime gap
+      — but `timeline.rs`/`keyframe.rs`/`multicam_sync.rs` have zero heavy deps, so copying them
+      into a throwaway crate gives genuine `cargo test` runs, not just type-checking) — 15 new
+      tests across sync-offset correlation and group/switch semantics, all passing for real.
 11. `[x]` **Named trim modes: Ripple / Roll / Slip / Slide.** Confirmed: oca's existing trim/move
     (`ClipInstance::trim_start`/`trim_end`, `Track::move_clip`) matched none of the four —
     trimming an edge never touched neighboring clips at all (no ripple, no roll), and there was

@@ -34,6 +34,7 @@ fn test_project(file_path: Option<PathBuf>) -> Project {
                 tracks: Vec::new(),
                 playhead_secs: 0.0,
                 markers: Vec::new(),
+                multicam_groups: Vec::new(),
             },
             export_settings: Default::default(),
         }],

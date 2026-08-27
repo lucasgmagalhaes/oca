@@ -36,6 +36,7 @@ pub mod keyframe;
 pub mod loudness;
 pub mod media;
 pub mod motion_tracking;
+pub mod multicam_sync;
 pub mod overlay_render;
 pub mod persistence;
 pub mod preview;
@@ -63,7 +64,10 @@ pub mod youtube_download;
 pub use auto_reframe::{
     compute_reframe_crop, detect_faces, main_subject_center, CropRect, FaceBox, ReframeError,
 };
-pub use avbridge::{AudioSegment, Canvas, ClipSegment, GpuEncoderPreference, ShapeSegment};
+pub use avbridge::{
+    extract_pcm_16k_mono, AudioSegment, Canvas, ClipSegment, GpuEncoderPreference, PcmError,
+    ShapeSegment,
+};
 pub use background_removal::{encode_matte_video, segment_person, MatteEncodeError, SegmentError};
 pub use bundle::{
     bundled_resource_path, bundled_resources_dir, configure_bundled_runtime, resource_path_in,
@@ -82,6 +86,10 @@ pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
 pub use motion_tracking::{
     rgba_to_gray, track_region, tracked_positions_to_keyframes, GrayFrame, TrackedPosition,
+};
+pub use multicam_sync::{
+    amplitude_envelope, best_lag_windows, compute_sync_offset_secs, DEFAULT_ENVELOPE_WINDOW_SECS,
+    DEFAULT_MAX_SYNC_OFFSET_SECS,
 };
 pub use persistence::{
     from_ocproj_bytes, from_ocqueue_bytes, load_project_from_file, save_project_to_file,

@@ -10,6 +10,7 @@ fn sequence_named(name: &str) -> Sequence {
             tracks: Vec::new(),
             playhead_secs: 0.0,
             markers: Vec::new(),
+            multicam_groups: Vec::new(),
         },
         export_settings: SequenceExportSettings::default(),
     }

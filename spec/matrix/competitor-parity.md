@@ -17,11 +17,11 @@ Sources: [CapCut Desktop Review 2026](https://bigvu.tv/blog/capcut-online-deskto
 
 ## New gaps found (not previously tracked anywhere in `spec/`)
 
-- [ ] **Multicam editing.** Sync footage from multiple sources (timecode or audio waveform),
-      switch dynamically between angles on one timeline track. Present in all four editors
-      surveyed. Directly relevant to oca's actual recording setup (game capture + webcam + mic
-      as separate sources) — not a generic nice-to-have for this channel specifically.
-      → `ROADMAP.md` P2.
+- [x] **Multicam editing.** Sync footage from multiple sources (audio waveform, not timecode —
+      see the roadmap item's own scoping note), switch dynamically between angles. Present in
+      all four editors surveyed. Directly relevant to oca's actual recording setup (game capture
+      + webcam + mic as separate sources) — not a generic nice-to-have for this channel
+      specifically. → `ROADMAP.md` P2 item 10.
 - [x] **Named trim modes: Ripple / Roll / Slip / Slide.** Standard, distinctly-named tools in
       Premiere/DaVinci/FCP, not just generic drag-to-trim:
       - *Ripple* — trim without leaving a gap, later clips shift to fill it.

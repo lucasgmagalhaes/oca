@@ -47,6 +47,7 @@ mod layer_templates;
 mod markers;
 mod modals;
 mod motion_tracking;
+mod multicam;
 mod preview;
 mod scene_detection;
 mod shorts_pack;
@@ -986,6 +987,12 @@ pub struct App {
     /// tied to `selected_clip_id`, so the last-clicked clip can be a multi-select member
     /// without also being "the" selection.
     pub multi_selected_clip_ids: HashSet<u64>,
+    /// The multicam group (P2 item 10, "Multicam editing") number-key angle switching applies
+    /// to — the one most recently created via [`App::create_multicam_group_from_video_tracks`],
+    /// or `None` before any group exists in the active sequence yet. Not persisted: re-derived
+    /// (first group found, if any) the same way `selected_asset_id` resets on project switch,
+    /// see [`App::open_project`].
+    pub active_multicam_group_id: Option<u64>,
     /// Set whenever [`App::active_project_mut`] is called; cleared after each autosave
     /// write. Guards [`App::pump_autosave`] from writing unchanged state to disk.
     project_dirty: bool,
@@ -1213,6 +1220,7 @@ impl App {
             clipboard_clip: None,
             formatting_clipboard: None,
             multi_selected_clip_ids: HashSet::new(),
+            active_multicam_group_id: None,
             toasts: Vec::new(),
             prefs_open: false,
             prev_prefs_open: false,
@@ -1340,7 +1348,9 @@ impl App {
             "project opened"
         );
         let asset_id = project.media_library.first().map(|a| a.id);
+        let multicam_group_id = project.timeline().multicam_groups.first().map(|g| g.id);
         self.select_asset(asset_id);
+        self.active_multicam_group_id = multicam_group_id;
         self.load_panel_layout_for_active_project();
         self.screen = Screen::Editor;
     }
@@ -1452,6 +1462,7 @@ impl App {
                     tracks: Vec::new(),
                     playhead_secs: 0.0,
                     markers: Vec::new(),
+                    multicam_groups: Vec::new(),
                 },
                 export_settings: avcore::SequenceExportSettings {
                     aspect_ratio: avcore::ExportAspectRatio::Original,

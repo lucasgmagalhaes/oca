@@ -13,6 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::keyframe::{self, Keyframe, Position};
@@ -1655,6 +1657,51 @@ pub struct Timeline {
     /// (see `CLAUDE.md`).
     #[serde(default)]
     pub markers: Vec<Marker>,
+    /// Multicam groups (P2 item 10, "Multicam editing") — `#[serde(default)]` so a project saved
+    /// before this field existed still loads (empty group list), same convention as `markers`.
+    #[serde(default)]
+    pub multicam_groups: Vec<MulticamGroup>,
+}
+
+/// A set of `Video` tracks recorded simultaneously from different sources (e.g. game capture,
+/// webcam, mic-facecam) that have been synced against each other by [`crate::multicam_sync`], so
+/// switching which one plays at a given moment ("switch to angle 2") is a matter of retargeting
+/// a clip on `program_track_id` to the right other member's asset at the right (offset-adjusted)
+/// source time — see [`Timeline::switch_multicam_angle`]. Angles are ordinary [`Track`]s, not a
+/// new [`TrackKind`]: this group is purely a sidecar grouping + offset record, same non-invasive
+/// shape [`Marker`] uses, so no existing per-track/per-clip code needs to know about multicam at
+/// all except `program_track_id`'s visibility (every non-program member is hidden — see
+/// [`Timeline::add_multicam_group`] — so only the currently active angle actually renders/
+/// exports; the others stay in the project purely as switchable source material).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MulticamGroup {
+    pub id: u64,
+    pub name: String,
+    /// Every track in this group, `program_track_id` included, in a stable, user-meaningful
+    /// order — index 0 is "angle 1", index 1 is "angle 2", etc., what number-key angle switching
+    /// refers to.
+    pub member_track_ids: Vec<u64>,
+    /// Which member is currently the one visible/exported track. Always one of
+    /// `member_track_ids`.
+    pub program_track_id: u64,
+    /// Each member track's sync offset in seconds, relative to every other member: for the same
+    /// real-world moment, `member_track_time = other_member_track_time + (offset[member] -
+    /// offset[other_member])`. The track chosen as the sync reference when the group was created
+    /// has offset `0.0`; every other member's offset is `crate::multicam_sync::
+    /// compute_sync_offset_secs`'s result against that reference. Absent an entry (shouldn't
+    /// happen for a member_track_ids member, but keeps lookups total) is treated as `0.0`.
+    pub sync_offsets_secs: HashMap<u64, f64>,
+}
+
+impl MulticamGroup {
+    /// This member's sync offset, or `0.0` if `track_id` isn't in `sync_offsets_secs` (should
+    /// only happen for a `track_id` that isn't actually a member of this group).
+    pub fn offset_secs(&self, track_id: u64) -> f64 {
+        self.sync_offsets_secs
+            .get(&track_id)
+            .copied()
+            .unwrap_or(0.0)
+    }
 }
 
 impl Timeline {
@@ -1747,6 +1794,157 @@ impl Timeline {
         let mut clip = self.tracks[source_index].clips.remove(clip_index);
         clip.start_secs = new_start_secs;
         self.tracks[target_index].clips.push(clip);
+        true
+    }
+}
+
+impl Timeline {
+    /// Adds a new [`MulticamGroup`] over `member_track_ids` (must have at least 2 members, all
+    /// existing `Video` tracks, or this is a no-op returning `None`) with `program_track_id`'s
+    /// offset implicitly `0.0` unless overridden in `sync_offsets_secs`, and hides every other
+    /// member (`Track::visible = false`) so only the program track actually renders/exports —
+    /// the rest stay in the project purely as switchable source material for
+    /// [`Timeline::switch_multicam_angle`]. Returns the freshly assigned group id ("max + 1",
+    /// same convention every other timeline entity's id assignment uses), or `None` if
+    /// `program_track_id` isn't one of `member_track_ids`, fewer than 2 members are given, or
+    /// any member id doesn't name an existing `Video` track.
+    pub fn add_multicam_group(
+        &mut self,
+        name: String,
+        member_track_ids: Vec<u64>,
+        program_track_id: u64,
+        sync_offsets_secs: HashMap<u64, f64>,
+    ) -> Option<u64> {
+        if member_track_ids.len() < 2 || !member_track_ids.contains(&program_track_id) {
+            return None;
+        }
+        if !member_track_ids.iter().all(|id| {
+            self.tracks
+                .iter()
+                .any(|t| t.id == *id && t.kind == TrackKind::Video)
+        }) {
+            return None;
+        }
+
+        for track_id in &member_track_ids {
+            if *track_id == program_track_id {
+                continue;
+            }
+            if let Some(track) = self.tracks.iter_mut().find(|t| t.id == *track_id) {
+                track.visible = false;
+            }
+        }
+
+        let id = self.multicam_groups.iter().map(|g| g.id).max().unwrap_or(0) + 1;
+        self.multicam_groups.push(MulticamGroup {
+            id,
+            name,
+            member_track_ids,
+            program_track_id,
+            sync_offsets_secs,
+        });
+        Some(id)
+    }
+
+    /// Mutable access to the multicam group with `group_id`, if it exists.
+    pub fn multicam_group_mut(&mut self, group_id: u64) -> Option<&mut MulticamGroup> {
+        self.multicam_groups.iter_mut().find(|g| g.id == group_id)
+    }
+
+    /// Removes the multicam group with `group_id` and re-shows every one of its member tracks
+    /// (undoing the hide [`Timeline::add_multicam_group`] applied) — the tracks and their clips
+    /// themselves are left alone, only the grouping/offset record and the non-program members'
+    /// visibility are undone. `true` if a group was actually removed.
+    pub fn remove_multicam_group(&mut self, group_id: u64) -> bool {
+        let Some(index) = self.multicam_groups.iter().position(|g| g.id == group_id) else {
+            return false;
+        };
+        let group = self.multicam_groups.remove(index);
+        for track_id in &group.member_track_ids {
+            if let Some(track) = self.tracks.iter_mut().find(|t| t.id == *track_id) {
+                track.visible = true;
+            }
+        }
+        true
+    }
+
+    /// Switches `group_id`'s active angle, at `at_secs` (timeline-relative), to
+    /// `member_track_ids[angle_index]`: splits the program track's clip covering `at_secs` (via
+    /// [`Track::split_clip_at`], `new_clip_id`) so the switch takes effect exactly at that point,
+    /// then retargets the resulting piece's `asset_id`/`source_in_secs`/`source_out_secs` to
+    /// whatever the target angle's own track was showing at the sync-offset-adjusted equivalent
+    /// time — same source-window duration, different source. Resets the retargeted piece's
+    /// `speed_factor` to `1.0` (a speed-ramped multicam switch is out of scope for this pass) and
+    /// clears its stale `background_removal_mask_path`/keyframes the same way an ordinary split
+    /// already does for its second half, since they're generated for/apply to the pre-switch
+    /// source.
+    ///
+    /// No-op (`false`) if: the group or `angle_index` don't exist; the target angle is already
+    /// the program track; the program track has no clip covering `at_secs`; or the target angle's
+    /// track has no clip covering the offset-adjusted time (e.g. that source hadn't started
+    /// recording yet at this moment).
+    pub fn switch_multicam_angle(
+        &mut self,
+        group_id: u64,
+        angle_index: usize,
+        at_secs: f64,
+        new_clip_id: u64,
+    ) -> bool {
+        let Some(group) = self.multicam_groups.iter().find(|g| g.id == group_id) else {
+            return false;
+        };
+        let Some(&target_track_id) = group.member_track_ids.get(angle_index) else {
+            return false;
+        };
+        if target_track_id == group.program_track_id {
+            return false;
+        }
+        let program_track_id = group.program_track_id;
+        let target_time =
+            at_secs - group.offset_secs(program_track_id) + group.offset_secs(target_track_id);
+
+        let Some(target_track) = self.tracks.iter().find(|t| t.id == target_track_id) else {
+            return false;
+        };
+        let Some(target_clip) = target_track.clip_at(target_time) else {
+            return false;
+        };
+        let new_asset_id = target_clip.asset_id;
+        let new_source_in_secs = target_clip.source_in_secs
+            + (target_time - target_clip.start_secs) * target_clip.speed_factor as f64;
+
+        let Some(program_track) = self.tracks.iter_mut().find(|t| t.id == program_track_id) else {
+            return false;
+        };
+        if program_track.clip_at(at_secs).is_none() {
+            return false;
+        }
+        let already_at_boundary = program_track.clips.iter().any(|c| c.start_secs == at_secs);
+        if !already_at_boundary && !program_track.split_clip_at(at_secs, new_clip_id) {
+            return false;
+        }
+        // Whether pre-existing or freshly created by the split above, the piece this switch
+        // targets is the one starting exactly at `at_secs`.
+        let Some(switched_clip) = program_track
+            .clips
+            .iter_mut()
+            .find(|c| c.start_secs == at_secs)
+        else {
+            return false;
+        };
+        let switched_duration_secs = (switched_clip.source_out_secs - switched_clip.source_in_secs)
+            as f64
+            / switched_clip.speed_factor as f64;
+        switched_clip.asset_id = new_asset_id;
+        switched_clip.speed_factor = 1.0;
+        switched_clip.source_in_secs = new_source_in_secs;
+        switched_clip.source_out_secs = new_source_in_secs + switched_duration_secs;
+        switched_clip.background_removal_enabled = false;
+        switched_clip.background_removal_mask_path = String::new();
+        switched_clip.position_keyframes.clear();
+        switched_clip.scale_keyframes.clear();
+        switched_clip.rotation_keyframes.clear();
+        switched_clip.opacity_keyframes.clear();
         true
     }
 }
