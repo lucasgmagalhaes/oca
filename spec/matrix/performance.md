@@ -21,9 +21,37 @@ yet applied here — see the gaps below) live in `architecture/performance-and-c
       (NVML/etc.) is hardware-dependent, same "hard wall" class as the GPU encoder ladder.
 - [ ] Versioned filter-graph cache (`architecture/performance-and-caching.md` §2) — the
       timeline→avfilter-graph resolution path rebuilds from scratch on every call today.
-- [ ] Dirty-flag mutation classification (`architecture/performance-and-caching.md` §1, §6) —
-      not applied to timeline mutations yet; worth confirming whether every edit currently
-      forces a full preview-pipeline reopen regardless of what actually changed.
+- [~] Dirty-flag mutation classification (`architecture/performance-and-caching.md` §1, §6).
+      **Confirmed** (2026-08-27): the premise that "every edit forces a full preview-pipeline
+      reopen" doesn't hold across the board. `App::move_clip`/`trim_clip_start`/`trim_clip_end`
+      and every `set_selected_clip_*` effect setter (`ui/src/app/clip_props.rs` — gain, crop,
+      color adjust, blur, chroma key, mask, transitions, keyframes, ...) never call
+      `App::invalidate_preview_rendering` at all — `App::ensure_preview_loaded`'s per-frame
+      id-diffing already skips a reopen for a position-only drag, matching this pattern's intent.
+      The flip side: those effect setters currently have **no live-preview update path either**
+      — a `ClipInstance` property baked into `build_video_filter_bin` at pipeline-build time
+      (brightness/contrast/crop/blur/etc.) only reflects a new value once something else
+      happens to reopen the pipeline (playhead leaving and re-entering the clip, undo/redo,
+      sequence switch) — a real gap, but a live-element-property-update mechanism (mirroring
+      the keyframe pad-probe technique `build_video_filter_bin` already uses for
+      scale/rotation/opacity) is a materially bigger lift than the confirm step here scoped for,
+      and is left as a follow-up, not silently claimed fixed.
+      The one confirmed *actual* hot-path violation — `properties_panel::text_clip_properties`
+      bundling every field (text/font/color/background/position *and* start/duration) behind one
+      `changed` flag that called a full `invalidate_preview_rendering()` on every dragged-slider
+      frame — is fixed: `start_secs`/`duration_secs` (can change which clip covers the playhead)
+      still force a full reopen, everything else now goes through a new
+      `Preview::refresh_text_overlay`/`App::refresh_preview_text_content` path that pushes a
+      freshly rasterized buffer into the clip's already-open `appsrc` branch instead, reusing
+      the existing `update_text_overlays`/`imagefreeze(allow-replace=true)` primitive rather than
+      tearing down and rebuilding the whole compositor pipeline. The text color modal's confirm
+      step (`app/color.rs`) now goes through the same cheap path. Verified via a new
+      `core` integration test (`refresh_text_overlay_redraws_a_content_only_edit_without_
+      reopening_the_pipeline`) against the real GStreamer pipeline — **not run in this session**
+      (this sandbox's rustc 1.94.1 can't build any workspace crate at all right now — several
+      transitive deps in `Cargo.lock` require rustc ≥1.95/1.96 — a pre-existing environment gap,
+      not a regression from this change; same "implemented, unverified in this environment"
+      category as the FFmpeg/GPU-encoder notes in `CLAUDE.md`).
 
 ---
 
