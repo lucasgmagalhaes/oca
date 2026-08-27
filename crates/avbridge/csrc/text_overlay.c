@@ -233,8 +233,6 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
                  vdec_ctx->sample_aspect_ratio.den > 0 ? vdec_ctx->sample_aspect_ratio.den : 1);
 
         if (avfilter_graph_create_filter(&buffersrc_ctx, buffersrc, "in", args, NULL,
-                                         filter_graph) < 0 ||
-            avfilter_graph_create_filter(&buffersink_ctx, buffersink, "out", NULL, NULL,
                                          filter_graph) < 0) {
             status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
             goto cleanup;
@@ -244,10 +242,18 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
            has no opacity-expression geq stage. FFmpeg's libopenh264 wrapper forwards that
            frame as I420, leaving chroma planes/strides invalid and causing OpenH264's
            BuildSpatialPicList to reject the first frame. Constrain the sink to the same
-           planar format configured on venc_ctx so the graph inserts conversion as needed. */
-        enum AVPixelFormat sink_pix_fmts[] = {AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE};
-        if (av_opt_set_int_list(buffersink_ctx, "pix_fmts", sink_pix_fmts, AV_PIX_FMT_NONE,
-                                AV_OPT_SEARCH_CHILDREN) < 0) {
+           planar format configured on venc_ctx so the graph inserts conversion as needed.
+           pixel_formats is a pre-init-only option, so allocate and initialize the sink
+           separately. */
+        buffersink_ctx = avfilter_graph_alloc_filter(filter_graph, buffersink, "out");
+        if (!buffersink_ctx) {
+            status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
+            goto cleanup;
+        }
+        enum AVPixelFormat sink_pix_fmt = AV_PIX_FMT_YUV420P;
+        if (av_opt_set_array(buffersink_ctx, "pixel_formats", AV_OPT_SEARCH_CHILDREN, 0, 1,
+                             AV_OPT_TYPE_PIXEL_FMT, &sink_pix_fmt) < 0 ||
+            avfilter_init_str(buffersink_ctx, NULL) < 0) {
             status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
             goto cleanup;
         }
