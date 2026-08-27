@@ -42,6 +42,7 @@ mod color;
 pub mod export;
 mod import;
 mod layer_templates;
+mod markers;
 mod modals;
 mod motion_tracking;
 mod preview;
@@ -1007,6 +1008,12 @@ pub struct App {
     pub applying_layer_template: Option<(usize, Vec<Option<u64>>)>,
     /// Whether the toolbar's "Templates" list popup (pick one to apply, or delete it) is open.
     pub layer_templates_menu_open: bool,
+    /// Whether the Timeline Index panel (searchable review/comment marker list — `ROADMAP.md`
+    /// P2 item 9) is open.
+    pub timeline_index_open: bool,
+    /// Live text of the Timeline Index panel's search box — kept on `App` rather than as a
+    /// local in the modal-drawing function so it survives being closed and reopened.
+    pub marker_search: String,
     /// When `Some(action)`, the prefs modal is waiting for the next key press to set that
     /// action's binding. Pressing Escape clears it without changing the binding.
     pub binding_capture: Option<BindableAction>,
@@ -1181,6 +1188,8 @@ impl App {
             saving_layer_template: None,
             applying_layer_template: None,
             layer_templates_menu_open: false,
+            timeline_index_open: false,
+            marker_search: String::new(),
             binding_capture: None,
             update_check_tx,
             update_check_rx,
@@ -1400,6 +1409,7 @@ impl App {
                 timeline: avcore::Timeline {
                     tracks: Vec::new(),
                     playhead_secs: 0.0,
+                    markers: Vec::new(),
                 },
                 export_settings: avcore::SequenceExportSettings {
                     aspect_ratio: avcore::ExportAspectRatio::Original,
@@ -1897,6 +1907,7 @@ impl eframe::App for App {
         self.show_apply_layer_template_modal(ui.ctx());
         self.show_tts_modal(ui.ctx());
         self.show_youtube_download_modal(ui.ctx());
+        self.show_timeline_index_panel(ui.ctx());
         self.show_toasts(ui.ctx());
     }
 

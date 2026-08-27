@@ -321,6 +321,16 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         {
             app.redo();
         }
+        ui.separator();
+        if ui
+            .selectable_label(
+                app.timeline_index_open,
+                format!("🏷 {}", Text::TimelineIndexToggle.tr(locale)),
+            )
+            .clicked()
+        {
+            app.toggle_timeline_index();
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button(Text::Export.tr(locale)).clicked() {
                 app.screen = crate::app::Screen::Queue;

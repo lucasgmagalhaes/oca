@@ -396,6 +396,14 @@ text_catalog! {
     AutosaveDiscard: pt_br = "Descartar", en = "Discard";
     ExportPlatformPresetLabel: pt_br = "Predefinição de plataforma:", en = "Platform preset:";
     PreviewScopesToggle: pt_br = "Waveform / Vetorscópio", en = "Waveform / Vectorscope";
+    TimelineIndexToggle: pt_br = "Marcadores", en = "Markers";
+    TimelineIndexTitle: pt_br = "Índice da timeline", en = "Timeline Index";
+    TimelineIndexSearchHint: pt_br = "Buscar marcadores...", en = "Search markers...";
+    TimelineIndexEmpty: pt_br = "Nenhum marcador encontrado.", en = "No markers found.";
+    TimelineIndexLabelHint: pt_br = "Descrição do marcador", en = "Marker description";
+    TimelineIndexAddStandard: pt_br = "+ Marcador", en = "+ Marker";
+    TimelineIndexAddToDo: pt_br = "+ Tarefa", en = "+ To Do";
+    TimelineIndexAddChapter: pt_br = "+ Capítulo", en = "+ Chapter";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
     ExportLoudnessLabel: pt_br = "Loudness:", en = "Loudness:";
     ExportLoudnessCustom: pt_br = "{value} LUFS (personalizado)", en = "{value} LUFS (custom)";
