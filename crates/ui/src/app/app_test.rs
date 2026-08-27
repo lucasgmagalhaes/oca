@@ -5487,3 +5487,29 @@ fn export_chapters_txt_toasts_instead_of_writing_when_no_chapters_exist() {
     assert!(!output_path.exists());
     assert_eq!(app.toasts.len(), 1);
 }
+
+#[test]
+fn set_track_audio_role_writes_the_role_on_the_targeted_track() {
+    let track = test_track(1, TrackKind::Audio, Vec::new());
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.set_track_audio_role(1, avcore::AudioRole::Mic);
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].audio_role,
+        avcore::AudioRole::Mic
+    );
+}
+
+#[test]
+fn set_track_audio_role_is_a_no_op_for_an_unknown_track() {
+    let track = test_track(1, TrackKind::Audio, Vec::new());
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.set_track_audio_role(404, avcore::AudioRole::GameAudio);
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].audio_role,
+        avcore::AudioRole::Unspecified
+    );
+}
