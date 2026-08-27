@@ -1595,18 +1595,26 @@ impl Track {
 /// A review/comment marker's category — Final Cut Pro's typed-marker model (per `ROADMAP.md`
 /// P2 item 9), not just a plain unstyled note: `ToDo` tracks a `completed` state a searchable
 /// Timeline Index panel can filter on, `Chapter` marks a navigable section boundary, `Standard`
-/// is a plain annotation.
+/// is a plain annotation. `Highlight` (D2, `spec/architecture/differentiators.md`) marks an
+/// auto-detected candidate moment — same non-destructive "add a marker, let the existing
+/// Timeline Index panel's rename/delete be the review step" shape D4's Chapter markers already
+/// established, rather than a separate accept/reject modal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum MarkerKind {
     #[default]
     Standard,
     ToDo,
     Chapter,
+    Highlight,
 }
 
 impl MarkerKind {
-    pub const ALL: &'static [MarkerKind] =
-        &[MarkerKind::Standard, MarkerKind::ToDo, MarkerKind::Chapter];
+    pub const ALL: &'static [MarkerKind] = &[
+        MarkerKind::Standard,
+        MarkerKind::ToDo,
+        MarkerKind::Chapter,
+        MarkerKind::Highlight,
+    ];
 }
 
 /// One review/comment marker on the timeline — a point in time (not a clip, not tied to any
