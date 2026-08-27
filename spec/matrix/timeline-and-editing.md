@@ -36,12 +36,14 @@ sequence-management/copy-paste entries.
       shape-track add, composite merge, paste-formatting, text-color-modal confirm, and every
       effect-property slider/keyframe editor (drag-coalesced into one undo step per drag, not
       one per frame). See `architecture/undo-redo.md`, `ROADMAP.md` P0.
+- [x] **Magnetic snap** while dragging — playhead, clip trim (either edge), clip body move
+      (single or composite group) all snap to the nearest other clip's edge or the playhead
+      (`Alt` to disable). Timeline markers aren't a target — no markers feature exists yet
+      (P2 item 9). See `ROADMAP.md` P0.
 
 ## Known gaps (not found anywhere in the codebase — confirm before assuming, but no evidence of
 ## either in `graphify query "undo redo history stack snapping magnetic snap"`)
 
-- [ ] **Magnetic snap** while dragging (to playhead, other clip edges, markers). See
-      `ROADMAP.md` P0 — also a dependency of D5 (beat-aligned cut snapping).
 - [ ] Review/comment markers on the timeline (plain note at a point — not to be confused with
       opacity-keyframe markers).
 

@@ -26,8 +26,17 @@ feature that touches the timeline.
    the track-add/remove path is additionally covered by a live e2e smoke test against the real
    compiled binary (`e2e/test_undo_redo.py`). See
    [architecture/undo-redo.md](architecture/undo-redo.md) for the design.
-2. `[ ]` **Magnetic snap** while dragging (playhead, other clip edges, markers). Blocks D5
-   (beat-aligned snap, P3) — build the general mechanism first, D5 extends it.
+2. `[x]` **Magnetic snap** while dragging — playhead scrubbing on the ruler, clip trim (either
+   edge), and clip body move (single or composite-group) all snap to the nearest other clip's
+   start/end edge or the playhead, within a fixed pixel threshold at the current zoom
+   (`screens::editor::timeline_panel`'s `snap_to_nearest`/`snap_move_start`, `SNAP_THRESHOLD_PX`
+   = 8px). Hold `Alt` to temporarily disable snapping, the common editor convention. Pure
+   functions, unit tested (8 cases: within/outside threshold, no targets, leading-edge snap,
+   trailing-edge snap, whichever edge needs less adjustment, out-of-range no-op) — not yet
+   driven through a live/e2e build (this is UI-only interaction logic, no avbridge/GStreamer
+   pipeline involved to verify against). Timeline markers aren't a snap target — no markers
+   feature exists yet (P2 item 9); revisit when it lands. Unblocks D5 (beat-aligned snap, P3),
+   which extends this with waveform low-energy points as an additional target.
 
 ## P1 — Performance Infrastructure
 
