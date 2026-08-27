@@ -150,6 +150,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let brightness_keyframes = clip.brightness_keyframes.clone();
                     let contrast_keyframes = clip.contrast_keyframes.clone();
                     let saturation_keyframes = clip.saturation_keyframes.clone();
+                    let crop_x_keyframes = clip.crop_x_keyframes.clone();
+                    let crop_y_keyframes = clip.crop_y_keyframes.clone();
+                    let crop_w_keyframes = clip.crop_w_keyframes.clone();
+                    let crop_h_keyframes = clip.crop_h_keyframes.clone();
                     if components::property_section(
                         ui,
                         Text::PropGain.tr(locale),
@@ -295,6 +299,90 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                 crop_changed
                             },
                         );
+
+                        let mut new_crop_x_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropCropXKeyframes.tr(locale),
+                            Text::CropKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_crop_x_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &crop_x_keyframes,
+                                    0.0..=1.0,
+                                    0.0,
+                                    locale,
+                                );
+                                new_crop_x_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_crop_x_keyframes {
+                                app.set_selected_clip_crop_x_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_crop_y_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropCropYKeyframes.tr(locale),
+                            Text::CropKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_crop_y_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &crop_y_keyframes,
+                                    0.0..=1.0,
+                                    0.0,
+                                    locale,
+                                );
+                                new_crop_y_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_crop_y_keyframes {
+                                app.set_selected_clip_crop_y_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_crop_w_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropCropWKeyframes.tr(locale),
+                            Text::CropKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_crop_w_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &crop_w_keyframes,
+                                    CROP_MIN_SIZE..=1.0,
+                                    1.0,
+                                    locale,
+                                );
+                                new_crop_w_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_crop_w_keyframes {
+                                app.set_selected_clip_crop_w_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_crop_h_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropCropHKeyframes.tr(locale),
+                            Text::CropKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_crop_h_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &crop_h_keyframes,
+                                    CROP_MIN_SIZE..=1.0,
+                                    1.0,
+                                    locale,
+                                );
+                                new_crop_h_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_crop_h_keyframes {
+                                app.set_selected_clip_crop_h_keyframes(kfs);
+                            }
+                        }
 
                         let mask_changed = components::property_section(
                             ui,
