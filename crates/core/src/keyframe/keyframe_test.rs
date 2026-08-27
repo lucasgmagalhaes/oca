@@ -455,11 +455,11 @@ fn text_opacity_alpha_expr_is_none_when_every_keyframe_is_fully_opaque() {
 fn text_opacity_alpha_expr_clamps_a_single_keyframe() {
     let keyframes = vec![Keyframe {
         time_fraction: 0.0,
-        value: 1.5,
+        value: -0.5,
     }];
     assert_eq!(
         text_opacity_alpha_expr(&keyframes, 1.0, 3.0),
-        Some("1.0000000".to_string())
+        Some("0.0000000".to_string())
     );
 }
 
