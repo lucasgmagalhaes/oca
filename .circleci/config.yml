@@ -1,0 +1,180 @@
+version: 2.1
+
+orbs:
+  codecov: codecov/codecov@4.0.0
+
+# FFmpeg release pinning for supply-chain security, mirrored from
+# .github/workflows/ci.yml — update both together when upgrading FFmpeg.
+# See .github/FFMPEG_UPDATE.md for detailed instructions.
+parameters:
+  ffmpeg-release-tag:
+    type: string
+    default: "autobuild-2026-08-17-13-05"
+  ffmpeg-build-id:
+    type: string
+    default: "n8.1.2-44-g7c533d0f86"
+  ffmpeg-linux64-sha256:
+    type: string
+    default: "194dc8d525ac8cea5a5ff2e6fd44754747e69af5a766e7a6727cce363bd65de6"
+
+executors:
+  linux:
+    docker:
+      - image: cimg/base:2026.01
+    resource_class: medium
+
+jobs:
+  build-and-test:
+    executor: linux
+    environment:
+      CARGO_TERM_COLOR: always
+    steps:
+      - checkout
+
+      - run:
+          name: Install Rust stable
+          command: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+              --default-toolchain stable --profile default
+            echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$BASH_ENV"
+
+      - run:
+          name: Install cargo-llvm-cov
+          command: |
+            source "$BASH_ENV"
+            rustup component add llvm-tools-preview
+            cargo install cargo-llvm-cov --locked
+
+      - run:
+          name: Install GStreamer
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y \
+              pkg-config \
+              libgstreamer1.0-dev \
+              libgstreamer-plugins-base1.0-dev \
+              libgstreamer-plugins-bad1.0-dev
+
+      - restore_cache:
+          keys:
+            - cargo-registry-{{ checksum "Cargo.lock" }}
+            - cargo-registry-
+
+      - restore_cache:
+          keys:
+            - ffmpeg-btbn-linux64-lgpl-shared-<< pipeline.parameters.ffmpeg-release-tag >>-<< pipeline.parameters.ffmpeg-linux64-sha256 >>
+
+      # Pin to a specific release and verify SHA256 checksum before extraction to prevent
+      # code execution from tampered native libraries. To update FFmpeg:
+      # 1. Find a release tag at https://github.com/BtbN/FFmpeg-Builds/releases
+      # 2. Download the asset and compute its SHA256:
+      #    sha256sum ffmpeg-master-latest-linux64-gpl-shared.tar.xz
+      # 3. Update the ffmpeg-* pipeline parameters above (and .github/workflows/ci.yml's
+      #    matching env vars, kept in sync manually).
+      # See .github/FFMPEG_UPDATE.md for detailed instructions.
+      - run:
+          name: Download and verify FFmpeg dev build (BtbN)
+          command: |
+            if [ -d ffmpeg-dev ]; then
+              echo "FFmpeg dev build already cached, skipping download."
+              exit 0
+            fi
+
+            release_tag="<< pipeline.parameters.ffmpeg-release-tag >>"
+            expected_sha256="<< pipeline.parameters.ffmpeg-linux64-sha256 >>"
+
+            if [[ "$expected_sha256" == *"PLACEHOLDER"* ]]; then
+              echo "ffmpeg-linux64-sha256 contains a placeholder value." >&2
+              echo "Please update the parameters in .circleci/config.yml" >&2
+              echo "See .github/FFMPEG_UPDATE.md for instructions." >&2
+              exit 1
+            fi
+
+            build_id="<< pipeline.parameters.ffmpeg-build-id >>"
+            uri="https://github.com/BtbN/FFmpeg-Builds/releases/download/${release_tag}/ffmpeg-${build_id}-linux64-lgpl-shared-8.1.tar.xz"
+            max_attempts=5
+            for attempt in $(seq 1 $max_attempts); do
+              if curl -fsSL -o ffmpeg.tar.xz "$uri"; then
+                break
+              fi
+              if [ "$attempt" -eq "$max_attempts" ]; then
+                echo "Download failed after $max_attempts attempts" >&2
+                exit 1
+              fi
+              delay=$((15 * attempt))
+              echo "Download failed (attempt $attempt/$max_attempts). Retrying in ${delay}s..."
+              sleep "$delay"
+            done
+
+            actual_sha256=$(sha256sum ffmpeg.tar.xz | awk '{print $1}')
+            if [ "$actual_sha256" != "$expected_sha256" ]; then
+              echo "FFmpeg checksum mismatch! Expected: $expected_sha256, Got: $actual_sha256" >&2
+              echo "This may indicate a compromised download or an outdated checksum." >&2
+              exit 1
+            fi
+            echo "FFmpeg checksum verified: $actual_sha256"
+            tar -xf ffmpeg.tar.xz
+            dir=$(find . -maxdepth 1 -name 'ffmpeg-*' -type d | head -1)
+            mv "$dir" ffmpeg-dev
+
+      - save_cache:
+          key: ffmpeg-btbn-linux64-lgpl-shared-<< pipeline.parameters.ffmpeg-release-tag >>-<< pipeline.parameters.ffmpeg-linux64-sha256 >>
+          paths:
+            - ffmpeg-dev
+
+      # FFMPEG_DIR must point at an extracted BtbN build whose include/ and lib/ match
+      # what avbridge/build.rs expects. LD_LIBRARY_PATH lets the test runner find the
+      # shared libs at runtime without a system-wide install.
+      - run:
+          name: Export FFMPEG_DIR and LD_LIBRARY_PATH
+          command: |
+            echo "export FFMPEG_DIR=$(pwd)/ffmpeg-dev" >> "$BASH_ENV"
+            echo "export LD_LIBRARY_PATH=$(pwd)/ffmpeg-dev/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}" >> "$BASH_ENV"
+
+      - run:
+          name: Verify Linux VAAPI encoder is bundled
+          command: |
+            if ! ffmpeg-dev/bin/ffmpeg -hide_banner -encoders 2>/dev/null \
+                | grep '[[:space:]]h264_vaapi[[:space:]]' >/dev/null; then
+              echo "Pinned Linux FFmpeg build does not include h264_vaapi" >&2
+              exit 1
+            fi
+
+      - run:
+          name: Check formatting
+          command: |
+            source "$BASH_ENV"
+            cargo fmt --all -- --check
+
+      - run:
+          name: Clippy
+          command: |
+            source "$BASH_ENV"
+            cargo clippy --workspace --all-targets
+
+      - run:
+          name: Build
+          command: |
+            source "$BASH_ENV"
+            cargo build --workspace
+
+      - run:
+          name: Test with coverage
+          command: |
+            source "$BASH_ENV"
+            cargo llvm-cov --workspace --lcov --output-path lcov.info
+
+      - save_cache:
+          key: cargo-registry-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+            - target
+
+      - codecov/upload:
+          file: lcov.info
+          token: $CODECOV_TOKEN
+
+workflows:
+  ci:
+    jobs:
+      - build-and-test
