@@ -198,6 +198,33 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             });
         ui.add_space(16.0);
 
+        // D3 -- series-level loudness consistency (ROADMAP.md P2 item 12): each queued job
+        // captured whatever target_lufs its own sequence happened to have set when it was
+        // queued, so a batch built from different sequences/tabs can end up with mismatched
+        // targets. Only worth offering with at least two Queued jobs -- there's no "batch" to
+        // make consistent otherwise, and a Rendering/Paused/Done/Failed job wouldn't be
+        // affected anyway (see App::match_loudness_across_queued_jobs's own doc comment).
+        let queued_count = app
+            .export_jobs
+            .iter()
+            .filter(|job| job.status == ExportJobStatus::Queued)
+            .count();
+        if queued_count >= 2 {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(Text::QueueMatchLoudnessLabel.tr(locale))
+                        .size(12.0)
+                        .color(theme::TEXT_MUTED),
+                );
+                for (label, target) in LUFS_PROFILES {
+                    if ui.button(label).clicked() {
+                        app.match_loudness_across_queued_jobs(target);
+                    }
+                }
+            });
+            ui.add_space(12.0);
+        }
+
         let mut move_up: Option<usize> = None;
         let mut move_down: Option<usize> = None;
         let mut cancel: Option<u64> = None;

@@ -337,6 +337,7 @@ text_catalog! {
     AddVideoTrack: pt_br = "＋ Adicionar faixa de vídeo", en = "＋ Add video track";
     QueueSubtitle: pt_br = "A edição continua responsiva enquanto os jobs renderizam em segundo plano. A fila persiste entre sessões.", en = "Editing stays responsive while jobs render in the background. The queue persists across sessions.";
     QueueTechNote: pt_br = "Nota técnica: cada job é um snapshot (bitrate/perfil/destino) tirado no momento em que entra na fila — mudanças no projeto ativo depois disso não afetam o job. Render roda em worker separado da UI (tokio::mpsc); 1 worker por padrão, configurável em Preferências.", en = "Technical note: each job is a snapshot (bitrate/profile/destination) taken the moment it enters the queue — later changes to the active project don't affect the job. Rendering runs in a worker separate from the UI (tokio::mpsc); 1 worker by default, configurable in Preferences.";
+    QueueMatchLoudnessLabel: pt_br = "Igualar loudness dos jobs na fila:", en = "Match loudness across queued jobs:";
     StatusRendering: pt_br = "Renderizando", en = "Rendering";
     StatusQueued: pt_br = "Na fila", en = "Queued";
     StatusPaused: pt_br = "Pausado", en = "Paused";

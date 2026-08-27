@@ -211,6 +211,23 @@ impl App {
         save_queue(&self.export_jobs);
     }
 
+    /// Sets `target_lufs` on every `Queued` job — what the Fila screen's "match loudness
+    /// across the batch" buttons do (`ROADMAP.md` P2 item 12, "D3 — series-level loudness
+    /// consistency": episode 1 and episode 5 of a series shouldn't sound mismatched back to
+    /// back just because their sequences had different export defaults when queued). Only
+    /// `Queued` jobs are touched — a `Rendering`/`Paused` job's render worker already captured
+    /// its own `target_lufs` at dispatch time ([`App::pump_export_queue`]), so changing the
+    /// field on the `ExportJob` afterward wouldn't affect an already-started render anyway; a
+    /// `Done`/`Failed` job is finished, changing it would just be misleading.
+    pub fn match_loudness_across_queued_jobs(&mut self, target_lufs: f32) {
+        for job in &mut self.export_jobs {
+            if job.status == ExportJobStatus::Queued {
+                job.target_lufs = target_lufs;
+            }
+        }
+        save_queue(&self.export_jobs);
+    }
+
     /// Stops a job: kills its `ffmpeg` process if it's actively rendering, or just removes it
     /// from the list if it hadn't started yet. There's no such thing as cancelling a `Done`/
     /// `Failed` job — callers only wire this to the buttons where it's meaningful.
