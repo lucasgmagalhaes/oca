@@ -45,6 +45,57 @@ enum TrimEdge {
     End(f64),
 }
 
+/// How close (in pixels, at the current zoom) a dragged position must land to a snap target
+/// (another clip's edge, or the playhead) before it magnetically snaps to it — `ROADMAP.md` P0
+/// item 2. Small enough to stay unobtrusive at high zoom, large enough to actually catch a
+/// deliberate drag at low zoom (see `MIN_PX_PER_SEC`/`MAX_PX_PER_SEC` above).
+const SNAP_THRESHOLD_PX: f32 = 8.0;
+
+/// The value in `targets` nearest `candidate`, if within [`SNAP_THRESHOLD_PX`] pixels at
+/// `px_per_sec` — `candidate` unchanged otherwise (including when `targets` is empty).
+fn snap_to_nearest(candidate: f64, targets: &[f64], px_per_sec: f32) -> f64 {
+    let threshold_secs = (SNAP_THRESHOLD_PX / px_per_sec) as f64;
+    targets
+        .iter()
+        .copied()
+        .min_by(|a, b| (a - candidate).abs().total_cmp(&(b - candidate).abs()))
+        .filter(|nearest| (nearest - candidate).abs() <= threshold_secs)
+        .unwrap_or(candidate)
+}
+
+/// Snaps a clip body drag's candidate start position — tries snapping either the clip's start
+/// edge or its end edge (`candidate_start + duration_secs`) to the nearest target, whichever
+/// needs the smaller adjustment, so a dragged clip can magnetically dock by either edge, not
+/// just its leading one. Falls back to `candidate_start` unchanged if neither edge is within
+/// snapping range.
+fn snap_move_start(
+    candidate_start: f64,
+    duration_secs: f64,
+    targets: &[f64],
+    px_per_sec: f32,
+) -> f64 {
+    let snapped_by_start = snap_to_nearest(candidate_start, targets, px_per_sec);
+    let candidate_end = candidate_start + duration_secs;
+    let snapped_by_end = snap_to_nearest(candidate_end, targets, px_per_sec) - duration_secs;
+    match (
+        snapped_by_start != candidate_start,
+        snapped_by_end != candidate_start,
+    ) {
+        (true, true) => {
+            if (snapped_by_start - candidate_start).abs()
+                <= (snapped_by_end - candidate_start).abs()
+            {
+                snapped_by_start
+            } else {
+                snapped_by_end
+            }
+        }
+        (true, false) => snapped_by_start,
+        (false, true) => snapped_by_end,
+        (false, false) => candidate_start,
+    }
+}
+
 fn visible_tile_range(
     clip_left: f32,
     clip_right: f32,
@@ -87,6 +138,28 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         let px_per_sec = app.timeline_px_per_sec;
 
+        // Magnetic snap targets (ROADMAP.md P0 item 2): every clip's start/end edge, across
+        // every track — collected once per frame up front so both the ruler's playhead drag
+        // and the per-clip trim/move drags below can use the same set without re-borrowing
+        // `app` mid-loop. Held with a modifier (Alt) to temporarily disable snapping, the same
+        // convention most editors use.
+        let snap_enabled = !ui.input(|i| i.modifiers.alt);
+        let clip_edges: Vec<(u64, f64, f64)> = app
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .map(|c| (c.id, c.start_secs, c.start_secs + c.duration_secs()))
+            .collect();
+        let snap_targets_excluding = |exclude_id: u64| -> Vec<f64> {
+            clip_edges
+                .iter()
+                .filter(|(id, _, _)| *id != exclude_id)
+                .flat_map(|(_, start, end)| [*start, *end])
+                .collect()
+        };
+
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(Text::Timeline.tr(app.locale))
@@ -109,6 +182,15 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             ui.painter().rect_filled(rect, 0, theme::SURFACE_2);
             if let Some(pos) = response.interact_pointer_pos() {
                 let secs = ((pos.x - rect.left()) / px_per_sec).max(0.0) as f64;
+                let all_edges: Vec<f64> = clip_edges
+                    .iter()
+                    .flat_map(|(_, start, end)| [*start, *end])
+                    .collect();
+                let secs = if snap_enabled {
+                    snap_to_nearest(secs, &all_edges, px_per_sec)
+                } else {
+                    secs
+                };
                 app.active_project_mut().timeline_mut().playhead_secs = secs;
             }
             draw_playhead(
@@ -328,21 +410,48 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                             let delta_secs = (body_response.drag_delta().x / px_per_sec) as f64;
                             if let Some(pointer) = body_response.interact_pointer_pos() {
+                                let candidate_start = clip.start_secs + delta_secs;
+                                let mut targets = snap_targets_excluding(clip.id);
+                                targets.push(playhead_secs);
+                                let new_start_secs = if snap_enabled {
+                                    snap_move_start(
+                                        candidate_start,
+                                        clip.duration_secs(),
+                                        &targets,
+                                        px_per_sec,
+                                    )
+                                } else {
+                                    candidate_start
+                                };
                                 clip_drags.push(ClipDrag {
                                     clip_id: clip.id,
                                     source_track_id: track.id,
                                     kind: track.kind,
-                                    new_start_secs: clip.start_secs + delta_secs,
+                                    new_start_secs,
                                     pointer_y: pointer.y,
                                 });
                             }
                         }
                         if let Some(pos) = left_response.interact_pointer_pos() {
                             let secs = ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
+                            let mut targets = snap_targets_excluding(clip.id);
+                            targets.push(playhead_secs);
+                            let secs = if snap_enabled {
+                                snap_to_nearest(secs, &targets, px_per_sec)
+                            } else {
+                                secs
+                            };
                             trim_requests.push((clip.id, TrimEdge::Start(secs)));
                         }
                         if let Some(pos) = right_response.interact_pointer_pos() {
                             let secs = ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
+                            let mut targets = snap_targets_excluding(clip.id);
+                            targets.push(playhead_secs);
+                            let secs = if snap_enabled {
+                                snap_to_nearest(secs, &targets, px_per_sec)
+                            } else {
+                                secs
+                            };
                             trim_requests.push((clip.id, TrimEdge::End(secs)));
                         }
 
