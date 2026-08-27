@@ -82,16 +82,14 @@ templates/real-time-AI-masking." Sources: [DaVinci Resolve free-tier feature run
       every surveyed editor's version of this. Reuses existing track/clip-creation and muting
       primitives; no new render/preview pipeline work, since per-track independent clips
       already mix correctly (`resolve_audio_segments`). → `ROADMAP.md` P4 item 28 (done).
-- [ ] **Speed ramping (keyframed speed, not just a constant per clip).** `ClipInstance::
-      speed_factor` is a single `f32` today — no ramp within one clip (e.g. slow-mo easing
-      into normal speed), which CapCut (curve-based speed editor), Premiere, DaVinci, and FCP
-      all have in some form. A real, bounded gap: reuses the *existing* `Keyframe<T>`
-      infrastructure already backing position/scale/rotation/opacity (piecewise-linear
-      interpolation, `crate::keyframe::evaluate_keyframes`) rather than inventing a new
-      animation system — `speed_keyframes: Vec<Keyframe<f32>>` alongside the others, an export-
-      side `setpts` expression driven by the keyframe curve instead of a constant, and a preview
-      pad-probe mirroring `build_video_filter_bin`'s existing scale-keyframe `zoom_crop` probe
-      (same PTS-based re-evaluation-per-buffer technique, already proven in this codebase).
+- [~] **Speed ramping (keyframed speed, not just a constant per clip).** `ClipInstance::
+      speed_factor` is a single `f32` — CapCut (curve-based speed editor), Premiere, DaVinci,
+      and FCP all have a *smooth* speed curve. Shipped as a **stepped** approximation instead
+      (splits the clip into N pieces via `Track::split_clip_at`, each a constant `speed_factor`
+      linearly interpolated between a start/end speed) — the smooth version needs the export
+      `setpts` filter's output PTS to be the integral of `1/speed` over time, unverifiable in
+      this sandbox (no decode capability); see `ROADMAP.md` P4 item 29 for the full reasoning
+      and what's still not done.
 - [ ] **Real-time audio level meter (VU/peak) during playback.** Live per-channel level display
       while scrubbing/playing, not just the after-the-fact `LoudnessMetrics` this codebase
       already computes at import/export time — Premiere's classic VU meters and DaVinci's
