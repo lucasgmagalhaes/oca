@@ -3,13 +3,3 @@ retries = 0
 
 [profile.ci.junit]
 path = "junit.xml"
-
-# FFmpeg's libopenh264 encoder can fail during frame setup when multiple native encoding tests
-# compete for the small CI executor at once. Keep those integration tests mutually exclusive;
-# Rust-only tests from the rest of the workspace can still run in parallel around them.
-[test-groups]
-avbridge-native = { max-threads = 1 }
-
-[[profile.ci.overrides]]
-filter = "package(avbridge)"
-test-group = "avbridge-native"

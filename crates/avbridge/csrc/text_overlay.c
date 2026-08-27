@@ -21,6 +21,7 @@
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
+#include <libavutil/opt.h>
 
 /* Maximum byte length of one movie+overlay filter fragment (per segment). */
 #define TEXT_OVERLAY_SEG_MAX 2048
@@ -235,6 +236,18 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
                                          filter_graph) < 0 ||
             avfilter_graph_create_filter(&buffersink_ctx, buffersink, "out", NULL, NULL,
                                          filter_graph) < 0) {
+            status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
+            goto cleanup;
+        }
+
+        /* overlay=format=auto may otherwise negotiate a packed/RGBA output when the PNG input
+           has no opacity-expression geq stage. FFmpeg's libopenh264 wrapper forwards that
+           frame as I420, leaving chroma planes/strides invalid and causing OpenH264's
+           BuildSpatialPicList to reject the first frame. Constrain the sink to the same
+           planar format configured on venc_ctx so the graph inserts conversion as needed. */
+        enum AVPixelFormat sink_pix_fmts[] = {AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE};
+        if (av_opt_set_int_list(buffersink_ctx, "pix_fmts", sink_pix_fmts, AV_PIX_FMT_NONE,
+                                AV_OPT_SEARCH_CHILDREN) < 0) {
             status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
             goto cleanup;
         }
