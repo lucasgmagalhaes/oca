@@ -74,6 +74,7 @@ commands:
               libgstreamer-plugins-base1.0-dev \
               libgstreamer-plugins-bad1.0-dev \
               gstreamer1.0-plugins-good \
+              gstreamer1.0-libav \
               python3-dev \
               clang \
               libclang-dev \
