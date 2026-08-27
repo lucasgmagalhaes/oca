@@ -18,7 +18,7 @@ use std::path::PathBuf;
 
 use avcore::collab_bundle::{export_collab_bundle, import_collab_bundle};
 use avcore::proxy::{cache_dir_for_project, proxy_path_for, PreviewQuality};
-use avcore::timeline::{Timeline, Track, TrackKind};
+use avcore::timeline::{AudioRole, Timeline, Track, TrackKind};
 use avcore::{MediaAsset, MediaKind, Project, Recency, Sequence};
 
 fn scratch_dir(name: &str) -> PathBuf {
@@ -70,6 +70,7 @@ fn project_at(project_path: &PathBuf, assets: Vec<MediaAsset>) -> Project {
                     text_clips: vec![],
                     shape_clips: vec![],
                     visible: true,
+                    audio_role: AudioRole::Unspecified,
                 }],
                 playhead_secs: 0.0,
                 markers: vec![],

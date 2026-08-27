@@ -1368,6 +1368,7 @@ fn marker_kind_icon(kind: avcore::MarkerKind) -> &'static str {
         avcore::MarkerKind::Standard => "🔹",
         avcore::MarkerKind::ToDo => "☐",
         avcore::MarkerKind::Chapter => "📖",
+        avcore::MarkerKind::Highlight => "⭐",
     }
 }
 

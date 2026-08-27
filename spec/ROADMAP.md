@@ -184,21 +184,46 @@ not novel guesses — see `matrix/competitor-parity.md`.
     local FFmpeg shim) plus new unit tests for the pure mapping function; the actual drag
     interaction isn't run against a live GUI session, same caveat every other timeline-panel
     interaction change in this file already carries.
-17. `[ ]` **D2 — highlight detection from audio spikes.** High effort. Unblocks D6.
-    **Investigated (2026-08-27), not started**: the doc's premise is "simultaneous game-audio +
-    mic spikes," but `Project`/`Timeline` has no structural game-audio-vs-mic distinction —
+17. `[x]` **D2 — highlight detection from audio spikes** (`architecture/differentiators.md`).
+    Resolved the design fork this item's own investigation note (2026-08-27, preserved below)
+    found — per-track role metadata, not the scoped-down independent-scoring fallback, since it
+    matches the doc's actual "simultaneous" premise and doubles as groundwork for the
+    already-queued Multicam item (P2 item 10).
+    - `avcore::timeline::AudioRole` (Unspecified/GameAudio/Mic/Music) on `Track`, user-set via a
+      small icon `ComboBox` on the timeline track header (`App::set_track_audio_role`, not
+      undo-tracked — metadata, not content).
+    - `avcore::highlight_detection::{clip_amplitude_samples, detect_highlight_candidates}`:
+      `clip_amplitude_samples` maps one clip's asset waveform into timeline-relative amplitude
+      samples (same source-to-timeline mapping `clip_silence_gaps`/D1 uses, but every bucket's
+      peak, not just below-threshold runs — a highlight cares about loud moments).
+      `detect_highlight_candidates` correlates two independently-sampled, irregularly-spaced
+      series onto a common coarse time grid and flags windows where both channels spike at once.
+    - `MarkerKind::Highlight` — auto-detected candidates become non-destructive markers, same
+      "Timeline Index panel's rename/delete is the review step" shape D4's Chapter markers
+      already established, not a separate accept/reject modal.
+    - `ui`: `App::detect_highlights` runs synchronously (no background thread — only reads
+      `MediaAsset::waveform_peaks`, already cached in memory, same reasoning D1's
+      `begin_silence_review` relies on) from the Editor toolbar's "Detect Highlights" button.
+    - Verified via `cargo check --workspace --all-targets` (temporary local FFmpeg shim);
+      `core`'s own math was independently confirmed by extracting `highlight_detection.rs` into
+      a throwaway no-dependency scratch crate and running its tests for real (this sandbox's
+      `core` crate itself only type-checks — the ONNX Runtime link gap blocks `cargo test`
+      outright, see `CLAUDE.md`), plus new `App`-level unit tests for the full detect-and-mark
+      flow.
+    <details><summary>Original investigation note (2026-08-27), preserved for context</summary>
+
+    Not started as of that note: the doc's premise is "simultaneous game-audio + mic spikes,"
+    but `Project`/`Timeline` had no structural game-audio-vs-mic distinction —
     `create_new_project` starts with zero tracks, and Video/Audio track *kind* alone doesn't say
     which audio track is the mic and which is a video asset's embedded game audio (the "V1"/
-    "A1"/"A2" names seen in test fixtures are just convention, not an enforced or even
-    UI-surfaced role). Scoring "two streams at once" needs *some* answer to "which track is
-    which" before any DSP gets written — either new per-track metadata (a "role" tag the user
-    sets, a real UI addition beyond this feature's own scope) or a scoped-down v1 that scores
-    every audio-bearing track independently and OR's the results (loses the "simultaneous"
-    cross-correlation the doc specifically calls out, but ships on the existing data model with
-    no new UI concept). This is a real design fork, not a blind-implementable reuse the way
-    D1/D4/D5 were — left open rather than guessed at.
-18. `[ ]` **D6 — one-click shorts pack.** High effort. Depends on D2, so blocked on the same
-    open question above.
+    "A1"/"A2" names seen in test fixtures were just convention, never an enforced or even
+    UI-surfaced role). Scoring "two streams at once" needed *some* answer to "which track is
+    which" before any DSP could be written — either new per-track metadata (a "role" tag the
+    user sets) or a scoped-down v1 that scores every audio-bearing track independently and OR's
+    the results (loses the "simultaneous" cross-correlation the doc specifically calls out). Left
+    open rather than guessed at; resolved above once asked.
+    </details>
+18. `[ ]` **D6 — one-click shorts pack.** High effort. Depends on D2 (now unblocked).
 
 ## P4 — Hardware-Dependent / Confirmed Hard Walls / Lower-Priority Parity
 

@@ -14,7 +14,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use super::*;
-use avcore::timeline::{ClipInstance, Track, TrackKind};
+use avcore::timeline::{AudioRole, ClipInstance, Track, TrackKind};
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Recency, Sequence, Timeline};
 use eframe::egui;
 
@@ -68,6 +68,7 @@ fn test_track(id: u64, kind: TrackKind, clips: Vec<ClipInstance>) -> Track {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
     }
 }
 
@@ -5484,5 +5485,122 @@ fn export_chapters_txt_toasts_instead_of_writing_when_no_chapters_exist() {
     app.export_chapters_txt(output_path.clone());
 
     assert!(!output_path.exists());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn set_track_audio_role_writes_the_role_on_the_targeted_track() {
+    let track = test_track(1, TrackKind::Audio, Vec::new());
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.set_track_audio_role(1, avcore::AudioRole::Mic);
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].audio_role,
+        avcore::AudioRole::Mic
+    );
+}
+
+#[test]
+fn set_track_audio_role_is_a_no_op_for_an_unknown_track() {
+    let track = test_track(1, TrackKind::Audio, Vec::new());
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.set_track_audio_role(404, avcore::AudioRole::GameAudio);
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].audio_role,
+        avcore::AudioRole::Unspecified
+    );
+}
+
+// 20 half-second buckets over a 10s asset -- matches DEFAULT_HIGHLIGHT_GRID_SECS (0.5s) exactly
+// so each spiking bucket lands in its own grid cell instead of several buckets sharing one.
+fn spiky_peaks(spike_range: std::ops::Range<usize>) -> Vec<(f32, f32)> {
+    let mut peaks = vec![(-0.1, 0.1); 20];
+    for p in &mut peaks[spike_range] {
+        *p = (-0.9, 0.9);
+    }
+    peaks
+}
+
+fn highlight_test_project() -> Project {
+    let game_asset = MediaAsset {
+        waveform_peaks: Some(spiky_peaks(6..12)),
+        duration_secs: 10.0,
+        ..test_asset(1)
+    };
+    let mic_asset = MediaAsset {
+        id: 2,
+        waveform_peaks: Some(spiky_peaks(6..12)),
+        duration_secs: 10.0,
+        ..test_asset(2)
+    };
+    let mut game_track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    game_track.audio_role = avcore::AudioRole::GameAudio;
+
+    let mic_clip = ClipInstance {
+        asset_id: 2,
+        ..test_clip(2, 0.0, 0.0, 10.0)
+    };
+    let mut mic_track = test_track(2, TrackKind::Audio, vec![mic_clip]);
+    mic_track.audio_role = avcore::AudioRole::Mic;
+
+    test_project_with_tracks_and_assets(1, vec![game_track, mic_track], vec![game_asset, mic_asset])
+}
+
+#[test]
+fn detect_highlights_adds_a_marker_at_the_simultaneous_spike() {
+    let mut app = test_app(vec![highlight_test_project()], Vec::new());
+
+    app.detect_highlights();
+
+    let markers = app.active_project().timeline().markers_sorted();
+    assert_eq!(markers.len(), 1);
+    assert_eq!(markers[0].kind, avcore::MarkerKind::Highlight);
+    assert_eq!(markers[0].position_secs, 3.0);
+}
+
+#[test]
+fn detect_highlights_toasts_when_a_role_is_missing() {
+    // Only a game-audio track, no mic track tagged.
+    let track = {
+        let mut t = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+        t.audio_role = avcore::AudioRole::GameAudio;
+        t
+    };
+    let asset = MediaAsset {
+        waveform_peaks: Some(spiky_peaks(3..6)),
+        duration_secs: 10.0,
+        ..test_asset(1)
+    };
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![asset],
+        )],
+        Vec::new(),
+    );
+
+    app.detect_highlights();
+
+    assert!(app.active_project().timeline().markers.is_empty());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn detect_highlights_toasts_when_nothing_spikes_together() {
+    let project = {
+        let mut p = highlight_test_project();
+        // Mic never spikes.
+        p.media_library[1].waveform_peaks = Some(vec![(-0.1, 0.1); 20]);
+        p
+    };
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.detect_highlights();
+
+    assert!(app.active_project().timeline().markers.is_empty());
     assert_eq!(app.toasts.len(), 1);
 }

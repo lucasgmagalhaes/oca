@@ -424,6 +424,14 @@ text_catalog! {
     ExportChapters: pt_br = "Exportar capítulos (.txt)", en = "Export chapters (.txt)";
     ExportChaptersNone: pt_br = "Nenhum marcador de capítulo para exportar.", en = "No chapter markers to export.";
     ExportChaptersDone: pt_br = "Capítulos exportados.", en = "Chapters exported.";
+    AudioRoleUnspecified: pt_br = "Papel de áudio: não definido", en = "Audio role: unspecified";
+    AudioRoleGameAudio: pt_br = "Papel de áudio: áudio do jogo", en = "Audio role: game audio";
+    AudioRoleMic: pt_br = "Papel de áudio: microfone", en = "Audio role: mic";
+    AudioRoleMusic: pt_br = "Papel de áudio: música", en = "Audio role: music";
+    DetectHighlights: pt_br = "⭐ Detectar destaques", en = "⭐ Detect Highlights";
+    HighlightDetectionNeedsBothRoles: pt_br = "Marque uma faixa como áudio do jogo e outra como microfone (cabeçalho da faixa) antes de detectar destaques.", en = "Tag one track as game audio and another as mic (track header) before detecting highlights.";
+    HighlightDetectionNone: pt_br = "Nenhum destaque detectado.", en = "No highlights detected.";
+    HighlightDefaultLabel: pt_br = "Destaque {n}", en = "Highlight {n}";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
     ExportLoudnessLabel: pt_br = "Loudness:", en = "Loudness:";
     ExportLoudnessCustom: pt_br = "{value} LUFS (personalizado)", en = "{value} LUFS (custom)";

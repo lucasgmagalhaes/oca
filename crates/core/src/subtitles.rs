@@ -71,7 +71,7 @@ fn format_srt_timestamp(total_secs: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::timeline::Track;
+    use crate::timeline::{AudioRole, Track};
 
     fn text_clip(id: u64, start_secs: f64, duration_secs: f64, text: &str) -> TextClip {
         TextClip {
@@ -104,6 +104,7 @@ mod tests {
                 text_clips: clips,
                 shape_clips: Vec::new(),
                 visible: true,
+                audio_role: AudioRole::Unspecified,
             }],
             playhead_secs: 0.0,
             markers: Vec::new(),
@@ -175,6 +176,7 @@ mod tests {
             text_clips: vec![text_clip(2, 2.0, 1.0, "Should not appear")],
             shape_clips: Vec::new(),
             visible: true,
+            audio_role: AudioRole::Unspecified,
         });
 
         let srt = export_srt(&timeline);

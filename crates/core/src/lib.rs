@@ -31,6 +31,7 @@ pub mod bundle;
 pub mod collab_bundle;
 pub mod export;
 pub mod frame_sampler;
+pub mod highlight_detection;
 pub mod keyframe;
 pub mod loudness;
 pub mod media;
@@ -70,6 +71,11 @@ pub use bundle::{
 pub use collab_bundle::{export_collab_bundle, import_collab_bundle, CollabBundleError};
 pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus, PlatformExportPreset};
 pub use frame_sampler::FrameSampler;
+pub use highlight_detection::{
+    clip_amplitude_samples, detect_highlight_candidates, HighlightCandidate,
+    TimelineAmplitudeSample, DEFAULT_HIGHLIGHT_GRID_SECS, DEFAULT_HIGHLIGHT_MIN_DURATION_SECS,
+    DEFAULT_HIGHLIGHT_THRESHOLD_LINEAR,
+};
 pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
@@ -104,8 +110,8 @@ pub use text_to_speech::{
     load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
 };
 pub use timeline::{
-    ClipFormatting, ClipInstance, LayerTemplate, Marker, MarkerKind, ShapeClip, ShapeKind,
-    TextClip, TextFontFamily, TextFontStyle, Timeline, Track, TrackKind,
+    AudioRole, ClipFormatting, ClipInstance, LayerTemplate, Marker, MarkerKind, ShapeClip,
+    ShapeKind, TextClip, TextFontFamily, TextFontStyle, Timeline, Track, TrackKind,
 };
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
 pub use update_check::{

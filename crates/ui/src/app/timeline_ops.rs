@@ -13,7 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-use avcore::timeline::{ClipInstance, ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind};
+use avcore::timeline::{
+    AudioRole, ClipInstance, ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind,
+};
 
 use super::App;
 
@@ -704,6 +706,18 @@ impl App {
             track.visible = !track.visible;
         }
     }
+
+    /// Sets the `AudioRole` on the track with `track_id` — what the timeline track header's
+    /// role picker does (D2, `spec/architecture/differentiators.md`: highlight detection needs
+    /// to know which track is the mic vs. game audio). Not undo-tracked, same as
+    /// [`Self::toggle_track_visibility`] — metadata about a track, not an edit to its content.
+    /// A no-op if the track isn't found.
+    pub fn set_track_audio_role(&mut self, track_id: u64, role: avcore::AudioRole) {
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(track) = timeline.tracks.iter_mut().find(|t| t.id == track_id) {
+            track.audio_role = role;
+        }
+    }
 }
 
 /// Appends a brand-new, always-fresh empty track of `kind` to `timeline` — unlike
@@ -732,6 +746,7 @@ pub(super) fn create_new_track(
         text_clips: Vec::new(),
         shape_clips: Vec::new(),
         visible: true,
+        audio_role: AudioRole::Unspecified,
     });
     timeline.tracks.len() - 1
 }
@@ -772,6 +787,7 @@ pub(super) fn resolve_or_create_track(
         text_clips: Vec::new(),
         shape_clips: Vec::new(),
         visible: true,
+        audio_role: AudioRole::Unspecified,
     });
     timeline.tracks.len() - 1
 }
@@ -828,6 +844,7 @@ impl App {
                 text_clips: Vec::new(),
                 shape_clips: Vec::new(),
                 visible: true,
+                audio_role: AudioRole::Unspecified,
             });
     }
 
@@ -890,6 +907,7 @@ impl App {
                 text_clips: Vec::new(),
                 shape_clips: Vec::new(),
                 visible: true,
+                audio_role: AudioRole::Unspecified,
             });
     }
 

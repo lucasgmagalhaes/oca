@@ -18,7 +18,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use avcore::project::Sequence;
 use avcore::render::{render_export, resolve_shape_segments, resolve_text_segments, RenderOutcome};
-use avcore::timeline::{ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind, WordTiming};
+use avcore::timeline::{
+    AudioRole, ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind, WordTiming,
+};
 use avcore::{measure_loudness, probe_media};
 
 fn fixture(name: &str) -> PathBuf {
@@ -133,6 +135,7 @@ fn sequence_with_text_track(clip: TextClip) -> Sequence {
                 text_clips: vec![clip],
                 shape_clips: vec![],
                 visible: true,
+                audio_role: AudioRole::Unspecified,
             }],
             playhead_secs: 0.0,
             markers: Vec::new(),
@@ -280,6 +283,7 @@ fn sequence_with_shape_track(clips: Vec<ShapeClip>) -> Sequence {
                 text_clips: vec![],
                 shape_clips: clips,
                 visible: true,
+                audio_role: AudioRole::Unspecified,
             }],
             playhead_secs: 0.0,
             markers: Vec::new(),
