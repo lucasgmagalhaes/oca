@@ -409,6 +409,12 @@ text_catalog! {
     TimelineIndexAddStandard: pt_br = "+ Marcador", en = "+ Marker";
     TimelineIndexAddToDo: pt_br = "+ Tarefa", en = "+ To Do";
     TimelineIndexAddChapter: pt_br = "+ Capítulo", en = "+ Chapter";
+    DetectSilence: pt_br = "🔇 Detectar silêncio", en = "🔇 Detect Silence";
+    SilenceReviewSelectClipFirst: pt_br = "Selecione um clipe na faixa que deseja escanear.", en = "Select a clip on the track you want to scan.";
+    SilenceReviewTitle: pt_br = "Revisar silêncios detectados", en = "Review Detected Silence";
+    SilenceReviewEmpty: pt_br = "Nenhum trecho de silêncio encontrado.", en = "No silent stretches found.";
+    SilenceReviewGapLabel: pt_br = "{start} — {end} ({duration}s)", en = "{start} — {end} ({duration}s)";
+    SilenceReviewApply: pt_br = "Aplicar cortes selecionados", en = "Apply selected cuts";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
     ExportLoudnessLabel: pt_br = "Loudness:", en = "Loudness:";
     ExportLoudnessCustom: pt_br = "{value} LUFS (personalizado)", en = "{value} LUFS (custom)";

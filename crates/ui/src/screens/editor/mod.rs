@@ -341,6 +341,9 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         {
             app.toggle_timeline_index();
         }
+        if ui.button(Text::DetectSilence.tr(locale)).clicked() {
+            app.begin_silence_review();
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button(Text::Export.tr(locale)).clicked() {
                 app.screen = crate::app::Screen::Queue;

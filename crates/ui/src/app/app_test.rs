@@ -293,6 +293,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         layer_templates_menu_open: false,
         timeline_index_open: false,
         marker_search: String::new(),
+        silence_review: None,
         binding_capture: None,
         update_check_tx,
         update_check_rx,

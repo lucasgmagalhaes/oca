@@ -46,6 +46,7 @@ mod markers;
 mod modals;
 mod motion_tracking;
 mod preview;
+mod silence_review;
 mod sound_library;
 mod telemetry;
 mod text_to_speech;
@@ -1028,6 +1029,10 @@ pub struct App {
     /// Live text of the Timeline Index panel's search box — kept on `App` rather than as a
     /// local in the modal-drawing function so it survives being closed and reopened.
     pub marker_search: String,
+    /// Staged result of `App::begin_silence_review` (D1, `ROADMAP.md` P3 item 13) — `Some`
+    /// while the silence-gap review modal is open, `None` otherwise. Nothing here is applied to
+    /// the timeline until `App::apply_silence_review`.
+    pub silence_review: Option<silence_review::SilenceReview>,
     /// When `Some(action)`, the prefs modal is waiting for the next key press to set that
     /// action's binding. Pressing Escape clears it without changing the binding.
     pub binding_capture: Option<BindableAction>,
@@ -1204,6 +1209,7 @@ impl App {
             layer_templates_menu_open: false,
             timeline_index_open: false,
             marker_search: String::new(),
+            silence_review: None,
             binding_capture: None,
             update_check_tx,
             update_check_rx,
@@ -1922,6 +1928,7 @@ impl eframe::App for App {
         self.show_tts_modal(ui.ctx());
         self.show_youtube_download_modal(ui.ctx());
         self.show_timeline_index_panel(ui.ctx());
+        self.show_silence_review_modal(ui.ctx());
         self.show_toasts(ui.ctx());
     }
 
