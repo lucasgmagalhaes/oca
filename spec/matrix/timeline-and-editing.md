@@ -52,6 +52,36 @@ sequence-management/copy-paste entries.
       revisit-later follow-up, not silently included here. No ruler tick-mark rendering on the
       timeline strip itself either — the Timeline Index panel is the only way to see/navigate
       markers today.
+- [x] **Named trim modes: Ripple / Roll / Slip / Slide (P2 item 11).** Confirmed (2026-08-27):
+      the existing trim (`ClipInstance::trim_start`/`trim_end`) and move (`Track::move_clip`)
+      matched none of the four named tools — trimming an edge never shifted neighboring clips
+      (no Ripple, no Roll), and there was no way to change which part of the source media shows
+      without also moving the clip or changing its duration (no Slip). All four now real,
+      distinct `EditorTool` toolbar modes:
+      - *Ripple* — `Track::ripple_trim_start`/`ripple_trim_end` trim one edge, then shift every
+        clip past the edited clip's own (pre-edit) `start_secs` by the same delta.
+      - *Roll* — `Track::roll_edit` moves the shared boundary between a clip and its
+        `next_clip_id` neighbor; both sides' trims are snapshotted first and rolled back
+        atomically if either refuses, so a rejected roll never leaves a half-edited pair.
+        Dragging either clip's edge at the seam produces the same edit
+        (`App::roll_edit_from_start_edge` resolves the *previous* neighbor when the later
+        clip's start edge was the one grabbed).
+      - *Slip* — `ClipInstance::slip` shifts `source_in_secs`/`source_out_secs` together,
+        leaving `start_secs`/duration untouched. Wired to a clip-body drag (not an edge drag)
+        while the Slip tool is active.
+      - *Slide* — `Track::slide_clip` moves a clip's `start_secs`, then asks its previous/next
+        neighbors (by pre-move position) to absorb the move via their own `trim_end`/
+        `trim_start`; also snapshotted and rolled back atomically on a refusal.
+      All four are pure, unit-tested `core` methods (`timeline_test.rs` — id assignment/
+      neighbor-walking, the happy path, and the atomic-rollback-on-refusal path for Roll and
+      Slide) plus a thin `ui` wiring layer (`App::ripple_trim_clip_start`/`_end`,
+      `roll_edit_clip`/`roll_edit_from_start_edge`, `slip_clip`, `slide_clip` in
+      `timeline_ops.rs`) dispatched from `timeline_panel.rs`'s existing edge-drag/body-drag
+      request handling based on `app.tool`. Verified via `cargo check -p core --tests`/
+      `-p ui --tests` (types/borrows, no link — see `CLAUDE.md`'s build-environment notes);
+      **not driven through a live/e2e build** — no visual confirmation that the drag
+      interactions feel right in the actual running app, same caveat magnetic snap's own entry
+      above already carries for UI-only interaction logic.
 
 ---
 

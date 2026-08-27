@@ -96,10 +96,17 @@ Read [matrix/effects-and-color.md](matrix/effects-and-color.md),
 10. `[ ]` **Multicam editing** — sync footage from multiple sources (game capture, webcam, mic)
     by timecode or audio waveform, switch angles dynamically on one track. In all four editors
     surveyed (`matrix/competitor-parity.md`); directly matches this channel's actual multi-
-    source recording setup.
-11. `[ ]` **Named trim modes: Ripple / Roll / Slip / Slide** — confirm which of the four oca's
-    current trim tool actually covers, fill the rest. See `matrix/competitor-parity.md` for
-    the exact definition of each.
+    source recording setup. **Skipped over (picked up item 11 first)**: a real implementation
+    needs an audio-cross-correlation sync algorithm, a new "multicam group"/angle-switching
+    data model, and export/preview wiring for switching sources mid-clip — a multi-part feature
+    too large to responsibly finish end-to-end (not just half-wired) in one pass. Do this as its
+    own dedicated task.
+11. `[x]` **Named trim modes: Ripple / Roll / Slip / Slide.** Confirmed: oca's existing trim/move
+    (`ClipInstance::trim_start`/`trim_end`, `Track::move_clip`) matched none of the four —
+    trimming an edge never touched neighboring clips at all (no ripple, no roll), and there was
+    no way to change source-in/out without moving the clip or changing its duration (no slip).
+    All four now implemented as their own `EditorTool` toolbar modes — see
+    `matrix/timeline-and-editing.md` for the exact scope and what's still unverified.
 12. `[ ]` **D3 — series-level loudness consistency** across an export-queue batch
     (`architecture/differentiators.md`). Low effort, pure orchestration over LUFS analysis +
     export queue, both already built.
