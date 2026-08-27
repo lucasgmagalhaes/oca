@@ -852,6 +852,12 @@ pub struct App {
     /// P0 item 1, `spec/architecture/undo-redo.md`) — scoped to one sequence, cleared on every
     /// sequence/project switch since history from one tab is meaningless applied to another.
     pub undo_stack: avcore::undo::UndoStack,
+    /// Whether an effect-property drag (a slider/`DragValue` held down in the properties
+    /// panel) is currently pushing its *first* undo snapshot — see
+    /// [`App::push_undo_snapshot_for_drag`]. Reset to `false` once per frame in
+    /// `screens::editor::show` whenever no pointer button is held, so the next drag (or
+    /// instant click) starts a fresh snapshot instead of reusing this one.
+    undo_drag_active: bool,
     /// The text overlay clip currently selected on a text track, if any. Selecting a text clip
     /// clears `selected_clip_id`/`selected_shape_clip_id` and vice versa — only one kind of clip
     /// can be selected at a time. The properties panel shows text-clip controls when this is
@@ -1121,6 +1127,7 @@ impl App {
             youtube_download_cancel: None,
             selected_clip_id: None,
             undo_stack: avcore::undo::UndoStack::new(),
+            undo_drag_active: false,
             selected_text_clip_id: None,
             text_color_edit: None,
             selected_shape_clip_id: None,
@@ -1497,6 +1504,33 @@ impl App {
     pub(crate) fn push_undo_snapshot(&mut self) {
         let sequence = self.active_project().active_sequence().clone();
         self.undo_stack.push(sequence);
+    }
+
+    /// Like [`App::push_undo_snapshot`], but coalesces a continuous drag (a slider/`DragValue`
+    /// held down in the properties panel, which re-fires its setter every single frame while
+    /// dragged) into exactly one undo step instead of one per frame. Pushes only the first time
+    /// it's called since [`App::end_undo_drag_tracking_if_pointer_released`] last reset the
+    /// flag — call sites are the shared per-clip-kind mutation dispatch points
+    /// (`with_selected_clip_mut`, `text_clip_properties`'s and `shape_clip_properties`'s
+    /// write-back), not each individual slider, so every effect-property setter gets this for
+    /// free. Mirrors the `drag_started()`-gated push the timeline strip's trim/move drags use,
+    /// but via a stateful flag rather than an `egui::Response` — the property setters are
+    /// called through several layers of `bool`-returning helpers
+    /// (`components::property_section` etc.) that don't thread a `Response` back to the caller.
+    pub(crate) fn push_undo_snapshot_for_drag(&mut self) {
+        if !self.undo_drag_active {
+            self.push_undo_snapshot();
+            self.undo_drag_active = true;
+        }
+    }
+
+    /// Resets [`App::undo_drag_active`] once no pointer button is held — call once per frame
+    /// from the Editor screen. Until the pointer is released, [`App::push_undo_snapshot_for_drag`]
+    /// keeps treating further setter calls as the same in-progress drag.
+    pub(crate) fn end_undo_drag_tracking_if_pointer_released(&mut self, pointer_down: bool) {
+        if !pointer_down {
+            self.undo_drag_active = false;
+        }
     }
 
     /// Whether [`App::undo`] would do anything — drives the toolbar undo button's enabled state.

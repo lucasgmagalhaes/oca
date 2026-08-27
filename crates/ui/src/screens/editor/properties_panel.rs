@@ -1267,6 +1267,7 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
 
     // Apply changes back to the clip in the active project.
     if changed {
+        app.push_undo_snapshot_for_drag();
         let timeline = app.active_project_mut().timeline_mut();
         for track in &mut timeline.tracks {
             if track.kind == avcore::timeline::TrackKind::Text {
@@ -1612,6 +1613,7 @@ fn shape_clip_properties(
 
     // Apply changes back to the clip in the active project.
     if changed {
+        app.push_undo_snapshot_for_drag();
         let timeline = app.active_project_mut().timeline_mut();
         for track in &mut timeline.tracks {
             if track.kind == avcore::timeline::TrackKind::Shape {

@@ -220,7 +220,10 @@ impl App {
     }
 
     /// Calls `f` with a mutable borrow of the selected clip, if any — the shared dispatch path
-    /// for every `set_selected_clip_*` setter.
+    /// for every `set_selected_clip_*` setter. Pushes an undo snapshot first via
+    /// [`App::push_undo_snapshot_for_drag`], so every effect-property setter (gain, crop,
+    /// color adjustments, keyframes, ...) gets undo coverage for free without each of their
+    /// ~20 call sites in `properties_panel.rs` needing its own drag-started check.
     pub(super) fn with_selected_clip_mut(
         &mut self,
         f: impl FnOnce(&mut avcore::timeline::ClipInstance),
@@ -228,6 +231,7 @@ impl App {
         let Some(clip_id) = self.selected_clip_id else {
             return;
         };
+        self.push_undo_snapshot_for_drag();
         if let Some(clip) = self.active_project_mut().timeline_mut().clip_mut(clip_id) {
             f(clip);
         }
@@ -546,7 +550,6 @@ impl App {
         let Some(formatting) = self.formatting_clipboard.clone() else {
             return;
         };
-        self.push_undo_snapshot();
         self.with_selected_clip_mut(|clip| clip.apply_formatting(&formatting));
     }
 

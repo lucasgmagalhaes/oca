@@ -185,6 +185,7 @@ impl App {
             return false;
         }
 
+        self.push_undo_snapshot();
         let timeline = self.active_project_mut().timeline_mut();
         let clip = timeline
             .tracks

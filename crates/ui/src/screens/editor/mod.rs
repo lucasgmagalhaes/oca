@@ -38,6 +38,12 @@ use crate::theme;
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     app.ensure_active_project();
 
+    // Coalesces a held-down properties-panel slider/DragValue drag into one undo step — see
+    // App::push_undo_snapshot_for_drag's doc comment for why this can't just be a
+    // drag_started() check at each of the ~20 individual slider call sites.
+    let pointer_down = ui.input(|i| i.pointer.any_down());
+    app.end_undo_drag_tracking_if_pointer_released(pointer_down);
+
     // Clone the configurable combos before the first ui.input() call so we can pass them
     // into separate closures without holding a borrow on app across the closure boundary.
     let play_pause_combo = app.prefs.key_bindings.play_pause.clone();
