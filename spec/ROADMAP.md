@@ -763,10 +763,13 @@ competitive evidence, implementation slices, acceptance criteria, security requi
 deliberate non-goals. Implement in this order unless an active production problem justifies moving
 an item earlier:
 
-- `[ ]` **ER-01: client error reporting.** Add consent-based, sanitized, bounded remote reporting
+- `[~]` **ER-01: client error reporting.** Add consent-based, sanitized, bounded remote reporting
   for handled errors and Rust panics, exact release/symbol management, and a separately validated
   native Crashpad phase. This is an operational prerequisite for broad beta distribution, not a
-  replacement for local telemetry. Read
+  replacement for local telemetry. ER-01A (the contract, sanitizer, validator, `NullReporter`,
+  queue envelope, and central handled-error wiring in `core`+`ui`) is shipped; consent UI, the
+  delivery worker/Sentry adapter (ER-01B), releases/symbolication (ER-01C), native capture
+  (ER-01D), and operations (ER-01E) remain. Read
   [architecture/client-error-reporting.md](architecture/client-error-reporting.md).
 - `[ ]` **FONT-01: expanded built-in font catalog.** Grow the deterministic offline catalog from
   6 to 43 families (51 locked OFL binaries, measured at 17.07 MiB), replace the fixed enum/match

@@ -30,6 +30,13 @@ Detail: `matrix/changelog.md` Fase 5/6.
       the client and require manual sharing. ER-01 adds explicit consent, a strict sanitized event
       contract, bounded offline delivery, release/symbol management, and a separately validated
       native-crash phase. See `../architecture/client-error-reporting.md`.
+  - [x] ER-01A contract shipped (`core::error_reporting`): stable error codes, provider-neutral
+        schema, sanitizer (paths/URLs/credentials/emails, idempotent, byte-capped), schema
+        validator, consent-disabled `NullReporter`, and the bounded queue envelope shape. Central
+        import/export failures route through it via `App::report_error`, which validates before
+        delivering and is a no-op while no reporter exists (the consent-disabled state) — no
+        network, no provider SDK, raw `TelemetryEvent::Error` and provider types kept out of the
+        path. Consent UI + delivery worker/Sentry adapter are ER-01B.
 
 ---
 
