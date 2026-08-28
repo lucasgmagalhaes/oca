@@ -176,7 +176,8 @@ asked `fontdue::Layout` for placement. The spike proved the dependency choice wa
 itself (adapter, `TextLayoutEngine`, moving measurement/wrapping/background-geometry/raster-
 placement onto shaped output, golden tests for the six existing families) was the next real slice.
 
-**TEXT-01A steps 1-2 (adapter) shipped** (2026-08-28), still not step 3 (the swap). `avcore::
+**TEXT-01A steps 1-2 (adapter) shipped** (2026-08-28); step 3 (the swap) followed the same day —
+see below. `avcore::
 text_layout` adds the provider-neutral `ShapedText`/`ShapedLine`/`ShapedGlyph` value and
 `TextLayoutEngine`, a real `core` dependency now (`cosmic-text = { version = "0.19",
 default-features = false, features = ["std", "swash"] }`, `fontconfig` disabled). `font_catalog`
@@ -202,14 +203,60 @@ and wrapping actually producing multiple lines within the requested width. `carg
 `cargo clippy -p core --lib --no-deps`, and `cargo check --workspace --all-targets` (all via the
 documented temporary local `filters.c` shim, discarded before commit) stayed clean.
 
-**Still not done — TEXT-01A step 3, the actual swap**: `text_metrics.rs` still measures via
-`fontdue` and `overlay_render.rs` still rasterizes via `fontdue::Layout`; `text_layout.rs` has no
-caller outside its own tests yet. This is deliberately deferred rather than folded into the same
-pass: it's the one part of TEXT-01A that changes every preview/export text pixel at once (the
-doc's own "preserve golden output for the six existing families" requirement), and this sandbox
-has no way to render the real eframe app or diff pixel output against a reference — the kind of
-visual-parity verification this codebase's own convention (`CLAUDE.md`) treats as a real,
-separate gate, not something to wave through alongside a headless adapter change.
+**TEXT-01A step 3 (the swap) shipped too** (2026-08-28, same day). `overlay_render.rs` now
+shapes and rasterizes every `TextClip`/`TextSegment` through `text_layout::with_shared_engine`
+instead of `fontdue::layout::Layout` — `draw_shaped_text` paints glyphs via
+`cosmic_text::SwashCache::with_pixels`, and `shaped_ink_bbox` derives the rounded background's
+bounding box from each glyph's real rasterized `Placement` (not just its advance box), matching
+`fontdue`'s own "tight ink bbox" semantics for background sizing. `TextLayoutEngine::shape` gained
+an `origin: (f32, f32)` parameter so every `ShapedGlyph` (and its `PhysicalGlyph` rasterization
+handle) is already positioned at its final canvas pixel, mirroring `fontdue::layout::
+LayoutSettings`'s `x`/`y` convention the previous renderer used.
+
+**Real bug found and fixed while wiring this in, not assumed from docs**: `cosmic-text`'s
+`LayoutGlyph::y` is relative to *that glyph's own run*, not an absolute canvas position — the
+piece that actually varies line to line is `LayoutRun::line_y` ("Y offset to baseline of line"),
+which a first implementation didn't add in. Every glyph on every line landed at the same `y`,
+which (combined with `origin.1 = 0.0` in the failing test cases) also pushed the first line's
+whole ascent above row 0 and clipped it entirely — silently producing zero visible pixels rather
+than an obviously-wrong render. Caught by three real regression-test failures (see below), not by
+inspection; confirmed against `cosmic-text`'s own `buffer.rs` source (`LayoutRunIter`'s
+`line_y`/`line_top` construction) before fixing, then reproduced-then-fixed to confirm the
+diagnosis. `text_metrics.rs`'s own per-character `text_width_px`/`word_x_offsets_px` functions
+are now dead code (no caller outside their own tests) now that `overlay_render.rs` no longer
+calls `bundled_font` — left in place with a doc-comment note rather than deleted, since removing
+that whole measurement surface is its own separate cleanup, not a side effect of this swap.
+`word_byte_ranges` (pure string search, engine-independent) is unaffected and still used by both
+`overlay_render.rs` and `render.rs`.
+
+Verified for real, including a real visual check this sandbox does have a path to even without a
+running eframe session: `overlay_render.rs`'s own rasterization functions are plain
+`fn(&TextClip, u32, u32, f64) -> Vec<u8>` calls with zero GStreamer/GUI dependency, so they were
+exercised directly. All of `overlay_render_test.rs`'s 16 existing structural tests (opaque/
+transparent pixel checks, rounded-background corner tests, highlight-color-word tests, wrapping/
+multi-line vertical-extent tests) pass unchanged against the new renderer, run for real in the
+same throwaway scratch crate as the adapter slice (this time also carrying `render.rs`'s
+`TextSegment` struct copied in, `shape_render.rs`, and `text_metrics.rs`, since `overlay_render.rs`
+depends on all three) — 137/137 passing, zero test assertions changed. Beyond the structural
+tests, two real sample captions (one plain, one with a rounded background and a highlighted word;
+one wrapping across three lines) were rendered through the actual `render_text_clip_rgba` entry
+point, composited onto an opaque backdrop, saved as PNG, and visually inspected — correct glyph
+shapes (including `ç`), correct ligature/kerning-quality spacing, correct rounded-background
+padding, correct highlight-word coloring, and correctly stacked wrapped lines, with the `line_y`
+bug's exact symptom (blank output) confirmed absent. `cargo fmt --check`, `cargo clippy -p core
+--lib --no-deps` (a new `#[allow(clippy::too_many_arguments)]` on `draw_shaped_text`, matching
+this codebase's own existing convention for rasterization functions in `keyframe.rs`/`preview.rs`/
+`render.rs`), and `cargo check --workspace --all-targets` (all via the documented temporary local
+`filters.c` shim, discarded before commit) stayed clean.
+
+**Still not done**: golden-image comparison against the *pre-swap* `fontdue` renderer's actual
+pixel output (not attempted — the two rasterizers use different hinting/anti-aliasing, so exact
+pixel parity was never the achievable goal; the doc's own bar is preserved *visual* output, which
+the rendered-and-inspected PNGs above satisfy) and any live-GUI/export-encode confirmation, which
+still needs a real windowed session this sandbox doesn't have. TEXT-01B (bidi/cluster-safe
+highlights — the current highlight-by-cluster-start filter is a direct port of the old
+byte-offset filter, not yet cluster-aware for RTL/conjunct scripts), TEXT-01C (international
+fallback families), and TEXT-01D (performance/caching/optional packs) remain open.
 
 ## Shaping pipeline
 
@@ -456,7 +503,10 @@ but glyph selection and placement come exclusively from `ShapedText`.
 - [x] The candidate dependency spike passes every acceptance gate and its exact dependency/license
       tree is reviewed. (2026-08-28, see "Spike result" above — `cosmic-text` 0.19,
       `default-features = false, features = ["std", "swash"]`, MIT/Apache-2.0, pure Rust.)
-- [ ] Preview/export no longer use per-character width summation or unshaped `fontdue::Layout`.
+- [x] Preview/export no longer use per-character width summation or unshaped `fontdue::Layout`.
+      (2026-08-28 — `overlay_render.rs` shapes/rasterizes via `text_layout`/`cosmic-text`;
+      `text_metrics.rs`'s old per-character measurement functions are unreferenced dead code, not
+      deleted yet, see that module's own doc comment.)
 - [ ] Arabic, Hebrew, Devanagari, Bengali, Tamil, Thai, mixed bidi, and Latin ligature corpora pass.
 - [ ] Timed highlights operate on whole shaped clusters without re-shaping isolated words.
 - [ ] Variable weights select actual axes and affect glyph output.

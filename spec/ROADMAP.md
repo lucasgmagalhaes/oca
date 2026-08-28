@@ -925,15 +925,45 @@ an item earlier:
   producing multiple lines. `cargo check --workspace --all-targets`/`clippy`/`fmt` (via the
   documented temporary shim) all clean.
 
-  **Not yet done — TEXT-01A step 3, the actual swap**: `TextLayoutEngine::shape`/`text_width_px`
-  are real, tested parity functions for `text_metrics::text_width_px_with_font` — not yet called
-  by it, or by `overlay_render.rs`'s rasterization path, which is exactly the part of TEXT-01A
-  deliberately deferred: it changes every preview/export text pixel at once (the doc's own
-  "preserve golden output for the six existing families" requirement), and this sandbox has no way
-  to render the real eframe app or diff pixel output against a reference. TEXT-01B (bidi/
-  highlights wiring), TEXT-01C (international fallback families, gated on FONT-01B actually
-  vendoring those fonts into the repo), and TEXT-01D (performance/caching/optional packs) are all
-  still open.
+  **TEXT-01A step 3 (the swap) shipped the same day.** `overlay_render.rs` now shapes and
+  rasterizes every `TextClip`/`TextSegment` through `text_layout::with_shared_engine` instead of
+  `fontdue::layout::Layout` — glyphs paint via `cosmic_text::SwashCache::with_pixels`, and the
+  rounded background's bounding box comes from each glyph's real rasterized `Placement` (a tight
+  ink bbox, matching `fontdue`'s old semantics), not just its advance box. `TextLayoutEngine::
+  shape` gained an `origin: (f32, f32)` parameter so every glyph is already positioned at its
+  final canvas pixel.
+
+  **Real bug found and fixed while wiring this in**: `cosmic-text`'s `LayoutGlyph::y` is relative
+  to that glyph's own run, not an absolute canvas position — the piece that actually varies line
+  to line is `LayoutRun::line_y`, which a first pass didn't add in, collapsing every wrapped line
+  onto the same row (and, combined with `origin.1 = 0.0` in the failing tests, pushing the first
+  line's whole ascent above row 0 — a blank render, not an obviously-wrong one). Caught by 3 of
+  `overlay_render_test.rs`'s existing regression tests failing for real, root-caused against
+  `cosmic-text`'s own source, then fixed and reproduced-passing.
+
+  Verified for real: all 16 of `overlay_render_test.rs`'s existing structural tests (opaque/
+  transparent pixel checks, rounded-background corners, highlight-color-word tests, multi-line
+  wrapping) pass unchanged against the new renderer — 137/137 in the same throwaway scratch-crate
+  approach (this time also carrying `render.rs`'s `TextSegment` struct, `shape_render.rs`, and
+  `text_metrics.rs`). Beyond structural tests: two real sample captions (plain text with a
+  highlighted word and rounded background; a caption wrapping across three lines) were rendered
+  through the real `render_text_clip_rgba` entry point, composited onto an opaque backdrop, saved
+  as PNG, and visually inspected — correct glyph shapes including `ç`, correct background padding,
+  correct highlight coloring, correctly stacked wrapped lines. `text_metrics.rs`'s old
+  per-character `text_width_px`/`word_x_offsets_px` are now dead code (no caller outside their own
+  tests) — left in place with a doc-comment note rather than deleted, a separate cleanup from this
+  swap. `cargo check --workspace --all-targets`/`clippy`/`fmt` (via the documented temporary shim)
+  all stayed clean.
+
+  **Still not done**: golden-image comparison against the pre-swap `fontdue` renderer's actual
+  pixels (never the goal — different rasterizers, different hinting; the doc's bar is preserved
+  *visual* output, satisfied by the inspected PNGs above) and any live-GUI/export-encode
+  confirmation, which needs a real windowed session this sandbox doesn't have. TEXT-01B
+  (cluster-safe highlights — the current filter is a direct port of the old byte-offset filter,
+  not yet cluster-aware for RTL/conjunct scripts), TEXT-01C (international fallback families,
+  gated on FONT-01B actually vendoring those fonts into the repo), and TEXT-01D (performance/
+  caching/optional packs) are all still open. See `architecture/complex-text-shaping.md`'s own
+  writeup for the full detail.
 - `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:
