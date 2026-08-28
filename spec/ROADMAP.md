@@ -783,9 +783,28 @@ an item earlier:
   tests including a real end-to-end one (actual Whisper inference against a fixture, through
   `from_transcribe_segments`, through `validate()`), plus a new confidence-range assertion added
   to the existing real-transcription integration test — both currently skip (not fail) without
-  `WHISPER_MODEL_PATH` set, same convention `transcribe_test.rs` already used. **Not yet built**:
-  the transcript panel/seek-on-select, search, proposed-edit list, or apply-as-undo slices —
-  this is purely the data-model/persistence foundation the rest of CF-01 sits on.
+  `WHISPER_MODEL_PATH` set, same convention `transcribe_test.rs` already used.
+
+  **Slice 2 (transcript panel, seek-on-select, current-word highlight) shipped**: a searchable
+  modal panel (toolbar's "📝 Transcrição/Transcript") over the *previewed clip's* own transcript
+  document — same modal-panel shape `show_timeline_index_panel` (markers) already established.
+  `App::ensure_transcript_loaded_for_preview` lazily loads/clears the shown document whenever the
+  previewed clip's `asset_id` changes (called alongside `App::ensure_preview_loaded`, so no extra
+  per-frame disk I/O beyond what preview loading already triggers); clicking a word maps its
+  media-relative time back onto the timeline through the clip's own trim/speed and seeks there —
+  never into a different clip, since a word only ever comes from the one clip currently
+  previewed. The word covering the current playhead highlights live. `App::spawn_transcribe`'s
+  existing subtitle-`TextClip` flow now also builds and saves a `TranscriptDocument` right after
+  a transcription completes (`App::save_transcript_document_for`), closing the loop end to end —
+  no separate action needed to populate the panel. Compound clips (nested sequences, no real
+  `asset_id`) are treated the same as "no transcript yet," not an error. Verified: 5 new `App`-
+  level unit tests (load/clear on clip change, missing-vs-present document, immediate panel
+  refresh after a fresh save) — `cargo test -p ui` (309 passed).
+
+  **Not yet built**: search (slice 3 — exact filtering already exists *within* the open panel,
+  but not the "search across the whole project media library" slice 3 itself describes),
+  proposed-edit list, or apply-as-undo — this and slice 1 are the data-model/persistence/panel
+  foundation the rest of CF-01 sits on.
 - `[ ]` **CF-02: gameplay event ingestion and watched-folder import.** Import versioned event
   sidecars/bookmarks and combine them with audio-spike scoring before building a full recorder.
 - `[ ]` **CF-03: integrated gameplay-voice cleanup.** Move the proven watched-folder FFmpeg chain
