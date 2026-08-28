@@ -4369,11 +4369,13 @@ fn pump_transcribe_creates_a_text_track_with_rebased_word_timings() {
                 text: "Hello".to_string(),
                 start_secs: 100.0,
                 end_secs: 100.5,
+                confidence: 0.9,
             },
             avcore::transcribe::TranscribeWord {
                 text: "World".to_string(),
                 start_secs: 100.5,
                 end_secs: 101.0,
+                confidence: 0.9,
             },
         ],
     }];
