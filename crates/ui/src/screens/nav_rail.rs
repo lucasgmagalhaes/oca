@@ -19,12 +19,13 @@ use crate::app::{App, Screen};
 use crate::i18n;
 use crate::theme;
 
-const ITEMS: [(Screen, &str); 5] = [
+const ITEMS: [(Screen, &str); 6] = [
     (Screen::Home, "⌂"),
     (Screen::Editor, "✂"),
     (Screen::Library, "▤"),
     (Screen::SoundLibrary, "♫"),
     (Screen::Queue, "≡"),
+    (Screen::WatchFolder, "🧹"),
 ];
 
 /// Renders the left icon rail and handles screen-switching clicks.

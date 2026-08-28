@@ -64,6 +64,7 @@ mod transcribe;
 mod transcript_panel;
 mod transcript_proposals;
 mod update_check;
+mod watch_folder;
 mod youtube_download;
 
 pub(crate) use color::{format_color_hex, TextColorEdit, TextColorTarget};
@@ -77,6 +78,7 @@ pub enum Screen {
     Library,
     SoundLibrary,
     Queue,
+    WatchFolder,
 }
 
 /// The editor toolbar's active tool. `Select`/`Trim` are just tracked for the toolbar's
@@ -662,6 +664,47 @@ enum YoutubeDownloadEvent {
     Failed { message: String },
 }
 
+/// Where one file tracked by the watch-folder worker thread (see
+/// [`App::start_watching_folder`]) currently sits — mirrors `Watch-Gameplay.ps1`'s own per-file
+/// pipeline stages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WatchFolderFileStatus {
+    Stabilizing,
+    Processing,
+    Done,
+    Error,
+}
+
+/// One file the watch-folder worker thread has seen this run, as shown in the Limpeza screen's
+/// list — newest-first, same order [`App::pump_watch_folder`] inserts into
+/// `WatchFolderState::files`.
+pub(crate) struct WatchedFileRow {
+    pub(crate) path: PathBuf,
+    pub(crate) status: WatchFolderFileStatus,
+    pub(crate) percent: u8,
+    pub(crate) error: Option<String>,
+    pub(crate) before: Option<avcore::LoudnessMetrics>,
+    pub(crate) after: Option<avcore::LoudnessMetrics>,
+}
+
+/// A message from the watch-folder worker thread (see [`App::start_watching_folder`]) back to
+/// the UI thread.
+enum WatchFolderEvent {
+    Detected(PathBuf),
+    Stabilizing(PathBuf),
+    Processing(PathBuf),
+    Progress(PathBuf, u8),
+    Done {
+        path: PathBuf,
+        before: avcore::LoudnessMetrics,
+        after: avcore::LoudnessMetrics,
+    },
+    Failed {
+        path: PathBuf,
+        message: String,
+    },
+}
+
 /// Result of one background poster-frame extraction (see [`App::request_thumbnail`]). The key
 /// is `(asset_id, frame_index)` rather than a fixed-width seconds bucket: timeline zoom chooses
 /// a source frame for each visible filmstrip tile, while quantizing to the source frame rate
@@ -756,6 +799,8 @@ pub struct App {
     pub(crate) tts_state: TtsState,
     /// YouTube-download modal/background-job state, grouped the same way [`PreviewState`] was.
     pub(crate) youtube_download_state: YoutubeDownloadState,
+    /// Watch-folder screen state, grouped the same way [`PreviewState`] was.
+    pub(crate) watch_folder_state: WatchFolderState,
     /// The timeline clip currently highlighted in the Editor's timeline strip, if any — a
     /// separate concept from `selected_asset_id` (that's the media-library selection driving
     /// the preview panel; this is a placed [`avcore::timeline::ClipInstance`]). `Delete`
@@ -1245,6 +1290,24 @@ pub(crate) struct YoutubeDownloadState {
     pub(crate) youtube_download_cancel: Option<Arc<AtomicBool>>,
 }
 
+/// Watch-folder screen state, extracted from `App`'s own field list — see [`PreviewState`]'s
+/// doc comment for why.
+pub(crate) struct WatchFolderState {
+    tx: UnboundedSender<WatchFolderEvent>,
+    rx: UnboundedReceiver<WatchFolderEvent>,
+    pub(crate) watch_path: Option<PathBuf>,
+    /// `true` while the background polling thread is running — only one watch session at a
+    /// time.
+    pub(crate) running: bool,
+    /// Set when `running` starts, cleared when it stops; the thread checks this every poll and
+    /// mid-render (it's the same `cancel: &AtomicBool` `avcore::process_watched_file` already
+    /// accepts), same shape as `YoutubeDownloadState::youtube_download_cancel`.
+    stop: Option<Arc<AtomicBool>>,
+    /// Newest-first, same convention `Watch-Gameplay.ps1`'s own `$FileOrder` (reversed for
+    /// display) uses.
+    pub(crate) files: Vec<WatchedFileRow>,
+}
+
 impl App {
     /// Builds the initial app state: applies the theme and starts with an empty project list
     /// and export queue — every project, asset, and job comes from the user via "Novo
@@ -1287,6 +1350,7 @@ impl App {
         let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
         let (tts_tx, tts_rx) = mpsc::unbounded_channel();
         let (youtube_download_tx, youtube_download_rx) = mpsc::unbounded_channel();
+        let (watch_folder_tx, watch_folder_rx) = mpsc::unbounded_channel();
         let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
         let (telemetry_tx, telemetry_rx) = mpsc::unbounded_channel();
         telemetry::spawn_telemetry_writer(telemetry_rx, telemetry::telemetry_path());
@@ -1378,6 +1442,14 @@ impl App {
                 youtube_download_progress: 0.0,
                 youtube_download_error: None,
                 youtube_download_cancel: None,
+            },
+            watch_folder_state: WatchFolderState {
+                tx: watch_folder_tx,
+                rx: watch_folder_rx,
+                watch_path: None,
+                running: false,
+                stop: None,
+                files: Vec::new(),
             },
             selected_clip_id: None,
             undo_stack: avcore::undo::UndoStack::new(),
@@ -2091,6 +2163,7 @@ impl eframe::App for App {
         self.pump_matte_generation();
         self.pump_text_to_speech();
         self.pump_youtube_download();
+        self.pump_watch_folder();
         self.pump_update_check();
         self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());
@@ -2141,6 +2214,7 @@ impl eframe::App for App {
             Screen::Library => screens::library::show(self, ui),
             Screen::SoundLibrary => screens::sound_library::show(self, ui),
             Screen::Queue => screens::queue::show(self, ui),
+            Screen::WatchFolder => screens::watch_folder::show(self, ui),
         });
         self.show_prefs_modal(ui.ctx());
         self.show_about_modal(ui.ctx());

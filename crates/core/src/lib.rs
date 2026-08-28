@@ -64,6 +64,7 @@ pub mod transcript_proposals;
 pub mod transcript_search;
 pub mod undo;
 pub mod update_check;
+pub mod watched_folder;
 pub mod waveform;
 pub mod youtube_download;
 
@@ -149,6 +150,10 @@ pub use update_check::{
     apply_update, auto_update_supported, expected_update_asset_name, fetch_latest_release,
     is_newer, package_supports_atomic_update, release_supports_auto_update, restart_application,
     ApplyUpdateError, ApplyUpdateOutcome, LatestRelease, UpdateCheckError, UpdatePackage,
+};
+pub use watched_folder::{
+    is_video_file, output_path_for, process_watched_file, ProcessError, StabilityTracker,
+    DEFAULT_OUTPUT_SUBFOLDER, DEFAULT_STABLE_SECS, DEFAULT_TARGET_LUFS, VIDEO_EXTENSIONS,
 };
 pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};
 pub use youtube_download::{

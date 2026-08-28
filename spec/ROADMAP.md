@@ -880,7 +880,36 @@ Quick wins that may be completed alongside CF-01:
   pure-function surface needed a unit test of its own.
 - `[ ]` Stabilization and deflicker preview parity.
 - `[ ]` Real-hardware GPU encoder validation.
-- `[ ]` Integrating the standalone watched-folder utility into the app.
+- `[x]` **Integrating the standalone watched-folder utility into the app.** New "Limpeza"
+  screen (nav rail, 🧹) replaces `scripts/Watch-Gameplay.ps1` + its `ui.html` status page with a
+  native egui equivalent. `avcore::watched_folder` (new `core` module) detects a video file in a
+  chosen folder, waits for its size to stay stable for a configurable window (same heuristic the
+  script uses), then normalizes it via `render::render_export` — video passthrough-copied, audio
+  through `afftdn` noise reduction + `loudnorm` + a true-peak `alimiter`, re-encoded AAC — a
+  primitive that already existed in `core` but had **zero UI callers before this feature**.
+  Before/after LUFS shown per file, same as the script's own before/after panel. Background
+  polling thread + `mpsc` channel + per-frame `pump_watch_folder()`, the same shape every other
+  background feature in this app already uses.
+
+  **Documented gaps, not silently dropped** (see `watched_folder.rs`'s own module doc comment):
+  the script's `highpass=f=80` rumble cut and `acompressor` voice-leveling steps aren't in
+  `render_export`'s shared filter chain — adding them would change every export caller's audio,
+  not just this feature, so that's left for a deliberate follow-up rather than a side effect of
+  this one; and the script's exclusive-file-lock stability check (`Test-FileReady`) isn't
+  ported — it needs a platform-specific dependency this crate doesn't have, so only the
+  size-stable-for-N-seconds heuristic is implemented, a real (if slightly weaker) signal, not a
+  fake one.
+
+  Verified for real: this dev machine's full FFmpeg/GStreamer toolchain actually links `core`'s
+  own test binary (confirmed across this whole session, unlike the sandboxed environment most
+  prior ROADMAP entries describe) — `cargo test -p core --lib watched_folder` runs all 8 tests
+  (extension filtering, output-path construction, stability-tracker state machine across
+  multiple files) for real. `ui`: new `App`-level tests for start/stop no-ops and
+  `pump_watch_folder`'s event-to-row-state mapping (detect/progress/done/failed). **Not run
+  against a live GUI session or real gameplay footage** — the actual background thread's
+  filesystem polling and its call into `process_watched_file` haven't been exercised end to end,
+  same caveat every other UI-only or GStreamer-adjacent change in this environment already
+  carries.
 
 ## P6 — Explicitly Deferred
 

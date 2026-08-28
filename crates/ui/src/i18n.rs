@@ -361,6 +361,23 @@ text_catalog! {
     SoundLibraryNoFolderConfigured: pt_br = "Nenhuma pasta configurada. Escolha uma pasta com subpastas \"music\"/\"sfx\" em Ajustes.", en = "No folder configured. Pick a folder with \"music\"/\"sfx\" subfolders in Preferences.";
     SoundLibraryEmpty: pt_br = "Nenhuma faixa encontrada. Adicione arquivos de áudio nas subpastas \"music\"/\"sfx\" da pasta configurada.", en = "No tracks found. Add audio files to the configured folder's \"music\"/\"sfx\" subfolders.";
 
+    NavWatchFolder: pt_br = "Limpeza", en = "Cleanup";
+    WatchFolderTitle: pt_br = "Limpeza de áudio por pasta", en = "Watched-folder audio cleanup";
+    WatchFolderSubtitle: pt_br = "Monitora uma pasta e limpa automaticamente o áudio de gravações novas (redução de ruído + normalização de volume), sem tocar no vídeo.", en = "Watches a folder and automatically cleans up new recordings' audio (noise reduction + loudness normalization), without touching the video.";
+    WatchFolderPathLabel: pt_br = "Pasta monitorada", en = "Watched folder";
+    WatchFolderChooseFolder: pt_br = "Escolher pasta...", en = "Choose folder...";
+    WatchFolderNoFolder: pt_br = "Escolha uma pasta para começar a monitorar.", en = "Choose a folder to start watching.";
+    WatchFolderStart: pt_br = "▶ Iniciar monitoramento", en = "▶ Start watching";
+    WatchFolderStop: pt_br = "■ Parar monitoramento", en = "■ Stop watching";
+    WatchFolderOutputHint: pt_br = "Cópias limpas são salvas em \"processed\" dentro da pasta monitorada.", en = "Cleaned-up copies are saved to \"processed\" inside the watched folder.";
+    WatchFolderEmpty: pt_br = "Nenhum arquivo detectado ainda.", en = "No files detected yet.";
+    WatchFolderStatusStabilizing: pt_br = "Aguardando gravação terminar", en = "Waiting for the recording to finish";
+    WatchFolderStatusMeasuringBefore: pt_br = "Analisando original", en = "Analyzing original";
+    WatchFolderStatusProcessing: pt_br = "Processando", en = "Processing";
+    WatchFolderStatusDone: pt_br = "Concluído", en = "Done";
+    WatchFolderStatusError: pt_br = "Erro", en = "Error";
+    WatchFolderLufsBeforeAfter: pt_br = "{before} → {after} LUFS", en = "{before} → {after} LUFS";
+
     QueueTitle: pt_br = "Fila de exportação", en = "Export queue";
     AddExport: pt_br = "＋ Adicionar exportação", en = "＋ Add export";
     AddExportNeedsClip: pt_br = "Adicione ao menos um clipe de vídeo na sequência ativa primeiro", en = "Add at least one video clip to the active sequence first";
@@ -629,6 +646,7 @@ pub fn screen_title(locale: Locale, screen: Screen) -> &'static str {
         Screen::Library => Text::ScreenTitleLibrary.tr(locale),
         Screen::SoundLibrary => Text::ScreenTitleSoundLibrary.tr(locale),
         Screen::Queue => Text::ScreenTitleQueue.tr(locale),
+        Screen::WatchFolder => Text::WatchFolderTitle.tr(locale),
     }
 }
 
@@ -640,6 +658,7 @@ pub fn nav_label(locale: Locale, screen: Screen) -> &'static str {
         Screen::Library => Text::NavLibrary.tr(locale),
         Screen::SoundLibrary => Text::NavSoundLibrary.tr(locale),
         Screen::Queue => Text::NavQueue.tr(locale),
+        Screen::WatchFolder => Text::NavWatchFolder.tr(locale),
     }
 }
 
