@@ -298,13 +298,15 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         lib_panel_width: 220.0,
         props_panel_width: 240.0,
         timeline_height: 190.0,
-        thumbnail_tx,
-        thumbnail_rx,
-        thumbnail_textures: HashMap::new(),
-        pending_thumbnails: HashSet::new(),
-        thumbnail_last_used: HashMap::new(),
-        failed_thumbnails: HashMap::new(),
-        thumbnail_usage_clock: 0,
+        thumbnail_state: ThumbnailState {
+            thumbnail_tx,
+            thumbnail_rx,
+            thumbnail_textures: HashMap::new(),
+            pending_thumbnails: HashSet::new(),
+            thumbnail_last_used: HashMap::new(),
+            failed_thumbnails: HashMap::new(),
+            thumbnail_usage_clock: 0,
+        },
         pending_asset_drop: None,
         clipboard_clip: None,
         formatting_clipboard: None,
@@ -661,10 +663,10 @@ fn request_thumbnail_marks_the_frame_pending_and_does_not_duplicate_on_a_second_
     let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 
     app.request_thumbnail(1, 0);
-    assert!(app.pending_thumbnails.contains(&(1, 0)));
+    assert!(app.thumbnail_state.pending_thumbnails.contains(&(1, 0)));
 
     app.request_thumbnail(1, 0);
-    assert_eq!(app.pending_thumbnails.len(), 1);
+    assert_eq!(app.thumbnail_state.pending_thumbnails.len(), 1);
 }
 
 #[test]
@@ -673,8 +675,8 @@ fn request_thumbnail_remembers_an_unknown_asset_as_a_bounded_failure() {
 
     app.request_thumbnail(99, 0);
 
-    assert!(app.failed_thumbnails.contains_key(&(99, 0)));
-    assert!(app.pending_thumbnails.is_empty());
+    assert!(app.thumbnail_state.failed_thumbnails.contains_key(&(99, 0)));
+    assert!(app.thumbnail_state.pending_thumbnails.is_empty());
 }
 
 #[test]
@@ -693,7 +695,10 @@ fn thumbnail_requests_cap_concurrent_extractions() {
         app.request_thumbnail(1, frame_index);
     }
 
-    assert_eq!(app.pending_thumbnails.len(), THUMBNAIL_MAX_PENDING);
+    assert_eq!(
+        app.thumbnail_state.pending_thumbnails.len(),
+        THUMBNAIL_MAX_PENDING
+    );
 }
 
 #[test]
@@ -704,9 +709,13 @@ fn failed_thumbnail_suppression_is_bounded() {
         app.request_thumbnail(99, frame_index);
     }
 
-    assert_eq!(app.failed_thumbnails.len(), THUMBNAIL_FAILURE_CAPACITY);
-    assert!(!app.failed_thumbnails.contains_key(&(99, 0)));
+    assert_eq!(
+        app.thumbnail_state.failed_thumbnails.len(),
+        THUMBNAIL_FAILURE_CAPACITY
+    );
+    assert!(!app.thumbnail_state.failed_thumbnails.contains_key(&(99, 0)));
     assert!(app
+        .thumbnail_state
         .failed_thumbnails
         .contains_key(&(99, THUMBNAIL_FAILURE_CAPACITY as i64)));
 }
@@ -716,7 +725,8 @@ fn thumbnail_texture_cache_evicts_the_least_recently_used_entry() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
     let ctx = egui::Context::default();
     for frame_index in 0..THUMBNAIL_CACHE_CAPACITY as i64 {
-        app.thumbnail_tx
+        app.thumbnail_state
+            .thumbnail_tx
             .send(ThumbnailReady::Ready {
                 asset_id: 1,
                 frame_index,
@@ -729,7 +739,8 @@ fn thumbnail_texture_cache_evicts_the_least_recently_used_entry() {
     app.pump_thumbnail_queue(&ctx);
     app.touch_thumbnails(&[(1, 0)]);
 
-    app.thumbnail_tx
+    app.thumbnail_state
+        .thumbnail_tx
         .send(ThumbnailReady::Ready {
             asset_id: 1,
             frame_index: THUMBNAIL_CACHE_CAPACITY as i64,
@@ -740,10 +751,14 @@ fn thumbnail_texture_cache_evicts_the_least_recently_used_entry() {
         .unwrap();
     app.pump_thumbnail_queue(&ctx);
 
-    assert_eq!(app.thumbnail_textures.len(), THUMBNAIL_CACHE_CAPACITY);
-    assert!(app.thumbnail_textures.contains_key(&(1, 0)));
-    assert!(!app.thumbnail_textures.contains_key(&(1, 1)));
+    assert_eq!(
+        app.thumbnail_state.thumbnail_textures.len(),
+        THUMBNAIL_CACHE_CAPACITY
+    );
+    assert!(app.thumbnail_state.thumbnail_textures.contains_key(&(1, 0)));
+    assert!(!app.thumbnail_state.thumbnail_textures.contains_key(&(1, 1)));
     assert!(app
+        .thumbnail_state
         .thumbnail_textures
         .contains_key(&(1, THUMBNAIL_CACHE_CAPACITY as i64)));
 }

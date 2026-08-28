@@ -653,7 +653,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         touches: &mut thumbnail_touches,
                                     };
                                     draw_frozen_poster(
-                                        &app.thumbnail_textures,
+                                        &app.thumbnail_state.thumbnail_textures,
                                         painter,
                                         clip_rect,
                                         asset,
@@ -666,7 +666,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         touches: &mut thumbnail_touches,
                                     };
                                     draw_filmstrip(
-                                        &app.thumbnail_textures,
+                                        &app.thumbnail_state.thumbnail_textures,
                                         painter,
                                         clip_rect,
                                         asset,
