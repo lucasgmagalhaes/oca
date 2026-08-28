@@ -185,8 +185,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/prefs.rs": {
-    "mtime": 1787938239.1028776,
-    "ast_hash": "f457aa8ce33ae7e13e79b51e2093ee8a",
+    "mtime": 1787939513.6700773,
+    "ast_hash": "2bb901e6176eda70d86dbcae19dad137",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/queue.rs": {
@@ -985,8 +985,8 @@
     "semantic_hash": ""
   },
   "spec/ROADMAP.md": {
-    "mtime": 1787939277.482066,
-    "ast_hash": "5ba1f8176a67c4d58870f7a5188d3c43",
+    "mtime": 1787939513.6710794,
+    "ast_hash": "ac3aeae23ced24eb4ca76135ede63adf",
     "semantic_hash": ""
   },
   "spec/RULES.md": {
