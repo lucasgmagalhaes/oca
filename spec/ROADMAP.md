@@ -787,7 +787,7 @@ an item earlier:
   variable weights, and deterministic Arabic/Hebrew/Indic/Thai fallback. May proceed alongside
   FONT-01A/B and is required before international families are exposed. Read
   [architecture/complex-text-shaping.md](architecture/complex-text-shaping.md).
-- `[~]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
+- `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:
   `avcore::transcript::TranscriptDocument` flattens whisper.cpp's segment-grouped output into a
@@ -807,9 +807,56 @@ an item earlier:
   tests including a real end-to-end one (actual Whisper inference against a fixture, through
   `from_transcribe_segments`, through `validate()`), plus a new confidence-range assertion added
   to the existing real-transcription integration test — both currently skip (not fail) without
-  `WHISPER_MODEL_PATH` set, same convention `transcribe_test.rs` already used. **Not yet built**:
-  the transcript panel/seek-on-select, search, proposed-edit list, or apply-as-undo slices —
-  this is purely the data-model/persistence foundation the rest of CF-01 sits on.
+  `WHISPER_MODEL_PATH` set, same convention `transcribe_test.rs` already used.
+
+  **Slice 2 (transcript panel, seek-on-select, current-word highlight) shipped**: a searchable
+  modal panel (toolbar's "📝 Transcrição/Transcript") over the *previewed clip's* own transcript
+  document — same modal-panel shape `show_timeline_index_panel` (markers) already established.
+  `App::ensure_transcript_loaded_for_preview` lazily loads/clears the shown document whenever the
+  previewed clip's `asset_id` changes (called alongside `App::ensure_preview_loaded`, so no extra
+  per-frame disk I/O beyond what preview loading already triggers); clicking a word maps its
+  media-relative time back onto the timeline through the clip's own trim/speed and seeks there —
+  never into a different clip, since a word only ever comes from the one clip currently
+  previewed. The word covering the current playhead highlights live. `App::spawn_transcribe`'s
+  existing subtitle-`TextClip` flow now also builds and saves a `TranscriptDocument` right after
+  a transcription completes (`App::save_transcript_document_for`), closing the loop end to end —
+  no separate action needed to populate the panel. Compound clips (nested sequences, no real
+  `asset_id`) are treated the same as "no transcript yet," not an error. Verified: 5 new `App`-
+  level unit tests (load/clear on clip change, missing-vs-present document, immediate panel
+  refresh after a fresh save) — `cargo test -p ui` (309 passed).
+
+  **Slice 3 (cross-project transcript search) shipped**: `avcore::transcript_search::
+  search_transcripts_in_project` scans every media asset's persisted `.octr` sidecar for a
+  substring match, sorted by source time within an asset — re-read on demand rather than
+  indexed, since sidecars are small gzip-MessagePack and `MediaAsset` carries no "has transcript"
+  flag to index against. The Transcript panel gained a "Pesquisar no projeto/Search in project"
+  toggle: on with a non-empty query it lists hits grouped by asset instead of the previewed
+  clip's own document; clicking a hit from a non-previewed asset seeks through the first timeline
+  clip that uses it.
+
+  **Slices 4-5 (proposed-edit list, apply as one undo action) shipped**: `avcore::
+  transcript_proposals::detect_proposals` derives four reviewable edit kinds purely from a
+  `TranscriptDocument`'s word stream — dead air (pause between words over
+  `DEAD_AIR_THRESHOLD_SECS`), filler-word runs (language-aware, conservative vocabulary),
+  immediate retakes (back-to-back word repetition), and repeated phrases (2-4 word n-gram
+  repeated within `REPEAT_WINDOW_SECS`). `App::begin_transcript_proposals` (toolbar's "✂️ Edições
+  de fala/Speech Edits") runs detection over the previewed clip's transcript and stages the
+  result in `App::transcript_review` for a checkbox-per-proposal modal
+  (`show_transcript_proposals_modal`), defaulting every proposal to accepted — never a silent
+  auto-apply, same convention D1's silence review established. `App::apply_transcript_proposals`
+  merges the accepted proposals' overlapping/adjacent source ranges
+  (`avcore::merge_source_ranges`), maps each onto the clip's timeline coordinates
+  (`avcore::map_source_range_to_timeline`, trim/speed-aware), and ripple-deletes them
+  rightmost-first as **one** undo snapshot, reusing `Track::ripple_delete_range` unchanged. A
+  no-op with an explanatory toast when there's no previewed clip, no saved transcript, or nothing
+  detected; a no-op if the reviewed clip was deleted before Apply.
+
+  Verified: 33 new `core` unit tests (search matching/sorting/corrupt-sidecar-skip; each proposal
+  kind's detection, merge, and source-to-timeline mapping) and 13 new `ui` `App`-level tests
+  (empty-state toasts, accept/reject toggling, merged-range apply, deleted-clip fallback) —
+  `cargo test -p core --lib transcript` (33 passed), `cargo test -p ui transcript` (13 passed).
+  All six of CF-01's original slices are now shipped (persist, panel, search, propose, apply,
+  and subtitle/transcript kept as distinct types by design from slice 1).
 - `[ ]` **CF-02: gameplay event ingestion and watched-folder import.** Import versioned event
   sidecars/bookmarks and combine them with audio-spike scoring before building a full recorder.
 - `[ ]` **CF-03: integrated gameplay-voice cleanup.** Move the proven watched-folder FFmpeg chain
@@ -841,7 +888,36 @@ Quick wins that may be completed alongside CF-01:
   pure-function surface needed a unit test of its own.
 - `[ ]` Stabilization and deflicker preview parity.
 - `[ ]` Real-hardware GPU encoder validation.
-- `[ ]` Integrating the standalone watched-folder utility into the app.
+- `[x]` **Integrating the standalone watched-folder utility into the app.** New "Limpeza"
+  screen (nav rail, 🧹) replaces `scripts/Watch-Gameplay.ps1` + its `ui.html` status page with a
+  native egui equivalent. `avcore::watched_folder` (new `core` module) detects a video file in a
+  chosen folder, waits for its size to stay stable for a configurable window (same heuristic the
+  script uses), then normalizes it via `render::render_export` — video passthrough-copied, audio
+  through `afftdn` noise reduction + `loudnorm` + a true-peak `alimiter`, re-encoded AAC — a
+  primitive that already existed in `core` but had **zero UI callers before this feature**.
+  Before/after LUFS shown per file, same as the script's own before/after panel. Background
+  polling thread + `mpsc` channel + per-frame `pump_watch_folder()`, the same shape every other
+  background feature in this app already uses.
+
+  **Documented gaps, not silently dropped** (see `watched_folder.rs`'s own module doc comment):
+  the script's `highpass=f=80` rumble cut and `acompressor` voice-leveling steps aren't in
+  `render_export`'s shared filter chain — adding them would change every export caller's audio,
+  not just this feature, so that's left for a deliberate follow-up rather than a side effect of
+  this one; and the script's exclusive-file-lock stability check (`Test-FileReady`) isn't
+  ported — it needs a platform-specific dependency this crate doesn't have, so only the
+  size-stable-for-N-seconds heuristic is implemented, a real (if slightly weaker) signal, not a
+  fake one.
+
+  Verified for real: this dev machine's full FFmpeg/GStreamer toolchain actually links `core`'s
+  own test binary (confirmed across this whole session, unlike the sandboxed environment most
+  prior ROADMAP entries describe) — `cargo test -p core --lib watched_folder` runs all 8 tests
+  (extension filtering, output-path construction, stability-tracker state machine across
+  multiple files) for real. `ui`: new `App`-level tests for start/stop no-ops and
+  `pump_watch_folder`'s event-to-row-state mapping (detect/progress/done/failed). **Not run
+  against a live GUI session or real gameplay footage** — the actual background thread's
+  filesystem polling and its call into `process_watched_file` haven't been exercised end to end,
+  same caveat every other UI-only or GStreamer-adjacent change in this environment already
+  carries.
 
 ## P6 — Explicitly Deferred
 
@@ -856,6 +932,111 @@ and `matrix/competitor-parity.md`'s "deliberately not adopted" section.
 Motion-graphics templates and real-time AI object masking moved from this section to CF-07 and
 CF-09 respectively. The competitive refresh found concrete gameplay/channel use cases for both,
 but they remain behind the higher-impact CF-01-CF-06 workflow items.
+
+## P7 — Design System Consolidation
+
+`ui` crate presentation-layer only. Full findings: `UI_DESIGN_AUDIT.md` (whole-app audit) and
+`DESIGN_SYSTEM_CONSOLIDATION.md` (architectural review — source-of-truth table, bypass
+enforcement analysis, component inventory). Verdict: `theme.rs`/`components/*.rs` infrastructure
+is sound, the problem is unenforced bypass at ~half the relevant call sites, not a missing
+system. Implementation order below matches the consolidation review's recommendation
+(zero-ambiguity items first, decisions-needing-confirmation items later — both flagged decisions
+resolved in favor of consolidating, see items 3 and 5).
+
+25. `[x]` **Stage 1 — zero-risk refactors.** `library.rs`'s hand-rolled card `Frame` →
+    `components::card_frame()`. Nav rail's flagged "two icon conventions" inspected: the profile
+    avatar is a static identity badge (no click handler), not an interactive icon button like
+    `rail_button()`/`prefs_button()` (both already correctly state-conditional) — a different
+    semantic role, not a real inconsistency. Documented as a resolved non-issue, no code change.
+26. `[x]` **Stage 2 — title tier components.** Added `components::page_title()` (20.0 strong) and
+    `components::modal_title()` (15.0 strong); migrated Home's 22.0 outlier and all ~17 modal
+    `.size(15.0).strong()` sites (`app/modals.rs`, `app/transcript_panel.rs`) onto them. The
+    About dialog's 28.0 ACCENT-colored app-name wordmark was deliberately kept as-is (commented
+    as a brand-moment exception, not a dialog header) rather than folded into `modal_title()` —
+    a considered deviation from this item's original wording, made because forcing it down would
+    have been a real visual regression for a normal About-box convention. Breadcrumb's three
+    13.0 segments left unchanged (a single cohesive breadcrumb trail already internally
+    consistent within one file — a shared component for a single-use 3-segment trail would be an
+    abstraction layer without enforcement benefit).
+27. `[x]` **Stage 3 — spacing/radius token rollout.** Added `SPACE_XS/SM/MD/LG` (4/8/12/20) and
+    `RADIUS_SM/MD/PILL` (4/8/999) to `theme.rs`. `card_frame()`'s radius 10→8. All confirmed
+    hardcoded-radius sites (10 in `timeline_panel/mod.rs`'s `CornerRadius::same(4)` clip-drawing
+    calls, `home.rs`/`library.rs`'s nested thumbnails, the in-editor media-library row, the
+    drag-ghost tooltip, `sound_library.rs`'s track rows, the toast frame, `nav_rail.rs`'s icon
+    backgrounds, `tag.rs`/`breadcrumb.rs`'s pill radius) now reference the named constants.
+28. `[x]` **Stage 4 — property-row consolidation.** Added `components::property_row()` (label +
+    widget, no separator/note). Migrated all 22 of `shape_clip.rs`'s/`text_clip.rs`'s hand-rolled
+    label+widget pairs onto it; their keyframe blocks are unchanged (still `property_section`).
+29. `[~]` **Stage 5 — `icon_button()` and icon-convention unification.** Added
+    `components::icon_button(ui, glyph, tooltip, opts: IconButtonOpts)` with the two escape
+    hatches (size override, hover-color override) from the design review. First migration batch
+    landed: all 4 confirmed bare `small_button("🗑")` delete-action sites (3 in
+    `keyframe_editors.rs`, 1 in `modals.rs`'s marker list), each gaining a real tooltip via two
+    new `i18n.rs` keys (`RemoveKeyframe`/`RemoveVertex`/`RemoveMarker` — previously icon-only
+    with no accessible name at all). Second batch: the timeline track-visibility toggle's
+    ambiguous "👁"→"—" hidden-state fallback fixed (now "👁"/"⊘"), routed through `icon_button()`,
+    and its tooltip — previously hardcoded English, never localized — moved to real
+    `Text::TrackHide`/`TrackShow` i18n keys. Note: the "⊘" glyph's rendering under egui's bundled
+    font set is unverified — no running-instance visual pass was possible in this session. Third
+    batch: transport's seek-to-start/seek-to-end and play/pause buttons were icon-only with no
+    tooltip at all (in both the normal and fullscreen-overlay preview) — fixed via two new
+    `Text::SeekToStart`/`SeekToEnd` keys plus reusing `Text::ShortcutPlayPause`. The non-
+    fullscreen skip buttons route through `icon_button()`; the fullscreen overlay's variants keep
+    their existing `small_button`/`button` calls with an added `.on_hover_text` rather than
+    migrating, since they fade with a runtime opacity value `icon_button()`'s two deliberately-
+    narrow escape hatches don't cover — forcing that in would grow the component's API for one
+    caller. A systematic sweep confirmed **zero remaining bare `small_button("<glyph>")` calls
+    anywhere in the crate** — every icon-only `small_button` now has a tooltip.
+
+    **Remaining, not yet migrated** — the items below don't have a confirmed missing-tooltip
+    defect the way the three batches above did; they're cosmetic-convention inconsistencies that
+    need a visual pass (not available this session) to resolve well, or need `icon_button()`'s
+    API to genuinely grow (which the design review cautioned against doing casually):
+    - Toolbar's inline `format!("{glyph} {label}")` buttons — already have visible labels, not an
+      accessibility gap, just a different (acceptable) convention from icon-only buttons.
+    - `breadcrumb.rs`'s `window_button()` — full-rect background-fill-on-hover (OS window-chrome
+      convention) that `icon_button()`'s stroke-only hover-color hatch doesn't reproduce; already
+      has an accessible name via `widget_info` (screen readers/UI-Automation), and OS-native
+      window controls conventionally have no visible hover tooltip either — not a confirmed
+      defect, left as-is rather than forced through a mismatched component.
+    - Timeline badges: the freeze badge (`draw.rs`) is a non-interactive painted overlay, not a
+      button — doesn't apply. The audio-role glyphs (🎮/🎤/🎵) are `ComboBox` content, already a
+      well-formed component with its own accessible label — not a bypass.
+    - Nav rail: already resolved as a non-issue (Stage 1).
+
+    The confirmed `✂`/`✂️` duplicate-glyph inconsistency is still open — genuinely cosmetic
+    (both render as recognizable "cut" glyphs), tied to the toolbar convention decision above.
+30. `[x]` **Feedback tokens.** Added `WARNING`/`WARNING_TINT`/`INFO_TINT` to `theme.rs` and
+    `components::tag_warning()`. Queue's `ACCENT.gamma_multiply(0.10)` info banner → `INFO_TINT`;
+    its "Paused" pill (previously `tag_outline`, indistinguishable from "Queued") → `tag_warning`.
+31. `[x]` **Progressive disclosure.** Toolbar grouping done: the trailing cluster (panel-visibility
+    toggles, AI-detection actions, multicam grouping) previously ran together with zero
+    separation — now split into three `ui.separator()`-delimited groups: [timeline-index/
+    transcript panel toggles] | [detect silence/speech-edits/chapters/export-chapters/highlights,
+    shorts pack] | [create multicam group] (structural, not an automatic detection, so kept
+    distinct from the AI-detection cluster). The rest of the toolbar already had separator
+    discipline (edit tools / composite+template actions / add-track actions / undo-redo), so this
+    closes the one confirmed gap rather than restructuring the whole toolbar.
+
+    Prefs sectioning: all 6 sections (Language, Audio, Export, Project, Shortcuts, About) were
+    plain muted labels followed by always-fully-expanded content in one long scroll column — the
+    clearest violation of "not all functionality simultaneously" in the whole audit, given Export
+    alone bundles 10 sub-controls (workers, GPU encoder, preview quality, hardware decode, output
+    folder, and 4 separate AI-model-path rows). Wrapped each in a new `prefs_section()` helper
+    (`egui::CollapsingHeader` styled to match the existing muted/uppercase/strong header look),
+    `default_open` chosen per section by how often it's touched after initial setup rather than
+    uniformly: Language/Audio/Project default **open** (small, or commonly adjusted); Export/
+    Shortcuts/About default **closed** (large one-time setup, a reference table, and rarely-needed
+    metadata respectively). Collapse state persists via egui's own per-`Id` memory, so it survives
+    switching screens and coming back, though not a full app restart. This is the first
+    unavoidable code change in this whole consolidation effort with no way to visually verify the
+    result — this session has no way to run the desktop app. Flagging explicitly, per repo
+    `CLAUDE.md`'s own guidance that UI changes should be checked in a running instance before
+    being called done: this is implemented and compiles/tests clean, but **not yet visually
+    confirmed**.
+32. `[x]` **Missing states.** Queue had no empty-state message at all — added one
+    (`Text::QueueEmpty`), plain muted text matching the existing empty-state convention elsewhere
+    (Library, Sound Library) rather than waiting on the still-in-progress icon system.
 
 ---
 

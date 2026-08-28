@@ -196,7 +196,7 @@ impl App {
     /// fields (`frozen`, `speed_factor`, `id`), never the asset. This works for a compound clip
     /// (nested sequence) too, unlike [`App::current_preview_clip`] on its own, since it never
     /// needs a `media_library` lookup to succeed in the first place.
-    fn current_preview_video_clip(&self) -> Option<ClipInstance> {
+    pub(super) fn current_preview_video_clip(&self) -> Option<ClipInstance> {
         let timeline = self.active_project().timeline();
         let track = timeline
             .tracks
@@ -359,7 +359,7 @@ impl App {
     /// [`App::ensure_preview_loaded`]/[`App::seek_preview`] already apply to the background
     /// clip, pulled out so overlay branches can each compute their own independently (every
     /// branch has its own trim points and may have its own `frozen`/`speed_factor`).
-    fn clip_seek_offset(clip: &ClipInstance, playhead_secs: f64) -> f64 {
+    pub(super) fn clip_seek_offset(clip: &ClipInstance, playhead_secs: f64) -> f64 {
         if clip.frozen {
             clip.source_in_secs
         } else {

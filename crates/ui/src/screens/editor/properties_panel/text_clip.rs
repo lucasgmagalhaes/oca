@@ -54,11 +54,7 @@ pub(super) fn text_clip_properties(
     let mut structural_changed = false;
 
     // Text content
-    ui.label(
-        RichText::new(Text::PropTextContent.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropTextContent.tr(locale));
     let text_resp = ui.add(
         egui::TextEdit::singleline(&mut tc.text)
             .desired_width(f32::INFINITY)
@@ -71,11 +67,7 @@ pub(super) fn text_clip_properties(
 
     // Bundled family/style metadata is cheap; the font file itself is parsed lazily by core
     // only when preview/export actually rasterizes this clip.
-    ui.label(
-        RichText::new(Text::PropTextFontFamily.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropTextFontFamily.tr(locale));
     let previous_family = tc.font_family;
     egui::ComboBox::from_id_salt(("text_font_family", tc_id))
         .selected_text(text_font_family_label(tc.font_family, locale))
@@ -96,11 +88,7 @@ pub(super) fn text_clip_properties(
         changed = true;
     }
 
-    ui.label(
-        RichText::new(Text::PropTextFontStyle.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropTextFontStyle.tr(locale));
     let previous_style = tc.font_style;
     ui.add_enabled_ui(tc.font_family.supports_bold(), |ui| {
         egui::ComboBox::from_id_salt(("text_font_style", tc_id))
@@ -124,11 +112,7 @@ pub(super) fn text_clip_properties(
     }
 
     // Font size
-    ui.label(
-        RichText::new(Text::PropTextFontSize.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropTextFontSize.tr(locale));
     if ui
         .add(egui::Slider::new(&mut tc.font_size, 10.0..=120.0).suffix(" pt"))
         .changed()
@@ -138,11 +122,7 @@ pub(super) fn text_clip_properties(
 
     // Color modal: wheel, presets, and manual HEX/RGB input are shared by all text colors.
     ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(Text::PropTextColor.tr(locale))
-                .size(12.0)
-                .color(theme::TEXT_MUTED),
-        );
+        components::property_row(ui, Text::PropTextColor.tr(locale));
         if text_color_button(ui, tc.color_rgba).clicked() {
             app.begin_text_color_edit(
                 tc_id,
@@ -165,11 +145,7 @@ pub(super) fn text_clip_properties(
     }
     ui.add_enabled_ui(background_enabled, |ui| {
         ui.horizontal(|ui| {
-            ui.label(
-                RichText::new(Text::PropTextBackgroundColor.tr(locale))
-                    .size(12.0)
-                    .color(theme::TEXT_MUTED),
-            );
+            components::property_row(ui, Text::PropTextBackgroundColor.tr(locale));
             if text_color_button(ui, tc.background_rgba).clicked() {
                 app.begin_text_color_edit(
                     tc_id,
@@ -178,22 +154,14 @@ pub(super) fn text_clip_properties(
                 );
             }
         });
-        ui.label(
-            RichText::new(Text::PropTextBackgroundPadding.tr(locale))
-                .size(12.0)
-                .color(theme::TEXT_MUTED),
-        );
+        components::property_row(ui, Text::PropTextBackgroundPadding.tr(locale));
         if ui
             .add(egui::Slider::new(&mut tc.background_padding, 0.0..=64.0).suffix(" px"))
             .changed()
         {
             changed = true;
         }
-        ui.label(
-            RichText::new(Text::PropTextBackgroundRadius.tr(locale))
-                .size(12.0)
-                .color(theme::TEXT_MUTED),
-        );
+        components::property_row(ui, Text::PropTextBackgroundRadius.tr(locale));
         if ui
             .add(egui::Slider::new(&mut tc.background_corner_radius, 0.0..=64.0).suffix(" px"))
             .changed()
@@ -227,11 +195,7 @@ pub(super) fn text_clip_properties(
     }
 
     // Position
-    ui.label(
-        RichText::new(Text::PropTextPosX.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropTextPosX.tr(locale));
     if ui
         .add(
             egui::Slider::new(&mut tc.pos_x, 0.0..=1.0)
@@ -241,11 +205,7 @@ pub(super) fn text_clip_properties(
     {
         changed = true;
     }
-    ui.label(
-        RichText::new(Text::PropTextPosY.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropTextPosY.tr(locale));
     if ui
         .add(
             egui::Slider::new(&mut tc.pos_y, 0.0..=1.0)
@@ -375,11 +335,7 @@ pub(super) fn text_clip_properties(
     }
 
     // Start and duration
-    ui.label(
-        RichText::new(Text::PropTextStart.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropTextStart.tr(locale));
     if ui
         .add(
             egui::DragValue::new(&mut tc.start_secs)
@@ -392,11 +348,7 @@ pub(super) fn text_clip_properties(
         changed = true;
         structural_changed = true;
     }
-    ui.label(
-        RichText::new(Text::PropTextDuration.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropTextDuration.tr(locale));
     if ui
         .add(
             egui::DragValue::new(&mut tc.duration_secs)

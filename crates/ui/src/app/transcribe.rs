@@ -82,6 +82,7 @@ impl App {
                         segment_count = segments.len(),
                         "transcription complete"
                     );
+                    self.save_transcript_document_for(asset_id, &segments);
                     self.apply_transcription(segments);
                 }
                 TranscribeEvent::Failed { asset_id, message } => {

@@ -15,8 +15,8 @@
 
 //! One module per screen/chrome piece, each exposing a `show(app, ui)` function that renders
 //! it into the current frame. [`crate::app::App::ui`] calls `nav_rail` and `breadcrumb`
-//! unconditionally every frame, then dispatches to exactly one of the five screen modules
-//! based on `app.screen`.
+//! unconditionally every frame, then dispatches to exactly one of the screen modules based on
+//! `app.screen`.
 
 /// oca's custom title bar — replaces the OS window chrome (`main.rs` disables it): app name ›
 /// screen title › project name when in the Editor, drag-to-move, and minimize/maximize/close
@@ -37,3 +37,6 @@ pub mod queue;
 /// The Música/SFX screen: a local catalog of music/SFX tracks, scanned from a user-configured
 /// folder, addable to the timeline directly.
 pub mod sound_library;
+/// The Limpeza screen: watch-folder audio cleanup, the in-app replacement for
+/// `scripts/Watch-Gameplay.ps1`.
+pub mod watch_folder;

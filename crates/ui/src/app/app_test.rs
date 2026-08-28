@@ -210,6 +210,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
     let (telemetry_tx, _telemetry_rx) = mpsc::unbounded_channel();
     let (update_check_tx, update_check_rx) = mpsc::unbounded_channel();
+    let (watch_folder_tx, watch_folder_rx) = mpsc::unbounded_channel();
     App {
         screen: Screen::Home,
         tool: EditorTool::Select,
@@ -292,6 +293,14 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
             youtube_download_error: None,
             youtube_download_cancel: None,
         },
+        watch_folder_state: crate::app::WatchFolderState {
+            tx: watch_folder_tx,
+            rx: watch_folder_rx,
+            watch_path: None,
+            running: false,
+            stop: None,
+            files: Vec::new(),
+        },
         selected_clip_id: None,
         undo_stack: avcore::undo::UndoStack::new(),
         undo_drag_active: false,
@@ -337,7 +346,12 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         layer_templates_menu_open: false,
         timeline_index_open: false,
         marker_search: String::new(),
+        transcript_panel_open: false,
+        transcript_search: String::new(),
+        transcript_panel_state: TranscriptPanelState::default(),
         silence_review: None,
+        transcript_review: None,
+        transcript_search_project: false,
         binding_capture: None,
         update_check_tx,
         update_check_rx,
@@ -1517,6 +1531,115 @@ fn ensure_preview_loaded_clears_state_once_the_playhead_moves_past_every_clip() 
 
     assert!(!app.preview_clip_present());
     assert!(!app.preview_state.preview_playing);
+}
+
+#[test]
+fn toggle_transcript_panel_flips_the_open_flag() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    assert!(!app.transcript_panel_open);
+    app.toggle_transcript_panel();
+    assert!(app.transcript_panel_open);
+    app.toggle_transcript_panel();
+    assert!(!app.transcript_panel_open);
+}
+
+#[test]
+fn ensure_transcript_loaded_for_preview_clears_state_with_no_clip() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.transcript_panel_state.loaded_asset_id = Some(99);
+    app.ensure_transcript_loaded_for_preview();
+    assert_eq!(app.transcript_panel_state.loaded_asset_id, None);
+    assert!(app.transcript_panel_state.document.is_none());
+}
+
+#[test]
+fn ensure_transcript_loaded_for_preview_finds_no_document_when_none_saved() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut project = test_project_with_tracks_and_assets(
+        1,
+        vec![test_track(
+            1,
+            TrackKind::Video,
+            vec![test_clip(1, 0.0, 0.0, 10.0)],
+        )],
+        vec![test_asset(1)],
+    );
+    project.file_path = Some(dir.path().join("proj.ocproj"));
+    project.timeline_mut().playhead_secs = 3.0;
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.ensure_transcript_loaded_for_preview();
+
+    assert_eq!(app.transcript_panel_state.loaded_asset_id, Some(1));
+    assert!(app.transcript_panel_state.document.is_none());
+}
+
+#[test]
+fn ensure_transcript_loaded_for_preview_loads_a_saved_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut project = test_project_with_tracks_and_assets(
+        1,
+        vec![test_track(
+            1,
+            TrackKind::Video,
+            vec![test_clip(1, 0.0, 0.0, 10.0)],
+        )],
+        vec![test_asset(1)],
+    );
+    project.file_path = Some(dir.path().join("proj.ocproj"));
+    project.timeline_mut().playhead_secs = 3.0;
+
+    let cache_dir = avcore::transcript_cache_dir_for_project(&project);
+    let segments = vec![avcore::transcribe::TranscribeSegment {
+        start_secs: 0.0,
+        end_secs: 1.0,
+        text: "hi".to_string(),
+        words: vec![avcore::transcribe::TranscribeWord {
+            text: "hi".to_string(),
+            start_secs: 0.0,
+            end_secs: 0.5,
+            confidence: 0.9,
+        }],
+    }];
+    let document = avcore::TranscriptDocument::from_transcribe_segments(1, None, &segments);
+    avcore::save_transcript_document(&cache_dir, &document).unwrap();
+
+    let mut app = test_app(vec![project], Vec::new());
+    app.ensure_transcript_loaded_for_preview();
+
+    assert_eq!(app.transcript_panel_state.loaded_asset_id, Some(1));
+    assert_eq!(app.transcript_panel_state.document, Some(document));
+}
+
+#[test]
+fn save_transcript_document_for_refreshes_an_already_open_panel() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.file_path = Some(dir.path().join("proj.ocproj"));
+    let mut app = test_app(vec![project], Vec::new());
+    app.transcript_panel_state.loaded_asset_id = Some(1);
+    assert!(app.transcript_panel_state.document.is_none());
+
+    let segments = vec![avcore::transcribe::TranscribeSegment {
+        start_secs: 0.0,
+        end_secs: 1.0,
+        text: "hi".to_string(),
+        words: vec![avcore::transcribe::TranscribeWord {
+            text: "hi".to_string(),
+            start_secs: 0.0,
+            end_secs: 0.5,
+            confidence: 0.9,
+        }],
+    }];
+    app.save_transcript_document_for(1, &segments);
+
+    let document = app
+        .transcript_panel_state
+        .document
+        .as_ref()
+        .expect("panel already showed asset 1, so saving its transcript should refresh it");
+    assert_eq!(document.asset_id, 1);
+    assert_eq!(document.words.len(), 1);
 }
 
 #[test]
@@ -5366,6 +5489,205 @@ fn apply_silence_review_with_nothing_accepted_is_a_no_op() {
     );
 }
 
+// --- CF-01 slices 4-5: speech-edit proposal review/apply ---
+
+/// One transcript word at the given media-relative times, with a stable id.
+fn transcript_word(id: u64, text: &str, start_secs: f64, end_secs: f64) -> avcore::TranscriptWord {
+    avcore::TranscriptWord {
+        id,
+        text: text.to_string(),
+        start_secs,
+        end_secs,
+        confidence: 0.9,
+        speaker: None,
+    }
+}
+
+/// A transcript that yields exactly two non-overlapping proposals: a dead-air cut in `[0.5,2.0)`
+/// and a retake (the second "the") in `[3.5,4.0)`.
+fn two_proposal_document() -> avcore::TranscriptDocument {
+    avcore::TranscriptDocument {
+        schema_version: 1,
+        asset_id: 1,
+        language: Some("en".to_string()),
+        words: vec![
+            transcript_word(1, "hello", 0.0, 0.5),
+            transcript_word(2, "world", 2.0, 2.5),
+            transcript_word(3, "the", 3.0, 3.5),
+            transcript_word(4, "the", 3.5, 4.0),
+        ],
+    }
+}
+
+/// Builds an App whose active project holds `track` + `assets` and whose asset 1's transcript
+/// sidecar is already written on disk (under `project.file_path`'s cache dir). Returns the
+/// `TempDir` alongside so the sidecar survives the test body.
+fn transcript_proposals_app_with(
+    track: Track,
+    assets: Vec<MediaAsset>,
+    doc: &avcore::TranscriptDocument,
+) -> (App, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let mut project = test_project_with_tracks_and_assets(1, vec![track], assets);
+    project.file_path = Some(dir.path().join("proj.ocproj"));
+    let cache_dir = avcore::transcript_cache_dir_for_project(&project);
+    avcore::save_transcript_document(&cache_dir, doc).unwrap();
+    (test_app(vec![project], Vec::new()), dir)
+}
+
+#[test]
+fn begin_transcript_proposals_stages_detected_edits_for_the_previewed_clip() {
+    let doc = two_proposal_document();
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    let (mut app, _dir) = transcript_proposals_app_with(track, vec![test_asset(1)], &doc);
+    app.active_project_mut().timeline_mut().playhead_secs = 1.0;
+
+    app.begin_transcript_proposals();
+
+    let review = app.transcript_review.as_ref().expect("review should open");
+    assert_eq!(review.track_id, 1);
+    assert_eq!(review.clip_id, 1);
+    assert_eq!(review.proposals.len(), 2);
+    assert_eq!(
+        review.proposals[0].proposal.kind,
+        avcore::TranscriptEditKind::DeadAir,
+        "staged earliest-first"
+    );
+    assert_eq!(
+        review.proposals[1].proposal.kind,
+        avcore::TranscriptEditKind::Retake
+    );
+    assert!(
+        review.proposals.iter().all(|e| e.accepted),
+        "proposals default to accepted"
+    );
+}
+
+#[test]
+fn begin_transcript_proposals_without_a_previewed_clip_toasts() {
+    let track = test_track(1, TrackKind::Video, vec![]);
+    let (mut app, _dir) =
+        transcript_proposals_app_with(track, vec![test_asset(1)], &two_proposal_document());
+    app.active_project_mut().timeline_mut().playhead_secs = 0.0;
+
+    app.begin_transcript_proposals();
+
+    assert!(app.transcript_review.is_none());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn begin_transcript_proposals_without_a_saved_transcript_toasts() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    let dir = tempfile::tempdir().unwrap();
+    let mut project = test_project_with_tracks_and_assets(1, vec![track], vec![test_asset(1)]);
+    project.file_path = Some(dir.path().join("proj.ocproj"));
+    let mut app = test_app(vec![project], Vec::new());
+    app.active_project_mut().timeline_mut().playhead_secs = 1.0;
+
+    app.begin_transcript_proposals();
+
+    assert!(app.transcript_review.is_none());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn begin_transcript_proposals_with_nothing_detected_toasts_without_opening() {
+    // Contiguous words, no fillers/repeats/gaps -- nothing to propose.
+    let doc = avcore::TranscriptDocument {
+        schema_version: 1,
+        asset_id: 1,
+        language: Some("en".to_string()),
+        words: vec![
+            transcript_word(1, "one", 0.0, 0.4),
+            transcript_word(2, "two", 0.4, 0.8),
+            transcript_word(3, "three", 0.8, 1.2),
+        ],
+    };
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    let (mut app, _dir) = transcript_proposals_app_with(track, vec![test_asset(1)], &doc);
+    app.active_project_mut().timeline_mut().playhead_secs = 1.0;
+
+    app.begin_transcript_proposals();
+
+    assert!(app.transcript_review.is_none());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn toggle_transcript_proposal_flips_only_the_targeted_entry() {
+    let doc = two_proposal_document();
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    let (mut app, _dir) = transcript_proposals_app_with(track, vec![test_asset(1)], &doc);
+    app.active_project_mut().timeline_mut().playhead_secs = 1.0;
+    app.begin_transcript_proposals();
+
+    app.toggle_transcript_proposal(0);
+
+    assert!(!app.transcript_review.as_ref().unwrap().proposals[0].accepted);
+    assert!(app.transcript_review.as_ref().unwrap().proposals[1].accepted);
+}
+
+#[test]
+fn apply_transcript_proposals_ripple_deletes_only_accepted_and_closes() {
+    let doc = two_proposal_document();
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    let (mut app, _dir) = transcript_proposals_app_with(track, vec![test_asset(1)], &doc);
+    app.active_project_mut().timeline_mut().playhead_secs = 1.0;
+    app.begin_transcript_proposals();
+    assert_eq!(app.transcript_review.as_ref().unwrap().proposals.len(), 2);
+
+    // Reject the retake (index 1); only the 1.5s dead air should actually be cut.
+    app.toggle_transcript_proposal(1);
+    app.apply_transcript_proposals();
+
+    assert!(app.transcript_review.is_none(), "modal closes after apply");
+    let track = &app.active_project().timeline().tracks[0];
+    assert_eq!(track.clips.len(), 2, "dead-air cut splits the clip in two");
+    let total: f64 = track.clips.iter().map(|c| c.duration_secs()).sum();
+    assert!(
+        (total - 8.5).abs() < 1e-6,
+        "only the 1.5s dead air was removed; got {total}"
+    );
+}
+
+#[test]
+fn apply_transcript_proposals_with_nothing_accepted_is_a_no_op() {
+    let doc = two_proposal_document();
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    let (mut app, _dir) = transcript_proposals_app_with(track, vec![test_asset(1)], &doc);
+    app.active_project_mut().timeline_mut().playhead_secs = 1.0;
+    app.begin_transcript_proposals();
+    app.toggle_transcript_proposal(0);
+    app.toggle_transcript_proposal(1);
+
+    app.apply_transcript_proposals();
+
+    let track = &app.active_project().timeline().tracks[0];
+    assert_eq!(track.clips.len(), 1);
+    assert_eq!(track.clips[0].duration_secs(), 10.0);
+}
+
+#[test]
+fn apply_transcript_proposals_when_the_clip_was_deleted_is_a_no_op() {
+    let doc = two_proposal_document();
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    let (mut app, _dir) = transcript_proposals_app_with(track, vec![test_asset(1)], &doc);
+    app.active_project_mut().timeline_mut().playhead_secs = 1.0;
+    app.begin_transcript_proposals();
+    assert!(app.transcript_review.is_some());
+    app.active_project_mut().timeline_mut().tracks[0]
+        .clips
+        .clear();
+
+    app.apply_transcript_proposals();
+
+    assert!(
+        app.transcript_review.is_none(),
+        "apply still closes the modal even though nothing could be cut"
+    );
+}
+
 #[test]
 fn close_silence_review_discards_the_staged_review() {
     let track = test_track(1, TrackKind::Audio, vec![test_clip(1, 100.0, 5.0, 15.0)]);
@@ -5951,4 +6273,162 @@ fn spawn_shorts_pack_skips_a_window_landing_entirely_in_a_gap() {
         app.export_jobs.is_empty(),
         "the only candidate's window had no clip content"
     );
+}
+
+#[test]
+fn start_watching_folder_is_a_no_op_with_no_path_set() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.start_watching_folder();
+
+    assert!(!app.watch_folder_state.running);
+}
+
+#[test]
+fn start_watching_folder_is_a_no_op_while_already_running() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.watch_folder_state.watch_path = Some(std::path::PathBuf::from("E:/records"));
+    app.watch_folder_state.running = true;
+    app.watch_folder_state
+        .files
+        .push(crate::app::WatchedFileRow {
+            path: std::path::PathBuf::from("E:/records/a.mp4"),
+            status: crate::app::WatchFolderFileStatus::Processing,
+            percent: 40,
+            error: None,
+            before: None,
+            after: None,
+        });
+
+    app.start_watching_folder();
+
+    // The already-running session's file list isn't cleared by a second, ignored call.
+    assert_eq!(app.watch_folder_state.files.len(), 1);
+}
+
+#[test]
+fn stop_watching_folder_is_a_no_op_when_nothing_is_running() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    // Just needs to not panic without a live watch session.
+    app.stop_watching_folder();
+
+    assert!(!app.watch_folder_state.running);
+}
+
+#[test]
+fn stop_watching_folder_clears_the_running_flag_and_signals_the_stop_flag() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    app.watch_folder_state.running = true;
+    app.watch_folder_state.stop = Some(std::sync::Arc::clone(&stop));
+
+    app.stop_watching_folder();
+
+    assert!(!app.watch_folder_state.running);
+    assert!(stop.load(std::sync::atomic::Ordering::Relaxed));
+}
+
+#[test]
+fn pump_watch_folder_inserts_a_newly_detected_file_at_the_front() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let path = std::path::PathBuf::from("E:/records/newest.mp4");
+    app.watch_folder_state
+        .files
+        .push(crate::app::WatchedFileRow {
+            path: std::path::PathBuf::from("E:/records/older.mp4"),
+            status: crate::app::WatchFolderFileStatus::Done,
+            percent: 100,
+            error: None,
+            before: None,
+            after: None,
+        });
+    let _ = app
+        .watch_folder_state
+        .tx
+        .send(crate::app::WatchFolderEvent::Detected(path.clone()));
+
+    app.pump_watch_folder();
+
+    assert_eq!(app.watch_folder_state.files.len(), 2);
+    assert_eq!(app.watch_folder_state.files[0].path, path);
+    assert_eq!(
+        app.watch_folder_state.files[0].status,
+        crate::app::WatchFolderFileStatus::Stabilizing
+    );
+}
+
+#[test]
+fn pump_watch_folder_applies_progress_and_completion_to_the_matching_row() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let path = std::path::PathBuf::from("E:/records/a.mp4");
+    app.watch_folder_state
+        .files
+        .push(crate::app::WatchedFileRow {
+            path: path.clone(),
+            status: crate::app::WatchFolderFileStatus::Processing,
+            percent: 10,
+            error: None,
+            before: None,
+            after: None,
+        });
+    let before = avcore::LoudnessMetrics {
+        integrated_lufs: -22.0,
+        true_peak_dbtp: -3.0,
+        loudness_range_lu: 8.0,
+    };
+    let after = avcore::LoudnessMetrics {
+        integrated_lufs: -16.0,
+        true_peak_dbtp: -1.0,
+        loudness_range_lu: 6.0,
+    };
+    let _ = app
+        .watch_folder_state
+        .tx
+        .send(crate::app::WatchFolderEvent::Progress(path.clone(), 55));
+    let _ = app
+        .watch_folder_state
+        .tx
+        .send(crate::app::WatchFolderEvent::Done {
+            path: path.clone(),
+            before,
+            after,
+        });
+
+    app.pump_watch_folder();
+
+    let row = &app.watch_folder_state.files[0];
+    assert_eq!(row.status, crate::app::WatchFolderFileStatus::Done);
+    assert_eq!(row.percent, 100);
+    assert_eq!(row.before.unwrap().integrated_lufs, -22.0);
+    assert_eq!(row.after.unwrap().integrated_lufs, -16.0);
+}
+
+#[test]
+fn pump_watch_folder_applies_a_failure_to_the_matching_row() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let path = std::path::PathBuf::from("E:/records/a.mp4");
+    app.watch_folder_state
+        .files
+        .push(crate::app::WatchedFileRow {
+            path: path.clone(),
+            status: crate::app::WatchFolderFileStatus::Processing,
+            percent: 10,
+            error: None,
+            before: None,
+            after: None,
+        });
+    let _ = app
+        .watch_folder_state
+        .tx
+        .send(crate::app::WatchFolderEvent::Failed {
+            path: path.clone(),
+            message: "ffmpeg exited with code 1".to_string(),
+        });
+
+    app.pump_watch_folder();
+
+    let row = &app.watch_folder_state.files[0];
+    assert_eq!(row.status, crate::app::WatchFolderFileStatus::Error);
+    assert_eq!(row.error.as_deref(), Some("ffmpeg exited with code 1"));
 }

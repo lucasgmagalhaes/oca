@@ -360,8 +360,21 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         {
             app.toggle_timeline_index();
         }
+        if ui
+            .selectable_label(
+                app.transcript_panel_open,
+                format!("📝 {}", Text::TranscriptPanelToggle.tr(locale)),
+            )
+            .clicked()
+        {
+            app.toggle_transcript_panel();
+        }
+        ui.separator();
         if ui.button(Text::DetectSilence.tr(locale)).clicked() {
             app.begin_silence_review();
+        }
+        if ui.button(Text::DetectSpeechEdits.tr(locale)).clicked() {
+            app.begin_transcript_proposals();
         }
         if ui.button(Text::DetectChapters.tr(locale)).clicked() {
             app.spawn_detect_scene_cuts_for_selected_clip();
@@ -387,6 +400,7 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
                 app.spawn_shorts_pack(output_dir);
             }
         }
+        ui.separator();
         if ui
             .button(Text::CreateMulticamGroup.tr(locale))
             .on_hover_text("1-9")
@@ -707,7 +721,7 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                         };
                         let response = egui::Frame::new()
                             .fill(bg)
-                            .corner_radius(6)
+                            .corner_radius(theme::RADIUS_MD)
                             .inner_margin(egui::Margin::same(6))
                             .show(ui, |ui| {
                                 ui.vertical(|ui| {
@@ -747,7 +761,7 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                                     .show(ui.ctx(), |ui| {
                                         egui::Frame::new()
                                             .fill(theme::SURFACE_2)
-                                            .corner_radius(4)
+                                            .corner_radius(theme::RADIUS_SM)
                                             .inner_margin(egui::Margin::symmetric(8, 4))
                                             .show(ui, |ui| {
                                                 ui.label(
@@ -794,6 +808,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
     // launching the app never pays GStreamer's open cost for an asset the Editor screen hasn't
     // actually been shown for yet.
     app.ensure_preview_loaded();
+    app.ensure_transcript_loaded_for_preview();
     let locale = app.locale;
     ui.vertical(|ui| {
         ui.set_height(height);
@@ -822,7 +837,14 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             });
         let timeline_duration = app.active_project().timeline().duration_secs();
         ui.horizontal(|ui| {
-            if ui.small_button("⏮").clicked() {
+            if components::icon_button(
+                ui,
+                "⏮",
+                Text::SeekToStart.tr(locale),
+                components::IconButtonOpts::default(),
+            )
+            .clicked()
+            {
                 app.seek_preview(0.0);
             }
             let play_icon = if app.preview_state.preview_playing {
@@ -832,11 +854,19 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             };
             if ui
                 .button(RichText::new(play_icon).color(theme::ACCENT))
+                .on_hover_text(Text::ShortcutPlayPause.tr(locale))
                 .clicked()
             {
                 app.toggle_preview_playback();
             }
-            if ui.small_button("⏭").clicked() {
+            if components::icon_button(
+                ui,
+                "⏭",
+                Text::SeekToEnd.tr(locale),
+                components::IconButtonOpts::default(),
+            )
+            .clicked()
+            {
                 app.seek_preview(timeline_duration);
             }
             let playhead = app.active_project().timeline().playhead_secs;
@@ -1014,7 +1044,11 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                         .inner_margin(egui::Margin::symmetric(12, 8))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                if ui.small_button("⏮").clicked() {
+                                if ui
+                                    .small_button("⏮")
+                                    .on_hover_text(Text::SeekToStart.tr(locale))
+                                    .clicked()
+                                {
                                     app.seek_preview(0.0);
                                 }
                                 let play_icon = if app.preview_state.preview_playing {
@@ -1027,11 +1061,16 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                                         RichText::new(play_icon)
                                             .color(theme::ACCENT.gamma_multiply(opacity)),
                                     )
+                                    .on_hover_text(Text::ShortcutPlayPause.tr(locale))
                                     .clicked()
                                 {
                                     app.toggle_preview_playback();
                                 }
-                                if ui.small_button("⏭").clicked() {
+                                if ui
+                                    .small_button("⏭")
+                                    .on_hover_text(Text::SeekToEnd.tr(locale))
+                                    .clicked()
+                                {
                                     app.seek_preview(timeline_duration);
                                 }
                                 ui.label(

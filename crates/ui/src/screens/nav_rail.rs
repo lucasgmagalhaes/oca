@@ -19,12 +19,13 @@ use crate::app::{App, Screen};
 use crate::i18n;
 use crate::theme;
 
-const ITEMS: [(Screen, &str); 5] = [
+const ITEMS: [(Screen, &str); 6] = [
     (Screen::Home, "⌂"),
     (Screen::Editor, "✂"),
     (Screen::Library, "▤"),
     (Screen::SoundLibrary, "♫"),
     (Screen::Queue, "≡"),
+    (Screen::WatchFolder, "🧹"),
 ];
 
 /// Renders the left icon rail and handles screen-switching clicks.
@@ -42,7 +43,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui.vertical_centered(|ui| {
                 egui::Frame::new()
                     .fill(theme::ACCENT.gamma_multiply(0.4))
-                    .corner_radius(8)
+                    .corner_radius(theme::RADIUS_MD)
                     .inner_margin(egui::Margin::same(6))
                     .show(ui, |ui| {
                         ui.label(RichText::new("P").strong().color(theme::TEXT_PRIMARY));
@@ -83,7 +84,7 @@ fn rail_button(ui: &mut egui::Ui, app: &mut App, screen: Screen, icon: &str, lab
         };
         if let Some(bg) = bg {
             ui.painter()
-                .rect_filled(rect, egui::CornerRadius::same(8), bg);
+                .rect_filled(rect, egui::CornerRadius::same(theme::RADIUS_MD), bg);
         }
         let painter = ui.painter_at(rect);
         painter.text(
@@ -127,7 +128,7 @@ fn prefs_button(ui: &mut egui::Ui, app: &mut App, icon: &str, label: &str) {
         };
         if let Some(bg) = bg {
             ui.painter()
-                .rect_filled(rect, egui::CornerRadius::same(8), bg);
+                .rect_filled(rect, egui::CornerRadius::same(theme::RADIUS_MD), bg);
         }
         let painter = ui.painter_at(rect);
         painter.text(

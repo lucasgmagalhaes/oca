@@ -19,6 +19,7 @@ mod snap;
 use eframe::egui::{self, RichText};
 
 use crate::app::{App, EditorTool};
+use crate::components;
 use crate::i18n::Text;
 use crate::theme;
 
@@ -237,11 +238,19 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         |ui| {
                             let track_id = track.id;
                             let visible = track.visible;
-                            let eye = if visible { "👁" } else { "—" };
-                            if ui
-                                .small_button(eye)
-                                .on_hover_text(if visible { "Hide track" } else { "Show track" })
-                                .clicked()
+                            let eye = if visible { "👁" } else { "⊘" };
+                            let tooltip = if visible {
+                                Text::TrackHide.tr(locale)
+                            } else {
+                                Text::TrackShow.tr(locale)
+                            };
+                            if components::icon_button(
+                                ui,
+                                eye,
+                                tooltip,
+                                components::IconButtonOpts::default(),
+                            )
+                            .clicked()
                             {
                                 toggle_track_visibility_requests.push(track_id);
                             }
@@ -574,7 +583,11 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             trim_requests.push((clip.id, TrimEdge::End(secs)));
                         }
 
-                        painter.rect_filled(clip_rect, egui::CornerRadius::same(4), color);
+                        painter.rect_filled(
+                            clip_rect,
+                            egui::CornerRadius::same(theme::RADIUS_SM),
+                            color,
+                        );
                         let asset = app
                             .active_project()
                             .media_library
@@ -625,13 +638,17 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             }
                         }
                         if let Some(tint) = color_filter_tint(clip.color_filter) {
-                            painter.rect_filled(clip_rect, egui::CornerRadius::same(4), tint);
+                            painter.rect_filled(
+                                clip_rect,
+                                egui::CornerRadius::same(theme::RADIUS_SM),
+                                tint,
+                            );
                         }
                         if clip.has_vignette() {
                             let alpha = (clip.vignette_intensity * 200.0) as u8;
                             painter.rect_stroke(
                                 clip_rect,
-                                egui::CornerRadius::same(4),
+                                egui::CornerRadius::same(theme::RADIUS_SM),
                                 egui::Stroke::new(3.0, egui::Color32::from_black_alpha(alpha)),
                                 egui::StrokeKind::Inside,
                             );
@@ -639,7 +656,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         if clip.composite_id.is_some() {
                             painter.rect_stroke(
                                 clip_rect,
-                                egui::CornerRadius::same(4),
+                                egui::CornerRadius::same(theme::RADIUS_SM),
                                 egui::Stroke::new(1.5, theme::ACCENT_2),
                                 egui::StrokeKind::Inside,
                             );
@@ -717,7 +734,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         if app.multi_selected_clip_ids.contains(&clip.id) {
                             painter.rect_stroke(
                                 clip_rect,
-                                egui::CornerRadius::same(4),
+                                egui::CornerRadius::same(theme::RADIUS_SM),
                                 egui::Stroke::new(2.0, theme::ERROR),
                                 egui::StrokeKind::Inside,
                             );
@@ -725,7 +742,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         if app.selected_clip_id == Some(clip.id) {
                             painter.rect_stroke(
                                 clip_rect,
-                                egui::CornerRadius::same(4),
+                                egui::CornerRadius::same(theme::RADIUS_SM),
                                 egui::Stroke::new(2.0, theme::ACCENT),
                                 egui::StrokeKind::Inside,
                             );
@@ -760,7 +777,11 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 tc.color_rgba[2],
                                 120,
                             );
-                            painter.rect_filled(tc_rect, egui::CornerRadius::same(4), block_color);
+                            painter.rect_filled(
+                                tc_rect,
+                                egui::CornerRadius::same(theme::RADIUS_SM),
+                                block_color,
+                            );
                             // Clip the text label to the block width.
                             let label_pos = tc_rect.left_center() + egui::vec2(4.0, 0.0);
                             painter.text(
@@ -774,7 +795,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             if app.selected_text_clip_id == Some(tc.id) {
                                 painter.rect_stroke(
                                     tc_rect,
-                                    egui::CornerRadius::same(4),
+                                    egui::CornerRadius::same(theme::RADIUS_SM),
                                     egui::Stroke::new(2.0, theme::ACCENT),
                                     egui::StrokeKind::Inside,
                                 );
@@ -811,7 +832,11 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 sc.color_rgba[2],
                                 120,
                             );
-                            painter.rect_filled(sc_rect, egui::CornerRadius::same(4), block_color);
+                            painter.rect_filled(
+                                sc_rect,
+                                egui::CornerRadius::same(theme::RADIUS_SM),
+                                block_color,
+                            );
                             let label_pos = sc_rect.left_center() + egui::vec2(4.0, 0.0);
                             painter.text(
                                 label_pos,
@@ -824,7 +849,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             if app.selected_shape_clip_id == Some(sc.id) {
                                 painter.rect_stroke(
                                     sc_rect,
-                                    egui::CornerRadius::same(4),
+                                    egui::CornerRadius::same(theme::RADIUS_SM),
                                     egui::Stroke::new(2.0, theme::ACCENT),
                                     egui::StrokeKind::Inside,
                                 );

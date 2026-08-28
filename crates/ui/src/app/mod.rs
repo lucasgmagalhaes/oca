@@ -61,7 +61,10 @@ mod timeline_ops;
 mod timeline_track_ops;
 mod timeline_trim_ops;
 mod transcribe;
+mod transcript_panel;
+mod transcript_proposals;
 mod update_check;
+mod watch_folder;
 mod youtube_download;
 
 pub(crate) use color::{format_color_hex, TextColorEdit, TextColorTarget};
@@ -75,6 +78,7 @@ pub enum Screen {
     Library,
     SoundLibrary,
     Queue,
+    WatchFolder,
 }
 
 /// The editor toolbar's active tool. `Select`/`Trim` are just tracked for the toolbar's
@@ -660,6 +664,47 @@ enum YoutubeDownloadEvent {
     Failed { message: String },
 }
 
+/// Where one file tracked by the watch-folder worker thread (see
+/// [`App::start_watching_folder`]) currently sits — mirrors `Watch-Gameplay.ps1`'s own per-file
+/// pipeline stages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WatchFolderFileStatus {
+    Stabilizing,
+    Processing,
+    Done,
+    Error,
+}
+
+/// One file the watch-folder worker thread has seen this run, as shown in the Limpeza screen's
+/// list — newest-first, same order [`App::pump_watch_folder`] inserts into
+/// `WatchFolderState::files`.
+pub(crate) struct WatchedFileRow {
+    pub(crate) path: PathBuf,
+    pub(crate) status: WatchFolderFileStatus,
+    pub(crate) percent: u8,
+    pub(crate) error: Option<String>,
+    pub(crate) before: Option<avcore::LoudnessMetrics>,
+    pub(crate) after: Option<avcore::LoudnessMetrics>,
+}
+
+/// A message from the watch-folder worker thread (see [`App::start_watching_folder`]) back to
+/// the UI thread.
+enum WatchFolderEvent {
+    Detected(PathBuf),
+    Stabilizing(PathBuf),
+    Processing(PathBuf),
+    Progress(PathBuf, u8),
+    Done {
+        path: PathBuf,
+        before: avcore::LoudnessMetrics,
+        after: avcore::LoudnessMetrics,
+    },
+    Failed {
+        path: PathBuf,
+        message: String,
+    },
+}
+
 /// Result of one background poster-frame extraction (see [`App::request_thumbnail`]). The key
 /// is `(asset_id, frame_index)` rather than a fixed-width seconds bucket: timeline zoom chooses
 /// a source frame for each visible filmstrip tile, while quantizing to the source frame rate
@@ -754,6 +799,8 @@ pub struct App {
     pub(crate) tts_state: TtsState,
     /// YouTube-download modal/background-job state, grouped the same way [`PreviewState`] was.
     pub(crate) youtube_download_state: YoutubeDownloadState,
+    /// Watch-folder screen state, grouped the same way [`PreviewState`] was.
+    pub(crate) watch_folder_state: WatchFolderState,
     /// The timeline clip currently highlighted in the Editor's timeline strip, if any — a
     /// separate concept from `selected_asset_id` (that's the media-library selection driving
     /// the preview panel; this is a placed [`avcore::timeline::ClipInstance`]). `Delete`
@@ -924,10 +971,32 @@ pub struct App {
     /// Live text of the Timeline Index panel's search box — kept on `App` rather than as a
     /// local in the modal-drawing function so it survives being closed and reopened.
     pub marker_search: String,
+    /// Whether the Transcript panel (CF-01 slice 2,
+    /// `spec/architecture/competitive-feature-plan.md`) is open.
+    pub transcript_panel_open: bool,
+    /// Live text of the Transcript panel's search box — same "survives close/reopen" reasoning
+    /// `marker_search` has.
+    pub transcript_search: String,
+    /// The transcript document currently shown in the Transcript panel, lazily loaded (and
+    /// re-loaded whenever the previewed clip's own asset changes) by
+    /// `App::ensure_transcript_loaded_for_preview` — see that method's own doc comment.
+    /// `loaded_asset_id` is `None` before anything has ever been loaded; `document` is `None`
+    /// either before that first load or when the loaded asset genuinely has no transcript yet
+    /// (not the same as "still loading" — this crate has no async load, so there's no such
+    /// state to represent).
+    pub transcript_panel_state: TranscriptPanelState,
     /// Staged result of `App::begin_silence_review` (D1, `ROADMAP.md` P3 item 13) — `Some`
     /// while the silence-gap review modal is open, `None` otherwise. Nothing here is applied to
     /// the timeline until `App::apply_silence_review`.
     pub silence_review: Option<silence_review::SilenceReview>,
+    /// Staged result of `App::begin_transcript_proposals` (CF-01 slice 4/5) — `Some` while the
+    /// speech-edit-review modal is open, `None` otherwise. Nothing here is applied to the
+    /// timeline until `App::apply_transcript_proposals`, and even then only the accepted
+    /// proposals are.
+    pub transcript_review: Option<transcript_proposals::TranscriptReview>,
+    /// Whether the Transcript panel's search box also matches the *whole project media library*
+    /// (CF-01 slice 3) rather than only the previewed clip's own transcript.
+    pub transcript_search_project: bool,
     /// When `Some(action)`, the prefs modal is waiting for the next key press to set that
     /// action's binding. Pressing Escape clears it without changing the binding.
     pub binding_capture: Option<BindableAction>,
@@ -941,6 +1010,13 @@ pub struct App {
     /// everything needed to queue the export once the user resolves the conflict via
     /// [`App::show_export_conflict_modal`] (Overwrite / Rename / Cancel).
     pub pending_export_conflict: Option<export::PendingExportConflict>,
+}
+
+/// [`App::transcript_panel_state`]'s own fields.
+#[derive(Default)]
+pub(crate) struct TranscriptPanelState {
+    pub(crate) loaded_asset_id: Option<u64>,
+    pub(crate) document: Option<avcore::TranscriptDocument>,
 }
 
 /// Live preview pipeline state, extracted from `App`'s own field list (see
@@ -1214,6 +1290,24 @@ pub(crate) struct YoutubeDownloadState {
     pub(crate) youtube_download_cancel: Option<Arc<AtomicBool>>,
 }
 
+/// Watch-folder screen state, extracted from `App`'s own field list — see [`PreviewState`]'s
+/// doc comment for why.
+pub(crate) struct WatchFolderState {
+    tx: UnboundedSender<WatchFolderEvent>,
+    rx: UnboundedReceiver<WatchFolderEvent>,
+    pub(crate) watch_path: Option<PathBuf>,
+    /// `true` while the background polling thread is running — only one watch session at a
+    /// time.
+    pub(crate) running: bool,
+    /// Set when `running` starts, cleared when it stops; the thread checks this every poll and
+    /// mid-render (it's the same `cancel: &AtomicBool` `avcore::process_watched_file` already
+    /// accepts), same shape as `YoutubeDownloadState::youtube_download_cancel`.
+    stop: Option<Arc<AtomicBool>>,
+    /// Newest-first, same convention `Watch-Gameplay.ps1`'s own `$FileOrder` (reversed for
+    /// display) uses.
+    pub(crate) files: Vec<WatchedFileRow>,
+}
+
 impl App {
     /// Builds the initial app state: applies the theme and starts with an empty project list
     /// and export queue — every project, asset, and job comes from the user via "Novo
@@ -1256,6 +1350,7 @@ impl App {
         let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
         let (tts_tx, tts_rx) = mpsc::unbounded_channel();
         let (youtube_download_tx, youtube_download_rx) = mpsc::unbounded_channel();
+        let (watch_folder_tx, watch_folder_rx) = mpsc::unbounded_channel();
         let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
         let (telemetry_tx, telemetry_rx) = mpsc::unbounded_channel();
         telemetry::spawn_telemetry_writer(telemetry_rx, telemetry::telemetry_path());
@@ -1348,6 +1443,14 @@ impl App {
                 youtube_download_error: None,
                 youtube_download_cancel: None,
             },
+            watch_folder_state: WatchFolderState {
+                tx: watch_folder_tx,
+                rx: watch_folder_rx,
+                watch_path: None,
+                running: false,
+                stop: None,
+                files: Vec::new(),
+            },
             selected_clip_id: None,
             undo_stack: avcore::undo::UndoStack::new(),
             undo_drag_active: false,
@@ -1394,7 +1497,12 @@ impl App {
             layer_templates_menu_open: false,
             timeline_index_open: false,
             marker_search: String::new(),
+            transcript_panel_open: false,
+            transcript_search: String::new(),
+            transcript_panel_state: TranscriptPanelState::default(),
             silence_review: None,
+            transcript_review: None,
+            transcript_search_project: false,
             binding_capture: None,
             update_check_tx,
             update_check_rx,
@@ -2055,6 +2163,7 @@ impl eframe::App for App {
         self.pump_matte_generation();
         self.pump_text_to_speech();
         self.pump_youtube_download();
+        self.pump_watch_folder();
         self.pump_update_check();
         self.pump_thumbnail_queue(ui.ctx());
         self.pump_preview_frame(ui.ctx());
@@ -2105,6 +2214,7 @@ impl eframe::App for App {
             Screen::Library => screens::library::show(self, ui),
             Screen::SoundLibrary => screens::sound_library::show(self, ui),
             Screen::Queue => screens::queue::show(self, ui),
+            Screen::WatchFolder => screens::watch_folder::show(self, ui),
         });
         self.show_prefs_modal(ui.ctx());
         self.show_about_modal(ui.ctx());
@@ -2120,7 +2230,9 @@ impl eframe::App for App {
         self.show_tts_modal(ui.ctx());
         self.show_youtube_download_modal(ui.ctx());
         self.show_timeline_index_panel(ui.ctx());
+        self.show_transcript_panel(ui.ctx());
         self.show_silence_review_modal(ui.ctx());
+        self.show_transcript_proposals_modal(ui.ctx());
         self.show_smart_bin_modal(ui.ctx());
         self.show_toasts(ui.ctx());
     }

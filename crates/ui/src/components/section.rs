@@ -25,5 +25,19 @@ pub fn section_label(ui: &mut Ui, text: &str) {
             .color(theme::TEXT_MUTED)
             .strong(),
     );
-    ui.add_space(6.0);
+    ui.add_space(theme::SPACE_SM);
+}
+
+/// A top-level screen title (Library/Sound Library/Prefs/Queue's "Mídia"/"Sons"/... header) —
+/// the de facto standard this codebase already converged on independently at every one of those
+/// call sites before this helper existed; naming it stops a fifth screen from picking its own
+/// literal.
+pub fn page_title(ui: &mut Ui, text: &str) {
+    ui.label(RichText::new(text).size(20.0).strong());
+}
+
+/// A modal dialog's title — the de facto standard across every `egui::Modal` in `app/modals.rs`
+/// and `app/transcript_panel.rs` before this helper existed.
+pub fn modal_title(ui: &mut Ui, text: &str) {
+    ui.label(RichText::new(text).size(15.0).strong());
 }

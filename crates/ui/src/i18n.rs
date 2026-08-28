@@ -252,6 +252,8 @@ text_catalog! {
     PropRotationKeyframes: pt_br = "Rotação (keyframes)", en = "Rotation (keyframes)";
     PropOpacityKeyframes: pt_br = "Opacidade (keyframes)", en = "Opacity (keyframes)";
     AddKeyframe: pt_br = "+ Adicionar keyframe", en = "+ Add keyframe";
+    RemoveKeyframe: pt_br = "Remover keyframe", en = "Remove keyframe";
+    RemoveVertex: pt_br = "Remover vértice", en = "Remove vertex";
     KeyframeTime: pt_br = "t", en = "t";
     KeyframeX: pt_br = "x", en = "x";
     KeyframeY: pt_br = "y", en = "y";
@@ -359,12 +361,32 @@ text_catalog! {
     SoundLibraryNoFolderConfigured: pt_br = "Nenhuma pasta configurada. Escolha uma pasta com subpastas \"music\"/\"sfx\" em Ajustes.", en = "No folder configured. Pick a folder with \"music\"/\"sfx\" subfolders in Preferences.";
     SoundLibraryEmpty: pt_br = "Nenhuma faixa encontrada. Adicione arquivos de áudio nas subpastas \"music\"/\"sfx\" da pasta configurada.", en = "No tracks found. Add audio files to the configured folder's \"music\"/\"sfx\" subfolders.";
 
+    NavWatchFolder: pt_br = "Limpeza", en = "Cleanup";
+    WatchFolderTitle: pt_br = "Limpeza de áudio por pasta", en = "Watched-folder audio cleanup";
+    WatchFolderSubtitle: pt_br = "Monitora uma pasta e limpa automaticamente o áudio de gravações novas (redução de ruído + normalização de volume), sem tocar no vídeo.", en = "Watches a folder and automatically cleans up new recordings' audio (noise reduction + loudness normalization), without touching the video.";
+    WatchFolderPathLabel: pt_br = "Pasta monitorada", en = "Watched folder";
+    WatchFolderChooseFolder: pt_br = "Escolher pasta...", en = "Choose folder...";
+    WatchFolderNoFolder: pt_br = "Escolha uma pasta para começar a monitorar.", en = "Choose a folder to start watching.";
+    WatchFolderStart: pt_br = "▶ Iniciar monitoramento", en = "▶ Start watching";
+    WatchFolderStop: pt_br = "■ Parar monitoramento", en = "■ Stop watching";
+    WatchFolderOutputHint: pt_br = "Cópias limpas são salvas em \"processed\" dentro da pasta monitorada.", en = "Cleaned-up copies are saved to \"processed\" inside the watched folder.";
+    WatchFolderEmpty: pt_br = "Nenhum arquivo detectado ainda.", en = "No files detected yet.";
+    WatchFolderStatusStabilizing: pt_br = "Aguardando gravação terminar", en = "Waiting for the recording to finish";
+    WatchFolderStatusMeasuringBefore: pt_br = "Analisando original", en = "Analyzing original";
+    WatchFolderStatusProcessing: pt_br = "Processando", en = "Processing";
+    WatchFolderStatusDone: pt_br = "Concluído", en = "Done";
+    WatchFolderStatusError: pt_br = "Erro", en = "Error";
+    WatchFolderLufsBeforeAfter: pt_br = "{before} → {after} LUFS", en = "{before} → {after} LUFS";
+
     QueueTitle: pt_br = "Fila de exportação", en = "Export queue";
     AddExport: pt_br = "＋ Adicionar exportação", en = "＋ Add export";
     AddExportNeedsClip: pt_br = "Adicione ao menos um clipe de vídeo na sequência ativa primeiro", en = "Add at least one video clip to the active sequence first";
     AddVideoTrack: pt_br = "＋ Adicionar faixa de vídeo", en = "＋ Add video track";
+    TrackHide: pt_br = "Ocultar faixa", en = "Hide track";
+    TrackShow: pt_br = "Mostrar faixa", en = "Show track";
     QueueSubtitle: pt_br = "A edição continua responsiva enquanto os jobs renderizam em segundo plano. A fila persiste entre sessões.", en = "Editing stays responsive while jobs render in the background. The queue persists across sessions.";
     QueueTechNote: pt_br = "Nota técnica: cada job é um snapshot (bitrate/perfil/destino) tirado no momento em que entra na fila — mudanças no projeto ativo depois disso não afetam o job. Render roda em worker separado da UI (tokio::mpsc); 1 worker por padrão, configurável em Preferências.", en = "Technical note: each job is a snapshot (bitrate/profile/destination) taken the moment it enters the queue — later changes to the active project don't affect the job. Rendering runs in a worker separate from the UI (tokio::mpsc); 1 worker by default, configurable in Preferences.";
+    QueueEmpty: pt_br = "Nenhum job de exportação. Use \"Adicionar exportação\" na tela do Editor.", en = "No export jobs yet. Use \"Add export\" on the Editor screen.";
     QueueMatchLoudnessLabel: pt_br = "Igualar loudness dos jobs na fila:", en = "Match loudness across queued jobs:";
     StatusRendering: pt_br = "Renderizando", en = "Rendering";
     StatusQueued: pt_br = "Na fila", en = "Queued";
@@ -412,6 +434,8 @@ text_catalog! {
     TableShortcut: pt_br = "Atalho", en = "Shortcut";
     ShortcutSplit: pt_br = "Dividir clipe (split)", en = "Split clip";
     ShortcutPlayPause: pt_br = "Play / Pause", en = "Play / Pause";
+    SeekToStart: pt_br = "Ir para o início", en = "Seek to start";
+    SeekToEnd: pt_br = "Ir para o fim", en = "Seek to end";
     ShortcutCopyFormatting: pt_br = "Copiar formatação", en = "Copy formatting";
     ShortcutPasteFormatting: pt_br = "Colar formatação", en = "Paste formatting";
     ShortcutAddOpacityMarker: pt_br = "Adicionar marcador de opacidade", en = "Add opacity marker";
@@ -434,7 +458,28 @@ text_catalog! {
     TimelineIndexTitle: pt_br = "Índice da timeline", en = "Timeline Index";
     TimelineIndexSearchHint: pt_br = "Buscar marcadores...", en = "Search markers...";
     TimelineIndexEmpty: pt_br = "Nenhum marcador encontrado.", en = "No markers found.";
+    TranscriptPanelToggle: pt_br = "Transcrição", en = "Transcript";
+    TranscriptPanelTitle: pt_br = "Transcrição", en = "Transcript";
+    TranscriptPanelSearchHint: pt_br = "Buscar na transcrição...", en = "Search transcript...";
+    TranscriptPanelEmpty: pt_br = "Nenhuma palavra encontrada.", en = "No words found.";
+    TranscriptPanelNoClip: pt_br = "Nenhum clipe de vídeo no cursor.", en = "No video clip at the playhead.";
+    TranscriptPanelNoTranscript: pt_br = "Este clipe ainda não tem transcrição. Use \"Transcrever\" na tela de Mídia.", en = "This clip has no transcript yet. Use \"Transcribe\" on the Media screen.";
+    TranscriptSearchProject: pt_br = "Pesquisar no projeto", en = "Search in project";
+    TranscriptProjectSearchHint: pt_br = "Buscar em todo o projeto...", en = "Search whole project...";
+    TranscriptProjectEmpty: pt_br = "Nenhum resultado no projeto.", en = "No results in the project.";
+    DetectSpeechEdits: pt_br = "✂️ Edições de fala", en = "✂️ Speech Edits";
+    TranscriptProposalsSelectClipFirst: pt_br = "Coloque o cursor sobre um clipe de vídeo para detectar edições de fala.", en = "Place the playhead on a video clip to detect speech edits.";
+    TranscriptProposalsNoTranscript: pt_br = "Este clipe não tem transcrição. Transcreva-o na tela de Mídia primeiro.", en = "This clip has no transcript. Transcribe it on the Media screen first.";
+    TranscriptProposalsEmpty: pt_br = "Nenhuma edição de fala detectada.", en = "No speech edits detected.";
+    TranscriptProposalsTitle: pt_br = "Revisar edições de fala", en = "Review Speech Edits";
+    TranscriptProposalsApply: pt_br = "Aplicar cortes selecionados", en = "Apply selected cuts";
+    TranscriptProposalDeadAir: pt_br = "Silêncio longo", en = "Long pause";
+    TranscriptProposalFillerWord: pt_br = "Palavra de preenchimento", en = "Filler word";
+    TranscriptProposalRetake: pt_br = "Retomada", en = "Retake";
+    TranscriptProposalRepeatedPhrase: pt_br = "Frase repetida", en = "Repeated phrase";
+    TranscriptProposalRange: pt_br = "{start} — {end} ({duration}s)", en = "{start} — {end} ({duration}s)";
     TimelineIndexLabelHint: pt_br = "Descrição do marcador", en = "Marker description";
+    RemoveMarker: pt_br = "Remover marcador", en = "Remove marker";
     TimelineIndexAddStandard: pt_br = "+ Marcador", en = "+ Marker";
     TimelineIndexAddToDo: pt_br = "+ Tarefa", en = "+ To Do";
     TimelineIndexAddChapter: pt_br = "+ Capítulo", en = "+ Chapter";
@@ -601,6 +646,7 @@ pub fn screen_title(locale: Locale, screen: Screen) -> &'static str {
         Screen::Library => Text::ScreenTitleLibrary.tr(locale),
         Screen::SoundLibrary => Text::ScreenTitleSoundLibrary.tr(locale),
         Screen::Queue => Text::ScreenTitleQueue.tr(locale),
+        Screen::WatchFolder => Text::WatchFolderTitle.tr(locale),
     }
 }
 
@@ -612,6 +658,7 @@ pub fn nav_label(locale: Locale, screen: Screen) -> &'static str {
         Screen::Library => Text::NavLibrary.tr(locale),
         Screen::SoundLibrary => Text::NavSoundLibrary.tr(locale),
         Screen::Queue => Text::NavQueue.tr(locale),
+        Screen::WatchFolder => Text::NavWatchFolder.tr(locale),
     }
 }
 

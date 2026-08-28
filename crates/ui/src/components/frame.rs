@@ -23,6 +23,6 @@ pub fn card_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(theme::SURFACE)
         .stroke(egui::Stroke::new(1.0, theme::BORDER))
-        .corner_radius(10)
+        .corner_radius(theme::RADIUS_MD)
         .inner_margin(egui::Margin::same(14))
 }

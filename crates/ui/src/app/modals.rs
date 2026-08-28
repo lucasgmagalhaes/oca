@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 use tracing::{debug, error, info, warn};
 
+use crate::components;
 use crate::i18n::{self, Text};
 use crate::screens;
 use crate::theme;
@@ -56,7 +57,7 @@ impl App {
                         let alpha = if age > 3.0 { 1.0 - (age - 3.0) } else { 1.0 };
                         egui::Frame::new()
                             .fill(theme::ERROR.linear_multiply(alpha))
-                            .corner_radius(6)
+                            .corner_radius(theme::RADIUS_MD)
                             .inner_margin(egui::Margin::symmetric(12, 8))
                             .show(ui, |ui| {
                                 ui.set_max_width(360.0);
@@ -83,11 +84,7 @@ impl App {
         let modal = egui::Modal::new(egui::Id::new("text_color_modal"));
         let response = modal.show(ctx, |ui| {
             ui.set_width(340.0);
-            ui.label(
-                egui::RichText::new(Text::TextColorPickerTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::TextColorPickerTitle.tr(locale));
             let target_label = match edit.target {
                 super::TextColorTarget::Foreground => Text::PropTextColor.tr(locale),
                 super::TextColorTarget::Background => Text::PropTextBackgroundColor.tr(locale),
@@ -374,11 +371,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(380.0);
-            ui.label(
-                egui::RichText::new(i18n::Text::RenameProjectTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, i18n::Text::RenameProjectTitle.tr(locale));
             ui.add_space(10.0);
             let (_, name_buf, summary_buf) = self.renaming_project.as_mut().unwrap();
             ui.label(i18n::Text::ProjectNameLabel.tr(locale));
@@ -451,11 +444,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(320.0);
-            ui.label(
-                egui::RichText::new(Text::SpeedRampCustomTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::SpeedRampCustomTitle.tr(locale));
             ui.add_space(10.0);
             let (_, start_speed, end_speed, steps_buf, smooth) =
                 self.speed_ramp_dialog.as_mut().unwrap();
@@ -536,11 +525,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(320.0);
-            ui.label(
-                egui::RichText::new(i18n::Text::RenameSequenceTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, i18n::Text::RenameSequenceTitle.tr(locale));
             ui.add_space(10.0);
             let buf = &mut self.renaming_sequence.as_mut().unwrap().1;
             let text_edit = ui.add(egui::TextEdit::singleline(buf).desired_width(f32::INFINITY));
@@ -592,11 +577,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
-            ui.label(
-                egui::RichText::new(i18n::Text::DeleteSequenceTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, i18n::Text::DeleteSequenceTitle.tr(locale));
             ui.add_space(10.0);
             ui.label(i18n::delete_sequence_prompt(locale, &name));
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -729,11 +710,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(380.0);
-            ui.label(
-                egui::RichText::new(Text::ExportFileExistsTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::ExportFileExistsTitle.tr(locale));
             ui.add_space(8.0);
             ui.label(
                 Text::ExportFileExistsBody
@@ -824,11 +801,7 @@ impl App {
         let modal = egui::Modal::new(egui::Id::new("timeline_index_panel"));
         let response = modal.show(ctx, |ui| {
             ui.set_width(420.0);
-            ui.label(
-                egui::RichText::new(Text::TimelineIndexTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::TimelineIndexTitle.tr(locale));
             ui.add_space(6.0);
             ui.add(
                 egui::TextEdit::singleline(&mut search)
@@ -891,7 +864,14 @@ impl App {
                             if label_resp.changed() {
                                 label_edit = Some((marker.id, label));
                             }
-                            if ui.small_button("🗑").clicked() {
+                            if components::icon_button(
+                                ui,
+                                "🗑",
+                                Text::RemoveMarker.tr(locale),
+                                components::IconButtonOpts::default(),
+                            )
+                            .clicked()
+                            {
                                 remove_id = Some(marker.id);
                             }
                         });
@@ -968,11 +948,7 @@ impl App {
         let modal = egui::Modal::new(egui::Id::new("silence_review_modal"));
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
-            ui.label(
-                egui::RichText::new(Text::SilenceReviewTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::SilenceReviewTitle.tr(locale));
             ui.add_space(6.0);
 
             let Some(review) = &self.silence_review else {
@@ -1041,6 +1017,124 @@ impl App {
         }
     }
 
+    /// The speech-edit review modal (CF-01 slices 4-5) — every proposal
+    /// `App::begin_transcript_proposals` staged in `App::transcript_review`, each with a
+    /// checkbox defaulting to accepted, a kind label plus detail, and an "Apply" button that
+    /// runs `App::apply_transcript_proposals` on whatever's still checked. Shown while
+    /// `transcript_review` is `Some`; a no-op otherwise. Never applies anything itself while
+    /// drawing — same read-then-mutate-after shape as `show_silence_review_modal`.
+    pub(super) fn show_transcript_proposals_modal(&mut self, ctx: &egui::Context) {
+        if self.transcript_review.is_none() {
+            return;
+        }
+        let locale = self.locale;
+        let mut toggle_index: Option<usize> = None;
+        let mut apply = false;
+        let mut close = false;
+
+        let modal = egui::Modal::new(egui::Id::new("transcript_proposals_modal"));
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(360.0);
+            components::modal_title(ui, Text::TranscriptProposalsTitle.tr(locale));
+            ui.add_space(6.0);
+
+            let Some(review) = &self.transcript_review else {
+                return;
+            };
+            if review.proposals.is_empty() {
+                ui.label(
+                    egui::RichText::new(Text::TranscriptProposalsEmpty.tr(locale))
+                        .color(theme::TEXT_MUTED),
+                );
+            }
+            egui::ScrollArea::vertical()
+                .max_height(320.0)
+                .show(ui, |ui| {
+                    for (index, entry) in review.proposals.iter().enumerate() {
+                        let kind_label = match entry.proposal.kind {
+                            avcore::TranscriptEditKind::DeadAir => {
+                                Text::TranscriptProposalDeadAir.tr(locale).to_string()
+                            }
+                            avcore::TranscriptEditKind::FillerWord => {
+                                Text::TranscriptProposalFillerWord.tr(locale).to_string()
+                            }
+                            avcore::TranscriptEditKind::Retake => {
+                                Text::TranscriptProposalRetake.tr(locale).to_string()
+                            }
+                            avcore::TranscriptEditKind::RepeatedPhrase => {
+                                Text::TranscriptProposalRepeatedPhrase
+                                    .tr(locale)
+                                    .to_string()
+                            }
+                        };
+                        let range = Text::TranscriptProposalRange
+                            .tr(locale)
+                            .replace(
+                                "{start}",
+                                &avcore::media::format_timecode(entry.proposal.start_secs),
+                            )
+                            .replace(
+                                "{end}",
+                                &avcore::media::format_timecode(entry.proposal.end_secs),
+                            )
+                            .replace(
+                                "{duration}",
+                                &format!("{:.1}", entry.proposal.source_duration_secs()),
+                            );
+                        ui.horizontal(|ui| {
+                            let mut accepted = entry.accepted;
+                            if ui.checkbox(&mut accepted, "").changed() {
+                                toggle_index = Some(index);
+                            }
+                            ui.vertical(|ui| {
+                                ui.label(
+                                    egui::RichText::new(format!("{kind_label} · {range}")).color(
+                                        if accepted {
+                                            theme::TEXT_PRIMARY
+                                        } else {
+                                            theme::TEXT_MUTED
+                                        },
+                                    ),
+                                );
+                                if !entry.proposal.detail.is_empty() {
+                                    ui.label(
+                                        egui::RichText::new(&entry.proposal.detail)
+                                            .color(theme::TEXT_MUTED)
+                                            .italics(),
+                                    );
+                                }
+                            });
+                        });
+                    }
+                });
+
+            ui.add_space(8.0);
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                close = true;
+            }
+            ui.horizontal(|ui| {
+                if ui
+                    .button(Text::TranscriptProposalsApply.tr(locale))
+                    .clicked()
+                {
+                    apply = true;
+                }
+                if ui.button(Text::WindowClose.tr(locale)).clicked() {
+                    close = true;
+                }
+            });
+        });
+
+        if let Some(index) = toggle_index {
+            self.toggle_transcript_proposal(index);
+        }
+        if apply {
+            self.apply_transcript_proposals();
+        } else if response.should_close() || close {
+            self.close_transcript_review();
+        }
+    }
+
     /// Flags that a project with `file_path` should offer autosave restoration on open, if
     /// `<file_path>.autosave.ocproj` exists and is newer than the project file itself.
     pub fn check_autosave_on_open(&mut self, file_path: &Path) {
@@ -1063,11 +1157,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(320.0);
-            ui.label(
-                egui::RichText::new(Text::SaveTemplateTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::SaveTemplateTitle.tr(locale));
             ui.add_space(10.0);
             ui.label(Text::TemplateNameLabel.tr(locale));
             let buf = &mut self.saving_layer_template.as_mut().unwrap().1;
@@ -1123,11 +1213,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(420.0);
-            ui.label(
-                egui::RichText::new(Text::TtsModalTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::TtsModalTitle.tr(locale));
             ui.add_space(10.0);
             if !model_configured {
                 ui.label(
@@ -1192,11 +1278,7 @@ impl App {
         let mut close = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(420.0);
-            ui.label(
-                egui::RichText::new(Text::YoutubeDownloadModalTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::YoutubeDownloadModalTitle.tr(locale));
             ui.add_space(10.0);
             ui.add_enabled_ui(!downloading, |ui| {
                 let buf = self
@@ -1332,11 +1414,7 @@ impl App {
         let mut delete_index = None;
         let response = modal.show(ctx, |ui| {
             ui.set_width(320.0);
-            ui.label(
-                egui::RichText::new(Text::Templates.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::Templates.tr(locale));
             ui.add_space(10.0);
             if self.prefs.saved_layer_templates.is_empty() {
                 ui.label(
@@ -1396,14 +1474,9 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
-            ui.label(
-                egui::RichText::new(format!(
-                    "{}: {}",
-                    Text::ApplyTemplateTitle.tr(locale),
-                    template.name
-                ))
-                .size(15.0)
-                .strong(),
+            components::modal_title(
+                ui,
+                &format!("{}: {}", Text::ApplyTemplateTitle.tr(locale), template.name),
             );
             ui.add_space(10.0);
             let layer_asset_ids = &mut self.applying_layer_template.as_mut().unwrap().1;
@@ -1485,11 +1558,7 @@ impl App {
         let mut deleted = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
-            ui.label(
-                egui::RichText::new(Text::SmartBinEditTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::SmartBinEditTitle.tr(locale));
             ui.add_space(10.0);
             let draft = self.editing_smart_bin.as_mut().unwrap();
 

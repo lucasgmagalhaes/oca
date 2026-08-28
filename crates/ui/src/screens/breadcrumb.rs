@@ -95,7 +95,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     ui.add_space(2.0);
                     egui::Frame::new()
                         .fill(theme::ACCENT)
-                        .corner_radius(200)
+                        .corner_radius(theme::RADIUS_PILL)
                         .show(ui, |ui| {
                             ui.allocate_exact_size(egui::vec2(6.0, 6.0), egui::Sense::hover());
                         })
