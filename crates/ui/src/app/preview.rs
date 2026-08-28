@@ -847,6 +847,24 @@ impl App {
         }
     }
 
+    /// Pushes `clip_id`'s current blur/sharpen live into the running preview pipeline — same
+    /// shape and same P1 item 3 motivation [`App::push_live_balance_update`] has, just for the
+    /// single `net_sigma` `gaussianblur` covers instead of three separate color-balance
+    /// properties. A silent no-op under the same conditions `push_live_balance_update` has.
+    pub(super) fn push_live_blur_update(&mut self, clip_id: u64, net_sigma: f64) {
+        let is_previewed = self.preview_state.preview_clip_id == Some(clip_id)
+            || self
+                .preview_state
+                .preview_overlay_clip_ids
+                .contains(&clip_id);
+        if !is_previewed {
+            return;
+        }
+        if let Some(preview) = &self.preview_state.preview {
+            preview.set_live_blur(clip_id, net_sigma);
+        }
+    }
+
     /// Pulls the latest decoded video frame (if any) into `preview_texture`, and — while
     /// playing — mirrors the pipeline's position into the active project's timeline playhead,
     /// converting from the clip-relative position `Preview` reports back to timeline time.

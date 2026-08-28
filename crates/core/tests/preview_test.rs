@@ -918,3 +918,25 @@ fn set_live_balance_returns_false_for_a_mismatched_clip_id() {
 
     assert!(!preview.set_live_balance(dark_clip.id + 1, 0.9, 1.0, 1.0));
 }
+
+// Same P1 item 3 gap, same shape, for Preview::set_live_blur's `gaussianblur` element.
+
+/// A clip whose blur_intensity/sharpen are both zero (net_sigma == 0.0) never gets a
+/// `gaussianblur` element built at all -- `set_live_blur` must not silently pretend it worked.
+#[test]
+fn set_live_blur_returns_false_when_no_element_was_built() {
+    let neutral_clip = clip();
+    let preview = Preview::open(&fixture("video.mp4"), Some(&neutral_clip)).unwrap();
+
+    assert!(!preview.set_live_blur(neutral_clip.id, 2.0));
+}
+
+/// A mismatched clip id must not find some other clip's element by accident.
+#[test]
+fn set_live_blur_returns_false_for_a_mismatched_clip_id() {
+    let mut blurred_clip = clip();
+    blurred_clip.blur_intensity = 0.5;
+    let preview = Preview::open(&fixture("video.mp4"), Some(&blurred_clip)).unwrap();
+
+    assert!(!preview.set_live_blur(blurred_clip.id + 1, 2.0));
+}

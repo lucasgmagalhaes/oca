@@ -310,7 +310,7 @@ impl App {
             return;
         };
         self.push_undo_snapshot_for_drag();
-        let balance = {
+        let (balance, net_sigma) = {
             let Some(clip) = self.active_project_mut().timeline_mut().clip_mut(clip_id) else {
                 return;
             };
@@ -321,13 +321,19 @@ impl App {
                 } else {
                     clip.saturation
                 };
-            (clip.brightness, clip.contrast, effective_saturation)
+            // Same *4.0 scale build_video_filter_bin itself uses -- see its own doc comment.
+            let net_sigma = clip.blur_intensity as f64 * 4.0 - clip.sharpen as f64 * 4.0;
+            (
+                (clip.brightness, clip.contrast, effective_saturation),
+                net_sigma,
+            )
         };
-        // Cheap and harmless even for a setter that didn't touch color balance at all -- a
+        // Cheap and harmless even for a setter that didn't touch color balance/blur at all -- a
         // no-op push of the clip's own unchanged values. See App::push_live_balance_update's
         // doc comment for why this lives here rather than in each of the ~20 individual
         // set_selected_clip_* setters.
         self.push_live_balance_update(clip_id, balance.0, balance.1, balance.2);
+        self.push_live_blur_update(clip_id, net_sigma);
     }
 }
 

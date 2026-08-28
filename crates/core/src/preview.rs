@@ -224,6 +224,13 @@ fn live_balance_element_name(clip_id: u64) -> String {
     format!("oca_balance_{clip_id}")
 }
 
+/// The name [`build_video_filter_bin`] gives its `gaussianblur` element for `clip_id`, if it
+/// builds one at all — same "shared with the live-update method so it can find the exact same
+/// element again by name" contract [`live_balance_element_name`] has.
+fn live_blur_element_name(clip_id: u64) -> String {
+    format!("oca_blur_{clip_id}")
+}
+
 fn build_video_filter_bin(
     clip: &ClipInstance,
     resolution: Option<(u32, u32)>,
@@ -545,6 +552,7 @@ fn build_video_filter_bin(
     let net_sigma = clip.blur_intensity as f64 * 4.0 - clip.sharpen as f64 * 4.0;
     if net_sigma != 0.0 {
         let blur = gst::ElementFactory::make("gaussianblur")
+            .name(live_blur_element_name(clip.id))
             .property("sigma", net_sigma)
             .build()
             .map_err(PreviewError::CreateElement)?;
@@ -2175,6 +2183,31 @@ impl Preview {
         balance.set_property("brightness", brightness as f64);
         balance.set_property("contrast", contrast as f64);
         balance.set_property("saturation", effective_saturation as f64);
+        true
+    }
+
+    /// Pushes a live blur/sharpen update to `clip_id`'s already-built `gaussianblur` element
+    /// (P1 item 3's remaining live-preview-update gap), if one exists in the running pipeline
+    /// right now — same shape and same caveat [`Preview::set_live_balance`] has, just for the
+    /// single derived `net_sigma` `gaussianblur` covers instead of three separate properties.
+    /// `net_sigma` is the caller's job to compute (`blur_intensity * 4.0 - sharpen * 4.0`, same
+    /// formula [`build_video_filter_bin`] itself uses) — this method is a plain property push.
+    ///
+    /// Returns `false` (a no-op, not an error) if no such element exists: either this clip was
+    /// never given a video-filter pipeline at all, or `blur_intensity`/`sharpen` were both zero
+    /// (`net_sigma == 0.0`) when the pipeline was last built — the element is only created once
+    /// `net_sigma` is non-zero, and creating it now would mean restructuring the running filter
+    /// graph, not just setting a property, which this method deliberately doesn't attempt. The
+    /// caller's existing "next incidental reopen picks up the new value" fallback still applies
+    /// whenever this returns `false`.
+    pub fn set_live_blur(&self, clip_id: u64, net_sigma: f64) -> bool {
+        let Some(bin) = self.pipeline.dynamic_cast_ref::<gst::Bin>() else {
+            return false;
+        };
+        let Some(blur) = bin.by_name(&live_blur_element_name(clip_id)) else {
+            return false;
+        };
+        blur.set_property("sigma", net_sigma);
         true
     }
 
