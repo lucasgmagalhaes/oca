@@ -99,6 +99,7 @@ text_catalog! {
     ScreenTitleLibrary: pt_br = "Mídia", en = "Media";
     ScreenTitleSoundLibrary: pt_br = "Música e efeitos sonoros", en = "Music & sound effects";
     ScreenTitleQueue: pt_br = "Fila de exportação", en = "Export queue";
+    ScreenTitlePrefs: pt_br = "Ajustes", en = "Settings";
     UnsavedChanges: pt_br = "Alterações não salvas", en = "Unsaved changes";
 
     HomeTitle: pt_br = "Projetos recentes", en = "Recent projects";
