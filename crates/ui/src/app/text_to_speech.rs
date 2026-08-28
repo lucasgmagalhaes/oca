@@ -23,10 +23,10 @@ impl App {
     /// "Texto-pra-fala" button does. A no-op if the modal is already open or a generation is
     /// already running.
     pub fn open_tts_modal(&mut self) {
-        if self.tts_modal_text.is_some() || self.tts_generating {
+        if self.tts_state.tts_modal_text.is_some() || self.tts_state.tts_generating {
             return;
         }
-        self.tts_modal_text = Some(String::new());
+        self.tts_state.tts_modal_text = Some(String::new());
     }
 
     /// Synthesizes [`App::tts_modal_text`] on a background thread — what the modal's "Gerar"
@@ -36,10 +36,10 @@ impl App {
     /// no-op if the buffer is blank, the voice model isn't configured yet, or a generation is
     /// already in flight.
     pub fn spawn_generate_tts(&mut self) {
-        if self.tts_generating {
+        if self.tts_state.tts_generating {
             return;
         }
-        let Some(text) = self.tts_modal_text.take() else {
+        let Some(text) = self.tts_state.tts_modal_text.take() else {
             return;
         };
         let text = text.trim().to_string();
@@ -47,10 +47,10 @@ impl App {
             return;
         }
 
-        self.tts_generating = true;
+        self.tts_state.tts_generating = true;
         let model_path = PathBuf::from(&self.prefs.tts_model_path);
         let out_dir = tts_output_dir();
-        let tx = self.tts_tx.clone();
+        let tx = self.tts_state.tts_tx.clone();
         std::thread::spawn(move || {
             let event = match generate_tts_one(&model_path, &text, &out_dir) {
                 Ok(wav_path) => TtsEvent::Done { wav_path },
@@ -65,8 +65,8 @@ impl App {
     /// [`App::spawn_import`] so it goes through the exact same probe/loudness/waveform pipeline
     /// as any imported file.
     pub(super) fn pump_text_to_speech(&mut self) {
-        while let Ok(event) = self.tts_rx.try_recv() {
-            self.tts_generating = false;
+        while let Ok(event) = self.tts_state.tts_rx.try_recv() {
+            self.tts_state.tts_generating = false;
             match event {
                 TtsEvent::Done { wav_path } => {
                     self.spawn_import(vec![wav_path]);

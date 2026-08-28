@@ -236,9 +236,11 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         sound_library_tracks: Vec::new(),
         sound_library_tx,
         sound_library_rx,
-        transcribe_tx,
-        transcribe_rx,
-        transcribing_asset_id: None,
+        transcribe_state: TranscribeState {
+            transcribe_tx,
+            transcribe_rx,
+            transcribing_asset_id: None,
+        },
         auto_reframe_state: AutoReframeState {
             auto_reframe_tx,
             auto_reframe_rx,
@@ -265,20 +267,24 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
             matte_generation_rx,
             matte_generating_clip_id: None,
         },
-        tts_tx,
-        tts_rx,
-        tts_modal_text: None,
-        tts_generating: false,
-        youtube_download_tx,
-        youtube_download_rx,
-        youtube_modal_url: None,
-        youtube_modal_format: crate::app::YoutubeFormatChoice::Mp4,
-        youtube_modal_mp4_quality: avcore::Mp4Quality::P720,
-        youtube_modal_mp3_bitrate: avcore::Mp3Bitrate::K192,
-        youtube_downloading: false,
-        youtube_download_progress: 0.0,
-        youtube_download_error: None,
-        youtube_download_cancel: None,
+        tts_state: TtsState {
+            tts_tx,
+            tts_rx,
+            tts_modal_text: None,
+            tts_generating: false,
+        },
+        youtube_download_state: YoutubeDownloadState {
+            youtube_download_tx,
+            youtube_download_rx,
+            youtube_modal_url: None,
+            youtube_modal_format: crate::app::YoutubeFormatChoice::Mp4,
+            youtube_modal_mp4_quality: avcore::Mp4Quality::P720,
+            youtube_modal_mp3_bitrate: avcore::Mp3Bitrate::K192,
+            youtube_downloading: false,
+            youtube_download_progress: 0.0,
+            youtube_download_error: None,
+            youtube_download_cancel: None,
+        },
         selected_clip_id: None,
         undo_stack: avcore::undo::UndoStack::new(),
         undo_drag_active: false,
@@ -2531,18 +2537,21 @@ fn open_youtube_modal_starts_with_an_empty_url() {
 
     app.open_youtube_modal();
 
-    assert_eq!(app.youtube_modal_url, Some(String::new()));
+    assert_eq!(
+        app.youtube_download_state.youtube_modal_url,
+        Some(String::new())
+    );
 }
 
 #[test]
 fn open_youtube_modal_is_a_no_op_while_already_open() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
-    app.youtube_modal_url = Some("https://example.com/x".to_string());
+    app.youtube_download_state.youtube_modal_url = Some("https://example.com/x".to_string());
 
     app.open_youtube_modal();
 
     assert_eq!(
-        app.youtube_modal_url,
+        app.youtube_download_state.youtube_modal_url,
         Some("https://example.com/x".to_string())
     );
 }
@@ -2550,55 +2559,55 @@ fn open_youtube_modal_is_a_no_op_while_already_open() {
 #[test]
 fn open_youtube_modal_is_a_no_op_while_downloading() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
-    app.youtube_downloading = true;
+    app.youtube_download_state.youtube_downloading = true;
 
     app.open_youtube_modal();
 
-    assert_eq!(app.youtube_modal_url, None);
+    assert_eq!(app.youtube_download_state.youtube_modal_url, None);
 }
 
 #[test]
 fn spawn_youtube_download_is_a_no_op_with_a_blank_url() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
-    app.youtube_modal_url = Some("   ".to_string());
+    app.youtube_download_state.youtube_modal_url = Some("   ".to_string());
 
     app.spawn_youtube_download();
 
-    assert!(!app.youtube_downloading);
+    assert!(!app.youtube_download_state.youtube_downloading);
 }
 
 #[test]
 fn spawn_youtube_download_is_a_no_op_while_already_downloading() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
-    app.youtube_modal_url = Some("https://example.com/x".to_string());
-    app.youtube_downloading = true;
-    app.youtube_download_progress = 0.4;
+    app.youtube_download_state.youtube_modal_url = Some("https://example.com/x".to_string());
+    app.youtube_download_state.youtube_downloading = true;
+    app.youtube_download_state.youtube_download_progress = 0.4;
 
     app.spawn_youtube_download();
 
     // Progress isn't reset by this second, ignored call.
-    assert_eq!(app.youtube_download_progress, 0.4);
+    assert_eq!(app.youtube_download_state.youtube_download_progress, 0.4);
 }
 
 #[test]
 fn close_youtube_modal_is_a_no_op_while_downloading() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
-    app.youtube_modal_url = Some("https://example.com/x".to_string());
-    app.youtube_downloading = true;
+    app.youtube_download_state.youtube_modal_url = Some("https://example.com/x".to_string());
+    app.youtube_download_state.youtube_downloading = true;
 
     app.close_youtube_modal();
 
-    assert!(app.youtube_modal_url.is_some());
+    assert!(app.youtube_download_state.youtube_modal_url.is_some());
 }
 
 #[test]
 fn close_youtube_modal_clears_the_url_when_idle() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
-    app.youtube_modal_url = Some("https://example.com/x".to_string());
+    app.youtube_download_state.youtube_modal_url = Some("https://example.com/x".to_string());
 
     app.close_youtube_modal();
 
-    assert_eq!(app.youtube_modal_url, None);
+    assert_eq!(app.youtube_download_state.youtube_modal_url, None);
 }
 
 #[test]
@@ -4339,7 +4348,8 @@ fn pump_transcribe_creates_a_text_track_with_rebased_word_timings() {
             },
         ],
     }];
-    app.transcribe_tx
+    app.transcribe_state
+        .transcribe_tx
         .send(TranscribeEvent::Done {
             asset_id: 1,
             segments,
