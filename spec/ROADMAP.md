@@ -779,7 +779,7 @@ an item earlier:
   variable weights, and deterministic Arabic/Hebrew/Indic/Thai fallback. May proceed alongside
   FONT-01A/B and is required before international families are exposed. Read
   [architecture/complex-text-shaping.md](architecture/complex-text-shaping.md).
-- `[~]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
+- `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:
   `avcore::transcript::TranscriptDocument` flattens whisper.cpp's segment-grouped output into a
@@ -817,10 +817,38 @@ an item earlier:
   level unit tests (load/clear on clip change, missing-vs-present document, immediate panel
   refresh after a fresh save) — `cargo test -p ui` (309 passed).
 
-  **Not yet built**: search (slice 3 — exact filtering already exists *within* the open panel,
-  but not the "search across the whole project media library" slice 3 itself describes),
-  proposed-edit list, or apply-as-undo — this and slice 1 are the data-model/persistence/panel
-  foundation the rest of CF-01 sits on.
+  **Slice 3 (cross-project transcript search) shipped**: `avcore::transcript_search::
+  search_transcripts_in_project` scans every media asset's persisted `.octr` sidecar for a
+  substring match, sorted by source time within an asset — re-read on demand rather than
+  indexed, since sidecars are small gzip-MessagePack and `MediaAsset` carries no "has transcript"
+  flag to index against. The Transcript panel gained a "Pesquisar no projeto/Search in project"
+  toggle: on with a non-empty query it lists hits grouped by asset instead of the previewed
+  clip's own document; clicking a hit from a non-previewed asset seeks through the first timeline
+  clip that uses it.
+
+  **Slices 4-5 (proposed-edit list, apply as one undo action) shipped**: `avcore::
+  transcript_proposals::detect_proposals` derives four reviewable edit kinds purely from a
+  `TranscriptDocument`'s word stream — dead air (pause between words over
+  `DEAD_AIR_THRESHOLD_SECS`), filler-word runs (language-aware, conservative vocabulary),
+  immediate retakes (back-to-back word repetition), and repeated phrases (2-4 word n-gram
+  repeated within `REPEAT_WINDOW_SECS`). `App::begin_transcript_proposals` (toolbar's "✂️ Edições
+  de fala/Speech Edits") runs detection over the previewed clip's transcript and stages the
+  result in `App::transcript_review` for a checkbox-per-proposal modal
+  (`show_transcript_proposals_modal`), defaulting every proposal to accepted — never a silent
+  auto-apply, same convention D1's silence review established. `App::apply_transcript_proposals`
+  merges the accepted proposals' overlapping/adjacent source ranges
+  (`avcore::merge_source_ranges`), maps each onto the clip's timeline coordinates
+  (`avcore::map_source_range_to_timeline`, trim/speed-aware), and ripple-deletes them
+  rightmost-first as **one** undo snapshot, reusing `Track::ripple_delete_range` unchanged. A
+  no-op with an explanatory toast when there's no previewed clip, no saved transcript, or nothing
+  detected; a no-op if the reviewed clip was deleted before Apply.
+
+  Verified: 33 new `core` unit tests (search matching/sorting/corrupt-sidecar-skip; each proposal
+  kind's detection, merge, and source-to-timeline mapping) and 13 new `ui` `App`-level tests
+  (empty-state toasts, accept/reject toggling, merged-range apply, deleted-clip fallback) —
+  `cargo test -p core --lib transcript` (33 passed), `cargo test -p ui transcript` (13 passed).
+  All six of CF-01's original slices are now shipped (persist, panel, search, propose, apply,
+  and subtitle/transcript kept as distinct types by design from slice 1).
 - `[ ]` **CF-02: gameplay event ingestion and watched-folder import.** Import versioned event
   sidecars/bookmarks and combine them with audio-spike scoring before building a full recorder.
 - `[ ]` **CF-03: integrated gameplay-voice cleanup.** Move the proven watched-folder FFmpeg chain
