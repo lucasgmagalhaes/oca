@@ -117,9 +117,17 @@ yet applied here — see the gaps below) live in `architecture/performance-and-c
       whole workspace), not run" status, since reproducing `preview.rs`'s full surface in a
       throwaway scratch crate (unlike `set_live_balance`'s own scratch-crate verification, which
       only needed `avbridge` + `gstreamer`, not the two-thousand-line `preview.rs` module and its
-      `ClipInstance` struct) wasn't attempted this round. Still not extended to any other effect
-      property — crop, pixelize, shake, chroma key, mask, deflicker, stabilization all still need
-      real structural changes to the running filter graph beyond a single scalar property push,
+      `ClipInstance` struct) wasn't attempted this round.
+      **Second follow-up**: chroma-key color/tolerance now update live too, via
+      `Preview::set_live_chroma_key` and the `oca_chromakey_{clip_id}`-named `alpha` element
+      (`method=custom`) — a third case fitting the same shape, though with one real difference:
+      this element is only ever built for a composited-overlay branch gated on
+      `chroma_key_enabled`, a plain on/off toggle rather than a gradually-approached intensity —
+      the first enable still needs the existing incidental-reopen fallback; only color/tolerance
+      edits made after that go live. Two negative-path tests mirror the blur ones exactly, same
+      "type-checked, not run in this sandbox" status. Still not extended to any other effect
+      property — crop, pixelize, shake, mask, deflicker, stabilization all still need real
+      structural changes to the running filter graph beyond a single scalar property push,
       genuinely the "materially bigger lift" category the original note above already called out.
 
 ---

@@ -703,6 +703,7 @@ fn build_chroma_key_element(clip: &ClipInstance) -> Result<gst::Element, Preview
     let [r, g, b] = clip.chroma_key_color;
     let sensitivity = (clip.chroma_key_tolerance.clamp(0.0, 1.0) * 128.0).round() as u32;
     gst::ElementFactory::make("alpha")
+        .name(live_chroma_key_element_name(clip.id))
         .property_from_str("method", "custom")
         .property("target-r", r as u32)
         .property("target-g", g as u32)
@@ -711,6 +712,13 @@ fn build_chroma_key_element(clip: &ClipInstance) -> Result<gst::Element, Preview
         .property("white-sensitivity", sensitivity)
         .build()
         .map_err(PreviewError::CreateElement)
+}
+
+/// The name [`build_chroma_key_element`] gives its `alpha` element for `clip_id`, if it builds
+/// one at all — same "shared with the live-update method so it can find the exact same element
+/// again by name" contract [`live_balance_element_name`]/[`live_blur_element_name`] have.
+fn live_chroma_key_element_name(clip_id: u64) -> String {
+    format!("oca_chromakey_{clip_id}")
 }
 
 /// `ClipInstance::gain_db` (a dB offset, matching export's own `volume=%.4fdB` avfilter option)
@@ -2208,6 +2216,34 @@ impl Preview {
             return false;
         };
         blur.set_property("sigma", net_sigma);
+        true
+    }
+
+    /// Pushes a live chroma-key color/tolerance update to `clip_id`'s already-built `alpha`
+    /// element (P1 item 3's remaining live-preview-update gap), if one exists in the running
+    /// pipeline right now — same shape [`Preview::set_live_balance`]/[`Preview::set_live_blur`]
+    /// have. Unlike those two, this element is only ever built for a composited-overlay branch
+    /// gated on `chroma_key_enabled` (a plain on/off toggle, not a gradually-approached
+    /// intensity) — toggling chroma key on for the first time still needs the existing
+    /// incidental-reopen fallback to build the element at all; this only covers color/tolerance
+    /// edits made *after* that, while it's already enabled.
+    ///
+    /// Returns `false` (a no-op, not an error) if no such element exists: `chroma_key_enabled`
+    /// was `false` (or this isn't an overlay branch at all) when the pipeline was last built.
+    pub fn set_live_chroma_key(&self, clip_id: u64, color: [u8; 3], tolerance: f32) -> bool {
+        let Some(bin) = self.pipeline.dynamic_cast_ref::<gst::Bin>() else {
+            return false;
+        };
+        let Some(alpha) = bin.by_name(&live_chroma_key_element_name(clip_id)) else {
+            return false;
+        };
+        let [r, g, b] = color;
+        let sensitivity = (tolerance.clamp(0.0, 1.0) * 128.0).round() as u32;
+        alpha.set_property("target-r", r as u32);
+        alpha.set_property("target-g", g as u32);
+        alpha.set_property("target-b", b as u32);
+        alpha.set_property("black-sensitivity", sensitivity);
+        alpha.set_property("white-sensitivity", sensitivity);
         true
     }
 

@@ -87,8 +87,21 @@ Read [architecture/performance-and-caching.md](architecture/performance-and-cach
    only needed `avbridge` + `gstreamer`, not the two-thousand-line `preview.rs` module itself)
    wasn't attempted this round.
 
-   **Still open**: every other effect property (crop, pixelize, shake, chroma key, mask,
-   deflicker, stabilization, ...) — still genuinely a bigger lift, their own elements are only
+   **Third follow-up**: chroma-key color/tolerance also update live now, via
+   `Preview::set_live_chroma_key` pushing to the already-built `alpha` element (in
+   `method=custom` mode, named `oca_chromakey_{clip_id}`) — a third case fitting the same
+   "single element, once built, stays present across further edits to the property that built
+   it" shape. Unlike balance/blur, this element is only ever built for a composited-overlay
+   branch gated on `chroma_key_enabled`, a plain on/off toggle rather than a gradually-
+   approached intensity — toggling chroma key on for the first time still needs the existing
+   incidental-reopen fallback to build the element at all; only color/tolerance edits made
+   *after* that go live. Wired through the same shared dispatch path. Two negative-path tests
+   mirror the blur ones exactly, one confirming a plain (non-composited) pipeline never builds
+   this element at all, the other a mismatched clip id against a real chroma-key-enabled
+   overlay clip — same "type-checked, not run in this sandbox" status.
+
+   **Still open**: every other effect property (crop, pixelize, shake, mask, deflicker,
+   stabilization, ...) — still genuinely a bigger lift, their own elements are only
    conditionally built and most need real structural changes (a moving crop window, a growing/
    shrinking mosaic block size, ...) beyond a single scalar property push; non-text overlay
    kinds (shapes) never got any live-preview path at all, keyframed or not. See
