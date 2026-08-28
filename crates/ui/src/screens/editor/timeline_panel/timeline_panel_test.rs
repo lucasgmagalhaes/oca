@@ -5,10 +5,8 @@
 // the Free Software Foundation, either version 2 of the License, or
 // (at your option) any later version.
 
-use super::{
-    filmstrip_frame_index_for_tile, snap_move_start, snap_to_nearest, visible_tile_range,
-    waveform_snap_points_for_clip,
-};
+use super::draw::{filmstrip_frame_index_for_tile, visible_tile_range};
+use super::snap::{snap_move_start, snap_to_nearest, waveform_snap_points_for_clip};
 
 #[test]
 fn visible_tiles_stay_anchored_to_the_full_clip() {
