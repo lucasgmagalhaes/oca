@@ -22,12 +22,25 @@
 #include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
 #include <libavutil/opt.h>
+#include <stdarg.h>
 
 /* Maximum byte length of one movie+overlay filter fragment (per segment) -- sized to fit the
-   escaped path plus up to three up-to-2048-byte escaped expression fragments (opacity, x, y
-   position offset) with room to spare; the snprintf truncation check below is the real safety
+   escaped path plus the escaped opacity expr and the two escaped scale sample exprs (each up
+   to 2048 bytes) with room to spare; the snprintf truncation check below is the real safety
    net regardless. */
-#define TEXT_OVERLAY_SEG_MAX 8192
+#define TEXT_OVERLAY_SEG_MAX 12288
+
+/* Appends one snprintf-formatted fragment to `buf` at `*pos` (buffer size `buf_size`),
+   advancing `*pos` past it. Returns 0 on success, -1 on truncation. */
+static int append_stage(char *buf, size_t buf_size, size_t *pos, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int written = vsnprintf(buf + *pos, buf_size - *pos, fmt, args);
+    va_end(args);
+    if (written < 0 || *pos + (size_t)written >= buf_size) return -1;
+    *pos += (size_t)written;
+    return 0;
+}
 
 /* Escapes `in` for use as a single-quoted avfilter movie filename. Backslash, single-quote,
    colon, comma, semicolon, and graph-label brackets each get a backslash prefix.
@@ -134,8 +147,10 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
         }
     }
 
-    /* Build one movie source and one timeline-enabled overlay node per pre-rasterized PNG, plus
-       an optional alpha-multiply geq stage for segments with an opacity_keyframe_expr. */
+    /* Build one movie source and one timeline-enabled overlay node per pre-rasterized PNG, with
+       an optional geq scale-remap stage and/or an optional geq alpha-multiply (fade) stage
+       chained in between, for segments that have a scale_keyframe_expr_x/_y and/or an
+       opacity_keyframe_expr. */
     {
         size_t filter_buf_size = (size_t)segment_count * TEXT_OVERLAY_SEG_MAX + 8;
         filter_str = av_malloc(filter_buf_size);
@@ -153,16 +168,27 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
                 goto cleanup;
             }
             int has_fade = seg->opacity_keyframe_expr && seg->opacity_keyframe_expr[0] != '\0';
-            char escaped_expr[2048];
-            if (has_fade && escape_filter_expr(escaped_expr, sizeof(escaped_expr),
+            char escaped_fade[2048];
+            if (has_fade && escape_filter_expr(escaped_fade, sizeof(escaped_fade),
                                                seg->opacity_keyframe_expr) < 0) {
+                status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
+                goto cleanup;
+            }
+            int has_scale = seg->scale_keyframe_expr_x && seg->scale_keyframe_expr_x[0] != '\0' &&
+                            seg->scale_keyframe_expr_y && seg->scale_keyframe_expr_y[0] != '\0';
+            char escaped_scale_x[2048];
+            char escaped_scale_y[2048];
+            if (has_scale && (escape_filter_expr(escaped_scale_x, sizeof(escaped_scale_x),
+                                                 seg->scale_keyframe_expr_x) < 0 ||
+                              escape_filter_expr(escaped_scale_y, sizeof(escaped_scale_y),
+                                                 seg->scale_keyframe_expr_y) < 0)) {
                 status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
                 goto cleanup;
             }
             /* Unescaped and single-quoted, same convention as timeline_export_multi.c's
                build_overlay_vfilter -- an overlay x=/y= expression sits directly in its own
                quoted option value, not nested inside another quoted expression the way the
-               fade's geq a=' ... ' value above is, so it needs no comma-escaping of its own. */
+               fade/scale geq stages below are, so it needs no comma-escaping of its own. */
             const char *pos_expr_x =
                 (seg->position_keyframe_expr_x && seg->position_keyframe_expr_x[0] != '\0')
                     ? seg->position_keyframe_expr_x
@@ -174,7 +200,7 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
             double end_secs = seg->start_secs + seg->duration_secs;
             char main_label[32];
             char out_label[32];
-            char text_label[32];
+            char cur_label[32];
             if (i == 0)
                 snprintf(main_label, sizeof(main_label), "in");
             else
@@ -183,44 +209,71 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
                 snprintf(out_label, sizeof(out_label), "out");
             else
                 snprintf(out_label, sizeof(out_label), "v%d", i);
-            snprintf(text_label, sizeof(text_label), "text%d", i);
+            snprintf(cur_label, sizeof(cur_label), "text%d_src", i);
 
             /* `repeatlast=1` holds the PNG's only frame for the full main-video timeline;
-               enable='between(...)' controls the actual clip visibility window. When faded, a
-               geq stage sits between the movie source and the overlay: alpha(X,Y) is the raw
-               PNG's own per-pixel alpha, multiplied by the fade expression; r/g/b pass through
-               unchanged. Confirmed for real against this project's linked FFmpeg build (a
-               dedicated avbridge test, not just the docs) that the read-back function is
-               spelled `alpha(X,Y)`, not `a(X,Y)` as FFmpeg's own geq docs otherwise imply --
-               `a(X,Y)` parses as "Unknown function" here; two other candidates were ruled out
-               the same way (colorchannelmixer has no `eval` option at all in this build; its
-               `t`/`n` per-frame variables were never reached). See
+               enable='between(...)' controls the actual clip visibility window. Confirmed for
+               real against this project's linked FFmpeg build (a dedicated avbridge test, not
+               just the docs) that geq's alpha read-back function is spelled `alpha(X,Y)`, not
+               `a(X,Y)` as FFmpeg's own docs otherwise imply -- `a(X,Y)` parses as "Unknown
+               function" here; two other candidates were ruled out the same way
+               (colorchannelmixer has no `eval` option at all in this build; its `t`/`n`
+               per-frame variables were never reached). See
                keyframe::text_opacity_alpha_expr's doc comment for the full story. */
-            int written;
-            if (has_fade) {
-                written = snprintf(
-                    filter_str + pos, filter_buf_size - pos,
-                    "movie=filename='%s',format=rgba,"
-                    "geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='alpha(X\\,Y)*(%s)'[%s];"
-                    "[%s][%s]overlay=x='%s':y='%s':format=auto:alpha=straight:"
-                    "repeatlast=1:eof_action=repeat:enable='between(t\\,%.4f\\,%.4f)'[%s]%s",
-                    escaped, escaped_expr, text_label, main_label, text_label, pos_expr_x,
-                    pos_expr_y, seg->start_secs, end_secs, out_label,
-                    i == segment_count - 1 ? "" : ";");
-            } else {
-                written = snprintf(
-                    filter_str + pos, filter_buf_size - pos,
-                    "movie=filename='%s',format=rgba[%s];"
-                    "[%s][%s]overlay=x='%s':y='%s':format=auto:alpha=straight:"
-                    "repeatlast=1:eof_action=repeat:enable='between(t\\,%.4f\\,%.4f)'[%s]%s",
-                    escaped, text_label, main_label, text_label, pos_expr_x, pos_expr_y,
-                    seg->start_secs, end_secs, out_label, i == segment_count - 1 ? "" : ";");
-            }
-            if (written < 0 || pos + (size_t)written >= filter_buf_size) {
+            if (append_stage(filter_str, filter_buf_size, &pos,
+                             "movie=filename='%s',format=rgba[%s];", escaped, cur_label) < 0) {
                 status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
                 goto cleanup;
             }
-            pos += (size_t)written;
+
+            if (has_scale) {
+                char next_label[32];
+                snprintf(next_label, sizeof(next_label), "text%d_scaled", i);
+                /* geq inverse-sample remap around the raster's own anchor point: each output
+                   pixel (X,Y) samples r/g/b/a from the pre-scale image at the position that
+                   would land on (X,Y) after scaling by the (possibly time-varying) factor
+                   avcore::keyframe::text_scale_sample_exprs already folded into
+                   escaped_scale_x/y. Output frame size never changes, only what each pixel
+                   samples -- deliberately not `scale=...:eval=frame`, which reliably corrupted
+                   the heap in a real export elsewhere in this codebase (see
+                   timeline_export.c's zoom-transition case, CLAUDE.md). */
+                if (append_stage(filter_str, filter_buf_size, &pos,
+                                 "[%s]geq=r='r(%s\\,%s)':g='g(%s\\,%s)':b='b(%s\\,%s)':"
+                                 "a='alpha(%s\\,%s)'[%s];",
+                                 cur_label, escaped_scale_x, escaped_scale_y, escaped_scale_x,
+                                 escaped_scale_y, escaped_scale_x, escaped_scale_y, escaped_scale_x,
+                                 escaped_scale_y, next_label) < 0) {
+                    status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
+                    goto cleanup;
+                }
+                snprintf(cur_label, sizeof(cur_label), "%s", next_label);
+            }
+
+            if (has_fade) {
+                char next_label[32];
+                snprintf(next_label, sizeof(next_label), "text%d_faded", i);
+                /* alpha(X,Y) here reads whatever the previous stage (the plain raster, or the
+                   scale remap above) left in the alpha channel at each pixel; r/g/b pass
+                   through unchanged. */
+                if (append_stage(filter_str, filter_buf_size, &pos,
+                                 "[%s]geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':"
+                                 "a='alpha(X\\,Y)*(%s)'[%s];",
+                                 cur_label, escaped_fade, next_label) < 0) {
+                    status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
+                    goto cleanup;
+                }
+                snprintf(cur_label, sizeof(cur_label), "%s", next_label);
+            }
+
+            if (append_stage(filter_str, filter_buf_size, &pos,
+                             "[%s][%s]overlay=x='%s':y='%s':format=auto:alpha=straight:"
+                             "repeatlast=1:eof_action=repeat:enable='between(t\\,%.4f\\,%.4f)'"
+                             "[%s]%s",
+                             main_label, cur_label, pos_expr_x, pos_expr_y, seg->start_secs,
+                             end_secs, out_label, i == segment_count - 1 ? "" : ";") < 0) {
+                status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
+                goto cleanup;
+            }
         }
         filter_str[pos] = '\0';
     }

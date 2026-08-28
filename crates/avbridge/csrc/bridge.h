@@ -429,19 +429,35 @@ typedef struct {
        See avbridge_apply_text_overlays' doc comment for where these are spliced in. */
     const char *position_keyframe_expr_x;
     const char *position_keyframe_expr_y;
+    /* NULL, empty, or either-one-empty means "no remap, same pixel-for-pixel raster as before
+       these fields existed" -- complete geq-expression-language fragments (e.g.
+       "(960.000000+(X-(960.000000))/(if(lt((T-1.000000),..." from
+       avcore::keyframe::text_scale_sample_exprs) used as the (X,Y) coordinates a geq stage
+       samples the raster's own r/g/b/a channels at, remapping around the raster's baked
+       position anchor -- an inverse-sample zoom, not a literal `scale` filter (see
+       avbridge_apply_text_overlays' doc comment for why). See that same doc comment for where
+       these are spliced in. */
+    const char *scale_keyframe_expr_x;
+    const char *scale_keyframe_expr_y;
 } TextSegment;
 
 /* Opens `in_path` (an already-rendered H.264/AAC mp4), composites PNG overlays for every
    segment in `segments` using an enable='between(t,start,end)' avfilter expression, and writes
    the result to `out_path`. Each overlay is already rasterized as a transparent PNG so preview
-   and export share the exact same font/background renderer. When a segment's
-   opacity_keyframe_expr is non-empty, a geq stage multiplies the PNG's own alpha channel by that
-   expression right after the movie source, before the overlay node. When position_keyframe_expr_x/
-   _y is non-empty, the overlay node's x/y is that expression instead of the literal 0 it
-   otherwise defaults to. All of these are in the same filtergraph with a shared time origin (t=0
-   at graph start, same as the main video), so geq's per-pixel T and overlay's own per-frame t
-   are both timeline-absolute, matching what the expressions were built against. Video is
-   decoded, filtered, and re-encoded via libopenh264; audio is stream-copied unchanged.
+   and export share the exact same font/background renderer. Two optional geq stages sit
+   between the movie source and the overlay node, in this order: when a segment's
+   scale_keyframe_expr_x/_y is non-empty, a geq stage inverse-samples the raster at those
+   coordinates instead of (X,Y) directly, remapping it around its own baked position anchor
+   (this is an inverse-sample zoom -- output frame size never changes -- deliberately not a
+   literal `scale` filter with `eval=frame`, which reliably corrupted the heap in a real export
+   elsewhere in this codebase, see CLAUDE.md); when opacity_keyframe_expr is non-empty, a geq
+   stage multiplies the (possibly already remapped) alpha channel by that expression. When
+   position_keyframe_expr_x/_y is non-empty, the overlay node's x/y is that expression instead
+   of the literal 0 it otherwise defaults to. All of these are in the same filtergraph with a
+   shared time origin (t=0 at graph start, same as the main video), so geq's per-pixel T and
+   overlay's own per-frame t are both timeline-absolute, matching what the expressions were
+   built against. Video is decoded, filtered, and re-encoded via libopenh264; audio is
+   stream-copied unchanged.
    canvas_width/canvas_height and canvas_fps_num/den are
    used only to size the output encoder context — they must match the actual rendered video.
 

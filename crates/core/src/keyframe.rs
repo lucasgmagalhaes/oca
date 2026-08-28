@@ -583,6 +583,56 @@ pub fn text_position_offset_expr(
     Some(piecewise_expr(&sorted, duration_secs, &var, to_px))
 }
 
+/// Builds the `geq` inverse-sample coordinate expressions for a `TextClip`'s `scale_keyframes`
+/// — the `(X,Y)` a `geq` stage should read the raster's own pixels from instead of the output
+/// pixel `(X,Y)` it's computing, to make the raster appear scaled by the (possibly time-varying)
+/// factor around `(anchor_x_px, anchor_y_px)` (the raster's own baked position anchor —
+/// `crate::render::text_clip_to_segments`' `base_pos_x`/`base_pos_y`, in canvas pixels). This is
+/// deliberately an inverse-sample zoom (output frame size never changes, only what each pixel
+/// samples) rather than a literal `scale` filter with `eval=frame`: letting `scale` renegotiate
+/// its output size every frame reliably corrupted the heap in a real export elsewhere in this
+/// codebase (see `avbridge::apply_text_overlays`' doc comment, `CLAUDE.md`) — the same reasoning
+/// [`crate::timeline::ClipInstance::scale_keyframes`]' own `scale_filter_expr` already applies.
+///
+/// Scaling by factor `s` around `(ax, ay)` maps input point `(x, y)` to
+/// `(ax + (x-ax)*s, ay + (y-ay)*s)`; sampling backward (what each *output* pixel should read) is
+/// the inverse, `(ax + (X-ax)/s, ay + (Y-ay)/s)` — exactly what this builds, `T`-keyed like
+/// [`text_opacity_alpha_expr`] (same post-pass, timeline-absolute clock). Returns `None`
+/// (meaning "no remap", the raster's own unscaled pixels) for 0 keyframes, or when every
+/// keyframe clamps to unity scale.
+pub fn text_scale_sample_exprs(
+    keyframes: &[Keyframe<f32>],
+    anchor_x_px: f32,
+    anchor_y_px: f32,
+    start_secs: f64,
+    duration_secs: f64,
+) -> Option<(String, String)> {
+    if keyframes.is_empty() {
+        return None;
+    }
+    if keyframes.len() == 1 {
+        let s = clamp_scale(keyframes[0].value);
+        return if (s - 1.0).abs() <= 1e-4 {
+            None
+        } else {
+            Some((
+                format!("({anchor_x_px:.4}+(X-({anchor_x_px:.4}))/({s:.7}))"),
+                format!("({anchor_y_px:.4}+(Y-({anchor_y_px:.4}))/({s:.7}))"),
+            ))
+        };
+    }
+    let (sorted, all_default) = sorted_and_all_default(keyframes, clamp_scale, 1.0);
+    if all_default {
+        return None;
+    }
+    let var = format!("(T-{start_secs:.6})");
+    let factor_expr = piecewise_expr(&sorted, duration_secs, &var, clamp_scale);
+    Some((
+        format!("({anchor_x_px:.4}+(X-({anchor_x_px:.4}))/({factor_expr}))"),
+        format!("({anchor_y_px:.4}+(Y-({anchor_y_px:.4}))/({factor_expr}))"),
+    ))
+}
+
 /// Builds the opacity-keyframe alpha expression (a bare `0.0..=1.0` ramp, *not* yet multiplied
 /// by any incoming `alpha(X,Y)` — the caller composes that, matching `mask_shape`'s existing
 /// alpha-composition convention in `ClipInstance::video_filter_chain`), keyed off `N` like

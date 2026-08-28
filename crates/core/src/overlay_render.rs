@@ -290,6 +290,8 @@ pub fn render_text_clip_rgba(
         opacity_keyframe_expr: String::new(),
         position_keyframe_expr_x: String::new(),
         position_keyframe_expr_y: String::new(),
+        scale_keyframe_expr_x: String::new(),
+        scale_keyframe_expr_y: String::new(),
     };
     let mut buf = render_text_segment_rgba(&base, canvas_width, canvas_height);
 

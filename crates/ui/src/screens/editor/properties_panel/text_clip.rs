@@ -301,6 +301,30 @@ pub(super) fn text_clip_properties(
         }
     }
 
+    // Scale keyframes -- animate the text's overall size around its own baked position anchor
+    // over this clip's own on-timeline duration (see TextClip::scale_keyframes' doc comment).
+    let mut new_scale_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropTextScaleKeyframes.tr(locale),
+        Text::TextScaleKeyframesExportNote.tr(locale),
+        |ui| {
+            new_scale_keyframes = super::keyframe_editors::f32_keyframe_editor(
+                ui,
+                &tc.scale_keyframes,
+                crate::app::SCALE_RANGE,
+                1.0,
+                locale,
+            );
+            new_scale_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_scale_keyframes {
+            tc.scale_keyframes = kfs;
+            changed = true;
+        }
+    }
+
     // Opacity keyframes -- fade the text in/out over its own on-timeline duration (see
     // TextClip::opacity_keyframes' doc comment).
     let mut new_opacity_keyframes = None;

@@ -91,6 +91,14 @@ pub struct TextSegment {
     pub position_keyframe_expr_x: String,
     #[serde(default)]
     pub position_keyframe_expr_y: String,
+    /// Pre-built `geq` inverse-sample coordinate expressions for this clip's `scale_keyframes`
+    /// (`keyframe::text_scale_sample_exprs`), same "built once from the base clip, copied onto
+    /// every derived segment" treatment as `position_keyframe_expr_x`/`_y`. Empty (either one)
+    /// means "no remap" (the raster's own unscaled pixels, same as before this field existed).
+    #[serde(default)]
+    pub scale_keyframe_expr_x: String,
+    #[serde(default)]
+    pub scale_keyframe_expr_y: String,
 }
 
 #[derive(Debug)]
@@ -554,6 +562,8 @@ fn apply_text_overlay_pass(output: &Path, canvas: Canvas, text_segments: &[TextS
             opacity_keyframe_expr: segment.opacity_keyframe_expr.clone(),
             position_keyframe_expr_x: segment.position_keyframe_expr_x.clone(),
             position_keyframe_expr_y: segment.position_keyframe_expr_y.clone(),
+            scale_keyframe_expr_x: segment.scale_keyframe_expr_x.clone(),
+            scale_keyframe_expr_y: segment.scale_keyframe_expr_y.clone(),
         });
     }
 
@@ -689,6 +699,17 @@ fn text_clip_to_segments(
     )
     .unwrap_or_default();
 
+    // The scale remap's own anchor is the same raster-baked position anchor above, in canvas
+    // pixels -- see TextClip::scale_keyframes' doc comment.
+    let (scale_keyframe_expr_x, scale_keyframe_expr_y) = keyframe::text_scale_sample_exprs(
+        &clip.scale_keyframes,
+        base_pos_x * canvas_width as f32,
+        base_pos_y * canvas_height as f32,
+        clip.start_secs,
+        clip.duration_secs,
+    )
+    .unwrap_or_default();
+
     let base = TextSegment {
         start_secs: clip.start_secs,
         duration_secs: clip.duration_secs,
@@ -706,6 +727,8 @@ fn text_clip_to_segments(
         opacity_keyframe_expr: opacity_keyframe_expr.clone(),
         position_keyframe_expr_x: position_keyframe_expr_x.clone(),
         position_keyframe_expr_y: position_keyframe_expr_y.clone(),
+        scale_keyframe_expr_x: scale_keyframe_expr_x.clone(),
+        scale_keyframe_expr_y: scale_keyframe_expr_y.clone(),
     };
     if !clip.highlight_enabled || clip.words.is_empty() || canvas_width == 0 {
         return vec![base];
@@ -740,6 +763,8 @@ fn text_clip_to_segments(
             opacity_keyframe_expr: opacity_keyframe_expr.clone(),
             position_keyframe_expr_x: position_keyframe_expr_x.clone(),
             position_keyframe_expr_y: position_keyframe_expr_y.clone(),
+            scale_keyframe_expr_x: scale_keyframe_expr_x.clone(),
+            scale_keyframe_expr_y: scale_keyframe_expr_y.clone(),
         });
     }
     segments

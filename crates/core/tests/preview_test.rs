@@ -488,6 +488,7 @@ fn open_composited_with_text_and_shape_overlays_composites_without_error() {
         opacity_keyframes: vec![],
         pos_x_keyframes: vec![],
         pos_y_keyframes: vec![],
+        scale_keyframes: vec![],
     };
     let shape_clip = avcore::timeline::ShapeClip {
         id: 2,
@@ -552,6 +553,7 @@ fn composited_text_highlight_replaces_its_buffer_during_playback() {
         opacity_keyframes: vec![],
         pos_x_keyframes: vec![],
         pos_y_keyframes: vec![],
+        scale_keyframes: vec![],
     };
 
     let mut preview =
@@ -626,6 +628,7 @@ fn refresh_text_overlay_redraws_a_content_only_edit_without_reopening_the_pipeli
         opacity_keyframes: vec![],
         pos_x_keyframes: vec![],
         pos_y_keyframes: vec![],
+        scale_keyframes: vec![],
     };
 
     let mut preview =
