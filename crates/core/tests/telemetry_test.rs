@@ -15,7 +15,7 @@
 
 use std::fs;
 
-use avcore::{record_event, ResourceSampler, TelemetryEvent};
+use avcore::{record_event, GpuSampler, ResourceSampler, TelemetryEvent};
 
 #[test]
 fn record_event_appends_one_json_line_per_call() {
@@ -173,6 +173,54 @@ fn resource_sampler_event_serializes_as_resource_usage() {
     assert!(contents.contains("\"cpu_percent\":12.5"));
     assert!(contents.contains("\"ram_used_mb\":2048"));
     assert!(contents.contains("\"ram_total_mb\":16384"));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn gpu_sampler_returns_none_or_a_consistent_sample() {
+    // This can't assert a specific outcome -- the real one depends on whether the machine
+    // running the test has a working NVIDIA driver, which a dev machine may or may not (this
+    // sandbox's own CI/dev container does not, confirmed via a throwaway scratch crate: no
+    // panic, no build-time failure, just Nvml::init() returning Err here). Either branch is a
+    // real, meaningful assertion about GpuSampler's own no-panic, no-nonsense-values contract.
+    match GpuSampler::new() {
+        None => {}
+        Some(sampler) => {
+            if let Some(TelemetryEvent::GpuUsage {
+                gpu_percent,
+                vram_used_mb,
+                vram_total_mb,
+            }) = sampler.sample()
+            {
+                assert!(gpu_percent <= 100);
+                assert!(vram_used_mb <= vram_total_mb);
+            }
+        }
+    }
+}
+
+#[test]
+fn gpu_usage_event_serializes_correctly() {
+    let dir = std::env::temp_dir().join("oca_telemetry_test_gpu_usage");
+    let _ = fs::remove_dir_all(&dir);
+    let path = dir.join("telemetry.jsonl");
+
+    record_event(
+        &path,
+        &TelemetryEvent::GpuUsage {
+            gpu_percent: 42,
+            vram_used_mb: 2048,
+            vram_total_mb: 8192,
+        },
+    )
+    .unwrap();
+
+    let contents = fs::read_to_string(&path).unwrap();
+    assert!(contents.contains("\"event\":\"gpu_usage\""));
+    assert!(contents.contains("\"gpu_percent\":42"));
+    assert!(contents.contains("\"vram_used_mb\":2048"));
+    assert!(contents.contains("\"vram_total_mb\":8192"));
 
     let _ = fs::remove_dir_all(&dir);
 }
