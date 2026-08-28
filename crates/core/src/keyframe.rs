@@ -633,6 +633,59 @@ pub fn text_scale_sample_exprs(
     ))
 }
 
+/// Builds the `geq` inverse-sample coordinate expressions for a `TextClip`'s `rotation_keyframes`
+/// — same "`(X,Y)` a `geq` stage should read the raster's own pixels from" contract as
+/// [`text_scale_sample_exprs`], around the same raster-baked position anchor, so a keyframed
+/// rotation composes with position/scale independently (no interaction term needed, same reason
+/// scale and position compose independently — the geq remap never changes the raster's own
+/// canvas-sized frame). Angle is clockwise degrees, same convention
+/// [`crate::timeline::ShapeClip::rotation_deg`]/`shape_render`'s own rotation math uses; the
+/// inverse-rotation sample point (output pixel `(X,Y)` rotated by `-angle` around the anchor) is
+/// `shape_render::build_shape_filter_desc`'s `rx`/`ry` local-frame math, just re-added back onto
+/// the anchor instead of compared against half-extents — FFmpeg's expression evaluator natively
+/// provides `PI`/`sin()`/`cos()` (confirmed against `shape_render`'s own doc comment, not
+/// assumed), `T`-keyed like [`text_scale_sample_exprs`] (same post-pass, timeline-absolute
+/// clock). Returns `None` (meaning "no remap") for 0 keyframes, or when every keyframe clamps to
+/// 0 degrees.
+pub fn text_rotation_sample_exprs(
+    keyframes: &[Keyframe<f32>],
+    anchor_x_px: f32,
+    anchor_y_px: f32,
+    start_secs: f64,
+    duration_secs: f64,
+) -> Option<(String, String)> {
+    if keyframes.is_empty() {
+        return None;
+    }
+    let to_radians = |deg: f32| deg.to_radians();
+    let build = |angle_rad_expr: String| {
+        let sin_expr = format!("sin({angle_rad_expr})");
+        let cos_expr = format!("cos({angle_rad_expr})");
+        let sx = format!(
+            "({anchor_x_px:.4}+(X-({anchor_x_px:.4}))*{cos_expr}+(Y-({anchor_y_px:.4}))*{sin_expr})"
+        );
+        let sy = format!(
+            "({anchor_y_px:.4}-(X-({anchor_x_px:.4}))*{sin_expr}+(Y-({anchor_y_px:.4}))*{cos_expr})"
+        );
+        (sx, sy)
+    };
+    if keyframes.len() == 1 {
+        let rad = to_radians(keyframes[0].value);
+        return if rad.abs() <= 1e-4 {
+            None
+        } else {
+            Some(build(format!("{rad:.7}")))
+        };
+    }
+    let (sorted, all_default) = sorted_and_all_default(keyframes, to_radians, 0.0);
+    if all_default {
+        return None;
+    }
+    let var = format!("(T-{start_secs:.6})");
+    let angle_expr = piecewise_expr(&sorted, duration_secs, &var, to_radians);
+    Some(build(format!("({angle_expr})")))
+}
+
 /// Builds the opacity-keyframe alpha expression (a bare `0.0..=1.0` ramp, *not* yet multiplied
 /// by any incoming `alpha(X,Y)` — the caller composes that, matching `mask_shape`'s existing
 /// alpha-composition convention in `ClipInstance::video_filter_chain`), keyed off `N` like
