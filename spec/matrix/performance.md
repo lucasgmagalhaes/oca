@@ -12,7 +12,9 @@ yet applied here — see the gaps below) live in `architecture/performance-and-c
 - [x] Hardware-accelerated preview decode — see `matrix/preview-pipeline.md`.
 - [x] Release build: `opt-level=3`, LTO, symbol stripping.
 - [x] Runtime telemetry — import/export duration, preview frame time, CPU/RAM sampling
-      (`sysinfo`-backed, 30s interval, own background thread), JSON-lines local file with
+      (`sysinfo`-backed, 30s interval, own background thread), GPU utilization/VRAM sampling
+      (NVIDIA-only, `nvml-wrapper`-backed, own background thread, gracefully absent on a
+      non-NVIDIA/no-driver machine — see "Known gaps" below), JSON-lines local file with
       size-based rotation (10 MiB), on-device only, toggleable in Preferences.
 - [x] Shared `avcore::FrameSampler` primitive (`architecture/performance-and-caching.md` §5) —
       replaces four independent open/seek/poll-for-a-decoded-frame loops (`ui`'s auto-reframe,
@@ -20,8 +22,18 @@ yet applied here — see the gaps below) live in `architecture/performance-and-c
 
 ## Known gaps
 
-- [ ] GPU usage telemetry — `sysinfo` has no cross-platform GPU reader; a vendor-specific one
-      (NVML/etc.) is hardware-dependent, same "hard wall" class as the GPU encoder ladder.
+- [x] GPU usage telemetry — `sysinfo` has no cross-platform GPU reader, so this went
+      vendor-specific: `avcore::GpuSampler` via `nvml-wrapper` (the NVIDIA Management Library).
+      `Nvml::init()` dynamically loads `libnvidia-ml.so`/`nvml.dll` at *runtime* (confirmed in a
+      throwaway scratch crate: builds and runs cleanly with no NVIDIA GPU/driver present at all,
+      same as this sandbox's own dev machine — `Nvml::init()` just returns `Err`, no panic, no
+      build-time requirement), so `GpuSampler::new()` returning `None` there is the expected,
+      tested outcome, not an unverified path. AMD/Intel GPUs stay out of scope — same
+      single-vendor scope decision the GPU encoder ladder already made. **Not verified**: an
+      actual non-`None` sample against a real NVIDIA GPU (this sandbox has none) — the
+      `GpuSampler::new`/`sample` no-panic contracts and the `TelemetryEvent::GpuUsage`
+      serialization shape are the parts confirmed for real, same "implemented, [positive path]
+      unverified in this environment" category the GPU encoder ladder (item 19) already carries.
 - [x] Versioned filter-graph cache (`architecture/performance-and-caching.md` §2) for
       `resolve_timeline_segments_multi`/`resolve_audio_segments`. **Confirmed** (2026-08-27):
       the only per-frame caller was `screens::queue::show` — the Fila (export queue) screen's

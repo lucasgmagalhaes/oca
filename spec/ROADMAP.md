@@ -319,8 +319,14 @@ not by default priority.
 
 19. `[ ]` GPU encode real-hardware verification (NVENC/Quick Sync/AMF/VAAPI) —
     `matrix/engine.md`. Code path exists, never run against real hardware.
-20. `[ ]` GPU usage telemetry — `matrix/performance.md`. No cross-platform reader exists;
-    needs a vendor-specific one (NVML/etc.).
+20. `[x]` GPU usage telemetry — `matrix/performance.md`. No cross-platform reader exists, so
+    this went vendor-specific: `avcore::GpuSampler` via `nvml-wrapper` (NVML), which dynamically
+    loads `libnvidia-ml.so`/`nvml.dll` at runtime rather than link-time linking against it — a
+    machine with no NVIDIA GPU/driver at all (confirmed against this sandbox's own dev machine)
+    just gets `None` back from `GpuSampler::new()`, never a build-time requirement. AMD/Intel
+    stay out of scope, same single-vendor call the GPU encoder ladder (item 19) already made.
+    Positive-path (a real non-`None` sample against actual NVIDIA hardware) stays unverified in
+    this sandbox — same category as item 19's own hardware-verification gap.
 21. `[~]` Preview support for vignette/glitch/deflicker/3D-LUT/stabilization —
     `matrix/effects-and-color.md`. Confirmed no matching GStreamer element on the dev machine for
     any of the five; a custom-coded element was never attempted (no way to visually verify a
