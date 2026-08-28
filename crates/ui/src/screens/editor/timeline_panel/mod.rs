@@ -42,8 +42,8 @@ const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
 ];
 
 use draw::{
-    color_filter_tint, draw_filmstrip, draw_frozen_poster, draw_keyframe_markers, draw_playhead,
-    draw_waveform, shape_kind_glyph, ThumbnailDrawWork,
+    color_filter_tint, draw_filmstrip, draw_frozen_poster, draw_keyframe_markers,
+    draw_marker_ticks, draw_playhead, draw_waveform, shape_kind_glyph, ThumbnailDrawWork,
 };
 use snap::{snap_move_start, snap_to_nearest, waveform_snap_points_for_clip, ClipDrag};
 
@@ -104,11 +104,22 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             .flat_map(|t| &t.clips)
             .map(|c| (c.id, c.start_secs, c.start_secs + c.duration_secs()))
             .collect();
+        // Markers are magnetic-snap targets too (`spec/architecture/competitive-feature-plan.md`
+        // quick wins — P0 item 2's own doc comment flagged this as "revisit when [markers]
+        // land," which they since have, via P2 item 9).
+        let marker_secs: Vec<f64> = app
+            .active_project()
+            .timeline()
+            .markers
+            .iter()
+            .map(|m| m.position_secs)
+            .collect();
         let snap_targets_excluding = |exclude_id: u64| -> Vec<f64> {
             clip_edges
                 .iter()
                 .filter(|(id, _, _)| *id != exclude_id)
                 .flat_map(|(_, start, end)| [*start, *end])
+                .chain(marker_secs.iter().copied())
                 .collect()
         };
 
@@ -157,6 +168,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 let all_edges: Vec<f64> = clip_edges
                     .iter()
                     .flat_map(|(_, start, end)| [*start, *end])
+                    .chain(marker_secs.iter().copied())
                     .collect();
                 let secs = if snap_enabled {
                     snap_to_nearest(secs, &all_edges, px_per_sec)
@@ -164,6 +176,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     secs
                 };
                 app.active_project_mut().timeline_mut().playhead_secs = secs;
+            }
+            let markers = app.active_project().timeline().markers.clone();
+            if let Some(seek_secs) = draw_marker_ticks(ui, rect, &markers, px_per_sec) {
+                app.active_project_mut().timeline_mut().playhead_secs = seek_secs;
             }
             draw_playhead(
                 ui,
