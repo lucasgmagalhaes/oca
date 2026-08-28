@@ -116,6 +116,66 @@ If any gate fails, write a short ADR comparing direct HarfBuzz bindings, `rustyb
 bidi/layout/rasterization crates, and the candidate stack. Do not silently retain the current
 renderer for only some scripts while claiming TEXT-01 complete.
 
+**Spike result (2026-08-28): all 8 gates passed.** Run as an isolated throwaway crate (not
+integrated into `core`/`ui` — that's TEXT-01A, still open), `cosmic-text = { version = "0.19",
+default-features = false, features = ["std", "swash"] }` against a `fontdb::Database` built from
+`FontSystem::new_with_locale_and_db` (never `FontSystem::new()`), loaded only with the six
+already-bundled families plus one real fetched variable font (Inter) and the six FONT-01C Noto
+international families (Arabic, Hebrew, Devanagari, Bengali, Tamil, Thai), all fetched from the
+same pinned `google/fonts` revision `built-in-font-catalog.md` already uses
+(`ade3d1533e06b2b1462ffcde8e08b129627ca360`), for spike verification only — not vendored into the
+repo (that stays FONT-01B's own gated process).
+
+1. **Bundled-only loading**: confirmed by reading `font/fallback/unix.rs` (and its macOS/Windows/
+   other siblings) directly — `PlatformFallback` is a compile-time list of family *names* tried
+   against whatever `fontdb::Database` was supplied, never an OS font-directory scan; an empty/
+   custom db with no system-font files loaded means those names simply never resolve. Verified
+   empirically too: `font_system.db().faces().count()` matched exactly the 9 files loaded, no
+   more.
+2. **Arabic, Hebrew, Devanagari, Bengali, Tamil, Thai shaping**: a mixed Latin+digit+Arabic string
+   produced real per-character UAX #9 bidi levels (`{0, 1}` within one line, not a single
+   paragraph-wide flag) with the RTL-level glyphs' cluster ranges in correct right-to-left visual
+   order (descending logical byte offsets). All six Noto families shaped their sample word with
+   zero `.notdef` (missing-glyph) hits; Devanagari's conjunct sample (`नमस्ते`, `स्त` conjunct) and
+   Tamil's sample both produced fewer glyphs than input characters, confirming real reordering/
+   conjunct formation rather than a naive one-glyph-per-codepoint pass.
+3. **`fi`/`fl` ligatures**: `"difficult waffle"` in Lato shaped to 12 glyphs from 16 characters,
+   with two explicit multi-character clusters (`"ffi"`, `"ffl"`) each mapping to one glyph ID —
+   real ligature formation with a stable, inspectable cluster range.
+4. **Variable weights 400 vs 700**: rasterizing the real fetched `Inter[opsz,wght].ttf` at both
+   weights via `SwashCache` produced different `Placement` bounds and different pixel bytes —
+   proof the `wght` axis is actually applied at raster time (`swash.rs`'s `normalized_coords`
+   call), not just accepted and ignored.
+5. **RGBA output**: `SwashCache::with_pixels` painted real non-zero pixels into a plain
+   `Vec<u8>` RGBA buffer sized like `overlay_render.rs`'s existing full-canvas overlay — no
+   adapter needed beyond iterating callback pixels into oca's own buffer layout.
+6. **Wrap without splitting a cluster**: a narrow-width line containing `"cafe" + COMBINING ACUTE
+   ACCENT` (two scalars, one grapheme) wrapped correctly with the base+combining pair staying in
+   the same line segment.
+7. **Performance**: 200 shape passes of a realistic 73-character pt-BR caption averaged ~37µs/pass
+   in a release build on this sandbox's CPU — well within a bounded-worker, non-blocking budget.
+8. **Toolchain/license/package**: MIT OR Apache-2.0, `rust-version = "1.89"` (this repo's pinned
+   `1.98.0` satisfies it), and with `default-features = false, features = ["std", "swash"]` the
+   full dependency tree is pure Rust — `harfrust`, `skrifa`/`read-fonts`, `swash`, `fontdb`,
+   `unicode-bidi`, `unicode-linebreak`, `unicode-script` — no C toolchain, no linked system
+   library (the default `fontconfig` feature, which pulls in a pure-Rust config-file *parser*, not
+   a linked `libfontconfig.so`, is disabled entirely here since oca's own fallback policy replaces
+   it). Windows/macOS target support is documented by upstream but not independently verified in
+   this Linux-only sandbox — the same category of positive-path gap this codebase's own GPU/
+   hardware-dependent items already carry.
+
+One real, minor nuance found, not a gate failure: `NotoSansHebrew[wdth,wght].ttf` registered into
+`fontdb` at `weight=100` rather than 400 for its default named instance — a variable-font
+weight-registration detail TEXT-01C's own font-loading code will need to handle explicitly
+(request the axis value oca wants, don't trust the file's own default named instance), not
+something discovered by reading the doc alone.
+
+**Not yet done**: none of this is wired into `core`/`ui` — `text_metrics.rs` still sums per-
+character advances via `fontdue`, `overlay_render.rs` still asks `fontdue::Layout` for placement.
+The spike proves the dependency choice is sound; TEXT-01A (adapter, `TextLayoutEngine`, moving
+measurement/wrapping/background-geometry/raster-placement onto shaped output, golden tests for
+the six existing families) is the next real slice and hasn't started.
+
 ## Shaping pipeline
 
 The pipeline operates on logical UTF-8 and produces positioned glyphs; it never reorders the stored
@@ -358,8 +418,9 @@ but glyph selection and placement come exclusively from `ShapedText`.
 
 ## Definition of done
 
-- [ ] The candidate dependency spike passes every acceptance gate and its exact dependency/license
-      tree is reviewed.
+- [x] The candidate dependency spike passes every acceptance gate and its exact dependency/license
+      tree is reviewed. (2026-08-28, see "Spike result" above — `cosmic-text` 0.19,
+      `default-features = false, features = ["std", "swash"]`, MIT/Apache-2.0, pure Rust.)
 - [ ] Preview/export no longer use per-character width summation or unshaped `fontdue::Layout`.
 - [ ] Arabic, Hebrew, Devanagari, Bengali, Tamil, Thai, mixed bidi, and Latin ligature corpora pass.
 - [ ] Timed highlights operate on whole shaped clusters without re-shaping isolated words.

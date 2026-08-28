@@ -874,12 +874,46 @@ an item earlier:
   fallback for an unrecognized/empty name, 4/4 passing. `cargo check --workspace --all-targets`
   (including this new persistence test) and `cargo clippy -p core --lib --no-deps` both stayed
   clean via the same temporary shim.
-- `[ ]` **TEXT-01: complex text shaping and bidirectional layout.** Replace per-character
+- `[~]` **TEXT-01: complex text shaping and bidirectional layout.** Replace per-character
   `fontdue` layout with one bundled-only shaping/layout/rasterization engine covering OpenType
   ligatures/contextual forms, UAX #9 bidi, UAX #14 wrapping, cluster-safe timed highlights,
   variable weights, and deterministic Arabic/Hebrew/Indic/Thai fallback. May proceed alongside
   FONT-01A/B and is required before international families are exposed. Read
   [architecture/complex-text-shaping.md](architecture/complex-text-shaping.md).
+
+  **Acceptance spike passed (2026-08-28)**, confirming the user-picked `cosmic-text` candidate
+  before any production code changes, per the doc's own "before migrating production rendering, a
+  small isolated spike must prove..." gate. Run as a throwaway crate (not committed — nothing in
+  `core`/`ui` changed by this), `cosmic-text = { version = "0.19", default-features = false,
+  features = ["std", "swash"] }` against a `fontdb::Database` built via `new_with_locale_and_db`
+  (never `FontSystem::new()`, which the doc explicitly forbids for loading installed system
+  fonts) and loaded only with oca's own six bundled families plus one real fetched Inter (variable
+  weight) and the six Noto international families FONT-01C will eventually vendor — all fetched
+  from the same pinned `google/fonts` revision `built-in-font-catalog.md` already uses, for spike
+  verification only. All 8 of the doc's acceptance gates passed with real evidence, not just
+  reading vendor docs: bundled-only loading (confirmed both by reading `PlatformFallback`'s source
+  — a compile-time name list tried against whatever db is supplied, never an OS scan — and by
+  counting exactly the loaded faces, no more); real per-character UAX #9 bidi levels and correct
+  RTL visual glyph ordering for mixed Arabic/Latin/digit text; zero `.notdef` hits shaping Hebrew/
+  Devanagari (with a real conjunct)/Bengali/Tamil/Thai sample words; `fi`/`fl` ligature formation
+  in Lato (16 chars -> 12 glyphs, stable multi-char cluster ranges); different rasterized pixel
+  bytes at `wght` 400 vs 700 from one real variable Inter file; real non-zero pixels painted into
+  a plain RGBA buffer shaped like `overlay_render.rs`'s existing overlay; a base+combining-accent
+  grapheme surviving a narrow-width wrap intact; ~37µs/shape-pass for a realistic caption in
+  release mode; and a fully pure-Rust dependency tree (harfrust/skrifa/swash/fontdb/unicode-bidi/
+  unicode-linebreak, MIT/Apache-2.0, `rust-version 1.89` under this repo's pinned `1.98.0`) once
+  the default `fontconfig` feature is disabled. One real nuance recorded for TEXT-01C: a variable
+  Noto font can register into `fontdb` at a non-400 default weight, so oca's own loader must
+  request the axis value explicitly rather than trust the file's default named instance. See
+  `architecture/complex-text-shaping.md`'s own "Spike result" note for the full gate-by-gate
+  writeup.
+
+  **Not yet done**: TEXT-01A itself (the `TextLayoutEngine` adapter, moving measurement/wrapping/
+  background-geometry/raster-placement in `core`/`ui` onto shaped output, golden tests for the six
+  existing families) — the spike only proves the dependency choice is sound, it doesn't touch
+  `text_metrics.rs`/`overlay_render.rs` at all. TEXT-01B (bidi/highlights wiring), TEXT-01C
+  (international fallback families, gated on FONT-01B actually vendoring those fonts into the
+  repo), and TEXT-01D (performance/caching/optional packs) are all still open.
 - `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:
