@@ -1,0 +1,22 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 90%
+        threshold: 0%
+    patch:
+      default:
+        target: 90%
+        threshold: 0%
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
+
+ignore:
+  - "crates/avbridge/csrc/**"
+  - "crates/**/tests/**"
+  - "crates/ui/src/**/*_test.rs"
+  - "e2e/**"
+  - "target/**"
