@@ -21,6 +21,15 @@
 //! Font shaping is deliberately simple: per-character advance widths summed left to right, no
 //! kerning, no ligatures, no bidi/complex script shaping. Fine for the short Latin-script
 //! captions this feature targets; wrong for e.g. Arabic or tightly-kerned display faces.
+//!
+//! **Now unused for rendering**: TEXT-01A's `cosmic-text` swap
+//! (`spec/architecture/complex-text-shaping.md`) moved [`crate::overlay_render`]'s actual glyph
+//! placement/rasterization onto [`crate::text_layout`], so [`text_width_px`]/
+//! [`word_x_offsets_px`] (and, transitively, [`bundled_font`]) currently have no caller outside
+//! this module's own tests. [`word_byte_ranges`] is unaffected — it's pure string search, used by
+//! both `overlay_render.rs` and `render.rs` regardless of shaping engine. Left in place rather
+//! than deleted: removing the whole per-character-advance measurement surface is its own,
+//! separate cleanup, not a side effect of the rendering swap.
 
 use std::sync::OnceLock;
 
