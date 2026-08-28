@@ -530,8 +530,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/preview.rs": {
-    "mtime": 1787917800.032503,
-    "ast_hash": "8ff0da2a5131b518eeb54ed48de00da3",
+    "mtime": 1787921069.4105358,
+    "ast_hash": "882a6f7772b7cf91ee341ce17aa6b5ba",
     "semantic_hash": ""
   },
   "crates/ui/src/app/timeline_ops.rs": {
@@ -985,8 +985,8 @@
     "semantic_hash": ""
   },
   "spec/ROADMAP.md": {
-    "mtime": 1787920430.589547,
-    "ast_hash": "ef86118714e004609db95336e805d9db",
+    "mtime": 1787921207.4708283,
+    "ast_hash": "e5e12203727d82cf8f02b668d8af1cf5",
     "semantic_hash": ""
   },
   "spec/RULES.md": {
