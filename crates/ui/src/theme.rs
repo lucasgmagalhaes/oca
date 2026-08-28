@@ -32,6 +32,24 @@ pub const ACCENT_2: Color32 = Color32::from_rgb(0x4f, 0x7c, 0xe0);
 pub const ERROR: Color32 = Color32::from_rgb(0xe0, 0x57, 0x4f);
 pub const ERROR_TINT: Color32 = Color32::from_rgba_premultiplied(0x2a, 0x11, 0x10, 0x80);
 
+/// Tight inline gaps — glyph-to-label, dense chip rows.
+pub const SPACE_XS: f32 = 4.0;
+/// The default gap between adjacent controls — matches `apply()`'s global `item_spacing`.
+pub const SPACE_SM: f32 = 8.0;
+/// Section-to-section gaps within a panel.
+pub const SPACE_MD: f32 = 12.0;
+/// Page-level top/bottom padding.
+pub const SPACE_LG: f32 = 20.0;
+
+/// Dense inline surfaces: timeline clips at close zoom, small badges.
+pub const RADIUS_SM: u8 = 4;
+/// The default for card-like surfaces: panels, buttons, modals, media/project cards. Matches
+/// the global widget default `apply()` already sets.
+pub const RADIUS_MD: u8 = 8;
+/// Full pill shape — status tags, circular avatars. Semantically distinct from `RADIUS_MD`, not
+/// a fourth arbitrary radius.
+pub const RADIUS_PILL: u8 = 200;
+
 /// Applies the dark/teal palette used throughout the HTML mockups to the egui context.
 pub fn apply(ctx: &egui::Context) {
     ctx.set_theme(egui::ThemePreference::Dark);
