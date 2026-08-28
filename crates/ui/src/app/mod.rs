@@ -62,6 +62,7 @@ mod timeline_track_ops;
 mod timeline_trim_ops;
 mod transcribe;
 mod transcript_panel;
+mod transcript_proposals;
 mod update_check;
 mod youtube_download;
 
@@ -943,6 +944,14 @@ pub struct App {
     /// while the silence-gap review modal is open, `None` otherwise. Nothing here is applied to
     /// the timeline until `App::apply_silence_review`.
     pub silence_review: Option<silence_review::SilenceReview>,
+    /// Staged result of `App::begin_transcript_proposals` (CF-01 slice 4/5) — `Some` while the
+    /// speech-edit-review modal is open, `None` otherwise. Nothing here is applied to the
+    /// timeline until `App::apply_transcript_proposals`, and even then only the accepted
+    /// proposals are.
+    pub transcript_review: Option<transcript_proposals::TranscriptReview>,
+    /// Whether the Transcript panel's search box also matches the *whole project media library*
+    /// (CF-01 slice 3) rather than only the previewed clip's own transcript.
+    pub transcript_search_project: bool,
     /// When `Some(action)`, the prefs modal is waiting for the next key press to set that
     /// action's binding. Pressing Escape clears it without changing the binding.
     pub binding_capture: Option<BindableAction>,
@@ -1420,6 +1429,8 @@ impl App {
             transcript_search: String::new(),
             transcript_panel_state: TranscriptPanelState::default(),
             silence_review: None,
+            transcript_review: None,
+            transcript_search_project: false,
             binding_capture: None,
             update_check_tx,
             update_check_rx,
@@ -2147,6 +2158,7 @@ impl eframe::App for App {
         self.show_timeline_index_panel(ui.ctx());
         self.show_transcript_panel(ui.ctx());
         self.show_silence_review_modal(ui.ctx());
+        self.show_transcript_proposals_modal(ui.ctx());
         self.show_smart_bin_modal(ui.ctx());
         self.show_toasts(ui.ctx());
     }

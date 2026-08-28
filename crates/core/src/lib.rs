@@ -60,6 +60,8 @@ pub mod timeline;
 pub mod timeline_window;
 pub mod transcribe;
 pub mod transcript;
+pub mod transcript_proposals;
+pub mod transcript_search;
 pub mod undo;
 pub mod update_check;
 pub mod waveform;
@@ -137,6 +139,12 @@ pub use transcript::{
     save_transcript_document, transcript_path, TranscriptDocument, TranscriptStorageError,
     TranscriptValidationError, TranscriptWord, TRANSCRIPT_SCHEMA_VERSION,
 };
+pub use transcript_proposals::{
+    detect_proposals, filler_word_set, map_source_range_to_timeline, merge_source_ranges,
+    SourceRange, TranscriptEditKind, TranscriptProposal, DEAD_AIR_THRESHOLD_SECS, MAX_REPEAT_NGRAM,
+    REPEAT_WINDOW_SECS,
+};
+pub use transcript_search::{search_transcripts_in_project, ProjectTranscriptHit};
 pub use update_check::{
     apply_update, auto_update_supported, expected_update_asset_name, fetch_latest_release,
     is_newer, package_supports_atomic_update, release_supports_auto_update, restart_application,
