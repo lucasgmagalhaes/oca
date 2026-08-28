@@ -864,7 +864,14 @@ impl App {
                             if label_resp.changed() {
                                 label_edit = Some((marker.id, label));
                             }
-                            if ui.small_button("🗑").clicked() {
+                            if components::icon_button(
+                                ui,
+                                "🗑",
+                                Text::RemoveMarker.tr(locale),
+                                components::IconButtonOpts::default(),
+                            )
+                            .clicked()
+                            {
                                 remove_id = Some(marker.id);
                             }
                         });

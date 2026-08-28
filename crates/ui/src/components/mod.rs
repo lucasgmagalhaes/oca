@@ -21,12 +21,14 @@
 
 mod combo;
 mod frame;
+mod icon_button;
 mod property;
 mod section;
 mod tag;
 
 pub use combo::enum_combo;
 pub use frame::card_frame;
+pub use icon_button::{icon_button, IconButtonOpts};
 pub use property::{property_block, property_row, property_section, property_toggle};
 pub use section::{modal_title, page_title, section_label};
-pub use tag::{tag_accent, tag_error, tag_outline};
+pub use tag::{tag_accent, tag_error, tag_outline, tag_warning};
