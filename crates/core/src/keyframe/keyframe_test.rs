@@ -635,6 +635,89 @@ fn text_scale_sample_exprs_offsets_capital_t_by_start_secs() {
 }
 
 #[test]
+fn text_rotation_sample_exprs_is_none_for_no_keyframes() {
+    assert_eq!(text_rotation_sample_exprs(&[], 100.0, 50.0, 0.0, 3.0), None);
+}
+
+#[test]
+fn text_rotation_sample_exprs_is_none_for_a_single_zero_degree_keyframe() {
+    let keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: 0.0,
+    }];
+    assert_eq!(
+        text_rotation_sample_exprs(&keyframes, 100.0, 50.0, 0.0, 3.0),
+        None
+    );
+}
+
+#[test]
+fn text_rotation_sample_exprs_builds_a_static_remap_for_a_single_non_zero_keyframe() {
+    let keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: 90.0,
+    }];
+    let (x, y) = text_rotation_sample_exprs(&keyframes, 100.0, 50.0, 0.0, 3.0).unwrap();
+    assert!(x.contains("100.0000"));
+    assert!(x.contains("sin("));
+    assert!(x.contains("cos("));
+    assert!(y.contains("50.0000"));
+    assert!(y.contains("sin("));
+    assert!(y.contains("cos("));
+}
+
+#[test]
+fn text_rotation_sample_exprs_is_none_when_every_keyframe_is_zero_degrees() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.0,
+        },
+    ];
+    assert_eq!(
+        text_rotation_sample_exprs(&keyframes, 100.0, 50.0, 0.0, 3.0),
+        None
+    );
+}
+
+#[test]
+fn text_rotation_sample_exprs_builds_a_piecewise_ramp_for_an_animated_angle() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 90.0,
+        },
+    ];
+    let (x, y) = text_rotation_sample_exprs(&keyframes, 100.0, 50.0, 0.0, 2.0).unwrap();
+    assert!(x.starts_with("(100.0000+(X-(100.0000))*cos("));
+    assert!(y.starts_with("(50.0000-(X-(100.0000))*sin("));
+}
+
+#[test]
+fn text_rotation_sample_exprs_offsets_capital_t_by_start_secs() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 90.0,
+        },
+    ];
+    let (x, _y) = text_rotation_sample_exprs(&keyframes, 100.0, 50.0, 5.0, 2.0).unwrap();
+    assert!(x.contains("(T-5.000000)"));
+}
+
+#[test]
 fn opacity_alpha_ramp_expr_is_none_for_no_keyframes() {
     assert_eq!(opacity_alpha_ramp_expr(&[], 30, 1, 5.0), None);
 }
