@@ -27,6 +27,6 @@ mod tag;
 
 pub use combo::enum_combo;
 pub use frame::card_frame;
-pub use property::{property_block, property_section, property_toggle};
+pub use property::{property_block, property_row, property_section, property_toggle};
 pub use section::{modal_title, page_title, section_label};
 pub use tag::{tag_accent, tag_error, tag_outline};
