@@ -19,6 +19,7 @@ mod snap;
 use eframe::egui::{self, RichText};
 
 use crate::app::{App, EditorTool};
+use crate::components;
 use crate::i18n::Text;
 use crate::theme;
 
@@ -237,11 +238,19 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         |ui| {
                             let track_id = track.id;
                             let visible = track.visible;
-                            let eye = if visible { "👁" } else { "—" };
-                            if ui
-                                .small_button(eye)
-                                .on_hover_text(if visible { "Hide track" } else { "Show track" })
-                                .clicked()
+                            let eye = if visible { "👁" } else { "⊘" };
+                            let tooltip = if visible {
+                                Text::TrackHide.tr(locale)
+                            } else {
+                                Text::TrackShow.tr(locale)
+                            };
+                            if components::icon_button(
+                                ui,
+                                eye,
+                                tooltip,
+                                components::IconButtonOpts::default(),
+                            )
+                            .clicked()
                             {
                                 toggle_track_visibility_requests.push(track_id);
                             }

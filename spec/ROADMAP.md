@@ -936,7 +936,12 @@ resolved in favor of consolidating, see items 3 and 5).
     landed: all 4 confirmed bare `small_button("🗑")` delete-action sites (3 in
     `keyframe_editors.rs`, 1 in `modals.rs`'s marker list), each gaining a real tooltip via two
     new `i18n.rs` keys (`RemoveKeyframe`/`RemoveVertex`/`RemoveMarker` — previously icon-only
-    with no accessible name at all). **Remaining, not yet migrated** (per the design review's own
+    with no accessible name at all). Second batch: the timeline track-visibility toggle's
+    ambiguous "👁"→"—" hidden-state fallback fixed (now "👁"/"⊘"), routed through `icon_button()`,
+    and its tooltip — previously hardcoded English, never localized — moved to real
+    `Text::TrackHide`/`TrackShow` i18n keys. Note: the "⊘" glyph's rendering under egui's bundled
+    font set is unverified — no running-instance visual pass was possible in this session.
+    **Remaining, not yet migrated** (per the design review's own
     "small batches, verify visually between each" guidance — this is the largest-surface item in
     the whole consolidation and deliberately not rushed in one pass): toolbar's inline
     `format!("{glyph} {label}")` buttons, `breadcrumb.rs`'s `window_button()` helper (merge once
