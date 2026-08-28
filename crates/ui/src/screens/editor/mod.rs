@@ -360,6 +360,15 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         {
             app.toggle_timeline_index();
         }
+        if ui
+            .selectable_label(
+                app.transcript_panel_open,
+                format!("📝 {}", Text::TranscriptPanelToggle.tr(locale)),
+            )
+            .clicked()
+        {
+            app.toggle_transcript_panel();
+        }
         if ui.button(Text::DetectSilence.tr(locale)).clicked() {
             app.begin_silence_review();
         }
@@ -794,6 +803,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
     // launching the app never pays GStreamer's open cost for an asset the Editor screen hasn't
     // actually been shown for yet.
     app.ensure_preview_loaded();
+    app.ensure_transcript_loaded_for_preview();
     let locale = app.locale;
     ui.vertical(|ui| {
         ui.set_height(height);

@@ -61,6 +61,7 @@ mod timeline_ops;
 mod timeline_track_ops;
 mod timeline_trim_ops;
 mod transcribe;
+mod transcript_panel;
 mod update_check;
 mod youtube_download;
 
@@ -924,6 +925,20 @@ pub struct App {
     /// Live text of the Timeline Index panel's search box — kept on `App` rather than as a
     /// local in the modal-drawing function so it survives being closed and reopened.
     pub marker_search: String,
+    /// Whether the Transcript panel (CF-01 slice 2,
+    /// `spec/architecture/competitive-feature-plan.md`) is open.
+    pub transcript_panel_open: bool,
+    /// Live text of the Transcript panel's search box — same "survives close/reopen" reasoning
+    /// `marker_search` has.
+    pub transcript_search: String,
+    /// The transcript document currently shown in the Transcript panel, lazily loaded (and
+    /// re-loaded whenever the previewed clip's own asset changes) by
+    /// `App::ensure_transcript_loaded_for_preview` — see that method's own doc comment.
+    /// `loaded_asset_id` is `None` before anything has ever been loaded; `document` is `None`
+    /// either before that first load or when the loaded asset genuinely has no transcript yet
+    /// (not the same as "still loading" — this crate has no async load, so there's no such
+    /// state to represent).
+    pub transcript_panel_state: TranscriptPanelState,
     /// Staged result of `App::begin_silence_review` (D1, `ROADMAP.md` P3 item 13) — `Some`
     /// while the silence-gap review modal is open, `None` otherwise. Nothing here is applied to
     /// the timeline until `App::apply_silence_review`.
@@ -941,6 +956,13 @@ pub struct App {
     /// everything needed to queue the export once the user resolves the conflict via
     /// [`App::show_export_conflict_modal`] (Overwrite / Rename / Cancel).
     pub pending_export_conflict: Option<export::PendingExportConflict>,
+}
+
+/// [`App::transcript_panel_state`]'s own fields.
+#[derive(Default)]
+pub(crate) struct TranscriptPanelState {
+    pub(crate) loaded_asset_id: Option<u64>,
+    pub(crate) document: Option<avcore::TranscriptDocument>,
 }
 
 /// Live preview pipeline state, extracted from `App`'s own field list (see
@@ -1394,6 +1416,9 @@ impl App {
             layer_templates_menu_open: false,
             timeline_index_open: false,
             marker_search: String::new(),
+            transcript_panel_open: false,
+            transcript_search: String::new(),
+            transcript_panel_state: TranscriptPanelState::default(),
             silence_review: None,
             binding_capture: None,
             update_check_tx,
@@ -2120,6 +2145,7 @@ impl eframe::App for App {
         self.show_tts_modal(ui.ctx());
         self.show_youtube_download_modal(ui.ctx());
         self.show_timeline_index_panel(ui.ctx());
+        self.show_transcript_panel(ui.ctx());
         self.show_silence_review_modal(ui.ctx());
         self.show_smart_bin_modal(ui.ctx());
         self.show_toasts(ui.ctx());
