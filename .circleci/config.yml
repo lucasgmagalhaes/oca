@@ -1,7 +1,7 @@
 version: 2.1
 
 orbs:
-  codecov: codecov/codecov@4.0.0
+  codecov: codecov/codecov@6.0.0
 
 # FFmpeg release pinning for supply-chain security, mirrored from
 # .github/workflows/ci.yml — update both together when upgrading FFmpeg.
@@ -286,9 +286,16 @@ jobs:
             # execution profiles: those belong only to the current test invocation.
             find target/llvm-cov-target -type f -name '*.profraw' -delete 2>/dev/null || true
             cargo llvm-cov nextest --workspace --no-clean --lcov --output-path lcov.info --profile ci
+            test -s lcov.info
 
       - store_test_results:
           path: target/nextest/ci
+
+      # Keep the generated report available even when Codecov rejects or cannot process an
+      # upload. This makes coverage generation independently verifiable from CircleCI.
+      - store_artifacts:
+          path: lcov.info
+          destination: coverage/lcov.info
 
       - save_cache:
           name: Save Cargo registry
@@ -304,8 +311,13 @@ jobs:
             - target/llvm-cov-target
 
       - codecov/upload:
-          file: lcov.info
+          disable_search: true
+          fail_on_error: true
+          files: lcov.info
+          flags: rust
           token: CODECOV_TOKEN
+          upload_name: rust-coverage
+          verbose: true
 
   # Fast, parallel pass/fail feedback via nextest's native CI partitioning (not coverage —
   # see the comment on build-and-test's "Test with coverage" step for why the two don't mix).
