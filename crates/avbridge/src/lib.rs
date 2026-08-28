@@ -73,6 +73,10 @@ struct RawTextSegment {
     /// NULL or empty means "no offset" — see `TextOverlaySegment::position_keyframe_expr_x`/`_y`.
     position_keyframe_expr_x: *const c_char,
     position_keyframe_expr_y: *const c_char,
+    /// NULL, empty, or either-one-empty means "no remap" — see
+    /// `TextOverlaySegment::scale_keyframe_expr_x`/`_y`.
+    scale_keyframe_expr_x: *const c_char,
+    scale_keyframe_expr_y: *const c_char,
 }
 
 #[repr(C)]
@@ -1419,6 +1423,14 @@ pub struct TextOverlaySegment {
     /// before position keyframes existed.
     pub position_keyframe_expr_x: String,
     pub position_keyframe_expr_y: String,
+    /// Complete `geq`-expression-language fragments (built by
+    /// `avcore::keyframe::text_scale_sample_exprs`) used as the (X,Y) coordinates a geq stage
+    /// samples the raster's own pixels at, remapping it around its own baked position anchor —
+    /// empty (either one) means "no remap", the same pixel-for-pixel raster this overlay always
+    /// had before scale keyframes existed. An inverse-sample zoom, not a literal `scale` filter
+    /// — see [`apply_text_overlays`]'s doc comment for why.
+    pub scale_keyframe_expr_x: String,
+    pub scale_keyframe_expr_y: String,
 }
 
 /// What [`apply_text_overlays`] failed on.
@@ -1448,6 +1460,13 @@ pub enum TextOverlayError {
 ///
 /// A no-op (returns `Ok(())` immediately without calling the C function) when `segments` is
 /// empty — the caller can skip creating `out_path` in that case.
+///
+/// `TextOverlaySegment::scale_keyframe_expr_x`/`_y` drives an inverse-sample geq remap rather
+/// than a literal `scale` filter with `eval=frame`: letting `scale` renegotiate its output
+/// frame size every frame reliably corrupted the heap in a real export elsewhere in this
+/// codebase (`timeline_export.c`'s zoom-transition case, see `CLAUDE.md`) — the geq approach
+/// keeps the output frame size fixed and only changes what each pixel samples, avoiding that
+/// failure mode entirely.
 pub fn apply_text_overlays(
     in_path: &Path,
     out_path: &Path,
@@ -1473,50 +1492,49 @@ pub fn apply_text_overlays(
                 .map_err(TextOverlayError::InvalidPath)?,
         );
     }
-    let opacity_exprs: Vec<CString> = segments
+    // One CString each for opacity/position-x/position-y/scale-x/scale-y per segment, held in
+    // one Vec of tuples (rather than five parallel Vecs zipped together) so building
+    // raw_segments below stays readable as the field count grows.
+    let exprs: Vec<(CString, CString, CString, CString, CString)> = segments
         .iter()
         .map(|seg| {
-            CString::new(seg.opacity_keyframe_expr.as_bytes())
-                .map_err(TextOverlayError::InvalidPath)
-        })
-        .collect::<Result<_, _>>()?;
-    let position_exprs_x: Vec<CString> = segments
-        .iter()
-        .map(|seg| {
-            CString::new(seg.position_keyframe_expr_x.as_bytes())
-                .map_err(TextOverlayError::InvalidPath)
-        })
-        .collect::<Result<_, _>>()?;
-    let position_exprs_y: Vec<CString> = segments
-        .iter()
-        .map(|seg| {
-            CString::new(seg.position_keyframe_expr_y.as_bytes())
-                .map_err(TextOverlayError::InvalidPath)
+            Ok::<_, TextOverlayError>((
+                CString::new(seg.opacity_keyframe_expr.as_bytes())
+                    .map_err(TextOverlayError::InvalidPath)?,
+                CString::new(seg.position_keyframe_expr_x.as_bytes())
+                    .map_err(TextOverlayError::InvalidPath)?,
+                CString::new(seg.position_keyframe_expr_y.as_bytes())
+                    .map_err(TextOverlayError::InvalidPath)?,
+                CString::new(seg.scale_keyframe_expr_x.as_bytes())
+                    .map_err(TextOverlayError::InvalidPath)?,
+                CString::new(seg.scale_keyframe_expr_y.as_bytes())
+                    .map_err(TextOverlayError::InvalidPath)?,
+            ))
         })
         .collect::<Result<_, _>>()?;
 
     let raw_segments: Vec<RawTextSegment> = segments
         .iter()
         .zip(c_paths.iter())
-        .zip(opacity_exprs.iter())
-        .zip(position_exprs_x.iter())
-        .zip(position_exprs_y.iter())
+        .zip(exprs.iter())
         .map(
-            |((((seg, path), opacity_expr), position_expr_x), position_expr_y)| RawTextSegment {
+            |((seg, path), (opacity_expr, pos_x, pos_y, scale_x, scale_y))| RawTextSegment {
                 start_secs: seg.start_secs,
                 duration_secs: seg.duration_secs,
                 overlay_path: path.as_ptr(),
                 opacity_keyframe_expr: opacity_expr.as_ptr(),
-                position_keyframe_expr_x: position_expr_x.as_ptr(),
-                position_keyframe_expr_y: position_expr_y.as_ptr(),
+                position_keyframe_expr_x: pos_x.as_ptr(),
+                position_keyframe_expr_y: pos_y.as_ptr(),
+                scale_keyframe_expr_x: scale_x.as_ptr(),
+                scale_keyframe_expr_y: scale_y.as_ptr(),
             },
         )
         .collect();
 
-    // SAFETY: all pointers (c_in, c_out, raw_segments' path/expr pointers from c_paths/
-    // opacity_exprs/position_exprs_x/position_exprs_y) are valid NUL-terminated C strings held
-    // alive for the full duration of this call. raw_segments is a contiguous
-    // Vec<RawTextSegment> with segment_count entries, never mutated during the call.
+    // SAFETY: all pointers (c_in, c_out, raw_segments' path/expr pointers from c_paths/exprs)
+    // are valid NUL-terminated C strings held alive for the full duration of this call.
+    // raw_segments is a contiguous Vec<RawTextSegment> with segment_count entries, never
+    // mutated during the call.
     let status = unsafe {
         avbridge_apply_text_overlays(
             c_in.as_ptr(),
