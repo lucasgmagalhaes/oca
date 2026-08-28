@@ -120,6 +120,7 @@ fn clip(
         video_filter: video_filter.to_string(),
         frozen: false,
         speed_factor: 1.0,
+        smooth_speed_ramp_end_factor: 0.0,
         position_x_expr: String::new(),
         position_y_expr: String::new(),
         transition_in: 0,
@@ -188,6 +189,46 @@ fn freezes_a_segment_into_a_held_frame_export() {
     let info = probe(&out).unwrap();
     assert_eq!(info.kind, StreamKind::Video);
     assert!(info.duration_secs > 0.3 && info.duration_secs < 1.0);
+
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
+fn smooth_speed_ramp_produces_a_real_export_with_the_predicted_duration() {
+    // A real avfilter_graph_config succeeding on the new setpts=(K/TB)*log(...) expression is
+    // proof the expression syntax is valid against the real linked FFmpeg build, not just that
+    // the C compiles (P4 item 29's "smooth continuous curve" follow-up — see bridge.h's own
+    // doc comment on ClipSegment::smooth_speed_ramp_end_factor for the derivation).
+    let out = std::env::temp_dir().join("avbridge_test_smooth_speed_ramp.mp4");
+    let cancel = AtomicBool::new(false);
+
+    let mut ramped = clip(0.0, 2.0, 0.0, "");
+    ramped.speed_factor = 0.5;
+    ramped.smooth_speed_ramp_end_factor = 2.0;
+    let segments = [ramped];
+    let outcome = encode_timeline_export(
+        &segments,
+        CANVAS,
+        &out,
+        -14.0,
+        GpuEncoderPreference::Auto,
+        &cancel,
+        |_secs| {},
+    )
+    .unwrap();
+    assert_eq!(outcome, EncodeOutcome::Completed);
+
+    // Closed form: (D/(v1-v0)) * ln(v1/v0), D=2.0, v0=0.5, v1=2.0.
+    let expected_secs = (2.0 / (2.0 - 0.5)) * (2.0f64 / 0.5).ln();
+    let info = probe(&out).unwrap();
+    assert_eq!(info.kind, StreamKind::Video);
+    // Loose bound — seek lands on the nearest keyframe, and the encoder's own frame-duration
+    // rounding, same "loose bound" reasoning concatenates_two_segments_... above already uses.
+    assert!(
+        (info.duration_secs - expected_secs).abs() < 1.0,
+        "expected ~{expected_secs}s, got {}s",
+        info.duration_secs
+    );
 
     let _ = std::fs::remove_file(&out);
 }
