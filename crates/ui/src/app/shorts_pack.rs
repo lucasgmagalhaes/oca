@@ -109,7 +109,8 @@ impl App {
                 continue;
             };
             let canvas = avcore::apply_export_aspect_ratio(canvas, ExportAspectRatio::Portrait);
-            let text_segments = avcore::resolve_text_segments(&windowed_sequence, canvas.width);
+            let text_segments =
+                avcore::resolve_text_segments(&windowed_sequence, canvas.width, canvas.height);
             let shape_segments =
                 avcore::resolve_shape_segments(&windowed_sequence, canvas.width, canvas.height);
             let output_path = output_dir.join(format!("{short_name}.mp4"));

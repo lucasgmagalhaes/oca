@@ -154,6 +154,8 @@ impl App {
                 highlight_enabled,
                 highlight_color_rgba: [255, 220, 0, 255],
                 opacity_keyframes: vec![],
+                pos_x_keyframes: vec![],
+                pos_y_keyframes: vec![],
             });
         }
     }

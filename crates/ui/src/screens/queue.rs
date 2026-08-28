@@ -67,8 +67,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             avcore::apply_export_aspect_ratio(canvas, export_settings.aspect_ratio);
                         let active_sequence =
                             &app.active_project().sequences[app.active_project().active_sequence];
-                        let text_segments =
-                            avcore::resolve_text_segments(active_sequence, canvas.width);
+                        let text_segments = avcore::resolve_text_segments(
+                            active_sequence,
+                            canvas.width,
+                            canvas.height,
+                        );
                         let shape_segments = avcore::resolve_shape_segments(
                             active_sequence,
                             canvas.width,
