@@ -784,9 +784,19 @@ an item earlier:
 - `[ ]` **CF-10: direct publishing and review collaboration.** Start with a secure YouTube upload
   flow; keep OAuth credentials in the OS vault and cloud review separate from offline bundles.
 
-Quick wins that may be completed alongside CF-01: marker ruler rendering/snap, stabilization and
-deflicker preview parity, real-hardware GPU encoder validation, and integrating the standalone
-watched-folder utility into the app.
+Quick wins that may be completed alongside CF-01:
+
+- `[x]` **Marker ruler rendering/snap.** Every marker now draws as a small color-coded (by
+  `MarkerKind`) triangle at the top of the timeline ruler (`timeline_panel::draw::
+  draw_marker_ticks`), click-to-seek like the Timeline Index panel's own rows, and is a
+  magnetic-snap target for both the ruler's own playhead drag and every per-clip trim/move drag
+  — closing the gap P0 item 2's own doc comment flagged ("Timeline markers aren't a snap
+  target — no markers feature exists yet... revisit when it lands"), now that P2 item 9 shipped
+  markers. Pure UI wiring reusing already-tested `snap_to_nearest`/`snap_move_start` — no new
+  pure-function surface needed a unit test of its own.
+- `[ ]` Stabilization and deflicker preview parity.
+- `[ ]` Real-hardware GPU encoder validation.
+- `[ ]` Integrating the standalone watched-folder utility into the app.
 
 ## P6 — Explicitly Deferred
 
