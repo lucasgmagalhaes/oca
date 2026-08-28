@@ -227,12 +227,14 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         active_renders: HashMap::new(),
         export_preview_cache: None,
         preview_state: PreviewState::default(),
-        import_tx,
-        import_rx,
-        pending_imports: 0,
-        next_import_token: 0,
-        pending_enrichment: HashMap::new(),
-        auto_add_to_timeline: HashSet::new(),
+        import_state: ImportState {
+            import_tx,
+            import_rx,
+            pending_imports: 0,
+            next_import_token: 0,
+            pending_enrichment: HashMap::new(),
+            auto_add_to_timeline: HashSet::new(),
+        },
         sound_library_tracks: Vec::new(),
         sound_library_tx,
         sound_library_rx,
@@ -4119,10 +4121,11 @@ fn pump_import_queue_adds_the_asset_to_its_target_project_with_a_fresh_id() {
         ],
         Vec::new(),
     );
-    app.pending_imports = 1;
+    app.import_state.pending_imports = 1;
     let mut ready_asset = test_asset(0);
     ready_asset.file_name = "clip.mp4".to_string();
-    app.import_tx
+    app.import_state
+        .import_tx
         .send(ImportEvent::AssetReady {
             project_id: 1,
             import_token: 0,
@@ -4140,7 +4143,7 @@ fn pump_import_queue_adds_the_asset_to_its_target_project_with_a_fresh_id() {
         .find(|a| a.file_name == "clip.mp4")
         .unwrap();
     assert_eq!(imported.id, 6);
-    assert_eq!(app.pending_imports, 0);
+    assert_eq!(app.import_state.pending_imports, 0);
 }
 
 #[test]
@@ -4150,7 +4153,8 @@ fn pump_import_queue_targets_the_project_by_id_not_the_active_index() {
         Vec::new(),
     );
     app.active_project = 1; // Simulates the user switching projects mid-import.
-    app.import_tx
+    app.import_state
+        .import_tx
         .send(ImportEvent::AssetReady {
             project_id: 1,
             import_token: 0,
@@ -4183,7 +4187,8 @@ fn pump_import_queue_applies_enrichment_to_the_asset_it_was_assigned() {
     let mut app = test_app(vec![test_project(1, vec![test_asset(5)])], Vec::new());
     let mut ready_asset = test_asset(0);
     ready_asset.file_name = "clip.mp4".to_string();
-    app.import_tx
+    app.import_state
+        .import_tx
         .send(ImportEvent::AssetReady {
             project_id: 1,
             import_token: 7,
@@ -4197,7 +4202,8 @@ fn pump_import_queue_applies_enrichment_to_the_asset_it_was_assigned() {
         loudness_range_lu: 6.0,
     };
 
-    app.import_tx
+    app.import_state
+        .import_tx
         .send(ImportEvent::Enriched {
             project_id: 1,
             import_token: 7,
@@ -4223,7 +4229,8 @@ fn pump_import_queue_applies_enrichment_to_the_asset_it_was_assigned() {
 #[test]
 fn pump_import_queue_ignores_enrichment_for_an_unknown_token() {
     let mut app = test_app(vec![test_project(1, vec![test_asset(5)])], Vec::new());
-    app.import_tx
+    app.import_state
+        .import_tx
         .send(ImportEvent::Enriched {
             project_id: 1,
             import_token: 999,
@@ -4242,8 +4249,9 @@ fn pump_import_queue_ignores_enrichment_for_an_unknown_token() {
 #[test]
 fn pump_import_queue_drops_a_failed_import_without_panicking() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
-    app.pending_imports = 1;
-    app.import_tx
+    app.import_state.pending_imports = 1;
+    app.import_state
+        .import_tx
         .send(ImportEvent::Failed {
             path: PathBuf::from("missing.mp4"),
             message: "not found".to_string(),
@@ -4252,7 +4260,7 @@ fn pump_import_queue_drops_a_failed_import_without_panicking() {
 
     app.pump_import_queue();
 
-    assert_eq!(app.pending_imports, 0);
+    assert_eq!(app.import_state.pending_imports, 0);
     assert!(app.active_project().media_library.is_empty());
 }
 

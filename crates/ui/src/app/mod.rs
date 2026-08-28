@@ -715,29 +715,9 @@ pub struct App {
     /// they lived directly on `App`; only the access path grew one `.preview_state` hop. See
     /// [`PreviewState`]'s own doc comment.
     pub(crate) preview_state: PreviewState,
-    import_tx: UnboundedSender<ImportEvent>,
-    import_rx: UnboundedReceiver<ImportEvent>,
-    /// How many files a call to [`App::spawn_import`] haven't been probed yet, in the
-    /// background. The Mídia screen shows a busy note while this is nonzero. Reaches zero as
-    /// soon as each file's cheap probe comes back and it's added to the library — loudness
-    /// measurement and proxy generation keep running after that in the background (see
-    /// [`App::pending_enrichment`]) without holding this counter up, since the asset is
-    /// already usable by then.
-    pub pending_imports: usize,
-    /// The next id to hand out in [`App::spawn_import`], one per file in the batch —
-    /// correlates a file's `ImportEvent::AssetReady` with its later `ImportEvent::Enriched`
-    /// once [`App::pump_import_queue`] knows the asset's real (project-assigned) id.
-    next_import_token: u64,
-    /// Import tokens awaiting their `ImportEvent::Enriched` (loudness + proxy), mapped to the
-    /// asset id they were assigned when their `AssetReady` landed — removed once the
-    /// enrichment arrives and gets applied, or left dangling harmlessly if the asset is gone
-    /// by then (media library has no delete yet, so that can't currently happen).
-    pending_enrichment: HashMap<u64, u64>,
-    /// Import tokens whose asset should be appended to the timeline the moment its
-    /// `ImportEvent::AssetReady` lands (see [`App::pump_import_queue`]) — used by
-    /// [`App::add_sound_library_track_to_timeline`]'s one-click "add to timeline" for a Music &
-    /// SFX track that hasn't been imported into the active project yet.
-    auto_add_to_timeline: HashSet<u64>,
+    /// Import background-job channel/asset-tracking state — same pattern as
+    /// [`App::auto_reframe_state`].
+    pub(crate) import_state: ImportState,
     /// Tracks found by the last scan of `prefs.sound_library_path` (see
     /// [`App::rescan_sound_library`]) — not persisted, recomputed from disk whenever the Music
     /// & SFX screen is opened or the configured folder changes.
@@ -1122,6 +1102,35 @@ pub(crate) struct MatteGenerationState {
     pub(crate) matte_generating_clip_id: Option<u64>,
 }
 
+/// Import background-job channel/asset-tracking state — one batch of files imported via
+/// [`App::spawn_import`] tracked at a time (unlike transcription, imports run per-file
+/// parallel).
+pub(crate) struct ImportState {
+    pub(crate) import_tx: UnboundedSender<ImportEvent>,
+    pub(crate) import_rx: UnboundedReceiver<ImportEvent>,
+    /// How many files a call to [`App::spawn_import`] haven't been probed yet, in the
+    /// background. The Mídia screen shows a busy note while this is nonzero. Reaches zero as
+    /// soon as each file's cheap probe comes back and it's added to the library — loudness
+    /// measurement and proxy generation keep running after that in the background (see
+    /// [`ImportState::pending_enrichment`]) without holding this counter up, since the asset is
+    /// already usable by then.
+    pub(crate) pending_imports: usize,
+    /// The next id to hand out in [`App::spawn_import`], one per file in the batch —
+    /// correlates a file's `ImportEvent::AssetReady` with its later `ImportEvent::Enriched`
+    /// once [`App::pump_import_queue`] knows the asset's real (project-assigned) id.
+    pub(crate) next_import_token: u64,
+    /// Import tokens awaiting their `ImportEvent::Enriched` (loudness + proxy), mapped to the
+    /// asset id they were assigned when their `AssetReady` landed — removed once the
+    /// enrichment arrives and gets applied, or left dangling harmlessly if the asset is gone
+    /// by then (media library has no delete yet, so that can't currently happen).
+    pub(crate) pending_enrichment: HashMap<u64, u64>,
+    /// Import tokens whose asset should be appended to the timeline the moment its
+    /// `ImportEvent::AssetReady` lands (see [`App::pump_import_queue`]) — used by
+    /// [`App::add_sound_library_track_to_timeline`]'s one-click "add to timeline" for a Music &
+    /// SFX track that hasn't been imported into the active project yet.
+    pub(crate) auto_add_to_timeline: HashSet<u64>,
+}
+
 /// Transcription background-job state — same pattern as [`AutoReframeState`].
 pub(crate) struct TranscribeState {
     pub(crate) transcribe_tx: UnboundedSender<TranscribeEvent>,
@@ -1240,12 +1249,14 @@ impl App {
             active_renders: HashMap::new(),
             export_preview_cache: None,
             preview_state: PreviewState::default(),
-            import_tx,
-            import_rx,
-            pending_imports: 0,
-            next_import_token: 0,
-            pending_enrichment: HashMap::new(),
-            auto_add_to_timeline: HashSet::new(),
+            import_state: ImportState {
+                import_tx,
+                import_rx,
+                pending_imports: 0,
+                next_import_token: 0,
+                pending_enrichment: HashMap::new(),
+                auto_add_to_timeline: HashSet::new(),
+            },
             sound_library_tracks: Vec::new(),
             sound_library_tx,
             sound_library_rx,
