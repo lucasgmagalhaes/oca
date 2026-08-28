@@ -27,11 +27,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(24.0);
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
-                ui.label(
-                    RichText::new(Text::HomeTitle.tr(app.locale))
-                        .size(22.0)
-                        .strong(),
-                );
+                components::page_title(ui, Text::HomeTitle.tr(app.locale));
                 ui.label(
                     RichText::new(Text::HomeSubtitle.tr(app.locale))
                         .size(13.0)

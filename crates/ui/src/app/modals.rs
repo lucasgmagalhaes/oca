@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 use tracing::{debug, error, info, warn};
 
+use crate::components;
 use crate::i18n::{self, Text};
 use crate::screens;
 use crate::theme;
@@ -83,11 +84,7 @@ impl App {
         let modal = egui::Modal::new(egui::Id::new("text_color_modal"));
         let response = modal.show(ctx, |ui| {
             ui.set_width(340.0);
-            ui.label(
-                egui::RichText::new(Text::TextColorPickerTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::TextColorPickerTitle.tr(locale));
             let target_label = match edit.target {
                 super::TextColorTarget::Foreground => Text::PropTextColor.tr(locale),
                 super::TextColorTarget::Background => Text::PropTextBackgroundColor.tr(locale),
@@ -374,11 +371,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(380.0);
-            ui.label(
-                egui::RichText::new(i18n::Text::RenameProjectTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, i18n::Text::RenameProjectTitle.tr(locale));
             ui.add_space(10.0);
             let (_, name_buf, summary_buf) = self.renaming_project.as_mut().unwrap();
             ui.label(i18n::Text::ProjectNameLabel.tr(locale));
@@ -451,11 +444,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(320.0);
-            ui.label(
-                egui::RichText::new(Text::SpeedRampCustomTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::SpeedRampCustomTitle.tr(locale));
             ui.add_space(10.0);
             let (_, start_speed, end_speed, steps_buf, smooth) =
                 self.speed_ramp_dialog.as_mut().unwrap();
@@ -536,11 +525,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(320.0);
-            ui.label(
-                egui::RichText::new(i18n::Text::RenameSequenceTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, i18n::Text::RenameSequenceTitle.tr(locale));
             ui.add_space(10.0);
             let buf = &mut self.renaming_sequence.as_mut().unwrap().1;
             let text_edit = ui.add(egui::TextEdit::singleline(buf).desired_width(f32::INFINITY));
@@ -592,11 +577,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
-            ui.label(
-                egui::RichText::new(i18n::Text::DeleteSequenceTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, i18n::Text::DeleteSequenceTitle.tr(locale));
             ui.add_space(10.0);
             ui.label(i18n::delete_sequence_prompt(locale, &name));
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -729,11 +710,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(380.0);
-            ui.label(
-                egui::RichText::new(Text::ExportFileExistsTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::ExportFileExistsTitle.tr(locale));
             ui.add_space(8.0);
             ui.label(
                 Text::ExportFileExistsBody
@@ -824,11 +801,7 @@ impl App {
         let modal = egui::Modal::new(egui::Id::new("timeline_index_panel"));
         let response = modal.show(ctx, |ui| {
             ui.set_width(420.0);
-            ui.label(
-                egui::RichText::new(Text::TimelineIndexTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::TimelineIndexTitle.tr(locale));
             ui.add_space(6.0);
             ui.add(
                 egui::TextEdit::singleline(&mut search)
@@ -968,11 +941,7 @@ impl App {
         let modal = egui::Modal::new(egui::Id::new("silence_review_modal"));
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
-            ui.label(
-                egui::RichText::new(Text::SilenceReviewTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::SilenceReviewTitle.tr(locale));
             ui.add_space(6.0);
 
             let Some(review) = &self.silence_review else {
@@ -1059,11 +1028,7 @@ impl App {
         let modal = egui::Modal::new(egui::Id::new("transcript_proposals_modal"));
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
-            ui.label(
-                egui::RichText::new(Text::TranscriptProposalsTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::TranscriptProposalsTitle.tr(locale));
             ui.add_space(6.0);
 
             let Some(review) = &self.transcript_review else {
@@ -1185,11 +1150,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(320.0);
-            ui.label(
-                egui::RichText::new(Text::SaveTemplateTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::SaveTemplateTitle.tr(locale));
             ui.add_space(10.0);
             ui.label(Text::TemplateNameLabel.tr(locale));
             let buf = &mut self.saving_layer_template.as_mut().unwrap().1;
@@ -1245,11 +1206,7 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(420.0);
-            ui.label(
-                egui::RichText::new(Text::TtsModalTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::TtsModalTitle.tr(locale));
             ui.add_space(10.0);
             if !model_configured {
                 ui.label(
@@ -1314,11 +1271,7 @@ impl App {
         let mut close = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(420.0);
-            ui.label(
-                egui::RichText::new(Text::YoutubeDownloadModalTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::YoutubeDownloadModalTitle.tr(locale));
             ui.add_space(10.0);
             ui.add_enabled_ui(!downloading, |ui| {
                 let buf = self
@@ -1454,11 +1407,7 @@ impl App {
         let mut delete_index = None;
         let response = modal.show(ctx, |ui| {
             ui.set_width(320.0);
-            ui.label(
-                egui::RichText::new(Text::Templates.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::Templates.tr(locale));
             ui.add_space(10.0);
             if self.prefs.saved_layer_templates.is_empty() {
                 ui.label(
@@ -1518,14 +1467,9 @@ impl App {
         let mut cancelled = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
-            ui.label(
-                egui::RichText::new(format!(
-                    "{}: {}",
-                    Text::ApplyTemplateTitle.tr(locale),
-                    template.name
-                ))
-                .size(15.0)
-                .strong(),
+            components::modal_title(
+                ui,
+                &format!("{}: {}", Text::ApplyTemplateTitle.tr(locale), template.name),
             );
             ui.add_space(10.0);
             let layer_asset_ids = &mut self.applying_layer_template.as_mut().unwrap().1;
@@ -1607,11 +1551,7 @@ impl App {
         let mut deleted = false;
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
-            ui.label(
-                egui::RichText::new(Text::SmartBinEditTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::SmartBinEditTitle.tr(locale));
             ui.add_space(10.0);
             let draft = self.editing_smart_bin.as_mut().unwrap();
 

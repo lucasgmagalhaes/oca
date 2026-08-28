@@ -33,11 +33,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(20.0);
         ui.horizontal(|ui| {
-            ui.label(
-                RichText::new(Text::SoundLibraryTitle.tr(locale))
-                    .size(20.0)
-                    .strong(),
-            );
+            components::page_title(ui, Text::SoundLibraryTitle.tr(locale));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button(Text::SoundLibraryRescan.tr(locale)).clicked() {
                     app.rescan_sound_library();
