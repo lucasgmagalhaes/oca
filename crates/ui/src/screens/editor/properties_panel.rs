@@ -841,7 +841,9 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                         ui.horizontal(|ui| {
                                             ui.add(
                                                 egui::DragValue::new(
-                                                    &mut app.motion_track_center_x,
+                                                    &mut app
+                                                        .motion_track_region
+                                                        .motion_track_center_x,
                                                 )
                                                 .speed(0.01)
                                                 .range(0.0..=1.0)
@@ -849,7 +851,9 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                             );
                                             ui.add(
                                                 egui::DragValue::new(
-                                                    &mut app.motion_track_center_y,
+                                                    &mut app
+                                                        .motion_track_region
+                                                        .motion_track_center_y,
                                                 )
                                                 .speed(0.01)
                                                 .range(0.0..=1.0)
@@ -859,17 +863,20 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                                 .button(Text::MotionTrackRegionReset.tr(locale))
                                                 .clicked()
                                             {
-                                                app.motion_track_center_x = 0.5;
-                                                app.motion_track_center_y = 0.5;
+                                                app.motion_track_region.motion_track_center_x = 0.5;
+                                                app.motion_track_region.motion_track_center_y = 0.5;
                                             }
                                         });
-                                        let pick_label = if app.picking_motion_track_region {
+                                        let pick_label = if app
+                                            .motion_track_region
+                                            .picking_motion_track_region
+                                        {
                                             Text::MotionTrackRegionPickActive.tr(locale)
                                         } else {
                                             Text::MotionTrackRegionPick.tr(locale)
                                         };
                                         if ui.button(pick_label).clicked() {
-                                            if app.picking_motion_track_region {
+                                            if app.motion_track_region.picking_motion_track_region {
                                                 app.stop_picking_motion_track_region();
                                             } else if app.preview_state.preview_texture.is_some() {
                                                 app.start_picking_motion_track_region();
@@ -883,21 +890,23 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                         }
                                         ui.add(
                                             egui::Slider::new(
-                                                &mut app.motion_track_width,
+                                                &mut app.motion_track_region.motion_track_width,
                                                 crate::app::MOTION_TRACK_SIZE_RANGE,
                                             )
                                             .text(Text::PropMotionTrackWidth.tr(locale)),
                                         );
                                         ui.add(
                                             egui::Slider::new(
-                                                &mut app.motion_track_height,
+                                                &mut app.motion_track_region.motion_track_height,
                                                 crate::app::MOTION_TRACK_SIZE_RANGE,
                                             )
                                             .text(Text::PropMotionTrackHeight.tr(locale)),
                                         );
                                         ui.add(
                                             egui::Slider::new(
-                                                &mut app.motion_track_search_radius,
+                                                &mut app
+                                                    .motion_track_region
+                                                    .motion_track_search_radius,
                                                 crate::app::MOTION_TRACK_SEARCH_RADIUS_RANGE,
                                             )
                                             .text(Text::PropMotionTrackSearchRadius.tr(locale)),
