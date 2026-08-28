@@ -185,8 +185,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(12.0);
 
         egui::Frame::new()
-            .fill(theme::ACCENT.gamma_multiply(0.10))
-            .corner_radius(8)
+            .fill(theme::INFO_TINT)
+            .corner_radius(theme::RADIUS_MD)
             .inner_margin(egui::Margin::same(10))
             .show(ui, |ui| {
                 ui.label(
@@ -232,6 +232,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         let mut resume: Option<u64> = None;
 
         let len = app.export_jobs.len();
+        if len == 0 {
+            ui.add_space(theme::SPACE_MD);
+            ui.label(RichText::new(Text::QueueEmpty.tr(locale)).color(theme::TEXT_MUTED));
+        }
         for i in 0..len {
             let job = &app.export_jobs[i];
             components::card_frame().show(ui, |ui| {
@@ -249,7 +253,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                     components::tag_outline(ui, status_label)
                                 }
                                 ExportJobStatus::Paused { .. } => {
-                                    components::tag_outline(ui, status_label)
+                                    components::tag_warning(ui, status_label)
                                 }
                                 ExportJobStatus::Done => components::tag_accent(ui, status_label),
                                 ExportJobStatus::Failed { .. } => {

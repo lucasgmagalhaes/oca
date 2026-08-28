@@ -31,6 +31,15 @@ pub const ACCENT_TINT: Color32 = Color32::from_rgba_premultiplied(0x0a, 0x28, 0x
 pub const ACCENT_2: Color32 = Color32::from_rgb(0x4f, 0x7c, 0xe0);
 pub const ERROR: Color32 = Color32::from_rgb(0xe0, 0x57, 0x4f);
 pub const ERROR_TINT: Color32 = Color32::from_rgba_premultiplied(0x2a, 0x11, 0x10, 0x80);
+/// Non-error caution states (e.g. a paused job) — distinct from `ERROR` (failure) and `ACCENT`
+/// (selection/brand), so a warning doesn't have to borrow either's meaning.
+pub const WARNING: Color32 = Color32::from_rgb(0xe0, 0xa8, 0x3d);
+pub const WARNING_TINT: Color32 = Color32::from_rgba_premultiplied(0x2a, 0x20, 0x0a, 0x80);
+/// Neutral informational callout background (e.g. Queue's tech-note banner) — named so a
+/// second consumer doesn't reinvent `ACCENT.gamma_multiply(0.10)`. Foreground text on it keeps
+/// using `TEXT_SECONDARY`/`TEXT_PRIMARY` as normal — informational callouts don't need a
+/// separate foreground token the way a status tag's fg/bg pair does.
+pub const INFO_TINT: Color32 = Color32::from_rgba_premultiplied(0x0a, 0x20, 0x1f, 0x40);
 
 /// Tight inline gaps — glyph-to-label, dense chip rows.
 pub const SPACE_XS: f32 = 4.0;

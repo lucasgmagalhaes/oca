@@ -43,3 +43,8 @@ pub fn tag_outline(ui: &mut Ui, text: &str) {
 pub fn tag_error(ui: &mut Ui, text: &str) {
     tag(ui, text, theme::ERROR, theme::ERROR_TINT);
 }
+
+/// A tag in the warning color — used for caution/non-terminal states (e.g. "Pausado").
+pub fn tag_warning(ui: &mut Ui, text: &str) {
+    tag(ui, text, theme::WARNING, theme::WARNING_TINT);
+}
