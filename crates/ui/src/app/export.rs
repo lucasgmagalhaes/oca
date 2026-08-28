@@ -376,6 +376,13 @@ impl App {
                         context: "export".to_string(),
                         message,
                     });
+                    self.report_error(
+                        avcore::ErrorCode::ExportEncode,
+                        avcore::ErrorSeverity::Error,
+                        avcore::Operation::Export,
+                        avcore::RecoveryOutcome::Aborted,
+                        false,
+                    );
                 }
                 RenderEvent::Cancelled { job_id } => {
                     debug!(job_id, "export job cancelled");

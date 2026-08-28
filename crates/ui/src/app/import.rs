@@ -142,6 +142,13 @@ impl App {
                         context: "import".to_string(),
                         message: message.clone(),
                     });
+                    self.report_error(
+                        avcore::ErrorCode::Import,
+                        avcore::ErrorSeverity::Error,
+                        avcore::Operation::Import,
+                        avcore::RecoveryOutcome::RequiresUserAction,
+                        false,
+                    );
                     self.push_toast(format!(
                         "Import failed — {}: {message}",
                         path.file_name()

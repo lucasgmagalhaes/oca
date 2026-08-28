@@ -40,6 +40,7 @@ mod background_removal;
 mod clip_props;
 mod collab_bundle;
 mod color;
+mod error_reporting;
 pub mod export;
 mod highlight_detection;
 mod import;
@@ -745,6 +746,10 @@ pub struct App {
     /// [`PreviewState`] was — see that struct's doc comment for why. Field names, visibility,
     /// and invariants unchanged from when they lived directly on `App`.
     pub(crate) telemetry_state: TelemetryState,
+    /// ER-01A remote-error reporter slot: `Some` only once consent UI and a provider adapter
+    /// land (ER-01B). `None` is the consent-disabled state — [`App::report_error`] short-circuits
+    /// and nothing is built or written. See [`crate::app::error_reporting`].
+    pub(crate) error_reporter: Option<Arc<dyn avcore::ErrorReporter>>,
     render_tx: UnboundedSender<RenderEvent>,
     render_rx: UnboundedReceiver<RenderEvent>,
     /// Cooperative pause/cancel controls for jobs a worker thread is currently rendering,
@@ -1361,6 +1366,9 @@ impl App {
         );
         telemetry::spawn_gpu_sampler(telemetry_tx.clone(), Arc::clone(&telemetry_enabled_flag));
         let (update_check_tx, update_check_rx) = mpsc::unbounded_channel();
+        // ER-01A: seeds the process-wide report builder; always `None` (the consent-disabled
+        // state) until ER-01B lands the consent gate + provider adapter.
+        let error_reporter = error_reporting::seed_error_reporting(prefs.locale);
         let mut app = Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
@@ -1370,6 +1378,7 @@ impl App {
             selected_asset_id: None,
             export_jobs: export::load_queue(),
             prefs,
+            error_reporter,
             telemetry_state: TelemetryState {
                 telemetry_tx,
                 telemetry_enabled_flag,

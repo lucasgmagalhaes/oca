@@ -220,6 +220,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         selected_asset_id: None,
         export_jobs,
         prefs: PrefsState::default(),
+        error_reporter: None,
         telemetry_state: TelemetryState {
             telemetry_tx,
             telemetry_enabled_flag: Arc::new(AtomicBool::new(true)),
@@ -6431,4 +6432,115 @@ fn pump_watch_folder_applies_a_failure_to_the_matching_row() {
     let row = &app.watch_folder_state.files[0];
     assert_eq!(row.status, crate::app::WatchFolderFileStatus::Error);
     assert_eq!(row.error.as_deref(), Some("ffmpeg exited with code 1"));
+}
+
+/// Captures everything [`App::report_error`] hands to its reporter, for asserting on the
+/// delivered reports in tests.
+#[derive(Default)]
+struct CapturingReporter {
+    reports: std::sync::Mutex<Vec<avcore::ErrorReport>>,
+}
+
+impl avcore::ErrorReporter for CapturingReporter {
+    fn report(&self, report: avcore::ErrorReport) {
+        self.reports.lock().unwrap().push(report);
+    }
+}
+
+#[test]
+fn report_error_is_a_noop_without_a_reporter() {
+    let app = test_app(Vec::new(), Vec::new());
+    assert!(!app.report_error(
+        avcore::ErrorCode::Import,
+        avcore::ErrorSeverity::Error,
+        avcore::Operation::Import,
+        avcore::RecoveryOutcome::RequiresUserAction,
+        false,
+    ));
+}
+
+#[test]
+fn report_error_delivers_a_valid_sanitized_report() {
+    let reporter = std::sync::Arc::new(CapturingReporter::default());
+    let mut app = test_app(Vec::new(), Vec::new());
+    app.error_reporter =
+        Some(std::sync::Arc::clone(&reporter) as std::sync::Arc<dyn avcore::ErrorReporter>);
+
+    assert!(app.report_error(
+        avcore::ErrorCode::ExportEncode,
+        avcore::ErrorSeverity::Error,
+        avcore::Operation::Export,
+        avcore::RecoveryOutcome::Aborted,
+        false,
+    ));
+    assert!(app.report_error(
+        avcore::ErrorCode::Import,
+        avcore::ErrorSeverity::Error,
+        avcore::Operation::Import,
+        avcore::RecoveryOutcome::RequiresUserAction,
+        true,
+    ));
+
+    let reports = reporter.reports.lock().unwrap();
+    assert_eq!(reports.len(), 2);
+    let encoded = &reports[0];
+    let imported = &reports[1];
+    assert_eq!(encoded.error_code, avcore::ErrorCode::ExportEncode);
+    assert_eq!(encoded.severity, avcore::ErrorSeverity::Error);
+    assert_eq!(encoded.operation, avcore::Operation::Export);
+    assert_eq!(encoded.recovery_outcome, avcore::RecoveryOutcome::Aborted);
+    assert!(!encoded.retried);
+    assert_eq!(imported.error_code, avcore::ErrorCode::Import);
+    assert!(imported.retried);
+    assert_eq!(
+        encoded.session_id, imported.session_id,
+        "session id is stable across the launch"
+    );
+    assert_ne!(
+        encoded.event_id, imported.event_id,
+        "event id is unique per report"
+    );
+    assert!(avcore::validate_report(encoded).is_ok());
+    for report in reports.iter() {
+        let stack = report
+            .sanitized_stack_trace
+            .as_deref()
+            .expect("a stack trace is captured for every report");
+        assert!(!stack.is_empty());
+        assert!(
+            !avcore::contains_forbidden_content(stack),
+            "the captured backtrace must not survive sanitization with forbidden content"
+        );
+    }
+}
+
+#[test]
+fn seed_error_reporting_seeds_launch_identity_and_breadcrumb() {
+    let reporter = crate::app::error_reporting::seed_error_reporting(crate::i18n::Locale::En);
+    assert!(
+        reporter.is_none(),
+        "ER-01A holds no reporter (consent disabled)"
+    );
+
+    let capturer = std::sync::Arc::new(CapturingReporter::default());
+    let mut app = test_app(Vec::new(), Vec::new());
+    let capturer_for_app = std::sync::Arc::clone(&capturer);
+    app.error_reporter = Some(capturer_for_app as std::sync::Arc<dyn avcore::ErrorReporter>);
+    assert!(app.report_error(
+        avcore::ErrorCode::ProjectSave,
+        avcore::ErrorSeverity::Error,
+        avcore::Operation::ProjectSave,
+        avcore::RecoveryOutcome::RequiresUserAction,
+        false,
+    ));
+
+    let report = capturer.reports.lock().unwrap().pop().unwrap();
+    assert_eq!(report.locale, "en");
+    assert!(
+        report.breadcrumbs.iter().any(
+            |b| matches!(b, avcore::Breadcrumb::StateTransition { state } if state == "app_started")
+        ),
+        "seed_error_reporting must record the launch breadcrumb"
+    );
+    assert!(report.release.starts_with("oca-"));
 }
