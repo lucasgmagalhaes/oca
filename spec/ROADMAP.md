@@ -906,43 +906,55 @@ system. Implementation order below matches the consolidation review's recommenda
 (zero-ambiguity items first, decisions-needing-confirmation items later — both flagged decisions
 resolved in favor of consolidating, see items 3 and 5).
 
-25. `[ ]` **Stage 1 — zero-risk refactors.** `library.rs`'s hand-rolled card `Frame` →
-    `components::card_frame()`. Nav rail's two disagreeing icon-container conventions
-    (state-conditional background vs. the permanently-boxed profile avatar) → unify on the
-    state-conditional convention used everywhere else in the app.
-26. `[ ]` **Stage 2 — title tier components.** Add `components::page_title()` (20.0 strong) and
-    `components::modal_title()` (15.0 strong); migrate Home's 22.0 outlier and the ~20 modals'
-    inline `.size(15.0).strong()` literals onto them. Fold the About dialog's 28.0 outlier into
-    `modal_title()` rather than preserving a third tier. Breadcrumb's 13.0 stays distinct
-    (window chrome, not a page title) but gets named too.
-27. `[ ]` **Stage 3 — spacing/radius token rollout.** Add `SPACE_XS/SM/MD/LG` (4/8/12/20) and
-    `RADIUS_SM/MD/PILL` (4/8/999) to `theme.rs`. Collapse `card_frame()`'s radius 10→8 to match
-    the global default (resolved: consolidate, don't preserve a near-duplicate third tier).
-    Sweep the ~15 confirmed hardcoded-radius sites (10+ in `timeline_panel/{mod,draw}.rs`, plus
-    `home.rs`, `library.rs`, `sound_library.rs`, `modals.rs`, `nav_rail.rs`) onto the new
-    constants.
-28. `[ ]` **Stage 4 — property-row consolidation.** Add `components::property_row()` (label +
-    widget, no separator/note — resolved: shape/text-clip's dense single-field lists are a
-    legitimate lighter use case, not pure bypass) alongside the existing heavier
-    `property_section`. Migrate `shape_clip.rs`/`text_clip.rs`'s hand-rolled label+widget pairs
-    onto it, keeping `property_section` for their keyframe blocks as today.
-29. `[ ]` **Stage 5 — `icon_button()` and icon-convention unification.** Add
-    `components::icon_button(ui, glyph, tooltip, opts: IconButtonOpts)` with a size override
-    (covers transport's 48-64pt case) and a hover-color override (covers window-chrome's
-    close-button-red case). Migrate the four coexisting conventions (toolbar inline `format!`,
-    breadcrumb's `window_button()` helper — merge into `icon_button()`'s override once it
-    exists, transport's large colored `RichText`, delete-action bare `small_button`) plus
-    timeline badges and nav rail. Resolve the confirmed `✂`/`✂️` duplicate-glyph inconsistency
-    and the `👁`→`—` hidden-state ambiguity as part of this migration. Sequenced last —
-    icons ride on the container/state system built in Stages 1-4, not before it.
-30. `[ ]` **Feedback tokens.** Add `WARNING`/`INFO` to `theme.rs`; convert Queue's
-    `ACCENT.gamma_multiply(0.10)` info banner and "Paused" pill to reference them by name.
+25. `[x]` **Stage 1 — zero-risk refactors.** `library.rs`'s hand-rolled card `Frame` →
+    `components::card_frame()`. Nav rail's flagged "two icon conventions" inspected: the profile
+    avatar is a static identity badge (no click handler), not an interactive icon button like
+    `rail_button()`/`prefs_button()` (both already correctly state-conditional) — a different
+    semantic role, not a real inconsistency. Documented as a resolved non-issue, no code change.
+26. `[x]` **Stage 2 — title tier components.** Added `components::page_title()` (20.0 strong) and
+    `components::modal_title()` (15.0 strong); migrated Home's 22.0 outlier and all ~17 modal
+    `.size(15.0).strong()` sites (`app/modals.rs`, `app/transcript_panel.rs`) onto them. The
+    About dialog's 28.0 ACCENT-colored app-name wordmark was deliberately kept as-is (commented
+    as a brand-moment exception, not a dialog header) rather than folded into `modal_title()` —
+    a considered deviation from this item's original wording, made because forcing it down would
+    have been a real visual regression for a normal About-box convention. Breadcrumb's three
+    13.0 segments left unchanged (a single cohesive breadcrumb trail already internally
+    consistent within one file — a shared component for a single-use 3-segment trail would be an
+    abstraction layer without enforcement benefit).
+27. `[x]` **Stage 3 — spacing/radius token rollout.** Added `SPACE_XS/SM/MD/LG` (4/8/12/20) and
+    `RADIUS_SM/MD/PILL` (4/8/999) to `theme.rs`. `card_frame()`'s radius 10→8. All confirmed
+    hardcoded-radius sites (10 in `timeline_panel/mod.rs`'s `CornerRadius::same(4)` clip-drawing
+    calls, `home.rs`/`library.rs`'s nested thumbnails, the in-editor media-library row, the
+    drag-ghost tooltip, `sound_library.rs`'s track rows, the toast frame, `nav_rail.rs`'s icon
+    backgrounds, `tag.rs`/`breadcrumb.rs`'s pill radius) now reference the named constants.
+28. `[x]` **Stage 4 — property-row consolidation.** Added `components::property_row()` (label +
+    widget, no separator/note). Migrated all 22 of `shape_clip.rs`'s/`text_clip.rs`'s hand-rolled
+    label+widget pairs onto it; their keyframe blocks are unchanged (still `property_section`).
+29. `[~]` **Stage 5 — `icon_button()` and icon-convention unification.** Added
+    `components::icon_button(ui, glyph, tooltip, opts: IconButtonOpts)` with the two escape
+    hatches (size override, hover-color override) from the design review. First migration batch
+    landed: all 4 confirmed bare `small_button("🗑")` delete-action sites (3 in
+    `keyframe_editors.rs`, 1 in `modals.rs`'s marker list), each gaining a real tooltip via two
+    new `i18n.rs` keys (`RemoveKeyframe`/`RemoveVertex`/`RemoveMarker` — previously icon-only
+    with no accessible name at all). **Remaining, not yet migrated** (per the design review's own
+    "small batches, verify visually between each" guidance — this is the largest-surface item in
+    the whole consolidation and deliberately not rushed in one pass): toolbar's inline
+    `format!("{glyph} {label}")` buttons, `breadcrumb.rs`'s `window_button()` helper (merge once
+    confident in the hover-color override), transport's large colored `RichText` glyphs, and
+    timeline badges/nav-rail icons. The confirmed `✂`/`✂️` duplicate-glyph inconsistency and the
+    `👁`→`—` hidden-state ambiguity are still open, tied to the toolbar/timeline-badge migration.
+30. `[x]` **Feedback tokens.** Added `WARNING`/`WARNING_TINT`/`INFO_TINT` to `theme.rs` and
+    `components::tag_warning()`. Queue's `ACCENT.gamma_multiply(0.10)` info banner → `INFO_TINT`;
+    its "Paused" pill (previously `tag_outline`, indistinguishable from "Queued") → `tag_warning`.
 31. `[ ]` **Progressive disclosure.** Group the toolbar's AI-detection actions separately from
     core edit tools (`screens/editor/mod.rs::toolbar()`). Section Prefs into collapsible/tabbed
-    groups instead of one always-fully-expanded scroll column.
-32. `[ ]` **Missing states.** Queue currently has no empty-state message at all (the one
-    confirmed *missing*, not just unstyled, state) — add one, using the new icon system once
-    Stage 5 lands.
+    groups instead of one always-fully-expanded scroll column. Not started — a bigger UX judgment
+    call than the mechanical items above, deliberately left for a dedicated pass with a visual
+    (not just code-level) review, per repo `CLAUDE.md`'s guidance to verify UI changes in a
+    running instance.
+32. `[x]` **Missing states.** Queue had no empty-state message at all — added one
+    (`Text::QueueEmpty`), plain muted text matching the existing empty-state convention elsewhere
+    (Library, Sound Library) rather than waiting on the still-in-progress icon system.
 
 ---
 
