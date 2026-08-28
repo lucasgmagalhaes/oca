@@ -1,4 +1,7 @@
 * text=auto
 
+*.md linguist-detectable=true
+*.md linguist-documentation=false
+
 LICENSE.txt eol=crlf
 **/*.json linguist-language=jsonc
