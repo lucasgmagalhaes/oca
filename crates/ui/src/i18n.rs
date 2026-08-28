@@ -508,6 +508,9 @@ text_catalog! {
     TextColorPickerApply: pt_br = "Aplicar", en = "Apply";
     PropTextPosX: pt_br = "Posição X", en = "Position X";
     PropTextPosY: pt_br = "Posição Y", en = "Position Y";
+    PropTextPosXKeyframes: pt_br = "Posição X (keyframes)", en = "Position X (keyframes)";
+    PropTextPosYKeyframes: pt_br = "Posição Y (keyframes)", en = "Position Y (keyframes)";
+    TextPositionKeyframesExportNote: pt_br = "quando definido, substitui a posição constante desse eixo na exportação (movimento animado) — sem efeito no preview ao vivo.", en = "when set, overrides this axis's constant position on export (animated movement) — no live preview effect.";
     PropTextDuration: pt_br = "Duração (s)", en = "Duration (s)";
     PropTextStart: pt_br = "Início (s)", en = "Start (s)";
     TextExportNote: pt_br = "fontes embutidas e fundo usam o mesmo rasterizador no preview e no export.", en = "bundled fonts and backgrounds use the same rasterizer in preview and export.";

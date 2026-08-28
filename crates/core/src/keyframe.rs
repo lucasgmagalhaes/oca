@@ -550,6 +550,39 @@ pub fn text_opacity_alpha_expr(
     Some(piecewise_expr(&sorted, duration_secs, &var, clamp_opacity))
 }
 
+/// Builds the `overlay` filter's `x`/`y` pixel-offset expression for one axis of a `TextClip`'s
+/// `pos_x_keyframes`/`pos_y_keyframes` — the delta, in canvas pixels, between the keyframed
+/// position at time `t` and `base`, the constant position `crate::render::text_clip_to_segments`
+/// bakes into the overlay PNG's own pixel layout at rasterization time (the first keyframe's
+/// value when keyframes are present, `pos_x`/`pos_y` otherwise — same "keyframes win when
+/// present" convention [`crate::timeline::ShapeClip`]'s own position/size/rotation keyframes
+/// use). `avbridge::apply_text_overlays`'s composite stage shares the exported video's own time
+/// origin, so `t` here is timeline-absolute, same clock as [`text_opacity_alpha_expr`]'s `T` —
+/// just a different filter's own expression-evaluator variable name (`overlay`'s is lowercase
+/// `t`, `geq`'s is uppercase `T`). Returns `None` (meaning "no offset", `overlay`'s own
+/// `x=0`/`y=0` default — the exact filter graph an unanimated `TextClip` always had) with fewer
+/// than 2 keyframes, since a single keyframe's value is exactly `base` by construction, or when
+/// every keyframe already equals `base`.
+pub fn text_position_offset_expr(
+    keyframes: &[Keyframe<f32>],
+    base: f32,
+    start_secs: f64,
+    duration_secs: f64,
+    canvas_extent_px: f32,
+) -> Option<String> {
+    if keyframes.len() < 2 {
+        return None;
+    }
+    let identity = |v: f32| v;
+    let (sorted, all_default) = sorted_and_all_default(keyframes, identity, base);
+    if all_default {
+        return None;
+    }
+    let var = format!("(t-{start_secs:.6})");
+    let to_px = |v: f32| (v - base) * canvas_extent_px;
+    Some(piecewise_expr(&sorted, duration_secs, &var, to_px))
+}
+
 /// Builds the opacity-keyframe alpha expression (a bare `0.0..=1.0` ramp, *not* yet multiplied
 /// by any incoming `alpha(X,Y)` — the caller composes that, matching `mask_shape`'s existing
 /// alpha-composition convention in `ClipInstance::video_filter_chain`), keyed off `N` like

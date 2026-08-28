@@ -256,6 +256,51 @@ pub(super) fn text_clip_properties(
         changed = true;
     }
 
+    // Position keyframes -- animate pos_x/pos_y over this clip's own on-timeline duration (see
+    // TextClip::pos_x_keyframes' doc comment).
+    let mut new_pos_x_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropTextPosXKeyframes.tr(locale),
+        Text::TextPositionKeyframesExportNote.tr(locale),
+        |ui| {
+            new_pos_x_keyframes = super::keyframe_editors::f32_keyframe_editor(
+                ui,
+                &tc.pos_x_keyframes,
+                0.0..=1.0,
+                tc.pos_x,
+                locale,
+            );
+            new_pos_x_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_pos_x_keyframes {
+            tc.pos_x_keyframes = kfs;
+            changed = true;
+        }
+    }
+    let mut new_pos_y_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropTextPosYKeyframes.tr(locale),
+        Text::TextPositionKeyframesExportNote.tr(locale),
+        |ui| {
+            new_pos_y_keyframes = super::keyframe_editors::f32_keyframe_editor(
+                ui,
+                &tc.pos_y_keyframes,
+                0.0..=1.0,
+                tc.pos_y,
+                locale,
+            );
+            new_pos_y_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_pos_y_keyframes {
+            tc.pos_y_keyframes = kfs;
+            changed = true;
+        }
+    }
+
     // Opacity keyframes -- fade the text in/out over its own on-timeline duration (see
     // TextClip::opacity_keyframes' doc comment).
     let mut new_opacity_keyframes = None;

@@ -507,9 +507,31 @@ not by default priority.
     same pre-existing encoder-availability gap `CLAUDE.md` already documents elsewhere in this
     codebase, not something this change introduced.
 
-    **Explicitly still not done**: `TextClip` position/scale/rotation animation (the pre-
-    rasterization restructuring described above, still the largest remaining sub-item in this
-    whole roadmap item).
+    **`TextClip` position keyframes also ship**, in a further follow-up — without the sprite-
+    cropping restructuring described above turning out to be necessary. Instead of shrinking the
+    raster to a tight sprite, the raster still bakes one constant anchor (the first keyframe's
+    value when `pos_x_keyframes`/`pos_y_keyframes` are present, `pos_x`/`pos_y` otherwise — same
+    "keyframes win when present" convention `ShapeClip`'s own fields use) exactly as before, and
+    `keyframe::text_position_offset_expr` builds the *delta* from that anchor, in canvas pixels,
+    as an `overlay=x=<expr>:y=<expr>` fragment — `overlay`'s own expression evaluator uses
+    lowercase `t` where `geq`'s (used by the opacity fade above) uses uppercase `T`, same
+    timeline-absolute clock, different filter's own variable name. Each axis independently
+    overrides its own constant, same as `ShapeClip::center_x_keyframes`/`center_y_keyframes` (two
+    separate `f32` lists, not one `Position`-typed list, since this is an absolute `0.0..=1.0`
+    anchor fraction, not `ClipInstance::position_keyframes`' `-1.0..=1.0` pan-offset convention).
+    Verified: `text_position_offset_expr`'s unit tests run for real in a scratch crate
+    (`keyframe.rs` alone has zero heavy deps) — 47/47 passing, including every pre-existing
+    `keyframe` test. `avbridge/tests/text_overlay_test.rs` gained a real-FFmpeg-build test for the
+    new `overlay=x='...':y='...'` syntax too — same `Err(Pipeline)` encoder-availability gap as
+    the opacity test in this sandbox (confirmed by temporarily no-op-stubbing the unrelated
+    `av_opt_set_array` symbol this file also can't link against here, per `CLAUDE.md`'s filters.c
+    note, discarded before commit), but critically *not* `Err(FilterGraph)` — confirming the new
+    overlay x/y expression syntax itself parses against the real linked `avfilter_graph_parse_ptr`,
+    identically to the pre-existing opacity/no-fade tests it was verified alongside.
+
+    **Explicitly still not done**: `TextClip` scale/rotation animation, and the sprite-cropping
+    restructuring itself (still not needed for position, may still be worth it later purely as a
+    performance optimization — the raster/overlay stays full-canvas-sized either way for now).
 
 Found but deliberately not added as a P4 item: **nested sequences / compound clips** (Premiere/
 DaVinci/FCP) — closer to Multicam's own tier of effort than to the four above (the render/

@@ -423,6 +423,12 @@ typedef struct {
        avcore::keyframe::text_opacity_alpha_expr) multiplied against the PNG's own alpha
        channel. See avbridge_apply_text_overlays' doc comment for where this is spliced in. */
     const char *opacity_keyframe_expr;
+    /* NULL or empty means "no offset, same x=0/y=0 placement as before these fields existed" --
+       complete overlay-expression-language fragments (e.g. "if(lt((t-1.000000),..." from
+       avcore::keyframe::text_position_offset_expr) added to the overlay node's x/y position.
+       See avbridge_apply_text_overlays' doc comment for where these are spliced in. */
+    const char *position_keyframe_expr_x;
+    const char *position_keyframe_expr_y;
 } TextSegment;
 
 /* Opens `in_path` (an already-rendered H.264/AAC mp4), composites PNG overlays for every
@@ -430,11 +436,12 @@ typedef struct {
    the result to `out_path`. Each overlay is already rasterized as a transparent PNG so preview
    and export share the exact same font/background renderer. When a segment's
    opacity_keyframe_expr is non-empty, a geq stage multiplies the PNG's own alpha channel by that
-   expression right after the movie source, before the overlay node -- both are in the same
-   filtergraph with a shared time origin (t=0 at graph start, same as the main video), so the
-   geq's own per-pixel T there is timeline-absolute, matching what the expression was built
-   against. Video is decoded, filtered, and re-encoded via libopenh264; audio is stream-copied
-   unchanged.
+   expression right after the movie source, before the overlay node. When position_keyframe_expr_x/
+   _y is non-empty, the overlay node's x/y is that expression instead of the literal 0 it
+   otherwise defaults to. All of these are in the same filtergraph with a shared time origin (t=0
+   at graph start, same as the main video), so geq's per-pixel T and overlay's own per-frame t
+   are both timeline-absolute, matching what the expressions were built against. Video is
+   decoded, filtered, and re-encoded via libopenh264; audio is stream-copied unchanged.
    canvas_width/canvas_height and canvas_fps_num/den are
    used only to size the output encoder context — they must match the actual rendered video.
 

@@ -129,10 +129,11 @@ etc.) has a keyframe variant, and that `TextClip`/`ShapeClip` have no keyframe f
 - [~] **Text/shape clip animation keyframes.** `TextClip`/`ShapeClip` had zero keyframe fields
       (a structural gap, not a missing effect) — every surveyed editor supports animating
       text/graphic position/scale/opacity over time. → `ROADMAP.md` P4 item 34 (partial — all of
-      `ShapeClip` (position, size, rotation) keyframes ship, plus `TextClip` opacity keyframes
-      (a fade, reusing the raster's existing alpha channel — no rasterization change); `TextClip`
-      position/scale/rotation animation still not done, a materially bigger lift — its export
-      path pre-rasterizes a full-canvas PNG, not a moving overlay).
+      `ShapeClip` (position, size, rotation) keyframes ship, plus `TextClip` opacity and position
+      keyframes (a fade reusing the raster's existing alpha channel; position as a pixel-offset
+      `overlay=x=<expr>:y=<expr>` delta from the raster's baked anchor — neither needed the
+      sprite-cropping restructuring once assumed necessary); `TextClip` scale/rotation animation
+      still not done.
 
 ## Validates existing plans (found independently, matches what's already queued)
 

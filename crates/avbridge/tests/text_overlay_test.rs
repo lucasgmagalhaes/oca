@@ -65,6 +65,8 @@ fn applies_a_keyframed_opacity_fade_to_a_text_overlay() {
                                  if(between((T-0.000000),0.000000,0.500000),\
                                  (0.0000000+2.0000000*((T-0.000000)-0.000000)),1.0000000))"
             .to_string(),
+        position_keyframe_expr_x: String::new(),
+        position_keyframe_expr_y: String::new(),
     }];
 
     let result = apply_text_overlays(
@@ -104,6 +106,8 @@ fn applies_a_text_overlay_with_no_opacity_expr_unchanged() {
         duration_secs: probed.duration_secs.max(0.5),
         overlay_path: overlay_png.clone(),
         opacity_keyframe_expr: String::new(),
+        position_keyframe_expr_x: String::new(),
+        position_keyframe_expr_y: String::new(),
     }];
 
     let result = apply_text_overlays(
@@ -116,6 +120,57 @@ fn applies_a_text_overlay_with_no_opacity_expr_unchanged() {
         1,
     );
     assert!(result.is_ok(), "apply_text_overlays failed: {result:?}");
+
+    let _ = std::fs::remove_file(&out);
+    let _ = std::fs::remove_file(&overlay_png);
+}
+
+#[test]
+fn applies_a_keyframed_position_offset_to_a_text_overlay() {
+    // Real linked-FFmpeg-build check for keyframe::text_position_offset_expr's output, same
+    // motivation as applies_a_keyframed_opacity_fade_to_a_text_overlay's own doc comment on why
+    // that one exists (a syntax check alone wouldn't catch a real filtergraph rejecting the
+    // overlay=x='...':y='...' expression syntax).
+    let out = std::env::temp_dir().join("avbridge_text_overlay_position_test.mp4");
+    let overlay_png = std::env::temp_dir().join("avbridge_text_overlay_position_test.png");
+    let _ = std::fs::remove_file(&out);
+    write_test_overlay_png(&overlay_png);
+
+    let source = fixture("video.mp4");
+    let probed = probe(&source).unwrap();
+    let (width, height) = probed.resolution.unwrap();
+    let fps = probed.fps.unwrap();
+
+    let segments = vec![TextOverlaySegment {
+        start_secs: 0.0,
+        duration_secs: probed.duration_secs.max(0.5),
+        overlay_path: overlay_png.clone(),
+        opacity_keyframe_expr: String::new(),
+        // Same shape keyframe::text_position_offset_expr would build for a two-keyframe move
+        // from the raster's own baked anchor (delta 0) to 100px to the right/down.
+        position_keyframe_expr_x: "if(lt((t-0.000000),0.000000),0.0000000,\
+                                     if(between((t-0.000000),0.000000,0.500000),\
+                                     (0.0000000+200.0000000*((t-0.000000)-0.000000)),100.0000000))"
+            .to_string(),
+        position_keyframe_expr_y: "if(lt((t-0.000000),0.000000),0.0000000,\
+                                     if(between((t-0.000000),0.000000,0.500000),\
+                                     (0.0000000+200.0000000*((t-0.000000)-0.000000)),100.0000000))"
+            .to_string(),
+    }];
+
+    let result = apply_text_overlays(
+        &source,
+        &out,
+        &segments,
+        width,
+        height,
+        fps.round() as u32,
+        1,
+    );
+    assert!(result.is_ok(), "apply_text_overlays failed: {result:?}");
+    assert!(out.exists());
+    let out_info = probe(&out).unwrap();
+    assert_eq!(out_info.kind, StreamKind::Video);
 
     let _ = std::fs::remove_file(&out);
     let _ = std::fs::remove_file(&overlay_png);

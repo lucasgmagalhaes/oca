@@ -480,6 +480,77 @@ fn text_opacity_alpha_expr_offsets_t_by_start_secs_for_a_fade() {
 }
 
 #[test]
+fn text_position_offset_expr_is_none_for_no_keyframes() {
+    assert_eq!(text_position_offset_expr(&[], 0.1, 0.0, 3.0, 1920.0), None);
+}
+
+#[test]
+fn text_position_offset_expr_is_none_for_a_single_keyframe() {
+    // A single keyframe's value is exactly `base` by construction (text_clip_to_segments bakes
+    // the raster at the first keyframe's value) -- nothing left to offset.
+    let keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: 0.3,
+    }];
+    assert_eq!(
+        text_position_offset_expr(&keyframes, 0.3, 0.0, 3.0, 1920.0),
+        None
+    );
+}
+
+#[test]
+fn text_position_offset_expr_is_none_when_every_keyframe_equals_base() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.2,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.2,
+        },
+    ];
+    assert_eq!(
+        text_position_offset_expr(&keyframes, 0.2, 0.0, 3.0, 1920.0),
+        None
+    );
+}
+
+#[test]
+fn text_position_offset_expr_scales_the_delta_by_canvas_extent_px() {
+    // base=0.1, moving to 0.6 -- a 0.5 fraction delta, times a 1920px-wide canvas is 960px.
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.1,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.6,
+        },
+    ];
+    let expr = text_position_offset_expr(&keyframes, 0.1, 0.0, 2.0, 1920.0).unwrap();
+    // piecewise_expr's final (last-keyframe) branch is the plain formatted last value.
+    assert!(expr.contains("960.0000000"));
+}
+
+#[test]
+fn text_position_offset_expr_offsets_t_by_start_secs() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 1.0,
+        },
+    ];
+    let expr = text_position_offset_expr(&keyframes, 0.0, 5.0, 2.0, 1080.0).unwrap();
+    assert!(expr.contains("(t-5.000000)"));
+}
+
+#[test]
 fn opacity_alpha_ramp_expr_is_none_for_no_keyframes() {
     assert_eq!(opacity_alpha_ramp_expr(&[], 30, 1, 5.0), None);
 }

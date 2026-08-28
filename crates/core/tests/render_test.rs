@@ -120,6 +120,8 @@ fn text_clip(words: Vec<WordTiming>, highlight_enabled: bool) -> TextClip {
         highlight_enabled,
         highlight_color_rgba: [255, 220, 0, 255],
         opacity_keyframes: vec![],
+        pos_x_keyframes: vec![],
+        pos_y_keyframes: vec![],
     }
 }
 
@@ -157,7 +159,7 @@ fn resolve_text_segments_returns_one_segment_for_a_plain_text_clip() {
     clip.background_corner_radius = 6.0;
     let sequence = sequence_with_text_track(clip);
 
-    let segments = resolve_text_segments(&sequence, 1920);
+    let segments = resolve_text_segments(&sequence, 1920, 1080);
 
     assert_eq!(segments.len(), 1);
     assert_eq!(segments[0].text, "Hello World");
@@ -190,7 +192,7 @@ fn resolve_text_segments_ignores_words_when_highlight_is_disabled() {
     ];
     let sequence = sequence_with_text_track(text_clip(words, false));
 
-    let segments = resolve_text_segments(&sequence, 1920);
+    let segments = resolve_text_segments(&sequence, 1920, 1080);
 
     assert_eq!(segments.len(), 1);
 }
@@ -211,7 +213,7 @@ fn resolve_text_segments_expands_a_highlighted_clip_into_a_base_plus_one_segment
     ];
     let sequence = sequence_with_text_track(text_clip(words, true));
 
-    let segments = resolve_text_segments(&sequence, 1920);
+    let segments = resolve_text_segments(&sequence, 1920, 1080);
 
     // 1 base (full sentence, whole clip duration) + 2 word overlays.
     assert_eq!(segments.len(), 3);
@@ -252,7 +254,7 @@ fn resolve_text_segments_falls_back_to_one_segment_when_canvas_width_is_zero() {
     }];
     let sequence = sequence_with_text_track(text_clip(words, true));
 
-    let segments = resolve_text_segments(&sequence, 0);
+    let segments = resolve_text_segments(&sequence, 0, 1080);
 
     assert_eq!(segments.len(), 1);
 }
