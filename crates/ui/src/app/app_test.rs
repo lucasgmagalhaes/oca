@@ -328,6 +328,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         renaming_project: None::<(usize, String, String)>,
         renaming_sequence: None,
         deleting_sequence: None,
+        speed_ramp_dialog: None,
         saving_layer_template: None,
         applying_layer_template: None,
         layer_templates_menu_open: false,

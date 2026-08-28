@@ -391,8 +391,16 @@ not by default priority.
     right after the speed assignment so the pieces stay contiguous. Triggered via a "Rampa de
     velocidade" submenu in the timeline clip's context menu, with two fixed presets (0.5x→2x
     slow-to-fast, 2x→0.5x fast-to-slow, 4 steps each) rather than a custom-curve dialog — also
-    deliberately out of scope for this pass. **Not done**: the smooth continuous-curve version;
-    a UI for custom start/end speed and step count.
+    deliberately out of scope for this pass.
+
+    **Follow-up**: a custom start/end speed and step count dialog also ships now, via a
+    "Personalizada…" entry in the same context-menu submenu (`App::speed_ramp_dialog` staged
+    state, `App::show_speed_ramp_modal`, same `egui::Modal` pattern as `renaming_project`'s own
+    dialog). UI-only — `App::apply_speed_ramp_to_selected_clip` itself already accepted
+    `start_speed`/`end_speed`/`steps` as parameters before this, so no new avfilter/geq/setpts
+    math was needed, none of the sandbox-verification risk the smooth-curve version has. **Still
+    not done**: the smooth continuous-curve version (the real remaining gap, needs the `log()`
+    per-segment PTS-integral derivation flagged above, still unverifiable in this sandbox).
 30. `[x]` Real-time audio level meter (VU/peak) during playback — `matrix/competitor-parity.md`.
     Present in Premiere (VU meters) and DaVinci (Fairlight LUFS/peak meter). A pad probe on the
     preview audio path (same pattern as the existing keyframe pad-probes, reading instead of
