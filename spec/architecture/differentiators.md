@@ -60,8 +60,9 @@ frame-difference during decode, and suggests YouTube-description-ready chapter t
 snaps to it — avoids a hard cut landing mid-sound-effect or mid-word.
 
 - Reuses: waveform already rendered on the timeline (Fase 3).
-- Depends on: the general snap system (`ROADMAP.md` P0 item — snapping doesn't exist at all
-  yet, see `matrix/timeline-and-editing.md`) — this is an *extension* of that, not standalone.
+- Depends on: the general snap system (`ROADMAP.md` P0 item 2, done — `snap_to_nearest`/
+  `snap_move_start` in `screens::editor::timeline_panel`) — this extends it with waveform
+  low-energy points as an additional snap target, not a standalone mechanism.
 
 ## D6 — One-click shorts pack
 

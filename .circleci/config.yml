@@ -1,0 +1,353 @@
+version: 2.1
+
+orbs:
+  codecov: codecov/codecov@4.0.0
+
+# FFmpeg release pinning for supply-chain security, mirrored from
+# .github/workflows/ci.yml — update both together when upgrading FFmpeg.
+# See .github/FFMPEG_UPDATE.md for detailed instructions.
+parameters:
+  ffmpeg-release-tag:
+    type: string
+    default: "autobuild-2026-08-17-13-05"
+  ffmpeg-build-id:
+    type: string
+    default: "n8.1.2-44-g7c533d0f86"
+  ffmpeg-linux64-sha256:
+    type: string
+    default: "194dc8d525ac8cea5a5ff2e6fd44754747e69af5a766e7a6727cce363bd65de6"
+  # Prebuilt binaries (not `cargo install`, which compiles from source and was taking ~3min
+  # per run on its own). SHA256s computed locally from the pinned release assets below —
+  # neither project publishes its own checksum file — same verify-before-use posture as the
+  # FFmpeg download above.
+  cargo-llvm-cov-version:
+    type: string
+    default: "0.9.0"
+  cargo-llvm-cov-linux64-sha256:
+    type: string
+    default: "b068f7c98841aacb9c4f382b4a0c184ae82f49b56a32d442b429b2961c73be15"
+  cargo-nextest-version:
+    type: string
+    default: "0.9.143"
+  cargo-nextest-linux64-sha256:
+    type: string
+    default: "66786b9abe23920d022a182d1416b1bbc8130dd4872a9553d76985a1708dcd1e"
+  # Keep the toolchain explicit rather than floating on "stable". The Ubuntu 24.04 base image
+  # is selected separately below because ONNX Runtime's prebuilt static archive requires a
+  # newer glibc/libstdc++ than the Ubuntu 22.04-based cimg/rust image provides.
+  rust-version:
+    type: string
+    default: "1.98.0"
+
+executors:
+  linux:
+    docker:
+      - image: cimg/base:2026.01
+    resource_class: medium
+
+commands:
+  # Shared by both jobs below: native toolchain/library setup that has nothing to do with
+  # whether the run is coverage or a parallel test partition.
+  setup-native-deps:
+    steps:
+      - run:
+          name: Install pinned Rust toolchain
+          command: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --default-toolchain << pipeline.parameters.rust-version >> \
+                --profile default
+            echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$BASH_ENV"
+
+      # libclang/cmake are needed by bindgen-based build scripts in core's dependency tree —
+      # espeak-rs-sys (espeak-ng phonemization, core/Cargo.toml) and whisper-rs (transcription)
+      # both link vendored C/C++ sources through bindgen, which needs a real libclang.so to
+      # parse headers. GitHub's ubuntu-latest runner ships this preinstalled (CLAUDE.md never
+      # had to set LIBCLANG_PATH there); cimg/base doesn't, hence installing + pointing at it
+      # explicitly here.
+      - run:
+          name: Install GStreamer, Python, clang and cmake
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y \
+              pkg-config \
+              libgstreamer1.0-dev \
+              libgstreamer-plugins-base1.0-dev \
+              libgstreamer-plugins-bad1.0-dev \
+              gstreamer1.0-plugins-good \
+              gstreamer1.0-plugins-bad \
+              gstreamer1.0-libav \
+              python3-dev \
+              clang \
+              libclang-dev \
+              cmake
+
+            # The image includes the Python 3.10 interpreter and versioned runtime library,
+            # but not the unversioned libpython3.10.so linker input required by pyo3's
+            # auto-initialize/embedding mode in ytbridge. python3-dev supplies the matching
+            # development library without pinning this config to the image's minor version.
+
+            # Prefer the canonical llvm-<version>/lib dir: Ubuntu's libclang-dev pulls in a
+            # versioned llvm-N package that ships the full generic-named set bindgen's
+            # clang-sys expects there (libclang.so, libclang.so.<N>, libclang-N.so, ...).
+            # Fall back to scanning all of /usr/lib (multiarch dirs only carry the
+            # libclang-N.so* names, no unversioned libclang.so) in case that layout ever
+            # changes on a future base image.
+            libclang_path=$(find /usr/lib/llvm-*/lib -maxdepth 1 -name 'libclang.so*' 2>/dev/null | head -1 | xargs -r dirname)
+            if [ -z "$libclang_path" ]; then
+              libclang_path=$(find /usr/lib \( -name 'libclang-*.so*' -o -name 'libclang.so*' \) 2>/dev/null | head -1 | xargs -r dirname)
+            fi
+            if [ -z "$libclang_path" ]; then
+              echo "Could not locate libclang.so under /usr/lib after installing libclang-dev" >&2
+              echo "--- /usr/lib/llvm-*/lib contents (if any) ---" >&2
+              ls /usr/lib/llvm-*/lib 2>&1 >&2 || true
+              exit 1
+            fi
+            echo "Using LIBCLANG_PATH=$libclang_path"
+            echo "export LIBCLANG_PATH=$libclang_path" >> "$BASH_ENV"
+
+      - restore_cache:
+          name: Restore Cargo registry
+          keys:
+            - v2-cargo-registry-{{ checksum "Cargo.lock" }}
+            - v2-cargo-registry-
+
+      # Separate from the cargo-registry cache above: these two binaries aren't in
+      # Cargo.lock, so they're keyed on their own pinned versions instead.
+      - restore_cache:
+          keys:
+            - cargo-tools-<< pipeline.parameters.cargo-llvm-cov-version >>-<< pipeline.parameters.cargo-nextest-version >>
+
+      - run:
+          name: Download and verify cargo-llvm-cov and cargo-nextest (prebuilt binaries)
+          command: |
+            rustup component add llvm-tools-preview
+
+            mkdir -p cargo-tools
+            if [ -x cargo-tools/cargo-llvm-cov ] && [ -x cargo-tools/cargo-nextest ]; then
+              echo "cargo-llvm-cov/cargo-nextest already cached, skipping download."
+            else
+              llvm_cov_version="<< pipeline.parameters.cargo-llvm-cov-version >>"
+              llvm_cov_sha256="<< pipeline.parameters.cargo-llvm-cov-linux64-sha256 >>"
+              curl -fsSL -o llvm-cov.tar.gz "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v${llvm_cov_version}/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz"
+              actual=$(sha256sum llvm-cov.tar.gz | awk '{print $1}')
+              if [ "$actual" != "$llvm_cov_sha256" ]; then
+                echo "cargo-llvm-cov checksum mismatch! Expected: $llvm_cov_sha256, Got: $actual" >&2
+                exit 1
+              fi
+              tar -xzf llvm-cov.tar.gz -C cargo-tools
+
+              nextest_version="<< pipeline.parameters.cargo-nextest-version >>"
+              nextest_sha256="<< pipeline.parameters.cargo-nextest-linux64-sha256 >>"
+              curl -fsSL -o nextest.tar.gz "https://get.nexte.st/${nextest_version}/x86_64-unknown-linux-gnu.tar.gz"
+              actual=$(sha256sum nextest.tar.gz | awk '{print $1}')
+              if [ "$actual" != "$nextest_sha256" ]; then
+                echo "cargo-nextest checksum mismatch! Expected: $nextest_sha256, Got: $actual" >&2
+                exit 1
+              fi
+              tar -xzf nextest.tar.gz -C cargo-tools
+              chmod +x cargo-tools/cargo-llvm-cov cargo-tools/cargo-nextest
+            fi
+
+            echo "export PATH=$(pwd)/cargo-tools:\$PATH" >> "$BASH_ENV"
+
+      - save_cache:
+          key: cargo-tools-<< pipeline.parameters.cargo-llvm-cov-version >>-<< pipeline.parameters.cargo-nextest-version >>
+          paths:
+            - cargo-tools
+
+      - restore_cache:
+          keys:
+            - ffmpeg-btbn-linux64-lgpl-shared-<< pipeline.parameters.ffmpeg-release-tag >>-<< pipeline.parameters.ffmpeg-linux64-sha256 >>
+
+      # Pin to a specific release and verify SHA256 checksum before extraction to prevent
+      # code execution from tampered native libraries. To update FFmpeg:
+      # 1. Find a release tag at https://github.com/BtbN/FFmpeg-Builds/releases
+      # 2. Download the asset and compute its SHA256:
+      #    sha256sum ffmpeg-master-latest-linux64-gpl-shared.tar.xz
+      # 3. Update the ffmpeg-* pipeline parameters above (and .github/workflows/ci.yml's
+      #    matching env vars, kept in sync manually).
+      # See .github/FFMPEG_UPDATE.md for detailed instructions.
+      - run:
+          name: Download and verify FFmpeg dev build (BtbN)
+          command: |
+            if [ -d ffmpeg-dev ]; then
+              echo "FFmpeg dev build already cached, skipping download."
+              exit 0
+            fi
+
+            release_tag="<< pipeline.parameters.ffmpeg-release-tag >>"
+            expected_sha256="<< pipeline.parameters.ffmpeg-linux64-sha256 >>"
+
+            if [[ "$expected_sha256" == *"PLACEHOLDER"* ]]; then
+              echo "ffmpeg-linux64-sha256 contains a placeholder value." >&2
+              echo "Please update the parameters in .circleci/config.yml" >&2
+              echo "See .github/FFMPEG_UPDATE.md for instructions." >&2
+              exit 1
+            fi
+
+            build_id="<< pipeline.parameters.ffmpeg-build-id >>"
+            uri="https://github.com/BtbN/FFmpeg-Builds/releases/download/${release_tag}/ffmpeg-${build_id}-linux64-lgpl-shared-8.1.tar.xz"
+            max_attempts=5
+            for attempt in $(seq 1 $max_attempts); do
+              if curl -fsSL -o ffmpeg.tar.xz "$uri"; then
+                break
+              fi
+              if [ "$attempt" -eq "$max_attempts" ]; then
+                echo "Download failed after $max_attempts attempts" >&2
+                exit 1
+              fi
+              delay=$((15 * attempt))
+              echo "Download failed (attempt $attempt/$max_attempts). Retrying in ${delay}s..."
+              sleep "$delay"
+            done
+
+            actual_sha256=$(sha256sum ffmpeg.tar.xz | awk '{print $1}')
+            if [ "$actual_sha256" != "$expected_sha256" ]; then
+              echo "FFmpeg checksum mismatch! Expected: $expected_sha256, Got: $actual_sha256" >&2
+              echo "This may indicate a compromised download or an outdated checksum." >&2
+              exit 1
+            fi
+            echo "FFmpeg checksum verified: $actual_sha256"
+            tar -xf ffmpeg.tar.xz
+            dir=$(find . -maxdepth 1 -name 'ffmpeg-*' -type d | head -1)
+            mv "$dir" ffmpeg-dev
+
+      - save_cache:
+          key: ffmpeg-btbn-linux64-lgpl-shared-<< pipeline.parameters.ffmpeg-release-tag >>-<< pipeline.parameters.ffmpeg-linux64-sha256 >>
+          paths:
+            - ffmpeg-dev
+
+      # FFMPEG_DIR must point at an extracted BtbN build whose include/ and lib/ match
+      # what avbridge/build.rs expects. LD_LIBRARY_PATH lets the test runner find the
+      # shared libs at runtime without a system-wide install.
+      - run:
+          name: Export FFMPEG_DIR and LD_LIBRARY_PATH
+          command: |
+            echo "export FFMPEG_DIR=$(pwd)/ffmpeg-dev" >> "$BASH_ENV"
+            echo "export LD_LIBRARY_PATH=$(pwd)/ffmpeg-dev/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}" >> "$BASH_ENV"
+
+      - run:
+          name: Verify Linux VAAPI encoder is bundled
+          command: |
+            if ! ffmpeg-dev/bin/ffmpeg -hide_banner -encoders 2>/dev/null \
+                | grep '[[:space:]]h264_vaapi[[:space:]]' >/dev/null; then
+              echo "Pinned Linux FFmpeg build does not include h264_vaapi" >&2
+              exit 1
+            fi
+
+jobs:
+  build-and-test:
+    executor: linux
+    retention:
+      caches: 7d
+    environment:
+      CARGO_TERM_COLOR: always
+    steps:
+      - checkout
+      - setup-native-deps
+
+      # Keep coverage/clippy artifacts separate from the regular nextest cache. The
+      # revision-specific key makes retries exact, while the prefix fallback lets Cargo
+      # incrementally rebuild from the latest successful revision on the same toolchain.
+      - restore_cache:
+          name: Restore quality build artifacts
+          keys:
+            - v2-cargo-target-quality-{{ arch }}-rust-<< pipeline.parameters.rust-version >>-{{ checksum "Cargo.lock" }}-{{ .Revision }}
+            - v2-cargo-target-quality-{{ arch }}-rust-<< pipeline.parameters.rust-version >>-{{ checksum "Cargo.lock" }}-
+
+      - run:
+          name: Check formatting
+          command: |
+            source "$BASH_ENV"
+            cargo fmt --all -- --check
+
+      # No separate `cargo build --workspace` step: clippy uses a different rustc wrapper
+      # than plain build, so their target/ caches invalidate each other — running both back
+      # to back recompiles the whole workspace twice for no extra coverage (clippy's checks
+      # are a superset of build's). `cargo llvm-cov nextest` below still catches any build
+      # break, just as part of the coverage/test step rather than a separately labeled one.
+      - run:
+          name: Clippy
+          command: |
+            source "$BASH_ENV"
+            cargo clippy --workspace --all-targets
+
+      # Runs the full, unpartitioned suite deliberately: cargo-llvm-cov's own nextest
+      # integration has no supported way to merge coverage instrumentation collected across
+      # separate --partition shards (open upstream issue: taiki-e/cargo-llvm-cov#281 — each
+      # partition only sees its own subset of tests, so a partitioned coverage run would
+      # under-report real coverage). See the `test-fast` job below for parallel test
+      # execution without coverage.
+      - run:
+          name: Test with coverage
+          command: |
+            source "$BASH_ENV"
+            # Preserve instrumented build products across CI runs, but never reuse raw
+            # execution profiles: those belong only to the current test invocation.
+            find target/llvm-cov-target -type f -name '*.profraw' -delete 2>/dev/null || true
+            cargo llvm-cov nextest --workspace --no-clean --lcov --output-path lcov.info --profile ci
+
+      - store_test_results:
+          path: target/nextest/ci
+
+      - save_cache:
+          name: Save Cargo registry
+          key: v2-cargo-registry-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+
+      - save_cache:
+          name: Save quality build artifacts
+          key: v2-cargo-target-quality-{{ arch }}-rust-<< pipeline.parameters.rust-version >>-{{ checksum "Cargo.lock" }}-{{ .Revision }}
+          paths:
+            - target/debug
+            - target/llvm-cov-target
+
+      - codecov/upload:
+          file: lcov.info
+          token: CODECOV_TOKEN
+
+  # Fast, parallel pass/fail feedback via nextest's native CI partitioning (not coverage —
+  # see the comment on build-and-test's "Test with coverage" step for why the two don't mix).
+  # store_test_results here also feeds CircleCI's timing-based "Smarter Testing" balancing for
+  # future runs of this job.
+  test-fast:
+    executor: linux
+    parallelism: 2
+    retention:
+      caches: 7d
+    environment:
+      CARGO_TERM_COLOR: always
+    steps:
+      - checkout
+      - setup-native-deps
+
+      - restore_cache:
+          name: Restore fast-test build artifacts
+          keys:
+            - v2-cargo-target-fast-{{ arch }}-rust-<< pipeline.parameters.rust-version >>-{{ checksum "Cargo.lock" }}-{{ .Revision }}
+            - v2-cargo-target-fast-{{ arch }}-rust-<< pipeline.parameters.rust-version >>-{{ checksum "Cargo.lock" }}-
+
+      - run:
+          name: Test (partitioned)
+          command: |
+            source "$BASH_ENV"
+            node=$((CIRCLE_NODE_INDEX + 1))
+            cargo nextest run --workspace --profile ci --partition "count:${node}/${CIRCLE_NODE_TOTAL}"
+
+      - store_test_results:
+          path: target/nextest/ci
+
+      # Both shards compile the same workspace before filtering tests, so either shard's
+      # immutable cache is a complete warm start for the next revision.
+      - save_cache:
+          name: Save fast-test build artifacts
+          key: v2-cargo-target-fast-{{ arch }}-rust-<< pipeline.parameters.rust-version >>-{{ checksum "Cargo.lock" }}-{{ .Revision }}
+          paths:
+            - target/debug
+
+workflows:
+  ci:
+    jobs:
+      - build-and-test
+      - test-fast

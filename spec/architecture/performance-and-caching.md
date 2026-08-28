@@ -59,13 +59,20 @@ same standard for every new feature going forward — see `rules-and-dod.md`.
 Before adding a new state machine/cache/sampler for a feature, check whether an existing shared
 one already does the job.
 
-**Concrete candidate found in oca:** frame-sampling-via-seek-and-poll against a `Preview`
-pipeline is independently reimplemented in auto-reframe, motion tracking, and background-removal
-matte generation (`avcore::background_removal::segment_person`'s sampling loop, per its own doc
-comment noting no session reuse across calls). A shared `FrameSampler` (same configurable
-cadence, same seek-error handling) is the clearest "should have been one primitive" case in the
-current codebase — worth extracting next time any of those three is touched, not necessarily a
-standalone task.
+**Concrete candidate found in oca, now extracted:** frame-sampling-via-seek-and-poll against a
+`Preview` pipeline was independently reimplemented in `ui`'s auto-reframe, motion tracking, and
+background-removal matte generation background-thread functions (plus a fourth copy in
+`import.rs`'s thumbnail extraction). `avcore::FrameSampler` (`crates/core/src/frame_sampler.rs`)
+is now the one shared primitive — open once, `sample(at_secs, deadline)` seeks and polls
+`current_frame()` until it decodes or the deadline passes (`None` on timeout, the same "skip
+this sample, don't fail the whole run" tolerance every caller already had), plus
+`even_sample_times` for the "N evenly spaced timestamps across a duration, clamped" bookkeeping
+motion-tracking/background-removal each did inline. All four call sites migrated (2026-08-27).
+**Left open, a separate concern**: `avcore::background_removal::segment_person` builds a fresh
+`ort::session::Session` on every call (confirmed by reading it, 2026-08-27 — no doc comment
+currently calls this out) — session-reuse-across-samples is a different optimization (amortizing
+model load, not frame decoding) than what `FrameSampler` covers, and wasn't in scope for this
+extraction.
 
 ## 6. Central mutation pipeline
 

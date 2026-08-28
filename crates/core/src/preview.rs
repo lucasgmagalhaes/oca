@@ -214,6 +214,16 @@ pub struct VideoFrame {
 /// uniform-alpha stage in here via the `alpha` element would just double-apply the same ramp.
 /// Every other caller (the single-clip [`Preview::open`] path, and a composited pipeline's
 /// background branch, which has nothing under it to blend against) keeps the old behavior.
+///
+/// The name [`build_video_filter_bin`] gives its `videobalance` element for `clip_id`, if it
+/// builds one at all — shared with [`Preview::set_live_balance`] so a later live update can
+/// find the exact same element again by name (`gst::Bin::by_name` searches recursively, so
+/// this works whether `clip_id` is the single-clip [`Preview::open`] pipeline's only clip or
+/// one branch of a [`Preview::open_composited`] pipeline).
+fn live_balance_element_name(clip_id: u64) -> String {
+    format!("oca_balance_{clip_id}")
+}
+
 fn build_video_filter_bin(
     clip: &ClipInstance,
     resolution: Option<(u32, u32)>,
@@ -507,7 +517,12 @@ fn build_video_filter_bin(
         clip.saturation as f64
     };
     if clip.brightness != 0.0 || clip.contrast != 1.0 || effective_saturation != 1.0 {
+        // Named per clip id (not left auto-generated) so a live properties-panel edit can find
+        // this exact element again later via Preview::set_live_balance -- P1 item 3's remaining
+        // live-preview-update gap (see that method's own doc comment for the full picture, and
+        // why only brightness/contrast/saturation get this treatment).
         let balance = gst::ElementFactory::make("videobalance")
+            .name(live_balance_element_name(clip.id))
             .property("brightness", clip.brightness as f64)
             .property("contrast", clip.contrast as f64)
             .property("saturation", effective_saturation)
@@ -794,8 +809,12 @@ fn attach_audio_mix_branch(
     Ok(())
 }
 
-/// Creates the shared mixed-audio output chain and returns its `audiomixer` input element.
-fn build_audio_mix_output(pipeline: &gst::Pipeline) -> Result<gst::Element, PreviewError> {
+/// Creates the shared mixed-audio output chain and returns its `audiomixer` input element,
+/// along with the live [`AudioLevel`] snapshot [`build_metering_audio_sink`] wires into the
+/// chain's own tail.
+fn build_audio_mix_output(
+    pipeline: &gst::Pipeline,
+) -> Result<(gst::Element, std::sync::Arc<std::sync::Mutex<AudioLevel>>), PreviewError> {
     let mixer = gst::ElementFactory::make("audiomixer")
         .build()
         .map_err(PreviewError::CreateElement)?;
@@ -808,12 +827,13 @@ fn build_audio_mix_output(pipeline: &gst::Pipeline) -> Result<gst::Element, Prev
     let sink = gst::ElementFactory::make("autoaudiosink")
         .build()
         .map_err(PreviewError::CreateElement)?;
+    let (metering_sink, audio_level) = build_metering_audio_sink(sink)?;
     pipeline
-        .add_many([&mixer, &convert, &resample, &sink])
+        .add_many([&mixer, &convert, &resample, &metering_sink])
         .map_err(PreviewError::Compositing)?;
-    gst::Element::link_many([&mixer, &convert, &resample, &sink])
+    gst::Element::link_many([&mixer, &convert, &resample, &metering_sink])
         .map_err(PreviewError::Compositing)?;
-    Ok(mixer)
+    Ok((mixer, audio_level))
 }
 
 /// Links `decodebin`'s first video output pad to `target_sink` once it appears — `decodebin`/
@@ -1348,6 +1368,94 @@ struct TextOverlayBranch {
     canvas_height: u32,
 }
 
+/// Real-time audio level snapshot (linear `0.0..=1.0` amplitude, not dBFS) computed from the
+/// preview's own downstream audio-sink pad probe — per `spec/ROADMAP.md` P4 item 30, "Real-time
+/// audio level meter (VU/peak) during playback". `peak` is the loudest single sample's absolute
+/// value seen in the most recently probed buffer; `rms` is that buffer's root-mean-square. Both
+/// are combined across every channel (a stereo/5.1 buffer's interleaved samples are treated as
+/// one flat sequence) rather than reported per channel, matching this feature's "small meter
+/// widget" scope rather than a full per-channel Fairlight-style meter.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct AudioLevel {
+    pub peak: f32,
+    pub rms: f32,
+}
+
+/// Builds a small `audioconvert ! capsfilter(F32LE) ! sink` bin usable as `playbin`'s
+/// `audio-sink` property ([`Preview::open`]) or in place of a bare sink element in a manually
+/// built pipeline ([`build_audio_mix_output`]) — forcing a known sample format lets the buffer
+/// probe below parse raw bytes directly instead of branching on whatever format the pipeline
+/// happened to negotiate. `sink` is the real output element (an `autoaudiosink`, or a
+/// `fakesink` fallback when no audio device is available). The returned `Arc<Mutex<AudioLevel>>`
+/// is updated from GStreamer's own streaming thread on every buffer — callers read it from the
+/// UI thread via [`Preview::current_audio_level`], never inside the probe itself.
+fn build_metering_audio_sink(
+    sink: gst::Element,
+) -> Result<(gst::Element, std::sync::Arc<std::sync::Mutex<AudioLevel>>), PreviewError> {
+    let convert = gst::ElementFactory::make("audioconvert")
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+    let capsfilter = gst::ElementFactory::make("capsfilter")
+        .property(
+            "caps",
+            gst::Caps::builder("audio/x-raw")
+                .field("format", "F32LE")
+                .build(),
+        )
+        .build()
+        .map_err(PreviewError::CreateElement)?;
+
+    let bin = gst::Bin::new();
+    bin.add_many([&convert, &capsfilter, &sink])
+        .map_err(PreviewError::FilterBin)?;
+    gst::Element::link_many([&convert, &capsfilter, &sink]).map_err(PreviewError::FilterBin)?;
+    let sink_pad = convert
+        .static_pad("sink")
+        .expect("audioconvert always has a sink pad");
+    let ghost_sink = gst::GhostPad::with_target(&sink_pad).map_err(PreviewError::FilterBin)?;
+    bin.add_pad(&ghost_sink).map_err(PreviewError::FilterBin)?;
+
+    let level = std::sync::Arc::new(std::sync::Mutex::new(AudioLevel::default()));
+    let level_for_probe = level.clone();
+    let capsfilter_src = capsfilter
+        .static_pad("src")
+        .expect("capsfilter always has a src pad");
+    capsfilter_src.add_probe(gst::PadProbeType::BUFFER, move |_pad, info| {
+        if let Some(buffer) = info.buffer() {
+            if let Ok(map) = buffer.map_readable() {
+                let bytes = map.as_slice();
+                let sample_count = bytes.len() / 4;
+                let mut peak = 0.0f32;
+                let mut sum_sq = 0.0f64;
+                for i in 0..sample_count {
+                    let sample = f32::from_le_bytes([
+                        bytes[i * 4],
+                        bytes[i * 4 + 1],
+                        bytes[i * 4 + 2],
+                        bytes[i * 4 + 3],
+                    ]);
+                    let abs = sample.abs();
+                    if abs > peak {
+                        peak = abs;
+                    }
+                    sum_sq += (sample as f64) * (sample as f64);
+                }
+                let rms = if sample_count > 0 {
+                    (sum_sq / sample_count as f64).sqrt() as f32
+                } else {
+                    0.0
+                };
+                if let Ok(mut level) = level_for_probe.lock() {
+                    *level = AudioLevel { peak, rms };
+                }
+            }
+        }
+        gst::PadProbeReturn::Ok
+    });
+
+    Ok((bin.upcast::<gst::Element>(), level))
+}
+
 /// A media pipeline loaded for preview playback — either a single file via `playbin`
 /// ([`Self::open`]) or a multi-track `compositor` pipeline ([`Self::open_composited`]). Owns
 /// the pipeline; dropping it tears the pipeline down (`State::Null`) so GStreamer releases any
@@ -1372,6 +1480,11 @@ pub struct Preview {
     /// Replaceable `appsrc ! imagefreeze(allow-replace=true)` branches for active text clips.
     /// Their order and ids mirror `open_composited`'s `text_overlays` argument.
     text_overlay_branches: Vec<TextOverlayBranch>,
+    /// Live audio level, updated on GStreamer's own streaming thread by a buffer probe
+    /// [`build_metering_audio_sink`] installs just ahead of the real audio output element —
+    /// read from the UI thread via [`Self::current_audio_level`]. Per `spec/ROADMAP.md` P4
+    /// item 30.
+    audio_level: std::sync::Arc<std::sync::Mutex<AudioLevel>>,
 }
 
 impl Preview {
@@ -1462,7 +1575,8 @@ impl Preview {
         let audio_sink = gst::ElementFactory::make("autoaudiosink")
             .build()
             .map_err(PreviewError::CreateElement)?;
-        pipeline.set_property("audio-sink", &audio_sink);
+        let (metering_sink, mut audio_level) = build_metering_audio_sink(audio_sink)?;
+        pipeline.set_property("audio-sink", &metering_sink);
 
         pipeline
             .set_state(gst::State::Paused)
@@ -1481,7 +1595,9 @@ impl Preview {
             let fakesink = gst::ElementFactory::make("fakesink")
                 .build()
                 .map_err(PreviewError::CreateElement)?;
-            pipeline.set_property("audio-sink", &fakesink);
+            let (metering_fakesink, fakesink_audio_level) = build_metering_audio_sink(fakesink)?;
+            audio_level = fakesink_audio_level;
+            pipeline.set_property("audio-sink", &metering_fakesink);
             pipeline
                 .set_state(gst::State::Paused)
                 .map_err(PreviewError::StateChange)?;
@@ -1495,6 +1611,7 @@ impl Preview {
             branches: Vec::new(),
             matte_branches: Vec::new(),
             text_overlay_branches: Vec::new(),
+            audio_level,
         })
     }
 
@@ -1669,9 +1786,19 @@ impl Preview {
             .link(&video_sink)
             .map_err(PreviewError::Compositing)?;
 
-        let audio_mixer = has_any_audio
+        let (audio_mixer, audio_level) = match has_any_audio
             .then(|| build_audio_mix_output(&pipeline))
-            .transpose()?;
+            .transpose()?
+        {
+            Some((mixer, level)) => (Some(mixer), level),
+            // No audio anywhere in this composited timeline -- nothing ever updates the level,
+            // so it just stays at its silent default rather than needing an Option everywhere
+            // downstream.
+            None => (
+                None,
+                std::sync::Arc::new(std::sync::Mutex::new(AudioLevel::default())),
+            ),
+        };
 
         let (background_decodebin, background_matte) = build_composite_branch(
             &pipeline,
@@ -1812,6 +1939,7 @@ impl Preview {
             branches,
             matte_branches,
             text_overlay_branches,
+            audio_level,
         })
     }
 
@@ -1911,6 +2039,39 @@ impl Preview {
         Ok(updated)
     }
 
+    /// Re-rasterizes and replaces exactly one text branch's buffer, keyed by `clip.id` — unlike
+    /// [`Self::update_text_overlays`], which skips a clip whose active highlighted word hasn't
+    /// changed (the scrubbing/playback path), this always redraws: the caller here already
+    /// knows some other property (text/font/color/background/position/highlight) changed and
+    /// wants the new look reflected immediately, e.g. dragging a properties-panel slider. Still
+    /// far cheaper than a full pipeline reopen — one small `appsrc` buffer push instead of
+    /// tearing down and rebuilding the whole compositor graph (background decoder, every other
+    /// branch) on every dragged frame. `Ok(false)` if no branch is currently open for this clip
+    /// id — the caller falls back to a full reopen in that case.
+    pub fn refresh_text_overlay(
+        &mut self,
+        clip: &TextClip,
+        local_time_secs: f64,
+    ) -> Result<bool, PreviewError> {
+        let Some(branch) = self
+            .text_overlay_branches
+            .iter_mut()
+            .find(|branch| branch.clip_id == clip.id)
+        else {
+            return Ok(false);
+        };
+        let rgba = crate::overlay_render::render_text_clip_rgba(
+            clip,
+            branch.canvas_width,
+            branch.canvas_height,
+            local_time_secs,
+        );
+        push_rgba_overlay_buffer(&branch.appsrc, rgba)?;
+        branch.active_word_index =
+            crate::overlay_render::active_highlight_word_index(clip, local_time_secs);
+        Ok(true)
+    }
+
     pub fn play(&self) -> Result<(), PreviewError> {
         self.pipeline
             .set_state(gst::State::Playing)
@@ -1970,6 +2131,51 @@ impl Preview {
         self.pipeline
             .query_duration::<gst::ClockTime>()
             .map(|t| t.seconds_f64())
+    }
+
+    /// The most recently probed audio buffer's level — per `spec/ROADMAP.md` P4 item 30. Stays
+    /// at its silent default (`AudioLevel::default()`) until playback has actually pushed at
+    /// least one buffer through the audio sink (e.g. while merely paused/prerolled with no
+    /// audio track, or before the first buffer after a seek).
+    pub fn current_audio_level(&self) -> AudioLevel {
+        self.audio_level.lock().map(|l| *l).unwrap_or_default()
+    }
+
+    /// Pushes a live brightness/contrast/effective-saturation update to `clip_id`'s already-
+    /// built `videobalance` element (P1 item 3's remaining live-preview-update gap,
+    /// `spec/matrix/performance.md`), if one exists in the running pipeline right now — avoids
+    /// a full pipeline reopen for the single most common color-grading tweak, the one this
+    /// gap's own investigation singled out as a real, confirmed hot-path violation before this
+    /// method existed. `effective_saturation` is the caller's job to compute (`0.0` when
+    /// `ColorFilter::BlackAndWhite` overrides it, same as [`build_video_filter_bin`] itself
+    /// does) — this method is a plain property push, it doesn't re-derive that rule.
+    ///
+    /// Returns `false` (a no-op, not an error) if no such element exists: either
+    /// [`build_video_filter_bin`] was never given this clip at all (a probe/audio-only
+    /// pipeline, or an unresolvable overlay), or brightness/contrast/saturation were *all*
+    /// neutral when the pipeline was last built — the element is only created once at least one
+    /// of the three is non-default, and creating it now would mean restructuring the running
+    /// filter graph, not just setting a property, which this method deliberately doesn't
+    /// attempt. The caller's existing "next incidental reopen picks up the new value" fallback
+    /// (unchanged, was already the *only* behavior before this method existed) still applies
+    /// whenever this returns `false`.
+    pub fn set_live_balance(
+        &self,
+        clip_id: u64,
+        brightness: f32,
+        contrast: f32,
+        effective_saturation: f32,
+    ) -> bool {
+        let Some(bin) = self.pipeline.dynamic_cast_ref::<gst::Bin>() else {
+            return false;
+        };
+        let Some(balance) = bin.by_name(&live_balance_element_name(clip_id)) else {
+            return false;
+        };
+        balance.set_property("brightness", brightness as f64);
+        balance.set_property("contrast", contrast as f64);
+        balance.set_property("saturation", effective_saturation as f64);
+        true
     }
 
     /// The most recent video frame the pipeline has decoded, as packed RGBA. `None` if

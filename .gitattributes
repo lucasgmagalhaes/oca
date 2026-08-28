@@ -1,0 +1,4 @@
+* text=auto
+
+LICENSE.txt eol=crlf
+**/*.json linguist-language=jsonc

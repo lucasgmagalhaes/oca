@@ -57,6 +57,21 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         }
                     }
                 }
+                if ui.button(Text::ImportCollabBundle.tr(app.locale)).clicked() {
+                    if let Some(zip_path) = rfd::FileDialog::new()
+                        .add_filter("oca collaboration bundle", &["zip"])
+                        .pick_file()
+                    {
+                        if let Some(dest_dir) = rfd::FileDialog::new().pick_folder() {
+                            let stem = zip_path
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("project");
+                            let dest_project_path = dest_dir.join(format!("{stem}.ocproj"));
+                            app.import_collab_bundle(zip_path, dest_project_path);
+                        }
+                    }
+                }
             });
         });
 

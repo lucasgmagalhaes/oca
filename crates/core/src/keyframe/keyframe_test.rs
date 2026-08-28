@@ -269,6 +269,217 @@ fn rotation_filter_angle_expr_uses_t_for_an_animated_ramp() {
 }
 
 #[test]
+fn gain_filter_db_expr_is_none_for_no_keyframes() {
+    assert_eq!(gain_filter_db_expr(&[], 5.0), None);
+}
+
+#[test]
+fn gain_filter_db_expr_is_none_when_every_keyframe_is_zero_db() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.0,
+        },
+    ];
+    assert_eq!(gain_filter_db_expr(&keyframes, 5.0), None);
+}
+
+#[test]
+fn gain_filter_db_expr_converts_a_single_keyframe_to_a_linear_multiplier() {
+    let keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: -6.0206,
+    }];
+    let expr = gain_filter_db_expr(&keyframes, 5.0).unwrap();
+    let linear: f32 = expr.parse().unwrap();
+    // -6.0206 dB is the standard "half amplitude" reference point.
+    assert!((linear - 0.5).abs() < 1e-3);
+}
+
+#[test]
+fn gain_filter_db_expr_uses_t_for_an_animated_ramp() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: -20.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.0,
+        },
+    ];
+    let expr = gain_filter_db_expr(&keyframes, 5.0).unwrap();
+    assert!(expr.contains("if(lt(t,"));
+    assert!(expr.contains("if(between(t,"));
+}
+
+#[test]
+fn color_balance_filter_expr_is_none_when_everything_is_neutral() {
+    assert_eq!(
+        color_balance_filter_expr(&[], &[], &[], 0.0, 1.0, 1.0, 5.0),
+        None
+    );
+}
+
+#[test]
+fn color_balance_filter_expr_uses_constants_for_unanimated_axes() {
+    let expr = color_balance_filter_expr(&[], &[], &[], 0.3, 1.0, 1.0, 5.0).unwrap();
+    assert!(!expr.contains("eval=frame"));
+    assert!(expr.starts_with("eq=brightness=0.3"));
+    assert!(expr.contains("contrast=1.0000000"));
+    assert!(expr.contains("saturation=1.0000000"));
+}
+
+#[test]
+fn color_balance_filter_expr_animates_only_the_keyframed_axis() {
+    let brightness_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: -0.5,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.5,
+        },
+    ];
+    let expr =
+        color_balance_filter_expr(&brightness_keyframes, &[], &[], 0.0, 1.5, 1.0, 5.0).unwrap();
+    assert!(expr.contains("eval=frame"));
+    assert!(expr.contains("if(lt(t,"));
+    // The un-animated contrast axis still uses its own constant.
+    assert!(expr.contains("contrast=1.5000000"));
+}
+
+#[test]
+fn crop_filter_expr_is_none_for_a_fully_uncropped_unanimated_frame() {
+    assert_eq!(
+        crop_filter_expr(&[], &[], &[], &[], 0.0, 0.0, 1.0, 1.0, 30, 1, 5.0),
+        None
+    );
+}
+
+#[test]
+fn crop_filter_expr_builds_a_geq_expression_for_a_static_crop_with_no_keyframes() {
+    let expr = crop_filter_expr(&[], &[], &[], &[], 0.1, 0.2, 0.5, 0.6, 30, 1, 5.0).unwrap();
+    assert!(expr.starts_with("geq="));
+    assert!(!expr.contains("if(lt(N,")); // no animation, just plain constants
+}
+
+#[test]
+fn crop_filter_expr_animates_only_the_keyframed_axis() {
+    let crop_x_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.5,
+        },
+    ];
+    let expr = crop_filter_expr(
+        &crop_x_keyframes,
+        &[],
+        &[],
+        &[],
+        0.0,
+        0.0,
+        0.5,
+        0.5,
+        30,
+        1,
+        5.0,
+    )
+    .unwrap();
+    assert!(expr.contains("if(lt(N,"));
+    assert!(expr.contains("if(between(N,"));
+}
+
+#[test]
+fn shape_axis_expr_is_a_plain_constant_for_no_keyframes() {
+    assert_eq!(shape_axis_expr(&[], 0.5, 1.0, 3.0), "0.5000");
+}
+
+#[test]
+fn shape_axis_expr_is_a_plain_constant_for_a_single_keyframe() {
+    let keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.25,
+    }];
+    assert_eq!(shape_axis_expr(&keyframes, 0.5, 1.0, 3.0), "0.2500");
+}
+
+#[test]
+fn shape_axis_expr_offsets_t_by_the_shapes_start_secs_when_animated() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.1,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.9,
+        },
+    ];
+    let expr = shape_axis_expr(&keyframes, 0.5, 2.5, 3.0);
+    assert!(expr.contains("(T-2.500000)"));
+    assert!(expr.contains("if(lt((T-2.500000),"));
+    assert!(expr.contains("if(between((T-2.500000),"));
+}
+
+#[test]
+fn text_opacity_alpha_expr_is_none_for_no_keyframes() {
+    assert_eq!(text_opacity_alpha_expr(&[], 1.0, 3.0), None);
+}
+
+#[test]
+fn text_opacity_alpha_expr_is_none_when_every_keyframe_is_fully_opaque() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 1.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 1.0,
+        },
+    ];
+    assert_eq!(text_opacity_alpha_expr(&keyframes, 1.0, 3.0), None);
+}
+
+#[test]
+fn text_opacity_alpha_expr_clamps_a_single_keyframe() {
+    let keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: -0.5,
+    }];
+    assert_eq!(
+        text_opacity_alpha_expr(&keyframes, 1.0, 3.0),
+        Some("0.0000000".to_string())
+    );
+}
+
+#[test]
+fn text_opacity_alpha_expr_offsets_t_by_start_secs_for_a_fade() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 1.0,
+        },
+    ];
+    let expr = text_opacity_alpha_expr(&keyframes, 2.0, 4.0).unwrap();
+    assert!(expr.contains("(T-2.000000)"));
+}
+
+#[test]
 fn opacity_alpha_ramp_expr_is_none_for_no_keyframes() {
     assert_eq!(opacity_alpha_ramp_expr(&[], 30, 1, 5.0), None);
 }

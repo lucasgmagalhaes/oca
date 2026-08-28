@@ -702,6 +702,254 @@ impl App {
         }
     }
 
+    /// The searchable Timeline Index panel (`ROADMAP.md` P2 item 9) — every marker on the
+    /// active sequence, filterable by [`App::marker_search`], click-to-seek, inline label
+    /// editing, add/remove/toggle-complete. Shown while [`App::timeline_index_open`] is set;
+    /// a no-op otherwise. Same "read everything needed into locals, mutate `self` only after
+    /// `modal.show` returns" shape every other modal in this file uses, since the closure can't
+    /// safely re-borrow `self` from inside itself.
+    pub(super) fn show_timeline_index_panel(&mut self, ctx: &egui::Context) {
+        if !self.timeline_index_open {
+            return;
+        }
+        let locale = self.locale;
+        let mut search = self.marker_search.clone();
+        let markers: Vec<avcore::Marker> = self
+            .active_project()
+            .timeline()
+            .markers_sorted()
+            .into_iter()
+            .cloned()
+            .collect();
+
+        let mut seek_to: Option<f64> = None;
+        let mut remove_id: Option<u64> = None;
+        let mut toggle_id: Option<u64> = None;
+        let mut label_edit: Option<(u64, String)> = None;
+        let mut kind_edit: Option<(u64, avcore::MarkerKind)> = None;
+        let mut add_kind: Option<avcore::MarkerKind> = None;
+        let mut close = false;
+
+        let modal = egui::Modal::new(egui::Id::new("timeline_index_panel"));
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(420.0);
+            ui.label(
+                egui::RichText::new(Text::TimelineIndexTitle.tr(locale))
+                    .size(15.0)
+                    .strong(),
+            );
+            ui.add_space(6.0);
+            ui.add(
+                egui::TextEdit::singleline(&mut search)
+                    .desired_width(f32::INFINITY)
+                    .hint_text(Text::TimelineIndexSearchHint.tr(locale)),
+            );
+            ui.add_space(8.0);
+
+            let query = search.to_lowercase();
+            let visible: Vec<&avcore::Marker> = markers
+                .iter()
+                .filter(|m| query.is_empty() || m.label.to_lowercase().contains(&query))
+                .collect();
+
+            egui::ScrollArea::vertical()
+                .max_height(320.0)
+                .show(ui, |ui| {
+                    if visible.is_empty() {
+                        ui.label(
+                            egui::RichText::new(Text::TimelineIndexEmpty.tr(locale))
+                                .color(theme::TEXT_MUTED),
+                        );
+                    }
+                    for marker in &visible {
+                        ui.horizontal(|ui| {
+                            if marker.kind == avcore::MarkerKind::ToDo {
+                                let mut completed = marker.completed;
+                                if ui.checkbox(&mut completed, "").changed() {
+                                    toggle_id = Some(marker.id);
+                                }
+                            }
+                            let mut kind = marker.kind;
+                            egui::ComboBox::from_id_salt(("marker_kind", marker.id))
+                                .selected_text(marker_kind_icon(kind))
+                                .width(36.0)
+                                .show_ui(ui, |ui| {
+                                    for candidate in avcore::MarkerKind::ALL {
+                                        ui.selectable_value(
+                                            &mut kind,
+                                            *candidate,
+                                            marker_kind_icon(*candidate),
+                                        );
+                                    }
+                                });
+                            if kind != marker.kind {
+                                kind_edit = Some((marker.id, kind));
+                            }
+                            if ui
+                                .button(avcore::media::format_timecode(marker.position_secs))
+                                .clicked()
+                            {
+                                seek_to = Some(marker.position_secs);
+                            }
+                            let mut label = marker.label.clone();
+                            let label_resp = ui.add(
+                                egui::TextEdit::singleline(&mut label)
+                                    .desired_width(180.0)
+                                    .hint_text(Text::TimelineIndexLabelHint.tr(locale)),
+                            );
+                            if label_resp.changed() {
+                                label_edit = Some((marker.id, label));
+                            }
+                            if ui.small_button("🗑").clicked() {
+                                remove_id = Some(marker.id);
+                            }
+                        });
+                    }
+                });
+
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .button(Text::TimelineIndexAddStandard.tr(locale))
+                    .clicked()
+                {
+                    add_kind = Some(avcore::MarkerKind::Standard);
+                }
+                if ui.button(Text::TimelineIndexAddToDo.tr(locale)).clicked() {
+                    add_kind = Some(avcore::MarkerKind::ToDo);
+                }
+                if ui
+                    .button(Text::TimelineIndexAddChapter.tr(locale))
+                    .clicked()
+                {
+                    add_kind = Some(avcore::MarkerKind::Chapter);
+                }
+            });
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                close = true;
+            }
+            ui.add_space(6.0);
+            if ui.button(Text::WindowClose.tr(locale)).clicked() {
+                close = true;
+            }
+        });
+
+        self.marker_search = search;
+        if response.should_close() || close {
+            self.timeline_index_open = false;
+        }
+        if let Some(kind) = add_kind {
+            self.add_marker_at_playhead(kind);
+        }
+        if let Some(marker_id) = remove_id {
+            self.remove_marker(marker_id);
+        }
+        if let Some(marker_id) = toggle_id {
+            self.toggle_marker_completed(marker_id);
+        }
+        if let Some((marker_id, label)) = label_edit {
+            self.set_marker_label(marker_id, label);
+        }
+        if let Some((marker_id, kind)) = kind_edit {
+            self.set_marker_kind(marker_id, kind);
+        }
+        if let Some(position_secs) = seek_to {
+            self.seek_preview(position_secs);
+        }
+    }
+
+    /// The silence-gap review modal (D1, `ROADMAP.md` P3 item 13) — every gap
+    /// `App::begin_silence_review` staged in `App::silence_review`, each with a checkbox
+    /// defaulting to accepted, click-to-seek on its timecode, and an "Apply" button that runs
+    /// `App::apply_silence_review` on whatever's still checked. Shown while `silence_review` is
+    /// `Some`; a no-op otherwise. Never applies anything itself while drawing — same
+    /// read-then-mutate-after shape as `show_timeline_index_panel`.
+    pub(super) fn show_silence_review_modal(&mut self, ctx: &egui::Context) {
+        if self.silence_review.is_none() {
+            return;
+        }
+        let locale = self.locale;
+        let mut toggle_index: Option<usize> = None;
+        let mut seek_to: Option<f64> = None;
+        let mut apply = false;
+        let mut close = false;
+
+        let modal = egui::Modal::new(egui::Id::new("silence_review_modal"));
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.label(
+                egui::RichText::new(Text::SilenceReviewTitle.tr(locale))
+                    .size(15.0)
+                    .strong(),
+            );
+            ui.add_space(6.0);
+
+            let Some(review) = &self.silence_review else {
+                return;
+            };
+            if review.gaps.is_empty() {
+                ui.label(
+                    egui::RichText::new(Text::SilenceReviewEmpty.tr(locale))
+                        .color(theme::TEXT_MUTED),
+                );
+            }
+            egui::ScrollArea::vertical()
+                .max_height(320.0)
+                .show(ui, |ui| {
+                    for (index, entry) in review.gaps.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            let mut accepted = entry.accepted;
+                            if ui.checkbox(&mut accepted, "").changed() {
+                                toggle_index = Some(index);
+                            }
+                            let label = Text::SilenceReviewGapLabel
+                                .tr(locale)
+                                .replace(
+                                    "{start}",
+                                    &avcore::media::format_timecode(entry.gap.start_secs),
+                                )
+                                .replace(
+                                    "{end}",
+                                    &avcore::media::format_timecode(entry.gap.end_secs),
+                                )
+                                .replace(
+                                    "{duration}",
+                                    &format!("{:.1}", entry.gap.duration_secs()),
+                                );
+                            if ui.button(label).clicked() {
+                                seek_to = Some(entry.gap.start_secs);
+                            }
+                        });
+                    }
+                });
+
+            ui.add_space(8.0);
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                close = true;
+            }
+            ui.horizontal(|ui| {
+                if ui.button(Text::SilenceReviewApply.tr(locale)).clicked() {
+                    apply = true;
+                }
+                if ui.button(Text::WindowClose.tr(locale)).clicked() {
+                    close = true;
+                }
+            });
+        });
+
+        if let Some(index) = toggle_index {
+            self.toggle_silence_gap_accepted(index);
+        }
+        if let Some(position_secs) = seek_to {
+            self.seek_preview(position_secs);
+        }
+        if apply {
+            self.apply_silence_review();
+        } else if response.should_close() || close {
+            self.close_silence_review();
+        }
+    }
+
     /// Flags that a project with `file_path` should offer autosave restoration on open, if
     /// `<file_path>.autosave.ocproj` exists and is newer than the project file itself.
     pub fn check_autosave_on_open(&mut self, file_path: &Path) {
@@ -1109,6 +1357,130 @@ impl App {
         if confirmed {
             self.confirm_apply_layer_template();
         }
+    }
+
+    /// Shows the create/edit modal for `editing_smart_bin` (P4 item 22, "Smart bins") — name,
+    /// kind filter (Any/Video/Audio), file-name-contains text, and a has-audio tri-state, plus
+    /// Save/Cancel and, for an existing bin (`id != 0`), Delete. Committed via
+    /// [`App::commit_smart_bin_draft`]/discarded via [`App::cancel_smart_bin_draft`] on
+    /// Escape/Cancel, same modal-lifecycle shape every other draft-editing modal here uses.
+    pub(super) fn show_smart_bin_modal(&mut self, ctx: &egui::Context) {
+        if self.editing_smart_bin.is_none() {
+            return;
+        }
+        let locale = self.locale;
+        let is_existing = self.editing_smart_bin.as_ref().is_some_and(|b| b.id != 0);
+        let modal = egui::Modal::new(egui::Id::new("smart_bin_modal"));
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let mut deleted = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.label(
+                egui::RichText::new(Text::SmartBinEditTitle.tr(locale))
+                    .size(15.0)
+                    .strong(),
+            );
+            ui.add_space(10.0);
+            let draft = self.editing_smart_bin.as_mut().unwrap();
+
+            ui.label(Text::SmartBinNameLabel.tr(locale));
+            let name_edit =
+                ui.add(egui::TextEdit::singleline(&mut draft.name).desired_width(f32::INFINITY));
+            name_edit.request_focus();
+            ui.add_space(8.0);
+
+            ui.label(Text::SmartBinKindLabel.tr(locale));
+            ui.horizontal(|ui| {
+                ui.selectable_value(
+                    &mut draft.kind_filter,
+                    None,
+                    Text::SmartBinKindAny.tr(locale),
+                );
+                ui.selectable_value(
+                    &mut draft.kind_filter,
+                    Some(avcore::MediaKind::Video),
+                    Text::SmartBinKindVideo.tr(locale),
+                );
+                ui.selectable_value(
+                    &mut draft.kind_filter,
+                    Some(avcore::MediaKind::Audio),
+                    Text::SmartBinKindAudio.tr(locale),
+                );
+            });
+            ui.add_space(8.0);
+
+            ui.label(Text::SmartBinNameContainsLabel.tr(locale));
+            ui.add(
+                egui::TextEdit::singleline(&mut draft.name_contains).desired_width(f32::INFINITY),
+            );
+            ui.add_space(8.0);
+
+            ui.label(Text::SmartBinAudioLabel.tr(locale));
+            ui.horizontal(|ui| {
+                ui.selectable_value(
+                    &mut draft.requires_audio,
+                    None,
+                    Text::SmartBinAudioAny.tr(locale),
+                );
+                ui.selectable_value(
+                    &mut draft.requires_audio,
+                    Some(true),
+                    Text::SmartBinAudioYes.tr(locale),
+                );
+                ui.selectable_value(
+                    &mut draft.requires_audio,
+                    Some(false),
+                    Text::SmartBinAudioNo.tr(locale),
+                );
+            });
+            ui.add_space(10.0);
+
+            if name_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                confirmed = true;
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.horizontal(|ui| {
+                if ui.button(Text::SmartBinSave.tr(locale)).clicked() {
+                    confirmed = true;
+                }
+                if ui.button(Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+                if is_existing && ui.button(Text::SmartBinDelete.tr(locale)).clicked() {
+                    deleted = true;
+                }
+            });
+        });
+
+        if deleted {
+            if let Some(bin_id) = self.editing_smart_bin.as_ref().map(|b| b.id) {
+                self.delete_smart_bin(bin_id);
+            }
+            self.editing_smart_bin = None;
+            return;
+        }
+        if response.should_close() || cancelled {
+            self.cancel_smart_bin_draft();
+            return;
+        }
+        if confirmed {
+            self.commit_smart_bin_draft();
+        }
+    }
+}
+
+/// A short, locale-neutral icon for one [`avcore::MarkerKind`] — the Timeline Index panel's
+/// per-marker kind picker and its own selected-value label both use this, so a marker's kind
+/// always reads the same glyph whether it's the picked value or a dropdown option.
+fn marker_kind_icon(kind: avcore::MarkerKind) -> &'static str {
+    match kind {
+        avcore::MarkerKind::Standard => "🔹",
+        avcore::MarkerKind::ToDo => "☐",
+        avcore::MarkerKind::Chapter => "📖",
+        avcore::MarkerKind::Highlight => "⭐",
     }
 }
 

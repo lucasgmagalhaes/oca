@@ -18,7 +18,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use avcore::project::Sequence;
 use avcore::render::{render_export, resolve_shape_segments, resolve_text_segments, RenderOutcome};
-use avcore::timeline::{ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind, WordTiming};
+use avcore::timeline::{
+    AudioRole, ShapeClip, ShapeKind, TextClip, Timeline, Track, TrackKind, WordTiming,
+};
 use avcore::{measure_loudness, probe_media};
 
 fn fixture(name: &str) -> PathBuf {
@@ -117,6 +119,7 @@ fn text_clip(words: Vec<WordTiming>, highlight_enabled: bool) -> TextClip {
         words,
         highlight_enabled,
         highlight_color_rgba: [255, 220, 0, 255],
+        opacity_keyframes: vec![],
     }
 }
 
@@ -133,8 +136,12 @@ fn sequence_with_text_track(clip: TextClip) -> Sequence {
                 text_clips: vec![clip],
                 shape_clips: vec![],
                 visible: true,
+                audio_role: AudioRole::Unspecified,
+                color_label: None,
             }],
             playhead_secs: 0.0,
+            markers: Vec::new(),
+            multicam_groups: Vec::new(),
         },
         export_settings: Default::default(),
     }
@@ -258,6 +265,11 @@ fn shape_clip(id: u64, start_secs: f64, duration_secs: f64) -> ShapeClip {
         shape_kind: ShapeKind::rectangle(),
         center_x: 0.5,
         center_y: 0.5,
+        center_x_keyframes: vec![],
+        center_y_keyframes: vec![],
+        width_keyframes: vec![],
+        height_keyframes: vec![],
+        rotation_keyframes: vec![],
         width: 0.3,
         height: 0.3,
         rotation_deg: 0.0,
@@ -279,8 +291,12 @@ fn sequence_with_shape_track(clips: Vec<ShapeClip>) -> Sequence {
                 text_clips: vec![],
                 shape_clips: clips,
                 visible: true,
+                audio_role: AudioRole::Unspecified,
+                color_label: None,
             }],
             playhead_secs: 0.0,
+            markers: Vec::new(),
+            multicam_groups: Vec::new(),
         },
         export_settings: Default::default(),
     }

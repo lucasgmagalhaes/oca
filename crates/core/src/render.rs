@@ -72,6 +72,15 @@ pub struct TextSegment {
     pub glyph_byte_range: Option<[u32; 2]>,
     pub pos_x: f32,
     pub pos_y: f32,
+    /// Pre-built `geq` alpha-multiplier expression for this clip's `opacity_keyframes`
+    /// (`keyframe::text_opacity_alpha_expr`), built once from the *base clip's* own
+    /// `start_secs`/`duration_secs` in [`text_clip_to_segments`] and copied onto every segment
+    /// derived from that clip (base plus any per-word highlight segments) — the expression is
+    /// self-contained/timeline-absolute, so it stays correct even on a word-highlight segment
+    /// whose own `start_secs`/`duration_secs` (used only for its `enable=between(...)`
+    /// visibility window) differ from the base clip's. Empty means "no fade".
+    #[serde(default)]
+    pub opacity_keyframe_expr: String,
 }
 
 #[derive(Debug)]
@@ -474,6 +483,12 @@ pub fn resolve_audio_segments(
                 timeline_start_secs: clip.start_secs,
                 gain_db: clip.gain_db,
                 speed_factor: clip.speed_factor,
+                gain_keyframe_expr: keyframe::gain_filter_db_expr(
+                    &clip.gain_keyframes,
+                    clip.duration_secs(),
+                )
+                .unwrap_or_default(),
+                duck_role: track.audio_role.to_duck_role_code(),
             });
         }
     }
@@ -526,6 +541,7 @@ fn apply_text_overlay_pass(output: &Path, canvas: Canvas, text_segments: &[TextS
             start_secs: segment.start_secs,
             duration_secs: segment.duration_secs,
             overlay_path,
+            opacity_keyframe_expr: segment.opacity_keyframe_expr.clone(),
         });
     }
 
@@ -619,6 +635,15 @@ pub fn resolve_text_segments(sequence: &Sequence, canvas_width: u32) -> Vec<Text
 /// caption layout and filtering its glyphs by byte range makes highlights follow both explicit
 /// newlines and automatic word wrapping exactly.
 fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<TextSegment> {
+    // Built once from the base clip's own timing (not any individual segment's) and copied onto
+    // every segment below -- see TextSegment::opacity_keyframe_expr's doc comment for why.
+    let opacity_keyframe_expr = keyframe::text_opacity_alpha_expr(
+        &clip.opacity_keyframes,
+        clip.start_secs,
+        clip.duration_secs,
+    )
+    .unwrap_or_default();
+
     let base = TextSegment {
         start_secs: clip.start_secs,
         duration_secs: clip.duration_secs,
@@ -633,6 +658,7 @@ fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<TextSegment>
         glyph_byte_range: None,
         pos_x: clip.pos_x,
         pos_y: clip.pos_y,
+        opacity_keyframe_expr: opacity_keyframe_expr.clone(),
     };
     if !clip.highlight_enabled || clip.words.is_empty() || canvas_width == 0 {
         return vec![base];
@@ -664,6 +690,7 @@ fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<TextSegment>
             glyph_byte_range: Some([start, end]),
             pos_x: clip.pos_x,
             pos_y: clip.pos_y,
+            opacity_keyframe_expr: opacity_keyframe_expr.clone(),
         });
     }
     segments
@@ -706,9 +733,14 @@ fn shape_clip_to_segment(
         shape_kind: &clip.shape_kind,
         center_x: clip.center_x,
         center_y: clip.center_y,
+        center_x_keyframes: &clip.center_x_keyframes,
+        center_y_keyframes: &clip.center_y_keyframes,
         width: clip.width,
         height: clip.height,
+        width_keyframes: &clip.width_keyframes,
+        height_keyframes: &clip.height_keyframes,
         rotation_deg: clip.rotation_deg,
+        rotation_keyframes: &clip.rotation_keyframes,
         color_rgba: clip.color_rgba,
         stroke_thickness_px: clip.stroke_thickness_px,
         start_secs: clip.start_secs,

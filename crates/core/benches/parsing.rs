@@ -27,7 +27,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use avcore::loudness::parse_loudnorm_stderr;
 use avcore::persistence::{from_ocproj_bytes, to_ocproj_bytes};
 use avcore::timeline::{
-    ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
+    AudioRole, ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
 };
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency, Sequence};
 
@@ -92,6 +92,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 source_in_secs: 0.0,
                 source_out_secs: 30.0,
                 composite_id: None,
+                color_label: None,
                 gain_db: 0.0,
                 frozen: false,
                 speed_factor: 1.0,
@@ -121,6 +122,14 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 scale_keyframes: vec![],
                 rotation_keyframes: vec![],
                 opacity_keyframes: vec![],
+                gain_keyframes: vec![],
+                brightness_keyframes: vec![],
+                contrast_keyframes: vec![],
+                saturation_keyframes: vec![],
+                crop_x_keyframes: vec![],
+                crop_y_keyframes: vec![],
+                crop_w_keyframes: vec![],
+                crop_h_keyframes: vec![],
                 deflicker_enabled: false,
                 lut_path: String::new(),
                 layer_scale_x: 1.0,
@@ -133,6 +142,8 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
         text_clips: vec![],
         shape_clips: vec![],
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
 
     Project {
@@ -151,12 +162,15 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                     make_track(3, "A2", TrackKind::Audio),
                 ],
                 playhead_secs: 0.0,
+                markers: vec![],
+                multicam_groups: Vec::new(),
             },
             export_settings: Default::default(),
         }],
         active_sequence: 0,
         file_path: None,
         panel_layout: None,
+        smart_bins: Vec::new(),
     }
 }
 

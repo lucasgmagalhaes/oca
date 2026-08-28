@@ -146,6 +146,14 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let scale_keyframes = clip.scale_keyframes.clone();
                     let rotation_keyframes = clip.rotation_keyframes.clone();
                     let opacity_keyframes = clip.opacity_keyframes.clone();
+                    let gain_keyframes = clip.gain_keyframes.clone();
+                    let brightness_keyframes = clip.brightness_keyframes.clone();
+                    let contrast_keyframes = clip.contrast_keyframes.clone();
+                    let saturation_keyframes = clip.saturation_keyframes.clone();
+                    let crop_x_keyframes = clip.crop_x_keyframes.clone();
+                    let crop_y_keyframes = clip.crop_y_keyframes.clone();
+                    let crop_w_keyframes = clip.crop_w_keyframes.clone();
+                    let crop_h_keyframes = clip.crop_h_keyframes.clone();
                     if components::property_section(
                         ui,
                         Text::PropGain.tr(locale),
@@ -160,6 +168,27 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         },
                     ) {
                         app.set_selected_clip_gain(gain_db);
+                    }
+
+                    let mut new_gain_keyframes = None;
+                    if components::property_section(
+                        ui,
+                        Text::PropGainKeyframes.tr(locale),
+                        Text::GainKeyframesExportNote.tr(locale),
+                        |ui| {
+                            new_gain_keyframes = f32_keyframe_editor(
+                                ui,
+                                &gain_keyframes,
+                                GAIN_DB_RANGE,
+                                0.0,
+                                locale,
+                            );
+                            new_gain_keyframes.is_some()
+                        },
+                    ) {
+                        if let Some(kfs) = new_gain_keyframes {
+                            app.set_selected_clip_gain_keyframes(kfs);
+                        }
                     }
 
                     // "Congelar" only makes sense for a video block — audio clips have no
@@ -270,6 +299,90 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                 crop_changed
                             },
                         );
+
+                        let mut new_crop_x_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropCropXKeyframes.tr(locale),
+                            Text::CropKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_crop_x_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &crop_x_keyframes,
+                                    0.0..=1.0,
+                                    0.0,
+                                    locale,
+                                );
+                                new_crop_x_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_crop_x_keyframes {
+                                app.set_selected_clip_crop_x_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_crop_y_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropCropYKeyframes.tr(locale),
+                            Text::CropKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_crop_y_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &crop_y_keyframes,
+                                    0.0..=1.0,
+                                    0.0,
+                                    locale,
+                                );
+                                new_crop_y_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_crop_y_keyframes {
+                                app.set_selected_clip_crop_y_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_crop_w_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropCropWKeyframes.tr(locale),
+                            Text::CropKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_crop_w_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &crop_w_keyframes,
+                                    CROP_MIN_SIZE..=1.0,
+                                    1.0,
+                                    locale,
+                                );
+                                new_crop_w_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_crop_w_keyframes {
+                                app.set_selected_clip_crop_w_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_crop_h_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropCropHKeyframes.tr(locale),
+                            Text::CropKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_crop_h_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &crop_h_keyframes,
+                                    CROP_MIN_SIZE..=1.0,
+                                    1.0,
+                                    locale,
+                                );
+                                new_crop_h_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_crop_h_keyframes {
+                                app.set_selected_clip_crop_h_keyframes(kfs);
+                            }
+                        }
 
                         let mask_changed = components::property_section(
                             ui,
@@ -444,6 +557,69 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                             },
                         ) {
                             app.set_selected_clip_color_adjust(brightness, contrast, saturation);
+                        }
+
+                        let mut new_brightness_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropBrightnessKeyframes.tr(locale),
+                            Text::ColorKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_brightness_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &brightness_keyframes,
+                                    BRIGHTNESS_RANGE,
+                                    0.0,
+                                    locale,
+                                );
+                                new_brightness_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_brightness_keyframes {
+                                app.set_selected_clip_brightness_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_contrast_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropContrastKeyframes.tr(locale),
+                            Text::ColorKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_contrast_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &contrast_keyframes,
+                                    CONTRAST_RANGE,
+                                    1.0,
+                                    locale,
+                                );
+                                new_contrast_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_contrast_keyframes {
+                                app.set_selected_clip_contrast_keyframes(kfs);
+                            }
+                        }
+
+                        let mut new_saturation_keyframes = None;
+                        if components::property_section(
+                            ui,
+                            Text::PropSaturationKeyframes.tr(locale),
+                            Text::ColorKeyframesExportNote.tr(locale),
+                            |ui| {
+                                new_saturation_keyframes = f32_keyframe_editor(
+                                    ui,
+                                    &saturation_keyframes,
+                                    SATURATION_RANGE,
+                                    1.0,
+                                    locale,
+                                );
+                                new_saturation_keyframes.is_some()
+                            },
+                        ) {
+                            if let Some(kfs) = new_saturation_keyframes {
+                                app.set_selected_clip_saturation_keyframes(kfs);
+                            }
                         }
 
                         if components::property_section(
@@ -690,7 +866,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                         if ui.button(pick_label).clicked() {
                                             if app.picking_motion_track_region {
                                                 app.stop_picking_motion_track_region();
-                                            } else if app.preview_texture.is_some() {
+                                            } else if app.preview_state.preview_texture.is_some() {
                                                 app.start_picking_motion_track_region();
                                             } else {
                                                 app.push_toast(
@@ -1020,6 +1196,10 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
     };
 
     let mut changed = false;
+    // Set alongside `changed` only for edits that can change which clip(s) cover the
+    // playhead (start/duration) — see the full-vs-cheap-refresh choice at the end of this
+    // function.
+    let mut structural_changed = false;
 
     // Text content
     ui.label(
@@ -1224,6 +1404,25 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
         changed = true;
     }
 
+    // Opacity keyframes -- fade the text in/out over its own on-timeline duration (see
+    // TextClip::opacity_keyframes' doc comment).
+    let mut new_opacity_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropTextOpacityKeyframes.tr(locale),
+        Text::TextOpacityKeyframesExportNote.tr(locale),
+        |ui| {
+            new_opacity_keyframes =
+                f32_keyframe_editor(ui, &tc.opacity_keyframes, 0.0..=1.0, 1.0, locale);
+            new_opacity_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_opacity_keyframes {
+            tc.opacity_keyframes = kfs;
+            changed = true;
+        }
+    }
+
     // Start and duration
     ui.label(
         RichText::new(Text::PropTextStart.tr(locale))
@@ -1240,6 +1439,7 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
         .changed()
     {
         changed = true;
+        structural_changed = true;
     }
     ui.label(
         RichText::new(Text::PropTextDuration.tr(locale))
@@ -1256,6 +1456,7 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
         .changed()
     {
         changed = true;
+        structural_changed = true;
     }
 
     ui.add_space(6.0);
@@ -1265,8 +1466,16 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
             .color(theme::TEXT_MUTED),
     );
 
-    // Apply changes back to the clip in the active project.
+    // Apply changes back to the clip in the active project. `start_secs`/`duration_secs`
+    // (structural_changed) can change which clips cover the playhead, so those still force a
+    // full pipeline reopen via `ensure_preview_loaded`'s normal id-diffing path. Every other
+    // field here (text, font, color, background, position, highlight) only changes this
+    // clip's own rasterized look — if it's already part of the currently open composited
+    // preview, `refresh_preview_text_content` pushes a fresh buffer into its existing
+    // `appsrc` branch instead of tearing down and rebuilding the whole GStreamer pipeline
+    // (background decoder, compositor, every other branch) on every dragged slider frame.
     if changed {
+        app.push_undo_snapshot_for_drag();
         let timeline = app.active_project_mut().timeline_mut();
         for track in &mut timeline.tracks {
             if track.kind == avcore::timeline::TrackKind::Text {
@@ -1276,7 +1485,11 @@ fn text_clip_properties(app: &mut App, ui: &mut egui::Ui, tc_id: u64, locale: cr
                 }
             }
         }
-        app.invalidate_preview_rendering();
+        if structural_changed {
+            app.invalidate_preview_rendering();
+        } else {
+            app.refresh_preview_text_content(tc_id);
+        }
     }
 }
 
@@ -1503,6 +1716,42 @@ fn shape_clip_properties(
         changed = true;
     }
 
+    // Center position keyframes -- animate a pan/reveal over the shape's own on-timeline
+    // duration, overriding center_x/center_y above when non-empty (see
+    // ShapeClip::center_x_keyframes' doc comment).
+    let mut new_center_x_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropShapePosXKeyframes.tr(locale),
+        Text::ShapePositionKeyframesExportNote.tr(locale),
+        |ui| {
+            new_center_x_keyframes =
+                f32_keyframe_editor(ui, &sc.center_x_keyframes, 0.0..=1.0, 0.5, locale);
+            new_center_x_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_center_x_keyframes {
+            sc.center_x_keyframes = kfs;
+            changed = true;
+        }
+    }
+    let mut new_center_y_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropShapePosYKeyframes.tr(locale),
+        Text::ShapePositionKeyframesExportNote.tr(locale),
+        |ui| {
+            new_center_y_keyframes =
+                f32_keyframe_editor(ui, &sc.center_y_keyframes, 0.0..=1.0, 0.5, locale);
+            new_center_y_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_center_y_keyframes {
+            sc.center_y_keyframes = kfs;
+            changed = true;
+        }
+    }
+
     // Size
     ui.label(
         RichText::new(Text::PropShapeWidth.tr(locale))
@@ -1533,6 +1782,42 @@ fn shape_clip_properties(
         changed = true;
     }
 
+    // Size keyframes -- animate a grow/shrink over the shape's own on-timeline duration,
+    // overriding width/height above when non-empty (see ShapeClip::width_keyframes' doc
+    // comment).
+    let mut new_width_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropShapeWidthKeyframes.tr(locale),
+        Text::ShapeSizeKeyframesExportNote.tr(locale),
+        |ui| {
+            new_width_keyframes =
+                f32_keyframe_editor(ui, &sc.width_keyframes, 0.01..=1.0, sc.width, locale);
+            new_width_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_width_keyframes {
+            sc.width_keyframes = kfs;
+            changed = true;
+        }
+    }
+    let mut new_height_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropShapeHeightKeyframes.tr(locale),
+        Text::ShapeSizeKeyframesExportNote.tr(locale),
+        |ui| {
+            new_height_keyframes =
+                f32_keyframe_editor(ui, &sc.height_keyframes, 0.01..=1.0, sc.height, locale);
+            new_height_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_height_keyframes {
+            sc.height_keyframes = kfs;
+            changed = true;
+        }
+    }
+
     // Rotation
     ui.label(
         RichText::new(Text::PropShapeRotation.tr(locale))
@@ -1544,6 +1829,31 @@ fn shape_clip_properties(
         .changed()
     {
         changed = true;
+    }
+
+    // Rotation keyframes -- animate a spin over the shape's own on-timeline duration,
+    // overriding rotation_deg above when non-empty (see ShapeClip::rotation_keyframes' doc
+    // comment).
+    let mut new_rotation_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropShapeRotationKeyframes.tr(locale),
+        Text::ShapeRotationKeyframesExportNote.tr(locale),
+        |ui| {
+            new_rotation_keyframes = f32_keyframe_editor(
+                ui,
+                &sc.rotation_keyframes,
+                0.0..=360.0,
+                sc.rotation_deg,
+                locale,
+            );
+            new_rotation_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_rotation_keyframes {
+            sc.rotation_keyframes = kfs;
+            changed = true;
+        }
     }
 
     // Outline thickness
@@ -1612,6 +1922,7 @@ fn shape_clip_properties(
 
     // Apply changes back to the clip in the active project.
     if changed {
+        app.push_undo_snapshot_for_drag();
         let timeline = app.active_project_mut().timeline_mut();
         for track in &mut timeline.tracks {
             if track.kind == avcore::timeline::TrackKind::Shape {

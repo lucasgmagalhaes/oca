@@ -1,16 +1,16 @@
 # Graph Report - oca  (2026-08-26)
 
 ## Corpus Check
-- 197 files · ~248,696 words
+- 198 files · ~250,259 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2481 nodes · 5027 edges · 141 communities (122 shown, 19 thin omitted)
+- 2498 nodes · 5054 edges · 138 communities (120 shown, 18 thin omitted)
 - Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 284 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0954efaa`
+- Built from commit: `0e993687`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -43,7 +43,7 @@
 - Required checklist
 - main.rs
 - Commit Plan — Fase 1
-- test_layer_transform.py
+- poll_for_descendants
 - generate_waveform
 - setup-python-runtime.sh script
 - transcribe
@@ -77,16 +77,16 @@
 - avbridge_measure_loudness
 - gpu_encoder.c
 - render.rs
-- project.rs
+- ExportAspectRatio
 - App
 - open_input
 - text_to_speech.rs
 - motion_track_one
-- app/mod.rs
+- PrefsState
 - preview_test.rs
 - Sequence
 - core/build.rs
-- Timeline
+- Position
 - timeline_panel.rs
 - INDEX.md
 - src/update_check.rs
@@ -98,11 +98,11 @@
 - bundle.rs
 - Auto-update release contract
 - yt2mp3.sh script
-- next_clip_id
+- ai-features.md
 - App
 - yt2mp4.sh script
-- TrackKind
-- String
+- packaging.md
+- app/mod.rs
 - fonts/README.md
 - ytbridge/build.rs
 - App
@@ -121,7 +121,7 @@
 - CLAUDE.md
 - Effects, Keyframes, Color
 - Roadmap — Actionable Queue
-- Position
+- preview-pipeline.md
 - Runtime dependency bundle
 - linux-launcher.sh
 - main
@@ -137,15 +137,12 @@
 - Timeline & Editing
 - Mandatory Rules & Definition of Done
 - spec/ — Start Here
-- ai-features.md
-- packaging.md
 - performance.md
-- preview-pipeline.md
 - changelog.md
 
 ## God Nodes (most connected - your core abstractions)
-1. `test_app()` - 205 edges
-2. `App` - 80 edges
+1. `test_app()` - 208 edges
+2. `App` - 82 edges
 3. `ClipInstance` - 65 edges
 4. `clip()` - 62 edges
 5. `Project` - 39 edges
@@ -170,23 +167,23 @@
 ## Import Cycles
 - 2-file cycle: `crates/ui/src/app/mod.rs -> crates/ui/src/i18n.rs -> crates/ui/src/app/mod.rs`
 
-## Communities (141 total, 19 thin omitted)
+## Communities (138 total, 18 thin omitted)
 
 ### Community 0 - "keyframe_test.rs"
 Cohesion: 0.08
 Nodes (9): opacity_alpha_ramp_expr_clamps_a_single_keyframe(), position_overlay_xy_expr_builds_a_t_based_ramp_for_an_animated_axis(), position_overlay_xy_expr_scales_a_single_keyframe_by_canvas_dimensions(), rotation_filter_angle_expr_converts_a_single_keyframe_to_radians(), rotation_filter_angle_expr_uses_t_for_an_animated_ramp(), scale_filter_expr_builds_a_geq_expression_for_an_animated_ramp(), scale_filter_expr_is_static_crop_scale_for_a_single_non_unity_keyframe(), split_keyframes_at_drops_keyframes_that_land_on_the_other_side() (+1 more)
 
 ### Community 1 - "Project"
-Cohesion: 0.06
-Nodes (65): bench_parse_loudnorm_stderr(), bench_project_ocproj_round_trip(), bench_timeline_duration(), large_project(), from_framed_bytes(), from_ocproj_bytes(), from_ocqueue_bytes(), load_project_from_file() (+57 more)
+Cohesion: 0.05
+Nodes (69): bench_parse_loudnorm_stderr(), bench_project_ocproj_round_trip(), bench_timeline_duration(), large_project(), from_framed_bytes(), from_ocproj_bytes(), from_ocqueue_bytes(), load_project_from_file() (+61 more)
 
 ### Community 2 - "app_test.rs"
 Cohesion: 0.02
-Nodes (179): add_asset_to_timeline_creates_a_track_and_appends_a_clip_when_none_exists(), add_asset_to_timeline_creates_an_audio_track_for_an_audio_asset(), add_asset_to_timeline_is_a_no_op_for_an_unknown_asset_id(), add_opacity_marker_at_playhead_defaults_to_fully_opaque_with_no_existing_keyframes(), add_opacity_marker_at_playhead_is_a_no_op_outside_the_clips_own_span(), add_opacity_marker_at_playhead_is_a_no_op_when_nothing_is_selected(), add_opacity_marker_at_playhead_preserves_the_currently_interpolated_value(), add_sequence_appends_a_named_tab_and_switches_to_it() (+171 more)
+Nodes (182): a_continuous_effect_property_drag_pushes_only_one_undo_step(), add_asset_to_timeline_creates_a_track_and_appends_a_clip_when_none_exists(), add_asset_to_timeline_creates_an_audio_track_for_an_audio_asset(), add_asset_to_timeline_is_a_no_op_for_an_unknown_asset_id(), add_opacity_marker_at_playhead_defaults_to_fully_opaque_with_no_existing_keyframes(), add_opacity_marker_at_playhead_is_a_no_op_outside_the_clips_own_span(), add_opacity_marker_at_playhead_is_a_no_op_when_nothing_is_selected(), add_opacity_marker_at_playhead_preserves_the_currently_interpolated_value() (+174 more)
 
 ### Community 3 - "avbridge/src/lib.rs"
 Cohesion: 0.05
-Nodes (86): c_char, c_int, c_longlong, apply_shape_overlays(), apply_text_overlays(), AudioMixError, AudioMixOutcome, encode_export() (+78 more)
+Nodes (84): c_char, c_int, c_longlong, apply_shape_overlays(), apply_text_overlays(), AudioMixError, AudioMixOutcome, encode_export() (+76 more)
 
 ### Community 4 - "timeline_test.rs"
 Cohesion: 0.06
@@ -219,6 +216,10 @@ Nodes (32): cache_dir_for_project(), ensure_proxy(), is_up_to_date(), PreviewQua
 ### Community 12 - "MediaAsset"
 Cohesion: 0.07
 Nodes (20): format_timecode(), MediaAsset, MediaKind, Option, PathBuf, String, Vec, ProbedMedia (+12 more)
+
+### Community 13 - "App"
+Cohesion: 0.05
+Nodes (19): export_srt(), exports_two_clips_as_sequential_numbered_entries(), format_srt_timestamp(), ignores_non_text_tracks(), orders_entries_by_start_time_regardless_of_input_order(), returns_an_empty_string_for_a_timeline_with_no_text_clips(), String, Vec (+11 more)
 
 ### Community 14 - "Task Breakdown — Fase 1 (Motor central)"
 Cohesion: 0.12
@@ -272,17 +273,17 @@ Nodes (7): 1. Diff size (granularity check), 2. acceptance_criteria coverage, 3.
 Cohesion: 0.48
 Nodes (6): init_logging(), install_panic_hook(), main(), platform_log_dir(), PathBuf, Result
 
-### Community 32 - "test_layer_transform.py"
-Cohesion: 0.15
-Nodes (23): oca_window(), poll_for_descendants(), Repeatedly re-queries `window`'s accessibility tree for a descendant control…, Launches a fresh ui.exe, waits for its main window, yields it, then tears it…, _wait_for_window(), _set_reframe_model_path(), test_auto_reframe_button_runs_detection_without_crashing(), test_importing_a_file_adds_it_to_the_library_quickly() (+15 more)
+### Community 32 - "poll_for_descendants"
+Cohesion: 0.13
+Nodes (25): oca_window(), poll_for_descendants(), Repeatedly re-queries `window`'s accessibility tree for a descendant control…, Launches a fresh ui.exe, waits for its main window, yields it, then tears it…, _wait_for_window(), _set_reframe_model_path(), test_auto_reframe_button_runs_detection_without_crashing(), test_importing_a_file_adds_it_to_the_library_quickly() (+17 more)
 
 ### Community 34 - "generate_waveform"
 Cohesion: 0.19
 Nodes (14): generate_waveform(), Display, Error, Formatter, Path, Result, Vec, WaveformError (+6 more)
 
 ### Community 36 - "transcribe"
-Cohesion: 0.08
-Nodes (35): abort_trampoline(), collect_segments(), collect_words(), Arc, AtomicBool, c_void, Display, Error (+27 more)
+Cohesion: 0.07
+Nodes (38): abort_trampoline(), collect_segments(), collect_words(), Arc, AtomicBool, c_void, Display, Error (+30 more)
 
 ### Community 37 - "run"
 Cohesion: 0.28
@@ -350,19 +351,19 @@ Nodes (14): 1. Choose a Release, 2. Download Assets and Compute Checksums, 3. Up
 
 ### Community 53 - "src/auto_reframe.rs"
 Cohesion: 0.12
-Nodes (23): approx(), main_subject_picks_highest_score(), nms_collapses_overlapping_boxes(), no_subject_falls_back_to_center_crop(), same_aspect_ratio_keeps_full_frame(), subject_near_edge_clamps_without_overflow(), subject_off_center_shifts_crop_toward_it(), wider_target_keeps_full_width() (+15 more)
+Nodes (24): approx(), main_subject_picks_highest_score(), nms_collapses_overlapping_boxes(), no_subject_falls_back_to_center_crop(), same_aspect_ratio_keeps_full_frame(), subject_near_edge_clamps_without_overflow(), subject_off_center_shifts_crop_toward_it(), wider_target_keeps_full_width() (+16 more)
 
 ### Community 54 - "test_canvas"
-Cohesion: 0.40
-Nodes (5): pending_export_conflict_overwrite_queues_with_the_original_path(), queue_export_appends_a_queued_job_with_the_next_id(), queue_export_starts_at_one_when_no_jobs_exist(), queued_job_keeps_the_sequence_export_snapshot_after_settings_change(), test_canvas()
+Cohesion: 0.29
+Nodes (7): ocqueue_file_atomically_replaces_the_previous_snapshot(), pending_export_conflict_overwrite_queues_with_the_original_path(), queue_export_appends_a_queued_job_with_the_next_id(), queue_export_starts_at_one_when_no_jobs_exist(), queued_job_keeps_the_sequence_export_snapshot_after_settings_change(), test_canvas(), test_job()
 
 ### Community 55 - "Keyframe"
 Cohesion: 0.33
 Nodes (16): clamp_scale(), evaluate_keyframes(), Keyframe, split_keyframes_at_rescales_and_inserts_a_matching_boundary_point(), opacity_alpha_ramp_expr(), piecewise_expr(), position_overlay_xy_expr(), rotation_filter_angle_expr() (+8 more)
 
 ### Community 56 - ".new"
-Cohesion: 0.13
-Nodes (12): apply_bundled_model_defaults(), default_lib_panel_width(), default_props_panel_width(), default_timeline_height(), load_prefs(), prefs_path(), Context, Frame (+4 more)
+Cohesion: 0.14
+Nodes (9): apply_bundled_model_defaults(), default_lib_panel_width(), default_props_panel_width(), default_timeline_height(), load_prefs(), Frame, Self, Ui (+1 more)
 
 ### Community 57 - "bridge_internal.h"
 Cohesion: 0.23
@@ -401,16 +402,16 @@ Cohesion: 0.61
 Nodes (7): AVRational, AVCodecContext, open_video_encoder(), pix_fmt_for_encoder_name(), try_open_encoder(), try_open_vaapi_device(), try_open_vaapi_encoder()
 
 ### Community 66 - "render.rs"
-Cohesion: 0.16
-Nodes (38): AudioSegment, Canvas, ClipSegment, PathBuf, String, ShapeSegment, apply_audio_mix_pass(), apply_export_aspect_ratio() (+30 more)
+Cohesion: 0.15
+Nodes (40): AudioSegment, Canvas, ClipSegment, encode_timeline_export_multi(), GpuEncoderPreference, PathBuf, String, ShapeSegment (+32 more)
 
-### Community 67 - "project.rs"
-Cohesion: 0.18
-Nodes (7): ExportAspectRatio, default_target_lufs(), PanelLayout, Default, PathBuf, Self, SequenceExportSettings
+### Community 67 - "ExportAspectRatio"
+Cohesion: 0.33
+Nodes (3): ExportAspectRatio, Default, SequenceExportSettings
 
 ### Community 68 - "App"
-Cohesion: 0.14
-Nodes (9): App, HashMap, TextureHandle, ThumbnailKey, UnboundedReceiver, UnboundedSender, HashSet, Instant (+1 more)
+Cohesion: 0.13
+Nodes (9): TrackKind, App, HashMap, TextureHandle, ThumbnailKey, UnboundedReceiver, UnboundedSender, HashSet (+1 more)
 
 ### Community 69 - "open_input"
 Cohesion: 0.13
@@ -424,9 +425,9 @@ Nodes (32): default_length_scale(), default_noise_scale(), default_noise_w(), io
 Cohesion: 0.25
 Nodes (4): App, motion_track_one(), Path, Vec
 
-### Community 73 - "app/mod.rs"
-Cohesion: 0.14
-Nodes (17): AvailableUpdate, BindableAction, default_add_opacity_marker_binding(), default_redo_binding(), default_undo_binding(), EditorTool, KeyBindings, KeyCombo (+9 more)
+### Community 73 - "PrefsState"
+Cohesion: 0.25
+Nodes (9): default_add_opacity_marker_binding(), default_redo_binding(), default_undo_binding(), KeyBindings, KeyCombo, LayoutScope, PrefsState, Default (+1 more)
 
 ### Community 74 - "preview_test.rs"
 Cohesion: 0.13
@@ -440,13 +441,13 @@ Nodes (20): Sequence, resolve_shape_segments(), resolve_text_segments(), cancell
 Cohesion: 0.44
 Nodes (8): copy_dir_recursive(), find_espeak_data_source(), find_profile_dir(), main(), Option, Path, PathBuf, Result
 
-### Community 77 - "Timeline"
-Cohesion: 0.20
-Nodes (12): export_srt(), exports_two_clips_as_sequential_numbered_entries(), format_srt_timestamp(), ignores_non_text_tracks(), orders_entries_by_start_time_regardless_of_input_order(), returns_an_empty_string_for_a_timeline_with_no_text_clips(), String, Vec (+4 more)
+### Community 77 - "Position"
+Cohesion: 0.33
+Nodes (3): f32, Lerp, Position
 
 ### Community 78 - "timeline_panel.rs"
-Cohesion: 0.15
-Nodes (25): color_filter_tint(), draw_filmstrip(), draw_frozen_poster(), draw_keyframe_markers(), draw_playhead(), draw_waveform(), filmstrip_frame_index_for_tile(), App (+17 more)
+Cohesion: 0.10
+Nodes (28): ClipDrag, color_filter_tint(), draw_filmstrip(), draw_frozen_poster(), draw_keyframe_markers(), draw_playhead(), draw_waveform(), filmstrip_frame_index_for_tile() (+20 more)
 
 ### Community 79 - "INDEX.md"
 Cohesion: 0.16
@@ -458,11 +459,11 @@ Nodes (24): apply_update(), ApplyUpdateError, ApplyUpdateOutcome, auto_update_su
 
 ### Community 81 - "ExportJob"
 Cohesion: 0.07
-Nodes (33): Box, Condvar, ExportJob, ExportJobStatus, String, Vec, ocqueue_file_atomically_replaces_the_previous_snapshot(), test_job() (+25 more)
+Nodes (32): Box, Condvar, ExportJob, ExportJobStatus, String, Vec, App, atomic_write() (+24 more)
 
 ### Community 82 - "generate_tts_one"
-Cohesion: 0.20
-Nodes (7): tts_output_dir(), App, generate_tts_one(), Path, PathBuf, Result, String
+Cohesion: 0.22
+Nodes (6): App, generate_tts_one(), Path, PathBuf, Result, String
 
 ### Community 84 - "enum_combo"
 Cohesion: 0.33
@@ -484,17 +485,9 @@ Nodes (20): bundled_resource_path(), bundled_resources_dir(), BundledResource, c
 Cohesion: 0.40
 Nodes (4): Application flow, Asset names, Auto-update release contract, Publishing checklist
 
-### Community 90 - "next_clip_id"
-Cohesion: 0.30
-Nodes (3): next_clip_id(), resolve_or_create_track(), Option
-
-### Community 95 - "TrackKind"
-Cohesion: 0.18
-Nodes (4): TrackKind, App, create_new_track(), ClipDrag
-
-### Community 96 - "String"
-Cohesion: 0.15
-Nodes (16): CropRect, AutoReframeEvent, ImportEvent, MatteGenerationEvent, MotionTrackEvent, RenderEvent, PathBuf, String (+8 more)
+### Community 96 - "app/mod.rs"
+Cohesion: 0.14
+Nodes (24): AutoReframeEvent, AvailableUpdate, BindableAction, EditorTool, ImportEvent, MatteGenerationEvent, MotionTrackEvent, prefs_path() (+16 more)
 
 ### Community 98 - "ytbridge/build.rs"
 Cohesion: 0.90
@@ -533,8 +526,8 @@ Cohesion: 0.36
 Nodes (7): converts_container_bitrate_from_bps_to_mbps(), falls_back_to_the_audio_stream_when_there_is_no_video(), fixture(), into_media_asset_carries_the_probed_fields_through(), parses_frame_rate(), probes_a_video_stream_as_the_primary_track(), PathBuf
 
 ### Community 109 - "Option"
-Cohesion: 0.47
-Nodes (4): Option, thumbnail_fps(), thumbnail_frame_index(), thumbnail_frame_time()
+Cohesion: 0.32
+Nodes (5): Context, Option, thumbnail_fps(), thumbnail_frame_index(), thumbnail_frame_time()
 
 ### Community 111 - "Performance & Caching Patterns (ported from nimble)"
 Cohesion: 0.25
@@ -555,10 +548,6 @@ Nodes (6): Confirmed hard wall — no matching GStreamer element exists on the d
 ### Community 115 - "Roadmap — Actionable Queue"
 Cohesion: 0.29
 Nodes (7): P0 — Editing Foundations, P1 — Performance Infrastructure, P2 — High-Impact Parity, P3 — Differentiators, P4 — Hardware-Dependent / Confirmed Hard Walls / Lower-Priority Parity, P5 — Explicitly Deferred, Roadmap — Actionable Queue
-
-### Community 116 - "Position"
-Cohesion: 0.33
-Nodes (3): f32, Lerp, Position
 
 ### Community 117 - "Runtime dependency bundle"
 Cohesion: 0.40
@@ -586,7 +575,7 @@ Nodes (5): Common commands, oca, Prerequisites, Status, Workspace layout
 
 ### Community 129 - "Undo/Redo (`ROADMAP.md` P0 item 1)"
 Cohesion: 0.33
-Nodes (5): Design note: why per-sequence, not per-project, Done, Not done — remaining call sites (item 3), Undo/Redo (`ROADMAP.md` P0 item 1), Wired (this pass)
+Nodes (5): Call sites (item 3) — done, Design note: why per-sequence, not per-project, Done, Undo/Redo (`ROADMAP.md` P0 item 1), Wired
 
 ### Community 130 - "Competitor Parity Survey"
 Cohesion: 0.40
@@ -607,22 +596,22 @@ Nodes (4): Directory map, Keeping this in sync, Reading order, spec/ — Start H
 ## Knowledge Gaps
 - **187 isolated node(s):** `SequenceTabDrag`, `TrimEdge`, `assemble_linux.sh script`, `assemble_macos.sh script`, `build_deb.sh script` (+182 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **19 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **18 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `App` connect `App` to `String`, `Project`, `render.rs`, `project.rs`, `App`, `Preview`, `UndoStack`, `app/mod.rs`, `ClipInstance`, `LibraryTrack`, `Option`, `record_event`, `ExportJob`, `Locale`, `src/youtube_download.rs`, `.new`, `TrackKind`?**
-  _High betweenness centrality (0.167) - this node is a cross-community bridge._
-- **Why does `Project` connect `Project` to `app_test.rs`, `project.rs`, `App`, `test_asset`, `test_project`, `Sequence`, `MediaAsset`, `Timeline`, `ensure_proxy`, `src/background_removal.rs`, `Locale`, `.new`?**
+- **Why does `App` connect `App` to `app/mod.rs`, `Project`, `render.rs`, `ExportAspectRatio`, `App`, `Preview`, `UndoStack`, `PrefsState`, `ClipInstance`, `LibraryTrack`, `Option`, `record_event`, `ExportJob`, `Locale`, `src/youtube_download.rs`, `.new`?**
+  _High betweenness centrality (0.165) - this node is a cross-community bridge._
+- **Why does `Project` connect `Project` to `app_test.rs`, `App`, `test_asset`, `test_project`, `Sequence`, `MediaAsset`, `App`, `ensure_proxy`, `src/background_removal.rs`, `Locale`, `.new`?**
   _High betweenness centrality (0.085) - this node is a cross-community bridge._
-- **Why does `ClipInstance` connect `ClipInstance` to `render.rs`, `timeline_test.rs`, `PreviewError`, `Preview`, `timeline.rs`, `test_project`, `test_asset`, `preview_test.rs`, `track_with`, `timeline_export_multi_test.rs`, `App`, `Option`, `App`, `timeline_panel.rs`, `Position`, `Keyframe`, `App`, `render_timeline_export`?**
-  _High betweenness centrality (0.074) - this node is a cross-community bridge._
+- **Why does `ClipInstance` connect `ClipInstance` to `render.rs`, `timeline_test.rs`, `PreviewError`, `Preview`, `timeline.rs`, `test_project`, `test_asset`, `preview_test.rs`, `track_with`, `timeline_export_multi_test.rs`, `Position`, `Option`, `App`, `timeline_panel.rs`, `App`, `Keyframe`, `App`, `render_timeline_export`?**
+  _High betweenness centrality (0.083) - this node is a cross-community bridge._
 - **What connects `SequenceTabDrag`, `TrimEdge`, `assemble_linux.sh script` to the rest of the system?**
   _187 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `keyframe_test.rs` be split into smaller, more focused modules?**
   _Cohesion score 0.08 - nodes in this community are weakly interconnected._
 - **Should `Project` be split into smaller, more focused modules?**
-  _Cohesion score 0.058333333333333334 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.052659716653301256 - nodes in this community are weakly interconnected._
 - **Should `app_test.rs` be split into smaller, more focused modules?**
-  _Cohesion score 0.019763901500988196 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.019475810628820055 - nodes in this community are weakly interconnected._

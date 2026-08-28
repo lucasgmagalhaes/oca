@@ -19,6 +19,9 @@ patch and ensure the implemented behavior is covered and no regression was intro
 ```
 1. Read the task_id's acceptance_criteria
 
+   → Load `docs/code-quality/testing.md`; use `docs/code-quality/README.md` to add only any
+     security or performance guide triggered by the changed behavior.
+
 2. Inspect the diff (patches/<task_id>.patch)
    → Identify all new or changed code paths
 

@@ -25,11 +25,13 @@
 #include <libavutil/channel_layout.h>
 #include <libavutil/pixdesc.h>
 
-EncodeStatus avbridge_encode_timeline_export(
-    const ClipSegment *segments, int segment_count, int canvas_width, int canvas_height,
-    int canvas_fps_num, int canvas_fps_den, int64_t canvas_bit_rate_bps, const char *out_path,
-    float target_lufs, int gpu_encoder_preference, ProgressCallback progress_cb,
-    void *progress_user_data, const uint8_t *cancel) {
+EncodeStatus avbridge_encode_timeline_export(const ClipSegment *segments, int segment_count,
+                                             int canvas_width, int canvas_height,
+                                             int canvas_fps_num, int canvas_fps_den,
+                                             int64_t canvas_bit_rate_bps, const char *out_path,
+                                             float target_lufs, int gpu_encoder_preference,
+                                             ProgressCallback progress_cb, void *progress_user_data,
+                                             const uint8_t *cancel) {
     if (segment_count <= 0) {
         return ENCODE_ERR_EMPTY_TIMELINE;
     }
@@ -66,10 +68,9 @@ EncodeStatus avbridge_encode_timeline_export(
     const char *venc_pix_fmt_name = "yuv420p";
     {
         int global_header = (out_ctx->oformat->flags & AVFMT_GLOBALHEADER) != 0;
-        venc_ctx = open_video_encoder((GpuEncoderPreference)gpu_encoder_preference,
-                                           canvas_width, canvas_height, canvas_fps,
-                                           canvas_bit_rate_bps, global_header, NULL,
-                                           &venc_pix_fmt);
+        venc_ctx = open_video_encoder((GpuEncoderPreference)gpu_encoder_preference, canvas_width,
+                                      canvas_height, canvas_fps, canvas_bit_rate_bps, global_header,
+                                      NULL, &venc_pix_fmt);
         if (!venc_ctx) {
             status = ENCODE_ERR_ENCODER;
             goto cleanup;
@@ -106,8 +107,12 @@ EncodeStatus avbridge_encode_timeline_export(
         int audio_in_index = -1;
 
         switch (open_input(seg->source_path, &in_ctx)) {
-            case -1: status = ENCODE_ERR_OPEN_INPUT; break;
-            case -2: status = ENCODE_ERR_STREAM_INFO; break;
+        case -1:
+            status = ENCODE_ERR_OPEN_INPUT;
+            break;
+        case -2:
+            status = ENCODE_ERR_STREAM_INFO;
+            break;
         }
         if (status != ENCODE_OK) break;
         for (unsigned int s = 0; s < in_ctx->nb_streams; s++) {
@@ -286,92 +291,107 @@ EncodeStatus avbridge_encode_timeline_export(
                graph, so they count frames from this clip's first frame. */
             char transition_str[2048] = "";
             if (seg->transition_in != 0) {
-                double tf = (double)seg->transition_duration_secs
-                            * (double)canvas_fps.num / (double)canvas_fps.den;
+                double tf = (double)seg->transition_duration_secs * (double)canvas_fps.num /
+                            (double)canvas_fps.den;
                 if (tf < 1.0) tf = 1.0;
                 switch (seg->transition_in) {
-                    case 1: /* Fade: fade in from black over transition_duration_secs. */
-                        snprintf(transition_str, sizeof(transition_str),
-                                 "fade=t=in:st=0:d=%.4f",
-                                 (double)seg->transition_duration_secs);
-                        break;
-                    case 2:
-                        /* Slide: reveal the clip from left to right. Originally an animated
-                           drawbox (covers the frame with black, retreats rightward each frame)
-                           — switched to a geq per-pixel expression because drawbox's x/y don't
-                           expose a frame-count variable in the FFmpeg build this project links
-                           against ("n" evaluates as an undefined constant there), unlike
-                           crop/scale's n or geq's own N. inside is 1 while X sits left of the
-                           reveal edge (min(W,N*W/tf), clamped so it never exceeds the frame),
-                           else 0; luma is zeroed and chroma pinned to neutral (128) outside it,
-                           matching drawbox's opaque black rectangle. */
-                        snprintf(transition_str, sizeof(transition_str),
-                                 "geq=lum='p(X,Y)*lt(X,min(W,N*W/%g))'"
-                                 ":cb='128+(cb(X,Y)-128)*lt(X,min(W,N*W/%g))'"
-                                 ":cr='128+(cr(X,Y)-128)*lt(X,min(W,N*W/%g))'",
-                                 tf, tf, tf);
-                        break;
-                    case 3: {
-                        /* Zoom: the frame appears to grow from a centered 50%-size box (the
-                           rest padded black) up to filling the whole frame by n>=tf.
-                           Originally `scale=...:eval=frame,pad=...` — actually letting scale
-                           renegotiate its OUTPUT size every frame reliably corrupted the heap
-                           somewhere downstream in the filter graph (STATUS_HEAP_CORRUPTION,
-                           caught by timeline_export_test.rs's
-                           zoom_transition_exports_without_error — a real crash, not just a
-                           parse error). Reimplemented as a geq inverse-sample instead, the same
-                           technique Slide's case above uses: output frame size never changes,
-                           only what each output pixel (X,Y) samples. z is the same 0.5..1.0
-                           growth factor the old scale factor was; (sx,sy) is (X,Y) mapped back
-                           through an inverse zoom-in around the frame center by z — at n=0
-                           (z=0.5) that maps the whole canvas to a region twice the frame's
-                           size, so most (sx,sy) fall outside [0,W)x[0,H) (inside=0, rendered
-                           black — the pad-black-border equivalent); by n>=tf (z=1.0) every
-                           (sx,sy) falls inside 1:1 (inside=1 everywhere, full frame visible).
-                           Built via nested snprintf into scratch buffers, one sub-expression at
-                           a time, rather than one giant format string — much easier to get the
-                           %-substitution counts right, and each sub-expression only needs to
-                           reference tf/z's %g-formatted text once instead of retyping the
-                           argument list at every nesting level. */
-                        char z[160], sx[224], sy[224], inside[768];
-                        snprintf(z, sizeof(z), "(0.5+0.5*lt(N,%g)*N/%g+0.5*gte(N,%g))",
-                                 tf, tf, tf);
-                        snprintf(sx, sizeof(sx), "((X-W/2)/%s+W/2)", z);
-                        snprintf(sy, sizeof(sy), "((Y-H/2)/%s+H/2)", z);
-                        snprintf(inside, sizeof(inside),
-                                 "(1-lt(%s,0))*lt(%s,W)*(1-lt(%s,0))*lt(%s,H)",
-                                 sx, sx, sy, sy);
-                        snprintf(transition_str, sizeof(transition_str),
-                                 "geq=lum='p(%s,%s)*%s'"
-                                 ":cb='128+(cb(%s,%s)-128)*%s'"
-                                 ":cr='128+(cr(%s,%s)-128)*%s'",
-                                 sx, sy, inside, sx, sy, inside, sx, sy, inside);
-                        break;
-                    }
-                    default:
-                        break;
+                case 1: /* Fade: fade in from black over transition_duration_secs. */
+                    snprintf(transition_str, sizeof(transition_str), "fade=t=in:st=0:d=%.4f",
+                             (double)seg->transition_duration_secs);
+                    break;
+                case 2:
+                    /* Slide: reveal the clip from left to right. Originally an animated
+                       drawbox (covers the frame with black, retreats rightward each frame)
+                       — switched to a geq per-pixel expression because drawbox's x/y don't
+                       expose a frame-count variable in the FFmpeg build this project links
+                       against ("n" evaluates as an undefined constant there), unlike
+                       crop/scale's n or geq's own N. inside is 1 while X sits left of the
+                       reveal edge (min(W,N*W/tf), clamped so it never exceeds the frame),
+                       else 0; luma is zeroed and chroma pinned to neutral (128) outside it,
+                       matching drawbox's opaque black rectangle. */
+                    snprintf(transition_str, sizeof(transition_str),
+                             "geq=lum='p(X,Y)*lt(X,min(W,N*W/%g))'"
+                             ":cb='128+(cb(X,Y)-128)*lt(X,min(W,N*W/%g))'"
+                             ":cr='128+(cr(X,Y)-128)*lt(X,min(W,N*W/%g))'",
+                             tf, tf, tf);
+                    break;
+                case 3: {
+                    /* Zoom: the frame appears to grow from a centered 50%-size box (the
+                       rest padded black) up to filling the whole frame by n>=tf.
+                       Originally `scale=...:eval=frame,pad=...` — actually letting scale
+                       renegotiate its OUTPUT size every frame reliably corrupted the heap
+                       somewhere downstream in the filter graph (STATUS_HEAP_CORRUPTION,
+                       caught by timeline_export_test.rs's
+                       zoom_transition_exports_without_error — a real crash, not just a
+                       parse error). Reimplemented as a geq inverse-sample instead, the same
+                       technique Slide's case above uses: output frame size never changes,
+                       only what each output pixel (X,Y) samples. z is the same 0.5..1.0
+                       growth factor the old scale factor was; (sx,sy) is (X,Y) mapped back
+                       through an inverse zoom-in around the frame center by z — at n=0
+                       (z=0.5) that maps the whole canvas to a region twice the frame's
+                       size, so most (sx,sy) fall outside [0,W)x[0,H) (inside=0, rendered
+                       black — the pad-black-border equivalent); by n>=tf (z=1.0) every
+                       (sx,sy) falls inside 1:1 (inside=1 everywhere, full frame visible).
+                       Built via nested snprintf into scratch buffers, one sub-expression at
+                       a time, rather than one giant format string — much easier to get the
+                       %-substitution counts right, and each sub-expression only needs to
+                       reference tf/z's %g-formatted text once instead of retyping the
+                       argument list at every nesting level. */
+                    char z[160], sx[224], sy[224], inside[768];
+                    snprintf(z, sizeof(z), "(0.5+0.5*lt(N,%g)*N/%g+0.5*gte(N,%g))", tf, tf, tf);
+                    snprintf(sx, sizeof(sx), "((X-W/2)/%s+W/2)", z);
+                    snprintf(sy, sizeof(sy), "((Y-H/2)/%s+H/2)", z);
+                    snprintf(inside, sizeof(inside), "(1-lt(%s,0))*lt(%s,W)*(1-lt(%s,0))*lt(%s,H)",
+                             sx, sx, sy, sy);
+                    snprintf(transition_str, sizeof(transition_str),
+                             "geq=lum='p(%s,%s)*%s'"
+                             ":cb='128+(cb(%s,%s)-128)*%s'"
+                             ":cr='128+(cr(%s,%s)-128)*%s'",
+                             sx, sy, inside, sx, sy, inside, sx, sy, inside);
+                    break;
+                }
+                default:
+                    break;
                 }
             }
 
             /* Build the post-fps portion: clip_filter (which already has any scale/rotation/
                opacity keyframe stages spliced onto its front — see
                ClipInstance::keyframe_video_filter_chain) and transition, optional, separated by
-               a comma only where both are non-empty. */
+               a comma only where both are non-empty. clip_filter's length grows with how many
+               keyframe stages are stacked on one clip, so it's the one part of this chain that
+               isn't bounded by a fixed set of internal sub-expressions -- unlike
+               transition_str/z/sx/sy/inside above, this is checked for truncation rather than
+               silently accepting a corrupted (or, worse, still-parseable-but-wrong) filter
+               chain past this point. */
             const char *post_fps = clip_filter;
             char final_chain[8192] = "";
+            int fc_written;
             if (post_fps[0] && transition_str[0]) {
-                snprintf(final_chain, sizeof(final_chain), "%s,%s", post_fps, transition_str);
+                fc_written =
+                    snprintf(final_chain, sizeof(final_chain), "%s,%s", post_fps, transition_str);
             } else if (post_fps[0]) {
-                snprintf(final_chain, sizeof(final_chain), "%s", post_fps);
+                fc_written = snprintf(final_chain, sizeof(final_chain), "%s", post_fps);
             } else if (transition_str[0]) {
-                snprintf(final_chain, sizeof(final_chain), "%s", transition_str);
+                fc_written = snprintf(final_chain, sizeof(final_chain), "%s", transition_str);
+            } else {
+                fc_written = 0;
             }
-            snprintf(vfilter_descr, sizeof(vfilter_descr),
-                     "%sscale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-"
-                     "ih)/2,fps=%d/%d%s%s,format=%s",
-                     setpts_str, canvas_width, canvas_height, canvas_width, canvas_height,
-                     canvas_fps.num, canvas_fps.den,
-                     final_chain[0] ? "," : "", final_chain, venc_pix_fmt_name);
+            if (fc_written < 0 || (size_t)fc_written >= sizeof(final_chain)) {
+                status = ENCODE_ERR_FILTER_GRAPH;
+                goto segment_cleanup;
+            }
+            int vf_written = snprintf(
+                vfilter_descr, sizeof(vfilter_descr),
+                "%sscale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-"
+                "ih)/2,fps=%d/%d%s%s,format=%s",
+                setpts_str, canvas_width, canvas_height, canvas_width, canvas_height,
+                canvas_fps.num, canvas_fps.den, final_chain[0] ? "," : "", final_chain,
+                venc_pix_fmt_name);
+            if (vf_written < 0 || (size_t)vf_written >= sizeof(vfilter_descr)) {
+                status = ENCODE_ERR_FILTER_GRAPH;
+                goto segment_cleanup;
+            }
             if (init_video_filter_chain(vdec_ctx, vfilter_descr, &vchain) < 0) {
                 status = ENCODE_ERR_FILTER_GRAPH;
                 goto segment_cleanup;
@@ -460,8 +480,7 @@ EncodeStatus avbridge_encode_timeline_export(
                                     status = ENCODE_CANCELLED;
                                     break;
                                 }
-                                double target_secs =
-                                    seg->source_in_secs + (double)i / canvas_fps_d;
+                                double target_secs = seg->source_in_secs + (double)i / canvas_fps_d;
                                 AVFrame *held_frame = av_frame_clone(dec_frame);
                                 if (!held_frame) {
                                     status = ENCODE_ERR_PIPELINE;
@@ -490,16 +509,15 @@ EncodeStatus avbridge_encode_timeline_export(
                         }
 
                         if (filter_encode_write_video_frame(out_ctx, &vchain, venc_ctx,
-                                                             video_out_stream, dec_frame,
-                                                             filt_frame, &next_video_pts,
-                                                             enc_pkt) < 0) {
+                                                            video_out_stream, dec_frame, filt_frame,
+                                                            &next_video_pts, enc_pkt) < 0) {
                             status = ENCODE_ERR_PIPELINE;
                             break;
                         }
                         av_frame_unref(dec_frame);
                         if (progress_cb) {
-                            progress_cb(progress_user_data,
-                                        elapsed_before_segment + (frame_secs - seg->source_in_secs));
+                            progress_cb(progress_user_data, elapsed_before_segment +
+                                                                (frame_secs - seg->source_in_secs));
                         }
                     }
                 } else if (pkt->stream_index == audio_in_index && !audio_done) {
@@ -526,9 +544,8 @@ EncodeStatus avbridge_encode_timeline_export(
                             av_frame_unref(dec_frame);
                             continue;
                         }
-                        if (filter_encode_write_frame(out_ctx, &achain, aenc_ctx,
-                                                       audio_out_stream, dec_frame, filt_frame,
-                                                       enc_pkt) < 0) {
+                        if (filter_encode_write_frame(out_ctx, &achain, aenc_ctx, audio_out_stream,
+                                                      dec_frame, filt_frame, enc_pkt) < 0) {
                             status = ENCODE_ERR_PIPELINE;
                             break;
                         }
@@ -554,7 +571,7 @@ EncodeStatus avbridge_encode_timeline_export(
         /* Flush: decoder(s) already drained per-segment above; only the shared audio filter
            graph and both encoders may still be holding buffered frames. */
         if (filter_encode_write_frame(out_ctx, &achain, aenc_ctx, audio_out_stream, NULL,
-                                       filt_frame, enc_pkt) < 0 ||
+                                      filt_frame, enc_pkt) < 0 ||
             encode_write_packet(out_ctx, aenc_ctx, audio_out_stream, NULL, enc_pkt) < 0) {
             status = ENCODE_ERR_PIPELINE;
         }

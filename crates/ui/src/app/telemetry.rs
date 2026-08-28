@@ -82,7 +82,7 @@ impl App {
         if !self.prefs.telemetry_enabled {
             return;
         }
-        let _ = self.telemetry_tx.send(event);
+        let _ = self.telemetry_state.telemetry_tx.send(event);
     }
 
     /// Records a `PreviewFrameTime` sample while the preview is playing — throttled to once
@@ -92,12 +92,13 @@ impl App {
     pub(super) fn sample_preview_frame_telemetry(&mut self, ctx: &egui::Context) {
         let now = std::time::Instant::now();
         let due = self
+            .telemetry_state
             .last_preview_frame_telemetry
             .is_none_or(|last| now.duration_since(last) >= PREVIEW_FRAME_TELEMETRY_INTERVAL);
         if !due {
             return;
         }
-        self.last_preview_frame_telemetry = Some(now);
+        self.telemetry_state.last_preview_frame_telemetry = Some(now);
         let frame_time_ms = ctx.input(|i| i.unstable_dt) * 1000.0;
         self.record_telemetry(avcore::TelemetryEvent::PreviewFrameTime { frame_time_ms });
     }

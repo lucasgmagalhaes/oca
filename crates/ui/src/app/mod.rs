@@ -38,13 +38,21 @@ use crate::theme;
 mod auto_reframe;
 mod background_removal;
 mod clip_props;
+mod collab_bundle;
 mod color;
 pub mod export;
+mod highlight_detection;
 mod import;
 mod layer_templates;
+mod markers;
 mod modals;
 mod motion_tracking;
+mod multicam;
 mod preview;
+mod scene_detection;
+mod shorts_pack;
+mod silence_review;
+mod smart_bins;
 mod sound_library;
 mod telemetry;
 mod text_to_speech;
@@ -66,14 +74,28 @@ pub enum Screen {
     Queue,
 }
 
-/// The editor toolbar's active tool (Selecionar / Aparar). Currently just tracked for the
-/// toolbar's highlight state — Fase 3 wires it up to actual timeline interactions. Splitting
-/// ("Cortar") isn't a persistent mode like these two — it's a one-shot action, performed
-/// directly by [`App::split_at_playhead`].
+/// The editor toolbar's active tool. `Select`/`Trim` are just tracked for the toolbar's
+/// highlight state — dragging a clip's body/edge behaves the same regardless of which of
+/// those two is active (Fase 3 never ended up gating that on the tool selection). `Ripple`/
+/// `Roll`/`Slip`/`Slide` (`ROADMAP.md` P2 item 11 — Premiere/DaVinci/FCP's named trim modes)
+/// *do* change what a drag does — `screens::editor::timeline_panel` branches on `app.tool` when
+/// committing a trim-edge or clip-body drag. Splitting ("Cortar") isn't a persistent mode like
+/// any of these — it's a one-shot action, performed directly by [`App::split_at_playhead`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorTool {
     Select,
     Trim,
+    /// Trim without leaving a gap — later clips on the same track shift to fill it.
+    Ripple,
+    /// Move the cut point between two adjacent clips; their combined timeline span is
+    /// unchanged, just reallocated between them.
+    Roll,
+    /// Change which part of the source media a clip shows, without moving it on the timeline
+    /// or changing its duration.
+    Slip,
+    /// Move a clip along the timeline; its immediate neighbors' in/out points adjust to absorb
+    /// the move, nothing else shifts.
+    Slide,
 }
 
 /// A key + modifier combination that can be assigned to a bindable action. `key_name` is
@@ -553,6 +575,15 @@ enum MotionTrackEvent {
     },
 }
 
+/// A message from a background scene-cut-detection worker thread (see
+/// [`App::spawn_detect_scene_cuts_for_selected_clip`]) back to the UI thread.
+enum SceneCutEvent {
+    Done {
+        clip_id: u64,
+        cuts: Vec<avcore::SceneCut>,
+    },
+}
+
 /// A message from a background AI-background-removal matte-generation worker thread (see
 /// [`App::spawn_generate_matte_for_selected_clip`]) back to the UI thread.
 enum MatteGenerationEvent {
@@ -662,20 +693,10 @@ pub struct App {
     pub selected_asset_id: Option<u64>,
     pub export_jobs: Vec<ExportJob>,
     pub prefs: PrefsState,
-    /// Sends [`avcore::TelemetryEvent`]s to the dedicated background writer thread spawned in
-    /// [`App::new`] — see [`App::record_telemetry`]/`telemetry::spawn_telemetry_writer`. No
-    /// paired receiver is kept on `App`; that thread owns the only one.
-    telemetry_tx: UnboundedSender<avcore::TelemetryEvent>,
-    /// Live mirror of `prefs.telemetry_enabled`, checked by the background resource-sampling
-    /// thread spawned in [`App::new`] (`telemetry::spawn_resource_sampler`) — that thread has
-    /// no access to `App`/`prefs` directly, so this `Arc<AtomicBool>` is the one piece of
-    /// shared state it reads each tick. Kept in sync with `prefs.telemetry_enabled` wherever
-    /// the Preferences screen's checkbox mutates it.
-    pub(crate) telemetry_enabled_flag: Arc<AtomicBool>,
-    /// Wall-clock time [`App::record_telemetry`] last recorded a `PreviewFrameTime` sample —
-    /// throttles sampling to roughly once every [`PREVIEW_FRAME_TELEMETRY_INTERVAL`] rather
-    /// than every single frame, which would flood `telemetry.jsonl`.
-    last_preview_frame_telemetry: Option<std::time::Instant>,
+    /// Telemetry channel/flag/throttle-timestamp state, grouped the same way
+    /// [`PreviewState`] was — see that struct's doc comment for why. Field names, visibility,
+    /// and invariants unchanged from when they lived directly on `App`.
+    pub(crate) telemetry_state: TelemetryState,
     render_tx: UnboundedSender<RenderEvent>,
     render_rx: UnboundedReceiver<RenderEvent>,
     /// Cooperative pause/cancel controls for jobs a worker thread is currently rendering,
@@ -683,62 +704,17 @@ pub struct App {
     /// A job id present here is the source of truth for "how many workers are busy right
     /// now" — [`App::pump_export_queue`] uses its length against `prefs.export_workers`.
     active_renders: HashMap<u64, Arc<export::RenderControl>>,
-    /// The GStreamer pipeline for the clip currently covering the active sequence's timeline
-    /// playhead, if it could be opened (`None` before any project has a clip at the playhead,
-    /// before it's been lazily opened, and when `Preview::open` failed, e.g. a source file
-    /// that's since been moved or deleted — see [`App::ensure_preview_loaded`]).
-    preview: Option<avcore::preview::Preview>,
-    /// The clip id [`App::ensure_preview_loaded`] last attempted to open a pipeline for,
-    /// whether or not it succeeded — lets it tell "already tried and failed for this exact
-    /// clip, don't retry every frame" apart from "the playhead moved onto a different clip, try
-    /// again".
-    preview_clip_id: Option<u64>,
-    /// Clip ids of the overlay-track branches [`App::ensure_preview_loaded`] last opened a
-    /// composited pipeline for, in the same order [`avcore::preview::Preview::open_composited`]
-    /// was given them (and the same order [`App::seek_preview`]/[`App::pump_preview_frame`]
-    /// must pass offsets to [`avcore::preview::Preview::seek_composited`] in). Empty when the
-    /// playhead's background clip has no overlay-track clips over it — `preview` is then a
-    /// plain [`avcore::preview::Preview::open`] single-clip pipeline instead, same as before
-    /// composited preview existed.
-    preview_overlay_clip_ids: Vec<u64>,
-    /// Audio-only timeline clips currently opened as independent `audiomixer` branches.
-    preview_audio_clip_ids: Vec<u64>,
-    /// Ids of the [`TrackKind::Text`] clips covering the playhead the last time
-    /// [`App::ensure_preview_loaded`] opened a pipeline, in the same order passed as
-    /// [`avcore::preview::Preview::open_composited`]'s `text_overlays` — same reopen-detection
-    /// role [`App::preview_overlay_clip_ids`] has for video overlay branches. Text clips have no
-    /// source to seek, but this ordering also guards live word-highlight buffer replacements;
-    /// a different id set is left for the next full pipeline rebuild.
-    preview_text_clip_ids: Vec<u64>,
-    /// Same role as [`App::preview_text_clip_ids`], for [`TrackKind::Shape`] clips.
-    preview_shape_clip_ids: Vec<u64>,
-    /// Uploaded from the latest [`avcore::preview::Preview::current_frame`] each frame the
-    /// Editor screen is shown; `None` until the first frame decodes. Reset whenever
-    /// [`App::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
-    /// frame from the previous one never lingers.
-    pub preview_texture: Option<egui::TextureHandle>,
-    /// Whether the preview pipeline is in `Playing` state. `Preview` has no state getter of
-    /// its own, so the Editor's play/pause button and [`App::pump_export_queue`]'s repaint
-    /// cadence both rely on this instead.
-    pub preview_playing: bool,
-    /// Wall-clock playback start `(Instant, timeline playhead at that instant)` for a frozen
-    /// clip — set whenever playback begins while the clip covering the playhead has
-    /// `ClipInstance::frozen` set. A frozen clip's pipeline is kept `Paused` at
-    /// `source_in_secs` (so it always shows the held anchor frame) rather than actually
-    /// playing, so [`App::pump_preview_frame`] has no `Preview::position_secs` to derive
-    /// the advancing playhead from the way it does for a normal clip — this stands in for it.
-    /// `None` when nothing is playing or the current clip isn't frozen.
-    preview_frozen_since: Option<(std::time::Instant, f64)>,
-    /// Whether the Editor's preview panel is currently rendered as a fullscreen overlay
-    /// (covers the whole window, replacing the nav rail/breadcrumb/normal screen for that
-    /// frame — see `impl eframe::App for App`'s early-return branch). Toggled by the preview
-    /// panel's fullscreen button and cleared by Esc or the overlay's own exit button.
-    pub fullscreen_preview: bool,
-    /// Wall-clock time the pointer last moved (or a click/drag occurred) while
-    /// [`App::fullscreen_preview`] is active — the fullscreen overlay's playback controls
-    /// fade out [`FULLSCREEN_CONTROLS_IDLE_SECS`] after this and reappear immediately on the
-    /// next pointer movement. `None` right after entering fullscreen so controls start visible.
-    fullscreen_controls_last_moved: Option<std::time::Instant>,
+    /// Cached result of resolving the active sequence's video tracks and media library into
+    /// export segments — see [`App::resolved_active_sequence_export_preview`]. `None` before
+    /// the Fila (export queue) screen's header has ever been drawn.
+    export_preview_cache: Option<export::ExportPreviewCache>,
+    /// Every field around the live preview pipeline — GStreamer pipeline handle, loaded-clip-id
+    /// tracking, uploaded textures, playback/fullscreen state — grouped into its own struct
+    /// rather than left flat on `App` (an internal-audit finding: `App` had grown to 122 flat
+    /// fields with no substructure at all). Field names and visibility are unchanged from when
+    /// they lived directly on `App`; only the access path grew one `.preview_state` hop. See
+    /// [`PreviewState`]'s own doc comment.
+    pub(crate) preview_state: PreviewState,
     import_tx: UnboundedSender<ImportEvent>,
     import_rx: UnboundedReceiver<ImportEvent>,
     /// How many files a call to [`App::spawn_import`] haven't been probed yet, in the
@@ -784,6 +760,11 @@ pub struct App {
     /// The timeline clip id a background motion-tracking run is currently tracking, if any —
     /// only one runs at a time, same shape as `auto_reframing_clip_id`.
     pub motion_tracking_clip_id: Option<u64>,
+    scene_cut_detection_tx: UnboundedSender<SceneCutEvent>,
+    scene_cut_detection_rx: UnboundedReceiver<SceneCutEvent>,
+    /// The timeline clip id a background scene-cut-detection run (D4) is currently scanning, if
+    /// any — only one runs at a time, same shape as `motion_tracking_clip_id`.
+    pub scene_cut_detection_clip_id: Option<u64>,
     /// The tracked region's center, as a `0.0..=1.0` fraction of the *source* frame (same
     /// convention as `avcore::track_region`'s `initial_center_x_frac`/`_y`, not canvas/layer
     /// space) — user-editable via the properties panel's region controls next to the "Rastrear
@@ -852,6 +833,12 @@ pub struct App {
     /// P0 item 1, `spec/architecture/undo-redo.md`) — scoped to one sequence, cleared on every
     /// sequence/project switch since history from one tab is meaningless applied to another.
     pub undo_stack: avcore::undo::UndoStack,
+    /// Whether an effect-property drag (a slider/`DragValue` held down in the properties
+    /// panel) is currently pushing its *first* undo snapshot — see
+    /// [`App::push_undo_snapshot_for_drag`]. Reset to `false` once per frame in
+    /// `screens::editor::show` whenever no pointer button is held, so the next drag (or
+    /// instant click) starts a fresh snapshot instead of reusing this one.
+    undo_drag_active: bool,
     /// The text overlay clip currently selected on a text track, if any. Selecting a text clip
     /// clears `selected_clip_id`/`selected_shape_clip_id` and vice versa — only one kind of clip
     /// can be selected at a time. The properties panel shows text-clip controls when this is
@@ -932,6 +919,22 @@ pub struct App {
     /// tied to `selected_clip_id`, so the last-clicked clip can be a multi-select member
     /// without also being "the" selection.
     pub multi_selected_clip_ids: HashSet<u64>,
+    /// The multicam group (P2 item 10, "Multicam editing") number-key angle switching applies
+    /// to — the one most recently created via [`App::create_multicam_group_from_video_tracks`],
+    /// or `None` before any group exists in the active sequence yet. Not persisted: re-derived
+    /// (first group found, if any) the same way `selected_asset_id` resets on project switch,
+    /// see [`App::open_project`].
+    pub active_multicam_group_id: Option<u64>,
+    /// The smart bin (P4 item 22, "Smart bins") currently filtering the Library panel's asset
+    /// list — `None` shows every asset in `media_library`, unfiltered. Not persisted: resets to
+    /// `None` on project switch, same as `active_multicam_group_id`.
+    pub active_smart_bin_id: Option<u64>,
+    /// A draft [`avcore::SmartBin`] being created/edited, shown as a modal by
+    /// [`App::show_smart_bin_modal`] when `Some`. `id == 0` (never a real assigned id, which
+    /// starts at 1 — see [`avcore::Project::add_smart_bin`]) means "new bin, not yet created";
+    /// any other id means "editing that existing bin's rules in place." `None` when the modal
+    /// is closed.
+    pub editing_smart_bin: Option<avcore::SmartBin>,
     /// Set whenever [`App::active_project_mut`] is called; cleared after each autosave
     /// write. Guards [`App::pump_autosave`] from writing unchanged state to disk.
     project_dirty: bool,
@@ -987,6 +990,16 @@ pub struct App {
     pub applying_layer_template: Option<(usize, Vec<Option<u64>>)>,
     /// Whether the toolbar's "Templates" list popup (pick one to apply, or delete it) is open.
     pub layer_templates_menu_open: bool,
+    /// Whether the Timeline Index panel (searchable review/comment marker list — `ROADMAP.md`
+    /// P2 item 9) is open.
+    pub timeline_index_open: bool,
+    /// Live text of the Timeline Index panel's search box — kept on `App` rather than as a
+    /// local in the modal-drawing function so it survives being closed and reopened.
+    pub marker_search: String,
+    /// Staged result of `App::begin_silence_review` (D1, `ROADMAP.md` P3 item 13) — `Some`
+    /// while the silence-gap review modal is open, `None` otherwise. Nothing here is applied to
+    /// the timeline until `App::apply_silence_review`.
+    pub silence_review: Option<silence_review::SilenceReview>,
     /// When `Some(action)`, the prefs modal is waiting for the next key press to set that
     /// action's binding. Pressing Escape clears it without changing the binding.
     pub binding_capture: Option<BindableAction>,
@@ -1000,6 +1013,110 @@ pub struct App {
     /// everything needed to queue the export once the user resolves the conflict via
     /// [`App::show_export_conflict_modal`] (Overwrite / Rename / Cancel).
     pub pending_export_conflict: Option<export::PendingExportConflict>,
+}
+
+/// Live preview pipeline state, extracted from `App`'s own field list (see
+/// [`App::preview_state`]'s doc comment for why). Every field here behaves exactly as it did as
+/// a flat `App` field before this extraction — same name, same visibility, same invariants,
+/// documented on the field itself as before.
+#[derive(Default)]
+pub(crate) struct PreviewState {
+    /// The GStreamer pipeline for the clip currently covering the active sequence's timeline
+    /// playhead, if it could be opened (`None` before any project has a clip at the playhead,
+    /// before it's been lazily opened, and when `Preview::open` failed, e.g. a source file
+    /// that's since been moved or deleted — see [`App::ensure_preview_loaded`]).
+    pub(crate) preview: Option<avcore::preview::Preview>,
+    /// The clip id [`App::ensure_preview_loaded`] last attempted to open a pipeline for,
+    /// whether or not it succeeded — lets it tell "already tried and failed for this exact
+    /// clip, don't retry every frame" apart from "the playhead moved onto a different clip, try
+    /// again".
+    pub(crate) preview_clip_id: Option<u64>,
+    /// Clip ids of the overlay-track branches [`App::ensure_preview_loaded`] last opened a
+    /// composited pipeline for, in the same order [`avcore::preview::Preview::open_composited`]
+    /// was given them (and the same order [`App::seek_preview`]/[`App::pump_preview_frame`]
+    /// must pass offsets to [`avcore::preview::Preview::seek_composited`] in). Empty when the
+    /// playhead's background clip has no overlay-track clips over it — `preview` is then a
+    /// plain [`avcore::preview::Preview::open`] single-clip pipeline instead, same as before
+    /// composited preview existed.
+    pub(crate) preview_overlay_clip_ids: Vec<u64>,
+    /// Audio-only timeline clips currently opened as independent `audiomixer` branches.
+    pub(crate) preview_audio_clip_ids: Vec<u64>,
+    /// Ids of the [`TrackKind::Text`] clips covering the playhead the last time
+    /// [`App::ensure_preview_loaded`] opened a pipeline, in the same order passed as
+    /// [`avcore::preview::Preview::open_composited`]'s `text_overlays` — same reopen-detection
+    /// role `preview_overlay_clip_ids` has for video overlay branches. Text clips have no
+    /// source to seek, but this ordering also guards live word-highlight buffer replacements;
+    /// a different id set is left for the next full pipeline rebuild.
+    pub(crate) preview_text_clip_ids: Vec<u64>,
+    /// Same role as `preview_text_clip_ids`, for [`TrackKind::Shape`] clips.
+    pub(crate) preview_shape_clip_ids: Vec<u64>,
+    /// Uploaded from the latest [`avcore::preview::Preview::current_frame`] each frame the
+    /// Editor screen is shown; `None` until the first frame decodes. Reset whenever
+    /// [`App::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
+    /// frame from the previous one never lingers.
+    pub(crate) preview_texture: Option<egui::TextureHandle>,
+    /// Cache for [`App::pump_preview_frame`]'s CPU-side 3D LUT preview approximation (P4 item
+    /// 21, "Preview support for vignette/glitch/deflicker/3D-LUT/stabilization" —
+    /// `avcore::preview_effects`): `Some((path, parsed))` once `path` has been attempted, so a
+    /// static LUT selection doesn't reparse (or re-fail to parse) the `.cube` file every single
+    /// frame. Keyed by path (not clip id) since the same LUT file can be shared across clips;
+    /// invalidated by comparing `path` against the currently previewed clip's `lut_path` each
+    /// frame. `parsed` is `None` when `path` failed to parse — cached as a failure too, not
+    /// retried every frame. `None` (the outer `Option`) before any clip with a LUT has been
+    /// previewed yet.
+    pub(crate) preview_lut_cache: Option<(String, Option<avcore::Lut3D>)>,
+    /// Whether the Editor preview panel's waveform/vectorscope color scopes are shown — off by
+    /// default, since computing both is a full pass over every pixel of every decoded frame
+    /// (see [`App::pump_preview_frame`]) and most edits don't need it.
+    pub(crate) scopes_enabled: bool,
+    /// Uploaded from [`avcore::luma_waveform_rgba`] alongside `preview_texture`, only while
+    /// `scopes_enabled` is set. `None` until the first frame decodes with scopes on, same
+    /// lazily-populated shape as `preview_texture` itself.
+    pub(crate) waveform_texture: Option<egui::TextureHandle>,
+    /// Same role as `waveform_texture`, for [`avcore::vectorscope_rgba`].
+    pub(crate) vectorscope_texture: Option<egui::TextureHandle>,
+    /// Whether the preview pipeline is in `Playing` state. `Preview` has no state getter of
+    /// its own, so the Editor's play/pause button and [`App::pump_export_queue`]'s repaint
+    /// cadence both rely on this instead.
+    pub(crate) preview_playing: bool,
+    /// Wall-clock playback start `(Instant, timeline playhead at that instant)` for a frozen
+    /// clip — set whenever playback begins while the clip covering the playhead has
+    /// `ClipInstance::frozen` set. A frozen clip's pipeline is kept `Paused` at
+    /// `source_in_secs` (so it always shows the held anchor frame) rather than actually
+    /// playing, so [`App::pump_preview_frame`] has no `Preview::position_secs` to derive
+    /// the advancing playhead from the way it does for a normal clip — this stands in for it.
+    /// `None` when nothing is playing or the current clip isn't frozen.
+    pub(crate) preview_frozen_since: Option<(std::time::Instant, f64)>,
+    /// Whether the Editor's preview panel is currently rendered as a fullscreen overlay
+    /// (covers the whole window, replacing the nav rail/breadcrumb/normal screen for that
+    /// frame — see `impl eframe::App for App`'s early-return branch). Toggled by the preview
+    /// panel's fullscreen button and cleared by Esc or the overlay's own exit button.
+    pub(crate) fullscreen_preview: bool,
+    /// Wall-clock time the pointer last moved (or a click/drag occurred) while
+    /// `fullscreen_preview` is active — the fullscreen overlay's playback controls
+    /// fade out [`FULLSCREEN_CONTROLS_IDLE_SECS`] after this and reappear immediately on the
+    /// next pointer movement. `None` right after entering fullscreen so controls start visible.
+    pub(crate) fullscreen_controls_last_moved: Option<std::time::Instant>,
+}
+
+/// Telemetry channel/flag/throttle state, extracted from `App`'s own field list — see
+/// [`PreviewState`]'s doc comment for why. Every field behaves exactly as it did as a flat
+/// `App` field before this extraction.
+pub(crate) struct TelemetryState {
+    /// Sends [`avcore::TelemetryEvent`]s to the dedicated background writer thread spawned in
+    /// [`App::new`] — see [`App::record_telemetry`]/`telemetry::spawn_telemetry_writer`. No
+    /// paired receiver is kept on `App`; that thread owns the only one.
+    pub(crate) telemetry_tx: UnboundedSender<avcore::TelemetryEvent>,
+    /// Live mirror of `prefs.telemetry_enabled`, checked by the background resource-sampling
+    /// thread spawned in [`App::new`] (`telemetry::spawn_resource_sampler`) — that thread has
+    /// no access to `App`/`prefs` directly, so this `Arc<AtomicBool>` is the one piece of
+    /// shared state it reads each tick. Kept in sync with `prefs.telemetry_enabled` wherever
+    /// the Preferences screen's checkbox mutates it.
+    pub(crate) telemetry_enabled_flag: Arc<AtomicBool>,
+    /// Wall-clock time [`App::record_telemetry`] last recorded a `PreviewFrameTime` sample —
+    /// throttles sampling to roughly once every [`PREVIEW_FRAME_TELEMETRY_INTERVAL`] rather
+    /// than every single frame, which would flood `telemetry.jsonl`.
+    pub(crate) last_preview_frame_telemetry: Option<std::time::Instant>,
 }
 
 impl App {
@@ -1040,6 +1157,7 @@ impl App {
         let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
         let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
         let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
+        let (scene_cut_detection_tx, scene_cut_detection_rx) = mpsc::unbounded_channel();
         let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
         let (tts_tx, tts_rx) = mpsc::unbounded_channel();
         let (youtube_download_tx, youtube_download_rx) = mpsc::unbounded_channel();
@@ -1061,23 +1179,16 @@ impl App {
             selected_asset_id: None,
             export_jobs: export::load_queue(),
             prefs,
-            telemetry_tx,
-            telemetry_enabled_flag,
-            last_preview_frame_telemetry: None,
+            telemetry_state: TelemetryState {
+                telemetry_tx,
+                telemetry_enabled_flag,
+                last_preview_frame_telemetry: None,
+            },
             render_tx,
             render_rx,
             active_renders: HashMap::new(),
-            preview: None,
-            preview_clip_id: None,
-            preview_overlay_clip_ids: Vec::new(),
-            preview_audio_clip_ids: Vec::new(),
-            preview_text_clip_ids: Vec::new(),
-            preview_shape_clip_ids: Vec::new(),
-            preview_texture: None,
-            preview_playing: false,
-            preview_frozen_since: None,
-            fullscreen_preview: false,
-            fullscreen_controls_last_moved: None,
+            export_preview_cache: None,
+            preview_state: PreviewState::default(),
             import_tx,
             import_rx,
             pending_imports: 0,
@@ -1096,6 +1207,9 @@ impl App {
             motion_tracking_tx,
             motion_tracking_rx,
             motion_tracking_clip_id: None,
+            scene_cut_detection_tx,
+            scene_cut_detection_rx,
+            scene_cut_detection_clip_id: None,
             motion_track_center_x: 0.5,
             motion_track_center_y: 0.5,
             motion_track_width: 0.2,
@@ -1121,6 +1235,7 @@ impl App {
             youtube_download_cancel: None,
             selected_clip_id: None,
             undo_stack: avcore::undo::UndoStack::new(),
+            undo_drag_active: false,
             selected_text_clip_id: None,
             text_color_edit: None,
             selected_shape_clip_id: None,
@@ -1140,6 +1255,9 @@ impl App {
             clipboard_clip: None,
             formatting_clipboard: None,
             multi_selected_clip_ids: HashSet::new(),
+            active_multicam_group_id: None,
+            active_smart_bin_id: None,
+            editing_smart_bin: None,
             toasts: Vec::new(),
             prefs_open: false,
             prev_prefs_open: false,
@@ -1156,6 +1274,9 @@ impl App {
             saving_layer_template: None,
             applying_layer_template: None,
             layer_templates_menu_open: false,
+            timeline_index_open: false,
+            marker_search: String::new(),
+            silence_review: None,
             binding_capture: None,
             update_check_tx,
             update_check_rx,
@@ -1264,7 +1385,10 @@ impl App {
             "project opened"
         );
         let asset_id = project.media_library.first().map(|a| a.id);
+        let multicam_group_id = project.timeline().multicam_groups.first().map(|g| g.id);
         self.select_asset(asset_id);
+        self.active_multicam_group_id = multicam_group_id;
+        self.active_smart_bin_id = None;
         self.load_panel_layout_for_active_project();
         self.screen = Screen::Editor;
     }
@@ -1375,6 +1499,8 @@ impl App {
                 timeline: avcore::Timeline {
                     tracks: Vec::new(),
                     playhead_secs: 0.0,
+                    markers: Vec::new(),
+                    multicam_groups: Vec::new(),
                 },
                 export_settings: avcore::SequenceExportSettings {
                     aspect_ratio: avcore::ExportAspectRatio::Original,
@@ -1384,6 +1510,7 @@ impl App {
             active_sequence: 0,
             file_path: None,
             panel_layout: None,
+            smart_bins: Vec::new(),
         });
     }
 
@@ -1485,8 +1612,8 @@ impl App {
         self.multi_selected_clip_ids.clear();
         self.drawing_shape_points = None;
         self.picking_motion_track_region = false;
-        self.preview_playing = false;
-        self.preview_frozen_since = None;
+        self.preview_state.preview_playing = false;
+        self.preview_state.preview_frozen_since = None;
         self.undo_stack.clear();
         self.invalidate_preview_rendering();
     }
@@ -1497,6 +1624,33 @@ impl App {
     pub(crate) fn push_undo_snapshot(&mut self) {
         let sequence = self.active_project().active_sequence().clone();
         self.undo_stack.push(sequence);
+    }
+
+    /// Like [`App::push_undo_snapshot`], but coalesces a continuous drag (a slider/`DragValue`
+    /// held down in the properties panel, which re-fires its setter every single frame while
+    /// dragged) into exactly one undo step instead of one per frame. Pushes only the first time
+    /// it's called since [`App::end_undo_drag_tracking_if_pointer_released`] last reset the
+    /// flag — call sites are the shared per-clip-kind mutation dispatch points
+    /// (`with_selected_clip_mut`, `text_clip_properties`'s and `shape_clip_properties`'s
+    /// write-back), not each individual slider, so every effect-property setter gets this for
+    /// free. Mirrors the `drag_started()`-gated push the timeline strip's trim/move drags use,
+    /// but via a stateful flag rather than an `egui::Response` — the property setters are
+    /// called through several layers of `bool`-returning helpers
+    /// (`components::property_section` etc.) that don't thread a `Response` back to the caller.
+    pub(crate) fn push_undo_snapshot_for_drag(&mut self) {
+        if !self.undo_drag_active {
+            self.push_undo_snapshot();
+            self.undo_drag_active = true;
+        }
+    }
+
+    /// Resets [`App::undo_drag_active`] once no pointer button is held — call once per frame
+    /// from the Editor screen. Until the pointer is released, [`App::push_undo_snapshot_for_drag`]
+    /// keeps treating further setter calls as the same in-progress drag.
+    pub(crate) fn end_undo_drag_tracking_if_pointer_released(&mut self, pointer_down: bool) {
+        if !pointer_down {
+            self.undo_drag_active = false;
+        }
     }
 
     /// Whether [`App::undo`] would do anything — drives the toolbar undo button's enabled state.
@@ -1523,8 +1677,8 @@ impl App {
         self.selected_text_clip_id = None;
         self.selected_shape_clip_id = None;
         self.multi_selected_clip_ids.clear();
-        self.preview_playing = false;
-        self.preview_frozen_since = None;
+        self.preview_state.preview_playing = false;
+        self.preview_state.preview_frozen_since = None;
         self.invalidate_preview_rendering();
     }
 
@@ -1539,8 +1693,8 @@ impl App {
         self.selected_text_clip_id = None;
         self.selected_shape_clip_id = None;
         self.multi_selected_clip_ids.clear();
-        self.preview_playing = false;
-        self.preview_frozen_since = None;
+        self.preview_state.preview_playing = false;
+        self.preview_state.preview_frozen_since = None;
         self.invalidate_preview_rendering();
     }
 
@@ -1567,6 +1721,17 @@ impl App {
         self.active_project_mut().sequences[active_sequence]
             .export_settings
             .target_lufs = target_lufs;
+    }
+
+    /// Applies `preset`'s aspect ratio + loudness target to the active tab in one action — the
+    /// Fila (export queue) screen's platform-preset picker, so choosing "TikTok" sets both
+    /// fields correctly instead of the user needing to know the right combination themselves.
+    /// Still just calls the same two setters a manual pick would — the aspect-ratio and LUFS
+    /// pickers stay live afterward for fine-tuning, nothing about picking a preset locks them.
+    pub fn apply_platform_export_preset(&mut self, preset: avcore::PlatformExportPreset) {
+        let (aspect_ratio, target_lufs) = preset.settings();
+        self.set_active_sequence_export_aspect_ratio(aspect_ratio);
+        self.set_active_sequence_target_lufs(target_lufs);
     }
 
     /// Builds the snapshot [`App::save_prefs`]/[`App::save_prefs_sync`] persist — clones
@@ -1768,6 +1933,7 @@ impl eframe::App for App {
         self.pump_transcribe();
         self.pump_auto_reframe();
         self.pump_motion_tracking();
+        self.pump_scene_cut_detection();
         self.pump_matte_generation();
         self.pump_text_to_speech();
         self.pump_youtube_download();
@@ -1786,7 +1952,7 @@ impl eframe::App for App {
             tracing::warn!("crash sentinel found — previous session did not exit cleanly");
             self.push_toast(crate::i18n::Text::CrashDetected.tr(self.locale).to_string());
         }
-        if self.preview_playing {
+        if self.preview_state.preview_playing {
             // Smooth video needs every-frame repaints; the 200ms throttle below would show
             // it as a slideshow.
             ui.ctx().request_repaint();
@@ -1795,7 +1961,7 @@ impl eframe::App for App {
             ui.ctx().request_repaint_after(Duration::from_millis(200));
         }
 
-        if self.fullscreen_preview {
+        if self.preview_state.fullscreen_preview {
             screens::editor::fullscreen_preview_overlay(self, ui);
             return;
         }
@@ -1834,6 +2000,9 @@ impl eframe::App for App {
         self.show_apply_layer_template_modal(ui.ctx());
         self.show_tts_modal(ui.ctx());
         self.show_youtube_download_modal(ui.ctx());
+        self.show_timeline_index_panel(ui.ctx());
+        self.show_silence_review_modal(ui.ctx());
+        self.show_smart_bin_modal(ui.ctx());
         self.show_toasts(ui.ctx());
     }
 

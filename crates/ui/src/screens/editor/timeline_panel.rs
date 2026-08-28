@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use avcore::MediaAsset;
 use eframe::egui::{self, RichText};
 
-use crate::app::{thumbnail_frame_index, App};
+use crate::app::{thumbnail_frame_index, App, EditorTool};
 use crate::i18n::Text;
 use crate::theme;
 
@@ -26,7 +26,42 @@ use crate::theme;
 /// go from several-projects-wide overview down to frame-accurate editing.
 const MIN_PX_PER_SEC: f32 = 0.5;
 const MAX_PX_PER_SEC: f32 = 60.0;
-const TRACK_LABEL_WIDTH: f32 = 50.0;
+const TRACK_LABEL_WIDTH: f32 = 86.0;
+
+/// Fixed color-label swatches offered in the clip/track "Rótulo de cor" context menu — per
+/// `spec/ROADMAP.md` P4 item 27, matching Premiere/DaVinci/FCP's own fixed-palette convention
+/// (a free color picker would let two clips end up with visually indistinguishable colors,
+/// defeating the "recognize at a glance" point of a label).
+const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
+    [229, 83, 83],   // red
+    [230, 145, 56],  // orange
+    [230, 200, 56],  // yellow
+    [96, 189, 104],  // green
+    [86, 156, 214],  // blue
+    [178, 108, 219], // purple
+];
+
+/// Icon for a track's [`avcore::AudioRole`] (D2, `spec/architecture/differentiators.md`) — the
+/// track header's role picker, and its own collapsed `ComboBox` display.
+fn audio_role_icon(role: avcore::AudioRole) -> &'static str {
+    match role {
+        avcore::AudioRole::Unspecified => "–",
+        avcore::AudioRole::GameAudio => "🎮",
+        avcore::AudioRole::Mic => "🎤",
+        avcore::AudioRole::Music => "🎵",
+    }
+}
+
+/// Hover text for the role picker's collapsed state — the icon alone is too terse to stand
+/// alone.
+fn audio_role_label(role: avcore::AudioRole, locale: crate::i18n::Locale) -> &'static str {
+    match role {
+        avcore::AudioRole::Unspecified => Text::AudioRoleUnspecified.tr(locale),
+        avcore::AudioRole::GameAudio => Text::AudioRoleGameAudio.tr(locale),
+        avcore::AudioRole::Mic => Text::AudioRoleMic.tr(locale),
+        avcore::AudioRole::Music => Text::AudioRoleMusic.tr(locale),
+    }
+}
 
 /// A clip body drag in progress: which clip, where it started from, and where the pointer
 /// currently is — resolved into a same-track reposition or a cross-track move once every
@@ -43,6 +78,87 @@ struct ClipDrag {
 enum TrimEdge {
     Start(f64),
     End(f64),
+}
+
+/// How close (in pixels, at the current zoom) a dragged position must land to a snap target
+/// (another clip's edge, or the playhead) before it magnetically snaps to it — `ROADMAP.md` P0
+/// item 2. Small enough to stay unobtrusive at high zoom, large enough to actually catch a
+/// deliberate drag at low zoom (see `MIN_PX_PER_SEC`/`MAX_PX_PER_SEC` above).
+const SNAP_THRESHOLD_PX: f32 = 8.0;
+
+/// The value in `targets` nearest `candidate`, if within [`SNAP_THRESHOLD_PX`] pixels at
+/// `px_per_sec` — `candidate` unchanged otherwise (including when `targets` is empty).
+fn snap_to_nearest(candidate: f64, targets: &[f64], px_per_sec: f32) -> f64 {
+    let threshold_secs = (SNAP_THRESHOLD_PX / px_per_sec) as f64;
+    targets
+        .iter()
+        .copied()
+        .min_by(|a, b| (a - candidate).abs().total_cmp(&(b - candidate).abs()))
+        .filter(|nearest| (nearest - candidate).abs() <= threshold_secs)
+        .unwrap_or(candidate)
+}
+
+/// Snaps a clip body drag's candidate start position — tries snapping either the clip's start
+/// edge or its end edge (`candidate_start + duration_secs`) to the nearest target, whichever
+/// needs the smaller adjustment, so a dragged clip can magnetically dock by either edge, not
+/// just its leading one. Falls back to `candidate_start` unchanged if neither edge is within
+/// snapping range.
+fn snap_move_start(
+    candidate_start: f64,
+    duration_secs: f64,
+    targets: &[f64],
+    px_per_sec: f32,
+) -> f64 {
+    let snapped_by_start = snap_to_nearest(candidate_start, targets, px_per_sec);
+    let candidate_end = candidate_start + duration_secs;
+    let snapped_by_end = snap_to_nearest(candidate_end, targets, px_per_sec) - duration_secs;
+    match (
+        snapped_by_start != candidate_start,
+        snapped_by_end != candidate_start,
+    ) {
+        (true, true) => {
+            if (snapped_by_start - candidate_start).abs()
+                <= (snapped_by_end - candidate_start).abs()
+            {
+                snapped_by_start
+            } else {
+                snapped_by_end
+            }
+        }
+        (true, false) => snapped_by_start,
+        (false, true) => snapped_by_end,
+        (false, false) => candidate_start,
+    }
+}
+
+/// Minimum gap `waveform_snap_points_for_clip` looks for — much shorter than D1's own
+/// cuttable-gap threshold (`avcore::DEFAULT_MIN_SILENCE_SECS`, 0.5s): a brief natural pause
+/// between words is exactly the kind of moment a cut should snap to, not just a length worth
+/// actually cutting.
+const WAVEFORM_SNAP_MIN_GAP_SECS: f64 = 0.05;
+
+/// D5 (`spec/architecture/differentiators.md`): every low-energy-moment snap point for `clip`,
+/// in timeline-relative seconds — the midpoint of each gap `avcore::clip_silence_gaps` detects
+/// against `asset`'s waveform. Reuses `clip_silence_gaps` (built for D1's silence-cut detection)
+/// purely as a "quiet moment finder" here — a snap target, not something to cut. Empty if
+/// `asset` has no cached waveform yet.
+fn waveform_snap_points_for_clip(
+    asset: &MediaAsset,
+    clip: &avcore::timeline::ClipInstance,
+) -> Vec<f64> {
+    let Some(peaks) = &asset.waveform_peaks else {
+        return Vec::new();
+    };
+    avcore::clip_silence_gaps(
+        peaks,
+        asset.duration_secs,
+        clip,
+        avcore::DEFAULT_SILENCE_THRESHOLD_LINEAR,
+        WAVEFORM_SNAP_MIN_GAP_SECS,
+    )
+    .into_iter()
+    .map(|gap| (gap.start_secs + gap.end_secs) / 2.0)
+    .collect()
 }
 
 fn visible_tile_range(
@@ -87,6 +203,48 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         let px_per_sec = app.timeline_px_per_sec;
 
+        // Magnetic snap targets (ROADMAP.md P0 item 2): every clip's start/end edge, across
+        // every track — collected once per frame up front so both the ruler's playhead drag
+        // and the per-clip trim/move drags below can use the same set without re-borrowing
+        // `app` mid-loop. Held with a modifier (Alt) to temporarily disable snapping, the same
+        // convention most editors use.
+        let snap_enabled = !ui.input(|i| i.modifiers.alt);
+        let clip_edges: Vec<(u64, f64, f64)> = app
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .map(|c| (c.id, c.start_secs, c.start_secs + c.duration_secs()))
+            .collect();
+        let snap_targets_excluding = |exclude_id: u64| -> Vec<f64> {
+            clip_edges
+                .iter()
+                .filter(|(id, _, _)| *id != exclude_id)
+                .flat_map(|(_, start, end)| [*start, *end])
+                .collect()
+        };
+
+        // D5 (`spec/architecture/differentiators.md`): waveform low-energy points as an extra
+        // snap target for trim-edge (cut-point) drags specifically, not whole-clip moves — a
+        // dragged cut should be able to magnetically land mid-pause instead of mid-word/mid-
+        // sound-effect. See `waveform_snap_points_for_clip`'s own doc comment for the mechanism.
+        let waveform_snap_targets: Vec<f64> = {
+            let project = app.active_project();
+            project
+                .timeline()
+                .tracks
+                .iter()
+                .flat_map(|t| &t.clips)
+                .flat_map(|clip| {
+                    let asset = project.media_library.iter().find(|a| a.id == clip.asset_id);
+                    asset
+                        .map(|asset| waveform_snap_points_for_clip(asset, clip))
+                        .unwrap_or_default()
+                })
+                .collect()
+        };
+
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(Text::Timeline.tr(app.locale))
@@ -109,6 +267,15 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             ui.painter().rect_filled(rect, 0, theme::SURFACE_2);
             if let Some(pos) = response.interact_pointer_pos() {
                 let secs = ((pos.x - rect.left()) / px_per_sec).max(0.0) as f64;
+                let all_edges: Vec<f64> = clip_edges
+                    .iter()
+                    .flat_map(|(_, start, end)| [*start, *end])
+                    .collect();
+                let secs = if snap_enabled {
+                    snap_to_nearest(secs, &all_edges, px_per_sec)
+                } else {
+                    secs
+                };
                 app.active_project_mut().timeline_mut().playhead_secs = secs;
             }
             draw_playhead(
@@ -136,6 +303,9 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut copy_formatting_requests: Vec<u64> = Vec::new();
         let mut paste_formatting_requests: Vec<u64> = Vec::new();
         let mut multi_select_requests: Vec<u64> = Vec::new();
+        let mut clip_color_label_requests: Vec<(u64, Option<[u8; 3]>)> = Vec::new();
+        let mut detach_audio_requests: Vec<u64> = Vec::new();
+        let mut speed_ramp_requests: Vec<(u64, f32, f32)> = Vec::new();
         let mut paste_requested = false;
         let mut merge_into_composite_requested = false;
         let mut split_at_playhead_requested = false;
@@ -143,6 +313,8 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut clip_drags: Vec<ClipDrag> = Vec::new();
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
         let mut toggle_track_visibility_requests: Vec<u64> = Vec::new();
+        let mut track_audio_role_requests: Vec<(u64, avcore::AudioRole)> = Vec::new();
+        let mut track_color_label_requests: Vec<(u64, Option<[u8; 3]>)> = Vec::new();
         // Set the first time a trim/move drag starts this frame — `app` is immutably borrowed
         // for the whole track/clip iteration below, so the undo snapshot itself is pushed once,
         // after that borrow ends, rather than inline at the drag_started() check.
@@ -167,16 +339,69 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             {
                                 toggle_track_visibility_requests.push(track_id);
                             }
-                            ui.add(
+                            let name_response = ui.add(
                                 egui::Label::new(RichText::new(&track.name).size(11.0).color(
-                                    if visible {
+                                    if let Some([r, g, b]) = track.color_label {
+                                        egui::Color32::from_rgb(r, g, b)
+                                    } else if visible {
                                         theme::TEXT_SECONDARY
                                     } else {
                                         theme::TEXT_MUTED
                                     },
                                 ))
-                                .truncate(),
+                                .truncate()
+                                .sense(egui::Sense::click()),
                             );
+                            name_response.context_menu(|ui| {
+                                for &[r, g, b] in CLIP_COLOR_LABEL_PALETTE {
+                                    let swatch = egui::Color32::from_rgb(r, g, b);
+                                    if ui.add(egui::Button::new("  ").fill(swatch)).clicked() {
+                                        track_color_label_requests
+                                            .push((track_id, Some([r, g, b])));
+                                        ui.close();
+                                    }
+                                }
+                                ui.separator();
+                                if ui
+                                    .button(Text::ContextMenuColorLabelClear.tr(locale))
+                                    .clicked()
+                                {
+                                    track_color_label_requests.push((track_id, None));
+                                    ui.close();
+                                }
+                            });
+                            // D2 (`spec/architecture/differentiators.md`): which audio source
+                            // this track carries, if any — Text/Shape tracks never carry audio,
+                            // so they don't get the picker at all.
+                            if matches!(
+                                track.kind,
+                                avcore::timeline::TrackKind::Video
+                                    | avcore::timeline::TrackKind::Audio
+                            ) {
+                                let mut role = track.audio_role;
+                                egui::ComboBox::from_id_salt(("track_audio_role", track_id))
+                                    .selected_text(audio_role_icon(role))
+                                    .width(28.0)
+                                    .show_ui(ui, |ui| {
+                                        for candidate in [
+                                            avcore::AudioRole::Unspecified,
+                                            avcore::AudioRole::GameAudio,
+                                            avcore::AudioRole::Mic,
+                                            avcore::AudioRole::Music,
+                                        ] {
+                                            ui.selectable_value(
+                                                &mut role,
+                                                candidate,
+                                                audio_role_icon(candidate),
+                                            );
+                                        }
+                                    })
+                                    .response
+                                    .on_hover_text(audio_role_label(role, locale));
+                                if role != track.audio_role {
+                                    track_audio_role_requests.push((track_id, role));
+                                }
+                            }
                         },
                     );
                     let (track_rect, _resp) = ui.allocate_exact_size(
@@ -192,18 +417,23 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             egui::pos2(x, track_rect.top()),
                             egui::vec2(w, track_rect.height()),
                         );
-                        let color = match (track.kind, track.name.as_str()) {
-                            (avcore::timeline::TrackKind::Video, _) => theme::SURFACE_2,
-                            (avcore::timeline::TrackKind::Audio, "A2") => {
-                                theme::ACCENT_2.gamma_multiply(0.6)
+                        let color = if let Some([r, g, b]) = clip.color_label {
+                            egui::Color32::from_rgb(r, g, b)
+                        } else {
+                            match (track.kind, track.name.as_str()) {
+                                (avcore::timeline::TrackKind::Video, _) => theme::SURFACE_2,
+                                (avcore::timeline::TrackKind::Audio, "A2") => {
+                                    theme::ACCENT_2.gamma_multiply(0.6)
+                                }
+                                (avcore::timeline::TrackKind::Audio, _) => {
+                                    theme::ACCENT.gamma_multiply(0.5)
+                                }
+                                // Text/Shape tracks carry text_clips/shape_clips, not clips —
+                                // these arms satisfy exhaustiveness but are never reached at
+                                // runtime.
+                                (avcore::timeline::TrackKind::Text, _) => theme::SURFACE_2,
+                                (avcore::timeline::TrackKind::Shape, _) => theme::SURFACE_2,
                             }
-                            (avcore::timeline::TrackKind::Audio, _) => {
-                                theme::ACCENT.gamma_multiply(0.5)
-                            }
-                            // Text/Shape tracks carry text_clips/shape_clips, not clips — these
-                            // arms satisfy exhaustiveness but are never reached at runtime.
-                            (avcore::timeline::TrackKind::Text, _) => theme::SURFACE_2,
-                            (avcore::timeline::TrackKind::Shape, _) => theme::SURFACE_2,
                         };
 
                         // Narrow strips at each edge, on top of the body's click zone, so a
@@ -270,6 +500,22 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 merge_into_composite_requested = true;
                                 ui.close();
                             }
+                            if track.kind == avcore::timeline::TrackKind::Video
+                                && ui.button(Text::ContextMenuDetachAudio.tr(locale)).clicked()
+                            {
+                                detach_audio_requests.push(clip.id);
+                                ui.close();
+                            }
+                            ui.menu_button(Text::ContextMenuSpeedRamp.tr(locale), |ui| {
+                                if ui.button(Text::SpeedRampSlowToFast.tr(locale)).clicked() {
+                                    speed_ramp_requests.push((clip.id, 0.5, 2.0));
+                                    ui.close();
+                                }
+                                if ui.button(Text::SpeedRampFastToSlow.tr(locale)).clicked() {
+                                    speed_ramp_requests.push((clip.id, 2.0, 0.5));
+                                    ui.close();
+                                }
+                            });
                             ui.separator();
                             if ui
                                 .button(Text::ContextMenuCopyFormatting.tr(locale))
@@ -288,6 +534,24 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 paste_formatting_requests.push(clip.id);
                                 ui.close();
                             }
+                            ui.separator();
+                            ui.menu_button(Text::ContextMenuColorLabel.tr(locale), |ui| {
+                                for &[r, g, b] in CLIP_COLOR_LABEL_PALETTE {
+                                    let swatch = egui::Color32::from_rgb(r, g, b);
+                                    if ui.add(egui::Button::new("  ").fill(swatch)).clicked() {
+                                        clip_color_label_requests.push((clip.id, Some([r, g, b])));
+                                        ui.close();
+                                    }
+                                }
+                                ui.separator();
+                                if ui
+                                    .button(Text::ContextMenuColorLabelClear.tr(locale))
+                                    .clicked()
+                                {
+                                    clip_color_label_requests.push((clip.id, None));
+                                    ui.close();
+                                }
+                            });
                             ui.separator();
                             if ui.button(Text::ContextMenuDelete.tr(locale)).clicked() {
                                 delete_requests.push(clip.id);
@@ -328,21 +592,50 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                             let delta_secs = (body_response.drag_delta().x / px_per_sec) as f64;
                             if let Some(pointer) = body_response.interact_pointer_pos() {
+                                let candidate_start = clip.start_secs + delta_secs;
+                                let mut targets = snap_targets_excluding(clip.id);
+                                targets.push(playhead_secs);
+                                let new_start_secs = if snap_enabled {
+                                    snap_move_start(
+                                        candidate_start,
+                                        clip.duration_secs(),
+                                        &targets,
+                                        px_per_sec,
+                                    )
+                                } else {
+                                    candidate_start
+                                };
                                 clip_drags.push(ClipDrag {
                                     clip_id: clip.id,
                                     source_track_id: track.id,
                                     kind: track.kind,
-                                    new_start_secs: clip.start_secs + delta_secs,
+                                    new_start_secs,
                                     pointer_y: pointer.y,
                                 });
                             }
                         }
                         if let Some(pos) = left_response.interact_pointer_pos() {
                             let secs = ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
+                            let mut targets = snap_targets_excluding(clip.id);
+                            targets.push(playhead_secs);
+                            targets.extend(&waveform_snap_targets);
+                            let secs = if snap_enabled {
+                                snap_to_nearest(secs, &targets, px_per_sec)
+                            } else {
+                                secs
+                            };
                             trim_requests.push((clip.id, TrimEdge::Start(secs)));
                         }
                         if let Some(pos) = right_response.interact_pointer_pos() {
                             let secs = ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
+                            let mut targets = snap_targets_excluding(clip.id);
+                            targets.push(playhead_secs);
+                            targets.extend(&waveform_snap_targets);
+                            let secs = if snap_enabled {
+                                snap_to_nearest(secs, &targets, px_per_sec)
+                            } else {
+                                secs
+                            };
                             trim_requests.push((clip.id, TrimEdge::End(secs)));
                         }
 
@@ -667,9 +960,26 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         for track_id in toggle_track_visibility_requests {
             app.toggle_track_visibility(track_id);
         }
+        for (track_id, role) in track_audio_role_requests {
+            app.set_track_audio_role(track_id, role);
+        }
+        for (track_id, color_label) in track_color_label_requests {
+            app.set_track_color_label(track_id, color_label);
+        }
         for clip_id in delete_requests {
             app.selected_clip_id = Some(clip_id);
             app.delete_selected_clip();
+        }
+        for (clip_id, color_label) in clip_color_label_requests {
+            app.set_clip_color_label(clip_id, color_label);
+        }
+        for clip_id in detach_audio_requests {
+            app.selected_clip_id = Some(clip_id);
+            app.detach_audio_from_selected_clip();
+        }
+        for (clip_id, start_speed, end_speed) in speed_ramp_requests {
+            app.selected_clip_id = Some(clip_id);
+            app.apply_speed_ramp_to_selected_clip(start_speed, end_speed, 4);
         }
         if split_at_playhead_requested {
             app.split_at_playhead();
@@ -677,13 +987,48 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         if drag_started_this_frame {
             app.push_undo_snapshot();
         }
+        // Ripple/Roll (ROADMAP.md P2 item 11) change what an edge drag commits as; every other
+        // tool (including Slip/Slide, which act on the clip *body* instead — see the drag loop
+        // below) falls back to the same plain trim edge-dragging has always done.
         for (clip_id, edge) in trim_requests {
-            match edge {
-                TrimEdge::Start(secs) => app.trim_clip_start(clip_id, secs),
-                TrimEdge::End(secs) => app.trim_clip_end(clip_id, secs),
+            match (app.tool, edge) {
+                (EditorTool::Ripple, TrimEdge::Start(secs)) => {
+                    app.ripple_trim_clip_start(clip_id, secs)
+                }
+                (EditorTool::Ripple, TrimEdge::End(secs)) => {
+                    app.ripple_trim_clip_end(clip_id, secs)
+                }
+                (EditorTool::Roll, TrimEdge::Start(secs)) => {
+                    app.roll_edit_from_start_edge(clip_id, secs)
+                }
+                (EditorTool::Roll, TrimEdge::End(secs)) => app.roll_edit_clip(clip_id, secs),
+                (_, TrimEdge::Start(secs)) => app.trim_clip_start(clip_id, secs),
+                (_, TrimEdge::End(secs)) => app.trim_clip_end(clip_id, secs),
             }
         }
         for drag in clip_drags {
+            // Slip/Slide (ROADMAP.md P2 item 11) act on the clip in place rather than moving
+            // it across tracks, so they skip the cross-track drop-target resolution below
+            // entirely — dragging a clip's body while either is active always edits it on its
+            // own track.
+            if app.tool == EditorTool::Slip {
+                let old_start_secs = app
+                    .active_project()
+                    .timeline()
+                    .tracks
+                    .iter()
+                    .flat_map(|t| &t.clips)
+                    .find(|c| c.id == drag.clip_id)
+                    .map(|c| c.start_secs);
+                if let Some(old_start_secs) = old_start_secs {
+                    app.slip_clip(drag.clip_id, drag.new_start_secs - old_start_secs);
+                }
+                continue;
+            }
+            if app.tool == EditorTool::Slide {
+                app.slide_clip(drag.clip_id, drag.new_start_secs);
+                continue;
+            }
             // Whichever track row's Y-range the pointer is currently over, if its kind
             // matches the dragged clip's own track — a video clip can't be dropped onto an
             // audio row or vice versa. Falls back to a same-track reposition if the pointer

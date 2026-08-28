@@ -299,21 +299,8 @@ fn extract_thumbnail(path: &Path, at_secs: f64) -> Option<(u32, u32, Vec<u8>)> {
     if !path.exists() {
         return None;
     }
-    let preview = avcore::preview::Preview::open(path, None).ok()?;
-    let _ = preview.seek(at_secs.max(0.0));
-
-    // current_frame() is non-blocking — a frame isn't necessarily ready the instant seek()
-    // returns, so poll briefly for one.
-    let deadline = Instant::now() + Duration::from_millis(800);
-    let frame = loop {
-        if let Some(frame) = preview.current_frame() {
-            break frame;
-        }
-        if Instant::now() >= deadline {
-            return None;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
+    let sampler = avcore::FrameSampler::open(path, Duration::from_millis(20)).ok()?;
+    let frame = sampler.sample(at_secs, Duration::from_millis(800))?;
 
     Some(downscale_rgba(&frame, THUMBNAIL_MAX_DIM))
 }

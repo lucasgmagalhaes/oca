@@ -114,7 +114,66 @@ pub struct PendingExportConflict {
     pub output_path: PathBuf,
 }
 
+/// [`App::export_preview_cache`]'s stored key + result. Compared against the active sequence's
+/// own `id`/`timeline.tracks` and `media_library` — not the whole [`avcore::project::Sequence`]
+/// (whose `export_settings`/`name` [`avcore::resolve_timeline_segments_multi`]/
+/// [`avcore::resolve_audio_segments`] never read, so comparing those would invalidate the cache
+/// on an unrelated edit) and not `timeline.playhead_secs` (which changes continuously during
+/// scrubbing/playback and would defeat the cache exactly when it matters most). `result` holds
+/// `Err(())` rather than the real [`avcore::RenderError`] — the only caller only ever checks
+/// `is_ok()`, and `RenderError::ReplaceOutput`'s `std::io::Error` field isn't `Clone`, which a
+/// cached-and-returned `Result` needs to be.
+pub(super) struct ExportPreviewCache {
+    sequence_id: u64,
+    tracks: Vec<avcore::timeline::Track>,
+    media_library: Vec<avcore::MediaAsset>,
+    result: Result<(Vec<Vec<ClipSegment>>, Vec<AudioSegment>, Canvas), ()>,
+}
+
 impl App {
+    /// Resolves the active sequence's visible video tracks + media library into export segments
+    /// (track segments, audio segments, canvas) — what the Fila (export queue) screen's header
+    /// needs every frame just to show a file-size estimate and gate the "Adicionar exportação"
+    /// button. [`avcore::resolve_timeline_segments_multi`]/[`avcore::resolve_audio_segments`]
+    /// rebuild every clip's filter-chain string and re-scan the whole media library from
+    /// scratch, so recomputing this every UI frame is real wasted work while nothing on the
+    /// timeline actually changed — [`App::export_preview_cache`] reuses the last result whenever
+    /// the exact inputs that produced it (see [`ExportPreviewCache`]'s doc comment on what does
+    /// and doesn't count) are still the same. See `architecture/performance-and-caching.md` §2.
+    pub fn resolved_active_sequence_export_preview(
+        &mut self,
+    ) -> Result<(Vec<Vec<ClipSegment>>, Vec<AudioSegment>, Canvas), ()> {
+        let project = self.active_project();
+        let sequence_id = project.active_sequence().id;
+        let tracks = project.active_sequence().timeline.tracks.clone();
+        let media_library = project.media_library.clone();
+
+        if let Some(cache) = &self.export_preview_cache {
+            if cache.sequence_id == sequence_id
+                && cache.tracks == tracks
+                && cache.media_library == media_library
+            {
+                return cache.result.clone();
+            }
+        }
+
+        let sequence = self.active_project().active_sequence();
+        let result = avcore::resolve_timeline_segments_multi(sequence, &media_library)
+            .and_then(|(track_segments, canvas)| {
+                avcore::resolve_audio_segments(sequence, &media_library)
+                    .map(|audio_segments| (track_segments, audio_segments, canvas))
+            })
+            .map_err(|_| ());
+
+        self.export_preview_cache = Some(ExportPreviewCache {
+            sequence_id,
+            tracks,
+            media_library,
+            result: result.clone(),
+        });
+        result
+    }
+
     /// Appends a new `Queued` job — what "Adicionar exportação" does, given video, audio, text,
     /// and shape segments already resolved from the active sequence so this job renders the
     /// timeline as it was at the moment it entered the queue, not whatever is edited later.
@@ -149,6 +208,23 @@ impl App {
             output_path,
             status: ExportJobStatus::Queued,
         });
+        save_queue(&self.export_jobs);
+    }
+
+    /// Sets `target_lufs` on every `Queued` job — what the Fila screen's "match loudness
+    /// across the batch" buttons do (`ROADMAP.md` P2 item 12, "D3 — series-level loudness
+    /// consistency": episode 1 and episode 5 of a series shouldn't sound mismatched back to
+    /// back just because their sequences had different export defaults when queued). Only
+    /// `Queued` jobs are touched — a `Rendering`/`Paused` job's render worker already captured
+    /// its own `target_lufs` at dispatch time ([`App::pump_export_queue`]), so changing the
+    /// field on the `ExportJob` afterward wouldn't affect an already-started render anyway; a
+    /// `Done`/`Failed` job is finished, changing it would just be misleading.
+    pub fn match_loudness_across_queued_jobs(&mut self, target_lufs: f32) {
+        for job in &mut self.export_jobs {
+            if job.status == ExportJobStatus::Queued {
+                job.target_lufs = target_lufs;
+            }
+        }
         save_queue(&self.export_jobs);
     }
 

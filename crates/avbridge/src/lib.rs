@@ -57,6 +57,9 @@ struct RawAudioSegment {
     timeline_start_secs: f64,
     gain_db: f32,
     speed_factor: f32,
+    /// NULL or empty means "use gain_db unchanged" — see `AudioSegment::gain_keyframe_expr`.
+    gain_keyframe_expr: *const c_char,
+    duck_role: c_int,
 }
 
 /// Mirror of `TextSegment` in `bridge.h` — one pre-rasterized text overlay image.
@@ -65,6 +68,8 @@ struct RawTextSegment {
     start_secs: f64,
     duration_secs: f64,
     overlay_path: *const c_char,
+    /// NULL or empty means "always fully opaque" — see `TextOverlaySegment::opacity_keyframe_expr`.
+    opacity_keyframe_expr: *const c_char,
 }
 
 #[repr(C)]
@@ -563,6 +568,23 @@ pub struct AudioSegment {
     pub timeline_start_secs: f64,
     pub gain_db: f32,
     pub speed_factor: f32,
+    /// FFmpeg `volume` filter expression (linear multiplier, `t`-keyed from this segment's own
+    /// trim start) driving a keyframed gain ramp instead of the constant `gain_db` above — built
+    /// by `avcore::keyframe::gain_filter_db_expr` from a `ClipInstance`'s `gain_keyframes`. Empty
+    /// string means "use `gain_db` unchanged" (the common case — no keyframed gain). `#[serde(
+    /// default)]` so an `.ocqueue` job persisted before this field existed loads with no ramp.
+    #[serde(default)]
+    pub gain_keyframe_expr: String,
+    /// Audio-ducking role (P2 item 6, "Auto Ducking"): `0` mixes in as-is, `1` is the sidechain
+    /// trigger (still plays itself, and ducks every `2` branch under it), `2` is ducked under
+    /// trigger branches via `sidechaincompress`. Built by `core`'s
+    /// `avcore::timeline::AudioRole::to_duck_role_code()` — this crate doesn't depend on `core`,
+    /// so it stays a raw code here rather than that enum, same convention
+    /// [`ClipSegment::transition_in`] already uses for `TransitionType`. `#[serde(default)]` so
+    /// an `.ocqueue` job persisted before this field existed loads as `0` (no ducking) rather
+    /// than failing to parse.
+    #[serde(default)]
+    pub duck_role: u8,
 }
 
 /// The fixed output frame size/rate every segment in an [`encode_timeline_export`] call is
@@ -937,16 +959,25 @@ pub fn mix_audio_timeline(
                 .map_err(AudioMixError::InvalidPath)
         })
         .collect::<Result<_, _>>()?;
+    let gain_exprs: Vec<CString> = segments
+        .iter()
+        .map(|seg| {
+            CString::new(seg.gain_keyframe_expr.as_bytes()).map_err(AudioMixError::InvalidPath)
+        })
+        .collect::<Result<_, _>>()?;
     let raw: Vec<RawAudioSegment> = segments
         .iter()
         .zip(&paths)
-        .map(|(seg, path)| RawAudioSegment {
+        .zip(&gain_exprs)
+        .map(|((seg, path), gain_expr)| RawAudioSegment {
             source_path: path.as_ptr(),
             source_in_secs: seg.source_in_secs,
             source_out_secs: seg.source_out_secs,
             timeline_start_secs: seg.timeline_start_secs,
             gain_db: seg.gain_db,
             speed_factor: seg.speed_factor,
+            gain_keyframe_expr: gain_expr.as_ptr(),
+            duck_role: seg.duck_role as c_int,
         })
         .collect();
 
@@ -1374,6 +1405,11 @@ pub struct TextOverlaySegment {
     pub duration_secs: f64,
     /// Full-canvas transparent PNG containing the already-rasterized text/background.
     pub overlay_path: PathBuf,
+    /// Complete `geq`-expression-language fragment (built by
+    /// `avcore::keyframe::text_opacity_alpha_expr`) multiplied against the PNG's own alpha
+    /// channel — empty means "always fully opaque", the same visibility this overlay always had
+    /// before opacity keyframes existed.
+    pub opacity_keyframe_expr: String,
 }
 
 /// What [`apply_text_overlays`] failed on.
@@ -1428,20 +1464,30 @@ pub fn apply_text_overlays(
                 .map_err(TextOverlayError::InvalidPath)?,
         );
     }
+    let opacity_exprs: Vec<CString> = segments
+        .iter()
+        .map(|seg| {
+            CString::new(seg.opacity_keyframe_expr.as_bytes())
+                .map_err(TextOverlayError::InvalidPath)
+        })
+        .collect::<Result<_, _>>()?;
 
     let raw_segments: Vec<RawTextSegment> = segments
         .iter()
         .zip(c_paths.iter())
-        .map(|(seg, path)| RawTextSegment {
+        .zip(opacity_exprs.iter())
+        .map(|((seg, path), opacity_expr)| RawTextSegment {
             start_secs: seg.start_secs,
             duration_secs: seg.duration_secs,
             overlay_path: path.as_ptr(),
+            opacity_keyframe_expr: opacity_expr.as_ptr(),
         })
         .collect();
 
-    // SAFETY: all pointers (c_in, c_out, raw_segments' path pointers from c_paths) are valid
-    // NUL-terminated C strings held alive for the full duration of this call. raw_segments is a
-    // contiguous Vec<RawTextSegment> with segment_count entries, never mutated during the call.
+    // SAFETY: all pointers (c_in, c_out, raw_segments' path/expr pointers from c_paths/
+    // opacity_exprs) are valid NUL-terminated C strings held alive for the full duration of this
+    // call. raw_segments is a contiguous Vec<RawTextSegment> with segment_count entries, never
+    // mutated during the call.
     let status = unsafe {
         avbridge_apply_text_overlays(
             c_in.as_ptr(),

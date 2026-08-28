@@ -38,4 +38,11 @@ impl/test/docs specialists, gates through Reviewer, lands via Git Agent.
   [git-agent.md](git-agent.md) for accepted types.
 - `git add .` and squashing distinct tasks are forbidden for the Git Agent.
 
+## On-demand quality guidance
+
+All agents use [`../docs/code-quality/README.md`](../docs/code-quality/README.md) to select quality
+references. They must not load the entire directory. The Manager selects design guidance when a task
+changes architecture; specialists select only their language, performance, testing, or security
+guide; the Reviewer starts with `review-checklist.md` and follows its routing triggers.
+
 `graph.html` in this folder is a separate artifact (not an agent spec) — leave as-is unless asked.

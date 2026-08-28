@@ -1,5 +1,7 @@
 # oca
 
+[![codecov](https://codecov.io/gh/lucasgmagalhaes/oca/graph/badge.svg?token=H6OVJPIXN0)](https://codecov.io/gh/lucasgmagalhaes/oca)
+
 A native video editor for cutting gameplay footage (PacoPaçoca channel), with automatic
 loudness normalization and export-that-matches-the-source-bitrate as two of its headline
 features. See [`features/request.md`](features/request.md) for the full execution plan and
