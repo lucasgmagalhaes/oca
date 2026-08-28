@@ -940,3 +940,39 @@ fn set_live_blur_returns_false_for_a_mismatched_clip_id() {
 
     assert!(!preview.set_live_blur(blurred_clip.id + 1, 2.0));
 }
+
+// Same P1 item 3 gap, same shape, for Preview::set_live_chroma_key's `alpha` element -- built
+// only for a composited-overlay branch with chroma_key_enabled, unlike balance/blur.
+
+/// A single-clip (non-composited) pipeline never builds a chroma-key element at all --
+/// `set_live_chroma_key` must not silently pretend it worked.
+#[test]
+fn set_live_chroma_key_returns_false_when_no_element_was_built() {
+    let plain_clip = clip();
+    let preview = Preview::open(&fixture("video.mp4"), Some(&plain_clip)).unwrap();
+
+    assert!(!preview.set_live_chroma_key(plain_clip.id, [0, 255, 0], 0.4));
+}
+
+/// A mismatched clip id (not the overlay clip the pipeline was actually built for) must not
+/// find some other clip's element by accident.
+#[test]
+fn set_live_chroma_key_returns_false_for_a_mismatched_clip_id() {
+    let background = fixture("video.mp4");
+    let overlay_source = fixture("video.mp4");
+    let mut overlay_clip = clip();
+    overlay_clip.id = 2;
+    overlay_clip.chroma_key_enabled = true;
+
+    let preview = Preview::open_composited(
+        &background,
+        None,
+        &[(overlay_source.as_path(), &overlay_clip)],
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
+
+    assert!(!preview.set_live_chroma_key(overlay_clip.id + 1, [0, 255, 0], 0.4));
+}
