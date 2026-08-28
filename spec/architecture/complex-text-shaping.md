@@ -1,0 +1,386 @@
+# Complex Text Shaping and Bidirectional Layout
+
+**Status:** proposed
+
+**Roadmap ID:** TEXT-01
+
+**Priority:** may proceed alongside FONT-01A/B; required before international fallback families
+are exposed and before FONT-01 is marked complete
+
+**Scope:** OpenType shaping, bidi, cluster mapping, Unicode line breaking, deterministic fallback,
+variable weights, and preview/export parity
+
+## Problem
+
+oca's current text renderer is deterministic but Latin-oriented:
+
+- `text_metrics.rs` sums one advance width per Unicode scalar and explicitly has no kerning,
+  ligatures, bidi, or complex-script shaping;
+- `overlay_render.rs` asks `fontdue::Layout` to place glyphs in logical left-to-right order;
+- word highlighting filters glyphs by a UTF-8 `byte_offset` instead of shaped cluster boundaries;
+- wrapping is based on the current simple layout rather than the Unicode line-breaking algorithm;
+- the fixed `fontdue` path cannot select variable-font axes used by much of FONT-01's catalog;
+- fallback is one hard-coded Latin face and cannot choose a face by script or language.
+
+Consequences include disconnected or contextually wrong Arabic letters, incorrect ordering for
+mixed RTL/LTR text and numbers, broken Indic conjuncts, missing kerning/ligatures, unsafe highlight
+splits through a ligature, and incorrect break opportunities for Thai and other scripts.
+
+This is not solved by adding fonts alone. A font supplies glyphs and OpenType rules; a shaping and
+layout engine must interpret the Unicode text, script, language, direction, font features, and
+fallback chain before rasterization.
+
+## Goals
+
+1. Shape text according to its script and language, including contextual forms, combining marks,
+   kerning, required ligatures, and Indic reordering.
+2. Implement paragraph and run ordering compatible with Unicode Bidirectional Algorithm UAX #9.
+3. Wrap at Unicode line-break opportunities without splitting grapheme or shaping clusters.
+4. Map logical UTF-8 ranges to shaped clusters so timed word highlights remain correct.
+5. Select variable weights accurately and use deterministic bundled fallback by script.
+6. Produce one shared shaped representation consumed by preview, measurement, highlighting, and
+   export.
+7. Keep shaping bounded, cacheable, non-blocking for the UI, and safe for arbitrary pasted text.
+
+## Non-goals
+
+- Loading operating-system fonts or changing render output by platform.
+- Vertical writing, ruby annotation, dictionary hyphenation, kashida justification, or advanced
+  desktop-publishing controls in the first slice.
+- Automatically translating text or guessing a language beyond script/base-direction detection.
+- Normalizing or rewriting the user's stored text behind their back.
+- Claiming every Unicode script is supported. The guarantee is limited to the bundled coverage
+  matrix below; missing scripts use an explicit preflight warning.
+- Building a shaping engine directly from the Unicode/OpenType specifications.
+
+## Normative behavior
+
+TEXT-01 follows these standards, pinned to the Unicode data version used by its dependencies and
+test fixtures:
+
+- [UAX #9: Unicode Bidirectional Algorithm](https://www.unicode.org/reports/tr9/);
+- [UAX #14: Unicode Line Breaking Algorithm](https://www.unicode.org/reports/tr14/);
+- [UAX #29: Unicode Text Segmentation](https://www.unicode.org/reports/tr29/);
+- [UAX #15: Unicode Normalization Forms](https://www.unicode.org/reports/tr15/);
+- OpenType shaping behavior as implemented by a HarfBuzz-compatible shaper;
+- shaped cluster semantics described by the
+  [HarfBuzz cluster model](https://harfbuzz.github.io/clusters.html).
+
+The stored text remains its original valid UTF-8 sequence. NFC/NFKC normalization may be used for
+search keys only when the operation explicitly needs it; it must not replace rendering text,
+cluster offsets, transcript word ranges, or persisted content.
+
+## Architecture decision
+
+### Candidate stack
+
+Use `cosmic-text` as the preferred integration candidate, subject to the implementation spike and
+dependency review. As researched on 2026-08-28, its current 0.19 API provides:
+
+- advanced shaping through HarfRust;
+- bidirectional multi-line layout;
+- font fallback;
+- Swash-based rasterization, ligatures, and color emoji support;
+- bundled-font database construction;
+- variable-weight matching and rendering;
+- Linux, macOS, and Windows support.
+
+The implementation must add the dependency through Cargo, pin the resolved version in
+`Cargo.lock`, verify its MSRV and enabled feature tree, and record MIT/Apache-2.0 notices. No
+MercadoLibre Rust SDK in the project security catalog covers text shaping or rasterization.
+
+Do not call `FontSystem::new()`: the official API documents that it loads installed system fonts,
+which would break deterministic projects. Build an empty `fontdb::Database`, load only FONT-01's
+locked byte sources, and construct the system with the equivalent of
+`new_with_locale_and_db_and_fallback` plus an oca-owned fallback policy.
+
+`rustybuzz` is not the primary choice because it is a shaper, not a complete bidi, line-layout,
+fallback, and rasterization stack. Integrating it directly would require oca to assemble and keep
+four additional subsystems consistent. It remains a fallback option only if the cosmic-text spike
+fails a documented correctness, performance, or compatibility gate.
+
+### Acceptance spike
+
+Before migrating production rendering, a small isolated spike must prove:
+
+1. bundled-only font loading with zero system-font matches;
+2. Arabic, mixed Arabic/Latin/numbers, Hebrew, Devanagari, Bengali, Tamil, and Thai shaping;
+3. `fi`/`fl` ligatures and combining diacritics with stable cluster ranges;
+4. variable weights 400 and 700 producing different glyph output from one variable TTF;
+5. RGBA output compatible with the current full-canvas overlay path;
+6. line wrapping that does not split a ligature or grapheme cluster;
+7. predictable performance under the documented input limits;
+8. supported Rust toolchain, targets, licenses, and package size.
+
+If any gate fails, write a short ADR comparing direct HarfBuzz bindings, `rustybuzz` plus separate
+bidi/layout/rasterization crates, and the candidate stack. Do not silently retain the current
+renderer for only some scripts while claiming TEXT-01 complete.
+
+## Shaping pipeline
+
+The pipeline operates on logical UTF-8 and produces positioned glyphs; it never reorders the stored
+string itself.
+
+```text
+validated UTF-8 TextClip content
+        |
+        v
+paragraph split + base direction (Auto/LTR/RTL)
+        |
+        v
+UAX #9 directional runs + script/language itemization
+        |
+        v
+deterministic bundled font fallback per run/cluster
+        |
+        v
+OpenType shaping (features + variable axes)
+        |
+        v
+UAX #14 wrap opportunities constrained by shaped clusters/UAX #29 graphemes
+        |
+        v
+positioned lines/runs/glyphs + logical cluster mapping
+        |
+        +--> measurement / background geometry / hit testing
+        +--> timed word highlight recoloring
+        +--> preview RGBA
+        `--> export RGBA
+```
+
+The engine must return an oca-owned immutable `ShapedText`-equivalent value rather than leak
+provider types throughout `core`. At minimum it contains:
+
+- paragraph base direction and visual line order;
+- line baseline, width, height, and logical byte range;
+- runs with script, language, direction, selected family ID, weight, and variation coordinates;
+- positioned glyph IDs and advances/offsets;
+- each glyph's logical UTF-8 cluster range;
+- fallback/missing-glyph diagnostics containing codepoints and family IDs, never full project text.
+
+This value is the only input to text rasterization. `text_width_px_with_font`, background bounds,
+word offsets, preview images, and export images must stop independently recomputing approximate
+metrics.
+
+## Direction, alignment, and language model
+
+Extend text properties with forwards-compatible semantic values:
+
+```text
+TextDirection = Auto | LeftToRight | RightToLeft
+TextAlign = Start | Center | End
+language = optional validated BCP 47 tag
+```
+
+- `Auto` uses the paragraph's first strong directional character, per UAX #9.
+- `Start` and `End` are direction-aware; they must not be persisted as visual `Left`/`Right`.
+- Existing projects migrate to `Auto + Start`, preserving current Latin output.
+- Explicit LTR/RTL is a user override for captions whose first strong character does not represent
+  the intended paragraph direction.
+- The language tag influences shaping and locale-sensitive fallback. Invalid/unknown tags are
+  rejected or normalized to absent; they do not become arbitrary font lookup strings.
+- Standard required shaping features stay enabled. Optional discretionary features are a later UI
+  enhancement and must use a typed allowlist of OpenType tags.
+
+The editor should expose invisible directional controls on demand. RLO/LRO and unmatched explicit
+controls receive a non-blocking warning because they can make text visually misleading; they are
+not silently stripped, since legitimate bidi content must round-trip exactly.
+
+## Cluster-safe timed highlights
+
+The current implementation maps transcript words to UTF-8 byte ranges and filters individual
+glyphs by one byte offset. That is insufficient when one glyph represents several characters or
+when several reordered glyphs belong to one logical cluster.
+
+New behavior:
+
+1. Preserve each transcript word's logical UTF-8 range.
+2. Find all shaped clusters whose logical ranges overlap the word.
+3. Expand the highlight to whole cluster boundaries; never split a ligature, combining sequence,
+   or Indic conjunct.
+4. Repaint the selected cluster glyphs using their already-shaped positions. Do not shape the word
+   separately, because contextual Arabic forms and kerning could change.
+5. If one cluster overlaps two timed words, use one deterministic rule: the cluster belongs to the
+   first word until its time ends, then to the second. Record a diagnostic for test visibility.
+6. Keep the base caption layout unchanged while highlight color changes.
+
+Cursor/selection behavior in the text-editing field remains the UI toolkit's responsibility, but
+preview click/hit testing added later must use grapheme/cluster boundaries rather than scalar or
+byte boundaries.
+
+## Deterministic fallback and bundled coverage
+
+Fallback never queries the operating system. The oca policy receives script and locale and returns
+only manifest IDs from FONT-01.
+
+Initial guaranteed chains:
+
+| Script/use | Primary fallback chain |
+| --- | --- |
+| Latin, Greek, Cyrillic | selected family -> Lato -> visible replacement glyph |
+| Arabic | selected family -> Noto Sans Arabic -> Noto Naskh Arabic -> replacement |
+| Hebrew | selected family -> Noto Sans Hebrew -> replacement |
+| Devanagari | selected family -> Noto Sans Devanagari -> replacement |
+| Bengali | selected family -> Noto Sans Bengali -> replacement |
+| Tamil | selected family -> Noto Sans Tamil -> replacement |
+| Thai | selected family -> Noto Sans Thai -> replacement |
+
+Fallback happens at the smallest safe shaping unit supported by the chosen engine, without mixing
+fonts inside a required cluster. The chosen family ID for each run is persisted in shaped cache
+metadata so preview/export diagnostics can be compared.
+
+CJK regional forms and color emoji are not part of the 20-MiB base catalog. They require locked
+optional packs described in FONT-01. Missing pack coverage is shown before export and never resolved
+through a system font.
+
+## Script support matrix
+
+TEXT-01 completion claims only tested behavior:
+
+| Capability | Base guarantee |
+| --- | --- |
+| Latin ligatures/kerning/combining marks | Yes |
+| Mixed LTR/RTL paragraphs and numbers | Yes |
+| Arabic contextual shaping | Yes, with bundled Arabic fallbacks |
+| Hebrew bidi and marks | Yes, with bundled Hebrew fallback |
+| Devanagari conjuncts/reordering | Yes |
+| Bengali conjuncts/reordering | Yes |
+| Tamil shaping | Yes |
+| Thai shaping and line-break opportunities | Yes |
+| Simplified/Traditional Chinese, Japanese, Korean | Only with the matching optional CJK pack |
+| Color emoji | Only with the optional emoji pack and verified color-glyph rendering |
+| Vertical writing | No |
+| Every Unicode script | No; preflight reports missing coverage |
+
+Language-level claims such as Persian or Urdu are added only after their complete acceptance corpus
+passes with the pinned font revision. Sharing an Arabic script is not by itself proof of complete
+language coverage.
+
+## Caching and concurrency
+
+Shape on a bounded worker, not on the egui paint callback. A request carries a generation number;
+when text or styling changes, stale results are discarded rather than installed after the newer
+edit.
+
+The shaped-layout cache key includes:
+
+- hash of logical text, without logging the text itself;
+- family ID, weight, italic/style, feature set, and font catalog revision;
+- font size, line height, maximum width, alignment, direction, and language;
+- shaping engine/data version.
+
+Bound the cache by entry count and estimated bytes. Preview and export may share immutable shaped
+values, but no lock may be held while shaping or rasterizing. Cache misses must not block unrelated
+preview decoding or export progress updates.
+
+## Input and resource limits
+
+Text is user-controlled and shaping complexity is not assumed linear for every malformed or
+adversarial case. Validate before queueing work:
+
+- valid UTF-8 (guaranteed by Rust `String`, revalidated at imported interchange boundaries);
+- at most 32 KiB UTF-8 per text clip;
+- at most 8,192 grapheme clusters and 256 paragraphs per clip;
+- at most 32,768 produced glyphs and 512 visual lines after shaping;
+- Unicode bidi explicit depth no greater than UAX #9's fixed maximum of 125;
+- at most 8 fallback candidates for one shaping unit;
+- finite, bounded font size, line height, width, and variable-axis coordinates;
+- bounded worker queue, shaped cache, glyph image cache, and retry count.
+
+When a post-shape limit is exceeded, discard the result and return a generic user-facing error with
+a code such as `text_layout_too_complex`. Logs and remote error reports include counts, script,
+family IDs, and release metadata, never the caption/transcript content.
+
+## Preview and export integration
+
+`overlay_render` remains responsible for blending RGBA pixels and drawing the rounded background,
+but glyph selection and placement come exclusively from `ShapedText`.
+
+- Preview shapes when content/layout inputs change, not on every video frame.
+- Timed highlights reuse shaped glyph positions and only alter paint selection/color.
+- Export resolves and shapes all text before starting the native overlay post-pass; missing glyphs
+  or exceeded limits appear in export preflight instead of silently producing blank output.
+- Background bounds are derived from shaped line/glyph geometry, including RTL offsets and marks.
+- Preview and export use identical hinting, subpixel settings, fallback policy, font bytes, and
+  variation coordinates.
+- The current transparent full-canvas buffer stays as the first integration boundary, minimizing
+  changes to GStreamer/FFmpeg while the text engine is replaced.
+
+## Implementation slices
+
+### TEXT-01A: Adapter and Latin parity
+
+1. Add the provider-neutral shaped-text model and candidate engine behind one `TextLayoutEngine`.
+2. Load only locked FONT-01 bytes into a custom font database/fallback policy.
+3. Move measurement, wrapping, background geometry, and raster placement onto shaped output.
+4. Preserve golden output for the six existing families and ordinary Latin captions.
+
+### TEXT-01B: Bidi, clusters, and highlights
+
+1. Add `Auto/LTR/RTL`, semantic alignment, and optional language metadata.
+2. Enable bidi paragraph/run layout and cluster-safe timed highlights.
+3. Add directional-control visibility/warnings and mixed-direction golden tests.
+4. Replace approximate word-width helpers with cluster/run geometry.
+
+### TEXT-01C: International fallbacks
+
+1. Add the seven locked Noto fallback families from FONT-01.
+2. Verify Arabic, Hebrew, Devanagari, Bengali, Tamil, and Thai corpora.
+3. Add fallback/missing-glyph preflight and deterministic diagnostics.
+4. Expose international faces only after their shaping tests pass.
+
+### TEXT-01D: Performance and optional packs
+
+1. Add bounded background shaping, generation cancellation, and shaped/glyph caches.
+2. Benchmark caption editing, word highlights, many text clips, and mixed scripts.
+3. Validate optional CJK and color-emoji packs independently of the base installer.
+4. Record the supported script/language matrix in release documentation.
+
+## Test strategy
+
+- Pin and run relevant conformance fixtures from Unicode `BidiTest.txt`,
+  `BidiCharacterTest.txt`, `LineBreakTest.txt`, and `GraphemeBreakTest.txt` for the selected Unicode
+  data version.
+- Compare representative shaped glyph IDs, clusters, advances, and offsets with HarfBuzz-compatible
+  reference output.
+- Golden render corpus for Arabic in isolation/context, mixed Arabic-English-digits, Hebrew with
+  punctuation/numbers, Devanagari/Bengali/Tamil conjuncts, Thai wrapping, Latin `fi`/`fl`
+  ligatures, decomposed accents, emoji ZWJ sequences, and every base fallback boundary.
+- Cluster highlight tests for one-to-many, many-to-one, reordered, and shared-cluster mappings.
+- Explicit direction/control tests, including isolates, unmatched controls, and nesting at/over the
+  standard depth limit.
+- Variable-weight tests proving 400/700 differ while preview and export remain identical.
+- Missing-font, missing-glyph, corrupt-font, excessive text, excessive lines/glyphs, and stale-worker
+  result tests.
+- Cross-platform packaged tests proving the same project never resolves an installed system font.
+- Performance budgets for cold shape, warm cache, continuous typing, selector specimen generation,
+  timed highlight changes, and export preflight.
+
+## Definition of done
+
+- [ ] The candidate dependency spike passes every acceptance gate and its exact dependency/license
+      tree is reviewed.
+- [ ] Preview/export no longer use per-character width summation or unshaped `fontdue::Layout`.
+- [ ] Arabic, Hebrew, Devanagari, Bengali, Tamil, Thai, mixed bidi, and Latin ligature corpora pass.
+- [ ] Timed highlights operate on whole shaped clusters without re-shaping isolated words.
+- [ ] Variable weights select actual axes and affect glyph output.
+- [ ] System fonts are absent from the font database and fallback results are deterministic.
+- [ ] Direction, semantic alignment, and language metadata persist with backward-compatible defaults.
+- [ ] Line breaks and grapheme boundaries pass the pinned Unicode conformance subset.
+- [ ] Input, glyph, line, fallback, queue, and cache limits fail safely and never log text content.
+- [ ] Preview/export pixel parity and existing Latin golden images pass on packaged targets.
+- [ ] Unsupported scripts/packs are reported before export and not silently replaced.
+
+## Primary references
+
+- [HarfBuzz shaping concepts](https://harfbuzz.github.io/shaping-concepts.html)
+- [HarfBuzz cluster semantics](https://harfbuzz.github.io/clusters.html)
+- [cosmic-text repository and capability statement](https://github.com/pop-os/cosmic-text)
+- [cosmic-text bundled database/fallback APIs](https://docs.rs/cosmic-text/latest/cosmic_text/struct.FontSystem.html)
+- [cosmic-text variable-weight regression test](https://docs.rs/crate/cosmic-text/latest/source/tests/variable_font_weight.rs)
+- [UAX #9: Unicode Bidirectional Algorithm](https://www.unicode.org/reports/tr9/)
+- [UAX #14: Unicode Line Breaking Algorithm](https://www.unicode.org/reports/tr14/)
+- [UAX #29: Unicode Text Segmentation](https://www.unicode.org/reports/tr29/)
+- [UAX #15: Unicode Normalization Forms](https://www.unicode.org/reports/tr15/)
+
+[<- back to spec/INDEX.md](../INDEX.md)

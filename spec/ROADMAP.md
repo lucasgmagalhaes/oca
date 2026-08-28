@@ -768,6 +768,17 @@ an item earlier:
   native Crashpad phase. This is an operational prerequisite for broad beta distribution, not a
   replacement for local telemetry. Read
   [architecture/client-error-reporting.md](architecture/client-error-reporting.md).
+- `[ ]` **FONT-01: expanded built-in font catalog.** Grow the deterministic offline catalog from
+  6 to 43 families (51 locked OFL binaries, measured at 17.07 MiB), replace the fixed enum/match
+  architecture with stable manifest IDs, support real variable weights, and add a searchable,
+  lazy, bounded selector. May proceed alongside CF-01 and must land before CF-07 templates. Read
+  [architecture/built-in-font-catalog.md](architecture/built-in-font-catalog.md).
+- `[ ]` **TEXT-01: complex text shaping and bidirectional layout.** Replace per-character
+  `fontdue` layout with one bundled-only shaping/layout/rasterization engine covering OpenType
+  ligatures/contextual forms, UAX #9 bidi, UAX #14 wrapping, cluster-safe timed highlights,
+  variable weights, and deterministic Arabic/Hebrew/Indic/Thai fallback. May proceed alongside
+  FONT-01A/B and is required before international families are exposed. Read
+  [architecture/complex-text-shaping.md](architecture/complex-text-shaping.md).
 - `[~]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:

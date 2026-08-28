@@ -47,7 +47,16 @@ for exact export-vs-preview wiring per effect).
 - [x] Manual text insertion, full HSV+preset+hex/rgb color editor (transactional modal).
 - [x] Word-highlight subtitle style (shorts/MrBeast-style), live timing in both preview+export,
       auto line-wrap identical in both.
-- [x] Bundled fonts (6 faces, SIL OFL, lazy-loaded).
+- [~] Bundled fonts — the current 6 families/9 TTF files are SIL OFL and lazy-loaded, with
+      preview/export parity. FONT-01 expands this to a curated, locked 43-family catalog and
+      replaces the fixed enum/`OnceLock`-per-face design with stable IDs, real variable weights,
+      bounded caching, searchable previews, and explicit license/supply-chain gates; see
+      `../architecture/built-in-font-catalog.md`.
+- [ ] Complex shaping/bidi — the current per-character metrics and left-to-right `fontdue::Layout`
+      do not correctly handle Arabic contextual forms, mixed bidi, Indic conjuncts, ligature-safe
+      timed highlights, or Unicode line breaking. TEXT-01 defines a bundled-only shaping engine,
+      seven international fallbacks, cluster mapping, resource limits, and conformance tests; see
+      `../architecture/complex-text-shaping.md`.
 - [x] Geometric shapes: presets (rectangle/ellipse/triangle/trapezoid/arrow) + hand-drawn
       custom polygon (click-to-place on preview).
 - [x] Text/shape preview compositing (`appsrc ! imagefreeze` branches).

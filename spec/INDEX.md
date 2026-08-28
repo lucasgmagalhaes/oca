@@ -20,6 +20,13 @@ Before broad beta distribution, read
 **[architecture/client-error-reporting.md](architecture/client-error-reporting.md)** for ER-01's
 consent, sanitization, offline delivery, symbolication, and native-crash rollout requirements.
 
+For the expanded offline text catalog, read
+**[architecture/built-in-font-catalog.md](architecture/built-in-font-catalog.md)** for FONT-01's
+curated families, official sources, package budget, licenses, renderer migration, and cache design.
+Read **[architecture/complex-text-shaping.md](architecture/complex-text-shaping.md)** with it when
+working on bidi, ligatures, Unicode line breaking, timed highlight clusters, or international
+fallback.
+
 Do not read every file here for one task. Read `matrix/changelog.md` only when you need the
 historical "why was it built this way" detail (verification caveats, real bugs found, empirical
 discoveries) — it's a narrative log of already-completed work, not a task list.
@@ -46,6 +53,8 @@ spec/
     ├── differentiators.md            (D1-D7: the proposed differentiator feature specs)
     ├── competitive-feature-plan.md   (CF-01-CF-10: next competitive implementation plan)
     ├── client-error-reporting.md      (ER-01: secure remote error and crash collection)
+    ├── built-in-font-catalog.md       (FONT-01: 43-family offline font catalog)
+    ├── complex-text-shaping.md        (TEXT-01: bidi, OpenType shaping, cluster-safe layout)
     ├── performance-and-caching.md    (dirty flags, versioned cache, hot-path rules — from nimble)
     ├── undo-redo.md                  (P0 item 1: what's done, what's left, why per-sequence)
     ├── mobile-support.md             (Android/iOS ADR: proposed, not started — decision only)

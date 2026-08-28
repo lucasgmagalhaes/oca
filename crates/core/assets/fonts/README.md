@@ -1,5 +1,14 @@
 # Bundled fonts
 
+The current directory contains the first six-family catalog. The reviewed expansion target,
+official acquisition source, exact 43-family selection, package budget, license rules, manifest
+design, and migration plan live in
+[`spec/architecture/built-in-font-catalog.md`](../../../../spec/architecture/built-in-font-catalog.md).
+Complex shaping, bidi, cluster-safe highlights, and international fallback are specified in
+[`spec/architecture/complex-text-shaping.md`](../../../../spec/architecture/complex-text-shaping.md).
+Do not add a family here without updating that specification and the future locked catalog
+manifest together.
+
 These font files are downloaded from the official
 [Google Fonts repository](https://github.com/google/fonts) and embedded into `avcore` for
 deterministic text rendering. Each family is distributed under the SIL Open Font License 1.1;
