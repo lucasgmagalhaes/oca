@@ -27,6 +27,8 @@ jobs:
           version: ${{ env.GSTREAMER_VERSION }}
           arch: x86_64
       - uses: Swatinem/rust-cache@v2
+      - name: Fetch locked Cargo sources for license generation
+        run: cargo fetch --locked
 
       - name: Prepare verified private Python runtime
         shell: pwsh
@@ -97,7 +99,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install native build and complete GStreamer runtime
+      - name: Install native build and GStreamer runtime
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -105,8 +107,10 @@ jobs:
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
             gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
-            gstreamer1.0-libav gstreamer1.0-tools
+            gstreamer1.0-libav gstreamer1.0-tools gstreamer1.0-pulseaudio gstreamer1.0-alsa
       - uses: Swatinem/rust-cache@v2
+      - name: Fetch locked Cargo sources for license generation
+        run: cargo fetch --locked
 
       - name: Prepare verified private Python runtime
         run: bash ./crates/ytbridge/setup-python-runtime.sh
@@ -194,6 +198,8 @@ jobs:
       - name: Install native build and media runtimes
         run: brew install cmake ffmpeg gstreamer
       - uses: Swatinem/rust-cache@v2
+      - name: Fetch locked Cargo sources for license generation
+        run: cargo fetch --locked
 
       - name: Prepare verified private Python runtime
         run: bash ./crates/ytbridge/setup-python-runtime.sh

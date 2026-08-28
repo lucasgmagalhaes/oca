@@ -2,7 +2,7 @@
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 2 of the License, or
+// the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
@@ -11,7 +11,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use super::*;
 
@@ -120,6 +120,34 @@ fn phonemes_to_ids_empty_input_is_just_bos_and_eos() {
     let config = fixture_config();
     let ids = phonemes_to_ids("", &config);
     assert_eq!(ids, vec![1, 2]);
+}
+
+struct FailingPhonemizer;
+
+impl Phonemizer for FailingPhonemizer {
+    fn phonemize(&self, text: &str, language: &str) -> Result<Vec<String>, PhonemizationError> {
+        assert_eq!(text, "Hello");
+        assert_eq!(language, "pt-br");
+        Err(PhonemizationError::new("test backend", "expected failure"))
+    }
+}
+
+#[test]
+fn synthesis_uses_the_injected_phonemizer_before_loading_the_model() {
+    let error = synthesize_with_phonemizer(
+        Path::new("model-must-not-be-opened.onnx"),
+        &fixture_config(),
+        "Hello",
+        &FailingPhonemizer,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        TtsError::Phonemization(ref source)
+            if source.backend() == "test backend"
+                && source.to_string() == "test backend phonemization failed: expected failure"
+    ));
 }
 
 #[test]

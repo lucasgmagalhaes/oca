@@ -2,7 +2,7 @@
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 2 of the License, or
+// the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
@@ -11,7 +11,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 //! `core` — the UI-agnostic engine crate for oca.
 //!
@@ -137,7 +137,8 @@ pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
 pub use subtitles::export_srt;
 pub use telemetry::{record_event, GpuSampler, ResourceSampler, TelemetryError, TelemetryEvent};
 pub use text_to_speech::{
-    load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
+    load_voice_config, phonemes_to_ids, synthesize, synthesize_with_phonemizer, write_wav,
+    EspeakPhonemizer, PhonemizationError, Phonemizer, PiperVoiceConfig, TtsError,
 };
 pub use timeline::{
     AudioRole, ClipFormatting, ClipInstance, LayerTemplate, Marker, MarkerKind, ShapeClip,

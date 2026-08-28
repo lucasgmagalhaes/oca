@@ -26,8 +26,10 @@ cp "$FFMPEG_DIR/bin/ffmpeg" "$OUTPUT_DIR/resources/runtime/bin/"
 cp -a "$FFMPEG_DIR/lib/"*.so* "$OUTPUT_DIR/resources/runtime/lib/"
 
 GST_ROOT="$OUTPUT_DIR/resources/runtime/gstreamer"
+GST_PLUGINS="$GST_ROOT/lib/gstreamer-1.0"
 mkdir -p "$GST_ROOT/lib" "$GST_ROOT/libexec/gstreamer-1.0"
-cp -a /usr/lib/x86_64-linux-gnu/gstreamer-1.0 "$GST_ROOT/lib/"
+python3 "$SCRIPT_DIR/collect_gstreamer_plugins.py" \
+    /usr/lib/x86_64-linux-gnu/gstreamer-1.0 "$GST_PLUGINS" --platform linux
 scanner="$(command -v gst-plugin-scanner || true)"
 if [ -z "$scanner" ]; then
     scanner="$(find /usr/lib -path '*/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner' -print -quit)"
@@ -42,7 +44,7 @@ while IFS= read -r library; do
 done < <(
     find "$OUTPUT_DIR/ui" "$OUTPUT_DIR/ytbridge" "$OUTPUT_DIR/deno" "$scanner" \
         "$OUTPUT_DIR/resources/runtime/bin" "$OUTPUT_DIR/resources/runtime/lib" \
-        /usr/lib/x86_64-linux-gnu/gstreamer-1.0 -type f -print0 \
+        "$GST_PLUGINS" -type f -print0 \
         | xargs -0 -r ldd 2>/dev/null \
         | awk '/=> \/|^\// { for (i=1;i<=NF;i++) if ($i ~ /^\//) print $i }' \
         | grep -Ev '/(ld-linux|libc\.so|libm\.so|libpthread\.so|libdl\.so|librt\.so)' \
@@ -54,6 +56,7 @@ cp "$SCRIPT_DIR/linux-launcher.sh" "$OUTPUT_DIR/ui"
 chmod +x "$OUTPUT_DIR/ui" "$OUTPUT_DIR/ui-bin" "$OUTPUT_DIR/ytbridge" "$OUTPUT_DIR/deno"
 python3 "$SCRIPT_DIR/fetch_models.py" "$OUTPUT_DIR/resources"
 cp "$SCRIPT_DIR/bundle-manifest.json" "$OUTPUT_DIR/resources/"
+python3 "$SCRIPT_DIR/generate_third_party_notices.py" "$OUTPUT_DIR/resources/licenses"
 mkdir -p "$OUTPUT_DIR/resources/licenses/fonts"
 cp "$SCRIPT_DIR/../LICENSE" "$OUTPUT_DIR/resources/licenses/oca.txt"
 find "$SCRIPT_DIR/../crates/core/assets/fonts" -name OFL.txt -print0 | while IFS= read -r -d '' license; do

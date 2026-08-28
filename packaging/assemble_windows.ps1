@@ -30,7 +30,9 @@ Copy-Item (Join-Path $FfmpegDir "bin\ffmpeg.exe") (Join-Path $Runtime "bin")
 $BundledGStreamer = Join-Path $Runtime "gstreamer"
 New-Item -ItemType Directory -Force -Path (Join-Path $BundledGStreamer "lib") | Out-Null
 Copy-Item (Join-Path $GStreamerDir "bin") $BundledGStreamer -Recurse
-Copy-Item (Join-Path $GStreamerDir "lib\gstreamer-1.0") (Join-Path $BundledGStreamer "lib") -Recurse
+$BundledPlugins = Join-Path $BundledGStreamer "lib\gstreamer-1.0"
+python (Join-Path $PSScriptRoot "collect_gstreamer_plugins.py") `
+    (Join-Path $GStreamerDir "lib\gstreamer-1.0") $BundledPlugins --platform windows
 if (Test-Path (Join-Path $GStreamerDir "libexec")) {
     Copy-Item (Join-Path $GStreamerDir "libexec") $BundledGStreamer -Recurse
 }
@@ -41,6 +43,8 @@ Copy-Item (Join-Path $GStreamerDir "bin\*.dll") $OutputDir
 
 python (Join-Path $PSScriptRoot "fetch_models.py") $Resources
 Copy-Item (Join-Path $PSScriptRoot "bundle-manifest.json") $Resources
+python (Join-Path $PSScriptRoot "generate_third_party_notices.py") `
+    (Join-Path $Resources "licenses")
 New-Item -ItemType Directory -Force -Path (Join-Path $Resources "licenses\fonts") | Out-Null
 Copy-Item (Join-Path $RepoRoot "LICENSE") (Join-Path $Resources "licenses\oca.txt")
 Get-ChildItem (Join-Path $RepoRoot "crates\core\assets\fonts") -Filter OFL.txt -Recurse | ForEach-Object {

@@ -92,3 +92,24 @@ auto-update are also shipped.
 The reconciled implementation status and next actionable work live in [`spec/`](spec/INDEX.md),
 starting with [`spec/ROADMAP.md`](spec/ROADMAP.md). The post-P4 competitive growth plan is
 [`spec/architecture/competitive-feature-plan.md`](spec/architecture/competitive-feature-plan.md).
+
+## Free and Pro editions
+
+Oca is planned as two editions built from the same GPL codebase:
+
+- **Oca Free** is a complete local editor with no watermark and no output-resolution paywall.
+- **Oca Pro** is a monthly subscription for gameplay automation, local AI workflows, batch
+  productivity, premium content, and official support.
+
+The initial target price is R$39.90/month, with a R$29.90/month launch price for each founding
+subscriber's first 12 billing cycles. The commercial rules, feature boundary, downgrade behavior,
+subscription states, security model, and rollout plan are specified in
+[`spec/architecture/monetization-and-licensing.md`](spec/architecture/monetization-and-licensing.md).
+
+## License
+
+Oca is licensed under the **GNU General Public License v3.0 or later**. See [`LICENSE`](LICENSE).
+Official binaries, subscriptions, support, hosted services, and separately licensed content may be
+sold, but recipients of GPL-covered binaries retain the GPL rights to inspect, modify, and
+redistribute the corresponding source. A subscription is therefore an entitlement to official
+services and convenience, not an attempt to revoke the freedoms granted by the software license.

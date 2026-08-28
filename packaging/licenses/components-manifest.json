@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "components": [
+    {
+      "name": "Deno",
+      "version": "2.9.5",
+      "source": "https://github.com/denoland/deno/tree/v2.9.5",
+      "files": {
+        "deno-2.9.5/LICENSE.md": "f62497fffecc0852960c8d3e6934b9db86d16396e9b604072e923892cae3a588"
+      }
+    },
+    {
+      "name": "FFmpeg",
+      "version": "8.1.2",
+      "source": "https://github.com/FFmpeg/FFmpeg/tree/n8.1.2",
+      "files": {
+        "ffmpeg-8.1.2/COPYING.GPLv3": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+        "ffmpeg-8.1.2/COPYING.LGPLv2.1": "246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30"
+      }
+    },
+    {
+      "name": "ONNX Runtime",
+      "version": "1.28.0",
+      "source": "https://github.com/microsoft/onnxruntime/tree/v1.28.0",
+      "files": {
+        "onnxruntime-1.28.0/LICENSE": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+        "onnxruntime-1.28.0/ThirdPartyNotices.txt": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2"
+      }
+    }
+  ]
+}

@@ -37,10 +37,8 @@ install -m 0755 "$PYTHON_RUNTIME/tools/deno" "$MACOS/deno"
 cp -a "$BUILD_DIR/espeak-ng-data" "$RESOURCES/"
 cp -a "$PYTHON_RUNTIME/lib" "$RESOURCES/python/"
 install -m 0755 "$FFMPEG_DIR/bin/ffmpeg" "$RUNTIME/bin/ffmpeg"
-# Homebrew may leave links for optional plugins whose sibling formula is not installed. Copy the
-# complete available plugin tree and remove only links that were already broken at build time.
-cp -a "$GSTREAMER_DIR/lib/gstreamer-1.0" "$GST_ROOT/lib/"
-find "$GST_ROOT/lib/gstreamer-1.0" -type l ! -exec test -e {} \; -delete
+python3 "$SCRIPT_DIR/collect_gstreamer_plugins.py" \
+    "$GSTREAMER_DIR/lib/gstreamer-1.0" "$GST_ROOT/lib/gstreamer-1.0" --platform macos
 install -m 0755 "$GSTREAMER_DIR/libexec/gstreamer-1.0/gst-plugin-scanner" \
     "$GST_ROOT/libexec/gstreamer-1.0/gst-plugin-scanner"
 
@@ -59,6 +57,7 @@ rm -rf -- "$(dirname "$ICONSET")"
 
 python3 "$SCRIPT_DIR/fetch_models.py" "$RESOURCES"
 cp "$SCRIPT_DIR/bundle-manifest.json" "$RESOURCES/"
+python3 "$SCRIPT_DIR/generate_third_party_notices.py" "$RESOURCES/licenses"
 mkdir -p "$RESOURCES/licenses/fonts"
 cp "$REPO_ROOT/LICENSE" "$RESOURCES/licenses/oca.txt"
 find "$REPO_ROOT/crates/core/assets/fonts" -name OFL.txt -print0 \

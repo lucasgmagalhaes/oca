@@ -2,7 +2,7 @@
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 2 of the License, or
+// the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
@@ -11,14 +11,15 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 //! Text-to-speech — per `request.md`'s Fase 4 "Texto-pra-fala": synthesizes narration from
 //! typed text. Runs a Piper VITS ONNX voice model (`rhasspy/piper-voices` on Hugging Face, MIT)
-//! against phonemes produced by `espeak-rs` (statically-linked espeak-ng, no runtime DLL — see
-//! `build.rs`'s doc comment for how its `espeak-ng-data` directory gets discovered at runtime).
+//! against phonemes produced by [`EspeakPhonemizer`] (statically-linked espeak-ng, no runtime
+//! DLL — see `build.rs`'s doc comment for how its `espeak-ng-data` directory gets discovered at
+//! runtime).
 //!
-//! Pipeline: [`espeak_rs::text_to_phonemes`] (text -> one IPA string per sentence) ->
+//! Pipeline: [`Phonemizer::phonemize`] (text -> one IPA string per sentence) ->
 //! [`phonemes_to_ids`] (IPA string -> phoneme IDs, via the voice's own `phoneme_id_map`) ->
 //! [`synthesize`] (ONNX VITS inference -> raw `f32` samples) -> [`write_wav`].
 //!
@@ -38,6 +39,10 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use unicode_segmentation::UnicodeSegmentation;
+
+mod phonemizer;
+
+pub use phonemizer::{EspeakPhonemizer, PhonemizationError, Phonemizer};
 
 const PAD_SYMBOL: &str = "_";
 const BOS_SYMBOL: &str = "^";
@@ -108,7 +113,7 @@ fn default_noise_w() -> f32 {
 pub enum TtsError {
     Io(std::io::Error),
     Json(serde_json::Error),
-    Espeak(String),
+    Phonemization(PhonemizationError),
     Onnx(String),
     /// `synthesize` produced no audio at all — e.g. `text` phonemized to nothing (all
     /// whitespace/punctuation with no speakable content).
@@ -120,7 +125,7 @@ impl std::fmt::Display for TtsError {
         match self {
             TtsError::Io(e) => write!(f, "I/O error: {e}"),
             TtsError::Json(e) => write!(f, "voice config parse error: {e}"),
-            TtsError::Espeak(e) => write!(f, "phonemization failed: {e}"),
+            TtsError::Phonemization(e) => write!(f, "{e}"),
             TtsError::Onnx(e) => write!(f, "ONNX inference failed: {e}"),
             TtsError::NoAudio => write!(f, "no speakable content in the given text"),
         }
@@ -182,19 +187,33 @@ pub fn phonemes_to_ids(ipa: &str, config: &PiperVoiceConfig) -> Vec<i64> {
     ids
 }
 
-/// Phonemizes `text` with espeak-ng (voice `config.espeak.voice`) and runs Piper VITS inference
-/// (`model_path`) sentence-by-sentence, concatenating the results with a short silence gap
-/// between sentences. Returns raw `f32` samples in `-1.0..=1.0` at `config.audio.sample_rate`.
+/// Phonemizes `text` with the default [`EspeakPhonemizer`] and runs Piper VITS inference.
 pub fn synthesize(
     model_path: &Path,
     config: &PiperVoiceConfig,
     text: &str,
 ) -> Result<Vec<f32>, TtsError> {
+    synthesize_with_phonemizer(model_path, config, text, &EspeakPhonemizer)
+}
+
+/// Phonemizes `text` with an explicit backend and runs Piper VITS inference sentence-by-sentence,
+/// concatenating the results with a short silence gap between sentences. Returns raw `f32` samples
+/// in `-1.0..=1.0` at `config.audio.sample_rate`.
+///
+/// `phonemizer` is invoked once per synthesis request. The dynamic dispatch therefore does not sit
+/// inside the per-sentence ONNX inference loop.
+pub fn synthesize_with_phonemizer(
+    model_path: &Path,
+    config: &PiperVoiceConfig,
+    text: &str,
+    phonemizer: &dyn Phonemizer,
+) -> Result<Vec<f32>, TtsError> {
     use ort::session::Session;
     use ort::value::Value;
 
-    let sentences = espeak_rs::text_to_phonemes(text, &config.espeak.voice, None)
-        .map_err(|e| TtsError::Espeak(e.0))?;
+    let sentences = phonemizer
+        .phonemize(text, &config.espeak.voice)
+        .map_err(TtsError::Phonemization)?;
 
     let mut session = Session::builder()
         .map_err(|e| TtsError::Onnx(e.to_string()))?

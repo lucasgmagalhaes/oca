@@ -763,6 +763,14 @@ competitive evidence, implementation slices, acceptance criteria, security requi
 deliberate non-goals. Implement in this order unless an active production problem justifies moving
 an item earlier:
 
+- `[~]` **MON-01: Free/Pro monthly subscription.** The product and licensing decision is now
+  documented: one useful no-watermark Free edition and one R$39.90/month Pro edition focused on
+  automation, local AI, batch workflows, premium content, and support. The workspace metadata,
+  source notices, and root license are aligned to GPL-3.0-or-later so the commercial model does not
+  contradict the statically linked GPLv3 eSpeak dependency. Still not implemented: identity,
+  checkout, provider webhooks, server-authoritative entitlements, secure local token storage,
+  feature gates, downgrade UI, or subscription telemetry. Read
+  [architecture/monetization-and-licensing.md](architecture/monetization-and-licensing.md).
 - `[~]` **ER-01: client error reporting.** Add consent-based, sanitized, bounded remote reporting
   for handled errors and Rust panics, exact release/symbol management, and a separately validated
   native Crashpad phase. This is an operational prerequisite for broad beta distribution, not a
