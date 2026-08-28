@@ -22,12 +22,14 @@
 //! opted out; this module only knows how to append one record given an already-resolved path.
 //!
 //! **CPU/RAM resource sampling** ([`ResourceUsage`][TelemetryEvent::ResourceUsage],
-//! [`sample_resource_usage`]) is now wired in via `sysinfo`. **GPU usage from `request.md`'s
-//! full wishlist is still not covered** — `sysinfo` has no cross-platform GPU reader; a
-//! vendor-specific one (NVML for NVIDIA, similar for AMD/Intel) is a materially bigger,
-//! hardware-dependent lift than this slice covers, same "hard wall, not just unattempted"
-//! posture this codebase already applies to the GPU encoder ladder and the preview-only
-//! GStreamer-element gaps documented in `CLAUDE.md`.
+//! [`ResourceSampler`]) is wired in via `sysinfo`. **GPU usage** ([`GpuUsage`]
+//! [TelemetryEvent::GpuUsage], [`GpuSampler`]) is now also covered, NVIDIA-only, via the NVIDIA
+//! Management Library (`nvml-wrapper`) — `sysinfo` itself has no cross-platform GPU reader.
+//! `Nvml::init()` dynamically loads `libnvidia-ml.so`/`nvml.dll` at runtime, so a machine with
+//! no NVIDIA GPU/driver at all (AMD, Intel-only, or no discrete GPU) just gets `Err` back —
+//! never a build-time requirement, and never a panic. [`GpuSampler::new`] turns that `Err` into
+//! `None`, the same "sampling this is unavailable here, skip it" contract `ui`'s telemetry
+//! background thread already has to handle for every other best-effort sample.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -80,6 +82,16 @@ pub enum TelemetryEvent {
         cpu_percent: f32,
         ram_used_mb: u64,
         ram_total_mb: u64,
+    },
+    /// A periodic GPU utilization/VRAM sample from the first NVML-visible device — see
+    /// [`GpuSampler`]. Only ever emitted on a machine with a working NVIDIA driver; there is no
+    /// "unavailable" variant of this event, [`GpuSampler::sample`] just returns `None` instead
+    /// (same convention [`ResourceUsage`][TelemetryEvent::ResourceUsage] would follow if CPU/RAM
+    /// sampling could ever fail, which in practice it doesn't).
+    GpuUsage {
+        gpu_percent: u32,
+        vram_used_mb: u64,
+        vram_total_mb: u64,
     },
 }
 
@@ -186,5 +198,40 @@ impl ResourceSampler {
 impl Default for ResourceSampler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// NVIDIA-only GPU utilization/VRAM sampler, via the NVIDIA Management Library
+/// (`nvml-wrapper`). Unlike [`ResourceSampler`] (always constructible — `sysinfo` always has
+/// *some* CPU/RAM to read), [`GpuSampler::new`] can fail outright: no NVIDIA GPU, no driver, or
+/// the library itself missing all report as `None` here rather than a panic or a build-time
+/// requirement (`Nvml::init()` dynamically loads the library at runtime). Holds the initialized
+/// `Nvml` handle, not a `Device` — `Device<'nvml>` borrows from `Nvml`, so [`GpuSampler::sample`]
+/// looks its device handle up fresh each call (a cheap index lookup, not a re-init) rather than
+/// this struct being self-referential.
+pub struct GpuSampler {
+    nvml: nvml_wrapper::Nvml,
+}
+
+impl GpuSampler {
+    /// Returns `None` when no NVML-compatible GPU is available at all on this machine.
+    pub fn new() -> Option<Self> {
+        nvml_wrapper::Nvml::init().ok().map(|nvml| Self { nvml })
+    }
+
+    /// Samples utilization and VRAM usage from the first NVML-visible device (index 0) — this
+    /// codebase targets a single-editor desktop workstation, not a multi-GPU render farm, so
+    /// there is no per-device selection to thread through. Returns `None` on any NVML query
+    /// failure (e.g. a transient driver hiccup); a periodic sampler can just skip that tick, the
+    /// same "best-effort, not required" contract [`ResourceSampler::sample`] has for CPU/RAM.
+    pub fn sample(&self) -> Option<TelemetryEvent> {
+        let device = self.nvml.device_by_index(0).ok()?;
+        let utilization = device.utilization_rates().ok()?;
+        let memory = device.memory_info().ok()?;
+        Some(TelemetryEvent::GpuUsage {
+            gpu_percent: utilization.gpu,
+            vram_used_mb: memory.used / (1024 * 1024),
+            vram_total_mb: memory.total / (1024 * 1024),
+        })
     }
 }
