@@ -104,6 +104,23 @@ yet applied here — see the gaps below) live in `architecture/performance-and-c
       (`current_frame()` returns `None` for every clip here, confirmed against an unmodified
       copy of `preview_test.rs`'s own pre-existing `opens_with_hardware_decoding_allowed` test),
       the same class of GUI/hardware-dependent-verification gap as the note directly above.
+      **Follow-up**: blur/sharpen sliders now update live too, via `Preview::set_live_blur` and
+      the same `oca_blur_{clip_id}`-named `gaussianblur` element convention — the one other case
+      that fits the "single element, once built, stays present across any further change to the
+      property that built it" shape color balance already established: `gaussianblur`'s single
+      signed `sigma` covers both `blur_intensity` and `sharpen` via one derived `net_sigma`
+      (`build_video_filter_bin`'s own formula), so there's no multi-property ambiguity to resolve
+      the way color balance's three independent properties had. Wired through the same
+      `with_selected_clip_mut` dispatch path. Two negative-path tests mirror `set_live_balance`'s
+      own exactly (`set_live_blur_returns_false_when_no_element_was_built`/
+      `_for_a_mismatched_clip_id`) — same "type-checked (`cargo check`/`clippy` clean across the
+      whole workspace), not run" status, since reproducing `preview.rs`'s full surface in a
+      throwaway scratch crate (unlike `set_live_balance`'s own scratch-crate verification, which
+      only needed `avbridge` + `gstreamer`, not the two-thousand-line `preview.rs` module and its
+      `ClipInstance` struct) wasn't attempted this round. Still not extended to any other effect
+      property — crop, pixelize, shake, chroma key, mask, deflicker, stabilization all still need
+      real structural changes to the running filter graph beyond a single scalar property push,
+      genuinely the "materially bigger lift" category the original note above already called out.
 
 ---
 

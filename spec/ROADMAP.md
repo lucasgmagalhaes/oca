@@ -67,9 +67,32 @@ Read [architecture/performance-and-caching.md](architecture/performance-and-cach
    never constructs a working video output branch at all (`current_frame()` returns `None`
    for every clip, confirmed against an unmodified copy of `preview_test.rs`'s own
    pre-existing test), the same GUI/hardware-dependent-verification limitation this codebase's
-   test suite already carries elsewhere. See `matrix/performance.md` for the full findings
-   and what's still open (every other effect-property's live preview update, non-text overlay
-   kinds).
+   test suite already carries elsewhere.
+
+   **Second follow-up**: blur/sharpen sliders also update live now, via `Preview::set_live_blur`
+   pushing to the already-built `gaussianblur` element (named `oca_blur_{clip_id}`, same naming
+   convention `set_live_balance`'s `videobalance` element uses) — the one other case where a
+   single named element, once built, stays present across any further change to the property
+   that built it: `gaussianblur`'s single signed `sigma` covers both `blur_intensity` (positive)
+   and `sharpen` (negative) via one derived `net_sigma`, so there is no "which of several
+   properties" ambiguity color balance's three-property case has to resolve either. Wired
+   through the same `App::with_selected_clip_mut` shared dispatch path color balance's own push
+   already goes through, so every effect setter gets the cheap no-op push for free without its
+   own call site. Verified via `cargo check`/`clippy` for the whole workspace (clean) and two
+   negative-path tests (`set_live_blur_returns_false_when_no_element_was_built`/
+   `_for_a_mismatched_clip_id`, mirroring `set_live_balance`'s own two exactly) — same "type-
+   checked but not run" status as those, since `core`'s own test binary still can't link in this
+   sandbox (the ONNX Runtime gap) and reproducing `preview.rs`'s full `Preview`/`ClipInstance`
+   surface in a throwaway scratch crate (unlike `set_live_balance`'s own verification, which
+   only needed `avbridge` + `gstreamer`, not the two-thousand-line `preview.rs` module itself)
+   wasn't attempted this round.
+
+   **Still open**: every other effect property (crop, pixelize, shake, chroma key, mask,
+   deflicker, stabilization, ...) — still genuinely a bigger lift, their own elements are only
+   conditionally built and most need real structural changes (a moving crop window, a growing/
+   shrinking mosaic block size, ...) beyond a single scalar property push; non-text overlay
+   kinds (shapes) never got any live-preview path at all, keyframed or not. See
+   `matrix/performance.md` for the full findings.
 4. `[x]` Versioned cache for the timeline→avfilter-graph resolution
    (`resolve_timeline_segments_multi`). The confirmed hot spot was `screens::queue::show`
    recomputing it every UI frame the Fila screen is open, just for a size estimate — fixed via
