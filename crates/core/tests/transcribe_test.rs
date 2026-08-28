@@ -63,6 +63,12 @@ fn transcribes_real_audio_and_returns_at_least_one_segment() {
             assert!(!word.text.trim().is_empty());
             assert!(word.start_secs >= 0.0);
             assert!(word.end_secs >= word.start_secs);
+            // CF-01's transcript-document confidence field is only as good as this real
+            // per-token probability actually being in range against a real model.
+            assert!(
+                word.confidence.is_finite() && (0.0..=1.0).contains(&word.confidence),
+                "word {word:?} has an out-of-range confidence"
+            );
         }
     }
 }
