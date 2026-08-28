@@ -28,6 +28,61 @@
 #include <libavutil/mem.h>
 #include <libavutil/pixdesc.h>
 
+/* Audio's atempo filter takes one fixed parameter, not a `t`-keyed expression, so a smooth
+   per-sample speed ramp isn't achievable on the audio side in this FFmpeg build — the ramp's
+   *average* speed stands in instead (see ClipSegment::smooth_speed_ramp_end_factor's own doc
+   comment in bridge.h for why this is a deliberate, documented approximation, not a bug). Same
+   helper as timeline_export.c's own (kept as an independent static copy per this codebase's
+   existing convention of not sharing per-segment filter-string helpers across these two
+   translation units). */
+static float smooth_speed_ramp_average_speed(const ClipSegment *seg) {
+    if (seg->smooth_speed_ramp_end_factor > 0.0f) {
+        return (seg->speed_factor + seg->smooth_speed_ramp_end_factor) / 2.0f;
+    }
+    return seg->speed_factor;
+}
+
+/* Builds this segment's `setpts=...,` video filter fragment — see timeline_export.c's own copy
+   of this function for the full derivation notes; kept as an independent static copy here for
+   the same reason smooth_speed_ramp_average_speed above is. */
+static void build_setpts_str(const ClipSegment *seg, double source_duration_secs, char *out,
+                              size_t out_size) {
+    out[0] = '\0';
+    double v0 = (double)seg->speed_factor;
+    double v1 = (double)seg->smooth_speed_ramp_end_factor;
+    if (seg->smooth_speed_ramp_end_factor > 0.0f && fabs(v1 - v0) > 1e-4 && v0 > 0.0 &&
+        source_duration_secs > 1e-9) {
+        double k = source_duration_secs / (v1 - v0);
+        double b = (v1 - v0) / source_duration_secs;
+        snprintf(out, out_size, "setpts=(%.10f/TB)*log((%.10f+(%.10f)*T)/%.10f),", k, v0, b, v0);
+    } else if (fabsf(seg->speed_factor - 1.0f) > 1e-4f && seg->speed_factor > 0.0f) {
+        snprintf(out, out_size, "setpts=PTS/%.6f,", (double)seg->speed_factor);
+    }
+}
+
+/* Timeline-elapsed time after `source_elapsed_secs` of `seg`'s own source time have played —
+   the C-side twin of core::keyframe::smooth_speed_ramp_duration_secs, needed anywhere this file
+   converts a decoded frame's source-relative position into a timeline position for `seg` (e.g.
+   deciding which overlay track is active "right now"). Falls back to the plain
+   `source_elapsed_secs / speed_factor` a constant-speed segment already used before this field
+   existed. */
+static double smooth_speed_ramp_timeline_elapsed(const ClipSegment *seg,
+                                                  double source_elapsed_secs) {
+    double v0 = (double)seg->speed_factor;
+    double v1 = (double)seg->smooth_speed_ramp_end_factor;
+    double d = seg->source_out_secs - seg->source_in_secs;
+    if (seg->smooth_speed_ramp_end_factor > 0.0f && fabs(v1 - v0) > 1e-4 && v0 > 0.0 &&
+        d > 1e-9) {
+        double t = source_elapsed_secs;
+        if (t < 0.0) t = 0.0;
+        if (t > d) t = d;
+        double speed_at_t = v0 + (v1 - v0) * t / d;
+        return (d / (v1 - v0)) * log(speed_at_t / v0);
+    }
+    double spd = v0 > 0.0 ? v0 : 1.0;
+    return source_elapsed_secs / spd;
+}
+
 /* =========================================================================
    avbridge_encode_timeline_export_multi — multi-track overlay compositor.
 
@@ -60,9 +115,8 @@
 static int build_vfilter_descr(const ClipSegment *seg, int cw, int ch, int fps_num, int fps_den,
                                const char *pix_fmt_name, char *buf, size_t cap) {
     const char *cf = (seg->video_filter && seg->video_filter[0]) ? seg->video_filter : "";
-    char setpts[48] = "";
-    if (fabsf(seg->speed_factor - 1.0f) > 1e-4f && seg->speed_factor > 0.0f)
-        snprintf(setpts, sizeof(setpts), "setpts=PTS/%.6f,", (double)seg->speed_factor);
+    char setpts[192];
+    build_setpts_str(seg, seg->source_out_secs - seg->source_in_secs, setpts, sizeof(setpts));
 
     char trans[2048] = "";
     if (seg->transition_in != 0) {
@@ -131,9 +185,8 @@ static int build_vfilter_descr(const ClipSegment *seg, int cw, int ch, int fps_n
 static int build_overlay_vfilter(const ClipSegment *seg, int cw, int ch, int fps_num, int fps_den,
                                  char *buf, size_t cap) {
     const char *cf = (seg->video_filter && seg->video_filter[0]) ? seg->video_filter : "";
-    char setpts[48] = "";
-    if (fabsf(seg->speed_factor - 1.0f) > 1e-4f && seg->speed_factor > 0.0f)
-        snprintf(setpts, sizeof(setpts), "setpts=PTS/%.6f,", (double)seg->speed_factor);
+    char setpts[192];
+    build_setpts_str(seg, seg->source_out_secs - seg->source_in_secs, setpts, sizeof(setpts));
 
     char post[4096] = "";
     if (cf[0]) {
@@ -587,7 +640,6 @@ EncodeStatus avbridge_encode_timeline_export_multi(
         int cur_mode = 0;
         int64_t ov_frame0 = 0; /* synthetic buffersrc PTS */
 
-        double spd0 = seg0->speed_factor > 0.0f ? seg0->speed_factor : 1.0f;
         double tl_start = seg0->timeline_start_secs;
 
         switch (open_input(seg0->source_path, &in_ctx0)) {
@@ -720,7 +772,8 @@ EncodeStatus avbridge_encode_timeline_export_multi(
             char gs[32], ts[32];
             snprintf(gs, sizeof(gs), "%.4fdB", (double)seg0->gain_db);
             avfilter_graph_send_command(achain.graph, "vol", "volume", gs, NULL, 0, 0);
-            float sp = seg0->speed_factor > 0.0f ? seg0->speed_factor : 1.0f;
+            float sp = smooth_speed_ramp_average_speed(seg0);
+            sp = sp > 0.0f ? sp : 1.0f;
             if (sp < 0.5f) sp = 0.5f;
             if (sp > 100.0f) sp = 100.0f;
             snprintf(ts, sizeof(ts), "%.6f", (double)sp);
@@ -768,7 +821,8 @@ EncodeStatus avbridge_encode_timeline_export_multi(
                             continue;
                         }
 
-                        double ftl = tl_start + (fsrc - seg0->source_in_secs) / spd0;
+                        double ftl = tl_start + smooth_speed_ramp_timeline_elapsed(
+                                                     seg0, fsrc - seg0->source_in_secs);
 
                         int want_overlay = 0;
                         int overlay_set_changed = (cur_mode != 2);
@@ -970,7 +1024,8 @@ EncodeStatus avbridge_encode_timeline_export_multi(
                             }
                             if (progress_cb)
                                 progress_cb(progress_user_data,
-                                            elapsed + (fsrc - seg0->source_in_secs) / spd0);
+                                            elapsed + smooth_speed_ramp_timeline_elapsed(
+                                                        seg0, fsrc - seg0->source_in_secs));
                         } else { /* single-track vchain */
                             if (filter_encode_write_video_frame(out_ctx, &vchain, venc_ctx,
                                                                 vout_stream, dec_frame, filt_frame,
@@ -979,7 +1034,8 @@ EncodeStatus avbridge_encode_timeline_export_multi(
                             }
                             if (progress_cb)
                                 progress_cb(progress_user_data,
-                                            elapsed + (fsrc - seg0->source_in_secs) / spd0);
+                                            elapsed + smooth_speed_ramp_timeline_elapsed(
+                                                        seg0, fsrc - seg0->source_in_secs));
                         }
                         av_frame_unref(dec_frame);
                         if (status != ENCODE_OK) break;
@@ -1022,7 +1078,8 @@ EncodeStatus avbridge_encode_timeline_export_multi(
             }
         }
 
-        elapsed += (seg0->source_out_secs - seg0->source_in_secs) / spd0;
+        elapsed += smooth_speed_ramp_timeline_elapsed(
+            seg0, seg0->source_out_secs - seg0->source_in_secs);
 
     seg_cleanup:
         if (ov_graph) {

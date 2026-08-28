@@ -154,8 +154,24 @@ typedef struct {
     /* Playback speed multiplier — 1.0 is normal speed. Video is handled by a setpts filter
        inserted before the canvas-conform fps stage (see bridge.c). Audio is handled by the
        atempo filter in the shared audio graph. Values are clamped to [0.5, 100.0] for the
-       audio side (atempo's supported range); video setpts handles any positive value. */
+       audio side (atempo's supported range); video setpts handles any positive value. When
+       smooth_speed_ramp_end_factor is set (nonzero, below), this is instead the ramp's *start*
+       speed. */
     float speed_factor;
+    /* End speed of a smooth, continuous speed ramp across this segment's whole trimmed source
+       duration — 0.0 (or any value <= 0.0) means "no ramp, use speed_factor unchanged" (same
+       "<=0 means disabled" convention speed_factor's own 0.0-vs-default-1.0 handling elsewhere
+       in this codebase already follows). When set, video gets a setpts expression that's the
+       *integral* of 1/speed(t) over the linear speed(t) ramp (a natural-log term — see
+       timeline_export.c's setpts_str construction) instead of the plain constant-multiplier
+       setpts=PTS/speed_factor above. Audio has no continuous per-sample tempo-ramp primitive in
+       this FFmpeg build (atempo takes a fixed parameter, not a `t`-keyed expression), so the
+       audio side still uses one constant atempo value — the ramp's *average* speed
+       ((speed_factor + smooth_speed_ramp_end_factor) / 2) — a deliberate, documented
+       approximation, not a bug: a perfectly speed-synced audio ramp isn't achievable with this
+       filter, so audio trades exact sync for staying audible and reasonably close throughout
+       rather than jumping between discrete steps. */
+    float smooth_speed_ramp_end_factor;
     /* Overlay-compositor x/y position expressions (avfilter expression syntax, e.g.
        "(0.25)*main_w"), UTF-8, NUL-terminated — built in Rust from this clip's position
        keyframes (crate::keyframe::position_overlay_xy_expr). Empty string ("") means no

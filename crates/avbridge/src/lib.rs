@@ -36,6 +36,9 @@ struct RawClipSegment {
     video_filter: *const c_char,
     frozen: c_int,
     speed_factor: f32,
+    /// `0.0` (or negative) means no ramp — see `ClipSegment::smooth_speed_ramp_end_factor`'s
+    /// doc comment in `bridge.h`.
+    smooth_speed_ramp_end_factor: f32,
     position_x_expr: *const c_char,
     position_y_expr: *const c_char,
     transition_in: c_int,
@@ -530,6 +533,16 @@ pub struct ClipSegment {
     /// conform stage (video) and an `atempo=speed` command in the shared audio
     /// filter graph. Audio is clamped to `[0.5, 100.0]` (atempo's range).
     pub speed_factor: f32,
+    /// End speed of a smooth, continuous speed ramp across this segment's whole trimmed source
+    /// duration. `0.0` (or negative — the default, and what every pre-existing job
+    /// deserializes to via `#[serde(default)]`) means no ramp: `speed_factor` above is used
+    /// unchanged. When positive, `speed_factor` is instead the ramp's *start* speed and this is
+    /// its end speed — drives a `setpts` expression that's the integral of `1/speed(t)` (see
+    /// `bridge.h`'s own doc comment on the mirrored C field) instead of the plain
+    /// `setpts=PTS/speed_factor` constant-multiplier form. Per `spec/ROADMAP.md` P4 item 29's
+    /// "smooth continuous curve" follow-up.
+    #[serde(default)]
+    pub smooth_speed_ramp_end_factor: f32,
     /// Overlay-compositor `x`/`y` position expressions (avfilter expression syntax), built in
     /// Rust from this clip's position keyframes (`core::keyframe::position_overlay_xy_expr`).
     /// Empty string = no offset. Only consulted by `encode_timeline_export_multi`'s overlay
@@ -709,6 +722,7 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
                 video_filter: filt.as_ptr(),
                 frozen: seg.frozen as c_int,
                 speed_factor: seg.speed_factor,
+                smooth_speed_ramp_end_factor: seg.smooth_speed_ramp_end_factor,
                 position_x_expr: pos_x.as_ptr(),
                 position_y_expr: pos_y.as_ptr(),
                 transition_in: seg.transition_in as c_int,
@@ -852,6 +866,7 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
                     video_filter: filt.as_ptr(),
                     frozen: seg.frozen as c_int,
                     speed_factor: seg.speed_factor,
+                    smooth_speed_ramp_end_factor: seg.smooth_speed_ramp_end_factor,
                     position_x_expr: pos_x.as_ptr(),
                     position_y_expr: pos_y.as_ptr(),
                     transition_in: seg.transition_in as c_int,

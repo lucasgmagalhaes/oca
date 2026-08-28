@@ -25,6 +25,40 @@
 #include <libavutil/channel_layout.h>
 #include <libavutil/pixdesc.h>
 
+/* Audio's atempo filter takes one fixed parameter, not a `t`-keyed expression, so a smooth
+   per-sample speed ramp isn't achievable on the audio side in this FFmpeg build — the ramp's
+   *average* speed stands in instead (see ClipSegment::smooth_speed_ramp_end_factor's own doc
+   comment in bridge.h for why this is a deliberate, documented approximation, not a bug). */
+static float smooth_speed_ramp_average_speed(const ClipSegment *seg) {
+    if (seg->smooth_speed_ramp_end_factor > 0.0f) {
+        return (seg->speed_factor + seg->smooth_speed_ramp_end_factor) / 2.0f;
+    }
+    return seg->speed_factor;
+}
+
+/* Builds this segment's `setpts=...,` video filter fragment (trailing comma included, ready to
+   prepend to the rest of the per-segment chain), or an empty string when speed is neutral
+   (1.0, no ramp). Plain `setpts=PTS/<speed>` for a constant speed_factor, unchanged from before
+   this field existed. When smooth_speed_ramp_end_factor is set, video speed varies linearly in
+   source time from speed_factor to it, so output PTS is the *integral* of 1/speed(t) instead of
+   a constant divisor — works out to a natural-log term (see bridge.h's own derivation notes).
+   Expressed directly in PTS units via the filter's own runtime `TB`/`T` variables, so it's valid
+   regardless of the actual stream timebase rather than needing it baked in at build time. */
+static void build_setpts_str(const ClipSegment *seg, double source_duration_secs, char *out,
+                              size_t out_size) {
+    out[0] = '\0';
+    double v0 = (double)seg->speed_factor;
+    double v1 = (double)seg->smooth_speed_ramp_end_factor;
+    if (seg->smooth_speed_ramp_end_factor > 0.0f && fabs(v1 - v0) > 1e-4 && v0 > 0.0 &&
+        source_duration_secs > 1e-9) {
+        double k = source_duration_secs / (v1 - v0);
+        double b = (v1 - v0) / source_duration_secs;
+        snprintf(out, out_size, "setpts=(%.10f/TB)*log((%.10f+(%.10f)*T)/%.10f),", k, v0, b, v0);
+    } else if (fabsf(seg->speed_factor - 1.0f) > 1e-4f && seg->speed_factor > 0.0f) {
+        snprintf(out, out_size, "setpts=PTS/%.6f,", (double)seg->speed_factor);
+    }
+}
+
 EncodeStatus avbridge_encode_timeline_export(const ClipSegment *segments, int segment_count,
                                              int canvas_width, int canvas_height,
                                              int canvas_fps_num, int canvas_fps_den,
@@ -256,7 +290,8 @@ EncodeStatus avbridge_encode_timeline_export(const ClipSegment *segments, int se
             snprintf(gain_str, sizeof(gain_str), "%.4fdB", (double)seg->gain_db);
             avfilter_graph_send_command(achain.graph, "vol", "volume", gain_str, NULL, 0, 0);
 
-            float spd = seg->speed_factor > 0.0f ? seg->speed_factor : 1.0f;
+            float spd = smooth_speed_ramp_average_speed(seg);
+            spd = spd > 0.0f ? spd : 1.0f;
             if (spd < 0.5f) spd = 0.5f;
             if (spd > 100.0f) spd = 100.0f;
             char tempo_str[32];
@@ -278,11 +313,9 @@ EncodeStatus avbridge_encode_timeline_export(const ClipSegment *segments, int se
             char vfilter_descr[16384];
             const char *clip_filter =
                 (seg->video_filter && seg->video_filter[0]) ? seg->video_filter : "";
-            char setpts_str[48] = "";
-            if (fabsf(seg->speed_factor - 1.0f) > 1e-4f && seg->speed_factor > 0.0f) {
-                snprintf(setpts_str, sizeof(setpts_str), "setpts=PTS/%.6f,",
-                         (double)seg->speed_factor);
-            }
+            char setpts_str[192];
+            build_setpts_str(seg, seg->source_out_secs - seg->source_in_secs, setpts_str,
+                              sizeof(setpts_str));
             /* Build the transition filter string for this segment's entry effect. A comma is
                only a filter-chain separator OUTSIDE quotes — every comma below sits inside a
                single-quoted option value (lum='...', w='...', etc.), so lt()/gte()'s own
