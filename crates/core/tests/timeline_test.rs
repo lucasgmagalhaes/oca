@@ -35,6 +35,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         frozen: false,
         speed_factor: 1.0,
         speed_ramp_end_factor: None,
+        nested_sequence_id: None,
         crop_x: 0.0,
         crop_y: 0.0,
         crop_w: 1.0,
