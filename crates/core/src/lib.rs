@@ -124,7 +124,8 @@ pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
 pub use subtitles::export_srt;
 pub use telemetry::{record_event, GpuSampler, ResourceSampler, TelemetryError, TelemetryEvent};
 pub use text_to_speech::{
-    load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
+    load_voice_config, phonemes_to_ids, synthesize, synthesize_with_phonemizer, write_wav,
+    EspeakPhonemizer, PhonemizationError, Phonemizer, PiperVoiceConfig, TtsError,
 };
 pub use timeline::{
     AudioRole, ClipFormatting, ClipInstance, LayerTemplate, Marker, MarkerKind, ShapeClip,

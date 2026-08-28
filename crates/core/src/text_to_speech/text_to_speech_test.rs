@@ -122,6 +122,34 @@ fn phonemes_to_ids_empty_input_is_just_bos_and_eos() {
     assert_eq!(ids, vec![1, 2]);
 }
 
+struct FailingPhonemizer;
+
+impl Phonemizer for FailingPhonemizer {
+    fn phonemize(&self, text: &str, language: &str) -> Result<Vec<String>, PhonemizationError> {
+        assert_eq!(text, "Hello");
+        assert_eq!(language, "pt-br");
+        Err(PhonemizationError::new("test backend", "expected failure"))
+    }
+}
+
+#[test]
+fn synthesis_uses_the_injected_phonemizer_before_loading_the_model() {
+    let error = synthesize_with_phonemizer(
+        Path::new("model-must-not-be-opened.onnx"),
+        &fixture_config(),
+        "Hello",
+        &FailingPhonemizer,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        TtsError::Phonemization(ref source)
+            if source.backend() == "test backend"
+                && source.to_string() == "test backend phonemization failed: expected failure"
+    ));
+}
+
 #[test]
 fn write_wav_produces_a_readable_file() {
     let dir = std::env::temp_dir().join(format!("oca_tts_wav_test_{}", std::process::id()));
