@@ -811,11 +811,50 @@ an item earlier:
   `ureq` transport's 2xx/4xx/5xx branching against a real local TCP mock server) on this
   machine's fully-linked toolchain. Read
   [architecture/client-error-reporting.md](architecture/client-error-reporting.md).
-- `[ ]` **FONT-01: expanded built-in font catalog.** Grow the deterministic offline catalog from
+- `[~]` **FONT-01: expanded built-in font catalog.** Grow the deterministic offline catalog from
   6 to 43 families (51 locked OFL binaries, measured at 17.07 MiB), replace the fixed enum/match
   architecture with stable manifest IDs, support real variable weights, and add a searchable,
   lazy, bounded selector. May proceed alongside CF-01 and must land before CF-07 templates. Read
   [architecture/built-in-font-catalog.md](architecture/built-in-font-catalog.md).
+
+  **FONT-01A slice 1 (manifest + stable IDs for the existing six families) shipped.**
+  `avcore::font_catalog` adds a locked `FontFamilyEntry`/`FontFace` manifest — one entry per
+  bundled family, carrying the doc's required typed fields (`family_id`, `display_name`,
+  `category`, `tags`, `license_id`/`license_path`, `source_kind`, per-face `source_path`/
+  `sha256`/`size_bytes`, `default_weight`, `fallback_family_id`, `glyphset_guarantees`) —
+  `CATALOG` is static data only, no acquisition/network code, per the doc's "vendoring is a
+  maintainer-time, offline operation" rule. `TextFontFamily::family_id`/`from_family_id` give
+  the enum a stable ASCII slug (`"lato"`, `"bebas-neue"`, ...) round-tripping losslessly for
+  every existing variant, and `from_family_id` returns `None` (not a panic) for an unrecognized
+  slug per the doc's forwards-compatibility rule. `validate_static_catalog()` checks the
+  manifest's own self-consistency (duplicate ids/paths, malformed slugs/hashes, an unmatched
+  `default_weight`, a fallback chain that doesn't resolve or terminate outside `lato`).
+
+  **Deliberately not done in this slice** (the doc's own FONT-01A step 2, "migrate the six
+  current enum variants," only half-lands here): `.ocproj` still persists `TextFontFamily` as
+  the plain enum variant name, not `family_id` — the doc's "unknown future ID keeps its
+  serialized value" requirement needs a data-carrying persisted type (not a plain enum), a
+  real structural change with its own migration/golden-image risk deliberately deferred rather
+  than folded into this pass. Catalog expansion to 43 families (FONT-01B, needs a real
+  `google/fonts` vendoring pass this sandbox has no network path to run), variable-weight
+  support and the searchable selector (FONT-01C/D) are all still open.
+
+  Verified for real, not just type-checked: this session's sandbox turned out to have a
+  working path to a fully-linked `core` test binary (`rustup update stable` past a
+  too-old-bundled-rustc block, then `apt-get install libavfilter-dev` +
+  `libgstreamer*-dev` past the missing-headers/pkg-config gaps `CLAUDE.md` documents,
+  plus the same temporary local `filters.c` shim `CLAUDE.md` describes for the
+  FFmpeg-7.1-API gap, discarded before commit) — but `core`'s own test binary still can't
+  *link* here (the pre-existing ONNX Runtime `download-binaries` network gap), so
+  `font_catalog.rs`+`timeline.rs`+`keyframe.rs` (all pure, zero heavy deps) were copied into a
+  throwaway scratch crate alongside the real bundled font assets and `cargo test`ed there for
+  real: 76/76 passing, including a `sha2`-backed byte-for-byte hash/size check of every one of
+  the 9 real `.ttf` files against the manifest's locked values (catching a hash/size drift for
+  real, not just a manifest self-consistency check), a real-filesystem existence/no-traversal
+  check for every `source_path`/`license_path`, and the `family_id` round-trip. `cargo fmt
+  --check` and `cargo clippy -p core --lib --no-deps` (via the same temporary shim) both stayed
+  clean for the new code; `cargo check --workspace --all-targets` passed for the whole
+  workspace on the same shim.
 - `[ ]` **TEXT-01: complex text shaping and bidirectional layout.** Replace per-character
   `fontdue` layout with one bundled-only shaping/layout/rasterization engine covering OpenType
   ligatures/contextual forms, UAX #9 bidi, UAX #14 wrapping, cluster-safe timed highlights,
