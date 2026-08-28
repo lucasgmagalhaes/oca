@@ -31,7 +31,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let mut add_clicked: Option<LibraryTrack> = None;
 
     egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.add_space(20.0);
+        ui.add_space(theme::SPACE_LG);
         ui.horizontal(|ui| {
             components::page_title(ui, Text::SoundLibraryTitle.tr(locale));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -73,7 +73,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 egui::Frame::new()
                     .fill(theme::SURFACE)
                     .stroke(egui::Stroke::new(1.0, theme::BORDER))
-                    .corner_radius(6)
+                    .corner_radius(theme::RADIUS_MD)
                     .inner_margin(egui::Margin::same(8))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {

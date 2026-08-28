@@ -25,7 +25,7 @@ pub fn section_label(ui: &mut Ui, text: &str) {
             .color(theme::TEXT_MUTED)
             .strong(),
     );
-    ui.add_space(6.0);
+    ui.add_space(theme::SPACE_SM);
 }
 
 /// A top-level screen title (Library/Sound Library/Prefs/Queue's "Mídia"/"Sons"/... header) —

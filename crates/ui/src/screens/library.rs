@@ -27,7 +27,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     let mut transcribe_clicked: Option<u64> = None;
     egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.add_space(20.0);
+        ui.add_space(theme::SPACE_LG);
         ui.horizontal(|ui| {
             components::page_title(ui, Text::LibraryTitle.tr(locale));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -73,7 +73,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         ui.vertical(|ui| {
                             egui::Frame::new()
                                 .fill(theme::SURFACE_2)
-                                .corner_radius(6)
+                                .corner_radius(theme::RADIUS_SM)
                                 .show(ui, |ui| {
                                     ui.set_min_width(ui.available_width());
                                     ui.set_min_height(90.0);
@@ -139,7 +139,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         }
 
         if app.active_project().media_library.is_empty() {
-            ui.add_space(20.0);
+            ui.add_space(theme::SPACE_LG);
             ui.label(RichText::new(Text::LibraryEmpty.tr(locale)).color(theme::TEXT_MUTED));
         }
     });

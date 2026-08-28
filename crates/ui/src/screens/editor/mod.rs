@@ -719,7 +719,7 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                         };
                         let response = egui::Frame::new()
                             .fill(bg)
-                            .corner_radius(6)
+                            .corner_radius(theme::RADIUS_MD)
                             .inner_margin(egui::Margin::same(6))
                             .show(ui, |ui| {
                                 ui.vertical(|ui| {
@@ -759,7 +759,7 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                                     .show(ui.ctx(), |ui| {
                                         egui::Frame::new()
                                             .fill(theme::SURFACE_2)
-                                            .corner_radius(4)
+                                            .corner_radius(theme::RADIUS_SM)
                                             .inner_margin(egui::Margin::symmetric(8, 4))
                                             .show(ui, |ui| {
                                                 ui.label(

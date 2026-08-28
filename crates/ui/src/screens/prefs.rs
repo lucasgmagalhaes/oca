@@ -26,9 +26,9 @@ use crate::theme;
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.add_space(20.0);
+        ui.add_space(theme::SPACE_LG);
         components::page_title(ui, Text::PrefsTitle.tr(locale));
-        ui.add_space(16.0);
+        ui.add_space(theme::SPACE_MD);
         ui.set_max_width(640.0);
 
         components::card_frame().show(ui, |ui| {

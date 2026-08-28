@@ -57,7 +57,7 @@ impl App {
                         let alpha = if age > 3.0 { 1.0 - (age - 3.0) } else { 1.0 };
                         egui::Frame::new()
                             .fill(theme::ERROR.linear_multiply(alpha))
-                            .corner_radius(6)
+                            .corner_radius(theme::RADIUS_MD)
                             .inner_margin(egui::Margin::symmetric(12, 8))
                             .show(ui, |ui| {
                                 ui.set_max_width(360.0);
