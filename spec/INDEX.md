@@ -11,6 +11,11 @@ huge file.
 3. The specific `matrix/*.md` (current status + file references) and/or `architecture/*.md`
    (the *how*/*why*) file(s) ROADMAP.md points you to.
 
+For the post-P4 product-growth queue, read
+**[architecture/competitive-feature-plan.md](architecture/competitive-feature-plan.md)** after
+ROADMAP and RULES. It contains the current competitor evidence, ordered implementation slices,
+acceptance criteria, security constraints, and deliberate non-goals.
+
 Do not read every file here for one task. Read `matrix/changelog.md` only when you need the
 historical "why was it built this way" detail (verification caveats, real bugs found, empirical
 discoveries) — it's a narrative log of already-completed work, not a task list.
@@ -20,7 +25,7 @@ discoveries) — it's a narrative log of already-completed work, not a task list
 ```text
 spec/
 ├── INDEX.md                          ← you are here
-├── ROADMAP.md                        ← actionable P0-P5 queue, START HERE
+├── ROADMAP.md                        ← actionable P0-P6 queue, START HERE
 ├── RULES.md                          ← mandatory rules + definition of done
 ├── matrix/                           ← WHAT is done/needed, per area
 │   ├── engine.md                     (avbridge: probe/export/loudness/proxy/GPU encode)
@@ -35,6 +40,7 @@ spec/
 │   └── changelog.md                  (large historical log — read only for "why", not "what's next")
 └── architecture/                     ← HOW to build it (principles, not per-feature status)
     ├── differentiators.md            (D1-D7: the proposed differentiator feature specs)
+    ├── competitive-feature-plan.md   (CF-01-CF-10: next competitive implementation plan)
     ├── performance-and-caching.md    (dirty flags, versioned cache, hot-path rules — from nimble)
     ├── undo-redo.md                  (P0 item 1: what's done, what's left, why per-sequence)
     ├── mobile-support.md             (Android/iOS ADR: proposed, not started — decision only)

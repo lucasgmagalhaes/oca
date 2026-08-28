@@ -23,8 +23,9 @@ Detail: `matrix/changelog.md` Fase 5/6.
 
 ## Known gaps
 
-- [ ] Undo/redo — see `matrix/timeline-and-editing.md`, `ROADMAP.md` P0. Arguably robustness as
-      much as editing: an unrecoverable mistake is a robustness failure too.
+- [x] Undo/redo — `core::undo::UndoStack` and its UI integration cover timeline and effect
+      mutations with coalesced drag snapshots; see `matrix/timeline-and-editing.md` and ROADMAP
+      P0 item 1 for the exact coverage and verification.
 
 ---
 

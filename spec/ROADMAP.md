@@ -1,7 +1,7 @@
 # Roadmap — Actionable Queue
 
 **Start here to pick the next task.** Reconciled against actual current status (matrix files +
-old `CLAUDE.md` Status section, now `matrix/changelog.md`) as of 2026-08-27 — `features/
+old `CLAUDE.md` Status section, now `matrix/changelog.md`) as of 2026-08-28 — `features/
 request.md`'s original phased plan (Fase 1-8) is effectively done; this queue is what comes
 after it. Status markers: `[x]` done, `[~]` partial, `[ ]` not started.
 
@@ -694,19 +694,53 @@ preview pipeline would need to recurse into a sub-timeline resolved as one clip,
 field). See `matrix/competitor-parity.md` for the full note — worth its own scoping pass if
 ever prioritized, not proposed here as a small item.
 
-## P5 — Explicitly Deferred
+## P5 — Competitive Product Growth
+
+The consolidated 2026-08-28 survey found that oca's largest remaining gaps are workflow and
+interchange gaps, not basic timeline tools. Read
+[architecture/competitive-feature-plan.md](architecture/competitive-feature-plan.md) for the
+competitive evidence, implementation slices, acceptance criteria, security requirements, and
+deliberate non-goals. Implement in this order unless an active production problem justifies moving
+an item earlier:
+
+- `[ ]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
+  search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
+- `[ ]` **CF-02: gameplay event ingestion and watched-folder import.** Import versioned event
+  sidecars/bookmarks and combine them with audio-spike scoring before building a full recorder.
+- `[ ]` **CF-03: integrated gameplay-voice cleanup.** Move the proven watched-folder FFmpeg chain
+  into a non-destructive `Mic`-role effect with A/B preview and measured output.
+- `[ ]` **CF-04: dynamic auto-reframe.** Track a face/selected subject and generate reviewed,
+  smoothed crop/position keyframes for vertical exports and Shorts Pack.
+- `[ ]` **CF-05: OpenTimelineIO interchange.** Round-trip the supported editorial subset and
+  emit an explicit compatibility report for unsupported effects.
+- `[ ]` **CF-06: live multicam monitor.** Show synchronized proxy-backed feeds and materialize
+  angle decisions through the existing ordinary clip-split representation.
+- `[ ]` **CF-07: parameterized motion-graphics templates.** Add a declarative, script-free,
+  versioned asset format for reusable channel graphics and aspect-ratio variants.
+- `[ ]` **CF-08: semantic transcript and visual search.** Build a bounded, versioned local index
+  after exact transcript search ships in CF-01.
+- `[ ]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and
+  privacy blur, reusing the existing matte/model/tracker infrastructure.
+- `[ ]` **CF-10: direct publishing and review collaboration.** Start with a secure YouTube upload
+  flow; keep OAuth credentials in the OS vault and cloud review separate from offline bundles.
+
+Quick wins that may be completed alongside CF-01: marker ruler rendering/snap, stabilization and
+deflicker preview parity, real-hardware GPU encoder validation, and integrating the standalone
+watched-folder utility into the app.
+
+## P6 — Explicitly Deferred
 
 Real ideas, deliberately not queued — revisit only if a P3 differentiator proves the audience
 wants more in this direction. See `architecture/differentiators.md`'s "out of scope" section
 and `matrix/competitor-parity.md`'s "deliberately not adopted" section.
 
-23. `[ ]` Voice-clone TTS beyond the single bundled Piper voice.
+23. `[ ]` Voice-clone TTS beyond the single bundled Piper voice — still deferred until CF-01 and
+    CF-03 ship, and must require explicit consent plus deletion of derived voice artifacts.
 24. `[ ]` Distributed/render-farm export.
-25. `[ ]` Motion graphics templates (MOGRT-style portable animated assets, distinct from oca's
-    existing layer templates) — needs its own asset format, same tier as voice-clone TTS.
-26. `[ ]` Real-time AI object masking/segmentation (Premiere-style, beyond fixed-template
-    motion tracking) — same effort tier as the background-removal model integration already
-    shipped; revisit as an enhancement path for motion tracking, not standalone.
+
+Motion-graphics templates and real-time AI object masking moved from this section to CF-07 and
+CF-09 respectively. The competitive refresh found concrete gameplay/channel use cases for both,
+but they remain behind the higher-impact CF-01-CF-06 workflow items.
 
 ---
 

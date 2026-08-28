@@ -83,11 +83,12 @@ target is a one-liner.
 
 ## Status
 
-The GUI shell (all five screens, navigable) and JSON project save/load are wired end-to-end
-from the UI. Probing, export rendering, loudness measurement, and proxy generation all go
-through `avbridge`'s FFI — no subprocess left anywhere in the media pipeline. A minimal
-GStreamer preview pipeline exists (open/play/pause/seek/query, pulls decoded video frames as
-packed RGBA) but isn't wired into the Editor screen yet — no egui texture upload, no UI
-scrubbing. Not yet implemented: that UI wiring, real timeline editing (cut/split/trim), and the
-background export queue (`tokio::mpsc` worker). See the execution plan for the phase these land
-in.
+The original Fase 1-8 plan is effectively complete. Oca now has a wired GStreamer preview,
+multi-track timeline editing, broad effects and keyframes, multicam editing, loudness and ducking,
+Whisper subtitles, background removal, auto-reframe, motion tracking, silence/highlight/chapter
+automation, Shorts packs, proxies, and a persistent background export queue. Packaging and
+auto-update are also shipped.
+
+The reconciled implementation status and next actionable work live in [`spec/`](spec/INDEX.md),
+starting with [`spec/ROADMAP.md`](spec/ROADMAP.md). The post-P4 competitive growth plan is
+[`spec/architecture/competitive-feature-plan.md`](spec/architecture/competitive-feature-plan.md).

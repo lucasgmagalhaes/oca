@@ -1,5 +1,11 @@
 # Competitor Parity Survey
 
+> **2026-08-28 refresh:** the current cross-competitor findings, product strategy, ordered backlog,
+> implementation slices, acceptance criteria, and security constraints now live in
+> [architecture/competitive-feature-plan.md](../architecture/competitive-feature-plan.md).
+> This matrix preserves the earlier per-gap research and implementation history. ROADMAP remains
+> authoritative for status and priority.
+
 Real feature research (2026-08-27) across CapCut Desktop, DaVinci Resolve, Premiere Pro, Final
 Cut Pro — not assumed from memory. Cross-referenced against `spec/matrix/*.md`; only genuinely
 new findings listed below (items already tracked — undo/redo, snap, ducking, color scopes,
@@ -42,16 +48,15 @@ Sources: [CapCut Desktop Review 2026](https://bigvu.tv/blog/capcut-online-deskto
       tracking, not fixed-template block matching. A materially bigger lift than oca's current
       motion tracking (`matrix/ai-features.md`, SAD-based, no ML) — would need a real
       segmentation model, similar tier of effort to the background-removal MODNet integration
-      already shipped. Noted as an *enhancement path* for motion tracking, not a new roadmap
-      item on its own yet.
+      already shipped. The 2026-08-28 refresh promoted it to ROADMAP CF-09 with a user-seeded,
+      privacy-blur-first implementation slice.
 - [ ] **Motion graphics templates (MOGRT-style reusable animated assets).** Adobe's Graphics
       Templates panel — an animated graphic with editable text/image fields, importable/
       exportable/shareable as a standalone asset. Distinct from oca's existing "layer
       templates" (`matrix/timeline-and-editing.md`), which save a *position/effect
       configuration* for a layer group, not a portable animated-graphic asset with its own
-      editable parameter set. Real gap if template sharing between projects/editors ever
-      matters; low priority otherwise. → `ROADMAP.md` P5 (deferred, same tier as voice-clone
-      TTS — needs its own asset format).
+      editable parameter set. The 2026-08-28 refresh promoted it to ROADMAP CF-07, behind the
+      higher-impact workflow work, with a declarative and script-free asset format.
 
 ## New gaps found (2026-08-27 update — lower cost than the P5 tier)
 
@@ -82,14 +87,9 @@ templates/real-time-AI-masking." Sources: [DaVinci Resolve free-tier feature run
       every surveyed editor's version of this. Reuses existing track/clip-creation and muting
       primitives; no new render/preview pipeline work, since per-track independent clips
       already mix correctly (`resolve_audio_segments`). → `ROADMAP.md` P4 item 28 (done).
-- [~] **Speed ramping (keyframed speed, not just a constant per clip).** `ClipInstance::
-      speed_factor` is a single `f32` — CapCut (curve-based speed editor), Premiere, DaVinci,
-      and FCP all have a *smooth* speed curve. Shipped as a **stepped** approximation instead
-      (splits the clip into N pieces via `Track::split_clip_at`, each a constant `speed_factor`
-      linearly interpolated between a start/end speed) — the smooth version needs the export
-      `setpts` filter's output PTS to be the integral of `1/speed` over time, unverifiable in
-      this sandbox (no decode capability); see `ROADMAP.md` P4 item 29 for the full reasoning
-      and what's still not done.
+- [x] **Speed ramping (keyframed speed, not just a constant per clip).** The first implementation
+      used stepped clip splits; ROADMAP P4 item 29 now records the completed continuous ramp,
+      including the integrated `setpts` expression and its audio/export caveats.
 - [x] **Real-time audio level meter (VU/peak) during playback.** Live level display while
       scrubbing/playing, not just the after-the-fact `LoudnessMetrics` this codebase already
       computes at import/export time — Premiere's classic VU meters and DaVinci's Fairlight
@@ -119,21 +119,14 @@ Not competitor-survey-sourced like the sections above — an internal capability
 via grep that no other `ClipInstance` property (`gain_db`, brightness/contrast/saturation, crop,
 etc.) has a keyframe variant, and that `TextClip`/`ShapeClip` have no keyframe fields at all.
 
-- [ ] **Audio gain keyframes.** `gain_db` is a single constant per clip today — no fade/ramp
-      within one clip. Every other surveyed editor supports audio volume automation/keyframes.
-      → `ROADMAP.md` P4 item 31 (done).
+- [x] **Audio gain keyframes.** Per-clip volume automation/fades now ship; see ROADMAP P4 item 31.
 - [x] **Color grading keyframes.** Brightness/contrast/saturation ramping over a clip (e.g. a
       slow color shift), not just a constant. → `ROADMAP.md` P4 item 32 (done).
 - [x] **Crop/pan keyframes.** `crop_x`/`crop_y`/`crop_w`/`crop_h` animated over a clip (e.g. a
       slow reveal/pan independent of `scale_keyframes`' zoom). → `ROADMAP.md` P4 item 33 (done).
-- [~] **Text/shape clip animation keyframes.** `TextClip`/`ShapeClip` had zero keyframe fields
-      (a structural gap, not a missing effect) — every surveyed editor supports animating
-      text/graphic position/scale/opacity over time. → `ROADMAP.md` P4 item 34 (partial — all of
-      `ShapeClip` (position, size, rotation) keyframes ship, plus `TextClip` opacity and position
-      keyframes (a fade reusing the raster's existing alpha channel; position as a pixel-offset
-      `overlay=x=<expr>:y=<expr>` delta from the raster's baked anchor — neither needed the
-      sprite-cropping restructuring once assumed necessary); `TextClip` scale/rotation animation
-      still not done.
+- [x] **Text/shape clip animation keyframes.** `ShapeClip` position/size/rotation and `TextClip`
+      opacity/position/scale/rotation now ship. ROADMAP P4 item 34 contains the final filter-graph
+      design and verification caveats.
 
 ## Validates existing plans (found independently, matches what's already queued)
 
