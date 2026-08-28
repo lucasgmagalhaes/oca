@@ -35,7 +35,7 @@ impl App {
     /// callers should toast [`crate::i18n::Text::MotionTrackRegionPickNeedsPreview`] instead in
     /// that case, same as [`App::start_drawing_custom_shape`]'s precondition.
     pub fn start_picking_motion_track_region(&mut self) {
-        if self.preview_texture.is_none() {
+        if self.preview_state.preview_texture.is_none() {
             return;
         }
         self.picking_motion_track_region = true;

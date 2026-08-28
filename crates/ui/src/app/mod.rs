@@ -718,82 +718,13 @@ pub struct App {
     /// export segments — see [`App::resolved_active_sequence_export_preview`]. `None` before
     /// the Fila (export queue) screen's header has ever been drawn.
     export_preview_cache: Option<export::ExportPreviewCache>,
-    /// The GStreamer pipeline for the clip currently covering the active sequence's timeline
-    /// playhead, if it could be opened (`None` before any project has a clip at the playhead,
-    /// before it's been lazily opened, and when `Preview::open` failed, e.g. a source file
-    /// that's since been moved or deleted — see [`App::ensure_preview_loaded`]).
-    preview: Option<avcore::preview::Preview>,
-    /// The clip id [`App::ensure_preview_loaded`] last attempted to open a pipeline for,
-    /// whether or not it succeeded — lets it tell "already tried and failed for this exact
-    /// clip, don't retry every frame" apart from "the playhead moved onto a different clip, try
-    /// again".
-    preview_clip_id: Option<u64>,
-    /// Clip ids of the overlay-track branches [`App::ensure_preview_loaded`] last opened a
-    /// composited pipeline for, in the same order [`avcore::preview::Preview::open_composited`]
-    /// was given them (and the same order [`App::seek_preview`]/[`App::pump_preview_frame`]
-    /// must pass offsets to [`avcore::preview::Preview::seek_composited`] in). Empty when the
-    /// playhead's background clip has no overlay-track clips over it — `preview` is then a
-    /// plain [`avcore::preview::Preview::open`] single-clip pipeline instead, same as before
-    /// composited preview existed.
-    preview_overlay_clip_ids: Vec<u64>,
-    /// Audio-only timeline clips currently opened as independent `audiomixer` branches.
-    preview_audio_clip_ids: Vec<u64>,
-    /// Ids of the [`TrackKind::Text`] clips covering the playhead the last time
-    /// [`App::ensure_preview_loaded`] opened a pipeline, in the same order passed as
-    /// [`avcore::preview::Preview::open_composited`]'s `text_overlays` — same reopen-detection
-    /// role [`App::preview_overlay_clip_ids`] has for video overlay branches. Text clips have no
-    /// source to seek, but this ordering also guards live word-highlight buffer replacements;
-    /// a different id set is left for the next full pipeline rebuild.
-    preview_text_clip_ids: Vec<u64>,
-    /// Same role as [`App::preview_text_clip_ids`], for [`TrackKind::Shape`] clips.
-    preview_shape_clip_ids: Vec<u64>,
-    /// Uploaded from the latest [`avcore::preview::Preview::current_frame`] each frame the
-    /// Editor screen is shown; `None` until the first frame decodes. Reset whenever
-    /// [`App::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
-    /// frame from the previous one never lingers.
-    pub preview_texture: Option<egui::TextureHandle>,
-    /// Cache for [`App::pump_preview_frame`]'s CPU-side 3D LUT preview approximation (P4 item
-    /// 21, "Preview support for vignette/glitch/deflicker/3D-LUT/stabilization" —
-    /// `avcore::preview_effects`): `Some((path, parsed))` once `path` has been attempted, so a
-    /// static LUT selection doesn't reparse (or re-fail to parse) the `.cube` file every single
-    /// frame. Keyed by path (not clip id) since the same LUT file can be shared across clips;
-    /// invalidated by comparing `path` against the currently previewed clip's `lut_path` each
-    /// frame. `parsed` is `None` when `path` failed to parse — cached as a failure too, not
-    /// retried every frame. `None` (the outer `Option`) before any clip with a LUT has been
-    /// previewed yet.
-    preview_lut_cache: Option<(String, Option<avcore::Lut3D>)>,
-    /// Whether the Editor preview panel's waveform/vectorscope color scopes are shown — off by
-    /// default, since computing both is a full pass over every pixel of every decoded frame
-    /// (see [`App::pump_preview_frame`]) and most edits don't need it.
-    pub scopes_enabled: bool,
-    /// Uploaded from [`avcore::luma_waveform_rgba`] alongside `preview_texture`, only while
-    /// [`App::scopes_enabled`] is set. `None` until the first frame decodes with scopes on, same
-    /// lazily-populated shape as `preview_texture` itself.
-    pub waveform_texture: Option<egui::TextureHandle>,
-    /// Same role as [`App::waveform_texture`], for [`avcore::vectorscope_rgba`].
-    pub vectorscope_texture: Option<egui::TextureHandle>,
-    /// Whether the preview pipeline is in `Playing` state. `Preview` has no state getter of
-    /// its own, so the Editor's play/pause button and [`App::pump_export_queue`]'s repaint
-    /// cadence both rely on this instead.
-    pub preview_playing: bool,
-    /// Wall-clock playback start `(Instant, timeline playhead at that instant)` for a frozen
-    /// clip — set whenever playback begins while the clip covering the playhead has
-    /// `ClipInstance::frozen` set. A frozen clip's pipeline is kept `Paused` at
-    /// `source_in_secs` (so it always shows the held anchor frame) rather than actually
-    /// playing, so [`App::pump_preview_frame`] has no `Preview::position_secs` to derive
-    /// the advancing playhead from the way it does for a normal clip — this stands in for it.
-    /// `None` when nothing is playing or the current clip isn't frozen.
-    preview_frozen_since: Option<(std::time::Instant, f64)>,
-    /// Whether the Editor's preview panel is currently rendered as a fullscreen overlay
-    /// (covers the whole window, replacing the nav rail/breadcrumb/normal screen for that
-    /// frame — see `impl eframe::App for App`'s early-return branch). Toggled by the preview
-    /// panel's fullscreen button and cleared by Esc or the overlay's own exit button.
-    pub fullscreen_preview: bool,
-    /// Wall-clock time the pointer last moved (or a click/drag occurred) while
-    /// [`App::fullscreen_preview`] is active — the fullscreen overlay's playback controls
-    /// fade out [`FULLSCREEN_CONTROLS_IDLE_SECS`] after this and reappear immediately on the
-    /// next pointer movement. `None` right after entering fullscreen so controls start visible.
-    fullscreen_controls_last_moved: Option<std::time::Instant>,
+    /// Every field around the live preview pipeline — GStreamer pipeline handle, loaded-clip-id
+    /// tracking, uploaded textures, playback/fullscreen state — grouped into its own struct
+    /// rather than left flat on `App` (an internal-audit finding: `App` had grown to 122 flat
+    /// fields with no substructure at all). Field names and visibility are unchanged from when
+    /// they lived directly on `App`; only the access path grew one `.preview_state` hop. See
+    /// [`PreviewState`]'s own doc comment.
+    pub(crate) preview_state: PreviewState,
     import_tx: UnboundedSender<ImportEvent>,
     import_rx: UnboundedReceiver<ImportEvent>,
     /// How many files a call to [`App::spawn_import`] haven't been probed yet, in the
@@ -1094,6 +1025,90 @@ pub struct App {
     pub pending_export_conflict: Option<export::PendingExportConflict>,
 }
 
+/// Live preview pipeline state, extracted from `App`'s own field list (see
+/// [`App::preview_state`]'s doc comment for why). Every field here behaves exactly as it did as
+/// a flat `App` field before this extraction — same name, same visibility, same invariants,
+/// documented on the field itself as before.
+#[derive(Default)]
+pub(crate) struct PreviewState {
+    /// The GStreamer pipeline for the clip currently covering the active sequence's timeline
+    /// playhead, if it could be opened (`None` before any project has a clip at the playhead,
+    /// before it's been lazily opened, and when `Preview::open` failed, e.g. a source file
+    /// that's since been moved or deleted — see [`App::ensure_preview_loaded`]).
+    pub(crate) preview: Option<avcore::preview::Preview>,
+    /// The clip id [`App::ensure_preview_loaded`] last attempted to open a pipeline for,
+    /// whether or not it succeeded — lets it tell "already tried and failed for this exact
+    /// clip, don't retry every frame" apart from "the playhead moved onto a different clip, try
+    /// again".
+    pub(crate) preview_clip_id: Option<u64>,
+    /// Clip ids of the overlay-track branches [`App::ensure_preview_loaded`] last opened a
+    /// composited pipeline for, in the same order [`avcore::preview::Preview::open_composited`]
+    /// was given them (and the same order [`App::seek_preview`]/[`App::pump_preview_frame`]
+    /// must pass offsets to [`avcore::preview::Preview::seek_composited`] in). Empty when the
+    /// playhead's background clip has no overlay-track clips over it — `preview` is then a
+    /// plain [`avcore::preview::Preview::open`] single-clip pipeline instead, same as before
+    /// composited preview existed.
+    pub(crate) preview_overlay_clip_ids: Vec<u64>,
+    /// Audio-only timeline clips currently opened as independent `audiomixer` branches.
+    pub(crate) preview_audio_clip_ids: Vec<u64>,
+    /// Ids of the [`TrackKind::Text`] clips covering the playhead the last time
+    /// [`App::ensure_preview_loaded`] opened a pipeline, in the same order passed as
+    /// [`avcore::preview::Preview::open_composited`]'s `text_overlays` — same reopen-detection
+    /// role `preview_overlay_clip_ids` has for video overlay branches. Text clips have no
+    /// source to seek, but this ordering also guards live word-highlight buffer replacements;
+    /// a different id set is left for the next full pipeline rebuild.
+    pub(crate) preview_text_clip_ids: Vec<u64>,
+    /// Same role as `preview_text_clip_ids`, for [`TrackKind::Shape`] clips.
+    pub(crate) preview_shape_clip_ids: Vec<u64>,
+    /// Uploaded from the latest [`avcore::preview::Preview::current_frame`] each frame the
+    /// Editor screen is shown; `None` until the first frame decodes. Reset whenever
+    /// [`App::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
+    /// frame from the previous one never lingers.
+    pub(crate) preview_texture: Option<egui::TextureHandle>,
+    /// Cache for [`App::pump_preview_frame`]'s CPU-side 3D LUT preview approximation (P4 item
+    /// 21, "Preview support for vignette/glitch/deflicker/3D-LUT/stabilization" —
+    /// `avcore::preview_effects`): `Some((path, parsed))` once `path` has been attempted, so a
+    /// static LUT selection doesn't reparse (or re-fail to parse) the `.cube` file every single
+    /// frame. Keyed by path (not clip id) since the same LUT file can be shared across clips;
+    /// invalidated by comparing `path` against the currently previewed clip's `lut_path` each
+    /// frame. `parsed` is `None` when `path` failed to parse — cached as a failure too, not
+    /// retried every frame. `None` (the outer `Option`) before any clip with a LUT has been
+    /// previewed yet.
+    pub(crate) preview_lut_cache: Option<(String, Option<avcore::Lut3D>)>,
+    /// Whether the Editor preview panel's waveform/vectorscope color scopes are shown — off by
+    /// default, since computing both is a full pass over every pixel of every decoded frame
+    /// (see [`App::pump_preview_frame`]) and most edits don't need it.
+    pub(crate) scopes_enabled: bool,
+    /// Uploaded from [`avcore::luma_waveform_rgba`] alongside `preview_texture`, only while
+    /// `scopes_enabled` is set. `None` until the first frame decodes with scopes on, same
+    /// lazily-populated shape as `preview_texture` itself.
+    pub(crate) waveform_texture: Option<egui::TextureHandle>,
+    /// Same role as `waveform_texture`, for [`avcore::vectorscope_rgba`].
+    pub(crate) vectorscope_texture: Option<egui::TextureHandle>,
+    /// Whether the preview pipeline is in `Playing` state. `Preview` has no state getter of
+    /// its own, so the Editor's play/pause button and [`App::pump_export_queue`]'s repaint
+    /// cadence both rely on this instead.
+    pub(crate) preview_playing: bool,
+    /// Wall-clock playback start `(Instant, timeline playhead at that instant)` for a frozen
+    /// clip — set whenever playback begins while the clip covering the playhead has
+    /// `ClipInstance::frozen` set. A frozen clip's pipeline is kept `Paused` at
+    /// `source_in_secs` (so it always shows the held anchor frame) rather than actually
+    /// playing, so [`App::pump_preview_frame`] has no `Preview::position_secs` to derive
+    /// the advancing playhead from the way it does for a normal clip — this stands in for it.
+    /// `None` when nothing is playing or the current clip isn't frozen.
+    pub(crate) preview_frozen_since: Option<(std::time::Instant, f64)>,
+    /// Whether the Editor's preview panel is currently rendered as a fullscreen overlay
+    /// (covers the whole window, replacing the nav rail/breadcrumb/normal screen for that
+    /// frame — see `impl eframe::App for App`'s early-return branch). Toggled by the preview
+    /// panel's fullscreen button and cleared by Esc or the overlay's own exit button.
+    pub(crate) fullscreen_preview: bool,
+    /// Wall-clock time the pointer last moved (or a click/drag occurred) while
+    /// `fullscreen_preview` is active — the fullscreen overlay's playback controls
+    /// fade out [`FULLSCREEN_CONTROLS_IDLE_SECS`] after this and reappear immediately on the
+    /// next pointer movement. `None` right after entering fullscreen so controls start visible.
+    pub(crate) fullscreen_controls_last_moved: Option<std::time::Instant>,
+}
+
 impl App {
     /// Builds the initial app state: applies the theme and starts with an empty project list
     /// and export queue — every project, asset, and job comes from the user via "Novo
@@ -1161,21 +1176,7 @@ impl App {
             render_rx,
             active_renders: HashMap::new(),
             export_preview_cache: None,
-            preview: None,
-            preview_clip_id: None,
-            preview_overlay_clip_ids: Vec::new(),
-            preview_audio_clip_ids: Vec::new(),
-            preview_text_clip_ids: Vec::new(),
-            preview_shape_clip_ids: Vec::new(),
-            preview_texture: None,
-            preview_lut_cache: None,
-            scopes_enabled: false,
-            waveform_texture: None,
-            vectorscope_texture: None,
-            preview_playing: false,
-            preview_frozen_since: None,
-            fullscreen_preview: false,
-            fullscreen_controls_last_moved: None,
+            preview_state: PreviewState::default(),
             import_tx,
             import_rx,
             pending_imports: 0,
@@ -1599,8 +1600,8 @@ impl App {
         self.multi_selected_clip_ids.clear();
         self.drawing_shape_points = None;
         self.picking_motion_track_region = false;
-        self.preview_playing = false;
-        self.preview_frozen_since = None;
+        self.preview_state.preview_playing = false;
+        self.preview_state.preview_frozen_since = None;
         self.undo_stack.clear();
         self.invalidate_preview_rendering();
     }
@@ -1664,8 +1665,8 @@ impl App {
         self.selected_text_clip_id = None;
         self.selected_shape_clip_id = None;
         self.multi_selected_clip_ids.clear();
-        self.preview_playing = false;
-        self.preview_frozen_since = None;
+        self.preview_state.preview_playing = false;
+        self.preview_state.preview_frozen_since = None;
         self.invalidate_preview_rendering();
     }
 
@@ -1680,8 +1681,8 @@ impl App {
         self.selected_text_clip_id = None;
         self.selected_shape_clip_id = None;
         self.multi_selected_clip_ids.clear();
-        self.preview_playing = false;
-        self.preview_frozen_since = None;
+        self.preview_state.preview_playing = false;
+        self.preview_state.preview_frozen_since = None;
         self.invalidate_preview_rendering();
     }
 
@@ -1939,7 +1940,7 @@ impl eframe::App for App {
             tracing::warn!("crash sentinel found — previous session did not exit cleanly");
             self.push_toast(crate::i18n::Text::CrashDetected.tr(self.locale).to_string());
         }
-        if self.preview_playing {
+        if self.preview_state.preview_playing {
             // Smooth video needs every-frame repaints; the 200ms throttle below would show
             // it as a slideshow.
             ui.ctx().request_repaint();
@@ -1948,7 +1949,7 @@ impl eframe::App for App {
             ui.ctx().request_repaint_after(Duration::from_millis(200));
         }
 
-        if self.fullscreen_preview {
+        if self.preview_state.fullscreen_preview {
             screens::editor::fullscreen_preview_overlay(self, ui);
             return;
         }

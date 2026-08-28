@@ -224,21 +224,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         render_rx,
         active_renders: HashMap::new(),
         export_preview_cache: None,
-        preview: None,
-        preview_clip_id: None,
-        preview_overlay_clip_ids: Vec::new(),
-        preview_audio_clip_ids: Vec::new(),
-        preview_text_clip_ids: Vec::new(),
-        preview_shape_clip_ids: Vec::new(),
-        preview_texture: None,
-        preview_lut_cache: None,
-        scopes_enabled: false,
-        waveform_texture: None,
-        vectorscope_texture: None,
-        preview_playing: false,
-        preview_frozen_since: None,
-        fullscreen_preview: false,
-        fullscreen_controls_last_moved: None,
+        preview_state: PreviewState::default(),
         import_tx,
         import_rx,
         pending_imports: 0,
@@ -439,9 +425,9 @@ fn duplicate_sequence_copies_the_tab_switches_to_it_and_clears_sequence_state() 
     app.selected_text_clip_id = Some(2);
     app.selected_shape_clip_id = Some(3);
     app.multi_selected_clip_ids.extend([1, 4]);
-    app.preview_clip_id = Some(1);
-    app.preview_overlay_clip_ids.push(2);
-    app.preview_playing = true;
+    app.preview_state.preview_clip_id = Some(1);
+    app.preview_state.preview_overlay_clip_ids.push(2);
+    app.preview_state.preview_playing = true;
 
     app.duplicate_sequence(0);
 
@@ -457,9 +443,9 @@ fn duplicate_sequence_copies_the_tab_switches_to_it_and_clears_sequence_state() 
     assert_eq!(app.selected_text_clip_id, None);
     assert_eq!(app.selected_shape_clip_id, None);
     assert!(app.multi_selected_clip_ids.is_empty());
-    assert_eq!(app.preview_clip_id, None);
-    assert!(app.preview_overlay_clip_ids.is_empty());
-    assert!(!app.preview_playing);
+    assert_eq!(app.preview_state.preview_clip_id, None);
+    assert!(app.preview_state.preview_overlay_clip_ids.is_empty());
+    assert!(!app.preview_state.preview_playing);
 }
 
 #[test]
@@ -499,7 +485,7 @@ fn deleting_an_inactive_sequence_preserves_the_active_sequence_state() {
     let inactive_id = app.active_project().sequences[0].id;
     let active_id = app.active_project().sequences[1].id;
     app.selected_clip_id = Some(42);
-    app.preview_clip_id = Some(42);
+    app.preview_state.preview_clip_id = Some(42);
 
     app.delete_sequence(inactive_id);
 
@@ -507,7 +493,7 @@ fn deleting_an_inactive_sequence_preserves_the_active_sequence_state() {
     assert_eq!(app.active_project().sequences[0].id, active_id);
     assert_eq!(app.active_project().active_sequence, 0);
     assert_eq!(app.selected_clip_id, Some(42));
-    assert_eq!(app.preview_clip_id, Some(42));
+    assert_eq!(app.preview_state.preview_clip_id, Some(42));
 }
 
 #[test]
@@ -1286,16 +1272,17 @@ fn select_asset_only_updates_selected_asset_id() {
         Vec::new(),
     );
     app.selected_asset_id = Some(1);
-    app.preview_playing = true;
+    app.preview_state.preview_playing = true;
     let ctx = egui::Context::default();
     let image = egui::ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
-    app.preview_texture = Some(ctx.load_texture("test", image, egui::TextureOptions::default()));
+    app.preview_state.preview_texture =
+        Some(ctx.load_texture("test", image, egui::TextureOptions::default()));
 
     app.select_asset(Some(2));
 
     assert_eq!(app.selected_asset_id, Some(2));
-    assert!(app.preview_playing);
-    assert!(app.preview_texture.is_some());
+    assert!(app.preview_state.preview_playing);
+    assert!(app.preview_state.preview_texture.is_some());
 }
 
 // test_asset()'s source_path is a relative, nonexistent file, so `ensure_preview_loaded`
@@ -1314,7 +1301,7 @@ fn toggle_preview_playback_is_a_no_op_without_a_live_pipeline() {
 
     app.toggle_preview_playback();
 
-    assert!(!app.preview_playing);
+    assert!(!app.preview_state.preview_playing);
 }
 
 #[test]
@@ -1384,16 +1371,16 @@ fn prefs_without_preview_hardware_decode_migrate_to_enabled() {
 #[test]
 fn changing_preview_hardware_decode_invalidates_preview_state() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
-    app.preview_clip_id = Some(7);
-    app.preview_overlay_clip_ids = vec![8];
-    app.preview_audio_clip_ids = vec![9];
+    app.preview_state.preview_clip_id = Some(7);
+    app.preview_state.preview_overlay_clip_ids = vec![8];
+    app.preview_state.preview_audio_clip_ids = vec![9];
 
     app.set_preview_hardware_decode(false);
 
     assert!(!app.prefs.preview_hardware_decode);
-    assert_eq!(app.preview_clip_id, None);
-    assert!(app.preview_overlay_clip_ids.is_empty());
-    assert!(app.preview_audio_clip_ids.is_empty());
+    assert_eq!(app.preview_state.preview_clip_id, None);
+    assert!(app.preview_state.preview_overlay_clip_ids.is_empty());
+    assert!(app.preview_state.preview_audio_clip_ids.is_empty());
 }
 
 #[test]
@@ -1401,18 +1388,18 @@ fn invalidate_preview_rendering_drops_the_scope_textures_too() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
     let ctx = egui::Context::default();
     let image = egui::ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
-    app.waveform_texture = Some(ctx.load_texture(
+    app.preview_state.waveform_texture = Some(ctx.load_texture(
         "waveform-test",
         image.clone(),
         egui::TextureOptions::default(),
     ));
-    app.vectorscope_texture =
+    app.preview_state.vectorscope_texture =
         Some(ctx.load_texture("vectorscope-test", image, egui::TextureOptions::default()));
 
     app.invalidate_preview_rendering();
 
-    assert!(app.waveform_texture.is_none());
-    assert!(app.vectorscope_texture.is_none());
+    assert!(app.preview_state.waveform_texture.is_none());
+    assert!(app.preview_state.vectorscope_texture.is_none());
 }
 
 #[test]
@@ -1486,11 +1473,11 @@ fn ensure_preview_loaded_clears_state_once_the_playhead_moves_past_every_clip() 
     assert!(app.preview_clip_present());
 
     app.active_project_mut().timeline_mut().playhead_secs = 20.0;
-    app.preview_playing = true;
+    app.preview_state.preview_playing = true;
     app.ensure_preview_loaded();
 
     assert!(!app.preview_clip_present());
-    assert!(!app.preview_playing);
+    assert!(!app.preview_state.preview_playing);
 }
 
 #[test]
@@ -2623,7 +2610,7 @@ fn motion_track_region_defaults_to_a_centered_region() {
 #[test]
 fn start_picking_motion_track_region_is_a_no_op_without_a_loaded_preview() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
-    app.preview_texture = None;
+    app.preview_state.preview_texture = None;
 
     app.start_picking_motion_track_region();
 
@@ -2635,7 +2622,8 @@ fn start_picking_motion_track_region_activates_with_a_loaded_preview() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
     let ctx = egui::Context::default();
     let image = egui::ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
-    app.preview_texture = Some(ctx.load_texture("test", image, egui::TextureOptions::default()));
+    app.preview_state.preview_texture =
+        Some(ctx.load_texture("test", image, egui::TextureOptions::default()));
 
     app.start_picking_motion_track_region();
 

@@ -329,7 +329,7 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             app.add_shape_clip();
         }
         if ui.button(Text::DrawCustomShape.tr(locale)).clicked() {
-            if app.preview_texture.is_some() {
+            if app.preview_state.preview_texture.is_some() {
                 app.start_drawing_custom_shape();
             } else {
                 app.push_toast(Text::ShapeDrawNeedsPreview.tr(locale).to_string());
@@ -802,7 +802,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             .show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.set_min_height(height - 40.0);
-                match &app.preview_texture {
+                match &app.preview_state.preview_texture {
                     Some(_) => layer_transform_preview(app, ui),
                     None if app.preview_clip_present() && !app.preview_available() => {
                         ui.centered_and_justified(|ui| {
@@ -825,7 +825,11 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             if ui.small_button("⏮").clicked() {
                 app.seek_preview(0.0);
             }
-            let play_icon = if app.preview_playing { "⏸" } else { "▶" };
+            let play_icon = if app.preview_state.preview_playing {
+                "⏸"
+            } else {
+                "▶"
+            };
             if ui
                 .button(RichText::new(play_icon).color(theme::ACCENT))
                 .clicked()
@@ -855,13 +859,13 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             }
             if ui
                 .selectable_label(
-                    app.scopes_enabled,
+                    app.preview_state.scopes_enabled,
                     RichText::new("📊").color(theme::TEXT_SECONDARY),
                 )
                 .on_hover_text(Text::PreviewScopesToggle.tr(locale))
                 .clicked()
             {
-                app.scopes_enabled = !app.scopes_enabled;
+                app.preview_state.scopes_enabled = !app.preview_state.scopes_enabled;
             }
             audio_level_meter(app, ui);
         });
@@ -873,13 +877,13 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 app.seek_preview(position);
             }
         }
-        if app.scopes_enabled {
+        if app.preview_state.scopes_enabled {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                if let Some(texture) = &app.waveform_texture {
+                if let Some(texture) = &app.preview_state.waveform_texture {
                     ui.image((texture.id(), egui::vec2(200.0, 100.0)));
                 }
-                if let Some(texture) = &app.vectorscope_texture {
+                if let Some(texture) = &app.preview_state.vectorscope_texture {
                     ui.image((texture.id(), egui::vec2(100.0, 100.0)));
                 }
             });
@@ -924,7 +928,7 @@ pub const FULLSCREEN_CONTROLS_IDLE_SECS: f32 = 2.5;
 
 /// Renders the Editor preview panel as a fullscreen overlay covering the whole window —
 /// called instead of the normal nav-rail/breadcrumb/screen chain from
-/// `impl eframe::App for App::ui` whenever `app.fullscreen_preview` is set, so the overlay
+/// `impl eframe::App for App::ui` whenever `app.preview_state.fullscreen_preview` is set, so the overlay
 /// truly covers everything rather than sitting inside the Editor's three-column layout.
 /// Controls (play/pause/seek/exit) fade out after [`FULLSCREEN_CONTROLS_IDLE_SECS`] of no
 /// pointer activity and fade back in on the next movement or click; Esc always exits
@@ -945,7 +949,7 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
 
     let locale = app.locale;
     let opacity = app.fullscreen_controls_opacity();
-    let texture = app.preview_texture.clone();
+    let texture = app.preview_state.preview_texture.clone();
     let timeline_duration = app.active_project().timeline().duration_secs();
     let playhead = app.active_project().timeline().playhead_secs;
 
@@ -1013,7 +1017,11 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                                 if ui.small_button("⏮").clicked() {
                                     app.seek_preview(0.0);
                                 }
-                                let play_icon = if app.preview_playing { "⏸" } else { "▶" };
+                                let play_icon = if app.preview_state.preview_playing {
+                                    "⏸"
+                                } else {
+                                    "▶"
+                                };
                                 if ui
                                     .button(
                                         RichText::new(play_icon)
@@ -1068,10 +1076,10 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
 /// composited size. Dragging the bottom-right handle still writes the real multiplier
 /// `set_selected_clip_layer_scale` reads at export, same "editable but visually approximate"
 /// shape as most of this panel. `Some(_)` in `preview_panel`'s match already guarantees
-/// `app.preview_texture` is set, but this re-checks (and bails) rather than trust that
+/// `app.preview_state.preview_texture` is set, but this re-checks (and bails) rather than trust that
 /// invariant across the borrow-splitting clone below.
 fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
-    let Some(texture) = app.preview_texture.clone() else {
+    let Some(texture) = app.preview_state.preview_texture.clone() else {
         return;
     };
     let locale = app.locale;
