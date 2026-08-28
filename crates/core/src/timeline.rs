@@ -454,6 +454,21 @@ pub struct ClipInstance {
     pub start_secs: f64,
     pub source_in_secs: f64,
     pub source_out_secs: f64,
+    /// `Some(sequence_id)` if this clip is a **compound clip** (nested sequence) — its content
+    /// comes from rendering another [`crate::project::Sequence`] in the same
+    /// [`crate::project::Project`], not `asset_id` (ignored when this is set; kept at whatever
+    /// stale/placeholder value it had, same as other fields a clip kind doesn't use). Per
+    /// `spec/ROADMAP.md`'s "nested sequences / compound clips" item — creates a new `Sequence`
+    /// out of a selection ([`App::create_compound_clip_from_selection`] in `ui`), moves the
+    /// selected clips into it, and drops this clip in their place. `source_in_secs`/
+    /// `source_out_secs` trim into the *rendered* nested timeline (0-based, same convention as
+    /// an ordinary asset), not the nested `Sequence`'s own internal timeline positions.
+    /// [`crate::nested_sequence::materialize_nested_sequences`] resolves this recursively (a
+    /// nested sequence's own clips may themselves be nested) to a temp rendered file before
+    /// export/preview, cached and reused unless that sequence's own timeline content changes.
+    /// `#[serde(default)]` so older saved projects load with every clip asset-backed, unchanged.
+    #[serde(default)]
+    pub nested_sequence_id: Option<u64>,
     /// `Some(group_id)` if this clip is a member of a composite block (per `request.md`'s
     /// Fase 3 "blocos compostos" spec) — every clip sharing the same id, always on the same
     /// track (composite blocks don't span tracks yet), moves/splits/deletes together as a
@@ -962,6 +977,12 @@ impl ClipInstance {
     /// `true` if the crop rect isn't the full, uncropped frame.
     pub fn is_cropped(&self) -> bool {
         self.crop_x != 0.0 || self.crop_y != 0.0 || self.crop_w != 1.0 || self.crop_h != 1.0
+    }
+
+    /// `true` if this is a compound clip (nested sequence) — see
+    /// [`ClipInstance::nested_sequence_id`]'s own doc comment.
+    pub fn is_nested_sequence(&self) -> bool {
+        self.nested_sequence_id.is_some()
     }
 
     /// `true` if a layer mask ([`ClipInstance::mask_shape`]) is applied.
@@ -1609,6 +1630,7 @@ impl Track {
             // original clip's end speed, unchanged.
             speed_factor: speed_at_split.unwrap_or(clip.speed_factor),
             speed_ramp_end_factor: clip.speed_ramp_end_factor,
+            nested_sequence_id: clip.nested_sequence_id,
             crop_x: clip.crop_x,
             crop_y: clip.crop_y,
             crop_w: clip.crop_w,

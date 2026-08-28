@@ -37,6 +37,7 @@ pub mod loudness;
 pub mod media;
 pub mod motion_tracking;
 pub mod multicam_sync;
+pub mod nested_sequence;
 pub mod overlay_render;
 pub mod persistence;
 pub mod preview;
