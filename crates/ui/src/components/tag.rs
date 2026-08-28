@@ -22,7 +22,7 @@ use crate::theme;
 pub fn tag(ui: &mut Ui, text: &str, fg: Color32, bg: Color32) {
     egui::Frame::new()
         .fill(bg)
-        .corner_radius(200)
+        .corner_radius(theme::RADIUS_PILL)
         .inner_margin(egui::Margin::symmetric(8, 3))
         .show(ui, |ui| {
             ui.label(RichText::new(text).size(11.0).color(fg).strong());
@@ -42,4 +42,9 @@ pub fn tag_outline(ui: &mut Ui, text: &str) {
 /// A tag in the error color — used for failure states (e.g. "Falhou").
 pub fn tag_error(ui: &mut Ui, text: &str) {
     tag(ui, text, theme::ERROR, theme::ERROR_TINT);
+}
+
+/// A tag in the warning color — used for caution/non-terminal states (e.g. "Pausado").
+pub fn tag_warning(ui: &mut Ui, text: &str) {
+    tag(ui, text, theme::WARNING, theme::WARNING_TINT);
 }

@@ -22,6 +22,7 @@
 
 use eframe::egui;
 
+use crate::components;
 use crate::i18n::Text;
 use crate::theme;
 
@@ -122,11 +123,7 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(420.0);
             ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(Text::TranscriptPanelTitle.tr(locale))
-                        .size(15.0)
-                        .strong(),
-                );
+                components::modal_title(ui, Text::TranscriptPanelTitle.tr(locale));
             });
             ui.add_space(6.0);
             ui.add(
@@ -335,11 +332,7 @@ impl App {
         let modal = egui::Modal::new(egui::Id::new("transcript_panel"));
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
-            ui.label(
-                egui::RichText::new(Text::TranscriptPanelTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            components::modal_title(ui, Text::TranscriptPanelTitle.tr(locale));
             ui.add_space(8.0);
             ui.label(egui::RichText::new(message).color(theme::TEXT_MUTED));
             ui.add_space(8.0);

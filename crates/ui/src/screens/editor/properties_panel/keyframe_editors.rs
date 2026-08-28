@@ -15,6 +15,7 @@
 
 use eframe::egui;
 
+use crate::components;
 use crate::i18n::Text;
 
 /// Renders an editable list of `(time_fraction, value)` keyframe rows plus an "add at 1.0"
@@ -45,7 +46,14 @@ pub(super) fn f32_keyframe_editor(
             changed |= ui
                 .add(egui::Slider::new(&mut kf.value, value_range.clone()))
                 .changed();
-            if ui.small_button("🗑").clicked() {
+            if components::icon_button(
+                ui,
+                "🗑",
+                Text::RemoveKeyframe.tr(locale),
+                components::IconButtonOpts::default(),
+            )
+            .clicked()
+            {
                 remove_index = Some(i);
             }
         });
@@ -96,7 +104,14 @@ pub(super) fn position_keyframe_editor(
                     egui::Slider::new(&mut kf.value.y, -1.0..=1.0).text(Text::KeyframeY.tr(locale)),
                 )
                 .changed();
-            if ui.small_button("🗑").clicked() {
+            if components::icon_button(
+                ui,
+                "🗑",
+                Text::RemoveKeyframe.tr(locale),
+                components::IconButtonOpts::default(),
+            )
+            .clicked()
+            {
                 remove_index = Some(i);
             }
         });
@@ -151,7 +166,15 @@ pub(super) fn polygon_vertex_editor(
                         .prefix("y "),
                 )
                 .changed();
-            if count > 3 && ui.small_button("🗑").clicked() {
+            if count > 3
+                && components::icon_button(
+                    ui,
+                    "🗑",
+                    Text::RemoveVertex.tr(locale),
+                    components::IconButtonOpts::default(),
+                )
+                .clicked()
+            {
                 remove_index = Some(i);
             }
         });

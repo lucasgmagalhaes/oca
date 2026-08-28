@@ -94,11 +94,7 @@ pub(super) fn shape_clip_properties(
     let mut changed = false;
 
     // Shape preset
-    ui.label(
-        RichText::new(Text::PropShapeKind.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropShapeKind.tr(locale));
     let mut preset = shape_kind_to_preset(&sc.shape_kind);
     let mut preset_options = vec![
         ShapePreset::Ellipse,
@@ -155,11 +151,7 @@ pub(super) fn shape_clip_properties(
 
     // Color picker (RGBA — alpha controlled via the color picker's alpha channel).
     ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(Text::PropShapeColor.tr(locale))
-                .size(12.0)
-                .color(theme::TEXT_MUTED),
-        );
+        components::property_row(ui, Text::PropShapeColor.tr(locale));
         let mut color = egui::Color32::from_rgba_premultiplied(
             sc.color_rgba[0],
             sc.color_rgba[1],
@@ -173,11 +165,7 @@ pub(super) fn shape_clip_properties(
     });
 
     // Center position
-    ui.label(
-        RichText::new(Text::PropShapePosX.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropShapePosX.tr(locale));
     if ui
         .add(
             egui::Slider::new(&mut sc.center_x, 0.0..=1.0)
@@ -187,11 +175,7 @@ pub(super) fn shape_clip_properties(
     {
         changed = true;
     }
-    ui.label(
-        RichText::new(Text::PropShapePosY.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropShapePosY.tr(locale));
     if ui
         .add(
             egui::Slider::new(&mut sc.center_y, 0.0..=1.0)
@@ -249,11 +233,7 @@ pub(super) fn shape_clip_properties(
     }
 
     // Size
-    ui.label(
-        RichText::new(Text::PropShapeWidth.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropShapeWidth.tr(locale));
     if ui
         .add(
             egui::Slider::new(&mut sc.width, 0.01..=1.0)
@@ -263,11 +243,7 @@ pub(super) fn shape_clip_properties(
     {
         changed = true;
     }
-    ui.label(
-        RichText::new(Text::PropShapeHeight.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropShapeHeight.tr(locale));
     if ui
         .add(
             egui::Slider::new(&mut sc.height, 0.01..=1.0)
@@ -325,11 +301,7 @@ pub(super) fn shape_clip_properties(
     }
 
     // Rotation
-    ui.label(
-        RichText::new(Text::PropShapeRotation.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropShapeRotation.tr(locale));
     if ui
         .add(egui::Slider::new(&mut sc.rotation_deg, 0.0..=360.0).suffix("°"))
         .changed()
@@ -363,11 +335,7 @@ pub(super) fn shape_clip_properties(
     }
 
     // Outline thickness
-    ui.label(
-        RichText::new(Text::PropShapeStroke.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropShapeStroke.tr(locale));
     if ui
         .add(
             egui::DragValue::new(&mut sc.stroke_thickness_px)
@@ -386,11 +354,7 @@ pub(super) fn shape_clip_properties(
     );
 
     // Start and duration
-    ui.label(
-        RichText::new(Text::PropShapeStart.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropShapeStart.tr(locale));
     if ui
         .add(
             egui::DragValue::new(&mut sc.start_secs)
@@ -402,11 +366,7 @@ pub(super) fn shape_clip_properties(
     {
         changed = true;
     }
-    ui.label(
-        RichText::new(Text::PropShapeDuration.tr(locale))
-            .size(12.0)
-            .color(theme::TEXT_MUTED),
-    );
+    components::property_row(ui, Text::PropShapeDuration.tr(locale));
     if ui
         .add(
             egui::DragValue::new(&mut sc.duration_secs)

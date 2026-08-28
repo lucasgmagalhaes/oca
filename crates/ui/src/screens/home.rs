@@ -27,11 +27,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(24.0);
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
-                ui.label(
-                    RichText::new(Text::HomeTitle.tr(app.locale))
-                        .size(22.0)
-                        .strong(),
-                );
+                components::page_title(ui, Text::HomeTitle.tr(app.locale));
                 ui.label(
                     RichText::new(Text::HomeSubtitle.tr(app.locale))
                         .size(13.0)
@@ -88,7 +84,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 });
             });
         }
-        ui.add_space(20.0);
+        ui.add_space(theme::SPACE_LG);
 
         let card_width = 280.0;
         egui::Grid::new("home_projects_grid")
@@ -123,7 +119,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         ui.vertical(|ui| {
                             egui::Frame::new()
                                 .fill(theme::SURFACE_2)
-                                .corner_radius(6)
+                                .corner_radius(theme::RADIUS_SM)
                                 .show(ui, |ui| {
                                     ui.set_min_width(ui.available_width());
                                     ui.set_min_height(90.0);

@@ -22,11 +22,11 @@ use crate::theme;
 /// and spacing, the caller's `content`, then a trailing muted export-status note. Returns
 /// whatever `content` reports (typically "did this block's value change").
 pub fn property_block(ui: &mut Ui, note: &str, content: impl FnOnce(&mut Ui) -> bool) -> bool {
-    ui.add_space(10.0);
+    ui.add_space(theme::SPACE_SM);
     ui.separator();
-    ui.add_space(6.0);
+    ui.add_space(theme::SPACE_SM);
     let changed = content(ui);
-    ui.add_space(4.0);
+    ui.add_space(theme::SPACE_XS);
     ui.label(RichText::new(note).size(10.5).color(theme::TEXT_MUTED));
     changed
 }
@@ -49,4 +49,13 @@ pub fn property_section(
 /// separate [`section_label`].
 pub fn property_toggle(ui: &mut Ui, label: &str, note: &str, checked: &mut bool) -> bool {
     property_block(ui, note, |ui| ui.checkbox(checked, label).changed())
+}
+
+/// A muted field label with no separator/note ceremony — the lighter sibling of
+/// [`property_section`] for a dense list of simple fields (shape/text clip properties) where a
+/// separator+export-note per field would be excessive. Caller draws its own widget immediately
+/// after calling this, matching the shape every existing hand-rolled label+widget pair already
+/// used, just named instead of duplicated inline at each call site.
+pub fn property_row(ui: &mut Ui, label: &str) {
+    ui.label(RichText::new(label).size(12.0).color(theme::TEXT_MUTED));
 }
