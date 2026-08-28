@@ -42,6 +42,11 @@ def main() -> None:
         write(bundle / "espeak-ng-data" / "fixture")
         write(bundle / "resources/models/test-model.bin", b"model")
         write(bundle / "resources/licenses/oca.txt")
+        write(
+            bundle / "resources/licenses/THIRD_PARTY_NOTICES.txt",
+            b"Component: fixture\nComponent: FFmpeg\nComponent: CPython\n"
+            b"Component: yt-dlp\nComponent: yt-dlp EJS scripts\nComponent: Deno\n",
+        )
         write(bundle / "resources/licenses/fonts/test-OFL.txt")
         write(bundle / "resources/runtime/lib/libavcodec.so.1")
         write(bundle / "resources/runtime/gstreamer/lib/libgstreamer-1.0.so.0")
@@ -67,7 +72,8 @@ def main() -> None:
                 }
             ],
             "native_dependencies": [
-                {"name": name, "version": version} for name, version in versions.items()
+                {"name": name, "version": version, "bundle": "runtime", "license": "MIT"}
+                for name, version in versions.items()
             ],
             "system_contract": {},
         }

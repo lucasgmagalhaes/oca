@@ -15,7 +15,7 @@ publication when any required runtime component is missing.
 | Component | Included form | Used by |
 |---|---|---|
 | FFmpeg (pinned 8.1 LGPL build on Windows/Linux; GPL-enabled Homebrew runner build on macOS) | `ffmpeg` CLI, libav shared libraries | Native bridge, yt-dlp merge/extraction |
-| GStreamer (LGPL core plus plugin-specific licenses; 1.26.11 Windows, Ubuntu 24.04 Linux, Homebrew macOS) | Core libraries, plugin scanner and complete installed plugin set | Preview, decoding and scrubbing |
+| GStreamer (LGPL core plus plugin-specific licenses; 1.26.11 Windows, Ubuntu 24.04 Linux, Homebrew macOS) | Core libraries, plugin scanner and the plugins in `packaging/gstreamer-plugin-allowlist.json` | Preview, decoding and scrubbing |
 | ONNX Runtime 1.28 | Statically linked by `ort-sys` | Auto-reframe and background removal |
 | whisper.cpp | Statically linked by `whisper-rs` | Automatic subtitles |
 | Whisper Base | `resources/models/ggml-base.bin` | Automatic subtitles |
@@ -37,8 +37,15 @@ and the bundle manifest. It inventories every Rust package with its exact versio
 source and checksum as well as every native/model dependency. It also records the path, size
 and SHA-256 of every actual file in the assembled payload, including shared libraries,
 GStreamer plugins and private Python files; validation rejects missing, additional or changed
-files. Font OFL notices and the oca
-license are included under `resources/licenses/`. `resources/RUNTIME_VERSIONS.txt` records the
+files. `packaging/generate_third_party_notices.py` runs offline during every assembly. It uses
+locked Cargo metadata and the bundle manifest to generate `resources/licenses/THIRD_PARTY_NOTICES.txt`,
+copies package-specific `LICENSE`, `COPYING`, `COPYRIGHT`, `UNLICENSE`, and `NOTICE` files, and
+includes checksum-verified full SPDX texts vendored from the pinned revision recorded in
+`packaging/licenses/spdx-manifest.json`. Large upstream notices that are not published inside a
+Cargo crate, such as ONNX Runtime's third-party notice, are pinned and checksum-verified by
+`packaging/licenses/components-manifest.json`. Font OFL notices and the oca license are also included
+under `resources/licenses/`. Bundle validation requires every distributed native/model component
+to appear in the generated notice. `resources/RUNTIME_VERSIONS.txt` records the
 actual FFmpeg, GStreamer and Python versions reported by the assembled payload.
 It also records yt-dlp, yt-dlp EJS and Deno versions. Bundle validation recalculates every
 model's hash and rejects a runtime-version mismatch, so an accidental script/manifest drift
@@ -64,6 +71,12 @@ non-system dependency into the app, rewrites load paths to `@loader_path`, rejec
 or external-path leaks, and signs the resulting bundle. Releases use Developer ID signing and
 Apple notarization when the corresponding CI secrets are configured; otherwise CI produces a
 validated ad-hoc-signed artifact suitable for testing but subject to Gatekeeper warnings.
+
+The GStreamer allowlist contains only the elements used by the preview graph plus demuxers,
+parsers and decoders for the media formats supported by the editor. Assembly fails when a common
+plugin or the platform audio-output alternative is unavailable. The collector validates plugin
+identifiers, rejects symlinks that escape the SDK plugin directory and refuses a non-empty output
+directory, so an SDK update cannot silently add arbitrary plugins to a release.
 
 ## Deliberate system contract
 

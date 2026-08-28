@@ -60,9 +60,24 @@ def main() -> None:
             missing.append(str(model_path.relative_to(root)))
         elif sha256(model_path) != model["sha256"]:
             missing.append(f"{model_path.relative_to(root)} (SHA-256 mismatch)")
-    for relative in ("RUNTIME_VERSIONS.txt", "bundle-manifest.json", "licenses/oca.txt"):
+    for relative in (
+        "RUNTIME_VERSIONS.txt",
+        "bundle-manifest.json",
+        "licenses/oca.txt",
+        "licenses/THIRD_PARTY_NOTICES.txt",
+    ):
         if not (resources / relative).is_file():
             missing.append(str((resources / relative).relative_to(root)))
+    notices_path = resources / "licenses" / "THIRD_PARTY_NOTICES.txt"
+    if notices_path.is_file():
+        notices = notices_path.read_text(encoding="utf-8")
+        for component in manifest["models"] + [
+            item
+            for item in manifest["native_dependencies"]
+            if "build-time only" not in item["bundle"]
+        ]:
+            if f'Component: {component["name"]}' not in notices:
+                missing.append(f'THIRD_PARTY_NOTICES.txt entry for {component["name"]}')
     if not any_file(resources / "licenses" / "fonts", ("*-OFL.txt",)):
         missing.append(str((resources / "licenses" / "fonts").relative_to(root)) + "/*-OFL.txt")
 
