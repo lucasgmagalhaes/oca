@@ -71,12 +71,12 @@ impl App {
 
         self.ensure_active_project();
         let project_id = self.active_project().id;
-        let import_token = self.next_import_token;
-        self.next_import_token += 1;
-        self.pending_imports += 1;
-        self.auto_add_to_timeline.insert(import_token);
+        let import_token = self.import_state.next_import_token;
+        self.import_state.next_import_token += 1;
+        self.import_state.pending_imports += 1;
+        self.import_state.auto_add_to_timeline.insert(import_token);
 
-        let tx = self.import_tx.clone();
+        let tx = self.import_state.import_tx.clone();
         let path = track.path.clone();
         // Audio never needs a proxy (see `import::import_one`'s `MediaKind::Video` gate), so an
         // empty proxy dir is safe here — it's simply never touched for this file.

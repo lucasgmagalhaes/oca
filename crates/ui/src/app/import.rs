@@ -39,12 +39,12 @@ impl App {
         let project_id = self.active_project().id;
         let proxy_dir = avcore::proxy::cache_dir_for_project(self.active_project());
         let preview_quality = self.prefs.preview_quality;
-        self.pending_imports += paths.len();
+        self.import_state.pending_imports += paths.len();
 
         for path in paths {
-            let import_token = self.next_import_token;
-            self.next_import_token += 1;
-            let tx = self.import_tx.clone();
+            let import_token = self.import_state.next_import_token;
+            self.import_state.next_import_token += 1;
+            let tx = self.import_state.import_tx.clone();
             let proxy_dir = proxy_dir.clone();
             std::thread::spawn(move || {
                 import_one(
@@ -62,14 +62,15 @@ impl App {
     /// Applies import progress to its target project's media library as it arrives. Called
     /// once per frame from [`eframe::App::ui`], same as [`App::pump_export_queue`].
     pub(super) fn pump_import_queue(&mut self) {
-        while let Ok(event) = self.import_rx.try_recv() {
+        while let Ok(event) = self.import_state.import_rx.try_recv() {
             match event {
                 ImportEvent::AssetReady {
                     project_id,
                     import_token,
                     mut asset,
                 } => {
-                    self.pending_imports = self.pending_imports.saturating_sub(1);
+                    self.import_state.pending_imports =
+                        self.import_state.pending_imports.saturating_sub(1);
                     let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id)
                     else {
                         continue;
@@ -90,12 +91,14 @@ impl App {
                     );
                     asset.id = next_id;
                     project.media_library.push(asset);
-                    self.pending_enrichment.insert(import_token, next_id);
+                    self.import_state
+                        .pending_enrichment
+                        .insert(import_token, next_id);
                     // Set by `App::add_sound_library_track_to_timeline` for a Music & SFX
                     // track that wasn't already in the library — only honored if the active
                     // project is still the one this asset landed in, in case it changed while
                     // the import was in flight.
-                    if self.auto_add_to_timeline.remove(&import_token)
+                    if self.import_state.auto_add_to_timeline.remove(&import_token)
                         && self.active_project().id == project_id
                     {
                         self.add_asset_to_timeline(next_id);
@@ -110,7 +113,8 @@ impl App {
                     duration_ms,
                 } => {
                     self.record_telemetry(avcore::TelemetryEvent::ImportCompleted { duration_ms });
-                    let Some(asset_id) = self.pending_enrichment.remove(&import_token) else {
+                    let Some(asset_id) = self.import_state.pending_enrichment.remove(&import_token)
+                    else {
                         continue;
                     };
                     let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id)
@@ -131,7 +135,8 @@ impl App {
                     }
                 }
                 ImportEvent::Failed { path, message } => {
-                    self.pending_imports = self.pending_imports.saturating_sub(1);
+                    self.import_state.pending_imports =
+                        self.import_state.pending_imports.saturating_sub(1);
                     tracing::error!(path = %path.display(), error = %message, "asset import failed");
                     self.record_telemetry(avcore::TelemetryEvent::Error {
                         context: "import".to_string(),

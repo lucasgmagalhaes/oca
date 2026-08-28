@@ -53,7 +53,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             .color(theme::TEXT_MUTED),
                     );
                 }
-                if app.pending_imports > 0 {
+                if app.import_state.pending_imports > 0 {
                     ui.label(
                         RichText::new(Text::Importing.tr(locale))
                             .size(12.0)
