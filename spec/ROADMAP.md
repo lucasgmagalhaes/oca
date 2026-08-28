@@ -775,9 +775,41 @@ an item earlier:
   for handled errors and Rust panics, exact release/symbol management, and a separately validated
   native Crashpad phase. This is an operational prerequisite for broad beta distribution, not a
   replacement for local telemetry. ER-01A (the contract, sanitizer, validator, `NullReporter`,
-  queue envelope, and central handled-error wiring in `core`+`ui`) is shipped; consent UI, the
-  delivery worker/Sentry adapter (ER-01B), releases/symbolication (ER-01C), native capture
-  (ER-01D), and operations (ER-01E) remain. Read
+  queue envelope, and central handled-error wiring in `core`+`ui`) is shipped.
+
+  **ER-01B (steady-state consent + queue + delivery worker) is now shipped too, minus the
+  post-crash one-time review offer.** `ui::app::error_reporting` adds: a persisted
+  `ErrorReportingConsent` preference (`Disabled`/`AlwaysSend`, defaults disabled — Preferences'
+  new "Remote error reporting" section, wired through `App::set_error_reporting_consent` for a
+  live no-restart toggle); a bounded on-disk queue next to the rolling `tracing` logs
+  (`enqueue_to_disk_in`/`load_queue`/`delete_all_queued`, atomic temp-file-then-rename writes,
+  pruned to `avcore`'s existing 20-record/20 MiB/7-day bounds, corrupt/expired entries dropped
+  on read rather than retried forever); a background delivery worker thread (same
+  `std::thread::spawn`+`blocking_recv` shape `telemetry.rs`'s writer already uses) that persists
+  every report *before* attempting delivery — so a mid-delivery crash never loses the record —
+  then retries transient failures inline with a small bounded backoff, and re-sweeps whatever's
+  still on disk at the start of every launch; and a minimal hand-built Sentry envelope
+  (`build_sentry_envelope`, no Sentry SDK dependency) sent over `ureq` behind an `EnvelopeSender`
+  trait, so the transport is swappable and was tested for real against a local one-shot HTTP
+  mock server (2xx/4xx/5xx branching, header/body content), never the production provider.
+
+  **Real, deliberately scoped-out gap**: no Sentry DSN is actually configured anywhere — the
+  ER-01 doc's own "Sentry organization/project ownership, region, retention, budget" open
+  decision is still unresolved, so `OCA_SENTRY_DSN` is read at startup and, being unset in every
+  build today, the worker still validates and queues every report but never attempts a real
+  network call (`DeliveryOutcome::NotConfigured`) — opting in today is inert-but-safe, not yet
+  actually connected to a live Sentry project. **Also not done**: the post-crash "Send once /
+  Always send / Do not send" one-time review offer (ER-01B's other half) — this pass covers the
+  steady-state Preferences toggle only; the next-launch crash-review prompt needs hooking into
+  `main.rs`'s existing crash-sentinel detection, left as a follow-up. Releases/symbolication
+  (ER-01C), native capture (ER-01D), and operations (ER-01E) also remain.
+
+  Verified for real: `cargo test -p ui` (349/349, including 25 new `error_reporting` tests —
+  disk-queue round-trip/corruption/expiry/pruning/atomicity, the Sentry envelope builder's shape
+  and forbidden-content-freedom, DSN parsing, the delivery worker's persist-then-deliver and
+  transient-failure-stays-queued and startup-resweep behavior against a fake sender, and the real
+  `ureq` transport's 2xx/4xx/5xx branching against a real local TCP mock server) on this
+  machine's fully-linked toolchain. Read
   [architecture/client-error-reporting.md](architecture/client-error-reporting.md).
 - `[ ]` **FONT-01: expanded built-in font catalog.** Grow the deterministic offline catalog from
   6 to 43 families (51 locked OFL binaries, measured at 17.07 MiB), replace the fixed enum/match

@@ -5179,6 +5179,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "ureq",
 ]
 
 [[package]]

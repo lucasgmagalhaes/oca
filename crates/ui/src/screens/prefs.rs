@@ -230,6 +230,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(14.0);
 
         components::card_frame().show(ui, |ui| {
+            prefs_section(ui, Text::PrefsErrorReporting.tr(locale), false, |ui| {
+                error_reporting_section(app, ui, locale);
+            });
+        });
+        ui.add_space(14.0);
+
+        components::card_frame().show(ui, |ui| {
             prefs_section(ui, Text::PrefsShortcuts.tr(locale), false, |ui| {
                 shortcut_binding_editor(app, ui, locale);
             });
@@ -392,6 +399,47 @@ fn shortcut_binding_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
     } else if let Some(a) = click_action {
         app.binding_capture = Some(a);
     }
+}
+
+/// ER-01B: the consent toggle, queue status, and delete-queue control the ER-01 doc's "Preferences
+/// show the reporting state, current queue size, privacy summary, and controls to delete queued
+/// diagnostics and revoke consent" requirement asks for. `App::set_error_reporting_consent`
+/// live-swaps `app.error_reporter` and persists the choice — no restart needed.
+fn error_reporting_section(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
+    use crate::app::error_reporting::ErrorReportingConsent;
+
+    ui.label(
+        RichText::new(Text::PrefsErrorReportingHint.tr(locale))
+            .size(12.0)
+            .color(theme::TEXT_MUTED),
+    );
+    ui.add_space(8.0);
+    let mut enabled = app.prefs.error_reporting_consent == ErrorReportingConsent::AlwaysSend;
+    if ui
+        .checkbox(&mut enabled, Text::PrefsErrorReportingEnabled.tr(locale))
+        .changed()
+    {
+        app.set_error_reporting_consent(if enabled {
+            ErrorReportingConsent::AlwaysSend
+        } else {
+            ErrorReportingConsent::Disabled
+        });
+    }
+    ui.add_space(10.0);
+    let queue_len = crate::app::error_reporting::queue_len();
+    ui.horizontal(|ui| {
+        ui.label(format!(
+            "{}: {queue_len}",
+            Text::PrefsErrorReportingQueueSize.tr(locale)
+        ));
+        if queue_len > 0
+            && ui
+                .button(Text::PrefsErrorReportingDeleteQueue.tr(locale))
+                .clicked()
+        {
+            crate::app::error_reporting::delete_all_queued();
+        }
+    });
 }
 
 /// A `CollapsingHeader` styled to match the section headers used everywhere else

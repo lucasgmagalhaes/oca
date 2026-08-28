@@ -429,6 +429,11 @@ text_catalog! {
     PrefsLayoutScope: pt_br = "Layout dos painéis", en = "Panel layout";
     LayoutScopePerUser: pt_br = "Por usuário", en = "Per user";
     LayoutScopePerProject: pt_br = "Por projeto", en = "Per project";
+    PrefsErrorReporting: pt_br = "Relatório de erros remoto", en = "Remote error reporting";
+    PrefsErrorReportingEnabled: pt_br = "Enviar relatórios de erro automaticamente (dados sanitizados, sem conteúdo pessoal)", en = "Automatically send error reports (sanitized, no personal content)";
+    PrefsErrorReportingHint: pt_br = "Desativado por padrão. Nomes de arquivo, projetos, URLs e credenciais nunca são enviados — veja a pré-visualização abaixo.", en = "Disabled by default. File names, project names, URLs, and credentials are never sent — see the preview below.";
+    PrefsErrorReportingQueueSize: pt_br = "Relatórios pendentes na fila local", en = "Reports pending in the local queue";
+    PrefsErrorReportingDeleteQueue: pt_br = "Excluir relatórios pendentes", en = "Delete pending reports";
     PrefsShortcuts: pt_br = "Atalhos de teclado", en = "Keyboard shortcuts";
     TableAction: pt_br = "Ação", en = "Action";
     TableShortcut: pt_br = "Atalho", en = "Shortcut";

@@ -21,3 +21,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 tempfile = "3.27.0"
+# ER-01B's delivery worker only — matches core's own choice (`crates/core/Cargo.toml`), used
+# for update-check HTTPS already. No provider SDK: raw envelope POST, so the reporter boundary
+# stays provider-neutral in error_reporting.rs.
+ureq = "3"

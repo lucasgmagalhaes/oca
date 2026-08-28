@@ -6516,11 +6516,11 @@ fn report_error_delivers_a_valid_sanitized_report() {
 
 #[test]
 fn seed_error_reporting_seeds_launch_identity_and_breadcrumb() {
-    let reporter = crate::app::error_reporting::seed_error_reporting(crate::i18n::Locale::En);
-    assert!(
-        reporter.is_none(),
-        "ER-01A holds no reporter (consent disabled)"
+    let reporter = crate::app::error_reporting::seed_error_reporting(
+        crate::i18n::Locale::En,
+        crate::app::error_reporting::ErrorReportingConsent::Disabled,
     );
+    assert!(reporter.is_none(), "Disabled consent must hold no reporter");
 
     let capturer = std::sync::Arc::new(CapturingReporter::default());
     let mut app = test_app(Vec::new(), Vec::new());

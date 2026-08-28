@@ -40,7 +40,7 @@ mod background_removal;
 mod clip_props;
 mod collab_bundle;
 mod color;
-mod error_reporting;
+pub(crate) mod error_reporting;
 pub mod export;
 mod highlight_detection;
 mod import;
@@ -272,6 +272,10 @@ pub struct PrefsState {
     /// overridden with a compatible local voice.
     #[serde(default)]
     pub tts_model_path: String,
+    /// ER-01B consent for remote error reporting — separate from `telemetry_enabled` (local-only,
+    /// never sent). Defaults to disabled; the user must explicitly opt in.
+    #[serde(default)]
+    pub error_reporting_consent: error_reporting::ErrorReportingConsent,
     /// Saved layer-group templates (`request.md`'s Fase 4 "Templates de grupo de camadas") —
     /// app-wide, not per-project, since the whole point is reapplying the same layer group
     /// (position/scale/crop/effects per layer) to fresh footage across different shorts.
@@ -377,6 +381,7 @@ impl Default for PrefsState {
             preview_quality: avcore::PreviewQuality::default(),
             preview_hardware_decode: true,
             telemetry_enabled: true,
+            error_reporting_consent: error_reporting::ErrorReportingConsent::default(),
             lib_panel_width: default_lib_panel_width(),
             props_panel_width: default_props_panel_width(),
             timeline_height: default_timeline_height(),
@@ -1366,9 +1371,10 @@ impl App {
         );
         telemetry::spawn_gpu_sampler(telemetry_tx.clone(), Arc::clone(&telemetry_enabled_flag));
         let (update_check_tx, update_check_rx) = mpsc::unbounded_channel();
-        // ER-01A: seeds the process-wide report builder; always `None` (the consent-disabled
-        // state) until ER-01B lands the consent gate + provider adapter.
-        let error_reporter = error_reporting::seed_error_reporting(prefs.locale);
+        // ER-01B: seeds the process-wide report builder and, only when the user has opted in
+        // (`prefs.error_reporting_consent`, default disabled), spawns the delivery worker.
+        let error_reporter =
+            error_reporting::seed_error_reporting(prefs.locale, prefs.error_reporting_consent);
         let mut app = Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
@@ -2105,7 +2111,7 @@ pub fn load_prefs() -> PrefsState {
 /// - macOS:   `~/Library/Application Support/oca/prefs.oc`
 /// - Windows: `%APPDATA%\oca\prefs.oc`
 /// - Linux:   `~/.config/oca/prefs.oc`
-pub(self) fn prefs_path() -> PathBuf {
+pub(crate) fn prefs_path() -> PathBuf {
     #[cfg(target_os = "macos")]
     {
         if let Ok(home) = std::env::var("HOME") {
