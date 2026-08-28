@@ -90,6 +90,7 @@ fn sample_text(text: &str) -> TextClip {
         opacity_keyframes: vec![],
         pos_x_keyframes: vec![],
         pos_y_keyframes: vec![],
+        scale_keyframes: vec![],
     }
 }
 

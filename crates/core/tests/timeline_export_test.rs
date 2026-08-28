@@ -395,6 +395,7 @@ fn word_highlight_text_overlay_exports_without_error() {
             opacity_keyframes: vec![],
             pos_x_keyframes: vec![],
             pos_y_keyframes: vec![],
+            scale_keyframes: vec![],
         }],
         shape_clips: vec![],
         visible: true,

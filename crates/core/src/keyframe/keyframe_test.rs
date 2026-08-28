@@ -551,6 +551,90 @@ fn text_position_offset_expr_offsets_t_by_start_secs() {
 }
 
 #[test]
+fn text_scale_sample_exprs_is_none_for_no_keyframes() {
+    assert_eq!(text_scale_sample_exprs(&[], 100.0, 50.0, 0.0, 3.0), None);
+}
+
+#[test]
+fn text_scale_sample_exprs_is_none_for_a_single_unity_keyframe() {
+    let keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: 1.0,
+    }];
+    assert_eq!(
+        text_scale_sample_exprs(&keyframes, 100.0, 50.0, 0.0, 3.0),
+        None
+    );
+}
+
+#[test]
+fn text_scale_sample_exprs_builds_a_static_remap_for_a_single_non_unity_keyframe() {
+    let keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: 2.0,
+    }];
+    let (x, y) = text_scale_sample_exprs(&keyframes, 100.0, 50.0, 0.0, 3.0).unwrap();
+    assert!(x.contains("100.0000"));
+    assert!(x.contains("2.0000000"));
+    assert!(y.contains("50.0000"));
+    assert!(y.contains("2.0000000"));
+}
+
+#[test]
+fn text_scale_sample_exprs_is_none_when_every_keyframe_is_unity() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 1.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 1.0,
+        },
+    ];
+    assert_eq!(
+        text_scale_sample_exprs(&keyframes, 100.0, 50.0, 0.0, 3.0),
+        None
+    );
+}
+
+#[test]
+fn text_scale_sample_exprs_builds_a_piecewise_ramp_for_an_animated_scale() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 1.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 2.0,
+        },
+    ];
+    let (x, y) = text_scale_sample_exprs(&keyframes, 100.0, 50.0, 0.0, 2.0).unwrap();
+    // piecewise_expr's final (last-keyframe) branch is the plain formatted last value.
+    assert!(x.contains("2.0000000"));
+    assert!(y.contains("2.0000000"));
+    assert!(x.starts_with("(100.0000+(X-(100.0000))/("));
+    assert!(y.starts_with("(50.0000+(Y-(50.0000))/("));
+}
+
+#[test]
+fn text_scale_sample_exprs_offsets_capital_t_by_start_secs() {
+    let keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 1.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 2.0,
+        },
+    ];
+    let (x, _y) = text_scale_sample_exprs(&keyframes, 100.0, 50.0, 5.0, 2.0).unwrap();
+    assert!(x.contains("(T-5.000000)"));
+}
+
+#[test]
 fn opacity_alpha_ramp_expr_is_none_for_no_keyframes() {
     assert_eq!(opacity_alpha_ramp_expr(&[], 30, 1, 5.0), None);
 }
