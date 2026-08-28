@@ -417,6 +417,8 @@ text_catalog! {
     TableShortcut: pt_br = "Atalho", en = "Shortcut";
     ShortcutSplit: pt_br = "Dividir clipe (split)", en = "Split clip";
     ShortcutPlayPause: pt_br = "Play / Pause", en = "Play / Pause";
+    SeekToStart: pt_br = "Ir para o início", en = "Seek to start";
+    SeekToEnd: pt_br = "Ir para o fim", en = "Seek to end";
     ShortcutCopyFormatting: pt_br = "Copiar formatação", en = "Copy formatting";
     ShortcutPasteFormatting: pt_br = "Colar formatação", en = "Paste formatting";
     ShortcutAddOpacityMarker: pt_br = "Adicionar marcador de opacidade", en = "Add opacity marker";

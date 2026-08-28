@@ -940,14 +940,35 @@ resolved in favor of consolidating, see items 3 and 5).
     ambiguous "👁"→"—" hidden-state fallback fixed (now "👁"/"⊘"), routed through `icon_button()`,
     and its tooltip — previously hardcoded English, never localized — moved to real
     `Text::TrackHide`/`TrackShow` i18n keys. Note: the "⊘" glyph's rendering under egui's bundled
-    font set is unverified — no running-instance visual pass was possible in this session.
-    **Remaining, not yet migrated** (per the design review's own
-    "small batches, verify visually between each" guidance — this is the largest-surface item in
-    the whole consolidation and deliberately not rushed in one pass): toolbar's inline
-    `format!("{glyph} {label}")` buttons, `breadcrumb.rs`'s `window_button()` helper (merge once
-    confident in the hover-color override), transport's large colored `RichText` glyphs, and
-    timeline badges/nav-rail icons. The confirmed `✂`/`✂️` duplicate-glyph inconsistency and the
-    `👁`→`—` hidden-state ambiguity are still open, tied to the toolbar/timeline-badge migration.
+    font set is unverified — no running-instance visual pass was possible in this session. Third
+    batch: transport's seek-to-start/seek-to-end and play/pause buttons were icon-only with no
+    tooltip at all (in both the normal and fullscreen-overlay preview) — fixed via two new
+    `Text::SeekToStart`/`SeekToEnd` keys plus reusing `Text::ShortcutPlayPause`. The non-
+    fullscreen skip buttons route through `icon_button()`; the fullscreen overlay's variants keep
+    their existing `small_button`/`button` calls with an added `.on_hover_text` rather than
+    migrating, since they fade with a runtime opacity value `icon_button()`'s two deliberately-
+    narrow escape hatches don't cover — forcing that in would grow the component's API for one
+    caller. A systematic sweep confirmed **zero remaining bare `small_button("<glyph>")` calls
+    anywhere in the crate** — every icon-only `small_button` now has a tooltip.
+
+    **Remaining, not yet migrated** — the items below don't have a confirmed missing-tooltip
+    defect the way the three batches above did; they're cosmetic-convention inconsistencies that
+    need a visual pass (not available this session) to resolve well, or need `icon_button()`'s
+    API to genuinely grow (which the design review cautioned against doing casually):
+    - Toolbar's inline `format!("{glyph} {label}")` buttons — already have visible labels, not an
+      accessibility gap, just a different (acceptable) convention from icon-only buttons.
+    - `breadcrumb.rs`'s `window_button()` — full-rect background-fill-on-hover (OS window-chrome
+      convention) that `icon_button()`'s stroke-only hover-color hatch doesn't reproduce; already
+      has an accessible name via `widget_info` (screen readers/UI-Automation), and OS-native
+      window controls conventionally have no visible hover tooltip either — not a confirmed
+      defect, left as-is rather than forced through a mismatched component.
+    - Timeline badges: the freeze badge (`draw.rs`) is a non-interactive painted overlay, not a
+      button — doesn't apply. The audio-role glyphs (🎮/🎤/🎵) are `ComboBox` content, already a
+      well-formed component with its own accessible label — not a bypass.
+    - Nav rail: already resolved as a non-issue (Stage 1).
+
+    The confirmed `✂`/`✂️` duplicate-glyph inconsistency is still open — genuinely cosmetic
+    (both render as recognizable "cut" glyphs), tied to the toolbar convention decision above.
 30. `[x]` **Feedback tokens.** Added `WARNING`/`WARNING_TINT`/`INFO_TINT` to `theme.rs` and
     `components::tag_warning()`. Queue's `ACCENT.gamma_multiply(0.10)` info banner → `INFO_TINT`;
     its "Paused" pill (previously `tag_outline`, indistinguishable from "Queued") → `tag_warning`.

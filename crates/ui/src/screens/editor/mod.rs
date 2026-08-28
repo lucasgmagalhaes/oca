@@ -835,7 +835,14 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             });
         let timeline_duration = app.active_project().timeline().duration_secs();
         ui.horizontal(|ui| {
-            if ui.small_button("⏮").clicked() {
+            if components::icon_button(
+                ui,
+                "⏮",
+                Text::SeekToStart.tr(locale),
+                components::IconButtonOpts::default(),
+            )
+            .clicked()
+            {
                 app.seek_preview(0.0);
             }
             let play_icon = if app.preview_state.preview_playing {
@@ -845,11 +852,19 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             };
             if ui
                 .button(RichText::new(play_icon).color(theme::ACCENT))
+                .on_hover_text(Text::ShortcutPlayPause.tr(locale))
                 .clicked()
             {
                 app.toggle_preview_playback();
             }
-            if ui.small_button("⏭").clicked() {
+            if components::icon_button(
+                ui,
+                "⏭",
+                Text::SeekToEnd.tr(locale),
+                components::IconButtonOpts::default(),
+            )
+            .clicked()
+            {
                 app.seek_preview(timeline_duration);
             }
             let playhead = app.active_project().timeline().playhead_secs;
@@ -1027,7 +1042,11 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                         .inner_margin(egui::Margin::symmetric(12, 8))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                if ui.small_button("⏮").clicked() {
+                                if ui
+                                    .small_button("⏮")
+                                    .on_hover_text(Text::SeekToStart.tr(locale))
+                                    .clicked()
+                                {
                                     app.seek_preview(0.0);
                                 }
                                 let play_icon = if app.preview_state.preview_playing {
@@ -1040,11 +1059,16 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                                         RichText::new(play_icon)
                                             .color(theme::ACCENT.gamma_multiply(opacity)),
                                     )
+                                    .on_hover_text(Text::ShortcutPlayPause.tr(locale))
                                     .clicked()
                                 {
                                     app.toggle_preview_playback();
                                 }
-                                if ui.small_button("⏭").clicked() {
+                                if ui
+                                    .small_button("⏭")
+                                    .on_hover_text(Text::SeekToEnd.tr(locale))
+                                    .clicked()
+                                {
                                     app.seek_preview(timeline_duration);
                                 }
                                 ui.label(
