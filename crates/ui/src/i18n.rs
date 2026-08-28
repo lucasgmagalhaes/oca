@@ -434,6 +434,12 @@ text_catalog! {
     TimelineIndexTitle: pt_br = "Índice da timeline", en = "Timeline Index";
     TimelineIndexSearchHint: pt_br = "Buscar marcadores...", en = "Search markers...";
     TimelineIndexEmpty: pt_br = "Nenhum marcador encontrado.", en = "No markers found.";
+    TranscriptPanelToggle: pt_br = "Transcrição", en = "Transcript";
+    TranscriptPanelTitle: pt_br = "Transcrição", en = "Transcript";
+    TranscriptPanelSearchHint: pt_br = "Buscar na transcrição...", en = "Search transcript...";
+    TranscriptPanelEmpty: pt_br = "Nenhuma palavra encontrada.", en = "No words found.";
+    TranscriptPanelNoClip: pt_br = "Nenhum clipe de vídeo no cursor.", en = "No video clip at the playhead.";
+    TranscriptPanelNoTranscript: pt_br = "Este clipe ainda não tem transcrição. Use \"Transcrever\" na tela de Mídia.", en = "This clip has no transcript yet. Use \"Transcribe\" on the Media screen.";
     TimelineIndexLabelHint: pt_br = "Descrição do marcador", en = "Marker description";
     TimelineIndexAddStandard: pt_br = "+ Marcador", en = "+ Marker";
     TimelineIndexAddToDo: pt_br = "+ Tarefa", en = "+ To Do";
