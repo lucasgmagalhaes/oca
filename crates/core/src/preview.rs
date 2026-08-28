@@ -231,12 +231,58 @@ fn live_blur_element_name(clip_id: u64) -> String {
     format!("oca_blur_{clip_id}")
 }
 
+/// The name [`build_video_filter_bin`] gives its static-crop `videocrop` element for `clip_id`,
+/// if it builds one at all (only when [`ClipInstance::is_cropped`] is true) — same "shared with
+/// the live-update method so it can find the exact same element again by name" contract
+/// [`live_balance_element_name`]/[`live_blur_element_name`] have. Distinct from the *other*
+/// `videocrop` elements this function builds for scale-keyframe zoom and shake — those are never
+/// named, since P1 item 3's remaining live-preview-update gap only covers this static crop stage
+/// (zoom is keyframe-driven, already live; shake gets its own [`ShakeMarginHandle`] mechanism).
+fn live_crop_element_name(clip_id: u64) -> String {
+    format!("oca_crop_{clip_id}")
+}
+
+/// The name [`build_video_filter_bin`] gives the downscale-stage `capsfilter` of its pixelize
+/// block for `clip_id`, if it builds one at all (only when `pixelize_intensity > 0.0`) — same
+/// "shared with the live-update method" contract as [`live_crop_element_name`]. Only the
+/// downscale caps need renaming/renegotiating on a live update; the upscale caps stay pinned to
+/// the branch's own fixed output resolution regardless of block size.
+fn live_pixelize_caps_name(clip_id: u64) -> String {
+    format!("oca_pixelize_caps_{clip_id}")
+}
+
+/// Shared, atomically-updatable pixel margin a shake stage's buffer probe reads every frame,
+/// instead of the closed-over plain `i32`s a non-live shake block would use — lets
+/// [`Preview::set_live_shake`] change `total_trim_w`/`total_trim_h` without touching the
+/// running pipeline's element graph at all, just the numbers the already-installed probe reads.
+/// `resolution` is cached alongside so the live setter can redo the intensity-to-pixel-margin
+/// math itself without needing the caller (`ui`'s `App`) to know the decoded frame size.
+struct ShakeMarginHandle {
+    total_trim_w: std::sync::Arc<std::sync::atomic::AtomicI32>,
+    total_trim_h: std::sync::Arc<std::sync::atomic::AtomicI32>,
+    resolution: (u32, u32),
+}
+
+/// `shake_intensity`-derived margin (`0.08` px-fraction-per-unit-intensity, a judgment call,
+/// same style as this module's other intensity-to-pixel scale factors) to `videocrop`'s own
+/// "total pixels trimmed per axis" convention — shared by the initial build in
+/// [`build_video_filter_bin`] and a later live update in [`Preview::set_live_shake`] so both
+/// compute the exact same numbers from the exact same formula.
+fn shake_margin_pixels(width: u32, height: u32, margin: f32) -> (i32, i32) {
+    let total_trim_w =
+        ((width as f32 * 2.0 * margin).round() as i32).clamp(0, (width as i32 - 2).max(0));
+    let total_trim_h =
+        ((height as f32 * 2.0 * margin).round() as i32).clamp(0, (height as i32 - 2).max(0));
+    (total_trim_w, total_trim_h)
+}
+
 fn build_video_filter_bin(
     clip: &ClipInstance,
     resolution: Option<(u32, u32)>,
     include_opacity: bool,
-) -> Result<Option<gst::Element>, PreviewError> {
+) -> Result<(Option<gst::Element>, Option<ShakeMarginHandle>), PreviewError> {
     let mut elements: Vec<gst::Element> = Vec::new();
+    let mut shake_handle: Option<ShakeMarginHandle> = None;
 
     if let Some((width, height)) = resolution {
         if clip.has_scale_keyframes() {
@@ -508,6 +554,7 @@ fn build_video_filter_bin(
                 .round()
                 .max(0.0) as i32;
             let crop = gst::ElementFactory::make("videocrop")
+                .name(live_crop_element_name(clip.id))
                 .property("left", left)
                 .property("top", top)
                 .property("right", right)
@@ -574,6 +621,7 @@ fn build_video_filter_bin(
                 .build()
                 .map_err(PreviewError::CreateElement)?;
             let small_caps = gst::ElementFactory::make("capsfilter")
+                .name(live_pixelize_caps_name(clip.id))
                 .property(
                     "caps",
                     gst::Caps::builder("video/x-raw")
@@ -616,10 +664,21 @@ fn build_video_filter_bin(
             // *output* size never changes frame to frame and the fixed-size upscale after it
             // never needs to renegotiate caps mid-stream.
             let margin = clip.shake_intensity * 0.08_f32;
-            let total_trim_w =
-                ((width as f32 * 2.0 * margin).round() as i32).clamp(0, (width as i32 - 2).max(0));
-            let total_trim_h = ((height as f32 * 2.0 * margin).round() as i32)
-                .clamp(0, (height as i32 - 2).max(0));
+            let (total_trim_w, total_trim_h) = shake_margin_pixels(width, height, margin);
+
+            // Shared, live-updatable margin (see [`ShakeMarginHandle`]) instead of the plain
+            // `i32`s a non-live shake block would close over — Preview::set_live_shake writes
+            // new values here directly, no pipeline restructuring needed for P1 item 3's
+            // remaining live-preview-update gap.
+            let total_trim_w_atomic =
+                std::sync::Arc::new(std::sync::atomic::AtomicI32::new(total_trim_w));
+            let total_trim_h_atomic =
+                std::sync::Arc::new(std::sync::atomic::AtomicI32::new(total_trim_h));
+            shake_handle = Some(ShakeMarginHandle {
+                total_trim_w: total_trim_w_atomic.clone(),
+                total_trim_h: total_trim_h_atomic.clone(),
+                resolution: (width, height),
+            });
 
             let crop = gst::ElementFactory::make("videocrop")
                 .build()
@@ -631,6 +690,8 @@ fn build_video_filter_bin(
                 .expect("videocrop always has a sink pad");
             sink_pad.add_probe(gst::PadProbeType::BUFFER, move |_pad, _info| {
                 let n = frame_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) as f64;
+                let total_trim_w = total_trim_w_atomic.load(std::sync::atomic::Ordering::Relaxed);
+                let total_trim_h = total_trim_h_atomic.load(std::sync::atomic::Ordering::Relaxed);
                 let frac_x = (1.0 + (n * 0.31).sin()) / 2.0;
                 let frac_y = (1.0 + (n * 0.23).cos()) / 2.0;
                 let left = (total_trim_w as f64 * frac_x).round() as i32;
@@ -670,7 +731,7 @@ fn build_video_filter_bin(
     }
 
     if elements.is_empty() {
-        return Ok(None);
+        return Ok((None, shake_handle));
     }
 
     let bin = gst::Bin::new();
@@ -690,7 +751,7 @@ fn build_video_filter_bin(
     bin.add_pad(&ghost_sink).map_err(PreviewError::FilterBin)?;
     bin.add_pad(&ghost_src).map_err(PreviewError::FilterBin)?;
 
-    Ok(Some(bin.upcast::<gst::Element>()))
+    Ok((Some(bin.upcast::<gst::Element>()), shake_handle))
 }
 
 /// Builds the `alpha` element's chroma-key configuration for `clip` — `method=custom` against
@@ -880,18 +941,21 @@ fn connect_decodebin_video_pad(decodebin: &gst::Element, target_sink: gst::Pad) 
 /// Wires a static rasterized `GRAY8` mask (`mask_gray`, from
 /// [`crate::overlay_render::render_mask_shape_gray8`]) onto `chain_tail`'s own output via
 /// `alphacombine`, returning the new final element ([`build_composite_branch`]'s next
-/// `chain_tail`). Mirrors that function's own background-removal-matte `alphacombine` stage,
-/// just with a static `appsrc`+`imagefreeze` pair standing in for a decoded matte file (no
-/// keyframes on `mask_shape`, so — like [`build_static_overlay_branch`]'s text/shape branches —
-/// one buffer pushed once is enough) — `alphacombine`'s `alpha` pad accepts `GRAY8` directly, so
-/// unlike the matte's own decode branch, no `videoconvert`/`capsfilter` stage is needed on this
-/// side at all.
+/// `chain_tail`) plus the `appsrc` feeding it. Mirrors that function's own
+/// background-removal-matte `alphacombine` stage, just with a static `appsrc`+
+/// `imagefreeze(allow-replace=true)` pair standing in for a decoded matte file —
+/// `alphacombine`'s `alpha` pad accepts `GRAY8` directly, so unlike the matte's own decode
+/// branch, no `videoconvert`/`capsfilter` stage is needed on this side at all. `mask_shape` has
+/// no keyframes, so one buffer suffices for playback same as
+/// [`build_static_overlay_branch`]'s shape branches, but `allow_replace` stays enabled (unlike
+/// those) so [`Preview::set_live_mask`] can push a freshly rasterized buffer in later —
+/// P1 item 3's remaining live-preview-update gap.
 fn build_mask_shape_stage(
     pipeline: &gst::Pipeline,
     chain_tail: &gst::Element,
     mask_gray: Vec<u8>,
     (width, height): (u32, u32),
-) -> Result<gst::Element, PreviewError> {
+) -> Result<(gst::Element, gst_app::AppSrc), PreviewError> {
     let mask_caps = gst::Caps::builder("video/x-raw")
         .field("format", "GRAY8")
         .field("width", width as i32)
@@ -920,11 +984,9 @@ fn build_mask_shape_stage(
     mask_appsrc
         .push_buffer(buffer)
         .map_err(PreviewError::PushBuffer)?;
-    mask_appsrc
-        .end_of_stream()
-        .map_err(PreviewError::PushBuffer)?;
-    let mask_appsrc = mask_appsrc.upcast::<gst::Element>();
+    let mask_appsrc_element = mask_appsrc.clone().upcast::<gst::Element>();
     let mask_imagefreeze = gst::ElementFactory::make("imagefreeze")
+        .property("allow-replace", true)
         .build()
         .map_err(PreviewError::CreateElement)?;
 
@@ -949,14 +1011,14 @@ fn build_mask_shape_stage(
 
     pipeline
         .add_many([
-            &mask_appsrc,
+            &mask_appsrc_element,
             &mask_imagefreeze,
             &sink_caps,
             &alphacombine,
             &post_convert,
         ])
         .map_err(PreviewError::Compositing)?;
-    mask_appsrc
+    mask_appsrc_element
         .link(&mask_imagefreeze)
         .map_err(PreviewError::Compositing)?;
 
@@ -983,7 +1045,7 @@ fn build_mask_shape_stage(
         .link(&post_convert)
         .map_err(PreviewError::Compositing)?;
 
-    Ok(post_convert)
+    Ok((post_convert, mask_appsrc))
 }
 
 /// One input (background or overlay) feeding [`Preview::open_composited`]'s `compositor`.
@@ -1015,7 +1077,15 @@ fn build_composite_branch(
     compositor: &gst::Element,
     canvas: (u32, u32),
     branch: CompositeBranch,
-) -> Result<(gst::Element, Option<gst::Element>), PreviewError> {
+) -> Result<
+    (
+        gst::Element,
+        Option<gst::Element>,
+        Option<ShakeMarginHandle>,
+        Option<gst_app::AppSrc>,
+    ),
+    PreviewError,
+> {
     let uri = gst::glib::filename_to_uri(branch.path, None).map_err(PreviewError::UriConversion)?;
     let decodebin = build_uri_decodebin(uri.as_str(), branch.hardware_decode)?;
 
@@ -1053,12 +1123,14 @@ fn build_composite_branch(
         }
     }
 
+    let mut shake_handle: Option<ShakeMarginHandle> = None;
     if let Some(clip) = branch.clip {
-        if let Some(filter_bin) =
-            build_video_filter_bin(clip, branch.resolution, !branch.is_overlay)?
-        {
+        let (filter_bin, branch_shake_handle) =
+            build_video_filter_bin(clip, branch.resolution, !branch.is_overlay)?;
+        if let Some(filter_bin) = filter_bin {
             chain.push(filter_bin);
         }
+        shake_handle = branch_shake_handle;
         if branch.is_overlay && clip.chroma_key_enabled {
             chain.push(build_chroma_key_element(clip)?);
         }
@@ -1106,19 +1178,22 @@ fn build_composite_branch(
     // `bridge.h` documents for `mask_video_path` (the matte's own alphacombine below forces its
     // own I420 input from whatever this stage's alpha-carrying output negotiates down to,
     // discarding this mask's alpha in the process).
-    let chain_tail = if branch.is_overlay && branch.clip.is_some_and(|c| c.is_masked()) {
-        let clip = branch.clip.expect("checked by is_some_and above");
-        let (width, height) = branch.resolution.unwrap_or(canvas);
-        let mask_gray = crate::overlay_render::render_mask_shape_gray8(
-            clip.mask_shape,
-            clip.mask_corner_radius,
-            width,
-            height,
-        );
-        build_mask_shape_stage(pipeline, &chain_tail, mask_gray, (width, height))?
-    } else {
-        chain_tail
-    };
+    let (chain_tail, mask_appsrc) =
+        if branch.is_overlay && branch.clip.is_some_and(|c| c.is_masked()) {
+            let clip = branch.clip.expect("checked by is_some_and above");
+            let (width, height) = branch.resolution.unwrap_or(canvas);
+            let mask_gray = crate::overlay_render::render_mask_shape_gray8(
+                clip.mask_shape,
+                clip.mask_corner_radius,
+                width,
+                height,
+            );
+            let (chain_tail, mask_appsrc) =
+                build_mask_shape_stage(pipeline, &chain_tail, mask_gray, (width, height))?;
+            (chain_tail, Some(mask_appsrc))
+        } else {
+            (chain_tail, None)
+        };
 
     // Background-removal matte — mirrors export's `ClipSegment::mask_video_path`/`alphamerge`
     // stage: only meaningful on an overlay branch, only when a matte was actually generated for
@@ -1289,7 +1364,7 @@ fn build_composite_branch(
         .expect("branch_output is always a videoconvert, which always has a src pad");
     chain_out.link(&sink_pad).map_err(PreviewError::PadLink)?;
 
-    Ok((decodebin, matte_decodebin))
+    Ok((decodebin, matte_decodebin, shake_handle, mask_appsrc))
 }
 
 fn push_rgba_overlay_buffer(appsrc: &gst_app::AppSrc, rgba: Vec<u8>) -> Result<(), PreviewError> {
@@ -1382,6 +1457,17 @@ struct TextOverlayBranch {
     active_word_index: Option<usize>,
     canvas_width: u32,
     canvas_height: u32,
+}
+
+/// A replaceable `appsrc ! imagefreeze(allow-replace=true)` mask branch built by
+/// [`build_mask_shape_stage`] for one overlay clip's `mask_shape` — same replace-in-place shape
+/// [`TextOverlayBranch`] has, so [`Preview::set_live_mask`] can push a freshly rasterized GRAY8
+/// buffer without rebuilding the pipeline (P1 item 3's remaining live-preview-update gap).
+struct MaskShapeBranch {
+    clip_id: u64,
+    appsrc: gst_app::AppSrc,
+    width: u32,
+    height: u32,
 }
 
 /// Real-time audio level snapshot (linear `0.0..=1.0` amplitude, not dBFS) computed from the
@@ -1496,11 +1582,23 @@ pub struct Preview {
     /// Replaceable `appsrc ! imagefreeze(allow-replace=true)` branches for active text clips.
     /// Their order and ids mirror `open_composited`'s `text_overlays` argument.
     text_overlay_branches: Vec<TextOverlayBranch>,
+    /// Replaceable mask branches, keyed implicitly by [`MaskShapeBranch::clip_id`] — see
+    /// [`Self::set_live_mask`].
+    mask_shape_branches: Vec<MaskShapeBranch>,
     /// Live audio level, updated on GStreamer's own streaming thread by a buffer probe
     /// [`build_metering_audio_sink`] installs just ahead of the real audio output element —
     /// read from the UI thread via [`Self::current_audio_level`]. Per `spec/ROADMAP.md` P4
     /// item 30.
     audio_level: std::sync::Arc<std::sync::Mutex<AudioLevel>>,
+    /// Each previewed clip's actual decoded pixel size, as last resolved when its branch was
+    /// built — [`Self::set_live_crop`]/[`Self::set_live_pixelize`] need this to redo the
+    /// fraction-to-pixel math themselves, so `ui`'s `App` (which only ever deals in
+    /// [`ClipInstance`]'s normalized `0.0..=1.0` crop/pixelize fields) doesn't need to know or
+    /// track decoded frame sizes at all.
+    clip_resolutions: std::collections::HashMap<u64, (u32, u32)>,
+    /// Live-updatable shake margins, one per clip with a non-neutral `shake_intensity` when its
+    /// branch was built — see [`ShakeMarginHandle`]/[`Self::set_live_shake`].
+    shake_handles: std::collections::HashMap<u64, ShakeMarginHandle>,
 }
 
 impl Preview {
@@ -1555,12 +1653,21 @@ impl Preview {
         pipeline.set_property("uri", uri.as_str());
         configure_playbin_decoder_preference(&pipeline, hardware_decode);
 
+        let mut clip_resolutions = std::collections::HashMap::new();
+        let mut shake_handles = std::collections::HashMap::new();
         if let Some(clip) = clip {
             let resolution = avbridge::probe(path)
                 .map_err(PreviewError::Probe)?
                 .resolution;
-            if let Some(filter_bin) = build_video_filter_bin(clip, resolution, true)? {
+            if let Some(resolution) = resolution {
+                clip_resolutions.insert(clip.id, resolution);
+            }
+            let (filter_bin, shake_handle) = build_video_filter_bin(clip, resolution, true)?;
+            if let Some(filter_bin) = filter_bin {
                 pipeline.set_property("video-filter", &filter_bin);
+            }
+            if let Some(shake_handle) = shake_handle {
+                shake_handles.insert(clip.id, shake_handle);
             }
             if let Some(audio_filter_bin) = build_audio_filter_bin(clip)? {
                 pipeline.set_property("audio-filter", &audio_filter_bin);
@@ -1627,7 +1734,10 @@ impl Preview {
             branches: Vec::new(),
             matte_branches: Vec::new(),
             text_overlay_branches: Vec::new(),
+            mask_shape_branches: Vec::new(),
             audio_level,
+            clip_resolutions,
+            shake_handles,
         })
     }
 
@@ -1816,19 +1926,38 @@ impl Preview {
             ),
         };
 
-        let (background_decodebin, background_matte) = build_composite_branch(
-            &pipeline,
-            &compositor,
-            canvas,
-            CompositeBranch {
-                path: background_path,
-                clip: background_clip,
-                resolution: Some(canvas),
-                hardware_decode,
-                is_overlay: false,
-                zorder: 0,
-            },
-        )?;
+        let mut clip_resolutions = std::collections::HashMap::new();
+        let mut shake_handles = std::collections::HashMap::new();
+        let mut mask_shape_branches = Vec::new();
+
+        let (background_decodebin, background_matte, background_shake, background_mask) =
+            build_composite_branch(
+                &pipeline,
+                &compositor,
+                canvas,
+                CompositeBranch {
+                    path: background_path,
+                    clip: background_clip,
+                    resolution: Some(canvas),
+                    hardware_decode,
+                    is_overlay: false,
+                    zorder: 0,
+                },
+            )?;
+        if let Some(clip) = background_clip {
+            clip_resolutions.insert(clip.id, canvas);
+            if let Some(shake_handle) = background_shake {
+                shake_handles.insert(clip.id, shake_handle);
+            }
+            if let Some(appsrc) = background_mask {
+                mask_shape_branches.push(MaskShapeBranch {
+                    clip_id: clip.id,
+                    appsrc,
+                    width: canvas.0,
+                    height: canvas.1,
+                });
+            }
+        }
         if background_info.has_audio {
             attach_audio_mix_branch(
                 &pipeline,
@@ -1850,7 +1979,7 @@ impl Preview {
         }
         for (i, ((path, clip), info)) in overlays.iter().zip(&overlay_infos).enumerate() {
             let resolution = info.resolution;
-            let (decodebin, matte) = build_composite_branch(
+            let (decodebin, matte, shake_handle, mask_appsrc) = build_composite_branch(
                 &pipeline,
                 &compositor,
                 canvas,
@@ -1863,6 +1992,21 @@ impl Preview {
                     zorder: (i + 1) as u32,
                 },
             )?;
+            if let Some(resolution) = resolution {
+                clip_resolutions.insert(clip.id, resolution);
+            }
+            if let Some(shake_handle) = shake_handle {
+                shake_handles.insert(clip.id, shake_handle);
+            }
+            if let Some(appsrc) = mask_appsrc {
+                let (width, height) = resolution.unwrap_or(canvas);
+                mask_shape_branches.push(MaskShapeBranch {
+                    clip_id: clip.id,
+                    appsrc,
+                    width,
+                    height,
+                });
+            }
             if info.has_audio {
                 attach_audio_mix_branch(
                     &pipeline,
@@ -1955,7 +2099,10 @@ impl Preview {
             branches,
             matte_branches,
             text_overlay_branches,
+            mask_shape_branches,
             audio_level,
+            clip_resolutions,
+            shake_handles,
         })
     }
 
@@ -2245,6 +2392,161 @@ impl Preview {
         alpha.set_property("black-sensitivity", sensitivity);
         alpha.set_property("white-sensitivity", sensitivity);
         true
+    }
+
+    /// Pushes a live crop-rectangle update to `clip_id`'s already-built static-crop `videocrop`
+    /// element (P1 item 3's remaining live-preview-update gap), if one exists in the running
+    /// pipeline right now — same shape [`Self::set_live_balance`]/[`Self::set_live_blur`] have.
+    /// `crop_x`/`crop_y`/`crop_w`/`crop_h` are [`ClipInstance`]'s own normalized `0.0..=1.0`
+    /// fractions — this method redoes the fraction-to-pixel conversion
+    /// [`build_video_filter_bin`] itself does, using [`Self::clip_resolutions`]'s cached decoded
+    /// size for `clip_id`, so the caller (`ui`'s `App`) never needs to know or track pixel
+    /// dimensions.
+    ///
+    /// Returns `false` (a no-op, not an error) if no such element exists: `clip_id`'s resolution
+    /// was never cached (no branch was built for it at all), or `ClipInstance::is_cropped()` was
+    /// `false` when the pipeline was last built — the element is only created once cropping is
+    /// active, and creating it now would mean restructuring the running filter graph, not just
+    /// setting a property. The caller's existing "next incidental reopen picks up the new value"
+    /// fallback still applies whenever this returns `false`.
+    pub fn set_live_crop(
+        &self,
+        clip_id: u64,
+        crop_x: f32,
+        crop_y: f32,
+        crop_w: f32,
+        crop_h: f32,
+    ) -> bool {
+        let Some(&(width, height)) = self.clip_resolutions.get(&clip_id) else {
+            return false;
+        };
+        let Some(bin) = self.pipeline.dynamic_cast_ref::<gst::Bin>() else {
+            return false;
+        };
+        let Some(crop) = bin.by_name(&live_crop_element_name(clip_id)) else {
+            return false;
+        };
+        let (width, height) = (width as f32, height as f32);
+        let left = (crop_x * width).round().max(0.0) as i32;
+        let top = (crop_y * height).round().max(0.0) as i32;
+        let right = ((1.0 - crop_x - crop_w) * width).round().max(0.0) as i32;
+        let bottom = ((1.0 - crop_y - crop_h) * height).round().max(0.0) as i32;
+        crop.set_property("left", left);
+        crop.set_property("top", top);
+        crop.set_property("right", right);
+        crop.set_property("bottom", bottom);
+        true
+    }
+
+    /// Pushes a live pixelize-intensity update to `clip_id`'s already-built pixelize block
+    /// (P1 item 3's remaining live-preview-update gap) by renegotiating its downscale
+    /// `capsfilter`'s caps to the new block size's dimensions — the one live-updatable case
+    /// among the "structural" effects this gap's own investigation flagged, since `capsfilter`
+    /// caps changes propagate as a live renegotiation (unlike, say, `pixelize`'s own block-size
+    /// *count* changing what elements exist at all). The upscale stage's own caps stay pinned
+    /// to the branch's fixed output resolution regardless of block size, so only the downscale
+    /// `capsfilter` needs touching.
+    ///
+    /// Returns `false` (a no-op, not an error) under the same conditions [`Self::set_live_crop`]
+    /// has: no cached resolution for `clip_id`, or `pixelize_intensity` was `0.0` (no element
+    /// built) when the pipeline was last built.
+    pub fn set_live_pixelize(&self, clip_id: u64, pixelize_intensity: f32) -> bool {
+        let Some(&(width, height)) = self.clip_resolutions.get(&clip_id) else {
+            return false;
+        };
+        let Some(bin) = self.pipeline.dynamic_cast_ref::<gst::Bin>() else {
+            return false;
+        };
+        let Some(small_caps) = bin.by_name(&live_pixelize_caps_name(clip_id)) else {
+            return false;
+        };
+        // Same block-size formula build_video_filter_bin itself uses — see its own doc comment.
+        let block = (2.0 + pixelize_intensity * 48.0).round().max(1.0) as u32;
+        let small_w = (width / block).max(1) as i32;
+        let small_h = (height / block).max(1) as i32;
+        small_caps.set_property(
+            "caps",
+            gst::Caps::builder("video/x-raw")
+                .field("width", small_w)
+                .field("height", small_h)
+                .build(),
+        );
+        true
+    }
+
+    /// Pushes a live shake-intensity update to `clip_id`'s already-built shake block (P1 item
+    /// 3's remaining live-preview-update gap) by writing new pixel margins directly into its
+    /// [`ShakeMarginHandle`]'s shared atomics — the buffer probe [`build_video_filter_bin`]
+    /// installed reads these on every frame already, so no pipeline restructuring or even a
+    /// GStreamer property push is needed, just updating the numbers.
+    ///
+    /// Returns `false` (a no-op, not an error) if no handle exists for `clip_id`:
+    /// `shake_intensity` was `0.0` (no shake block built at all) when the pipeline was last
+    /// built. The caller's existing "next incidental reopen picks up the new value" fallback
+    /// still applies whenever this returns `false` — including a *first* enable, same as
+    /// [`Self::set_live_chroma_key`]'s own "first enable still needs a reopen" caveat.
+    pub fn set_live_shake(&self, clip_id: u64, shake_intensity: f32) -> bool {
+        let Some(handle) = self.shake_handles.get(&clip_id) else {
+            return false;
+        };
+        let margin = shake_intensity * 0.08_f32;
+        let (total_trim_w, total_trim_h) =
+            shake_margin_pixels(handle.resolution.0, handle.resolution.1, margin);
+        handle
+            .total_trim_w
+            .store(total_trim_w, std::sync::atomic::Ordering::Relaxed);
+        handle
+            .total_trim_h
+            .store(total_trim_h, std::sync::atomic::Ordering::Relaxed);
+        true
+    }
+
+    /// Pushes a freshly rasterized mask buffer to `clip_id`'s already-built mask branch (P1
+    /// item 3's remaining live-preview-update gap) via its replaceable
+    /// `appsrc ! imagefreeze(allow-replace=true)` pair — same mechanism
+    /// [`Self::refresh_text_overlay`] uses for text content edits, just always redrawing (mask
+    /// shape has no keyframes/highlight-state to compare against, so there's no cheap
+    /// "did anything actually change" check worth doing before the caller even gets here).
+    ///
+    /// Returns `false` (a no-op, not an error) if no mask branch exists for `clip_id`:
+    /// `ClipInstance::is_masked()` was `false` when the pipeline was last built (a plain on/off
+    /// gate, same as chroma key) — the first enable still needs the existing incidental-reopen
+    /// fallback to build the branch at all; this only covers shape/corner-radius edits made
+    /// *after* that, while it's already enabled.
+    pub fn set_live_mask(
+        &self,
+        clip_id: u64,
+        mask_shape: crate::timeline::MaskShape,
+        mask_corner_radius: f32,
+    ) -> Result<bool, PreviewError> {
+        let Some(branch) = self
+            .mask_shape_branches
+            .iter()
+            .find(|branch| branch.clip_id == clip_id)
+        else {
+            return Ok(false);
+        };
+        let mask_gray = crate::overlay_render::render_mask_shape_gray8(
+            mask_shape,
+            mask_corner_radius,
+            branch.width,
+            branch.height,
+        );
+        let mut buffer =
+            gst::Buffer::with_size(mask_gray.len()).map_err(PreviewError::Compositing)?;
+        {
+            let buffer_mut = buffer.get_mut().expect("freshly created, uniquely owned");
+            buffer_mut.set_pts(gst::ClockTime::ZERO);
+            let mut map = buffer_mut
+                .map_writable()
+                .map_err(|_| PreviewError::PushBuffer(gst::FlowError::Error))?;
+            map.copy_from_slice(&mask_gray);
+        }
+        branch
+            .appsrc
+            .push_buffer(buffer)
+            .map_err(PreviewError::PushBuffer)?;
+        Ok(true)
     }
 
     /// The most recent video frame the pipeline has decoded, as packed RGBA. `None` if
