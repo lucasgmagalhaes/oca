@@ -369,6 +369,7 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         {
             app.toggle_transcript_panel();
         }
+        ui.separator();
         if ui.button(Text::DetectSilence.tr(locale)).clicked() {
             app.begin_silence_review();
         }
@@ -399,6 +400,7 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
                 app.spawn_shorts_pack(output_dir);
             }
         }
+        ui.separator();
         if ui
             .button(Text::CreateMulticamGroup.tr(locale))
             .on_hover_text("1-9")
