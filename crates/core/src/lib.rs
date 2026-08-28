@@ -29,6 +29,7 @@ pub mod auto_reframe;
 pub mod background_removal;
 pub mod bundle;
 pub mod collab_bundle;
+pub mod error_reporting;
 pub mod export;
 pub mod frame_sampler;
 pub mod highlight_detection;
@@ -81,6 +82,15 @@ pub use bundle::{
     validate_bundled_resources, BundledResource, MissingBundleResources,
 };
 pub use collab_bundle::{export_collab_bundle, import_collab_bundle, CollabBundleError};
+pub use error_reporting::{
+    contains_forbidden_content, sanitize_stack_trace, sanitize_text, validate_envelope,
+    validate_report, Breadcrumb, ClipCountBucket, ErrorCode, ErrorReport, ErrorReportBuilder,
+    ErrorReporter, ErrorSeverity, ExportStage, MediaContext, NullReporter, Operation,
+    QueueEnvelope, RecoveryOutcome, ReleaseMetadata, ReportValidationError, ResolutionBucket,
+    RuntimeEnvironment, ERROR_REPORT_SCHEMA_VERSION, MAX_BREADCRUMBS, MAX_REPORT_BYTES,
+    MAX_STACK_TRACE_BYTES, QUEUE_MAX_BYTES, QUEUE_MAX_RECORDS, QUEUE_RETENTION_SECS,
+    STATE_TRANSITIONS,
+};
 pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus, PlatformExportPreset};
 pub use frame_sampler::FrameSampler;
 pub use highlight_detection::{

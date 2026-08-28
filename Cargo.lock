@@ -905,6 +905,7 @@ dependencies = [
  "image",
  "nvml-wrapper",
  "ort",
+ "regex",
  "rmp-serde",
  "rmpv",
  "self_update",
