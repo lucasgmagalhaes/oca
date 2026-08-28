@@ -145,8 +145,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1787938588.5997934,
-    "ast_hash": "373f9a5773c36ce092e1e4d598c922d1",
+    "mtime": 1787939111.9680622,
+    "ast_hash": "b8b5e7dce9db9c8188dd891e11c85ca5",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -545,8 +545,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/mod.rs": {
-    "mtime": 1787938239.0998745,
-    "ast_hash": "659313b254b063632330413904f19a8c",
+    "mtime": 1787939111.9691238,
+    "ast_hash": "21d2ebd0cb1093737b0d85b9fad5354c",
     "semantic_hash": ""
   },
   ".github/FFMPEG_UPDATE.md": {
@@ -985,8 +985,8 @@
     "semantic_hash": ""
   },
   "spec/ROADMAP.md": {
-    "mtime": 1787938588.601806,
-    "ast_hash": "16fff98a1be87cbca00c73f25544db04",
+    "mtime": 1787939111.9701362,
+    "ast_hash": "9b9aab85eae7589294142d6d4da9d249",
     "semantic_hash": ""
   },
   "spec/RULES.md": {
