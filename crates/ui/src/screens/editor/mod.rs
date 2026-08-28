@@ -1166,7 +1166,7 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
         egui::StrokeKind::Outside,
     );
 
-    if app.picking_motion_track_region {
+    if app.motion_track_region.picking_motion_track_region {
         draw_motion_track_region_picker(app, ui, layer_rect, tex_size);
         return;
     }
@@ -1311,7 +1311,7 @@ fn draw_custom_shape_surface(
 }
 
 /// Drag-to-select surface for the motion-tracking region — active whenever
-/// `app.picking_motion_track_region` is set (see [`App::start_picking_motion_track_region`]).
+/// `app.motion_track_region.picking_motion_track_region` is set (see [`App::start_picking_motion_track_region`]).
 /// Takes over `layer_rect` (the preview's already-computed texture rect — see
 /// [`layer_transform_preview`]) in place of its usual layer drag/resize handling, mutually
 /// exclusive with it the same way [`draw_custom_shape_surface`] is.
@@ -1340,12 +1340,12 @@ fn draw_motion_track_region_picker(
 
     let center_px = layer_rect.min
         + egui::vec2(
-            app.motion_track_center_x * layer_rect.width(),
-            app.motion_track_center_y * layer_rect.height(),
+            app.motion_track_region.motion_track_center_x * layer_rect.width(),
+            app.motion_track_region.motion_track_center_y * layer_rect.height(),
         );
     let size_px = egui::vec2(
-        app.motion_track_width * short_side * scale.x,
-        app.motion_track_height * short_side * scale.y,
+        app.motion_track_region.motion_track_width * short_side * scale.x,
+        app.motion_track_region.motion_track_height * short_side * scale.y,
     );
     let region_rect = egui::Rect::from_center_size(center_px, size_px);
 
@@ -1363,10 +1363,13 @@ fn draw_motion_track_region_picker(
     );
     if body_resp.dragged() {
         let delta = body_resp.drag_delta();
-        app.motion_track_center_x =
-            (app.motion_track_center_x + delta.x / layer_rect.width().max(1.0)).clamp(0.0, 1.0);
-        app.motion_track_center_y =
-            (app.motion_track_center_y + delta.y / layer_rect.height().max(1.0)).clamp(0.0, 1.0);
+        app.motion_track_region.motion_track_center_x =
+            (app.motion_track_region.motion_track_center_x + delta.x / layer_rect.width().max(1.0))
+                .clamp(0.0, 1.0);
+        app.motion_track_region.motion_track_center_y =
+            (app.motion_track_region.motion_track_center_y
+                + delta.y / layer_rect.height().max(1.0))
+            .clamp(0.0, 1.0);
     }
     if body_resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
@@ -1385,14 +1388,16 @@ fn draw_motion_track_region_picker(
         let delta = resize_resp.drag_delta();
         let new_width_px = (size_px.x + delta.x).max(4.0);
         let new_height_px = (size_px.y + delta.y).max(4.0);
-        app.motion_track_width = (new_width_px / (short_side * scale.x).max(0.001)).clamp(
-            *MOTION_TRACK_SIZE_RANGE.start(),
-            *MOTION_TRACK_SIZE_RANGE.end(),
-        );
-        app.motion_track_height = (new_height_px / (short_side * scale.y).max(0.001)).clamp(
-            *MOTION_TRACK_SIZE_RANGE.start(),
-            *MOTION_TRACK_SIZE_RANGE.end(),
-        );
+        app.motion_track_region.motion_track_width =
+            (new_width_px / (short_side * scale.x).max(0.001)).clamp(
+                *MOTION_TRACK_SIZE_RANGE.start(),
+                *MOTION_TRACK_SIZE_RANGE.end(),
+            );
+        app.motion_track_region.motion_track_height =
+            (new_height_px / (short_side * scale.y).max(0.001)).clamp(
+                *MOTION_TRACK_SIZE_RANGE.start(),
+                *MOTION_TRACK_SIZE_RANGE.end(),
+            );
     }
 
     ui.painter().text(

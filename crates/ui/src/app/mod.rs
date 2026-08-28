@@ -734,31 +734,9 @@ pub struct App {
     pub(crate) motion_tracking_state: MotionTrackingState,
     /// Scene-cut-detection background-job channel/clip-tracking state — same pattern.
     pub(crate) scene_cut_detection_state: SceneCutDetectionState,
-    /// The tracked region's center, as a `0.0..=1.0` fraction of the *source* frame (same
-    /// convention as `avcore::track_region`'s `initial_center_x_frac`/`_y`, not canvas/layer
-    /// space) — user-editable via the properties panel's region controls next to the "Rastrear
-    /// movimento" button, instead of the button always defaulting to a centered region. Plain
-    /// UI/session state, not persisted to the project: it's a one-shot tracking job's input, not
-    /// a durable clip property (unlike, say, `ClipInstance::crop_x/y`) — nothing else reads it
-    /// once a run finishes, only its *output* (`position_keyframes`) is saved.
-    pub motion_track_center_x: f32,
-    pub motion_track_center_y: f32,
-    /// The tracked block's width/height, each independently as a fraction of the frame's
-    /// shorter dimension — `avcore::track_region`'s `template_width_frac`/`template_height_frac`.
-    /// Same non-persistence rationale as `motion_track_center_x`/`_y`.
-    pub motion_track_width: f32,
-    pub motion_track_height: f32,
-    /// How far the tracked block is allowed to move between consecutive sampled frames, as a
-    /// fraction of the frame's shorter dimension — `avcore::track_region`'s
-    /// `search_radius_frac`. Same non-persistence rationale as `motion_track_center_x`/`_y`.
-    pub motion_track_search_radius: f32,
-    /// Whether the Editor preview panel is currently showing the motion-tracking region
-    /// picker (drag the tracked block's body to move it, its corner handle to resize it,
-    /// directly on the preview frame) instead of its usual layer position/resize handling —
-    /// see [`screens::editor::draw_motion_track_region_picker`]. Toggled by the properties
-    /// panel's "pick in preview" button, next to the numeric region controls; Escape exits.
-    /// Session-only, like the `motion_track_*` fields it edits.
-    pub picking_motion_track_region: bool,
+    /// Motion-tracking region-picker session state — see [`MotionTrackRegionState`]'s own doc
+    /// comment.
+    pub motion_track_region: MotionTrackRegionState,
     /// Matte-generation background-job channel/clip-tracking state — same pattern as
     /// [`App::auto_reframe_state`].
     pub(crate) matte_generation_state: MatteGenerationState,
@@ -1048,6 +1026,36 @@ pub(crate) struct TelemetryState {
     pub(crate) last_preview_frame_telemetry: Option<std::time::Instant>,
 }
 
+/// Motion-tracking region-picker session state, extracted from `App`'s own field list — see
+/// [`PreviewState`]'s doc comment for why. Plain UI/session state, not persisted to the
+/// project: it's a one-shot tracking job's input, not a durable clip property (unlike, say,
+/// `ClipInstance::crop_x/y`) — nothing else reads it once a run finishes, only its *output*
+/// (`position_keyframes`) is saved.
+pub(crate) struct MotionTrackRegionState {
+    /// The tracked region's center, as a `0.0..=1.0` fraction of the *source* frame (same
+    /// convention as `avcore::track_region`'s `initial_center_x_frac`/`_y`, not canvas/layer
+    /// space) — user-editable via the properties panel's region controls next to the "Rastrear
+    /// movimento" button, instead of the button always defaulting to a centered region.
+    pub(crate) motion_track_center_x: f32,
+    pub(crate) motion_track_center_y: f32,
+    /// The tracked block's width/height, each independently as a fraction of the frame's
+    /// shorter dimension — `avcore::track_region`'s `template_width_frac`/`template_height_frac`.
+    /// Same non-persistence rationale as `motion_track_center_x`/`_y`.
+    pub(crate) motion_track_width: f32,
+    pub(crate) motion_track_height: f32,
+    /// How far the tracked block is allowed to move between consecutive sampled frames, as a
+    /// fraction of the frame's shorter dimension — `avcore::track_region`'s
+    /// `search_radius_frac`. Same non-persistence rationale as `motion_track_center_x`/`_y`.
+    pub(crate) motion_track_search_radius: f32,
+    /// Whether the Editor preview panel is currently showing the motion-tracking region
+    /// picker (drag the tracked block's body to move it, its corner handle to resize it,
+    /// directly on the preview frame) instead of its usual layer position/resize handling —
+    /// see [`screens::editor::draw_motion_track_region_picker`]. Toggled by the properties
+    /// panel's "pick in preview" button, next to the numeric region controls; Escape exits.
+    /// Session-only, like the `motion_track_*` fields it edits.
+    pub(crate) picking_motion_track_region: bool,
+}
+
 /// Auto-reframe background-job state, extracted from `App`'s own field list — see
 /// [`PreviewState`]'s doc comment for why.
 pub(crate) struct AutoReframeState {
@@ -1286,12 +1294,14 @@ impl App {
                 scene_cut_detection_rx,
                 scene_cut_detection_clip_id: None,
             },
-            motion_track_center_x: 0.5,
-            motion_track_center_y: 0.5,
-            motion_track_width: 0.2,
-            motion_track_height: 0.2,
-            motion_track_search_radius: 0.08,
-            picking_motion_track_region: false,
+            motion_track_region: MotionTrackRegionState {
+                motion_track_center_x: 0.5,
+                motion_track_center_y: 0.5,
+                motion_track_width: 0.2,
+                motion_track_height: 0.2,
+                motion_track_search_radius: 0.08,
+                picking_motion_track_region: false,
+            },
             matte_generation_state: MatteGenerationState {
                 matte_generation_tx,
                 matte_generation_rx,
@@ -1695,7 +1705,7 @@ impl App {
         self.selected_shape_clip_id = None;
         self.multi_selected_clip_ids.clear();
         self.drawing_shape_points = None;
-        self.picking_motion_track_region = false;
+        self.motion_track_region.picking_motion_track_region = false;
         self.preview_state.preview_playing = false;
         self.preview_state.preview_frozen_since = None;
         self.undo_stack.clear();

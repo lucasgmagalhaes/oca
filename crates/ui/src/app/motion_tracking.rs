@@ -38,11 +38,11 @@ impl App {
         if self.preview_state.preview_texture.is_none() {
             return;
         }
-        self.picking_motion_track_region = true;
+        self.motion_track_region.picking_motion_track_region = true;
     }
 
     pub fn stop_picking_motion_track_region(&mut self) {
-        self.picking_motion_track_region = false;
+        self.motion_track_region.picking_motion_track_region = false;
     }
 
     /// Runs motion tracking against `selected_clip_id` on a background thread — what the
@@ -79,17 +79,23 @@ impl App {
             return;
         };
         let source_path = asset.source_path.clone();
-        let center_x = self.motion_track_center_x.clamp(0.0, 1.0);
-        let center_y = self.motion_track_center_y.clamp(0.0, 1.0);
-        let template_width = self.motion_track_width.clamp(
+        let center_x = self
+            .motion_track_region
+            .motion_track_center_x
+            .clamp(0.0, 1.0);
+        let center_y = self
+            .motion_track_region
+            .motion_track_center_y
+            .clamp(0.0, 1.0);
+        let template_width = self.motion_track_region.motion_track_width.clamp(
             *MOTION_TRACK_SIZE_RANGE.start(),
             *MOTION_TRACK_SIZE_RANGE.end(),
         );
-        let template_height = self.motion_track_height.clamp(
+        let template_height = self.motion_track_region.motion_track_height.clamp(
             *MOTION_TRACK_SIZE_RANGE.start(),
             *MOTION_TRACK_SIZE_RANGE.end(),
         );
-        let search_radius = self.motion_track_search_radius.clamp(
+        let search_radius = self.motion_track_region.motion_track_search_radius.clamp(
             *MOTION_TRACK_SEARCH_RADIUS_RANGE.start(),
             *MOTION_TRACK_SEARCH_RADIUS_RANGE.end(),
         );

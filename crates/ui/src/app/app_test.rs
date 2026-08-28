@@ -258,12 +258,14 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
             scene_cut_detection_rx,
             scene_cut_detection_clip_id: None,
         },
-        motion_track_center_x: 0.5,
-        motion_track_center_y: 0.5,
-        motion_track_width: 0.2,
-        motion_track_height: 0.2,
-        motion_track_search_radius: 0.08,
-        picking_motion_track_region: false,
+        motion_track_region: MotionTrackRegionState {
+            motion_track_center_x: 0.5,
+            motion_track_center_y: 0.5,
+            motion_track_width: 0.2,
+            motion_track_height: 0.2,
+            motion_track_search_radius: 0.08,
+            picking_motion_track_region: false,
+        },
         matte_generation_state: MatteGenerationState {
             matte_generation_tx,
             matte_generation_rx,
@@ -2639,8 +2641,8 @@ fn request_cancel_youtube_download_is_a_no_op_when_nothing_is_downloading() {
 fn motion_track_region_defaults_to_a_centered_region() {
     let app = test_app(vec![test_project(1, Vec::new())], Vec::new());
 
-    assert_eq!(app.motion_track_center_x, 0.5);
-    assert_eq!(app.motion_track_center_y, 0.5);
+    assert_eq!(app.motion_track_region.motion_track_center_x, 0.5);
+    assert_eq!(app.motion_track_region.motion_track_center_y, 0.5);
 }
 
 #[test]
@@ -2650,7 +2652,7 @@ fn start_picking_motion_track_region_is_a_no_op_without_a_loaded_preview() {
 
     app.start_picking_motion_track_region();
 
-    assert!(!app.picking_motion_track_region);
+    assert!(!app.motion_track_region.picking_motion_track_region);
 }
 
 #[test]
@@ -2663,17 +2665,17 @@ fn start_picking_motion_track_region_activates_with_a_loaded_preview() {
 
     app.start_picking_motion_track_region();
 
-    assert!(app.picking_motion_track_region);
+    assert!(app.motion_track_region.picking_motion_track_region);
 }
 
 #[test]
 fn stop_picking_motion_track_region_clears_the_flag() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
-    app.picking_motion_track_region = true;
+    app.motion_track_region.picking_motion_track_region = true;
 
     app.stop_picking_motion_track_region();
 
-    assert!(!app.picking_motion_track_region);
+    assert!(!app.motion_track_region.picking_motion_track_region);
 }
 
 #[test]
