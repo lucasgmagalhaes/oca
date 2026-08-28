@@ -972,18 +972,31 @@ resolved in favor of consolidating, see items 3 and 5).
 30. `[x]` **Feedback tokens.** Added `WARNING`/`WARNING_TINT`/`INFO_TINT` to `theme.rs` and
     `components::tag_warning()`. Queue's `ACCENT.gamma_multiply(0.10)` info banner → `INFO_TINT`;
     its "Paused" pill (previously `tag_outline`, indistinguishable from "Queued") → `tag_warning`.
-31. `[~]` **Progressive disclosure.** Toolbar grouping done: the trailing cluster (panel-visibility
+31. `[x]` **Progressive disclosure.** Toolbar grouping done: the trailing cluster (panel-visibility
     toggles, AI-detection actions, multicam grouping) previously ran together with zero
     separation — now split into three `ui.separator()`-delimited groups: [timeline-index/
     transcript panel toggles] | [detect silence/speech-edits/chapters/export-chapters/highlights,
     shorts pack] | [create multicam group] (structural, not an automatic detection, so kept
     distinct from the AI-detection cluster). The rest of the toolbar already had separator
     discipline (edit tools / composite+template actions / add-track actions / undo-redo), so this
-    closes the one confirmed gap rather than restructuring the whole toolbar. **Not started**:
-    sectioning Prefs into collapsible/tabbed groups instead of one always-fully-expanded scroll
-    column — a bigger UX judgment call, deliberately left for a dedicated pass with a visual (not
-    just code-level) review, per repo `CLAUDE.md`'s guidance to verify UI changes in a running
-    instance; this session had no way to run the app and look at it.
+    closes the one confirmed gap rather than restructuring the whole toolbar.
+
+    Prefs sectioning: all 6 sections (Language, Audio, Export, Project, Shortcuts, About) were
+    plain muted labels followed by always-fully-expanded content in one long scroll column — the
+    clearest violation of "not all functionality simultaneously" in the whole audit, given Export
+    alone bundles 10 sub-controls (workers, GPU encoder, preview quality, hardware decode, output
+    folder, and 4 separate AI-model-path rows). Wrapped each in a new `prefs_section()` helper
+    (`egui::CollapsingHeader` styled to match the existing muted/uppercase/strong header look),
+    `default_open` chosen per section by how often it's touched after initial setup rather than
+    uniformly: Language/Audio/Project default **open** (small, or commonly adjusted); Export/
+    Shortcuts/About default **closed** (large one-time setup, a reference table, and rarely-needed
+    metadata respectively). Collapse state persists via egui's own per-`Id` memory, so it survives
+    switching screens and coming back, though not a full app restart. This is the first
+    unavoidable code change in this whole consolidation effort with no way to visually verify the
+    result — this session has no way to run the desktop app. Flagging explicitly, per repo
+    `CLAUDE.md`'s own guidance that UI changes should be checked in a running instance before
+    being called done: this is implemented and compiles/tests clean, but **not yet visually
+    confirmed**.
 32. `[x]` **Missing states.** Queue had no empty-state message at all — added one
     (`Text::QueueEmpty`), plain muted text matching the existing empty-state convention elsewhere
     (Library, Sound Library) rather than waiting on the still-in-progress icon system.
