@@ -719,21 +719,32 @@ not by default priority.
       to draw one from.
     - **Known, deliberately-not-hidden cost**: unlike an imported asset, a nested sequence's
       rendered file is produced by a real encode, not instant — `ui`'s callers (queueing an
-      export, the Fila screen's size-estimate preview) call this synchronously and block until
-      it's done, no background-thread/progress-reporting path yet. Paid once per edit to that
-      nested sequence (the cache), but the first hit after an edit is a real, currently
-      un-signposted UI hitch for a long nested sequence — the honest reason this item is `[~]`
-      not `[x]`.
-    - **Explicitly not done**: live preview of a compound clip's own content in the Editor
-      (scrubbing/playback) — `App::current_preview_clip`'s asset lookup simply returns `None`
-      for a nested clip today (silently skipped, not a crash — same "gap" class several other
-      partial preview items in this codebase already carry), so a compound clip is currently
-      invisible in the live preview panel even though it exports/queues correctly; dragging an
-      *existing* sequence tab onto another timeline as a nested clip (only the "create compound
-      from selection" direction ships); deleting a `Sequence` still referenced by a compound clip
-      elsewhere leaves a dangling `nested_sequence_id` — `RenderError::MissingNestedSequence`
-      degrades gracefully (logged, clip skipped) rather than crashing, but there's no warning at
-      delete time.
+      export, the Fila screen's size-estimate preview, and now `ensure_preview_loaded` too) call
+      this synchronously and block until it's done, no background-thread/progress-reporting path
+      yet. Paid once per edit to that nested sequence (the cache), but the first hit after an
+      edit is a real, currently un-signposted UI hitch for a long nested sequence — the honest
+      reason this item is `[~]` not `[x]`.
+    - **Follow-up: live preview now works too.** `App::current_preview_clip`/
+      `current_preview_overlay_clips`/`current_preview_audio_clips` now take an explicit
+      `media_library` slice instead of reading `Project::media_library` directly, so
+      `App::ensure_preview_loaded` can merge in
+      `materialize_nested_sequences_for_active_sequence`'s synthetic assets before resolving —
+      same cache-backed pattern the export path already uses, so scrubbing/playback across a
+      compound clip only pays the render cost once per edit to it. Fixed a real bug found while
+      wiring this in: `ensure_preview_loaded`'s own cheap per-frame "did anything change" fast
+      path (`current_preview_clip_id`/`current_preview_overlay_clip_ids`) still required an
+      `asset_id` to resolve in the *plain* `media_library` even for a nested clip (which has no
+      real `asset_id` at all) — would have made the fast path see "still unresolved, nothing
+      changed" forever and never actually attempt to open a compound clip's pipeline. Two call
+      sites that only ever needed clip-level fields (`frozen`, `speed_factor`, `id`), never the
+      asset — `toggle_preview_playback`, `seek_preview` — were switched to a new asset-free
+      `current_preview_video_clip` instead of threading `media_library` through them for no
+      reason.
+    - **Explicitly not done**: dragging an *existing* sequence tab onto another timeline as a
+      nested clip (only the "create compound from selection" direction ships); deleting a
+      `Sequence` still referenced by a compound clip elsewhere leaves a dangling
+      `nested_sequence_id` — `RenderError::MissingNestedSequence` degrades gracefully (logged,
+      clip skipped) rather than crashing, but there's no warning at delete time.
     - **Verified for real**: `avcore::nested_sequence`'s own test module — cycle detection (both
       direct self-nesting and an indirect A→B→A cycle), a missing-sequence error, and, the
       strongest evidence, an actual end-to-end test that builds a two-sequence project, calls
