@@ -56,6 +56,7 @@ pub mod smart_bins;
 pub mod sound_library;
 pub mod subtitles;
 pub mod telemetry;
+pub mod text_layout;
 pub mod text_metrics;
 pub mod text_to_speech;
 pub mod timeline;

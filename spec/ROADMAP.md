@@ -908,12 +908,32 @@ an item earlier:
   `architecture/complex-text-shaping.md`'s own "Spike result" note for the full gate-by-gate
   writeup.
 
-  **Not yet done**: TEXT-01A itself (the `TextLayoutEngine` adapter, moving measurement/wrapping/
-  background-geometry/raster-placement in `core`/`ui` onto shaped output, golden tests for the six
-  existing families) — the spike only proves the dependency choice is sound, it doesn't touch
-  `text_metrics.rs`/`overlay_render.rs` at all. TEXT-01B (bidi/highlights wiring), TEXT-01C
-  (international fallback families, gated on FONT-01B actually vendoring those fonts into the
-  repo), and TEXT-01D (performance/caching/optional packs) are all still open.
+  **TEXT-01A steps 1-2 (adapter) shipped.** `avcore::text_layout` adds the provider-neutral
+  `ShapedText`/`ShapedLine`/`ShapedGlyph` value and `TextLayoutEngine` — `cosmic-text` is now a
+  real `core` dependency (`default-features = false, features = ["std", "swash"]`, `fontconfig`
+  disabled). `font_catalog` gained `locked_face_bytes()`/`face_bytes()`, the single
+  `include_bytes!` source of truth both `text_metrics`'s existing `fontdue` table and this new
+  module load from, so the two engines can never silently diverge on which bytes a family/weight
+  resolves to. `TextLayoutEngine::new_from_locked_catalog()` builds its `fontdb::Database` from
+  exactly those locked bytes via `FontSystem::new_with_locale_and_db` — never `FontSystem::new()`
+  — matching the spike's own gate-1 finding. Verified for real (not just type-checked): a
+  throwaway scratch crate with a real `cosmic-text` dependency and the real bundled font assets
+  ran 87/87 tests, 9 new — bundled-only loading (exact face count, no system-font leak), all six
+  families shaping the GF Latin Core corpus with zero `.notdef` hits, `fi`/`fl` ligature formation
+  with a real multi-character cluster, Bold vs. Regular resolving to different faces, a
+  single-weight family accepting a Bold request cleanly, width monotonicity, and wrapping actually
+  producing multiple lines. `cargo check --workspace --all-targets`/`clippy`/`fmt` (via the
+  documented temporary shim) all clean.
+
+  **Not yet done — TEXT-01A step 3, the actual swap**: `TextLayoutEngine::shape`/`text_width_px`
+  are real, tested parity functions for `text_metrics::text_width_px_with_font` — not yet called
+  by it, or by `overlay_render.rs`'s rasterization path, which is exactly the part of TEXT-01A
+  deliberately deferred: it changes every preview/export text pixel at once (the doc's own
+  "preserve golden output for the six existing families" requirement), and this sandbox has no way
+  to render the real eframe app or diff pixel output against a reference. TEXT-01B (bidi/
+  highlights wiring), TEXT-01C (international fallback families, gated on FONT-01B actually
+  vendoring those fonts into the repo), and TEXT-01D (performance/caching/optional packs) are all
+  still open.
 - `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:

@@ -170,11 +170,46 @@ weight-registration detail TEXT-01C's own font-loading code will need to handle 
 (request the axis value oca wants, don't trust the file's own default named instance), not
 something discovered by reading the doc alone.
 
-**Not yet done**: none of this is wired into `core`/`ui` — `text_metrics.rs` still sums per-
-character advances via `fontdue`, `overlay_render.rs` still asks `fontdue::Layout` for placement.
-The spike proves the dependency choice is sound; TEXT-01A (adapter, `TextLayoutEngine`, moving
-measurement/wrapping/background-geometry/raster-placement onto shaped output, golden tests for
-the six existing families) is the next real slice and hasn't started.
+**Not yet done** (as of the spike itself): none of this was wired into `core`/`ui` yet —
+`text_metrics.rs` still summed per-character advances via `fontdue`, `overlay_render.rs` still
+asked `fontdue::Layout` for placement. The spike proved the dependency choice was sound; TEXT-01A
+itself (adapter, `TextLayoutEngine`, moving measurement/wrapping/background-geometry/raster-
+placement onto shaped output, golden tests for the six existing families) was the next real slice.
+
+**TEXT-01A steps 1-2 (adapter) shipped** (2026-08-28), still not step 3 (the swap). `avcore::
+text_layout` adds the provider-neutral `ShapedText`/`ShapedLine`/`ShapedGlyph` value and
+`TextLayoutEngine`, a real `core` dependency now (`cosmic-text = { version = "0.19",
+default-features = false, features = ["std", "swash"] }`, `fontconfig` disabled). `font_catalog`
+gained `locked_face_bytes()`/`face_bytes()` — the single `include_bytes!` source of truth both
+`text_metrics`'s existing `fontdue` table and this new module load from, so the two engines can
+never silently diverge on which bytes a family/weight resolves to. `TextLayoutEngine::
+new_from_locked_catalog()` builds its `fontdb::Database` from exactly those locked bytes via
+`FontSystem::new_with_locale_and_db` (never `FontSystem::new()`), matching the spike's own
+gate-1 finding. `TextLayoutEngine::shape`/`text_width_px` are real, callable parity functions for
+`text_metrics::text_width_px_with_font` — not yet used by it or by `overlay_render.rs`, which is
+exactly TEXT-01A's still-open step 3 (see below).
+
+Verified for real, not just type-checked: since `cosmic-text`'s own dependency tree is pure Rust
+(confirmed by the spike), `font_catalog.rs`+`timeline.rs`+`keyframe.rs`+`text_layout.rs` (all
+zero heavy `core` deps) were copied into a throwaway scratch crate alongside the real bundled
+font assets and a real `cosmic-text` dependency, and `cargo test`ed there for real: 87/87 passing,
+9 of them new — bundled-only loading (exact face count, no system-font leak), all six families
+shaping the GF Latin Core acceptance corpus with zero `.notdef` hits, `fi`/`fl` ligature formation
+(`"difficult waffle"`: 16 chars -> fewer glyphs, with a real multi-character cluster), Bold vs.
+Regular resolving to different loaded faces for a two-weight family, a single-weight family
+(Bebas Neue) accepting a Bold request without erroring or hitting `.notdef`, width monotonicity,
+and wrapping actually producing multiple lines within the requested width. `cargo fmt --check`,
+`cargo clippy -p core --lib --no-deps`, and `cargo check --workspace --all-targets` (all via the
+documented temporary local `filters.c` shim, discarded before commit) stayed clean.
+
+**Still not done — TEXT-01A step 3, the actual swap**: `text_metrics.rs` still measures via
+`fontdue` and `overlay_render.rs` still rasterizes via `fontdue::Layout`; `text_layout.rs` has no
+caller outside its own tests yet. This is deliberately deferred rather than folded into the same
+pass: it's the one part of TEXT-01A that changes every preview/export text pixel at once (the
+doc's own "preserve golden output for the six existing families" requirement), and this sandbox
+has no way to render the real eframe app or diff pixel output against a reference — the kind of
+visual-parity verification this codebase's own convention (`CLAUDE.md`) treats as a real,
+separate gate, not something to wave through alongside a headless adapter change.
 
 ## Shaping pipeline
 

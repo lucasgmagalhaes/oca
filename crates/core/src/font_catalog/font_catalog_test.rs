@@ -80,6 +80,30 @@ fn assert_face_matches(family_id: &str, source_path: &str, bytes: &[u8]) {
 }
 
 #[test]
+fn locked_face_bytes_has_exactly_one_entry_per_catalog_face() {
+    let expected: usize = CATALOG.iter().map(|entry| entry.faces.len()).sum();
+    assert_eq!(locked_face_bytes().len(), expected);
+    for entry in CATALOG {
+        for face in entry.faces {
+            let bytes = face_bytes(entry.family_id, face.weight).unwrap_or_else(|| {
+                panic!(
+                    "locked_face_bytes() has no entry for ({}, {})",
+                    entry.family_id, face.weight
+                )
+            });
+            assert_eq!(bytes.len() as u64, face.size_bytes);
+            assert_eq!(hex_sha256(bytes), face.sha256);
+        }
+    }
+}
+
+#[test]
+fn face_bytes_returns_none_for_an_unknown_family_or_weight() {
+    assert!(face_bytes("comic-sans", 400).is_none());
+    assert!(face_bytes("lato", 900).is_none());
+}
+
+#[test]
 fn bundled_lato_bytes_match_the_locked_manifest() {
     assert_face_matches(
         "lato",

@@ -356,6 +356,69 @@ impl TextFontFamily {
     }
 }
 
+/// One locked face's bytes, keyed by `(family_id, weight)` — the single `include_bytes!` source
+/// of truth for every locked binary. [`crate::text_metrics`]'s `fontdue`-based table and
+/// [`crate::text_layout`]'s `cosmic-text`-based one (TEXT-01A) both load from here rather than
+/// each keeping their own `include_bytes!` list, so the two engines can never silently diverge on
+/// which bytes a family/weight resolves to.
+pub fn locked_face_bytes() -> &'static [(&'static str, u16, &'static [u8])] {
+    &[
+        (
+            "lato",
+            400,
+            include_bytes!("../assets/fonts/lato/Lato-Regular.ttf"),
+        ),
+        (
+            "lato",
+            700,
+            include_bytes!("../assets/fonts/lato/Lato-Bold.ttf"),
+        ),
+        (
+            "bebas-neue",
+            400,
+            include_bytes!("../assets/fonts/bebas-neue/BebasNeue-Regular.ttf"),
+        ),
+        (
+            "playfair-display-sc",
+            400,
+            include_bytes!("../assets/fonts/playfair-display-sc/PlayfairDisplaySC-Regular.ttf"),
+        ),
+        (
+            "playfair-display-sc",
+            700,
+            include_bytes!("../assets/fonts/playfair-display-sc/PlayfairDisplaySC-Bold.ttf"),
+        ),
+        (
+            "patrick-hand",
+            400,
+            include_bytes!("../assets/fonts/patrick-hand/PatrickHand-Regular.ttf"),
+        ),
+        (
+            "anonymous-pro",
+            400,
+            include_bytes!("../assets/fonts/anonymous-pro/AnonymousPro-Regular.ttf"),
+        ),
+        (
+            "anonymous-pro",
+            700,
+            include_bytes!("../assets/fonts/anonymous-pro/AnonymousPro-Bold.ttf"),
+        ),
+        (
+            "archivo-black",
+            400,
+            include_bytes!("../assets/fonts/archivo-black/ArchivoBlack-Regular.ttf"),
+        ),
+    ]
+}
+
+/// Looks up one locked face's bytes by `family_id`/`weight`.
+pub fn face_bytes(family_id: &str, weight: u16) -> Option<&'static [u8]> {
+    locked_face_bytes()
+        .iter()
+        .find(|(id, w, _)| *id == family_id && *w == weight)
+        .map(|(_, _, bytes)| *bytes)
+}
+
 #[cfg(test)]
 #[path = "font_catalog/font_catalog_test.rs"]
 mod tests;
