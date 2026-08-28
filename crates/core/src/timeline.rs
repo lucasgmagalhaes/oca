@@ -506,9 +506,26 @@ pub struct ClipInstance {
     /// on the timeline block (`ui`'s timeline panel), and wired into export: resolved to
     /// `avbridge::ClipSegment::speed_factor`, applied as `setpts=PTS/<speed>` on video and
     /// `atempo` on audio (`timeline_export.c`/`timeline_export_multi.c`). No live preview effect
-    /// yet. `#[serde(default = ..)]` so older saved projects load at normal speed.
+    /// yet. `#[serde(default = ..)]` so older saved projects load at normal speed. When
+    /// [`ClipInstance::speed_ramp_end_factor`] is `Some`, this field is instead the ramp's
+    /// *start* speed — see that field's own doc comment.
     #[serde(default = "default_speed_factor")]
     pub speed_factor: f32,
+    /// End speed of a smooth, continuous speed ramp across this clip's whole trimmed duration —
+    /// `None` (the default) means plain constant `speed_factor`, unchanged. `Some(end)` means
+    /// `speed_factor` is the ramp's *start* speed and this is its end speed, linearly
+    /// interpolated in speed (not in output-time) over the clip's own trimmed source duration —
+    /// per `spec/ROADMAP.md` P4 item 29's "smooth continuous curve" follow-up to the earlier
+    /// stepped approximation. Export resolves this to a `setpts` expression that's the
+    /// *integral* of `1/speed(t)` (a natural-log term, since speed is linear in `t`) rather than
+    /// splitting the clip into discrete pieces — see
+    /// [`crate::keyframe::smooth_speed_ramp_duration_secs`] for the matching duration formula
+    /// [`ClipInstance::duration_secs`] uses, and
+    /// `avbridge::ClipSegment::smooth_speed_ramp_end_factor`/`timeline_export.c`'s `setpts_str`
+    /// construction for the export-side expression. `#[serde(default)]` so older saved projects
+    /// load with no ramp (plain `speed_factor`, unchanged behavior).
+    #[serde(default)]
+    pub speed_ramp_end_factor: Option<f32>,
     /// Normalized crop rectangle within the source frame — `(crop_x, crop_y)` is the visible
     /// sub-rectangle's top-left corner, `(crop_w, crop_h)` its size, all fractions of the full
     /// frame (`0.0..=1.0`). Defaults to `(0.0, 0.0, 1.0, 1.0)` — the whole frame, uncropped —
@@ -921,9 +938,19 @@ fn default_chroma_key_tolerance() -> f32 {
 
 impl ClipInstance {
     /// How long this instance plays for, i.e. its trimmed length — not the source asset's
-    /// full duration.
+    /// full duration. Uses [`keyframe::smooth_speed_ramp_duration_secs`]'s log-based integral
+    /// when [`ClipInstance::speed_ramp_end_factor`] is `Some` (a smooth ramp doesn't compress
+    /// time by a plain constant divisor), plain division otherwise.
     pub fn duration_secs(&self) -> f64 {
-        (self.source_out_secs - self.source_in_secs) / self.speed_factor as f64
+        let source_duration = self.source_out_secs - self.source_in_secs;
+        match self.speed_ramp_end_factor {
+            Some(end_speed) => keyframe::smooth_speed_ramp_duration_secs(
+                source_duration,
+                self.speed_factor,
+                end_speed,
+            ),
+            None => source_duration / self.speed_factor as f64,
+        }
     }
 
     /// Linear amplitude multiplier for [`ClipInstance::gain_db`] — e.g. `+6.0` dB roughly
@@ -1503,9 +1530,42 @@ impl Track {
         };
 
         let clip = &mut self.clips[index];
-        let split_source_secs =
-            clip.source_in_secs + (at_secs - clip.start_secs) * clip.speed_factor as f64;
-        let split_frac = ((at_secs - clip.start_secs) / clip.duration_secs()) as f32;
+        let source_duration = clip.source_out_secs - clip.source_in_secs;
+        let timeline_elapsed = at_secs - clip.start_secs;
+        // A smooth ramp's source time isn't linear in timeline time (that's the whole point of
+        // the ramp), so the plain `elapsed * speed_factor` a constant-speed clip uses would land
+        // the split at the wrong source frame — use the ramp's own inverse instead. This is
+        // mathematically identical to the old formula in the non-ramped (overwhelmingly common)
+        // case, not a behavior change there: keyframe::smooth_speed_ramp_source_secs_at's own
+        // `v1 == v0` fallback is exactly `timeline_elapsed * speed_factor`.
+        let split_source_secs = clip.source_in_secs
+            + match clip.speed_ramp_end_factor {
+                Some(end_speed) => keyframe::smooth_speed_ramp_source_secs_at(
+                    timeline_elapsed,
+                    source_duration,
+                    clip.speed_factor,
+                    end_speed,
+                ),
+                None => timeline_elapsed * clip.speed_factor as f64,
+            };
+        // Fraction of the *source* range consumed by the split — what keyframes (stored in
+        // source-relative `0.0..=1.0`, see evaluate_keyframes' callers) actually need. Equal to
+        // the old `(at_secs - start) / clip.duration_secs()` timeline-fraction in the
+        // non-ramped case (both reduce to the same ratio when speed is constant), so this is a
+        // safe drop-in even though it's phrased differently.
+        let split_frac = if source_duration > 1e-9 {
+            ((split_source_secs - clip.source_in_secs) / source_duration) as f32
+        } else {
+            0.0
+        };
+        // A ramp doesn't survive a split as one continuous curve — each half becomes its own
+        // ramp instead, sharing the same speed-at-the-cut boundary so there's no audible/visual
+        // jump right at the split (same "no jump at the cut" goal split_keyframes_at's own doc
+        // comment describes for keyframes).
+        let speed_at_split = clip.speed_ramp_end_factor.map(|end_speed| {
+            let b = (end_speed as f64 - clip.speed_factor as f64) / source_duration.max(1e-9);
+            (clip.speed_factor as f64 + b * (split_source_secs - clip.source_in_secs)) as f32
+        });
         let (position_first, position_second) = keyframe::split_keyframes_at(
             &clip.position_keyframes,
             split_frac,
@@ -1545,7 +1605,10 @@ impl Track {
             color_label: clip.color_label,
             gain_db: clip.gain_db,
             frozen: clip.frozen,
-            speed_factor: clip.speed_factor,
+            // Second half's own ramp starts at the split boundary's speed and rides out to the
+            // original clip's end speed, unchanged.
+            speed_factor: speed_at_split.unwrap_or(clip.speed_factor),
+            speed_ramp_end_factor: clip.speed_ramp_end_factor,
             crop_x: clip.crop_x,
             crop_y: clip.crop_y,
             crop_w: clip.crop_w,
@@ -1597,6 +1660,11 @@ impl Track {
             background_removal_mask_path: String::new(),
         };
         clip.source_out_secs = split_source_secs;
+        // First half's own ramp rides from the original start speed to the split boundary's
+        // speed — mirrors the second half's own comment above.
+        if let Some(speed_at_split) = speed_at_split {
+            clip.speed_ramp_end_factor = Some(speed_at_split);
+        }
         clip.position_keyframes = position_first;
         clip.scale_keyframes = scale_first;
         clip.rotation_keyframes = rotation_first;

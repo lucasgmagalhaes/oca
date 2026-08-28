@@ -273,6 +273,29 @@ pub fn render_export(
 /// keyframes have the same overlay-only caveat for a compositing reason instead. Shared by
 /// [`resolve_timeline_segments`] and [`resolve_timeline_segments_multi`] since both need
 /// identical per-clip resolution.
+/// A [`avbridge::ClipSegment`]'s own on-timeline duration — plain division for a constant
+/// `speed_factor`, [`keyframe::smooth_speed_ramp_duration_secs`]'s log-based integral when
+/// `smooth_speed_ramp_end_factor` is set (`> 0.0`, this FFI struct's own "no ramp" sentinel —
+/// see its doc comment in `avbridge::lib`). Used for progress-reporting's total-duration
+/// estimate, which otherwise silently under/over-counts a ramped segment.
+fn clip_segment_duration_secs(segment: &avbridge::ClipSegment) -> f64 {
+    let source_duration = segment.source_out_secs - segment.source_in_secs;
+    if segment.smooth_speed_ramp_end_factor > 0.0 {
+        keyframe::smooth_speed_ramp_duration_secs(
+            source_duration,
+            segment.speed_factor,
+            segment.smooth_speed_ramp_end_factor,
+        )
+    } else {
+        let speed = if segment.speed_factor > 0.0 {
+            segment.speed_factor as f64
+        } else {
+            1.0
+        };
+        source_duration / speed
+    }
+}
+
 fn resolve_clip_filters(
     clip: &ClipInstance,
     fps_num: u32,
@@ -347,6 +370,7 @@ pub fn resolve_timeline_segments(
             video_filter,
             frozen: clip.frozen,
             speed_factor: clip.speed_factor,
+            smooth_speed_ramp_end_factor: clip.speed_ramp_end_factor.unwrap_or(0.0),
             position_x_expr,
             position_y_expr,
             transition_in: clip.transition_in.to_export_code(),
@@ -395,17 +419,7 @@ pub fn render_export_job(
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u8),
 ) -> Result<RenderOutcome, RenderError> {
-    let total_duration_secs: f64 = segments
-        .iter()
-        .map(|s| {
-            let speed = if s.speed_factor > 0.0 {
-                s.speed_factor as f64
-            } else {
-                1.0
-            };
-            (s.source_out_secs - s.source_in_secs) / speed
-        })
-        .sum();
+    let total_duration_secs: f64 = segments.iter().map(clip_segment_duration_secs).sum();
 
     let outcome = avbridge::encode_timeline_export(
         segments,
@@ -508,7 +522,17 @@ pub fn resolve_audio_segments(
                 source_out_secs: clip.source_out_secs,
                 timeline_start_secs: clip.start_secs,
                 gain_db: clip.gain_db,
-                speed_factor: clip.speed_factor,
+                // AudioSegment has no ramp field of its own — atempo takes one fixed parameter,
+                // not a `t`-keyed expression, so a smooth per-sample tempo ramp isn't achievable
+                // on the audio side in this FFmpeg build (same limitation
+                // ClipSegment::smooth_speed_ramp_end_factor's own doc comment describes). The
+                // ramp's *average* speed stands in when one is active, matching the approximation
+                // ClipSegment's own inline audio path already uses for a ramped background/
+                // single-track clip.
+                speed_factor: clip
+                    .speed_ramp_end_factor
+                    .map(|end| (clip.speed_factor + end) / 2.0)
+                    .unwrap_or(clip.speed_factor),
                 gain_keyframe_expr: keyframe::gain_filter_db_expr(
                     &clip.gain_keyframes,
                     clip.duration_secs(),
@@ -926,6 +950,7 @@ pub fn resolve_timeline_segments_multi(
                 video_filter,
                 frozen: clip.frozen,
                 speed_factor: clip.speed_factor,
+                smooth_speed_ramp_end_factor: clip.speed_ramp_end_factor.unwrap_or(0.0),
                 position_x_expr,
                 position_y_expr,
                 transition_in: clip.transition_in.to_export_code(),
@@ -1042,14 +1067,7 @@ pub fn render_export_job_multi_with_audio(
     // Total output duration from track 0 (the primary / audio track).
     let total_duration_secs: f64 = track_segments[0]
         .iter()
-        .map(|s| {
-            let speed = if s.speed_factor > 0.0 {
-                s.speed_factor as f64
-            } else {
-                1.0
-            };
-            (s.source_out_secs - s.source_in_secs) / speed
-        })
+        .map(clip_segment_duration_secs)
         .sum();
 
     let outcome = avbridge::encode_timeline_export_multi(

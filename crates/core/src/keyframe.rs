@@ -171,6 +171,81 @@ pub fn split_keyframes_at<T: Lerp + Copy>(
     (first, second)
 }
 
+/// Timeline-elapsed duration of a smooth speed ramp (`spec/ROADMAP.md` P4 item 29's "smooth
+/// continuous curve" follow-up) over `source_duration_secs` of source time, with speed varying
+/// *linearly* in source time from `start_speed` to `end_speed` — the closed form for
+/// `∫₀^source_duration_secs 1/speed(t) dt`. When `speed(t) = v0 + b*t` (`b = (v1-v0)/D`), the
+/// integral works out to `(D/(v1-v0)) * ln(v1/v0)` — a natural-log term, not a simple average,
+/// which is exactly why the earlier stepped approximation existed in the first place (this is
+/// the derivation that approximation's own doc comment flagged as needing one). Falls back to
+/// plain `D/start_speed` when `start_speed`/`end_speed` are equal (the log form's own
+/// denominator would be zero) — mathematically the same limit, taken directly instead of via
+/// L'Hopital's rule.
+pub fn smooth_speed_ramp_duration_secs(
+    source_duration_secs: f64,
+    start_speed: f32,
+    end_speed: f32,
+) -> f64 {
+    smooth_speed_ramp_elapsed_timeline_secs(
+        source_duration_secs,
+        source_duration_secs,
+        start_speed,
+        end_speed,
+    )
+}
+
+/// General form [`smooth_speed_ramp_duration_secs`] is a special case of
+/// (`source_elapsed_secs == source_duration_secs`, the whole ramp) — timeline-elapsed time after
+/// `source_elapsed_secs` of *source* time have played into a ramp whose speed varies linearly
+/// from `start_speed` to `end_speed` across the *full* `source_duration_secs` span. Kept private
+/// and separate from the public duration function since every external caller only ever wants
+/// one or the other end of the ramp (the whole clip's duration, or — via
+/// [`smooth_speed_ramp_source_secs_at`]'s inverse — a specific point within it), never this raw
+/// partial form directly.
+fn smooth_speed_ramp_elapsed_timeline_secs(
+    source_elapsed_secs: f64,
+    source_duration_secs: f64,
+    start_speed: f32,
+    end_speed: f32,
+) -> f64 {
+    let (v0, v1, d, t) = (
+        (start_speed as f64).max(1e-6),
+        (end_speed as f64).max(1e-6),
+        source_duration_secs.max(1e-9),
+        source_elapsed_secs.clamp(0.0, source_duration_secs.max(0.0)),
+    );
+    if (v1 - v0).abs() < 1e-6 {
+        return t / v0;
+    }
+    let speed_at_t = v0 + (v1 - v0) * t / d;
+    (d / (v1 - v0)) * (speed_at_t / v0).ln()
+}
+
+/// Inverse of [`smooth_speed_ramp_duration_secs`]: how much *source* time has elapsed once
+/// `timeline_elapsed_secs` of *output* (timeline) time have played into a ramp. Needed by
+/// [`crate::timeline::Track::split_clip_at`] to find the correct `source_in_secs`/
+/// `source_out_secs` split point for a ramped clip — unlike a constant-speed clip, source time
+/// isn't linear in timeline time here, so a plain `timeline_elapsed_secs * start_speed` would
+/// land the split at the wrong source frame. Derived by solving
+/// `timeline_elapsed_secs = (D/(v1-v0)) * ln(speed(t)/v0)` for `t`.
+pub fn smooth_speed_ramp_source_secs_at(
+    timeline_elapsed_secs: f64,
+    source_duration_secs: f64,
+    start_speed: f32,
+    end_speed: f32,
+) -> f64 {
+    let (v0, v1, d) = (
+        (start_speed as f64).max(1e-6),
+        (end_speed as f64).max(1e-6),
+        source_duration_secs.max(0.0),
+    );
+    if (v1 - v0).abs() < 1e-6 {
+        return timeline_elapsed_secs * v0;
+    }
+    let k = d / (v1 - v0);
+    (k * v0 * ((timeline_elapsed_secs / k).exp() - 1.0)).clamp(0.0, d)
+}
+
 /// Builds a nested `if(between(<var>,p0,p1), v0+slope*(<var>-p0), ...)` expression evaluating a
 /// piecewise-linear ramp across `sorted` keyframes' (already-`xform`-ed) values, along an axis
 /// measured in `<var>`'s units (frame count for `N`, seconds for `t`) from `0` to `axis_length`.
