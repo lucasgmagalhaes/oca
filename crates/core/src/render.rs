@@ -143,6 +143,15 @@ pub enum RenderError {
     MediaMux(String),
     /// Replacing the rendered file with a completed post-processing result failed.
     ReplaceOutput(std::io::Error),
+    /// A clip's [`crate::timeline::ClipInstance::nested_sequence_id`] doesn't resolve to any
+    /// [`crate::project::Sequence`] in the project.
+    MissingNestedSequence,
+    /// A nested-sequence clip (transitively) contains a clip nesting the same sequence again —
+    /// [`crate::nested_sequence::materialize_nested_sequences`]'s cycle guard.
+    CyclicNestedSequence,
+    /// Probing a rendered nested-sequence file (to build its synthetic [`crate::MediaAsset`])
+    /// failed.
+    ProbeNestedSequence,
 }
 
 impl std::fmt::Display for RenderError {
@@ -173,6 +182,18 @@ impl std::fmt::Display for RenderError {
             RenderError::AudioMix(message) => write!(f, "audio mix failed: {message}"),
             RenderError::MediaMux(message) => write!(f, "audio mux failed: {message}"),
             RenderError::ReplaceOutput(error) => write!(f, "failed to replace export: {error}"),
+            RenderError::MissingNestedSequence => {
+                write!(
+                    f,
+                    "a compound clip references a sequence that no longer exists"
+                )
+            }
+            RenderError::CyclicNestedSequence => {
+                write!(f, "a compound clip (transitively) nests its own sequence")
+            }
+            RenderError::ProbeNestedSequence => {
+                write!(f, "failed to probe a rendered nested-sequence file")
+            }
         }
     }
 }

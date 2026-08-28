@@ -688,11 +688,71 @@ not by default priority.
     sampling and overlay-expression deltas — and stays a possible future performance
     optimization rather than a functional gap.
 
-Found but deliberately not added as a P4 item: **nested sequences / compound clips** (Premiere/
-DaVinci/FCP) — closer to Multicam's own tier of effort than to the four above (the render/
-preview pipeline would need to recurse into a sub-timeline resolved as one clip, not a bolt-on
-field). See `matrix/competitor-parity.md` for the full note — worth its own scoping pass if
-ever prioritized, not proposed here as a small item.
+35. `[~]` **Nested sequences / compound clips** (Premiere/DaVinci/FCP) — the scoping pass
+    `matrix/competitor-parity.md`'s own note called for. The key insight that made this tractable:
+    oca already has independently-editable `Sequence`s (the Editor's own tabs) — a compound clip
+    just points a `ClipInstance` at another `Sequence` in the same `Project`
+    (`ClipInstance::nested_sequence_id: Option<u64>`) instead of inventing a second sub-timeline
+    concept.
+    - **Real recursion, not a bolt-on pointer** (the concern this item's original scoping note
+      raised): `avcore::nested_sequence::materialize_nested_sequences` actually renders each
+      nested sequence to a cached temp file (recursively — a nested sequence's own clips may
+      themselves be nested, with cycle detection via a `visiting` set), then hands back a
+      synthetic `MediaAsset` per nested clip pointing at that file. Every existing resolution
+      function (`resolve_timeline_segments_multi` and friends) then treats a compound clip
+      exactly like an ordinary asset-backed one — zero changes to their own logic, and every
+      per-clip effect/keyframe still applies on top of the rendered nested content for free,
+      since it's the same `ClipInstance`.
+    - **Caching**: keyed on the nested sequence's own `Timeline` content (`PartialEq`, no
+      hashing) via `ui`'s `App::nested_sequence_render_cache` — mirrors `ExportPreviewCache`'s
+      own "value-equality, not a version counter" pattern. `ExportPreviewCache` itself now also
+      compares every *other* sequence (not just the active one), since a compound clip's
+      rendered content depends on a sequence `tracks`/`media_library` alone can't see edits to.
+    - **UI**: "📦 Criar clipe composto" (timeline clip context menu, Video-track clips only,
+      single-clip only — multi-selection/composite-group compounding isn't supported yet, a
+      real scope cut) moves the selected clip into a fresh `Sequence`'s own new V1 track
+      (rebased to start at `0.0`) and replaces it in place with a plain nested-sequence clip.
+      Double-click (or "📦 Abrir clipe composto") switches the Editor's active tab into the
+      nested sequence — the common "enter the compound clip" affordance every NLE with this
+      feature has. The timeline block itself shows the nested sequence's own name (📦 badge) in
+      place of a filmstrip/waveform, since a compound clip has no `asset_id`/media-library entry
+      to draw one from.
+    - **Known, deliberately-not-hidden cost**: unlike an imported asset, a nested sequence's
+      rendered file is produced by a real encode, not instant — `ui`'s callers (queueing an
+      export, the Fila screen's size-estimate preview, and now `ensure_preview_loaded` too) call
+      this synchronously and block until it's done, no background-thread/progress-reporting path
+      yet. Paid once per edit to that nested sequence (the cache), but the first hit after an
+      edit is a real, currently un-signposted UI hitch for a long nested sequence — the honest
+      reason this item is `[~]` not `[x]`.
+    - **Follow-up: live preview now works too.** `App::current_preview_clip`/
+      `current_preview_overlay_clips`/`current_preview_audio_clips` now take an explicit
+      `media_library` slice instead of reading `Project::media_library` directly, so
+      `App::ensure_preview_loaded` can merge in
+      `materialize_nested_sequences_for_active_sequence`'s synthetic assets before resolving —
+      same cache-backed pattern the export path already uses, so scrubbing/playback across a
+      compound clip only pays the render cost once per edit to it. Fixed a real bug found while
+      wiring this in: `ensure_preview_loaded`'s own cheap per-frame "did anything change" fast
+      path (`current_preview_clip_id`/`current_preview_overlay_clip_ids`) still required an
+      `asset_id` to resolve in the *plain* `media_library` even for a nested clip (which has no
+      real `asset_id` at all) — would have made the fast path see "still unresolved, nothing
+      changed" forever and never actually attempt to open a compound clip's pipeline. Two call
+      sites that only ever needed clip-level fields (`frozen`, `speed_factor`, `id`), never the
+      asset — `toggle_preview_playback`, `seek_preview` — were switched to a new asset-free
+      `current_preview_video_clip` instead of threading `media_library` through them for no
+      reason.
+    - **Explicitly not done**: dragging an *existing* sequence tab onto another timeline as a
+      nested clip (only the "create compound from selection" direction ships); deleting a
+      `Sequence` still referenced by a compound clip elsewhere leaves a dangling
+      `nested_sequence_id` — `RenderError::MissingNestedSequence` degrades gracefully (logged,
+      clip skipped) rather than crashing, but there's no warning at delete time.
+    - **Verified for real**: `avcore::nested_sequence`'s own test module — cycle detection (both
+      direct self-nesting and an indirect A→B→A cycle), a missing-sequence error, and, the
+      strongest evidence, an actual end-to-end test that builds a two-sequence project, calls
+      `materialize_nested_sequences`, and confirms the rendered output file really exists and
+      probes as valid video (a real recursive FFmpeg encode, not just type-checked) — plus a
+      cache-reuse test confirming an unchanged nested timeline returns the same cached path
+      rather than re-rendering. All run for real in this session (`cargo test -p core`, this
+      machine's FFmpeg/GStreamer toolchain actually links here).
 
 ## P5 — Competitive Product Growth
 

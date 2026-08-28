@@ -283,6 +283,8 @@ text_catalog! {
     SpeedRampStepsLabel: pt_br = "Número de etapas", en = "Step count";
     SpeedRampStepsHint: pt_br = "mínimo 2", en = "minimum 2";
     SpeedRampSmoothToggle: pt_br = "Curva suave e contínua (em vez de degraus)", en = "Smooth, continuous curve (instead of steps)";
+    ContextMenuCreateCompoundClip: pt_br = "📦 Criar clipe composto", en = "📦 Create compound clip";
+    ContextMenuOpenCompoundClip: pt_br = "📦 Abrir clipe composto", en = "📦 Open compound clip";
     SpeedRampApply: pt_br = "Aplicar rampa", en = "Apply ramp";
     ContextMenuCopy: pt_br = "⧉ Copiar", en = "⧉ Copy";
     ContextMenuCut: pt_br = "✂ Recortar", en = "✂ Cut";

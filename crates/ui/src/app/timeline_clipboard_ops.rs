@@ -115,6 +115,7 @@ impl App {
                     frozen: source.frozen,
                     speed_factor: source.speed_factor,
                     speed_ramp_end_factor: source.speed_ramp_end_factor,
+                    nested_sequence_id: source.nested_sequence_id,
                     crop_x: source.crop_x,
                     crop_y: source.crop_y,
                     crop_w: source.crop_w,

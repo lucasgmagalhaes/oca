@@ -1,0 +1,252 @@
+// Copyright (C) 2026 by Lucas Gomes <lucasgsm88@gmail.com>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 2 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Nested sequences / compound clips (`spec/ROADMAP.md`, `matrix/competitor-parity.md`'s
+//! 2026-08-27 update) — Premiere/DaVinci/FCP all let a group of clips be edited as its own
+//! sub-timeline, then dropped onto a parent timeline as a single clip. oca already has
+//! independently-editable [`crate::project::Sequence`]s (the Editor's tabs) — a compound clip
+//! reuses that directly rather than inventing a second sub-timeline concept:
+//! [`crate::timeline::ClipInstance::nested_sequence_id`] points at another `Sequence` in the
+//! same [`crate::project::Project`] instead of `asset_id`.
+//!
+//! The render/preview pipeline needs to *recurse* into that sequence, not just carry a pointer
+//! (per this feature's own scoping note in `matrix/competitor-parity.md`) — [`materialize_nested_sequences`]
+//! does that by actually rendering each nested sequence to a cached temp file, then handing back
+//! a synthetic [`MediaAsset`] per nested clip pointing at that file. Every existing resolution
+//! function ([`crate::render::resolve_timeline_segments_multi`] and friends) then treats a
+//! compound clip exactly like an ordinary asset-backed one — zero changes needed to their own
+//! logic, and every per-clip effect (crop/color/keyframes/...) still applies on top of the
+//! rendered nested content for free, since it's the same [`crate::timeline::ClipInstance`].
+//!
+//! **Known cost, deliberately not hidden**: unlike an imported asset, a nested sequence's
+//! rendered file is produced by a real encode, not instant. `ui`'s callers (queueing an export,
+//! opening a preview) call this synchronously and block until it's done — no background-thread/
+//! progress-reporting path yet, a real UX rough edge for a long nested sequence. Caching (keyed
+//! on the nested sequence's own [`crate::timeline::Timeline`] content — cheap `PartialEq`, no
+//! hashing) means this cost is paid once per edit to that nested sequence, not on every call.
+
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
+
+use crate::media::MediaAsset;
+use crate::project::{Project, Sequence};
+use crate::render::{
+    render_export_job_multi_with_audio, resolve_audio_segments, resolve_shape_segments,
+    resolve_text_segments, resolve_timeline_segments_multi, RenderError, RenderOutcome,
+};
+use crate::timeline::Timeline;
+
+/// Where a project's nested-sequence renders are cached — a hidden sibling folder next to the
+/// project file, same convention [`crate::proxy::cache_dir_for_project`] uses (kept separate
+/// from the proxy cache dir since these are full re-encodes, not lightweight editing proxies,
+/// and clearing one cache shouldn't imply clearing the other).
+pub fn cache_dir_for_project(project: &Project) -> PathBuf {
+    match &project.file_path {
+        Some(path) => {
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("project");
+            path.with_file_name(format!(".{stem}_nested"))
+        }
+        None => std::env::temp_dir().join("oca_unsaved_nested"),
+    }
+}
+
+/// One nested sequence's rendered file, cached against the exact [`Timeline`] content it was
+/// rendered from — `ui`'s `App` owns a `HashMap<u64, NestedSequenceCache>` (mirroring
+/// `ExportPreviewCache`'s own "value-equality, not a version counter" pattern) so repeated calls
+/// after an unrelated edit don't re-render. Public so `ui` can store/compare it without this
+/// module needing to know anything about `App`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NestedSequenceCache {
+    pub timeline: Timeline,
+    pub rendered_path: PathBuf,
+}
+
+/// Renders every nested-sequence clip ([`crate::timeline::ClipInstance::nested_sequence_id`])
+/// reachable from `timeline`, recursively (a nested sequence's own clips may themselves be
+/// nested), skipping any whose `cache` already has a fresh (`Timeline`-equal) entry. Returns a
+/// map from `nested_sequence_id` to a synthetic [`MediaAsset`] (`source_path` = the rendered
+/// file) that [`crate::render::resolve_timeline_segments_multi`]/[`resolve_audio_segments`] can
+/// resolve exactly like an ordinary asset-backed clip once merged into a `media_library` clone —
+/// see this module's own doc comment. `cache` is updated in place with any newly-rendered
+/// entries (and read for ones that are already fresh); synthetic ids are allocated past the
+/// project's own highest real asset id, so they can never collide.
+///
+/// [`RenderError::CyclicNestedSequence`] if a sequence (transitively) nests itself.
+/// [`RenderError::MissingNestedSequence`] if a `nested_sequence_id` doesn't resolve.
+pub fn materialize_nested_sequences(
+    project: &Project,
+    timeline: &Timeline,
+    cache_dir: &Path,
+    cache: &mut HashMap<u64, NestedSequenceCache>,
+) -> Result<HashMap<u64, MediaAsset>, RenderError> {
+    let mut visiting = HashSet::new();
+    let mut assets = HashMap::new();
+    materialize_inner(
+        project,
+        timeline,
+        cache_dir,
+        cache,
+        &mut visiting,
+        &mut assets,
+    )?;
+    Ok(assets)
+}
+
+fn materialize_inner(
+    project: &Project,
+    timeline: &Timeline,
+    cache_dir: &Path,
+    cache: &mut HashMap<u64, NestedSequenceCache>,
+    visiting: &mut HashSet<u64>,
+    assets: &mut HashMap<u64, MediaAsset>,
+) -> Result<(), RenderError> {
+    let nested_ids: Vec<u64> = timeline
+        .tracks
+        .iter()
+        .flat_map(|t| &t.clips)
+        .filter_map(|c| c.nested_sequence_id)
+        .collect();
+
+    for nested_id in nested_ids {
+        if assets.contains_key(&nested_id) {
+            continue;
+        }
+        let nested_sequence = project
+            .sequences
+            .iter()
+            .find(|s| s.id == nested_id)
+            .ok_or(RenderError::MissingNestedSequence)?;
+
+        if let Some(cached) = cache.get(&nested_id) {
+            if cached.timeline == nested_sequence.timeline {
+                assets.insert(
+                    nested_id,
+                    synthetic_asset(nested_id, &cached.rendered_path)?,
+                );
+                continue;
+            }
+        }
+
+        if !visiting.insert(nested_id) {
+            return Err(RenderError::CyclicNestedSequence);
+        }
+        // Recurse first -- the nested sequence's own nested clips need materializing before it
+        // can be rendered itself.
+        materialize_inner(
+            project,
+            &nested_sequence.timeline,
+            cache_dir,
+            cache,
+            visiting,
+            assets,
+        )?;
+        visiting.remove(&nested_id);
+
+        let rendered_path = render_nested_sequence(project, nested_sequence, cache_dir, assets)?;
+        assets.insert(nested_id, synthetic_asset(nested_id, &rendered_path)?);
+        cache.insert(
+            nested_id,
+            NestedSequenceCache {
+                timeline: nested_sequence.timeline.clone(),
+                rendered_path,
+            },
+        );
+    }
+    Ok(())
+}
+
+/// Renders `sequence` (whose own nested clips are already resolved in `already_materialized`)
+/// to a fresh file under `cache_dir`, named by sequence id — a later render of the same sequence
+/// overwrites it, no stale-file accumulation.
+fn render_nested_sequence(
+    project: &Project,
+    sequence: &Sequence,
+    cache_dir: &Path,
+    already_materialized: &HashMap<u64, MediaAsset>,
+) -> Result<PathBuf, RenderError> {
+    let mut media_library = project.media_library.clone();
+    media_library.extend(already_materialized.values().cloned());
+
+    let (track_segments, canvas) = resolve_timeline_segments_multi(sequence, &media_library)?;
+    let audio_segments = resolve_audio_segments(sequence, &media_library)?;
+    let text_segments = resolve_text_segments(sequence, canvas.width, canvas.height);
+    let shape_segments = resolve_shape_segments(sequence, canvas.width, canvas.height);
+
+    std::fs::create_dir_all(cache_dir).map_err(RenderError::ReplaceOutput)?;
+    let output = cache_dir.join(format!("sequence_{}.mp4", sequence.id));
+
+    let outcome = render_export_job_multi_with_audio(
+        &track_segments,
+        &audio_segments,
+        canvas,
+        &output,
+        sequence.export_settings.target_lufs,
+        avbridge::GpuEncoderPreference::Auto,
+        &text_segments,
+        &shape_segments,
+        &AtomicBool::new(false),
+        |_percent| {},
+    )?;
+    debug_assert_eq!(
+        outcome,
+        RenderOutcome::Completed,
+        "cancel is never set here"
+    );
+    Ok(output)
+}
+
+/// A synthetic [`MediaAsset`] standing in for a rendered nested-sequence file — probed for real
+/// (resolution/fps/duration/audio), so it resolves through the ordinary asset pipeline exactly
+/// like an imported file. `id` is the nested sequence's own id, offset into a private range
+/// (`u64::MAX / 2 +`) so it can never collide with a real imported asset's id — this asset is
+/// never inserted into `Project::media_library` itself, only into a throwaway clone passed to
+/// the resolve functions, so no persistence/uniqueness contract with real asset ids is at risk.
+fn synthetic_asset(
+    nested_sequence_id: u64,
+    rendered_path: &Path,
+) -> Result<MediaAsset, RenderError> {
+    let info = avbridge::probe(rendered_path).map_err(|_| RenderError::ProbeNestedSequence)?;
+    Ok(MediaAsset {
+        id: u64::MAX / 2 + nested_sequence_id,
+        file_name: rendered_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("nested_sequence.mp4")
+            .to_string(),
+        source_path: rendered_path.to_path_buf(),
+        kind: crate::media::MediaKind::Video,
+        has_audio: info.has_audio,
+        duration_secs: info.duration_secs,
+        codec: info.codec_name,
+        source_bitrate_mbps: info
+            .bit_rate
+            .map(|bps| bps as f32 / 1_000_000.0)
+            .unwrap_or(0.0),
+        resolution: info.resolution,
+        fps: info.fps,
+        sample_rate_khz: None,
+        loudness: None,
+        proxy_path: None,
+        waveform_peaks: None,
+    })
+}
+
+#[cfg(test)]
+#[path = "nested_sequence/nested_sequence_test.rs"]
+mod tests;

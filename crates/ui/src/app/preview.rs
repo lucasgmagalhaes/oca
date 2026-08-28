@@ -78,10 +78,17 @@ impl App {
             .iter()
             .find(|t| t.kind == TrackKind::Video && t.visible)?;
         let clip = track.clip_at(timeline.playhead_secs)?;
-        project
-            .media_library
-            .iter()
-            .find(|a| a.id == clip.asset_id)?;
+        // A compound clip (nested sequence) has no real `asset_id` to resolve — its own
+        // `nested_sequence_id` being set is proof enough it "resolves" for this cheap
+        // change-detection pass, same as an ordinary clip resolving via `media_library`. Getting
+        // this wrong would make ensure_preview_loaded's fast path see "still None, nothing
+        // changed" forever for a nested clip and never actually open its pipeline.
+        if clip.nested_sequence_id.is_none() {
+            project
+                .media_library
+                .iter()
+                .find(|a| a.id == clip.asset_id)?;
+        }
         Some(clip.id)
     }
 
@@ -96,10 +103,13 @@ impl App {
             .skip(1)
             .filter_map(|t| {
                 let clip = t.clip_at(timeline.playhead_secs)?;
-                project
-                    .media_library
-                    .iter()
-                    .find(|a| a.id == clip.asset_id)?;
+                // See current_preview_clip_id's own comment on why nested clips skip this check.
+                if clip.nested_sequence_id.is_none() {
+                    project
+                        .media_library
+                        .iter()
+                        .find(|a| a.id == clip.asset_id)?;
+                }
                 Some(clip.id)
             })
             .collect()
@@ -160,22 +170,39 @@ impl App {
 
     /// The clip covering the active sequence's timeline playhead, and the asset it plays from,
     /// if both resolve — `None` if the video track is missing/empty, nothing covers the
-    /// playhead ([`avcore::timeline::Track::clip_at`]), or the clip's `asset_id` isn't in the
-    /// media library. Always the *first* video track (background/track 0) — see
-    /// [`App::current_preview_overlay_clips`] for the rest.
-    fn current_preview_clip(&self) -> Option<(ClipInstance, MediaAsset)> {
-        let project = self.active_project();
-        let timeline = project.timeline();
+    /// playhead ([`avcore::timeline::Track::clip_at`]), or the clip's `asset_id` isn't in
+    /// `media_library`. Always the *first* video track (background/track 0) — see
+    /// [`App::current_preview_overlay_clips`] for the rest. `media_library` is the caller's own
+    /// (real assets plus, for a compound clip, [`App::materialize_nested_sequences_for_active_sequence`]'s
+    /// synthetic ones) rather than reading `self.active_project().media_library` directly, so a
+    /// nested-sequence clip resolves here exactly like an ordinary one.
+    fn current_preview_clip(
+        &self,
+        media_library: &[MediaAsset],
+    ) -> Option<(ClipInstance, MediaAsset)> {
+        let timeline = self.active_project().timeline();
         let track = timeline
             .tracks
             .iter()
             .find(|t| t.kind == TrackKind::Video && t.visible)?;
         let clip = track.clip_at(timeline.playhead_secs)?;
-        let asset = project
-            .media_library
-            .iter()
-            .find(|a| a.id == clip.asset_id)?;
+        let asset = media_library.iter().find(|a| a.id == clip.asset_id)?;
         Some((clip.clone(), asset.clone()))
+    }
+
+    /// Just the [`ClipInstance`] covering the active sequence's timeline playhead on the first
+    /// visible `Video` track, without resolving the asset it plays from — for callers
+    /// ([`App::toggle_preview_playback`], [`App::seek_preview`]) that only ever read clip-level
+    /// fields (`frozen`, `speed_factor`, `id`), never the asset. This works for a compound clip
+    /// (nested sequence) too, unlike [`App::current_preview_clip`] on its own, since it never
+    /// needs a `media_library` lookup to succeed in the first place.
+    fn current_preview_video_clip(&self) -> Option<ClipInstance> {
+        let timeline = self.active_project().timeline();
+        let track = timeline
+            .tracks
+            .iter()
+            .find(|t| t.kind == TrackKind::Video && t.visible)?;
+        track.clip_at(timeline.playhead_secs).cloned()
     }
 
     /// Just [`ClipInstance::lut_path`]/[`ClipInstance::vignette_intensity`]/
@@ -211,9 +238,11 @@ impl App {
     /// nothing at the playhead, or whose clip's asset doesn't resolve, is just skipped rather
     /// than aborting the whole list, same "degrade gracefully" shape
     /// [`App::current_preview_clip`] already has for the background track.
-    fn current_preview_overlay_clips(&self) -> Vec<(ClipInstance, MediaAsset)> {
-        let project = self.active_project();
-        let timeline = project.timeline();
+    fn current_preview_overlay_clips(
+        &self,
+        media_library: &[MediaAsset],
+    ) -> Vec<(ClipInstance, MediaAsset)> {
+        let timeline = self.active_project().timeline();
         timeline
             .tracks
             .iter()
@@ -221,10 +250,7 @@ impl App {
             .skip(1)
             .filter_map(|t| {
                 let clip = t.clip_at(timeline.playhead_secs)?;
-                let asset = project
-                    .media_library
-                    .iter()
-                    .find(|a| a.id == clip.asset_id)?;
+                let asset = media_library.iter().find(|a| a.id == clip.asset_id)?;
                 Some((clip.clone(), asset.clone()))
             })
             .collect()
@@ -232,17 +258,18 @@ impl App {
 
     /// Every audio-only track clip covering the playhead, in track order. Video clips with
     /// embedded audio are already represented by the background/overlay branch lists.
-    fn current_preview_audio_clips(&self) -> Vec<(ClipInstance, MediaAsset)> {
-        let project = self.active_project();
-        let timeline = project.timeline();
+    fn current_preview_audio_clips(
+        &self,
+        media_library: &[MediaAsset],
+    ) -> Vec<(ClipInstance, MediaAsset)> {
+        let timeline = self.active_project().timeline();
         timeline
             .tracks
             .iter()
             .filter(|track| track.kind == TrackKind::Audio && track.visible)
             .filter_map(|track| {
                 let clip = track.clip_at(timeline.playhead_secs)?;
-                let asset = project
-                    .media_library
+                let asset = media_library
                     .iter()
                     .find(|asset| asset.id == clip.asset_id && asset.has_audio)?;
                 Some((clip.clone(), asset.clone()))
@@ -409,11 +436,21 @@ impl App {
             return;
         }
 
-        let current = self.current_preview_clip();
+        // Compound clips (nested sequences) resolve through this same media-library-lookup
+        // path as an ordinary asset — merging in materialize_nested_sequences_for_active_
+        // sequence's synthetic assets here means current_preview_clip/current_preview_overlay_
+        // clips/current_preview_audio_clips need no nested-sequence awareness of their own.
+        // Cache-backed (see avcore::nested_sequence's own doc comment), so this only actually
+        // re-renders once per edit to a referenced nested sequence, not once per frame.
+        let nested_assets = self.materialize_nested_sequences_for_active_sequence();
+        let mut media_library = self.active_project().media_library.clone();
+        media_library.extend(nested_assets);
+
+        let current = self.current_preview_clip(&media_library);
         let (overlays, audio_clips, text_clips, shape_clips) = if current.is_some() {
             (
-                self.current_preview_overlay_clips(),
-                self.current_preview_audio_clips(),
+                self.current_preview_overlay_clips(&media_library),
+                self.current_preview_audio_clips(&media_library),
                 self.current_preview_text_clips(),
                 self.current_preview_shape_clips(),
             )
@@ -610,7 +647,7 @@ impl App {
         let Some(preview) = &self.preview_state.preview else {
             return;
         };
-        let frozen = self.current_preview_clip().is_some_and(|(c, _)| c.frozen);
+        let frozen = self.current_preview_video_clip().is_some_and(|c| c.frozen);
         let now_playing = !self.preview_state.preview_playing;
         let result = if frozen {
             Ok(())
@@ -680,9 +717,9 @@ impl App {
         let same_clip = self
             .preview_state
             .preview_clip_id
-            .zip(self.current_preview_clip())
-            .filter(|(loaded_id, (clip, _))| *loaded_id == clip.id)
-            .map(|(_, (clip, _))| clip);
+            .zip(self.current_preview_video_clip())
+            .filter(|(loaded_id, clip)| *loaded_id == clip.id)
+            .map(|(_, clip)| clip);
 
         // For a composited pipeline, the overlay set covering the playhead — video, text, and
         // shape alike — must also still match exactly what was opened for: a plain

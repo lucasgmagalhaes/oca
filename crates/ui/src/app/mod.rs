@@ -711,6 +711,13 @@ pub struct App {
     /// export segments — see [`App::resolved_active_sequence_export_preview`]. `None` before
     /// the Fila (export queue) screen's header has ever been drawn.
     export_preview_cache: Option<export::ExportPreviewCache>,
+    /// Rendered-file cache for compound clips (nested sequences), keyed by
+    /// `ClipInstance::nested_sequence_id` — see
+    /// [`avcore::nested_sequence::materialize_nested_sequences`]'s own doc comment. Shared by
+    /// both export resolution and preview (each pays the render cost once per edit to the
+    /// nested sequence, not once per caller).
+    pub(super) nested_sequence_render_cache:
+        HashMap<u64, avcore::nested_sequence::NestedSequenceCache>,
     /// Every field around the live preview pipeline — GStreamer pipeline handle, loaded-clip-id
     /// tracking, uploaded textures, playback/fullscreen state — grouped into its own struct
     /// rather than left flat on `App` (an internal-audit finding: `App` had grown to 122 flat
@@ -1277,6 +1284,7 @@ impl App {
             render_rx,
             active_renders: HashMap::new(),
             export_preview_cache: None,
+            nested_sequence_render_cache: HashMap::new(),
             preview_state: PreviewState::default(),
             import_state: ImportState {
                 import_tx,
