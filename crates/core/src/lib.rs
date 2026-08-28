@@ -31,6 +31,7 @@ pub mod bundle;
 pub mod collab_bundle;
 pub mod error_reporting;
 pub mod export;
+pub mod font_catalog;
 pub mod frame_sampler;
 pub mod highlight_detection;
 pub mod keyframe;
