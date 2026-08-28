@@ -124,6 +124,7 @@ impl App {
             pos_x_keyframes: vec![],
             pos_y_keyframes: vec![],
             scale_keyframes: vec![],
+            rotation_keyframes: vec![],
         });
         self.selected_clip_id = None;
         self.selected_shape_clip_id = None;

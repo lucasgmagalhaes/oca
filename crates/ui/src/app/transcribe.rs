@@ -157,6 +157,7 @@ impl App {
                 pos_x_keyframes: vec![],
                 pos_y_keyframes: vec![],
                 scale_keyframes: vec![],
+                rotation_keyframes: vec![],
             });
         }
     }
