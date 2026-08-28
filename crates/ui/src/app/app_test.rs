@@ -337,6 +337,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         layer_templates_menu_open: false,
         timeline_index_open: false,
         marker_search: String::new(),
+        transcript_panel_open: false,
+        transcript_search: String::new(),
+        transcript_panel_state: TranscriptPanelState::default(),
         silence_review: None,
         binding_capture: None,
         update_check_tx,
@@ -1517,6 +1520,115 @@ fn ensure_preview_loaded_clears_state_once_the_playhead_moves_past_every_clip() 
 
     assert!(!app.preview_clip_present());
     assert!(!app.preview_state.preview_playing);
+}
+
+#[test]
+fn toggle_transcript_panel_flips_the_open_flag() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    assert!(!app.transcript_panel_open);
+    app.toggle_transcript_panel();
+    assert!(app.transcript_panel_open);
+    app.toggle_transcript_panel();
+    assert!(!app.transcript_panel_open);
+}
+
+#[test]
+fn ensure_transcript_loaded_for_preview_clears_state_with_no_clip() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.transcript_panel_state.loaded_asset_id = Some(99);
+    app.ensure_transcript_loaded_for_preview();
+    assert_eq!(app.transcript_panel_state.loaded_asset_id, None);
+    assert!(app.transcript_panel_state.document.is_none());
+}
+
+#[test]
+fn ensure_transcript_loaded_for_preview_finds_no_document_when_none_saved() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut project = test_project_with_tracks_and_assets(
+        1,
+        vec![test_track(
+            1,
+            TrackKind::Video,
+            vec![test_clip(1, 0.0, 0.0, 10.0)],
+        )],
+        vec![test_asset(1)],
+    );
+    project.file_path = Some(dir.path().join("proj.ocproj"));
+    project.timeline_mut().playhead_secs = 3.0;
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.ensure_transcript_loaded_for_preview();
+
+    assert_eq!(app.transcript_panel_state.loaded_asset_id, Some(1));
+    assert!(app.transcript_panel_state.document.is_none());
+}
+
+#[test]
+fn ensure_transcript_loaded_for_preview_loads_a_saved_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut project = test_project_with_tracks_and_assets(
+        1,
+        vec![test_track(
+            1,
+            TrackKind::Video,
+            vec![test_clip(1, 0.0, 0.0, 10.0)],
+        )],
+        vec![test_asset(1)],
+    );
+    project.file_path = Some(dir.path().join("proj.ocproj"));
+    project.timeline_mut().playhead_secs = 3.0;
+
+    let cache_dir = avcore::transcript_cache_dir_for_project(&project);
+    let segments = vec![avcore::transcribe::TranscribeSegment {
+        start_secs: 0.0,
+        end_secs: 1.0,
+        text: "hi".to_string(),
+        words: vec![avcore::transcribe::TranscribeWord {
+            text: "hi".to_string(),
+            start_secs: 0.0,
+            end_secs: 0.5,
+            confidence: 0.9,
+        }],
+    }];
+    let document = avcore::TranscriptDocument::from_transcribe_segments(1, None, &segments);
+    avcore::save_transcript_document(&cache_dir, &document).unwrap();
+
+    let mut app = test_app(vec![project], Vec::new());
+    app.ensure_transcript_loaded_for_preview();
+
+    assert_eq!(app.transcript_panel_state.loaded_asset_id, Some(1));
+    assert_eq!(app.transcript_panel_state.document, Some(document));
+}
+
+#[test]
+fn save_transcript_document_for_refreshes_an_already_open_panel() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.file_path = Some(dir.path().join("proj.ocproj"));
+    let mut app = test_app(vec![project], Vec::new());
+    app.transcript_panel_state.loaded_asset_id = Some(1);
+    assert!(app.transcript_panel_state.document.is_none());
+
+    let segments = vec![avcore::transcribe::TranscribeSegment {
+        start_secs: 0.0,
+        end_secs: 1.0,
+        text: "hi".to_string(),
+        words: vec![avcore::transcribe::TranscribeWord {
+            text: "hi".to_string(),
+            start_secs: 0.0,
+            end_secs: 0.5,
+            confidence: 0.9,
+        }],
+    }];
+    app.save_transcript_document_for(1, &segments);
+
+    let document = app
+        .transcript_panel_state
+        .document
+        .as_ref()
+        .expect("panel already showed asset 1, so saving its transcript should refresh it");
+    assert_eq!(document.asset_id, 1);
+    assert_eq!(document.words.len(), 1);
 }
 
 #[test]
