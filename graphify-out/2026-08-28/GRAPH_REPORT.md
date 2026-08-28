@@ -1,16 +1,16 @@
 # Graph Report - oca  (2026-08-28)
 
 ## Corpus Check
-- 275 files · ~369,423 words
+- 275 files · ~369,502 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3649 nodes · 7250 edges · 235 communities (204 shown, 31 thin omitted)
+- 3649 nodes · 7250 edges · 236 communities (205 shown, 31 thin omitted)
 - Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 428 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b8d8a4f9`
+- Built from commit: `b3604007`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -229,6 +229,7 @@
 - engine.md
 - .add_and_open_project
 - shape_render.rs
+- smooth_speed_ramp_duration_secs
 
 ## God Nodes (most connected - your core abstractions)
 1. `test_app()` - 270 edges
@@ -257,11 +258,11 @@
 ## Import Cycles
 - 2-file cycle: `crates/ui/src/app/mod.rs -> crates/ui/src/i18n.rs -> crates/ui/src/app/mod.rs`
 
-## Communities (235 total, 31 thin omitted)
+## Communities (236 total, 31 thin omitted)
 
 ### Community 0 - "keyframe_test.rs"
 Cohesion: 0.04
-Nodes (24): color_balance_filter_expr_animates_only_the_keyframed_axis(), color_balance_filter_expr_uses_constants_for_unanimated_axes(), crop_filter_expr_animates_only_the_keyframed_axis(), crop_filter_expr_builds_a_geq_expression_for_a_static_crop_with_no_keyframes(), gain_filter_db_expr_converts_a_single_keyframe_to_a_linear_multiplier(), gain_filter_db_expr_uses_t_for_an_animated_ramp(), opacity_alpha_ramp_expr_clamps_a_single_keyframe(), rotation_filter_angle_expr_converts_a_single_keyframe_to_radians() (+16 more)
+Nodes (16): color_balance_filter_expr_animates_only_the_keyframed_axis(), color_balance_filter_expr_uses_constants_for_unanimated_axes(), crop_filter_expr_animates_only_the_keyframed_axis(), crop_filter_expr_builds_a_geq_expression_for_a_static_crop_with_no_keyframes(), gain_filter_db_expr_converts_a_single_keyframe_to_a_linear_multiplier(), gain_filter_db_expr_uses_t_for_an_animated_ramp(), opacity_alpha_ramp_expr_clamps_a_single_keyframe(), rotation_filter_angle_expr_converts_a_single_keyframe_to_radians() (+8 more)
 
 ### Community 1 - "persistence_test.rs"
 Cohesion: 0.07
@@ -324,7 +325,7 @@ Cohesion: 0.07
 Nodes (36): GpuSampler, record_event(), ResourceSampler, rotate_if_oversized(), Default, Display, Error, Formatter (+28 more)
 
 ### Community 17 - "Manager Agent"
-Cohesion: 0.20
+Cohesion: 0.18
 Nodes (10): Behavior rules, `commit_plan.md`, Expected inputs, Granularity rules (HARD RULES), Manager Agent, Project stack, Required outputs, Role (+2 more)
 
 ### Community 18 - "task_id: impl-004b"
@@ -332,7 +333,7 @@ Cohesion: 0.22
 Nodes (8): Bugs found and fixed during implementation (not just typos — genuine correctness issues), Checklist, Decision, Diff sizes, Review Report, task_id: impl-004b, Verification performed (real files, not just `cargo test` passing), Why this is flagged, not silently split
 
 ### Community 19 - "Docs Specialist"
-Cohesion: 0.25
+Cohesion: 0.29
 Nodes (7): CHANGELOG.md — expected format, Constraints, Docs Specialist, Expected inputs, Output, Required workflow, Role
 
 ### Community 20 - "Git Agent"
@@ -991,6 +992,10 @@ Nodes (5): Commit discipline (repo-wide convention, applies to UI work too), "Do
 Cohesion: 0.48
 Nodes (6): ellipse_inside_expr(), inside_expr(), polygon_inside_expr(), String, ellipse_inside_expr_keyframed_width_produces_a_valid_multiply_through_test(), inside_expr_outline_wraps_outer_and_inner_tests()
 
+### Community 235 - "smooth_speed_ramp_duration_secs"
+Cohesion: 0.25
+Nodes (8): smooth_speed_ramp_duration_secs_is_shorter_for_a_speed_up_ramp(), smooth_speed_ramp_duration_secs_matches_numerical_integration(), smooth_speed_ramp_duration_secs_matches_plain_division_for_a_constant_speed(), smooth_speed_ramp_source_secs_at_is_the_true_inverse_of_the_duration_formula(), smooth_speed_ramp_source_secs_at_matches_plain_multiply_for_a_constant_speed(), smooth_speed_ramp_duration_secs(), smooth_speed_ramp_elapsed_timeline_secs(), smooth_speed_ramp_source_secs_at()
+
 ## Knowledge Gaps
 - **492 isolated node(s):** `App`, `App`, `SequenceTabDrag`, `TrimEdge`, `name` (+487 more)
   These have ≤1 connection - possible missing edges or undocumented components.
@@ -1008,7 +1013,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **What connects `App`, `App`, `SequenceTabDrag` to the rest of the system?**
   _492 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `keyframe_test.rs` be split into smaller, more focused modules?**
-  _Cohesion score 0.03690260133091349 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.04 - nodes in this community are weakly interconnected._
 - **Should `persistence_test.rs` be split into smaller, more focused modules?**
   _Cohesion score 0.06882882882882883 - nodes in this community are weakly interconnected._
 - **Should `app_test.rs` be split into smaller, more focused modules?**
