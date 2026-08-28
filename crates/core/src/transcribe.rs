@@ -51,6 +51,12 @@ pub struct TranscribeWord {
     pub text: String,
     pub start_secs: f64,
     pub end_secs: f64,
+    /// This word's own confidence, `0.0..=1.0` — the mean of its constituent tokens' own
+    /// probability (`whisper_token_data::p`, confirmed against `whisper-rs-sys`'s bindgen
+    /// output, not assumed). A multi-token word (e.g. "running" as `["run", "ning"]`) averages
+    /// across every token that got merged into it, same grouping [`collect_words`] already does
+    /// for the word's own text/time range.
+    pub confidence: f32,
 }
 
 #[derive(Debug)]
@@ -236,8 +242,13 @@ fn collect_segments(state: &whisper_rs::WhisperState) -> Vec<TranscribeSegment> 
 /// one. Special/control tokens (`[_BEG_]`, `[_TT_50]`, etc. — bracketed, not real transcribed
 /// text) are dropped rather than becoming garbage "words".
 fn collect_words(segment: &whisper_rs::WhisperSegment) -> Vec<TranscribeWord> {
+    // Parallel to `current`: the running (sum, count) of token probabilities merged into the
+    // word being built, so its final confidence is their mean — tracked alongside rather than
+    // inside `TranscribeWord` itself, which only ever stores the finished per-word average.
     let mut words = Vec::new();
     let mut current: Option<TranscribeWord> = None;
+    let mut current_prob_sum = 0.0_f32;
+    let mut current_prob_count = 0u32;
 
     for t in 0..segment.n_tokens() {
         let Some(token) = segment.get_token(t) else {
@@ -254,8 +265,9 @@ fn collect_words(segment: &whisper_rs::WhisperSegment) -> Vec<TranscribeWord> {
         let end_secs = data.t1 as f64 * 0.01;
 
         if raw_text.starts_with(' ') || current.is_none() {
-            if let Some(word) = current.take() {
+            if let Some(mut word) = current.take() {
                 if !word.text.is_empty() {
+                    word.confidence = current_prob_sum / current_prob_count.max(1) as f32;
                     words.push(word);
                 }
             }
@@ -263,14 +275,20 @@ fn collect_words(segment: &whisper_rs::WhisperSegment) -> Vec<TranscribeWord> {
                 text: raw_text.trim_start().to_string(),
                 start_secs,
                 end_secs,
+                confidence: 0.0,
             });
+            current_prob_sum = data.p;
+            current_prob_count = 1;
         } else if let Some(word) = current.as_mut() {
             word.text.push_str(raw_text);
             word.end_secs = end_secs;
+            current_prob_sum += data.p;
+            current_prob_count += 1;
         }
     }
-    if let Some(word) = current.take() {
+    if let Some(mut word) = current.take() {
         if !word.text.is_empty() {
+            word.confidence = current_prob_sum / current_prob_count.max(1) as f32;
             words.push(word);
         }
     }

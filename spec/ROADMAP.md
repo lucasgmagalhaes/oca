@@ -763,8 +763,29 @@ competitive evidence, implementation slices, acceptance criteria, security requi
 deliberate non-goals. Implement in this order unless an active production problem justifies moving
 an item earlier:
 
-- `[ ]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
+- `[~]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
+  **Slice 1 (persist a media-relative transcript document) shipped**:
+  `avcore::transcript::TranscriptDocument` flattens whisper.cpp's segment-grouped output into a
+  stable-word-id, explicit-schema-versioned, media-relative (source-file seconds, not timeline)
+  document — deliberately its own type, not the existing `TranscribeSegment`/`TranscribeWord`
+  (Whisper's raw per-inference output, no id/schema/persistence), per the plan's own "keep
+  subtitle text and editorial transcript separate" requirement. `TranscribeWord` gained a real
+  `confidence: f32` field (the mean of a word's constituent tokens' own
+  `whisper_token_data::p` — confirmed against `whisper-rs-sys`'s bindgen output, not assumed).
+  Persisted as a sidecar (`.<project>_transcripts/asset_<id>.octr`) via a new `OCTR` framing
+  through `crate::persistence`'s existing magic-bytes + version + size-bounded-gzip-MessagePack
+  machinery (same one `.ocproj`/`.ocqueue` already use) — `TranscriptDocument::validate` layers
+  semantic checks (schema version, duplicate word ids, out-of-range/non-finite
+  timestamps/confidence) on top, satisfying the backlog's shared "treat sidecars as untrusted
+  input" security requirement, since `#[serde(default)]`-driven forward compatibility only
+  proves the bytes parsed, not that their contents make sense. Verified for real: 13 new unit
+  tests including a real end-to-end one (actual Whisper inference against a fixture, through
+  `from_transcribe_segments`, through `validate()`), plus a new confidence-range assertion added
+  to the existing real-transcription integration test — both currently skip (not fail) without
+  `WHISPER_MODEL_PATH` set, same convention `transcribe_test.rs` already used. **Not yet built**:
+  the transcript panel/seek-on-select, search, proposed-edit list, or apply-as-undo slices —
+  this is purely the data-model/persistence foundation the rest of CF-01 sits on.
 - `[ ]` **CF-02: gameplay event ingestion and watched-folder import.** Import versioned event
   sidecars/bookmarks and combine them with audio-spike scoring before building a full recorder.
 - `[ ]` **CF-03: integrated gameplay-voice cleanup.** Move the proven watched-folder FFmpeg chain

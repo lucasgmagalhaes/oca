@@ -59,6 +59,7 @@ pub mod text_to_speech;
 pub mod timeline;
 pub mod timeline_window;
 pub mod transcribe;
+pub mod transcript;
 pub mod undo;
 pub mod update_check;
 pub mod waveform;
@@ -95,8 +96,8 @@ pub use multicam_sync::{
     DEFAULT_MAX_SYNC_OFFSET_SECS,
 };
 pub use persistence::{
-    from_ocproj_bytes, from_ocqueue_bytes, load_project_from_file, save_project_to_file,
-    to_ocproj_bytes, to_ocqueue_bytes, PersistError,
+    from_ocproj_bytes, from_ocqueue_bytes, from_octr_bytes, load_project_from_file,
+    save_project_to_file, to_ocproj_bytes, to_ocqueue_bytes, to_octr_bytes, PersistError,
 };
 pub use preview::{AudioLevel, Preview, PreviewError};
 pub use preview_effects::{
@@ -131,6 +132,11 @@ pub use timeline::{
 };
 pub use timeline_window::extract_timeline_window;
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
+pub use transcript::{
+    cache_dir_for_project as transcript_cache_dir_for_project, load_transcript_document,
+    save_transcript_document, transcript_path, TranscriptDocument, TranscriptStorageError,
+    TranscriptValidationError, TranscriptWord, TRANSCRIPT_SCHEMA_VERSION,
+};
 pub use update_check::{
     apply_update, auto_update_supported, expected_update_asset_name, fetch_latest_release,
     is_newer, package_supports_atomic_update, release_supports_auto_update, restart_application,
