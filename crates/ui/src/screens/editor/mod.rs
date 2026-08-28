@@ -372,6 +372,9 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         if ui.button(Text::DetectSilence.tr(locale)).clicked() {
             app.begin_silence_review();
         }
+        if ui.button(Text::DetectSpeechEdits.tr(locale)).clicked() {
+            app.begin_transcript_proposals();
+        }
         if ui.button(Text::DetectChapters.tr(locale)).clicked() {
             app.spawn_detect_scene_cuts_for_selected_clip();
         }

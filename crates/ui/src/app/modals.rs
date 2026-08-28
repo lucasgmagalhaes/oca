@@ -1041,6 +1041,128 @@ impl App {
         }
     }
 
+    /// The speech-edit review modal (CF-01 slices 4-5) — every proposal
+    /// `App::begin_transcript_proposals` staged in `App::transcript_review`, each with a
+    /// checkbox defaulting to accepted, a kind label plus detail, and an "Apply" button that
+    /// runs `App::apply_transcript_proposals` on whatever's still checked. Shown while
+    /// `transcript_review` is `Some`; a no-op otherwise. Never applies anything itself while
+    /// drawing — same read-then-mutate-after shape as `show_silence_review_modal`.
+    pub(super) fn show_transcript_proposals_modal(&mut self, ctx: &egui::Context) {
+        if self.transcript_review.is_none() {
+            return;
+        }
+        let locale = self.locale;
+        let mut toggle_index: Option<usize> = None;
+        let mut apply = false;
+        let mut close = false;
+
+        let modal = egui::Modal::new(egui::Id::new("transcript_proposals_modal"));
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.label(
+                egui::RichText::new(Text::TranscriptProposalsTitle.tr(locale))
+                    .size(15.0)
+                    .strong(),
+            );
+            ui.add_space(6.0);
+
+            let Some(review) = &self.transcript_review else {
+                return;
+            };
+            if review.proposals.is_empty() {
+                ui.label(
+                    egui::RichText::new(Text::TranscriptProposalsEmpty.tr(locale))
+                        .color(theme::TEXT_MUTED),
+                );
+            }
+            egui::ScrollArea::vertical()
+                .max_height(320.0)
+                .show(ui, |ui| {
+                    for (index, entry) in review.proposals.iter().enumerate() {
+                        let kind_label = match entry.proposal.kind {
+                            avcore::TranscriptEditKind::DeadAir => {
+                                Text::TranscriptProposalDeadAir.tr(locale).to_string()
+                            }
+                            avcore::TranscriptEditKind::FillerWord => {
+                                Text::TranscriptProposalFillerWord.tr(locale).to_string()
+                            }
+                            avcore::TranscriptEditKind::Retake => {
+                                Text::TranscriptProposalRetake.tr(locale).to_string()
+                            }
+                            avcore::TranscriptEditKind::RepeatedPhrase => {
+                                Text::TranscriptProposalRepeatedPhrase
+                                    .tr(locale)
+                                    .to_string()
+                            }
+                        };
+                        let range = Text::TranscriptProposalRange
+                            .tr(locale)
+                            .replace(
+                                "{start}",
+                                &avcore::media::format_timecode(entry.proposal.start_secs),
+                            )
+                            .replace(
+                                "{end}",
+                                &avcore::media::format_timecode(entry.proposal.end_secs),
+                            )
+                            .replace(
+                                "{duration}",
+                                &format!("{:.1}", entry.proposal.source_duration_secs()),
+                            );
+                        ui.horizontal(|ui| {
+                            let mut accepted = entry.accepted;
+                            if ui.checkbox(&mut accepted, "").changed() {
+                                toggle_index = Some(index);
+                            }
+                            ui.vertical(|ui| {
+                                ui.label(
+                                    egui::RichText::new(format!("{kind_label} · {range}")).color(
+                                        if accepted {
+                                            theme::TEXT_PRIMARY
+                                        } else {
+                                            theme::TEXT_MUTED
+                                        },
+                                    ),
+                                );
+                                if !entry.proposal.detail.is_empty() {
+                                    ui.label(
+                                        egui::RichText::new(&entry.proposal.detail)
+                                            .color(theme::TEXT_MUTED)
+                                            .italics(),
+                                    );
+                                }
+                            });
+                        });
+                    }
+                });
+
+            ui.add_space(8.0);
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                close = true;
+            }
+            ui.horizontal(|ui| {
+                if ui
+                    .button(Text::TranscriptProposalsApply.tr(locale))
+                    .clicked()
+                {
+                    apply = true;
+                }
+                if ui.button(Text::WindowClose.tr(locale)).clicked() {
+                    close = true;
+                }
+            });
+        });
+
+        if let Some(index) = toggle_index {
+            self.toggle_transcript_proposal(index);
+        }
+        if apply {
+            self.apply_transcript_proposals();
+        } else if response.should_close() || close {
+            self.close_transcript_review();
+        }
+    }
+
     /// Flags that a project with `file_path` should offer autosave restoration on open, if
     /// `<file_path>.autosave.ocproj` exists and is newer than the project file itself.
     pub fn check_autosave_on_open(&mut self, file_path: &Path) {

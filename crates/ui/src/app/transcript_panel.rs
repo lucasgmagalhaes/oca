@@ -61,108 +61,193 @@ impl App {
     }
 
     /// The searchable Transcript panel. Shown while [`App::transcript_panel_open`] is set; a
-    /// no-op otherwise, and a no-op (with an explanatory empty-state label) whenever
-    /// `transcript_panel_state.document` is `None` — no clip previewed, a compound clip, or the
-    /// previewed asset genuinely has no transcript yet.
+    /// no-op otherwise. Two modes: with [`App::transcript_search_project`] off (default) it
+    /// filters the previewed clip's own document (slice 2); turned on with a query it searches
+    /// every asset in the project library that has a transcript (slice 3) and shows hits grouped
+    /// by asset. Clicking a word seeks the timeline — within the previewed asset through that
+    /// clip, from any other asset through the first timeline clip that uses it.
     pub(super) fn show_transcript_panel(&mut self, ctx: &egui::Context) {
         if !self.transcript_panel_open {
             return;
         }
         let locale = self.locale;
         let mut search = self.transcript_search.clone();
-        let Some(clip) = self
+        let mut search_project = self.transcript_search_project;
+
+        let query = search.trim().to_lowercase();
+        let project_search = search_project && !query.is_empty();
+
+        let clip = self
             .current_preview_video_clip()
-            .filter(|clip| clip.nested_sequence_id.is_none())
-        else {
-            self.show_empty_transcript_panel(ctx, Text::TranscriptPanelNoClip.tr(locale));
-            return;
-        };
-        let Some(document) = self.transcript_panel_state.document.clone() else {
-            self.show_empty_transcript_panel(ctx, Text::TranscriptPanelNoTranscript.tr(locale));
-            return;
-        };
+            .filter(|clip| clip.nested_sequence_id.is_none());
+        let document = self.transcript_panel_state.document.clone();
 
         let playhead_secs = self.active_project().timeline().playhead_secs;
-        // The inverse of App::clip_seek_offset: how far into this clip's own trimmed source
-        // range the playhead currently is, in the same media-relative seconds
-        // TranscriptWord::start_secs/end_secs use — the word covering this is the one
-        // highlighted.
-        let current_source_secs = if clip.frozen {
-            clip.source_in_secs
-        } else {
-            clip.source_in_secs
-                + (playhead_secs - clip.start_secs) * clip.speed_factor.max(0.01) as f64
-        };
-        let current_word_id = document
-            .words
-            .iter()
-            .find(|w| current_source_secs >= w.start_secs && current_source_secs < w.end_secs)
-            .map(|w| w.id);
+        // Media-relative position of the playhead inside the previewed clip (see seek below for
+        // the inverse) — the word covering it is the one highlighted.
+        let current_source_secs = clip.as_ref().map(|clip| {
+            if clip.frozen {
+                clip.source_in_secs
+            } else {
+                clip.source_in_secs
+                    + (playhead_secs - clip.start_secs) * clip.speed_factor.max(0.01) as f64
+            }
+        });
+        let current_word_id = document.as_ref().and_then(|d| {
+            current_source_secs.and_then(|s| {
+                d.words
+                    .iter()
+                    .find(|w| s >= w.start_secs && s < w.end_secs)
+                    .map(|w| w.id)
+            })
+        });
 
-        let mut seek_to: Option<f64> = None;
+        // Project-wide hits, when that mode is active.
+        let project_hits = if project_search {
+            let dir = avcore::transcript_cache_dir_for_project(self.active_project());
+            avcore::search_transcripts_in_project(
+                &dir,
+                &self.active_project().media_library,
+                &query,
+            )
+        } else {
+            Vec::new()
+        };
+
+        let mut seek_to: Option<(u64, f64)> = None;
         let mut close = false;
+        let mut help_message: Option<&str> = None;
 
         let modal = egui::Modal::new(egui::Id::new("transcript_panel"));
         let response = modal.show(ctx, |ui| {
             ui.set_width(420.0);
-            ui.label(
-                egui::RichText::new(Text::TranscriptPanelTitle.tr(locale))
-                    .size(15.0)
-                    .strong(),
-            );
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(Text::TranscriptPanelTitle.tr(locale))
+                        .size(15.0)
+                        .strong(),
+                );
+            });
             ui.add_space(6.0);
             ui.add(
                 egui::TextEdit::singleline(&mut search)
                     .desired_width(f32::INFINITY)
-                    .hint_text(Text::TranscriptPanelSearchHint.tr(locale)),
+                    .hint_text(if search_project {
+                        Text::TranscriptProjectSearchHint.tr(locale)
+                    } else {
+                        Text::TranscriptPanelSearchHint.tr(locale)
+                    }),
             );
+            ui.add_space(4.0);
+            if ui
+                .selectable_label(search_project, Text::TranscriptSearchProject.tr(locale))
+                .clicked()
+            {
+                search_project = !search_project;
+            }
             ui.add_space(8.0);
 
-            let query = search.to_lowercase();
-            let visible: Vec<&avcore::TranscriptWord> = document
-                .words
-                .iter()
-                .filter(|w| query.is_empty() || w.text.to_lowercase().contains(&query))
-                .collect();
-
-            egui::ScrollArea::vertical()
-                .max_height(320.0)
-                .show(ui, |ui| {
-                    if visible.is_empty() {
-                        ui.label(
-                            egui::RichText::new(Text::TranscriptPanelEmpty.tr(locale))
-                                .color(theme::TEXT_MUTED),
-                        );
+            if project_search {
+                // Group hits by asset (order of first appearance), then source-time within.
+                let mut seen_assets: Vec<u64> = Vec::new();
+                for hit in &project_hits {
+                    if !seen_assets.contains(&hit.asset_id) {
+                        seen_assets.push(hit.asset_id);
                     }
-                    ui.horizontal_wrapped(|ui| {
-                        for word in &visible {
-                            let is_current = Some(word.id) == current_word_id;
-                            let text =
-                                egui::RichText::new(&word.text)
-                                    .size(13.0)
-                                    .color(if is_current {
-                                        theme::ACCENT
-                                    } else if word.confidence < 0.5 {
-                                        // A visibly lower-confidence word is worth flagging at a
-                                        // glance — CF-01's own proposed-edit-list slice will build
-                                        // on this same field later; this is just the panel's own
-                                        // cheapest possible use of it in the meantime.
-                                        theme::TEXT_MUTED
-                                    } else {
-                                        theme::TEXT_PRIMARY
-                                    });
-                            let response = ui.selectable_label(is_current, text);
-                            response.clone().on_hover_text(format!(
-                                "{} ({:.0}%)",
-                                avcore::media::format_timecode(word.start_secs),
-                                word.confidence * 100.0
-                            ));
-                            if response.clicked() {
-                                seek_to = Some(word.start_secs);
+                }
+                egui::ScrollArea::vertical()
+                    .max_height(320.0)
+                    .show(ui, |ui| {
+                        if project_hits.is_empty() {
+                            ui.label(
+                                egui::RichText::new(Text::TranscriptProjectEmpty.tr(locale))
+                                    .color(theme::TEXT_MUTED),
+                            );
+                        } else {
+                            for asset_id in &seen_assets {
+                                ui.add_space(4.0);
+                                ui.label(
+                                    egui::RichText::new(
+                                        project_hits
+                                            .iter()
+                                            .find(|h| h.asset_id == *asset_id)
+                                            .map(|h| h.asset_name.as_str())
+                                            .unwrap_or(""),
+                                    )
+                                    .color(theme::ACCENT)
+                                    .strong(),
+                                );
+                                for hit in project_hits.iter().filter(|h| h.asset_id == *asset_id) {
+                                    let is_current = Some(hit.word.id) == current_word_id;
+                                    let label = format!(
+                                        "{} — {}",
+                                        avcore::media::format_timecode(hit.word.start_secs),
+                                        hit.word.text
+                                    );
+                                    let response =
+                                        ui.selectable_label(is_current, egui::RichText::new(label));
+                                    response.clone().on_hover_text(format!(
+                                        "{} ({:.0}%)",
+                                        avcore::media::format_timecode(hit.word.start_secs),
+                                        hit.word.confidence * 100.0
+                                    ));
+                                    if response.clicked() {
+                                        seek_to = Some((hit.asset_id, hit.word.start_secs));
+                                    }
+                                }
                             }
                         }
                     });
-                });
+            } else {
+                let Some(document) = &document else {
+                    let message = if clip.is_some() {
+                        Text::TranscriptPanelNoTranscript.tr(locale)
+                    } else {
+                        Text::TranscriptPanelNoClip.tr(locale)
+                    };
+                    help_message = Some(message);
+                    return;
+                };
+                let visible: Vec<&avcore::TranscriptWord> = document
+                    .words
+                    .iter()
+                    .filter(|w| query.is_empty() || w.text.to_lowercase().contains(&query))
+                    .collect();
+
+                egui::ScrollArea::vertical()
+                    .max_height(320.0)
+                    .show(ui, |ui| {
+                        if visible.is_empty() {
+                            ui.label(
+                                egui::RichText::new(Text::TranscriptPanelEmpty.tr(locale))
+                                    .color(theme::TEXT_MUTED),
+                            );
+                        }
+                        ui.horizontal_wrapped(|ui| {
+                            for word in &visible {
+                                let is_current = Some(word.id) == current_word_id;
+                                let text = egui::RichText::new(&word.text).size(13.0).color(
+                                    if is_current {
+                                        theme::ACCENT
+                                    } else if word.confidence < 0.5 {
+                                        theme::TEXT_MUTED
+                                    } else {
+                                        theme::TEXT_PRIMARY
+                                    },
+                                );
+                                let response = ui.selectable_label(is_current, text);
+                                response.clone().on_hover_text(format!(
+                                    "{} ({:.0}%)",
+                                    avcore::media::format_timecode(word.start_secs),
+                                    word.confidence * 100.0
+                                ));
+                                if response.clicked() {
+                                    seek_to = Some((document.asset_id, word.start_secs));
+                                }
+                            }
+                        });
+                    });
+            }
 
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 close = true;
@@ -174,19 +259,44 @@ impl App {
         });
 
         self.transcript_search = search;
+        self.transcript_search_project = search_project;
+        if let Some(message) = help_message {
+            self.show_empty_transcript_panel(ctx, message);
+            return;
+        }
         if response.should_close() || close {
             self.transcript_panel_open = false;
         }
-        if let Some(source_secs) = seek_to {
-            // Inverse of current_source_secs above: map this word's own media-relative time
-            // back onto the timeline through the same clip's trim/speed, then seek there —
-            // never off into a different clip, since a word only ever comes from the transcript
-            // of the one clip currently previewed.
-            let timeline_secs = clip.start_secs
-                + (source_secs - clip.source_in_secs) / clip.speed_factor.max(0.01) as f64;
-            self.active_project_mut().timeline_mut().playhead_secs = timeline_secs;
-            self.seek_preview(timeline_secs);
+        if let Some((asset_id, source_secs)) = seek_to {
+            if let Some(timeline_secs) = self.map_asset_source_to_timeline(asset_id, source_secs) {
+                self.active_project_mut().timeline_mut().playhead_secs = timeline_secs;
+                self.seek_preview(timeline_secs);
+            }
         }
+    }
+
+    /// Maps a media-relative `source_secs` of `asset_id` back onto the timeline through the
+    /// first clip that uses that asset (preferring the currently previewed one), so a word from
+    /// any asset's transcript can be located on the timeline. `None` if no clip on the timeline
+    /// uses the asset — the search hit stays informational.
+    fn map_asset_source_to_timeline(&self, asset_id: u64, source_secs: f64) -> Option<f64> {
+        let timeline = self.active_project().timeline();
+        let prefer = self
+            .current_preview_video_clip()
+            .filter(|clip| clip.asset_id == asset_id);
+        if let Some(clip) = prefer {
+            return Some(self.clip_media_to_timeline(&clip, source_secs));
+        }
+        for track in &timeline.tracks {
+            if let Some(clip) = track.clips.iter().find(|c| c.asset_id == asset_id) {
+                return Some(self.clip_media_to_timeline(clip, source_secs));
+            }
+        }
+        None
+    }
+
+    fn clip_media_to_timeline(&self, clip: &avcore::ClipInstance, source_secs: f64) -> f64 {
+        clip.start_secs + (source_secs - clip.source_in_secs) / clip.speed_factor.max(0.01) as f64
     }
 
     /// Builds a [`avcore::TranscriptDocument`] from a just-finished transcription and saves it
