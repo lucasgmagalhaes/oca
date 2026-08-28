@@ -233,5 +233,6 @@
   "231": "engine.md",
   "232": "app/highlight_detection.rs",
   "233": ".add_and_open_project",
-  "234": "shape_render.rs"
+  "234": "shape_render.rs",
+  "235": "smooth_speed_ramp_duration_secs"
 }

@@ -145,8 +145,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1787938239.0988736,
-    "ast_hash": "ba82d080945a38708250506527d7aad6",
+    "mtime": 1787938588.5997934,
+    "ast_hash": "373f9a5773c36ce092e1e4d598c922d1",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -985,8 +985,8 @@
     "semantic_hash": ""
   },
   "spec/ROADMAP.md": {
-    "mtime": 1787938239.1048791,
-    "ast_hash": "9fb7fed5c7ad43d10565b33ca959834d",
+    "mtime": 1787938588.601806,
+    "ast_hash": "16fff98a1be87cbca00c73f25544db04",
     "semantic_hash": ""
   },
   "spec/RULES.md": {
@@ -1230,8 +1230,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel/mod.rs": {
-    "mtime": 1787938239.1018767,
-    "ast_hash": "0bc1e7818d8967e6c3a9f81ac84708e3",
+    "mtime": 1787938588.600805,
+    "ast_hash": "e109c94e537854efd6a19371ae5f6e41",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel/snap.rs": {
