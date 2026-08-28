@@ -191,6 +191,15 @@ pub struct TextClip {
     /// `#[serde(default)]` so older saved projects load unscaled.
     #[serde(default)]
     pub scale_keyframes: Vec<Keyframe<f32>>,
+    /// General keyframe animation for this block's own clockwise rotation, in degrees — the last
+    /// piece of P4 item 34's `TextClip` scope. Same treatment as `scale_keyframes`: no
+    /// raster-baking change needed, `keyframe::text_rotation_sample_exprs` builds a `geq`
+    /// inverse-sample remap around the same raster-baked position anchor. Scale and rotation
+    /// compose independently around that shared anchor with no interaction term needed (an
+    /// isotropic scale and a rotation around the same center commute). `#[serde(default)]` so
+    /// older saved projects load unrotated.
+    #[serde(default)]
+    pub rotation_keyframes: Vec<Keyframe<f32>>,
     /// Per-word timestamps within this clip's own text, `start_secs`/`end_secs` relative to
     /// this clip's *own* start (not the timeline) — per `request.md`'s Fase 4 "Legenda com
     /// destaque de palavra (estilo shorts)". Populated when this clip was generated from
@@ -212,9 +221,8 @@ pub struct TextClip {
     #[serde(default = "default_highlight_color")]
     pub highlight_color_rgba: [u8; 4],
     /// General opacity fade over this clip's own on-timeline duration — the first slice of P4
-    /// item 34's `TextClip` scope, per `spec/ROADMAP.md` (position and scale followed later, see
-    /// `pos_x_keyframes`/`pos_y_keyframes`/`scale_keyframes`; rotation animation stays out of
-    /// scope for now).
+    /// item 34's `TextClip` scope, per `spec/ROADMAP.md` (position, scale, and rotation followed
+    /// later, see `pos_x_keyframes`/`pos_y_keyframes`/`scale_keyframes`/`rotation_keyframes`).
     /// The raster already carries a real alpha channel (transparent background around the text/
     /// background box), so a fade is just an alpha *multiplier* applied to the existing pixels in
     /// `avbridge::apply_text_overlays`'s filter graph (`keyframe::text_opacity_alpha_expr`) —

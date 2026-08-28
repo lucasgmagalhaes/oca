@@ -25,10 +25,10 @@
 #include <stdarg.h>
 
 /* Maximum byte length of one movie+overlay filter fragment (per segment) -- sized to fit the
-   escaped path plus the escaped opacity expr and the two escaped scale sample exprs (each up
-   to 2048 bytes) with room to spare; the snprintf truncation check below is the real safety
+   escaped path plus the escaped opacity expr and the escaped scale/rotation sample exprs (each
+   up to 2048 bytes) with room to spare; the snprintf truncation check below is the real safety
    net regardless. */
-#define TEXT_OVERLAY_SEG_MAX 12288
+#define TEXT_OVERLAY_SEG_MAX 16384
 
 /* Appends one snprintf-formatted fragment to `buf` at `*pos` (buffer size `buf_size`),
    advancing `*pos` past it. Returns 0 on success, -1 on truncation. */
@@ -185,6 +185,18 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
                 status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
                 goto cleanup;
             }
+            int has_rotation =
+                seg->rotation_keyframe_expr_x && seg->rotation_keyframe_expr_x[0] != '\0' &&
+                seg->rotation_keyframe_expr_y && seg->rotation_keyframe_expr_y[0] != '\0';
+            char escaped_rotation_x[2048];
+            char escaped_rotation_y[2048];
+            if (has_rotation && (escape_filter_expr(escaped_rotation_x, sizeof(escaped_rotation_x),
+                                                    seg->rotation_keyframe_expr_x) < 0 ||
+                                 escape_filter_expr(escaped_rotation_y, sizeof(escaped_rotation_y),
+                                                    seg->rotation_keyframe_expr_y) < 0)) {
+                status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
+                goto cleanup;
+            }
             /* Unescaped and single-quoted, same convention as timeline_export_multi.c's
                build_overlay_vfilter -- an overlay x=/y= expression sits directly in its own
                quoted option value, not nested inside another quoted expression the way the
@@ -243,6 +255,26 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
                                  cur_label, escaped_scale_x, escaped_scale_y, escaped_scale_x,
                                  escaped_scale_y, escaped_scale_x, escaped_scale_y, escaped_scale_x,
                                  escaped_scale_y, next_label) < 0) {
+                    status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
+                    goto cleanup;
+                }
+                snprintf(cur_label, sizeof(cur_label), "%s", next_label);
+            }
+
+            if (has_rotation) {
+                char next_label[32];
+                snprintf(next_label, sizeof(next_label), "text%d_rotated", i);
+                /* Same inverse-sample contract as the scale stage above, around the same
+                   anchor -- composes independently of it (an isotropic scale and a rotation
+                   around the same center commute, see keyframe::text_rotation_sample_exprs'
+                   doc comment), so stage order relative to the scale stage doesn't matter. */
+                if (append_stage(filter_str, filter_buf_size, &pos,
+                                 "[%s]geq=r='r(%s\\,%s)':g='g(%s\\,%s)':b='b(%s\\,%s)':"
+                                 "a='alpha(%s\\,%s)'[%s];",
+                                 cur_label, escaped_rotation_x, escaped_rotation_y,
+                                 escaped_rotation_x, escaped_rotation_y, escaped_rotation_x,
+                                 escaped_rotation_y, escaped_rotation_x, escaped_rotation_y,
+                                 next_label) < 0) {
                     status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
                     goto cleanup;
                 }

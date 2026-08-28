@@ -325,6 +325,31 @@ pub(super) fn text_clip_properties(
         }
     }
 
+    // Rotation keyframes -- animate the text's own clockwise rotation around its baked position
+    // anchor over this clip's own on-timeline duration (see TextClip::rotation_keyframes' doc
+    // comment).
+    let mut new_rotation_keyframes = None;
+    if components::property_section(
+        ui,
+        Text::PropTextRotationKeyframes.tr(locale),
+        Text::TextRotationKeyframesExportNote.tr(locale),
+        |ui| {
+            new_rotation_keyframes = super::keyframe_editors::f32_keyframe_editor(
+                ui,
+                &tc.rotation_keyframes,
+                -180.0..=180.0,
+                0.0,
+                locale,
+            );
+            new_rotation_keyframes.is_some()
+        },
+    ) {
+        if let Some(kfs) = new_rotation_keyframes {
+            tc.rotation_keyframes = kfs;
+            changed = true;
+        }
+    }
+
     // Opacity keyframes -- fade the text in/out over its own on-timeline duration (see
     // TextClip::opacity_keyframes' doc comment).
     let mut new_opacity_keyframes = None;

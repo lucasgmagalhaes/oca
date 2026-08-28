@@ -513,6 +513,8 @@ text_catalog! {
     TextPositionKeyframesExportNote: pt_br = "quando definido, substitui a posição constante desse eixo na exportação (movimento animado) — sem efeito no preview ao vivo.", en = "when set, overrides this axis's constant position on export (animated movement) — no live preview effect.";
     PropTextScaleKeyframes: pt_br = "Escala (keyframes)", en = "Scale (keyframes)";
     TextScaleKeyframesExportNote: pt_br = "anima o tamanho do texto ao redor da sua própria posição durante a exportação — sem efeito no preview ao vivo.", en = "animates the text's size around its own position on export — no live preview effect.";
+    PropTextRotationKeyframes: pt_br = "Rotação (keyframes)", en = "Rotation (keyframes)";
+    TextRotationKeyframesExportNote: pt_br = "anima a rotação do texto ao redor da sua própria posição durante a exportação — sem efeito no preview ao vivo.", en = "animates the text's rotation around its own position on export — no live preview effect.";
     PropTextDuration: pt_br = "Duração (s)", en = "Duration (s)";
     PropTextStart: pt_br = "Início (s)", en = "Start (s)";
     TextExportNote: pt_br = "fontes embutidas e fundo usam o mesmo rasterizador no preview e no export.", en = "bundled fonts and backgrounds use the same rasterizer in preview and export.";

@@ -123,6 +123,7 @@ fn text_clip(words: Vec<WordTiming>, highlight_enabled: bool) -> TextClip {
         pos_x_keyframes: vec![],
         pos_y_keyframes: vec![],
         scale_keyframes: vec![],
+        rotation_keyframes: vec![],
     }
 }
 

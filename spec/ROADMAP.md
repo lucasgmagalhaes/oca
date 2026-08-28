@@ -459,7 +459,7 @@ not by default priority.
     Verified: `crop_filter_expr`'s 3 new unit tests run for real in the same `keyframe.rs`
     scratch crate as the other keyframe expression builders' (35/35 passing); new
     `video_filter_chain`/`split_clip_at` tests in `timeline_test.rs`.
-34. `[~]` Text/shape clip animation keyframes — `TextClip`/`ShapeClip` had *zero* keyframe fields
+34. `[x]` Text/shape clip animation keyframes — `TextClip`/`ShapeClip` had *zero* keyframe fields
     (position/scale/rotation/opacity keyframes only existed on `ClipInstance` before this), so
     this was a structural gap, not a one-field addition. **Partial, now covers all of
     `ShapeClip`**: `center_x_keyframes`/`center_y_keyframes` (position) and, in a follow-up
@@ -550,9 +550,26 @@ not by default priority.
     sandbox's packaged FFmpeg — same category as, but distinct from, `filters.c`'s own gap) so it
     could not be executed here, though `cargo check`/`clippy` for the whole workspace stayed clean.
 
-    **Explicitly still not done**: `TextClip` rotation animation, and the sprite-cropping
-    restructuring itself (still not needed for position/scale, may still be worth it later purely
-    as a performance optimization — the raster/overlay stays full-canvas-sized either way for now).
+    **`TextClip` rotation keyframes also ship**, completing this item's `TextClip` scope
+    (opacity/position/scale/rotation all now animate). `keyframe::text_rotation_sample_exprs`
+    builds a `geq` inverse-sample remap around the same raster-baked anchor scale uses, via
+    FFmpeg's `sin()`/`cos()` expression-language functions — the same inverse-rotation math
+    `shape_render`'s own `ShapeClip` rotation already relies on, just re-added onto the anchor
+    instead of compared against half-extents for an inside test. Composes independently of the
+    scale remap around that shared anchor (an isotropic scale and a rotation around the same
+    center commute algebraically), so the two geq stages' relative order in the filter chain
+    doesn't affect the result. Verified: `text_rotation_sample_exprs`' 6 new unit tests run for
+    real in the same `keyframe.rs` scratch crate as the other keyframe expression builders'
+    (59/59 passing). `avbridge/tests/text_overlay_test.rs` gained a real-FFmpeg-build test for
+    the new rotation `geq` remap syntax; same pre-existing `av_opt_set_array` link-time sandbox
+    gap as the scale test above kept it from actually running here, though `cargo check`/
+    `clippy` for the whole workspace stayed clean.
+
+    The sprite-cropping restructuring floated as a future possibility above (shrinking the
+    raster to a tight sprite instead of a full-canvas-sized one) remains genuinely not needed —
+    every axis (opacity, position, scale, rotation) shipped without it, purely via geq inverse-
+    sampling and overlay-expression deltas — and stays a possible future performance
+    optimization rather than a functional gap.
 
 Found but deliberately not added as a P4 item: **nested sequences / compound clips** (Premiere/
 DaVinci/FCP) — closer to Multicam's own tier of effort than to the four above (the render/
