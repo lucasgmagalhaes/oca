@@ -26,24 +26,23 @@
 //! then replaces it only when playback enters another timed word; `imagefreeze` repeats the
 //! latest buffer between boundaries without per-video-frame rasterization.
 //!
-//! Text uses `fontdue`'s own layout engine (already a dependency, see [`crate::text_metrics`])
-//! rather than the manual baseline math its `Metrics` type alone would require — `Layout` hands
-//! back each glyph's top-left pixel position directly under [`fontdue::layout::CoordinateSystem::
-//! PositiveYDown`], matching this buffer's row-major top-down layout, and wraps at word
-//! boundaries once a line would run past the canvas's right edge (`LayoutSettings::max_width`).
-//! Word-highlight timing ([`crate::timeline::TextClip::words`]) is rendered through
-//! [`render_text_clip_rgba`]'s `local_time_secs` parameter. Preview calls it on word-boundary
-//! changes; export emits one precisely timed PNG overlay per word.
+//! Text shapes and rasterizes through [`crate::text_layout`]'s `cosmic-text` adapter
+//! (TEXT-01A step 3 — see that module's own doc comment), wrapping at word boundaries once a
+//! line would run past the canvas's right edge. Word-highlight timing
+//! ([`crate::timeline::TextClip::words`]) is rendered through [`render_text_clip_rgba`]'s
+//! `local_time_secs` parameter. Preview calls it on word-boundary changes; export emits one
+//! precisely timed PNG overlay per word.
 //!
 //! Shapes mirror [`crate::shape_render::build_shape_filter_desc`]'s per-pixel math term-for-term
 //! (rotate into the shape's local frame, then an ellipse quadratic or
 //! [`crate::shape_render::point_in_polygon`] ray-cast), just evaluated directly against a pixel
 //! buffer in Rust instead of compiled into a `geq` expression string.
 
-use fontdue::layout::{CoordinateSystem, GlyphRasterConfig, Layout, LayoutSettings, TextStyle};
+use std::ops::Range;
 
 use crate::render::TextSegment;
 use crate::shape_render::point_in_polygon;
+use crate::text_layout::{self, ShapedText};
 use crate::timeline::{MaskShape, ShapeClip, ShapeKind, TextClip};
 
 /// Writes `[r, g, b, a]` at `(x, y)` into a `width`×`height` RGBA buffer, `a` already the final
@@ -79,115 +78,128 @@ fn blend_pixel(buf: &mut [u8], width: u32, height: u32, x: i64, y: i64, rgba: [u
     buf[idx + 3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
 }
 
-fn text_layout(
-    font: &fontdue::Font,
-    text: &str,
-    font_size: f32,
-    x: f32,
-    y: f32,
-    max_width: f32,
-) -> Layout<()> {
-    let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
-    layout.reset(&LayoutSettings {
-        x,
-        y,
-        max_width: Some(max_width),
-        ..LayoutSettings::default()
-    });
-    layout.append(&[font], &TextStyle::new(text, font_size, 0));
-    layout
+/// `glyph_byte_range` filters by each glyph's *cluster start* — matching the previous `fontdue`
+/// renderer's own `glyph.byte_offset` semantics exactly, so a highlight range that lands mid-
+/// cluster still includes the whole cluster rather than splitting it (cluster-safe splitting
+/// itself, TEXT-01B, is a separate, later concern).
+fn glyph_excluded(cluster: &Range<usize>, glyph_byte_range: Option<[u32; 2]>) -> bool {
+    glyph_byte_range.is_some_and(|[start, end]| {
+        let offset = cluster.start as u64;
+        offset < start as u64 || offset >= end as u64
+    })
 }
 
-fn draw_laid_out_text(
+/// Rasterizes every glyph in `shaped` matching `glyph_byte_range` into `buf`, blended in `rgba`.
+/// `engine`/`swash_cache` come from [`text_layout::with_shared_engine`] so this never builds its
+/// own `FontSystem`.
+#[allow(clippy::too_many_arguments)]
+fn draw_shaped_text(
     buf: &mut [u8],
-    font: &fontdue::Font,
-    layout: &Layout<()>,
+    shaped: &ShapedText,
     rgba: [u8; 4],
     glyph_byte_range: Option<[u32; 2]>,
     canvas_width: u32,
     canvas_height: u32,
+    engine: &mut text_layout::TextLayoutEngine,
+    swash_cache: &mut cosmic_text::SwashCache,
 ) {
     let [r, g, b, a] = rgba;
-    for glyph in layout.glyphs() {
-        if glyph_byte_range.is_some_and(|[start, end]| {
-            let offset = glyph.byte_offset as u64;
-            offset < start as u64 || offset >= end as u64
-        }) {
-            continue;
-        }
-        let (_metrics, coverage) = font.rasterize_config(GlyphRasterConfig {
-            glyph_index: glyph.key.glyph_index,
-            px: glyph.key.px,
-            font_hash: glyph.key.font_hash,
-        });
-        for row in 0..glyph.height {
-            for col in 0..glyph.width {
-                let cov = coverage[row * glyph.width + col];
-                if cov == 0 {
-                    continue;
-                }
-                let pixel_alpha = (cov as u32 * a as u32 / 255) as u8;
-                if pixel_alpha == 0 {
-                    continue;
-                }
-                blend_pixel(
-                    buf,
-                    canvas_width,
-                    canvas_height,
-                    glyph.x as i64 + col as i64,
-                    glyph.y as i64 + row as i64,
-                    [r, g, b, pixel_alpha],
-                );
+    let base_color = cosmic_text::Color::rgb(r, g, b);
+    for line in &shaped.lines {
+        for glyph in &line.glyphs {
+            if glyph_excluded(&glyph.cluster, glyph_byte_range) {
+                continue;
             }
+            let (cache_key, phys_x, phys_y) =
+                (glyph.physical.cache_key, glyph.physical.x, glyph.physical.y);
+            swash_cache.with_pixels(
+                engine.font_system_mut(),
+                cache_key,
+                base_color,
+                |x, y, color| {
+                    let coverage = color.a();
+                    if coverage == 0 {
+                        return;
+                    }
+                    let pixel_alpha = (coverage as u32 * a as u32 / 255) as u8;
+                    if pixel_alpha == 0 {
+                        return;
+                    }
+                    blend_pixel(
+                        buf,
+                        canvas_width,
+                        canvas_height,
+                        (phys_x + x) as i64,
+                        (phys_y + y) as i64,
+                        [color.r(), color.g(), color.b(), pixel_alpha],
+                    );
+                },
+            );
         }
     }
 }
 
+/// The tight rasterized-ink bounding box (not the wider advance-box geometry) across every glyph
+/// in `shaped` matching `glyph_byte_range` — matches the previous `fontdue` renderer's own
+/// `glyph.width`/`glyph.height` semantics (the rendered bitmap's own extent), which is what makes
+/// a text background hug the visible letterforms rather than their full advance boxes.
+fn shaped_ink_bbox(
+    shaped: &ShapedText,
+    glyph_byte_range: Option<[u32; 2]>,
+    engine: &mut text_layout::TextLayoutEngine,
+    swash_cache: &mut cosmic_text::SwashCache,
+) -> Option<(f32, f32, f32, f32)> {
+    let mut min_x = f32::INFINITY;
+    let mut min_y = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+    let mut any = false;
+    for line in &shaped.lines {
+        for glyph in &line.glyphs {
+            if glyph_excluded(&glyph.cluster, glyph_byte_range) {
+                continue;
+            }
+            let Some(image) =
+                swash_cache.get_image(engine.font_system_mut(), glyph.physical.cache_key)
+            else {
+                continue;
+            };
+            if image.placement.width == 0 || image.placement.height == 0 {
+                continue;
+            }
+            let left = (glyph.physical.x + image.placement.left) as f32;
+            let top = (glyph.physical.y - image.placement.top) as f32;
+            let right = left + image.placement.width as f32;
+            let bottom = top + image.placement.height as f32;
+            min_x = min_x.min(left);
+            min_y = min_y.min(top);
+            max_x = max_x.max(right);
+            max_y = max_y.max(bottom);
+            any = true;
+        }
+    }
+    any.then_some((min_x, min_y, max_x, max_y))
+}
+
 fn draw_rounded_background(
     buf: &mut [u8],
-    layout: &Layout<()>,
-    segment: &TextSegment,
+    ink_bbox: (f32, f32, f32, f32),
+    rgba: [u8; 4],
+    padding: f32,
+    corner_radius: f32,
     canvas_width: u32,
     canvas_height: u32,
 ) {
-    let rgba = segment.background_rgba;
-    let glyph_byte_range = segment.glyph_byte_range;
-    let glyphs: Vec<_> = layout
-        .glyphs()
-        .iter()
-        .filter(|glyph| {
-            !glyph_byte_range.is_some_and(|[start, end]| {
-                let offset = glyph.byte_offset as u64;
-                offset < start as u64 || offset >= end as u64
-            })
-        })
-        .collect();
-    if rgba[3] == 0 || glyphs.is_empty() {
+    if rgba[3] == 0 {
         return;
     }
-    let min_x = glyphs
-        .iter()
-        .map(|glyph| glyph.x)
-        .fold(f32::INFINITY, f32::min);
-    let min_y = glyphs
-        .iter()
-        .map(|glyph| glyph.y)
-        .fold(f32::INFINITY, f32::min);
-    let max_x = glyphs
-        .iter()
-        .map(|glyph| glyph.x + glyph.width as f32)
-        .fold(f32::NEG_INFINITY, f32::max);
-    let max_y = glyphs
-        .iter()
-        .map(|glyph| glyph.y + glyph.height as f32)
-        .fold(f32::NEG_INFINITY, f32::max);
-    let padding = segment.background_padding.max(0.0);
+    let (min_x, min_y, max_x, max_y) = ink_bbox;
+    let padding = padding.max(0.0);
     let left = min_x - padding;
     let top = min_y - padding;
     let right = max_x + padding;
     let bottom = max_y + padding;
-    let radius = segment
-        .background_corner_radius
+    let radius = corner_radius
         .max(0.0)
         .min((right - left) / 2.0)
         .min((bottom - top) / 2.0);
@@ -217,24 +229,43 @@ fn draw_text_segment_onto(
     canvas_width: u32,
     canvas_height: u32,
 ) {
-    let Some(font) = crate::text_metrics::bundled_font(segment.font_family, segment.font_style)
-    else {
-        return;
-    };
     let x = segment.pos_x * canvas_width as f32;
     let y = segment.pos_y * canvas_height as f32;
     let max_width = (canvas_width as f32 - x).max(1.0);
-    let layout = text_layout(font, &segment.text, segment.font_size, x, y, max_width);
-    draw_rounded_background(buf, &layout, segment, canvas_width, canvas_height);
-    draw_laid_out_text(
-        buf,
-        font,
-        &layout,
-        segment.color_rgba,
-        segment.glyph_byte_range,
-        canvas_width,
-        canvas_height,
-    );
+
+    text_layout::with_shared_engine(|engine, swash_cache| {
+        let shaped = engine.shape(
+            &segment.text,
+            segment.font_family,
+            segment.font_style,
+            segment.font_size,
+            Some(max_width),
+            (x, y),
+        );
+        if let Some(ink_bbox) =
+            shaped_ink_bbox(&shaped, segment.glyph_byte_range, engine, swash_cache)
+        {
+            draw_rounded_background(
+                buf,
+                ink_bbox,
+                segment.background_rgba,
+                segment.background_padding,
+                segment.background_corner_radius,
+                canvas_width,
+                canvas_height,
+            );
+        }
+        draw_shaped_text(
+            buf,
+            &shaped,
+            segment.color_rgba,
+            segment.glyph_byte_range,
+            canvas_width,
+            canvas_height,
+            engine,
+            swash_cache,
+        );
+    });
 }
 
 /// Rasterizes one semantic export segment into a full-canvas transparent RGBA image. Export
@@ -256,11 +287,10 @@ pub fn render_text_segment_rgba(
 /// buffer if a bundled font is unexpectedly corrupt.
 ///
 /// Wraps at word boundaries once a line would run past the canvas's right edge. `max_width` is
-/// the space between the text's own left anchor
-/// and the canvas's right edge (`fontdue::layout::LayoutSettings`'s `x`/`max_width` are
-/// independent — `max_width` alone doesn't already account for a nonzero `x`), floored at `1.0`
-/// so a clip anchored at or past the right edge still lays out instead of getting a degenerate
-/// zero/negative wrap width.
+/// the space between the text's own left anchor and the canvas's right edge — `TextLayoutEngine::
+/// shape`'s `origin`/`max_width_px` are independent, `max_width_px` alone doesn't already account
+/// for a nonzero `x`), floored at `1.0` so a clip anchored at or past the right edge still lays
+/// out instead of getting a degenerate zero/negative wrap width.
 ///
 /// `local_time_secs` is elapsed time since `clip.start_secs` (not a timeline position) — when
 /// [`TextClip::highlight_enabled`] and it falls within some [`crate::timeline::WordTiming`]'s

@@ -1,6 +1,42 @@
 use super::*;
 
 #[test]
+fn origin_shifts_every_glyph_by_exactly_that_offset() {
+    let mut engine = TextLayoutEngine::new_from_locked_catalog();
+    let at_zero = engine.shape(
+        "Hi",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        32.0,
+        None,
+        (0.0, 0.0),
+    );
+    let shifted = engine.shape(
+        "Hi",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        32.0,
+        None,
+        (10.0, 5.0),
+    );
+    let g0 = &at_zero.lines[0].glyphs[0];
+    let g1 = &shifted.lines[0].glyphs[0];
+    assert!((g1.x - g0.x - 10.0).abs() < 0.01);
+    assert!((g1.y - g0.y - 5.0).abs() < 0.01);
+    // The physical (rasterization-ready) integer position must also reflect the shift, since
+    // overlay_render.rs paints from `physical.x`/`physical.y`, not from the float `x`/`y` fields.
+    assert!(g1.physical.x > g0.physical.x);
+}
+
+#[test]
+fn with_shared_engine_reuses_the_same_engine_across_calls() {
+    let count_a = with_shared_engine(|engine, _cache| engine.loaded_face_count());
+    let count_b = with_shared_engine(|engine, _cache| engine.loaded_face_count());
+    assert_eq!(count_a, count_b);
+    assert_eq!(count_a, font_catalog::locked_face_bytes().len());
+}
+
+#[test]
 fn loads_exactly_the_locked_catalog_faces_and_nothing_else() {
     let engine = TextLayoutEngine::new_from_locked_catalog();
     assert_eq!(
@@ -20,6 +56,7 @@ fn every_bundled_family_shapes_ordinary_latin_text_without_missing_glyphs() {
             TextFontStyle::Regular,
             32.0,
             None,
+            (0.0, 0.0),
         );
         assert!(
             shaped.glyph_count() > 0,
@@ -48,6 +85,7 @@ fn fi_and_fl_ligatures_form_a_single_multi_character_cluster() {
         TextFontStyle::Regular,
         32.0,
         None,
+        (0.0, 0.0),
     );
     let has_multi_char_cluster = shaped
         .lines
@@ -78,6 +116,7 @@ fn bold_style_selects_a_different_font_face_than_regular_for_a_two_weight_family
         TextFontStyle::Regular,
         32.0,
         None,
+        (0.0, 0.0),
     );
     let bold = engine.shape(
         "Test",
@@ -85,6 +124,7 @@ fn bold_style_selects_a_different_font_face_than_regular_for_a_two_weight_family
         TextFontStyle::Bold,
         32.0,
         None,
+        (0.0, 0.0),
     );
     let regular_font_id = regular.lines[0].glyphs[0].font_id;
     let bold_font_id = bold.lines[0].glyphs[0].font_id;
@@ -106,6 +146,7 @@ fn single_weight_family_ignores_bold_request_without_producing_notdef() {
         TextFontStyle::Bold,
         32.0,
         None,
+        (0.0, 0.0),
     );
     assert!(shaped.glyph_count() > 0);
     assert!(shaped
@@ -151,6 +192,7 @@ fn wrapping_at_a_narrow_width_produces_more_than_one_line() {
         TextFontStyle::Regular,
         24.0,
         Some(120.0),
+        (0.0, 0.0),
     );
     assert!(
         shaped.lines.len() > 1,
@@ -175,6 +217,7 @@ fn unwrapped_shaping_produces_exactly_one_line_for_single_line_text() {
         TextFontStyle::Regular,
         32.0,
         None,
+        (0.0, 0.0),
     );
     assert_eq!(shaped.lines.len(), 1);
 }

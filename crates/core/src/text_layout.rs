@@ -19,13 +19,11 @@
 //! doc's "Spike result") proved sound before any production code changed.
 //!
 //! This module is the adapter (the doc's TEXT-01A steps 1-2: a provider-neutral [`ShapedText`]
-//! value plus a bundled-only [`TextLayoutEngine`]), **not yet the swap** (step 3: moving
-//! [`crate::text_metrics`]'s width/word-offset measurement and [`crate::overlay_render`]'s glyph
-//! rasterization onto this module's output). Both of those still run on `fontdue` exactly as
-//! before — this module has no caller yet outside its own tests. Wiring them over is a real,
-//! separate, deliberately deferred next step: it touches every preview/export text pixel at once
-//! and needs the golden-image verification this headless sandbox can't perform, unlike the pure
-//! shaping-correctness properties this module's own tests already check for real.
+//! value plus a bundled-only [`TextLayoutEngine`]) **and** step 3's rasterization consumer —
+//! [`crate::overlay_render`] now shapes and paints through [`with_shared_engine`] instead of
+//! `fontdue`. `crate::text_metrics`'s own per-character advance-summing measurement functions are
+//! untouched for now (still `fontdue`-backed) since nothing outside `overlay_render` calls them
+//! for pixel-affecting work; see that module's own doc comment for the remaining gap.
 //!
 //! Loads only [`crate::font_catalog`]'s locked bytes into a `fontdb::Database` via
 //! `FontSystem::new_with_locale_and_db` — never `FontSystem::new()`, which the architecture doc
@@ -35,22 +33,24 @@
 //! present in the `fontdb::Database` it was built with.
 
 use std::ops::Range;
+use std::sync::{Mutex, OnceLock};
 
-use cosmic_text::{fontdb, Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Weight};
+use cosmic_text::{
+    fontdb, Attrs, Buffer, Family, FontSystem, Metrics, PhysicalGlyph, Shaping, SwashCache, Weight,
+};
 
 use crate::font_catalog;
 use crate::timeline::{TextFontFamily, TextFontStyle};
 
-/// One positioned glyph within a [`ShapedLine`]. Coordinates are relative to the line's own
-/// origin (`x = 0` at the paragraph's leading edge), matching `cosmic-text`'s own `LayoutGlyph`
-/// convention so a future rasterizer can consume this directly.
+/// One positioned glyph within a [`ShapedLine`], already placed at its final canvas-relative
+/// pixel position (the `origin` passed to [`TextLayoutEngine::shape`] is baked in).
 #[derive(Debug, Clone)]
 pub struct ShapedGlyph {
     pub font_id: fontdb::ID,
     pub glyph_id: u16,
-    /// Left edge of this glyph's advance box, in pixels from the line origin.
+    /// Left edge of this glyph's advance box, in canvas-relative pixels.
     pub x: f32,
-    /// Top edge of this glyph's advance box, in pixels from the line origin.
+    /// Top edge of this glyph's advance box, in canvas-relative pixels.
     pub y: f32,
     /// Advance width in pixels.
     pub w: f32,
@@ -61,6 +61,16 @@ pub struct ShapedGlyph {
     pub cluster: Range<usize>,
     /// `true` when this glyph's UAX #9 embedding level is odd (right-to-left).
     pub rtl: bool,
+    /// Hinting-quantized rasterization handle — pass `physical.cache_key` straight to
+    /// `cosmic_text::SwashCache::get_image`/`with_pixels` (see [`with_shared_engine`]).
+    /// `physical.x`/`physical.y` are the *integer* pixel component of this glyph's position; a
+    /// rasterized image's own `Placement.left`/`.top` are relative to that integer anchor, not to
+    /// `(0, 0)` — `overlay_render.rs` adds them together, matching `cosmic-text`'s own
+    /// `render.rs` reference implementation. This is the one place this module's "provider-
+    /// neutral value" goal bends: rasterization needs cosmic-text's own cache key, and
+    /// `overlay_render` is TEXT-01A's own in-crate rasterization consumer, not an unrelated
+    /// caller this would leak shaping concerns into.
+    pub physical: PhysicalGlyph,
 }
 
 /// One visual line of shaped, positioned glyphs.
@@ -118,6 +128,12 @@ impl TextLayoutEngine {
         self.font_system.db().faces().count()
     }
 
+    /// Mutable access to the underlying `FontSystem`, needed by `cosmic_text::SwashCache`'s own
+    /// rasterization calls (which take `&mut FontSystem`).
+    pub fn font_system_mut(&mut self) -> &mut FontSystem {
+        &mut self.font_system
+    }
+
     fn cosmic_family_name(family: TextFontFamily) -> &'static str {
         font_catalog::find_family(family.family_id())
             .map(|entry| entry.display_name)
@@ -132,9 +148,11 @@ impl TextLayoutEngine {
     }
 
     /// Shapes `text` at `font_size_px`, wrapping at `max_width_px` when given (unbounded
-    /// otherwise). `font_size_px` is treated the same way `overlay_render`'s existing fontdue
-    /// path already treats [`crate::timeline::TextClip::font_size`] — as a plain pixel size, not
-    /// converted from points — so this stays numerically comparable to the current renderer.
+    /// otherwise), with every glyph already placed at its final canvas-relative pixel position
+    /// (`origin` added in, matching `fontdue::layout::LayoutSettings`'s `x`/`y` convention the
+    /// previous `overlay_render.rs` renderer used). `font_size_px` is treated the same way that
+    /// renderer already treated [`crate::timeline::TextClip::font_size`] — as a plain pixel size,
+    /// not converted from points — so this stays numerically comparable.
     pub fn shape(
         &mut self,
         text: &str,
@@ -142,6 +160,7 @@ impl TextLayoutEngine {
         style: TextFontStyle,
         font_size_px: f32,
         max_width_px: Option<f32>,
+        origin: (f32, f32),
     ) -> ShapedText {
         let metrics = Metrics::new(font_size_px, font_size_px * 1.25);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
@@ -158,6 +177,13 @@ impl TextLayoutEngine {
         let mut lines = Vec::new();
         let mut max_width = 0.0f32;
         for run in buffer.layout_runs() {
+            // `LayoutGlyph::y` is relative to *this run's own* baseline, not an absolute
+            // position — `LayoutRun::line_y` ("Y offset to baseline of line") is the piece that
+            // makes each successive wrapped line land lower than the last. Confirmed by reading
+            // `layout_runs()`'s own `LayoutRunIter` construction in `cosmic-text`'s source
+            // (`buffer.rs`), not assumed: every glyph in a multi-line shape had `y == 0` until
+            // this was added in, which silently collapsed every line onto the same row.
+            let line_origin = (origin.0, origin.1 + run.line_y);
             let mut glyphs = Vec::with_capacity(run.glyphs.len());
             let mut line_width = 0.0f32;
             for g in run.glyphs.iter() {
@@ -166,14 +192,16 @@ impl TextLayoutEngine {
                 if right_edge > line_width {
                     line_width = right_edge;
                 }
+                let physical = g.physical(line_origin, 1.0);
                 glyphs.push(ShapedGlyph {
                     font_id: g.font_id,
                     glyph_id: g.glyph_id,
-                    x: g.x,
-                    y: g.y,
+                    x: line_origin.0 + g.x,
+                    y: line_origin.1 + g.y,
                     w: g.w,
                     cluster: g.start..g.end,
                     rtl: level_is_rtl,
+                    physical,
                 });
             }
             max_width = max_width.max(line_width);
@@ -200,8 +228,31 @@ impl TextLayoutEngine {
         style: TextFontStyle,
         font_size_px: f32,
     ) -> f32 {
-        self.shape(text, family, style, font_size_px, None).width
+        self.shape(text, family, style, font_size_px, None, (0.0, 0.0))
+            .width
     }
+}
+
+static SHARED_ENGINE: OnceLock<Mutex<(TextLayoutEngine, SwashCache)>> = OnceLock::new();
+
+/// Runs `f` against one process-wide [`TextLayoutEngine`] + `cosmic_text::SwashCache` pair,
+/// built once on first use and reused after — mirrors [`crate::text_metrics`]'s own
+/// per-face `OnceLock` caching, just one shared engine instead of one lock per face, since
+/// `cosmic-text`'s own shaping/rasterization caches already key internally by face/size/glyph.
+/// Guarded by a `Mutex` (not `Sync` on its own — `FontSystem` mutates internal caches on every
+/// shape/rasterize call) since callers span the UI thread (`preview.rs`, refreshed on each timed
+/// word change) and export's background render thread (`render.rs`, one call per text segment) —
+/// neither is a per-video-frame hot path, so lock contention here is not a real concern.
+pub fn with_shared_engine<R>(f: impl FnOnce(&mut TextLayoutEngine, &mut SwashCache) -> R) -> R {
+    let cell = SHARED_ENGINE.get_or_init(|| {
+        Mutex::new((
+            TextLayoutEngine::new_from_locked_catalog(),
+            SwashCache::new(),
+        ))
+    });
+    let mut guard = cell.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (engine, swash_cache) = &mut *guard;
+    f(engine, swash_cache)
 }
 
 #[cfg(test)]
