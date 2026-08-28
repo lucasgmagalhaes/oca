@@ -118,7 +118,7 @@ pub use silence_detection::{
 pub use smart_bins::SmartBin;
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
 pub use subtitles::export_srt;
-pub use telemetry::{record_event, ResourceSampler, TelemetryError, TelemetryEvent};
+pub use telemetry::{record_event, GpuSampler, ResourceSampler, TelemetryError, TelemetryEvent};
 pub use text_to_speech::{
     load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
 };

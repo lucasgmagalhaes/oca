@@ -1026,11 +1026,11 @@ pub(crate) struct TelemetryState {
     /// [`App::new`] — see [`App::record_telemetry`]/`telemetry::spawn_telemetry_writer`. No
     /// paired receiver is kept on `App`; that thread owns the only one.
     pub(crate) telemetry_tx: UnboundedSender<avcore::TelemetryEvent>,
-    /// Live mirror of `prefs.telemetry_enabled`, checked by the background resource-sampling
-    /// thread spawned in [`App::new`] (`telemetry::spawn_resource_sampler`) — that thread has
-    /// no access to `App`/`prefs` directly, so this `Arc<AtomicBool>` is the one piece of
-    /// shared state it reads each tick. Kept in sync with `prefs.telemetry_enabled` wherever
-    /// the Preferences screen's checkbox mutates it.
+    /// Live mirror of `prefs.telemetry_enabled`, checked by the background resource- and
+    /// GPU-sampling threads spawned in [`App::new`] (`telemetry::spawn_resource_sampler`/
+    /// `telemetry::spawn_gpu_sampler`) — neither thread has access to `App`/`prefs` directly, so
+    /// this shared `Arc<AtomicBool>` is the one piece of state each reads every tick. Kept in
+    /// sync with `prefs.telemetry_enabled` wherever the Preferences screen's checkbox mutates it.
     pub(crate) telemetry_enabled_flag: Arc<AtomicBool>,
     /// Wall-clock time [`App::record_telemetry`] last recorded a `PreviewFrameTime` sample —
     /// throttles sampling to roughly once every [`PREVIEW_FRAME_TELEMETRY_INTERVAL`] rather
@@ -1255,6 +1255,7 @@ impl App {
             telemetry_tx.clone(),
             Arc::clone(&telemetry_enabled_flag),
         );
+        telemetry::spawn_gpu_sampler(telemetry_tx.clone(), Arc::clone(&telemetry_enabled_flag));
         let (update_check_tx, update_check_rx) = mpsc::unbounded_channel();
         let mut app = Self {
             screen: Screen::Home,
