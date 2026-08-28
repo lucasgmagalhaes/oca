@@ -529,9 +529,30 @@ not by default priority.
     overlay x/y expression syntax itself parses against the real linked `avfilter_graph_parse_ptr`,
     identically to the pre-existing opacity/no-fade tests it was verified alongside.
 
-    **Explicitly still not done**: `TextClip` scale/rotation animation, and the sprite-cropping
-    restructuring itself (still not needed for position, may still be worth it later purely as a
-    performance optimization — the raster/overlay stays full-canvas-sized either way for now).
+    **`TextClip` scale keyframes also ship**, in a further follow-up. Unlike position, this needed
+    no raster-baking change at all: `keyframe::text_scale_sample_exprs` builds a `geq`
+    inverse-sample remap (output pixel `(X,Y)` reads the raster's own pixels back from
+    `anchor + (X-anchor)/scale(T)` instead of `(X,Y)`) around the same raster-baked position
+    anchor position keyframes already use — an inverse *zoom*, not a literal `scale` filter with
+    `eval=frame`: letting `scale` renegotiate its own output size every frame is the exact thing
+    that reliably corrupted the heap in a real export elsewhere in this codebase (`CLAUDE.md`,
+    `timeline_export.c`) — the same reasoning `ClipInstance::scale_keyframes`' own `scale_filter_
+    expr` already applies, now reused for `TextClip`. Because the geq remap keeps the raster's own
+    canvas-sized frame unchanged throughout, position and scale keyframes compose independently
+    with no interaction term needed. `avbridge`'s `text_overlay.c` filter-chain builder was
+    restructured from a 2-branch (fade/no-fade) split into an incremental N-stage chain (movie
+    source → optional scale-remap geq → optional opacity-fade geq → overlay), extensible for a
+    future rotation stage. Verified: `text_scale_sample_exprs`' 6 new unit tests run for real in
+    the same `keyframe.rs` scratch crate as the other keyframe expression builders' (53/53
+    passing). `avbridge/tests/text_overlay_test.rs` gained a real-FFmpeg-build test for the new
+    `geq=r='r(...)':g='g(...)':b='b(...)':a='alpha(...)'` remap syntax; linking that specific test
+    binary hits a separate pre-existing sandbox gap (`av_opt_set_array`, a symbol newer than this
+    sandbox's packaged FFmpeg — same category as, but distinct from, `filters.c`'s own gap) so it
+    could not be executed here, though `cargo check`/`clippy` for the whole workspace stayed clean.
+
+    **Explicitly still not done**: `TextClip` rotation animation, and the sprite-cropping
+    restructuring itself (still not needed for position/scale, may still be worth it later purely
+    as a performance optimization — the raster/overlay stays full-canvas-sized either way for now).
 
 Found but deliberately not added as a P4 item: **nested sequences / compound clips** (Premiere/
 DaVinci/FCP) — closer to Multicam's own tier of effort than to the four above (the render/
