@@ -972,12 +972,18 @@ resolved in favor of consolidating, see items 3 and 5).
 30. `[x]` **Feedback tokens.** Added `WARNING`/`WARNING_TINT`/`INFO_TINT` to `theme.rs` and
     `components::tag_warning()`. Queue's `ACCENT.gamma_multiply(0.10)` info banner → `INFO_TINT`;
     its "Paused" pill (previously `tag_outline`, indistinguishable from "Queued") → `tag_warning`.
-31. `[ ]` **Progressive disclosure.** Group the toolbar's AI-detection actions separately from
-    core edit tools (`screens/editor/mod.rs::toolbar()`). Section Prefs into collapsible/tabbed
-    groups instead of one always-fully-expanded scroll column. Not started — a bigger UX judgment
-    call than the mechanical items above, deliberately left for a dedicated pass with a visual
-    (not just code-level) review, per repo `CLAUDE.md`'s guidance to verify UI changes in a
-    running instance.
+31. `[~]` **Progressive disclosure.** Toolbar grouping done: the trailing cluster (panel-visibility
+    toggles, AI-detection actions, multicam grouping) previously ran together with zero
+    separation — now split into three `ui.separator()`-delimited groups: [timeline-index/
+    transcript panel toggles] | [detect silence/speech-edits/chapters/export-chapters/highlights,
+    shorts pack] | [create multicam group] (structural, not an automatic detection, so kept
+    distinct from the AI-detection cluster). The rest of the toolbar already had separator
+    discipline (edit tools / composite+template actions / add-track actions / undo-redo), so this
+    closes the one confirmed gap rather than restructuring the whole toolbar. **Not started**:
+    sectioning Prefs into collapsible/tabbed groups instead of one always-fully-expanded scroll
+    column — a bigger UX judgment call, deliberately left for a dedicated pass with a visual (not
+    just code-level) review, per repo `CLAUDE.md`'s guidance to verify UI changes in a running
+    instance; this session had no way to run the app and look at it.
 32. `[x]` **Missing states.** Queue had no empty-state message at all — added one
     (`Text::QueueEmpty`), plain muted text matching the existing empty-state convention elsewhere
     (Library, Sound Library) rather than waiting on the still-in-progress icon system.
