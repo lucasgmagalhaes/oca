@@ -81,6 +81,16 @@ pub struct TextSegment {
     /// visibility window) differ from the base clip's. Empty means "no fade".
     #[serde(default)]
     pub opacity_keyframe_expr: String,
+    /// Pre-built `overlay` `x`/`y` pixel-offset expressions for this clip's
+    /// `pos_x_keyframes`/`pos_y_keyframes` (`keyframe::text_position_offset_expr`), built once
+    /// from the *base clip's* own `start_secs`/`duration_secs` in [`text_clip_to_segments`] and
+    /// copied onto every segment derived from that clip, same "self-contained/timeline-absolute,
+    /// stays correct on a word-highlight segment too" reasoning as `opacity_keyframe_expr`.
+    /// Empty means "no offset" (`overlay=x=0:y=0`, same as before this field existed).
+    #[serde(default)]
+    pub position_keyframe_expr_x: String,
+    #[serde(default)]
+    pub position_keyframe_expr_y: String,
 }
 
 #[derive(Debug)]
@@ -430,7 +440,7 @@ pub fn render_timeline_export(
 ) -> Result<RenderOutcome, RenderError> {
     let (track_segments, canvas) = resolve_timeline_segments_multi(sequence, media_library)?;
     let audio_segments = resolve_audio_segments(sequence, media_library)?;
-    let text_segments = resolve_text_segments(sequence, canvas.width);
+    let text_segments = resolve_text_segments(sequence, canvas.width, canvas.height);
     let shape_segments = resolve_shape_segments(sequence, canvas.width, canvas.height);
     render_export_job_multi_with_audio(
         &track_segments,
@@ -542,6 +552,8 @@ fn apply_text_overlay_pass(output: &Path, canvas: Canvas, text_segments: &[TextS
             duration_secs: segment.duration_secs,
             overlay_path,
             opacity_keyframe_expr: segment.opacity_keyframe_expr.clone(),
+            position_keyframe_expr_x: segment.position_keyframe_expr_x.clone(),
+            position_keyframe_expr_y: segment.position_keyframe_expr_y.clone(),
         });
     }
 
@@ -612,15 +624,20 @@ fn apply_shape_overlay_pass(
 ///
 /// `canvas_width` is retained as a zero-width guard for malformed export settings; word
 /// highlights otherwise use UTF-8 byte ranges into the complete caption, letting the shared
-/// rasterizer place them with the exact same wrapping as the base text.
-pub fn resolve_text_segments(sequence: &Sequence, canvas_width: u32) -> Vec<TextSegment> {
+/// rasterizer place them with the exact same wrapping as the base text. `canvas_height` is
+/// needed only to scale `pos_y_keyframes`' offset expression into pixels.
+pub fn resolve_text_segments(
+    sequence: &Sequence,
+    canvas_width: u32,
+    canvas_height: u32,
+) -> Vec<TextSegment> {
     let mut segments: Vec<TextSegment> = sequence
         .timeline
         .tracks
         .iter()
         .filter(|t| t.kind == TrackKind::Text)
         .flat_map(|t| &t.text_clips)
-        .flat_map(|clip| text_clip_to_segments(clip, canvas_width))
+        .flat_map(|clip| text_clip_to_segments(clip, canvas_width, canvas_height))
         .collect();
     segments.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
     segments
@@ -634,13 +651,41 @@ pub fn resolve_text_segments(sequence: &Sequence, canvas_width: u32) -> Vec<Text
 /// `highlight_color_rgba`, only for its own `[start_secs, end_secs)`). Rendering the complete
 /// caption layout and filtering its glyphs by byte range makes highlights follow both explicit
 /// newlines and automatic word wrapping exactly.
-fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<TextSegment> {
+fn text_clip_to_segments(
+    clip: &TextClip,
+    canvas_width: u32,
+    canvas_height: u32,
+) -> Vec<TextSegment> {
     // Built once from the base clip's own timing (not any individual segment's) and copied onto
     // every segment below -- see TextSegment::opacity_keyframe_expr's doc comment for why.
     let opacity_keyframe_expr = keyframe::text_opacity_alpha_expr(
         &clip.opacity_keyframes,
         clip.start_secs,
         clip.duration_secs,
+    )
+    .unwrap_or_default();
+
+    // The raster anchor: the first keyframe's value when position keyframes are present (same
+    // "keyframes win when present" convention as ShapeClip's own fields), the plain constant
+    // otherwise -- see TextClip::pos_x_keyframes' doc comment. position_keyframe_expr_x/y is
+    // then the *delta* from this anchor, in canvas pixels, as a function of timeline-absolute
+    // `t` -- zero for every unkeyframed axis, so this is a no-op when neither axis is animated.
+    let base_pos_x = clip.pos_x_keyframes.first().map_or(clip.pos_x, |k| k.value);
+    let base_pos_y = clip.pos_y_keyframes.first().map_or(clip.pos_y, |k| k.value);
+    let position_keyframe_expr_x = keyframe::text_position_offset_expr(
+        &clip.pos_x_keyframes,
+        base_pos_x,
+        clip.start_secs,
+        clip.duration_secs,
+        canvas_width as f32,
+    )
+    .unwrap_or_default();
+    let position_keyframe_expr_y = keyframe::text_position_offset_expr(
+        &clip.pos_y_keyframes,
+        base_pos_y,
+        clip.start_secs,
+        clip.duration_secs,
+        canvas_height as f32,
     )
     .unwrap_or_default();
 
@@ -656,9 +701,11 @@ fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<TextSegment>
         background_padding: clip.background_padding,
         background_corner_radius: clip.background_corner_radius,
         glyph_byte_range: None,
-        pos_x: clip.pos_x,
-        pos_y: clip.pos_y,
+        pos_x: base_pos_x,
+        pos_y: base_pos_y,
         opacity_keyframe_expr: opacity_keyframe_expr.clone(),
+        position_keyframe_expr_x: position_keyframe_expr_x.clone(),
+        position_keyframe_expr_y: position_keyframe_expr_y.clone(),
     };
     if !clip.highlight_enabled || clip.words.is_empty() || canvas_width == 0 {
         return vec![base];
@@ -688,9 +735,11 @@ fn text_clip_to_segments(clip: &TextClip, canvas_width: u32) -> Vec<TextSegment>
             background_padding: 0.0,
             background_corner_radius: 0.0,
             glyph_byte_range: Some([start, end]),
-            pos_x: clip.pos_x,
-            pos_y: clip.pos_y,
+            pos_x: base_pos_x,
+            pos_y: base_pos_y,
             opacity_keyframe_expr: opacity_keyframe_expr.clone(),
+            position_keyframe_expr_x: position_keyframe_expr_x.clone(),
+            position_keyframe_expr_y: position_keyframe_expr_y.clone(),
         });
     }
     segments

@@ -156,6 +156,29 @@ pub struct TextClip {
     pub pos_x: f32,
     /// Vertical anchor as a 0.0–1.0 fraction of the canvas height (0.0 = top edge).
     pub pos_y: f32,
+    /// General keyframe animation for `pos_x`/`pos_y` over this clip's own on-timeline
+    /// duration — the position/scale/rotation slice `spec/ROADMAP.md` P4 item 34 explicitly
+    /// called out as not yet done, since `TextClip`'s export path pre-rasterizes a full-canvas
+    /// RGBA PNG per segment (`crate::overlay_render::render_text_segment_rgba`) rather than
+    /// `ShapeClip`'s self-contained `geq` expression, so the same "position is just a `geq`
+    /// per-pixel formula" trick doesn't apply here. Ships instead as a pixel-offset `overlay`
+    /// stage in `avbridge::apply_text_overlays`: the raster still bakes one constant anchor
+    /// (the first keyframe's value when keyframes are present, `pos_x`/`pos_y` otherwise — same
+    /// "keyframes win when present" convention `ShapeClip`'s own keyframe fields use) exactly
+    /// as before, and `keyframe::text_position_offset_expr` builds the delta from that anchor as
+    /// an `overlay=x=<expr>:y=<expr>` fragment instead of the always-`x=0:y=0` this filter graph
+    /// used to have — no sprite-cropping restructuring needed, and an unkeyframed `TextClip`
+    /// gets the exact same PNG/filter graph it always had. Each axis independently overrides its
+    /// own constant when non-empty, same as `ShapeClip::center_x_keyframes`/`center_y_keyframes`
+    /// (two separate `f32` lists, not one `Position`-typed list, for the same reason: this is an
+    /// absolute `0.0..=1.0` anchor fraction, not `ClipInstance::position_keyframes`' `-1.0..=1.0`
+    /// pan-offset convention). `#[serde(default)]` so older saved projects load with no position
+    /// animation. Export-only, like `opacity_keyframes` — no live preview effect (`render_text_
+    /// clip_rgba` always draws at the plain `pos_x`/`pos_y` anchor).
+    #[serde(default)]
+    pub pos_x_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub pos_y_keyframes: Vec<Keyframe<f32>>,
     /// Per-word timestamps within this clip's own text, `start_secs`/`end_secs` relative to
     /// this clip's *own* start (not the timeline) — per `request.md`'s Fase 4 "Legenda com
     /// destaque de palavra (estilo shorts)". Populated when this clip was generated from
@@ -176,15 +199,11 @@ pub struct TextClip {
     /// rather than an invisible/transparent black.
     #[serde(default = "default_highlight_color")]
     pub highlight_color_rgba: [u8; 4],
-    /// General opacity fade over this clip's own on-timeline duration — the first (and, for
-    /// this pass, only) slice of P4 item 34's `TextClip` scope, per `spec/ROADMAP.md`. Position/
-    /// scale/rotation animation stay out of scope: `TextClip`'s export path pre-rasterizes a
-    /// full-canvas RGBA PNG per segment (`crate::overlay_render::render_text_segment_rgba`),
-    /// with position/size baked into the raster itself at generation time, not a moving overlay
-    /// — animating those would mean restructuring toward a small sprite +
-    /// `overlay=x=<expr>:y=<expr>`, a materially bigger lift. Opacity is different: the raster
-    /// already carries a real alpha channel (transparent background around the text/background
-    /// box), so a fade is just an alpha *multiplier* applied to the existing pixels in
+    /// General opacity fade over this clip's own on-timeline duration — the first slice of P4
+    /// item 34's `TextClip` scope, per `spec/ROADMAP.md` (position followed later, see
+    /// `pos_x_keyframes`/`pos_y_keyframes`; scale/rotation animation stay out of scope for now).
+    /// The raster already carries a real alpha channel (transparent background around the text/
+    /// background box), so a fade is just an alpha *multiplier* applied to the existing pixels in
     /// `avbridge::apply_text_overlays`'s filter graph (`keyframe::text_opacity_alpha_expr`) —
     /// zero changes to the Rust-side rasterization or highlight-layout code this doc comment's
     /// sibling fields depend on. Empty means "no fade, same static visibility window as
@@ -306,8 +325,9 @@ pub struct ShapeClip {
     /// item to ship, since `ShapeClip`'s export path (a self-contained `geq` expression built
     /// entirely in Rust, see `crate::shape_render`) turned out to already support a `T`-keyed
     /// per-pixel expression without any FFI/C changes, unlike `TextClip`'s pre-rasterized-PNG
-    /// overlay approach (not yet animatable, a materially bigger restructuring — still not
-    /// done). Each field independently overrides its own constant (`center_x`/`center_y`) when
+    /// overlay approach (see `TextClip::pos_x_keyframes` for how that one ships instead, as a
+    /// pixel-offset `overlay` stage rather than a `geq` formula). Each field independently
+    /// overrides its own constant (`center_x`/`center_y`) when
     /// non-empty, same "keyframes win when present" relationship every other keyframe field in
     /// this codebase already has. `#[serde(default)]` so older saved projects load with no
     /// position animation.
