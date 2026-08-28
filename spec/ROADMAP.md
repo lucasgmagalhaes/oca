@@ -896,6 +896,54 @@ Motion-graphics templates and real-time AI object masking moved from this sectio
 CF-09 respectively. The competitive refresh found concrete gameplay/channel use cases for both,
 but they remain behind the higher-impact CF-01-CF-06 workflow items.
 
+## P7 — Design System Consolidation
+
+`ui` crate presentation-layer only. Full findings: `UI_DESIGN_AUDIT.md` (whole-app audit) and
+`DESIGN_SYSTEM_CONSOLIDATION.md` (architectural review — source-of-truth table, bypass
+enforcement analysis, component inventory). Verdict: `theme.rs`/`components/*.rs` infrastructure
+is sound, the problem is unenforced bypass at ~half the relevant call sites, not a missing
+system. Implementation order below matches the consolidation review's recommendation
+(zero-ambiguity items first, decisions-needing-confirmation items later — both flagged decisions
+resolved in favor of consolidating, see items 3 and 5).
+
+25. `[ ]` **Stage 1 — zero-risk refactors.** `library.rs`'s hand-rolled card `Frame` →
+    `components::card_frame()`. Nav rail's two disagreeing icon-container conventions
+    (state-conditional background vs. the permanently-boxed profile avatar) → unify on the
+    state-conditional convention used everywhere else in the app.
+26. `[ ]` **Stage 2 — title tier components.** Add `components::page_title()` (20.0 strong) and
+    `components::modal_title()` (15.0 strong); migrate Home's 22.0 outlier and the ~20 modals'
+    inline `.size(15.0).strong()` literals onto them. Fold the About dialog's 28.0 outlier into
+    `modal_title()` rather than preserving a third tier. Breadcrumb's 13.0 stays distinct
+    (window chrome, not a page title) but gets named too.
+27. `[ ]` **Stage 3 — spacing/radius token rollout.** Add `SPACE_XS/SM/MD/LG` (4/8/12/20) and
+    `RADIUS_SM/MD/PILL` (4/8/999) to `theme.rs`. Collapse `card_frame()`'s radius 10→8 to match
+    the global default (resolved: consolidate, don't preserve a near-duplicate third tier).
+    Sweep the ~15 confirmed hardcoded-radius sites (10+ in `timeline_panel/{mod,draw}.rs`, plus
+    `home.rs`, `library.rs`, `sound_library.rs`, `modals.rs`, `nav_rail.rs`) onto the new
+    constants.
+28. `[ ]` **Stage 4 — property-row consolidation.** Add `components::property_row()` (label +
+    widget, no separator/note — resolved: shape/text-clip's dense single-field lists are a
+    legitimate lighter use case, not pure bypass) alongside the existing heavier
+    `property_section`. Migrate `shape_clip.rs`/`text_clip.rs`'s hand-rolled label+widget pairs
+    onto it, keeping `property_section` for their keyframe blocks as today.
+29. `[ ]` **Stage 5 — `icon_button()` and icon-convention unification.** Add
+    `components::icon_button(ui, glyph, tooltip, opts: IconButtonOpts)` with a size override
+    (covers transport's 48-64pt case) and a hover-color override (covers window-chrome's
+    close-button-red case). Migrate the four coexisting conventions (toolbar inline `format!`,
+    breadcrumb's `window_button()` helper — merge into `icon_button()`'s override once it
+    exists, transport's large colored `RichText`, delete-action bare `small_button`) plus
+    timeline badges and nav rail. Resolve the confirmed `✂`/`✂️` duplicate-glyph inconsistency
+    and the `👁`→`—` hidden-state ambiguity as part of this migration. Sequenced last —
+    icons ride on the container/state system built in Stages 1-4, not before it.
+30. `[ ]` **Feedback tokens.** Add `WARNING`/`INFO` to `theme.rs`; convert Queue's
+    `ACCENT.gamma_multiply(0.10)` info banner and "Paused" pill to reference them by name.
+31. `[ ]` **Progressive disclosure.** Group the toolbar's AI-detection actions separately from
+    core edit tools (`screens/editor/mod.rs::toolbar()`). Section Prefs into collapsible/tabbed
+    groups instead of one always-fully-expanded scroll column.
+32. `[ ]` **Missing states.** Queue currently has no empty-state message at all (the one
+    confirmed *missing*, not just unstyled, state) — add one, using the new icon system once
+    Stage 5 lands.
+
 ---
 
 [← back to spec/INDEX.md](INDEX.md)
