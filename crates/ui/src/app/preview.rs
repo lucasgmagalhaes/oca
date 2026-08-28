@@ -178,26 +178,31 @@ impl App {
         Some((clip.clone(), asset.clone()))
     }
 
-    /// Just [`ClipInstance::lut_path`]/[`ClipInstance::vignette_intensity`] for the clip at the
-    /// playhead, without [`App::current_preview_clip`]'s full `ClipInstance`/`MediaAsset` clone
-    /// (which includes every keyframe `Vec` on the clip) or its unused media-library lookup —
+    /// Just [`ClipInstance::lut_path`]/[`ClipInstance::vignette_intensity`]/
+    /// [`ClipInstance::glitch_intensity`] for the clip at the playhead, without
+    /// [`App::current_preview_clip`]'s full `ClipInstance`/`MediaAsset` clone (which includes
+    /// every keyframe `Vec` on the clip) or its unused media-library lookup —
     /// [`App::pump_preview_frame`] calls this every frame during playback and only ever reads
-    /// these two scalar fields, so paying for the rest was pure waste on the hottest UI-thread
-    /// path in the app. Defaults (`String::new()`, `0.0`) when nothing covers the playhead,
-    /// same as the `unwrap_or_default()` the caller used to apply to the full clone.
-    fn current_preview_clip_lut_and_vignette(&self) -> (String, f32) {
+    /// these three scalar fields, so paying for the rest was pure waste on the hottest UI-thread
+    /// path in the app. Defaults (`String::new()`, `0.0`, `0.0`) when nothing covers the
+    /// playhead, same as the `unwrap_or_default()` the caller used to apply to the full clone.
+    fn current_preview_clip_lut_and_vignette(&self) -> (String, f32, f32) {
         let timeline = self.active_project().timeline();
         let Some(track) = timeline
             .tracks
             .iter()
             .find(|t| t.kind == TrackKind::Video && t.visible)
         else {
-            return (String::new(), 0.0);
+            return (String::new(), 0.0, 0.0);
         };
         let Some(clip) = track.clip_at(timeline.playhead_secs) else {
-            return (String::new(), 0.0);
+            return (String::new(), 0.0, 0.0);
         };
-        (clip.lut_path.clone(), clip.vignette_intensity)
+        (
+            clip.lut_path.clone(),
+            clip.vignette_intensity,
+            clip.glitch_intensity,
+        )
     }
 
     /// Every overlay-track (video track index 1+, in track order — matches
@@ -889,6 +894,92 @@ impl App {
         }
     }
 
+    /// Pushes `clip_id`'s current crop rectangle live into the running preview pipeline — same
+    /// shape and same P1 item 3 motivation `push_live_balance_update` has. A silent no-op under
+    /// the same conditions those have, plus
+    /// [`avcore::preview::Preview::set_live_crop`]'s own "no cached resolution / cropping wasn't
+    /// active when built" conditions.
+    pub(super) fn push_live_crop_update(
+        &mut self,
+        clip_id: u64,
+        crop_x: f32,
+        crop_y: f32,
+        crop_w: f32,
+        crop_h: f32,
+    ) {
+        let is_previewed = self.preview_state.preview_clip_id == Some(clip_id)
+            || self
+                .preview_state
+                .preview_overlay_clip_ids
+                .contains(&clip_id);
+        if !is_previewed {
+            return;
+        }
+        if let Some(preview) = &self.preview_state.preview {
+            preview.set_live_crop(clip_id, crop_x, crop_y, crop_w, crop_h);
+        }
+    }
+
+    /// Pushes `clip_id`'s current pixelize intensity live into the running preview pipeline —
+    /// same shape and same P1 item 3 motivation `push_live_balance_update` has. A silent no-op
+    /// under the same conditions those have, plus
+    /// [`avcore::preview::Preview::set_live_pixelize`]'s own conditions.
+    pub(super) fn push_live_pixelize_update(&mut self, clip_id: u64, pixelize_intensity: f32) {
+        let is_previewed = self.preview_state.preview_clip_id == Some(clip_id)
+            || self
+                .preview_state
+                .preview_overlay_clip_ids
+                .contains(&clip_id);
+        if !is_previewed {
+            return;
+        }
+        if let Some(preview) = &self.preview_state.preview {
+            preview.set_live_pixelize(clip_id, pixelize_intensity);
+        }
+    }
+
+    /// Pushes `clip_id`'s current shake intensity live into the running preview pipeline — same
+    /// shape and same P1 item 3 motivation `push_live_balance_update` has. A silent no-op under
+    /// the same conditions those have, plus
+    /// [`avcore::preview::Preview::set_live_shake`]'s own conditions.
+    pub(super) fn push_live_shake_update(&mut self, clip_id: u64, shake_intensity: f32) {
+        let is_previewed = self.preview_state.preview_clip_id == Some(clip_id)
+            || self
+                .preview_state
+                .preview_overlay_clip_ids
+                .contains(&clip_id);
+        if !is_previewed {
+            return;
+        }
+        if let Some(preview) = &self.preview_state.preview {
+            preview.set_live_shake(clip_id, shake_intensity);
+        }
+    }
+
+    /// Pushes `clip_id`'s current layer mask shape/corner-radius live into the running preview
+    /// pipeline — same shape and same P1 item 3 motivation `push_live_balance_update` has,
+    /// scoped to overlay clips only (mask compositing is overlay-only, same as chroma key).
+    /// A silent no-op under the same conditions those have, plus
+    /// [`avcore::preview::Preview::set_live_mask`]'s own "mask wasn't active when built"
+    /// condition.
+    pub(super) fn push_live_mask_update(
+        &mut self,
+        clip_id: u64,
+        mask_shape: avcore::timeline::MaskShape,
+        mask_corner_radius: f32,
+    ) {
+        let is_previewed = self
+            .preview_state
+            .preview_overlay_clip_ids
+            .contains(&clip_id);
+        if !is_previewed {
+            return;
+        }
+        if let Some(preview) = &self.preview_state.preview {
+            let _ = preview.set_live_mask(clip_id, mask_shape, mask_corner_radius);
+        }
+    }
+
     /// Pulls the latest decoded video frame (if any) into `preview_texture`, and — while
     /// playing — mirrors the pipeline's position into the active project's timeline playhead,
     /// converting from the clip-relative position `Preview` reports back to timeline time.
@@ -901,7 +992,8 @@ impl App {
         // Read before borrowing `self.preview_state.preview` below -- this is a method call, which needs an
         // unencumbered `&self` the borrow checker can't reconcile with an already-live
         // `&self.preview_state.preview` borrow, even though the two fields are disjoint.
-        let (lut_path, vignette_intensity) = self.current_preview_clip_lut_and_vignette();
+        let (lut_path, vignette_intensity, glitch_intensity) =
+            self.current_preview_clip_lut_and_vignette();
 
         let Some(preview) = &self.preview_state.preview else {
             return;
@@ -934,6 +1026,14 @@ impl App {
                     frame.height,
                     vignette_intensity,
                 );
+            }
+            if glitch_intensity > 0.0 {
+                // Elapsed wall-clock time bit-cast to a seed -- differs every frame (unlike a
+                // frame counter, doesn't need a new PreviewState field), giving the temporal
+                // "digital corruption" look apply_glitch_to_rgba's own doc comment describes
+                // rather than a static grain texture.
+                let seed = ctx.input(|i| i.time).to_bits();
+                avcore::apply_glitch_to_rgba(&mut frame.rgba, glitch_intensity, seed);
             }
 
             let image = egui::ColorImage::from_rgba_unmultiplied(

@@ -282,6 +282,7 @@ text_catalog! {
     SpeedRampEndSpeedLabel: pt_br = "Velocidade final", en = "End speed";
     SpeedRampStepsLabel: pt_br = "Número de etapas", en = "Step count";
     SpeedRampStepsHint: pt_br = "mínimo 2", en = "minimum 2";
+    SpeedRampSmoothToggle: pt_br = "Curva suave e contínua (em vez de degraus)", en = "Smooth, continuous curve (instead of steps)";
     SpeedRampApply: pt_br = "Aplicar rampa", en = "Apply ramp";
     ContextMenuCopy: pt_br = "⧉ Copiar", en = "⧉ Copy";
     ContextMenuCut: pt_br = "✂ Recortar", en = "✂ Cut";

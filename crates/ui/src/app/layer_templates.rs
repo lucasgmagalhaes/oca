@@ -145,6 +145,7 @@ impl App {
                     gain_db: 0.0,
                     frozen: false,
                     speed_factor: 1.0,
+                    speed_ramp_end_factor: None,
                     crop_x: 0.0,
                     crop_y: 0.0,
                     crop_w: 1.0,

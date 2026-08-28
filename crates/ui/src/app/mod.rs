@@ -885,15 +885,17 @@ pub struct App {
     /// is open. Stored by id rather than index so a reordered tab cannot make confirmation
     /// delete a different sequence.
     pub deleting_sequence: Option<(u64, String)>,
-    /// `(clip_id, start_speed_buf, end_speed_buf, steps_buf)` staged while the custom speed-ramp
-    /// dialog is open — the fixed-preset "Rampa de velocidade" submenu entries call
+    /// `(clip_id, start_speed_buf, end_speed_buf, steps_buf, smooth)` staged while the custom
+    /// speed-ramp dialog is open — the fixed-preset "Rampa de velocidade" submenu entries call
     /// [`App::apply_speed_ramp_to_selected_clip`] directly with no dialog, but a custom start/
-    /// end speed and step count (`spec/ROADMAP.md` item 29's own "not done" list) needs editable
-    /// buffers staged somewhere across frames, same shape `renaming_project`'s name/summary
-    /// buffers have. `steps_buf` is a `String` (not a `usize`) so the field can sit empty/
-    /// mid-edit rather than snapping to some fallback on every keystroke; parsed back to
-    /// `usize` only on confirm. `None` when the dialog is closed.
-    pub speed_ramp_dialog: Option<(u64, f32, f32, String)>,
+    /// end speed and step count needs editable buffers staged somewhere across frames, same
+    /// shape `renaming_project`'s name/summary buffers have. `steps_buf` is a `String` (not a
+    /// `usize`) so the field can sit empty/mid-edit rather than snapping to some fallback on
+    /// every keystroke; parsed back to `usize` only on confirm, and ignored when `smooth` is
+    /// `true` — [`App::apply_smooth_speed_ramp_to_selected_clip`] needs no step count at all
+    /// (`spec/ROADMAP.md` item 29's "smooth continuous curve" follow-up). `None` when the
+    /// dialog is closed.
+    pub speed_ramp_dialog: Option<(u64, f32, f32, String, bool)>,
     /// A snapshot of `multi_selected_clip_ids`' per-layer `(TrackKind, ClipFormatting)`, plus a
     /// name buffer, staged while the "save as template" naming modal is open — captured at
     /// click time (`App::begin_save_layer_template`) so a selection change while the modal is

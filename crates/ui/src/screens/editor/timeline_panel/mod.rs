@@ -875,7 +875,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             app.apply_speed_ramp_to_selected_clip(start_speed, end_speed, 4);
         }
         if let Some(clip_id) = speed_ramp_custom_request {
-            app.speed_ramp_dialog = Some((clip_id, 0.5, 2.0, "4".to_string()));
+            app.speed_ramp_dialog = Some((clip_id, 0.5, 2.0, "4".to_string(), false));
         }
         if split_at_playhead_requested {
             app.split_at_playhead();

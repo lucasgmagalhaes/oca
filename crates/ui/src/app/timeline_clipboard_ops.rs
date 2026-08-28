@@ -114,6 +114,7 @@ impl App {
                     gain_db: source.gain_db,
                     frozen: source.frozen,
                     speed_factor: source.speed_factor,
+                    speed_ramp_end_factor: source.speed_ramp_end_factor,
                     crop_x: source.crop_x,
                     crop_y: source.crop_y,
                     crop_w: source.crop_w,

@@ -431,15 +431,17 @@ impl App {
         }
     }
 
-    /// Shows the custom-speed-ramp dialog when `speed_ramp_dialog` is `Some` — the "not done"
-    /// half of `spec/ROADMAP.md` item 29 (the fixed 0.5x/2x presets already apply directly with
-    /// no dialog). Lets the user pick a start speed, end speed, and step count, then calls
-    /// [`App::apply_speed_ramp_to_selected_clip`] unchanged on confirm — this dialog only
-    /// collects the three numbers that call already accepted as parameters. `steps_buf` is
-    /// parsed on confirm; an invalid or sub-2 value is clamped to 2 rather than rejected, since
-    /// [`App::apply_speed_ramp_to_selected_clip`] itself already no-ops below 2.
+    /// Shows the custom-speed-ramp dialog when `speed_ramp_dialog` is `Some` (the fixed 0.5x/2x
+    /// presets already apply directly with no dialog). Lets the user pick a start speed, end
+    /// speed, step count, and a "smooth" toggle — unchecked calls
+    /// [`App::apply_speed_ramp_to_selected_clip`] (the stepped approximation), checked calls
+    /// [`App::apply_smooth_speed_ramp_to_selected_clip`] (the continuous curve,
+    /// `spec/ROADMAP.md` item 29's later follow-up) and hides the now-irrelevant step count
+    /// field. `steps_buf` is parsed on confirm; an invalid or sub-2 value is clamped to 2 rather
+    /// than rejected, since [`App::apply_speed_ramp_to_selected_clip`] itself already no-ops
+    /// below 2.
     pub(super) fn show_speed_ramp_modal(&mut self, ctx: &egui::Context) {
-        let Some((clip_id, _, _, _)) = self.speed_ramp_dialog.as_ref() else {
+        let Some((clip_id, _, _, _, _)) = self.speed_ramp_dialog.as_ref() else {
             return;
         };
         let clip_id = *clip_id;
@@ -455,7 +457,8 @@ impl App {
                     .strong(),
             );
             ui.add_space(10.0);
-            let (_, start_speed, end_speed, steps_buf) = self.speed_ramp_dialog.as_mut().unwrap();
+            let (_, start_speed, end_speed, steps_buf, smooth) =
+                self.speed_ramp_dialog.as_mut().unwrap();
             ui.label(Text::SpeedRampStartSpeedLabel.tr(locale));
             ui.add(
                 egui::DragValue::new(start_speed)
@@ -470,13 +473,21 @@ impl App {
                     .speed(0.01),
             );
             ui.add_space(6.0);
-            ui.label(Text::SpeedRampStepsLabel.tr(locale));
-            let steps_edit = ui.add(
-                egui::TextEdit::singleline(steps_buf)
-                    .desired_width(60.0)
-                    .hint_text(Text::SpeedRampStepsHint.tr(locale)),
-            );
-            if steps_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            ui.checkbox(smooth, Text::SpeedRampSmoothToggle.tr(locale));
+            let smooth = *smooth;
+            let mut steps_edit_lost_focus_enter = false;
+            if !smooth {
+                ui.add_space(6.0);
+                ui.label(Text::SpeedRampStepsLabel.tr(locale));
+                let steps_edit = ui.add(
+                    egui::TextEdit::singleline(steps_buf)
+                        .desired_width(60.0)
+                        .hint_text(Text::SpeedRampStepsHint.tr(locale)),
+                );
+                steps_edit_lost_focus_enter =
+                    steps_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            }
+            if steps_edit_lost_focus_enter {
                 confirmed = true;
             }
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -497,10 +508,16 @@ impl App {
             return;
         }
         if confirmed {
-            if let Some((_, start_speed, end_speed, steps_buf)) = self.speed_ramp_dialog.take() {
-                let steps = steps_buf.trim().parse::<usize>().unwrap_or(0).max(2);
+            if let Some((_, start_speed, end_speed, steps_buf, smooth)) =
+                self.speed_ramp_dialog.take()
+            {
                 self.selected_clip_id = Some(clip_id);
-                self.apply_speed_ramp_to_selected_clip(start_speed, end_speed, steps);
+                if smooth {
+                    self.apply_smooth_speed_ramp_to_selected_clip(start_speed, end_speed);
+                } else {
+                    let steps = steps_buf.trim().parse::<usize>().unwrap_or(0).max(2);
+                    self.apply_speed_ramp_to_selected_clip(start_speed, end_speed, steps);
+                }
             }
         }
     }

@@ -210,9 +210,35 @@ impl App {
                 .clamp(*SPEED_FACTOR_RANGE.start(), *SPEED_FACTOR_RANGE.end());
             if let Some(c) = timeline.clip_mut(id) {
                 c.speed_factor = speed;
+                // A prior smooth-ramp application (App::apply_smooth_speed_ramp_to_selected_clip)
+                // may have left this set — clear it so duration_secs() uses the plain
+                // speed_factor this stepped mode actually sets, not a stale ramp endpoint.
+                c.speed_ramp_end_factor = None;
                 c.start_secs = cursor_secs;
                 cursor_secs += c.duration_secs();
             }
+        }
+    }
+
+    /// Applies a smooth, continuous speed ramp to the selected clip — the P4 item 29 follow-up
+    /// [`App::apply_speed_ramp_to_selected_clip`]'s own doc comment flagged as needing a
+    /// `log()`-based `setpts` derivation this codebase's sandboxed development environment
+    /// couldn't render/verify at the time. Unlike the stepped approximation, this needs no
+    /// splitting at all: [`avcore::timeline::ClipInstance::speed_ramp_end_factor`] carries both
+    /// endpoints directly, and export ([`avcore::render::resolve_timeline_segments`]/`_multi`)
+    /// resolves the whole ramp to one continuous `setpts` expression
+    /// (`avbridge::ClipSegment::smooth_speed_ramp_end_factor`). A no-op if nothing is selected.
+    pub fn apply_smooth_speed_ramp_to_selected_clip(&mut self, start_speed: f32, end_speed: f32) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        self.push_undo_snapshot();
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(clip) = timeline.clip_mut(clip_id) {
+            clip.speed_factor =
+                start_speed.clamp(*SPEED_FACTOR_RANGE.start(), *SPEED_FACTOR_RANGE.end());
+            clip.speed_ramp_end_factor =
+                Some(end_speed.clamp(*SPEED_FACTOR_RANGE.start(), *SPEED_FACTOR_RANGE.end()));
         }
     }
 
@@ -310,7 +336,7 @@ impl App {
             return;
         };
         self.push_undo_snapshot_for_drag();
-        let (balance, net_sigma, chroma_key) = {
+        let (balance, net_sigma, chroma_key, crop, pixelize_intensity, shake_intensity, mask) = {
             let Some(clip) = self.active_project_mut().timeline_mut().clip_mut(clip_id) else {
                 return;
             };
@@ -327,15 +353,23 @@ impl App {
                 (clip.brightness, clip.contrast, effective_saturation),
                 net_sigma,
                 (clip.chroma_key_color, clip.chroma_key_tolerance),
+                (clip.crop_x, clip.crop_y, clip.crop_w, clip.crop_h),
+                clip.pixelize_intensity,
+                clip.shake_intensity,
+                (clip.mask_shape, clip.mask_corner_radius),
             )
         };
-        // Cheap and harmless even for a setter that didn't touch color balance/blur/chroma key
-        // at all -- a no-op push of the clip's own unchanged values. See
-        // App::push_live_balance_update's doc comment for why this lives here rather than in
-        // each of the ~20 individual set_selected_clip_* setters.
+        // Cheap and harmless even for a setter that didn't touch color balance/blur/chroma
+        // key/crop/pixelize/shake/mask at all -- a no-op push of the clip's own unchanged
+        // values. See App::push_live_balance_update's doc comment for why this lives here
+        // rather than in each of the ~20 individual set_selected_clip_* setters.
         self.push_live_balance_update(clip_id, balance.0, balance.1, balance.2);
         self.push_live_blur_update(clip_id, net_sigma);
         self.push_live_chroma_key_update(clip_id, chroma_key.0, chroma_key.1);
+        self.push_live_crop_update(clip_id, crop.0, crop.1, crop.2, crop.3);
+        self.push_live_pixelize_update(clip_id, pixelize_intensity);
+        self.push_live_shake_update(clip_id, shake_intensity);
+        self.push_live_mask_update(clip_id, mask.0, mask.1);
     }
 }
 
@@ -394,6 +428,7 @@ fn default_clip_instance(
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
+        speed_ramp_end_factor: None,
         crop_x: 0.0,
         crop_y: 0.0,
         crop_w: 1.0,
