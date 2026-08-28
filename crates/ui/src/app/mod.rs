@@ -818,22 +818,9 @@ pub struct App {
     /// Height, in points, of the timeline strip — dragged via the horizontal divider above it.
     /// Same persistence shape as `lib_panel_width`.
     pub timeline_height: f32,
-    thumbnail_tx: UnboundedSender<ThumbnailReady>,
-    thumbnail_rx: UnboundedReceiver<ThumbnailReady>,
-    /// Filmstrip tile textures keyed by `(asset_id, source_frame_index)`. Only visible tiles
-    /// request frames; [`App::touch_thumbnails`] and [`App::pump_thumbnail_queue`] keep this as
-    /// a bounded LRU cache so browsing/zooming through a long recording cannot grow GPU memory
-    /// for the rest of the session.
-    pub thumbnail_textures: HashMap<ThumbnailKey, egui::TextureHandle>,
-    /// Extractions currently running. Separate from cached/failed keys so the hard concurrency
-    /// cap doesn't also make an evicted texture permanently non-requestable.
-    pending_thumbnails: HashSet<ThumbnailKey>,
-    /// Last-use ticks for cached textures, used by the LRU eviction pass.
-    thumbnail_last_used: HashMap<ThumbnailKey, u64>,
-    /// Recently failed keys and their last-use ticks. Bounded independently so a missing or
-    /// corrupt source is not retried every frame but also cannot grow this set forever.
-    failed_thumbnails: HashMap<ThumbnailKey, u64>,
-    thumbnail_usage_clock: u64,
+    /// Thumbnail background-job channel/cache state — same pattern as
+    /// [`App::auto_reframe_state`].
+    pub(crate) thumbnail_state: ThumbnailState,
     /// Set by the media library panel on the frame a dragged asset is released (screen-space
     /// pointer position), consumed by the timeline panel later in the same frame to place it —
     /// how dragging an asset out of the library and dropping it on the timeline works. Always
@@ -1131,6 +1118,25 @@ pub(crate) struct ImportState {
     pub(crate) auto_add_to_timeline: HashSet<u64>,
 }
 
+/// Thumbnail background-job channel/cache state. Filmstrip tile textures keyed by
+/// `(asset_id, source_frame_index)` — only visible tiles request frames; [`App::touch_thumbnails`]
+/// and [`App::pump_thumbnail_queue`] keep the cache bounded (LRU) so browsing/zooming through a
+/// long recording cannot grow GPU memory for the rest of the session.
+pub(crate) struct ThumbnailState {
+    pub(crate) thumbnail_tx: UnboundedSender<ThumbnailReady>,
+    pub(crate) thumbnail_rx: UnboundedReceiver<ThumbnailReady>,
+    pub(crate) thumbnail_textures: HashMap<ThumbnailKey, egui::TextureHandle>,
+    /// Extractions currently running. Separate from cached/failed keys so the hard concurrency
+    /// cap doesn't also make an evicted texture permanently non-requestable.
+    pub(crate) pending_thumbnails: HashSet<ThumbnailKey>,
+    /// Last-use ticks for cached textures, used by the LRU eviction pass.
+    pub(crate) thumbnail_last_used: HashMap<ThumbnailKey, u64>,
+    /// Recently failed keys and their last-use ticks. Bounded independently so a missing or
+    /// corrupt source is not retried every frame but also cannot grow this set forever.
+    pub(crate) failed_thumbnails: HashMap<ThumbnailKey, u64>,
+    pub(crate) thumbnail_usage_clock: u64,
+}
+
 /// Transcription background-job state — same pattern as [`AutoReframeState`].
 pub(crate) struct TranscribeState {
     pub(crate) transcribe_tx: UnboundedSender<TranscribeEvent>,
@@ -1320,13 +1326,15 @@ impl App {
             lib_panel_width,
             props_panel_width,
             timeline_height,
-            thumbnail_tx,
-            thumbnail_rx,
-            thumbnail_textures: HashMap::new(),
-            pending_thumbnails: HashSet::new(),
-            thumbnail_last_used: HashMap::new(),
-            failed_thumbnails: HashMap::new(),
-            thumbnail_usage_clock: 0,
+            thumbnail_state: ThumbnailState {
+                thumbnail_tx,
+                thumbnail_rx,
+                thumbnail_textures: HashMap::new(),
+                pending_thumbnails: HashSet::new(),
+                thumbnail_last_used: HashMap::new(),
+                failed_thumbnails: HashMap::new(),
+                thumbnail_usage_clock: 0,
+            },
             pending_asset_drop: None,
             clipboard_clip: None,
             formatting_clipboard: None,

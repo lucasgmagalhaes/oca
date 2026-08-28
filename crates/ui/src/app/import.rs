@@ -160,10 +160,10 @@ impl App {
     /// GStreamer pipeline must never block the UI thread.
     pub fn request_thumbnail(&mut self, asset_id: u64, frame_index: i64) {
         let key = (asset_id, frame_index);
-        if self.thumbnail_textures.contains_key(&key)
-            || self.pending_thumbnails.contains(&key)
-            || self.failed_thumbnails.contains_key(&key)
-            || self.pending_thumbnails.len() >= THUMBNAIL_MAX_PENDING
+        if self.thumbnail_state.thumbnail_textures.contains_key(&key)
+            || self.thumbnail_state.pending_thumbnails.contains(&key)
+            || self.thumbnail_state.failed_thumbnails.contains_key(&key)
+            || self.thumbnail_state.pending_thumbnails.len() >= THUMBNAIL_MAX_PENDING
         {
             return;
         }
@@ -183,8 +183,8 @@ impl App {
             .unwrap_or_else(|| asset.source_path.clone());
         let at_secs = thumbnail_frame_time(frame_index, asset.fps);
 
-        self.pending_thumbnails.insert(key);
-        let tx = self.thumbnail_tx.clone();
+        self.thumbnail_state.pending_thumbnails.insert(key);
+        let tx = self.thumbnail_state.thumbnail_tx.clone();
         std::thread::spawn(move || {
             let result = match extract_thumbnail(&path, at_secs) {
                 Some((width, height, rgba)) => ThumbnailReady::Ready {
@@ -212,8 +212,8 @@ impl App {
         }
         let tick = self.next_thumbnail_usage_tick();
         for key in keys {
-            if self.thumbnail_textures.contains_key(key) {
-                self.thumbnail_last_used.insert(*key, tick);
+            if self.thumbnail_state.thumbnail_textures.contains_key(key) {
+                self.thumbnail_state.thumbnail_last_used.insert(*key, tick);
             }
         }
     }
@@ -223,7 +223,7 @@ impl App {
     /// pending slot; successful uploads enter the bounded texture LRU and failures enter a
     /// smaller bounded retry-suppression set.
     pub(super) fn pump_thumbnail_queue(&mut self, ctx: &egui::Context) {
-        while let Ok(ready) = self.thumbnail_rx.try_recv() {
+        while let Ok(ready) = self.thumbnail_state.thumbnail_rx.try_recv() {
             match ready {
                 ThumbnailReady::Ready {
                     asset_id,
@@ -233,7 +233,7 @@ impl App {
                     rgba,
                 } => {
                     let key = (asset_id, frame_index);
-                    self.pending_thumbnails.remove(&key);
+                    self.thumbnail_state.pending_thumbnails.remove(&key);
                     let image = egui::ColorImage::from_rgba_unmultiplied(
                         [width as usize, height as usize],
                         &rgba,
@@ -244,8 +244,8 @@ impl App {
                         egui::TextureOptions::LINEAR,
                     );
                     let tick = self.next_thumbnail_usage_tick();
-                    self.thumbnail_textures.insert(key, texture);
-                    self.thumbnail_last_used.insert(key, tick);
+                    self.thumbnail_state.thumbnail_textures.insert(key, texture);
+                    self.thumbnail_state.thumbnail_last_used.insert(key, tick);
                     self.evict_thumbnail_textures();
                 }
                 ThumbnailReady::Failed {
@@ -253,7 +253,7 @@ impl App {
                     frame_index,
                 } => {
                     let key = (asset_id, frame_index);
-                    self.pending_thumbnails.remove(&key);
+                    self.thumbnail_state.pending_thumbnails.remove(&key);
                     self.remember_thumbnail_failure(key);
                 }
             }
@@ -261,15 +261,17 @@ impl App {
     }
 
     fn next_thumbnail_usage_tick(&mut self) -> u64 {
-        self.thumbnail_usage_clock = self.thumbnail_usage_clock.saturating_add(1);
-        self.thumbnail_usage_clock
+        self.thumbnail_state.thumbnail_usage_clock =
+            self.thumbnail_state.thumbnail_usage_clock.saturating_add(1);
+        self.thumbnail_state.thumbnail_usage_clock
     }
 
     fn remember_thumbnail_failure(&mut self, key: ThumbnailKey) {
         let tick = self.next_thumbnail_usage_tick();
-        self.failed_thumbnails.insert(key, tick);
-        while self.failed_thumbnails.len() > THUMBNAIL_FAILURE_CAPACITY {
+        self.thumbnail_state.failed_thumbnails.insert(key, tick);
+        while self.thumbnail_state.failed_thumbnails.len() > THUMBNAIL_FAILURE_CAPACITY {
             let Some(oldest) = self
+                .thumbnail_state
                 .failed_thumbnails
                 .iter()
                 .min_by_key(|(_, tick)| **tick)
@@ -277,22 +279,29 @@ impl App {
             else {
                 break;
             };
-            self.failed_thumbnails.remove(&oldest);
+            self.thumbnail_state.failed_thumbnails.remove(&oldest);
         }
     }
 
     fn evict_thumbnail_textures(&mut self) {
-        while self.thumbnail_textures.len() > THUMBNAIL_CACHE_CAPACITY {
+        while self.thumbnail_state.thumbnail_textures.len() > THUMBNAIL_CACHE_CAPACITY {
             let Some(oldest) = self
+                .thumbnail_state
                 .thumbnail_textures
                 .keys()
-                .min_by_key(|key| self.thumbnail_last_used.get(key).copied().unwrap_or(0))
+                .min_by_key(|key| {
+                    self.thumbnail_state
+                        .thumbnail_last_used
+                        .get(key)
+                        .copied()
+                        .unwrap_or(0)
+                })
                 .copied()
             else {
                 break;
             };
-            self.thumbnail_textures.remove(&oldest);
-            self.thumbnail_last_used.remove(&oldest);
+            self.thumbnail_state.thumbnail_textures.remove(&oldest);
+            self.thumbnail_state.thumbnail_last_used.remove(&oldest);
         }
     }
 }
