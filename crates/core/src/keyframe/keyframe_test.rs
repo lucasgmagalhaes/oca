@@ -163,6 +163,66 @@ fn split_keyframes_at_drops_keyframes_that_land_on_the_other_side() {
 }
 
 #[test]
+fn smooth_speed_ramp_duration_secs_matches_plain_division_for_a_constant_speed() {
+    // v0 == v1 degenerates to the same formula the old constant-speed path uses.
+    let d = smooth_speed_ramp_duration_secs(10.0, 2.0, 2.0);
+    assert!((d - 5.0).abs() < 1e-6);
+}
+
+#[test]
+fn smooth_speed_ramp_duration_secs_matches_numerical_integration() {
+    // ∫₀^D 1/(v0 + (v1-v0)/D * t) dt, integrated numerically at fine resolution, should match
+    // the closed-form log expression to a tight tolerance.
+    let (d, v0, v1) = (8.0, 0.5, 2.0);
+    let steps = 200_000;
+    let dt = d / steps as f64;
+    let mut numeric = 0.0;
+    for i in 0..steps {
+        let t = (i as f64 + 0.5) * dt;
+        let speed = v0 as f64 + (v1 as f64 - v0 as f64) * t / d;
+        numeric += dt / speed;
+    }
+    let closed_form = smooth_speed_ramp_duration_secs(d, v0, v1);
+    assert!(
+        (closed_form - numeric).abs() < 1e-4,
+        "closed form {closed_form} vs numeric {numeric}"
+    );
+}
+
+#[test]
+fn smooth_speed_ramp_duration_secs_is_shorter_for_a_speed_up_ramp() {
+    // Speeding up (v1 > v0) should always finish faster than staying at the start speed the
+    // whole time, and slower than staying at the end speed the whole time.
+    let d = 6.0;
+    let ramped = smooth_speed_ramp_duration_secs(d, 1.0, 3.0);
+    assert!(ramped < d / 1.0);
+    assert!(ramped > d / 3.0);
+}
+
+#[test]
+fn smooth_speed_ramp_source_secs_at_is_the_true_inverse_of_the_duration_formula() {
+    // Round-trip: convert a source time to elapsed timeline time, then back — should return
+    // (approximately) the original source time, across both a speed-up and slow-down ramp.
+    for (v0, v1) in [(0.5f32, 2.0f32), (2.0f32, 0.5f32)] {
+        let d = 10.0;
+        for source_t in [0.0, 2.5, 5.0, 7.5, 10.0] {
+            let timeline_elapsed = smooth_speed_ramp_elapsed_timeline_secs(source_t, d, v0, v1);
+            let back = smooth_speed_ramp_source_secs_at(timeline_elapsed, d, v0, v1);
+            assert!(
+                (back - source_t).abs() < 1e-3,
+                "v0={v0} v1={v1} source_t={source_t}: round-trip gave {back}"
+            );
+        }
+    }
+}
+
+#[test]
+fn smooth_speed_ramp_source_secs_at_matches_plain_multiply_for_a_constant_speed() {
+    let t = smooth_speed_ramp_source_secs_at(4.0, 10.0, 2.0, 2.0);
+    assert!((t - 8.0).abs() < 1e-6);
+}
+
+#[test]
 fn scale_filter_expr_is_none_for_no_keyframes() {
     assert_eq!(scale_filter_expr(&[], 30, 1, 5.0), None);
 }

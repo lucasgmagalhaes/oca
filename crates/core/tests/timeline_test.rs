@@ -34,6 +34,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
+        speed_ramp_end_factor: None,
         crop_x: 0.0,
         crop_y: 0.0,
         crop_w: 1.0,
@@ -548,6 +549,41 @@ fn split_clip_at_keeps_speed_factor_on_both_halves() {
     assert!(split);
     assert_eq!(track.clips[0].speed_factor, 2.0);
     assert_eq!(track.clips[1].speed_factor, 2.0);
+}
+
+#[test]
+fn split_clip_at_continues_a_smooth_speed_ramp_across_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.speed_factor = 1.0;
+    clip.speed_ramp_end_factor = Some(3.0);
+    let full_duration = clip.duration_secs();
+    let mut track = track_with(vec![clip]);
+
+    // Split partway through the ramp's own timeline duration (not the source range).
+    let split_at = 10.0 + full_duration * 0.4;
+    let split = track.split_clip_at(split_at, 99);
+    assert!(split);
+
+    let first = &track.clips[0];
+    let second = &track.clips[1];
+
+    // Each half keeps its own ramp, sharing the exact same speed at the cut — no jump.
+    assert_eq!(first.speed_factor, 1.0);
+    assert_eq!(second.speed_ramp_end_factor, Some(3.0));
+    assert_eq!(first.speed_ramp_end_factor, Some(second.speed_factor));
+
+    // Speed at the cut lands strictly between the original start/end speeds.
+    let speed_at_cut = second.speed_factor;
+    assert!(speed_at_cut > 1.0 && speed_at_cut < 3.0);
+
+    // Source ranges stay contiguous, same invariant every other split has.
+    assert_eq!(first.source_out_secs, second.source_in_secs);
+    assert_eq!(first.source_in_secs, 0.0);
+    assert_eq!(second.source_out_secs, 20.0);
+
+    // The two halves' own durations still sum to (approximately) the original ramp's whole
+    // timeline duration — splitting shouldn't change the clip's total on-timeline length.
+    assert!((first.duration_secs() + second.duration_secs() - full_duration).abs() < 1e-3);
 }
 
 #[test]
