@@ -750,21 +750,13 @@ pub struct App {
     /// one transcription runs at a time (unlike imports, which are per-file parallel). The
     /// Mídia screen shows a busy state on that asset's card while this is `Some`.
     pub transcribing_asset_id: Option<u64>,
-    auto_reframe_tx: UnboundedSender<AutoReframeEvent>,
-    auto_reframe_rx: UnboundedReceiver<AutoReframeEvent>,
-    /// The timeline clip id a background auto-reframe run is currently computing a crop for, if
-    /// any — only one runs at a time, same shape as `transcribing_asset_id`.
-    pub auto_reframing_clip_id: Option<u64>,
-    motion_tracking_tx: UnboundedSender<MotionTrackEvent>,
-    motion_tracking_rx: UnboundedReceiver<MotionTrackEvent>,
-    /// The timeline clip id a background motion-tracking run is currently tracking, if any —
-    /// only one runs at a time, same shape as `auto_reframing_clip_id`.
-    pub motion_tracking_clip_id: Option<u64>,
-    scene_cut_detection_tx: UnboundedSender<SceneCutEvent>,
-    scene_cut_detection_rx: UnboundedReceiver<SceneCutEvent>,
-    /// The timeline clip id a background scene-cut-detection run (D4) is currently scanning, if
-    /// any — only one runs at a time, same shape as `motion_tracking_clip_id`.
-    pub scene_cut_detection_clip_id: Option<u64>,
+    /// Auto-reframe background-job channel/clip-tracking state, grouped the same way
+    /// [`PreviewState`] was — see that struct's doc comment for why.
+    pub(crate) auto_reframe_state: AutoReframeState,
+    /// Motion-tracking background-job channel/clip-tracking state — same pattern.
+    pub(crate) motion_tracking_state: MotionTrackingState,
+    /// Scene-cut-detection background-job channel/clip-tracking state — same pattern.
+    pub(crate) scene_cut_detection_state: SceneCutDetectionState,
     /// The tracked region's center, as a `0.0..=1.0` fraction of the *source* frame (same
     /// convention as `avcore::track_region`'s `initial_center_x_frac`/`_y`, not canvas/layer
     /// space) — user-editable via the properties panel's region controls next to the "Rastrear
@@ -790,12 +782,9 @@ pub struct App {
     /// panel's "pick in preview" button, next to the numeric region controls; Escape exits.
     /// Session-only, like the `motion_track_*` fields it edits.
     pub picking_motion_track_region: bool,
-    matte_generation_tx: UnboundedSender<MatteGenerationEvent>,
-    matte_generation_rx: UnboundedReceiver<MatteGenerationEvent>,
-    /// The timeline clip id a background AI-background-removal matte-generation run is
-    /// currently computing a matte for, if any — only one runs at a time, same shape as
-    /// `auto_reframing_clip_id`.
-    pub matte_generating_clip_id: Option<u64>,
+    /// Matte-generation background-job channel/clip-tracking state — same pattern as
+    /// [`App::auto_reframe_state`].
+    pub(crate) matte_generation_state: MatteGenerationState,
     tts_tx: UnboundedSender<TtsEvent>,
     tts_rx: UnboundedReceiver<TtsEvent>,
     /// `Some(text)` while the "Texto-pra-fala" modal is open — the text buffer being edited.
@@ -1119,6 +1108,47 @@ pub(crate) struct TelemetryState {
     pub(crate) last_preview_frame_telemetry: Option<std::time::Instant>,
 }
 
+/// Auto-reframe background-job state, extracted from `App`'s own field list — see
+/// [`PreviewState`]'s doc comment for why.
+pub(crate) struct AutoReframeState {
+    pub(crate) auto_reframe_tx: UnboundedSender<AutoReframeEvent>,
+    pub(crate) auto_reframe_rx: UnboundedReceiver<AutoReframeEvent>,
+    /// The timeline clip id a background auto-reframe run is currently computing a crop for, if
+    /// any — only one runs at a time, same shape as `App::transcribing_asset_id`.
+    pub(crate) auto_reframing_clip_id: Option<u64>,
+}
+
+/// Motion-tracking background-job state — same pattern as [`AutoReframeState`]. Distinct from
+/// `App`'s `motion_track_*`/`picking_motion_track_region` fields, which are the region-picker
+/// UI's own session state, not this one-shot background job's channel/clip-tracking state.
+pub(crate) struct MotionTrackingState {
+    pub(crate) motion_tracking_tx: UnboundedSender<MotionTrackEvent>,
+    pub(crate) motion_tracking_rx: UnboundedReceiver<MotionTrackEvent>,
+    /// The timeline clip id a background motion-tracking run is currently tracking, if any —
+    /// only one runs at a time, same shape as `AutoReframeState::auto_reframing_clip_id`.
+    pub(crate) motion_tracking_clip_id: Option<u64>,
+}
+
+/// Scene-cut-detection (D4) background-job state — same pattern as [`AutoReframeState`].
+pub(crate) struct SceneCutDetectionState {
+    pub(crate) scene_cut_detection_tx: UnboundedSender<SceneCutEvent>,
+    pub(crate) scene_cut_detection_rx: UnboundedReceiver<SceneCutEvent>,
+    /// The timeline clip id a background scene-cut-detection run is currently scanning, if
+    /// any — only one runs at a time, same shape as `AutoReframeState::auto_reframing_clip_id`.
+    pub(crate) scene_cut_detection_clip_id: Option<u64>,
+}
+
+/// AI-background-removal matte-generation background-job state — same pattern as
+/// [`AutoReframeState`].
+pub(crate) struct MatteGenerationState {
+    pub(crate) matte_generation_tx: UnboundedSender<MatteGenerationEvent>,
+    pub(crate) matte_generation_rx: UnboundedReceiver<MatteGenerationEvent>,
+    /// The timeline clip id a background AI-background-removal matte-generation run is
+    /// currently computing a matte for, if any — only one runs at a time, same shape as
+    /// `AutoReframeState::auto_reframing_clip_id`.
+    pub(crate) matte_generating_clip_id: Option<u64>,
+}
+
 impl App {
     /// Builds the initial app state: applies the theme and starts with an empty project list
     /// and export queue — every project, asset, and job comes from the user via "Novo
@@ -1201,24 +1231,32 @@ impl App {
             transcribe_tx,
             transcribe_rx,
             transcribing_asset_id: None,
-            auto_reframe_tx,
-            auto_reframe_rx,
-            auto_reframing_clip_id: None,
-            motion_tracking_tx,
-            motion_tracking_rx,
-            motion_tracking_clip_id: None,
-            scene_cut_detection_tx,
-            scene_cut_detection_rx,
-            scene_cut_detection_clip_id: None,
+            auto_reframe_state: AutoReframeState {
+                auto_reframe_tx,
+                auto_reframe_rx,
+                auto_reframing_clip_id: None,
+            },
+            motion_tracking_state: MotionTrackingState {
+                motion_tracking_tx,
+                motion_tracking_rx,
+                motion_tracking_clip_id: None,
+            },
+            scene_cut_detection_state: SceneCutDetectionState {
+                scene_cut_detection_tx,
+                scene_cut_detection_rx,
+                scene_cut_detection_clip_id: None,
+            },
             motion_track_center_x: 0.5,
             motion_track_center_y: 0.5,
             motion_track_width: 0.2,
             motion_track_height: 0.2,
             motion_track_search_radius: 0.08,
             picking_motion_track_region: false,
-            matte_generation_tx,
-            matte_generation_rx,
-            matte_generating_clip_id: None,
+            matte_generation_state: MatteGenerationState {
+                matte_generation_tx,
+                matte_generation_rx,
+                matte_generating_clip_id: None,
+            },
             tts_tx,
             tts_rx,
             tts_modal_text: None,

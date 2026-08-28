@@ -55,7 +55,7 @@ impl App {
     /// default centered-at-origin placement) was already set. A no-op if nothing is selected or
     /// a run is already in flight.
     pub fn spawn_motion_track_selected_clip(&mut self) {
-        if self.motion_tracking_clip_id.is_some() {
+        if self.motion_tracking_state.motion_tracking_clip_id.is_some() {
             return;
         }
         let Some(clip) = self.selected_clip() else {
@@ -94,8 +94,8 @@ impl App {
             *MOTION_TRACK_SEARCH_RADIUS_RANGE.end(),
         );
 
-        self.motion_tracking_clip_id = Some(clip_id);
-        let tx = self.motion_tracking_tx.clone();
+        self.motion_tracking_state.motion_tracking_clip_id = Some(clip_id);
+        let tx = self.motion_tracking_state.motion_tracking_tx.clone();
         std::thread::spawn(move || {
             let keyframes = motion_track_one(
                 &source_path,
@@ -115,10 +115,10 @@ impl App {
     /// Applies a finished motion-tracking run to the timeline. Called once per frame from
     /// [`eframe::App::ui`], same as [`App::pump_auto_reframe`].
     pub(super) fn pump_motion_tracking(&mut self) {
-        while let Ok(event) = self.motion_tracking_rx.try_recv() {
+        while let Ok(event) = self.motion_tracking_state.motion_tracking_rx.try_recv() {
             match event {
                 MotionTrackEvent::Done { clip_id, keyframes } => {
-                    self.motion_tracking_clip_id = None;
+                    self.motion_tracking_state.motion_tracking_clip_id = None;
                     if keyframes.is_empty() {
                         self.push_toast(
                             crate::i18n::Text::MotionTrackNoFramesDecoded
