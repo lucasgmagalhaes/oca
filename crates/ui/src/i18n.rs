@@ -275,6 +275,13 @@ text_catalog! {
     ContextMenuSpeedRamp: pt_br = "⏱ Rampa de velocidade", en = "⏱ Speed ramp";
     SpeedRampSlowToFast: pt_br = "Lento → Rápido (0.5x → 2x)", en = "Slow → Fast (0.5x → 2x)";
     SpeedRampFastToSlow: pt_br = "Rápido → Lento (2x → 0.5x)", en = "Fast → Slow (2x → 0.5x)";
+    SpeedRampCustom: pt_br = "Personalizada…", en = "Custom…";
+    SpeedRampCustomTitle: pt_br = "Rampa de velocidade personalizada", en = "Custom speed ramp";
+    SpeedRampStartSpeedLabel: pt_br = "Velocidade inicial", en = "Start speed";
+    SpeedRampEndSpeedLabel: pt_br = "Velocidade final", en = "End speed";
+    SpeedRampStepsLabel: pt_br = "Número de etapas", en = "Step count";
+    SpeedRampStepsHint: pt_br = "mínimo 2", en = "minimum 2";
+    SpeedRampApply: pt_br = "Aplicar rampa", en = "Apply ramp";
     ContextMenuCopy: pt_br = "⧉ Copiar", en = "⧉ Copy";
     ContextMenuCut: pt_br = "✂ Recortar", en = "✂ Cut";
     ContextMenuPaste: pt_br = "📋 Colar no playhead", en = "📋 Paste at playhead";

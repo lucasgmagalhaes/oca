@@ -885,6 +885,15 @@ pub struct App {
     /// is open. Stored by id rather than index so a reordered tab cannot make confirmation
     /// delete a different sequence.
     pub deleting_sequence: Option<(u64, String)>,
+    /// `(clip_id, start_speed_buf, end_speed_buf, steps_buf)` staged while the custom speed-ramp
+    /// dialog is open — the fixed-preset "Rampa de velocidade" submenu entries call
+    /// [`App::apply_speed_ramp_to_selected_clip`] directly with no dialog, but a custom start/
+    /// end speed and step count (`spec/ROADMAP.md` item 29's own "not done" list) needs editable
+    /// buffers staged somewhere across frames, same shape `renaming_project`'s name/summary
+    /// buffers have. `steps_buf` is a `String` (not a `usize`) so the field can sit empty/
+    /// mid-edit rather than snapping to some fallback on every keystroke; parsed back to
+    /// `usize` only on confirm. `None` when the dialog is closed.
+    pub speed_ramp_dialog: Option<(u64, f32, f32, String)>,
     /// A snapshot of `multi_selected_clip_ids`' per-layer `(TrackKind, ClipFormatting)`, plus a
     /// name buffer, staged while the "save as template" naming modal is open — captured at
     /// click time (`App::begin_save_layer_template`) so a selection change while the modal is
@@ -1368,6 +1377,7 @@ impl App {
             renaming_project: None,
             renaming_sequence: None,
             deleting_sequence: None,
+            speed_ramp_dialog: None,
             saving_layer_template: None,
             applying_layer_template: None,
             layer_templates_menu_open: false,
@@ -2089,6 +2099,7 @@ impl eframe::App for App {
         self.show_about_modal(ui.ctx());
         self.show_rename_project_modal(ui.ctx());
         self.show_rename_sequence_modal(ui.ctx());
+        self.show_speed_ramp_modal(ui.ctx());
         self.show_delete_sequence_modal(ui.ctx());
         self.show_text_color_modal(ui.ctx());
         self.show_export_conflict_modal(ui.ctx());
