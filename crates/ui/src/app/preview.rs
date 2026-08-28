@@ -865,6 +865,30 @@ impl App {
         }
     }
 
+    /// Pushes `clip_id`'s current chroma-key color/tolerance live into the running preview
+    /// pipeline — same shape and same P1 item 3 motivation `push_live_balance_update`/
+    /// `push_live_blur_update` have. A silent no-op under the same conditions those two have,
+    /// plus [`avcore::preview::Preview::set_live_chroma_key`]'s own "only ever built for an
+    /// already-enabled, composited-overlay chroma key" condition.
+    pub(super) fn push_live_chroma_key_update(
+        &mut self,
+        clip_id: u64,
+        color: [u8; 3],
+        tolerance: f32,
+    ) {
+        let is_previewed = self.preview_state.preview_clip_id == Some(clip_id)
+            || self
+                .preview_state
+                .preview_overlay_clip_ids
+                .contains(&clip_id);
+        if !is_previewed {
+            return;
+        }
+        if let Some(preview) = &self.preview_state.preview {
+            preview.set_live_chroma_key(clip_id, color, tolerance);
+        }
+    }
+
     /// Pulls the latest decoded video frame (if any) into `preview_texture`, and — while
     /// playing — mirrors the pipeline's position into the active project's timeline playhead,
     /// converting from the clip-relative position `Preview` reports back to timeline time.

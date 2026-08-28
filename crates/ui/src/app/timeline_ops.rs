@@ -310,7 +310,7 @@ impl App {
             return;
         };
         self.push_undo_snapshot_for_drag();
-        let (balance, net_sigma) = {
+        let (balance, net_sigma, chroma_key) = {
             let Some(clip) = self.active_project_mut().timeline_mut().clip_mut(clip_id) else {
                 return;
             };
@@ -326,14 +326,16 @@ impl App {
             (
                 (clip.brightness, clip.contrast, effective_saturation),
                 net_sigma,
+                (clip.chroma_key_color, clip.chroma_key_tolerance),
             )
         };
-        // Cheap and harmless even for a setter that didn't touch color balance/blur at all -- a
-        // no-op push of the clip's own unchanged values. See App::push_live_balance_update's
-        // doc comment for why this lives here rather than in each of the ~20 individual
-        // set_selected_clip_* setters.
+        // Cheap and harmless even for a setter that didn't touch color balance/blur/chroma key
+        // at all -- a no-op push of the clip's own unchanged values. See
+        // App::push_live_balance_update's doc comment for why this lives here rather than in
+        // each of the ~20 individual set_selected_clip_* setters.
         self.push_live_balance_update(clip_id, balance.0, balance.1, balance.2);
         self.push_live_blur_update(clip_id, net_sigma);
+        self.push_live_chroma_key_update(clip_id, chroma_key.0, chroma_key.1);
     }
 }
 
