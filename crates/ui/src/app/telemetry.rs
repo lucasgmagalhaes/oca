@@ -72,6 +72,40 @@ pub(super) fn spawn_resource_sampler(
     });
 }
 
+/// Runs for the app's whole lifetime, sampling GPU utilization/VRAM (`avcore::GpuSampler`) once
+/// per [`RESOURCE_TELEMETRY_INTERVAL`] and sending results to `tx` — mirrors
+/// [`spawn_resource_sampler`] exactly, except this thread exits immediately if
+/// `avcore::GpuSampler::new` returns `None` (no NVML-compatible GPU on this machine at all,
+/// which won't change mid-session) rather than looping forever just to keep re-checking
+/// something that can't become true. A tick where [`avcore::GpuSampler::sample`] itself returns
+/// `None` (a transient NVML query failure) is silently skipped, same as a disabled-telemetry
+/// tick.
+pub(super) fn spawn_gpu_sampler(
+    tx: UnboundedSender<avcore::TelemetryEvent>,
+    enabled: Arc<AtomicBool>,
+) {
+    std::thread::spawn(move || {
+        let Some(sampler) = avcore::GpuSampler::new() else {
+            tracing::info!(
+                "no NVML-compatible GPU detected -- GPU usage telemetry disabled for this session"
+            );
+            return;
+        };
+        loop {
+            std::thread::sleep(RESOURCE_TELEMETRY_INTERVAL);
+            if !enabled.load(Ordering::Relaxed) {
+                continue;
+            }
+            let Some(event) = sampler.sample() else {
+                continue;
+            };
+            if tx.send(event).is_err() {
+                return;
+            }
+        }
+    });
+}
+
 impl App {
     /// Queues a telemetry event for the background writer thread — a cheap, non-blocking
     /// channel send, safe to call from the UI thread. A no-op if telemetry is disabled in
