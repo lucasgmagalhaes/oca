@@ -151,11 +151,11 @@ pub use update_check::{
     is_newer, package_supports_atomic_update, release_supports_auto_update, restart_application,
     ApplyUpdateError, ApplyUpdateOutcome, LatestRelease, UpdateCheckError, UpdatePackage,
 };
-pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};
 pub use watched_folder::{
     is_video_file, output_path_for, process_watched_file, ProcessError, StabilityTracker,
     DEFAULT_OUTPUT_SUBFOLDER, DEFAULT_STABLE_SECS, DEFAULT_TARGET_LUFS, VIDEO_EXTENSIONS,
 };
+pub use waveform::{generate_waveform, WaveformError, WAVEFORM_BUCKET_COUNT};
 pub use youtube_download::{
     download_youtube, is_yt_dlp_available, Mp3Bitrate, Mp4Quality, YoutubeDownloadError,
     YoutubeDownloadTarget,

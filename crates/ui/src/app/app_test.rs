@@ -210,6 +210,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
     let (telemetry_tx, _telemetry_rx) = mpsc::unbounded_channel();
     let (update_check_tx, update_check_rx) = mpsc::unbounded_channel();
+    let (watch_folder_tx, watch_folder_rx) = mpsc::unbounded_channel();
     App {
         screen: Screen::Home,
         tool: EditorTool::Select,
@@ -291,6 +292,14 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
             youtube_download_progress: 0.0,
             youtube_download_error: None,
             youtube_download_cancel: None,
+        },
+        watch_folder_state: crate::app::WatchFolderState {
+            tx: watch_folder_tx,
+            rx: watch_folder_rx,
+            watch_path: None,
+            running: false,
+            stop: None,
+            files: Vec::new(),
         },
         selected_clip_id: None,
         undo_stack: avcore::undo::UndoStack::new(),
@@ -6264,4 +6273,162 @@ fn spawn_shorts_pack_skips_a_window_landing_entirely_in_a_gap() {
         app.export_jobs.is_empty(),
         "the only candidate's window had no clip content"
     );
+}
+
+#[test]
+fn start_watching_folder_is_a_no_op_with_no_path_set() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.start_watching_folder();
+
+    assert!(!app.watch_folder_state.running);
+}
+
+#[test]
+fn start_watching_folder_is_a_no_op_while_already_running() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.watch_folder_state.watch_path = Some(std::path::PathBuf::from("E:/records"));
+    app.watch_folder_state.running = true;
+    app.watch_folder_state
+        .files
+        .push(crate::app::WatchedFileRow {
+            path: std::path::PathBuf::from("E:/records/a.mp4"),
+            status: crate::app::WatchFolderFileStatus::Processing,
+            percent: 40,
+            error: None,
+            before: None,
+            after: None,
+        });
+
+    app.start_watching_folder();
+
+    // The already-running session's file list isn't cleared by a second, ignored call.
+    assert_eq!(app.watch_folder_state.files.len(), 1);
+}
+
+#[test]
+fn stop_watching_folder_is_a_no_op_when_nothing_is_running() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    // Just needs to not panic without a live watch session.
+    app.stop_watching_folder();
+
+    assert!(!app.watch_folder_state.running);
+}
+
+#[test]
+fn stop_watching_folder_clears_the_running_flag_and_signals_the_stop_flag() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    app.watch_folder_state.running = true;
+    app.watch_folder_state.stop = Some(std::sync::Arc::clone(&stop));
+
+    app.stop_watching_folder();
+
+    assert!(!app.watch_folder_state.running);
+    assert!(stop.load(std::sync::atomic::Ordering::Relaxed));
+}
+
+#[test]
+fn pump_watch_folder_inserts_a_newly_detected_file_at_the_front() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let path = std::path::PathBuf::from("E:/records/newest.mp4");
+    app.watch_folder_state
+        .files
+        .push(crate::app::WatchedFileRow {
+            path: std::path::PathBuf::from("E:/records/older.mp4"),
+            status: crate::app::WatchFolderFileStatus::Done,
+            percent: 100,
+            error: None,
+            before: None,
+            after: None,
+        });
+    let _ = app
+        .watch_folder_state
+        .tx
+        .send(crate::app::WatchFolderEvent::Detected(path.clone()));
+
+    app.pump_watch_folder();
+
+    assert_eq!(app.watch_folder_state.files.len(), 2);
+    assert_eq!(app.watch_folder_state.files[0].path, path);
+    assert_eq!(
+        app.watch_folder_state.files[0].status,
+        crate::app::WatchFolderFileStatus::Stabilizing
+    );
+}
+
+#[test]
+fn pump_watch_folder_applies_progress_and_completion_to_the_matching_row() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let path = std::path::PathBuf::from("E:/records/a.mp4");
+    app.watch_folder_state
+        .files
+        .push(crate::app::WatchedFileRow {
+            path: path.clone(),
+            status: crate::app::WatchFolderFileStatus::Processing,
+            percent: 10,
+            error: None,
+            before: None,
+            after: None,
+        });
+    let before = avcore::LoudnessMetrics {
+        integrated_lufs: -22.0,
+        true_peak_dbtp: -3.0,
+        loudness_range_lu: 8.0,
+    };
+    let after = avcore::LoudnessMetrics {
+        integrated_lufs: -16.0,
+        true_peak_dbtp: -1.0,
+        loudness_range_lu: 6.0,
+    };
+    let _ = app
+        .watch_folder_state
+        .tx
+        .send(crate::app::WatchFolderEvent::Progress(path.clone(), 55));
+    let _ = app
+        .watch_folder_state
+        .tx
+        .send(crate::app::WatchFolderEvent::Done {
+            path: path.clone(),
+            before,
+            after,
+        });
+
+    app.pump_watch_folder();
+
+    let row = &app.watch_folder_state.files[0];
+    assert_eq!(row.status, crate::app::WatchFolderFileStatus::Done);
+    assert_eq!(row.percent, 100);
+    assert_eq!(row.before.unwrap().integrated_lufs, -22.0);
+    assert_eq!(row.after.unwrap().integrated_lufs, -16.0);
+}
+
+#[test]
+fn pump_watch_folder_applies_a_failure_to_the_matching_row() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let path = std::path::PathBuf::from("E:/records/a.mp4");
+    app.watch_folder_state
+        .files
+        .push(crate::app::WatchedFileRow {
+            path: path.clone(),
+            status: crate::app::WatchFolderFileStatus::Processing,
+            percent: 10,
+            error: None,
+            before: None,
+            after: None,
+        });
+    let _ = app
+        .watch_folder_state
+        .tx
+        .send(crate::app::WatchFolderEvent::Failed {
+            path: path.clone(),
+            message: "ffmpeg exited with code 1".to_string(),
+        });
+
+    app.pump_watch_folder();
+
+    let row = &app.watch_folder_state.files[0];
+    assert_eq!(row.status, crate::app::WatchFolderFileStatus::Error);
+    assert_eq!(row.error.as_deref(), Some("ffmpeg exited with code 1"));
 }
