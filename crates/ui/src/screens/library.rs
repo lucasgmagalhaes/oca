@@ -72,74 +72,64 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 let cols_per_row = 4usize;
                 let mut col = 0usize;
                 for asset in &app.active_project().media_library {
-                    egui::Frame::new()
-                        .fill(theme::SURFACE)
-                        .stroke(egui::Stroke::new(1.0, theme::BORDER))
-                        .corner_radius(8)
-                        .inner_margin(egui::Margin::same(8))
-                        .show(ui, |ui| {
-                            ui.set_width(card_width - 16.0);
-                            ui.vertical(|ui| {
-                                egui::Frame::new()
-                                    .fill(theme::SURFACE_2)
-                                    .corner_radius(6)
-                                    .show(ui, |ui| {
-                                        ui.set_min_width(ui.available_width());
-                                        ui.set_min_height(90.0);
-                                        ui.centered_and_justified(|ui| {
-                                            let icon = match asset.kind {
-                                                MediaKind::Video => "▶",
-                                                MediaKind::Audio => "♪",
-                                            };
-                                            ui.label(
-                                                RichText::new(icon)
-                                                    .size(22.0)
-                                                    .color(theme::TEXT_MUTED),
-                                            );
-                                        });
+                    components::card_frame().show(ui, |ui| {
+                        ui.set_width(card_width - 28.0);
+                        ui.vertical(|ui| {
+                            egui::Frame::new()
+                                .fill(theme::SURFACE_2)
+                                .corner_radius(6)
+                                .show(ui, |ui| {
+                                    ui.set_min_width(ui.available_width());
+                                    ui.set_min_height(90.0);
+                                    ui.centered_and_justified(|ui| {
+                                        let icon = match asset.kind {
+                                            MediaKind::Video => "▶",
+                                            MediaKind::Audio => "♪",
+                                        };
+                                        ui.label(
+                                            RichText::new(icon).size(22.0).color(theme::TEXT_MUTED),
+                                        );
                                     });
-                                ui.label(RichText::new(&asset.file_name).size(12.5));
-                                ui.horizontal_wrapped(|ui| {
-                                    components::tag_outline(ui, &asset.codec);
-                                    if asset.source_bitrate_mbps > 0.0 {
-                                        components::tag_outline(
-                                            ui,
-                                            &format!("{:.0} Mbps", asset.source_bitrate_mbps),
-                                        );
-                                    }
-                                    if let Some(khz) = asset.sample_rate_khz {
-                                        components::tag_outline(ui, &format!("{khz:.0}kHz"));
-                                    }
-                                    if let Some(l) = &asset.loudness {
-                                        components::tag_outline(
-                                            ui,
-                                            &format!("{:.1} LUFS", l.integrated_lufs),
-                                        );
-                                    }
-                                    if asset.proxy_path.is_some() {
-                                        components::tag_accent(ui, Text::ProxyReady.tr(locale));
-                                    }
                                 });
+                            ui.label(RichText::new(&asset.file_name).size(12.5));
+                            ui.horizontal_wrapped(|ui| {
+                                components::tag_outline(ui, &asset.codec);
+                                if asset.source_bitrate_mbps > 0.0 {
+                                    components::tag_outline(
+                                        ui,
+                                        &format!("{:.0} Mbps", asset.source_bitrate_mbps),
+                                    );
+                                }
+                                if let Some(khz) = asset.sample_rate_khz {
+                                    components::tag_outline(ui, &format!("{khz:.0}kHz"));
+                                }
+                                if let Some(l) = &asset.loudness {
+                                    components::tag_outline(
+                                        ui,
+                                        &format!("{:.1} LUFS", l.integrated_lufs),
+                                    );
+                                }
+                                if asset.proxy_path.is_some() {
+                                    components::tag_accent(ui, Text::ProxyReady.tr(locale));
+                                }
+                            });
+                            ui.label(
+                                RichText::new(asset.duration_label())
+                                    .size(10.5)
+                                    .color(theme::TEXT_MUTED),
+                            );
+                            ui.add_space(4.0);
+                            if app.transcribe_state.transcribing_asset_id == Some(asset.id) {
                                 ui.label(
-                                    RichText::new(asset.duration_label())
+                                    RichText::new(Text::TranscribeInProgress.tr(locale))
                                         .size(10.5)
                                         .color(theme::TEXT_MUTED),
                                 );
-                                ui.add_space(4.0);
-                                if app.transcribe_state.transcribing_asset_id == Some(asset.id) {
-                                    ui.label(
-                                        RichText::new(Text::TranscribeInProgress.tr(locale))
-                                            .size(10.5)
-                                            .color(theme::TEXT_MUTED),
-                                    );
-                                } else if ui
-                                    .small_button(Text::TranscribeAction.tr(locale))
-                                    .clicked()
-                                {
-                                    transcribe_clicked = Some(asset.id);
-                                }
-                            });
+                            } else if ui.small_button(Text::TranscribeAction.tr(locale)).clicked() {
+                                transcribe_clicked = Some(asset.id);
+                            }
                         });
+                    });
                     col += 1;
                     if col >= cols_per_row {
                         col = 0;
