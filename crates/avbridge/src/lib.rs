@@ -77,6 +77,10 @@ struct RawTextSegment {
     /// `TextOverlaySegment::scale_keyframe_expr_x`/`_y`.
     scale_keyframe_expr_x: *const c_char,
     scale_keyframe_expr_y: *const c_char,
+    /// NULL, empty, or either-one-empty means "no remap" — see
+    /// `TextOverlaySegment::rotation_keyframe_expr_x`/`_y`.
+    rotation_keyframe_expr_x: *const c_char,
+    rotation_keyframe_expr_y: *const c_char,
 }
 
 #[repr(C)]
@@ -1431,6 +1435,13 @@ pub struct TextOverlaySegment {
     /// — see [`apply_text_overlays`]'s doc comment for why.
     pub scale_keyframe_expr_x: String,
     pub scale_keyframe_expr_y: String,
+    /// Complete `geq`-expression-language fragments (built by
+    /// `avcore::keyframe::text_rotation_sample_exprs`) used as the (X,Y) coordinates a geq stage
+    /// samples the raster's own pixels at, remapping it around its own baked position anchor —
+    /// empty (either one) means "no remap", the same pixel-for-pixel raster this overlay always
+    /// had before rotation keyframes existed.
+    pub rotation_keyframe_expr_x: String,
+    pub rotation_keyframe_expr_y: String,
 }
 
 /// What [`apply_text_overlays`] failed on.
@@ -1492,10 +1503,18 @@ pub fn apply_text_overlays(
                 .map_err(TextOverlayError::InvalidPath)?,
         );
     }
-    // One CString each for opacity/position-x/position-y/scale-x/scale-y per segment, held in
-    // one Vec of tuples (rather than five parallel Vecs zipped together) so building
-    // raw_segments below stays readable as the field count grows.
-    let exprs: Vec<(CString, CString, CString, CString, CString)> = segments
+    // One CString each for opacity/position-x/position-y/scale-x/scale-y/rotation-x/rotation-y
+    // per segment, held in one Vec of tuples (rather than seven parallel Vecs zipped together)
+    // so building raw_segments below stays readable as the field count grows.
+    let exprs: Vec<(
+        CString,
+        CString,
+        CString,
+        CString,
+        CString,
+        CString,
+        CString,
+    )> = segments
         .iter()
         .map(|seg| {
             Ok::<_, TextOverlayError>((
@@ -1509,6 +1528,10 @@ pub fn apply_text_overlays(
                     .map_err(TextOverlayError::InvalidPath)?,
                 CString::new(seg.scale_keyframe_expr_y.as_bytes())
                     .map_err(TextOverlayError::InvalidPath)?,
+                CString::new(seg.rotation_keyframe_expr_x.as_bytes())
+                    .map_err(TextOverlayError::InvalidPath)?,
+                CString::new(seg.rotation_keyframe_expr_y.as_bytes())
+                    .map_err(TextOverlayError::InvalidPath)?,
             ))
         })
         .collect::<Result<_, _>>()?;
@@ -1518,15 +1541,19 @@ pub fn apply_text_overlays(
         .zip(c_paths.iter())
         .zip(exprs.iter())
         .map(
-            |((seg, path), (opacity_expr, pos_x, pos_y, scale_x, scale_y))| RawTextSegment {
-                start_secs: seg.start_secs,
-                duration_secs: seg.duration_secs,
-                overlay_path: path.as_ptr(),
-                opacity_keyframe_expr: opacity_expr.as_ptr(),
-                position_keyframe_expr_x: pos_x.as_ptr(),
-                position_keyframe_expr_y: pos_y.as_ptr(),
-                scale_keyframe_expr_x: scale_x.as_ptr(),
-                scale_keyframe_expr_y: scale_y.as_ptr(),
+            |((seg, path), (opacity_expr, pos_x, pos_y, scale_x, scale_y, rot_x, rot_y))| {
+                RawTextSegment {
+                    start_secs: seg.start_secs,
+                    duration_secs: seg.duration_secs,
+                    overlay_path: path.as_ptr(),
+                    opacity_keyframe_expr: opacity_expr.as_ptr(),
+                    position_keyframe_expr_x: pos_x.as_ptr(),
+                    position_keyframe_expr_y: pos_y.as_ptr(),
+                    scale_keyframe_expr_x: scale_x.as_ptr(),
+                    scale_keyframe_expr_y: scale_y.as_ptr(),
+                    rotation_keyframe_expr_x: rot_x.as_ptr(),
+                    rotation_keyframe_expr_y: rot_y.as_ptr(),
+                }
             },
         )
         .collect();

@@ -69,6 +69,8 @@ fn applies_a_keyframed_opacity_fade_to_a_text_overlay() {
         position_keyframe_expr_y: String::new(),
         scale_keyframe_expr_x: String::new(),
         scale_keyframe_expr_y: String::new(),
+        rotation_keyframe_expr_x: String::new(),
+        rotation_keyframe_expr_y: String::new(),
     }];
 
     let result = apply_text_overlays(
@@ -112,6 +114,8 @@ fn applies_a_text_overlay_with_no_opacity_expr_unchanged() {
         position_keyframe_expr_y: String::new(),
         scale_keyframe_expr_x: String::new(),
         scale_keyframe_expr_y: String::new(),
+        rotation_keyframe_expr_x: String::new(),
+        rotation_keyframe_expr_y: String::new(),
     }];
 
     let result = apply_text_overlays(
@@ -162,6 +166,8 @@ fn applies_a_keyframed_position_offset_to_a_text_overlay() {
             .to_string(),
         scale_keyframe_expr_x: String::new(),
         scale_keyframe_expr_y: String::new(),
+        rotation_keyframe_expr_x: String::new(),
+        rotation_keyframe_expr_y: String::new(),
     }];
 
     let result = apply_text_overlays(
@@ -213,6 +219,68 @@ fn applies_a_keyframed_scale_to_a_text_overlay() {
         scale_keyframe_expr_y: "(50.0000+(Y-(50.0000))/(if(lt((T-0.000000),0.000000),\
                                  1.0000000,if(between((T-0.000000),0.000000,0.500000),\
                                  (1.0000000+2.0000000*((T-0.000000)-0.000000)),2.0000000))))"
+            .to_string(),
+        rotation_keyframe_expr_x: String::new(),
+        rotation_keyframe_expr_y: String::new(),
+    }];
+
+    let result = apply_text_overlays(
+        &source,
+        &out,
+        &segments,
+        width,
+        height,
+        fps.round() as u32,
+        1,
+    );
+    assert!(result.is_ok(), "apply_text_overlays failed: {result:?}");
+    assert!(out.exists());
+    let out_info = probe(&out).unwrap();
+    assert_eq!(out_info.kind, StreamKind::Video);
+
+    let _ = std::fs::remove_file(&out);
+    let _ = std::fs::remove_file(&overlay_png);
+}
+
+#[test]
+fn applies_a_keyframed_rotation_to_a_text_overlay() {
+    // Real linked-FFmpeg-build check for keyframe::text_rotation_sample_exprs' output -- confirms
+    // the sin()/cos()-based geq inverse-sample remap syntax parses against a real filtergraph,
+    // same motivation as the scale/opacity/position tests above.
+    let out = std::env::temp_dir().join("avbridge_text_overlay_rotation_test.mp4");
+    let overlay_png = std::env::temp_dir().join("avbridge_text_overlay_rotation_test.png");
+    let _ = std::fs::remove_file(&out);
+    write_test_overlay_png(&overlay_png);
+
+    let source = fixture("video.mp4");
+    let probed = probe(&source).unwrap();
+    let (width, height) = probed.resolution.unwrap();
+    let fps = probed.fps.unwrap();
+
+    let segments = vec![TextOverlaySegment {
+        start_secs: 0.0,
+        duration_secs: probed.duration_secs.max(0.5),
+        overlay_path: overlay_png.clone(),
+        opacity_keyframe_expr: String::new(),
+        position_keyframe_expr_x: String::new(),
+        position_keyframe_expr_y: String::new(),
+        scale_keyframe_expr_x: String::new(),
+        scale_keyframe_expr_y: String::new(),
+        // Same shape keyframe::text_rotation_sample_exprs would build for a two-keyframe spin
+        // from 0 to 90 degrees around a (100, 50) anchor.
+        rotation_keyframe_expr_x: "(100.0000+(X-(100.0000))*cos((if(lt((T-0.000000),0.000000),\
+                                    0.0000000,if(between((T-0.000000),0.000000,0.500000),\
+                                    (0.0000000+3.1415927*((T-0.000000)-0.000000)),1.5707963))))+\
+                                    (Y-(50.0000))*sin((if(lt((T-0.000000),0.000000),0.0000000,\
+                                    if(between((T-0.000000),0.000000,0.500000),\
+                                    (0.0000000+3.1415927*((T-0.000000)-0.000000)),1.5707963)))))"
+            .to_string(),
+        rotation_keyframe_expr_y: "(50.0000-(X-(100.0000))*sin((if(lt((T-0.000000),0.000000),\
+                                    0.0000000,if(between((T-0.000000),0.000000,0.500000),\
+                                    (0.0000000+3.1415927*((T-0.000000)-0.000000)),1.5707963))))+\
+                                    (Y-(50.0000))*cos((if(lt((T-0.000000),0.000000),0.0000000,\
+                                    if(between((T-0.000000),0.000000,0.500000),\
+                                    (0.0000000+3.1415927*((T-0.000000)-0.000000)),1.5707963)))))"
             .to_string(),
     }];
 
