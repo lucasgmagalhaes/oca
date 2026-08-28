@@ -20,6 +20,11 @@ Before broad beta distribution, read
 **[architecture/client-error-reporting.md](architecture/client-error-reporting.md)** for ER-01's
 consent, sanitization, offline delivery, symbolication, and native-crash rollout requirements.
 
+Before implementing accounts, billing, feature gates, or commercial packaging, read
+**[architecture/monetization-and-licensing.md](architecture/monetization-and-licensing.md)** for
+MON-01's Free/Pro boundary, monthly price, downgrade guarantees, entitlement protocol, GPL
+distribution obligations, security controls, metrics, and rollout gates.
+
 For the expanded offline text catalog, read
 **[architecture/built-in-font-catalog.md](architecture/built-in-font-catalog.md)** for FONT-01's
 curated families, official sources, package budget, licenses, renderer migration, and cache design.
@@ -52,6 +57,7 @@ spec/
 └── architecture/                     ← HOW to build it (principles, not per-feature status)
     ├── differentiators.md            (D1-D7: the proposed differentiator feature specs)
     ├── competitive-feature-plan.md   (CF-01-CF-10: next competitive implementation plan)
+    ├── monetization-and-licensing.md (MON-01: Free/Pro subscription and GPL model)
     ├── client-error-reporting.md      (ER-01: secure remote error and crash collection)
     ├── built-in-font-catalog.md       (FONT-01: 43-family offline font catalog)
     ├── complex-text-shaping.md        (TEXT-01: bidi, OpenType shaping, cluster-safe layout)
