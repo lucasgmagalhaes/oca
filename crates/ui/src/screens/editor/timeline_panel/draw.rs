@@ -278,6 +278,64 @@ pub(super) fn draw_keyframe_markers(
 /// Draws the playhead as a vertical line inside `rect`, if it falls within `rect`'s horizontal
 /// span — used both on the ruler strip and on every track row so it reads as one continuous
 /// line down the timeline despite each row being drawn separately.
+/// A short, locale-neutral color for one [`avcore::MarkerKind`] — [`draw_marker_ticks`]'s own
+/// ruler tick. Distinct from `App::modals`'s `marker_kind_icon` (a text glyph for the Timeline
+/// Index panel's list rows, a different context) — this needs a flat color a filled triangle can
+/// use, not a glyph.
+fn marker_kind_color(kind: avcore::MarkerKind) -> egui::Color32 {
+    match kind {
+        avcore::MarkerKind::Standard => theme::ACCENT_2,
+        avcore::MarkerKind::ToDo => theme::ERROR,
+        avcore::MarkerKind::Chapter => theme::ACCENT,
+        avcore::MarkerKind::Highlight => egui::Color32::from_rgb(0xe6, 0xc8, 0x38),
+    }
+}
+
+/// Renders every marker in `markers` as a small filled triangle at the top of the ruler `rect`,
+/// colored by [`avcore::MarkerKind`] ([`marker_kind_color`]) — per
+/// `spec/architecture/competitive-feature-plan.md`'s "render timeline markers on the ruler"
+/// quick win (P2 item 9's own doc comment left this as a known gap: markers existed with no
+/// ruler tick and weren't a snap target — the snap-target half is a separate change in the
+/// caller, this covers the visual half). Markers outside `rect`'s visible x-range are skipped
+/// rather than drawn off-screen. Clicking a tick seeks the playhead there, mirroring the
+/// Timeline Index panel's own click-to-seek.
+pub(super) fn draw_marker_ticks(
+    ui: &egui::Ui,
+    rect: egui::Rect,
+    markers: &[avcore::timeline::Marker],
+    px_per_sec: f32,
+) -> Option<f64> {
+    let mut seek_to = None;
+    for marker in markers {
+        let x = rect.left() + marker.position_secs as f32 * px_per_sec;
+        if x < rect.left() - 4.0 || x > rect.right() + 4.0 {
+            continue;
+        }
+        let tick_rect =
+            egui::Rect::from_center_size(egui::pos2(x, rect.top() + 4.0), egui::vec2(8.0, 8.0));
+        let color = marker_kind_color(marker.kind);
+        ui.painter().add(egui::Shape::convex_polygon(
+            vec![
+                egui::pos2(x - 4.0, rect.top()),
+                egui::pos2(x + 4.0, rect.top()),
+                egui::pos2(x, rect.top() + 8.0),
+            ],
+            color,
+            egui::Stroke::NONE,
+        ));
+        let response = ui.interact(
+            tick_rect,
+            ui.id().with(("timeline_marker_tick", marker.id)),
+            egui::Sense::click(),
+        );
+        if response.clicked() {
+            seek_to = Some(marker.position_secs);
+        }
+        response.on_hover_text(marker.label.clone());
+    }
+    seek_to
+}
+
 pub(super) fn draw_playhead(
     ui: &egui::Ui,
     rect: egui::Rect,
