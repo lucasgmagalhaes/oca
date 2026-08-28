@@ -115,18 +115,21 @@ pub struct PendingExportConflict {
 }
 
 /// [`App::export_preview_cache`]'s stored key + result. Compared against the active sequence's
-/// own `id`/`timeline.tracks` and `media_library` — not the whole [`avcore::project::Sequence`]
-/// (whose `export_settings`/`name` [`avcore::resolve_timeline_segments_multi`]/
+/// own `id`/`timeline.tracks` and `media_library` — not just the whole [`avcore::project::
+/// Sequence`] active tab (whose `export_settings`/`name` [`avcore::resolve_timeline_segments_multi`]/
 /// [`avcore::resolve_audio_segments`] never read, so comparing those would invalidate the cache
 /// on an unrelated edit) and not `timeline.playhead_secs` (which changes continuously during
-/// scrubbing/playback and would defeat the cache exactly when it matters most). `result` holds
-/// `Err(())` rather than the real [`avcore::RenderError`] — the only caller only ever checks
-/// `is_ok()`, and `RenderError::ReplaceOutput`'s `std::io::Error` field isn't `Clone`, which a
-/// cached-and-returned `Result` needs to be.
+/// scrubbing/playback and would defeat the cache exactly when it matters most) — plus every
+/// *other* sequence too (`sequences`), since a compound clip's rendered content depends on
+/// whatever nested `Sequence`'s own timeline it points at, which `tracks`/`media_library` alone
+/// can't see edits to. `result` holds `Err(())` rather than the real [`avcore::RenderError`] —
+/// the only caller only ever checks `is_ok()`, and `RenderError::ReplaceOutput`'s
+/// `std::io::Error` field isn't `Clone`, which a cached-and-returned `Result` needs to be.
 pub(super) struct ExportPreviewCache {
     sequence_id: u64,
     tracks: Vec<avcore::timeline::Track>,
     media_library: Vec<avcore::MediaAsset>,
+    sequences: Vec<avcore::project::Sequence>,
     result: Result<(Vec<Vec<ClipSegment>>, Vec<AudioSegment>, Canvas), ()>,
 }
 
@@ -147,20 +150,31 @@ impl App {
         let sequence_id = project.active_sequence().id;
         let tracks = project.active_sequence().timeline.tracks.clone();
         let media_library = project.media_library.clone();
+        // Every sequence, not just the active one -- a compound clip's rendered content depends
+        // on some *other* Sequence's own timeline, which `tracks`/`media_library` above can't
+        // see edits to. Cloned wholesale for the equality check; still far cheaper than the
+        // filter-chain-string recompute this cache exists to avoid in the first place (same
+        // reasoning ExportPreviewCache's own doc comment already gives for tracks/media_library).
+        let sequences = project.sequences.clone();
 
         if let Some(cache) = &self.export_preview_cache {
             if cache.sequence_id == sequence_id
                 && cache.tracks == tracks
                 && cache.media_library == media_library
+                && cache.sequences == sequences
             {
                 return cache.result.clone();
             }
         }
 
+        let nested_assets = self.materialize_nested_sequences_for_active_sequence();
+        let mut media_library_with_nested = media_library.clone();
+        media_library_with_nested.extend(nested_assets);
+
         let sequence = self.active_project().active_sequence();
-        let result = avcore::resolve_timeline_segments_multi(sequence, &media_library)
+        let result = avcore::resolve_timeline_segments_multi(sequence, &media_library_with_nested)
             .and_then(|(track_segments, canvas)| {
-                avcore::resolve_audio_segments(sequence, &media_library)
+                avcore::resolve_audio_segments(sequence, &media_library_with_nested)
                     .map(|audio_segments| (track_segments, audio_segments, canvas))
             })
             .map_err(|_| ());
@@ -169,9 +183,38 @@ impl App {
             sequence_id,
             tracks,
             media_library,
+            sequences,
             result: result.clone(),
         });
         result
+    }
+
+    /// Renders every compound clip (nested sequence) reachable from the active sequence's
+    /// timeline to a cached temp file, returning one synthetic [`avcore::MediaAsset`] per
+    /// nested sequence to merge into a `media_library` clone before resolving export segments —
+    /// see `avcore::nested_sequence`'s own doc comment. A materialization failure (a missing or
+    /// cyclically-nested sequence) is logged and treated as "no nested clips resolved" rather
+    /// than failing the whole export/preview — the same clip will simply fail
+    /// `RenderError::MissingAsset` downstream instead, a clearer error for the eventual caller
+    /// than this method swallowing the whole resolution.
+    pub(super) fn materialize_nested_sequences_for_active_sequence(
+        &mut self,
+    ) -> Vec<avcore::MediaAsset> {
+        let project = self.active_project().clone();
+        let cache_dir = avcore::nested_sequence::cache_dir_for_project(&project);
+        let timeline = project.active_sequence().timeline.clone();
+        match avcore::nested_sequence::materialize_nested_sequences(
+            &project,
+            &timeline,
+            &cache_dir,
+            &mut self.nested_sequence_render_cache,
+        ) {
+            Ok(assets) => assets.into_values().collect(),
+            Err(error) => {
+                tracing::warn!(?error, "failed to materialize nested sequence(s)");
+                Vec::new()
+            }
+        }
     }
 
     /// Appends a new `Queued` job — what "Adicionar exportação" does, given video, audio, text,

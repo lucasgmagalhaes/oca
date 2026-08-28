@@ -220,6 +220,79 @@ impl App {
         }
     }
 
+    /// Wraps the selected clip in a new nested sequence ("compound clip" — Premiere/DaVinci/FCP
+    /// all have this). oca's existing per-tab `Sequence` already *is* an independently-editable
+    /// sub-timeline, so a compound clip just points a `ClipInstance` at another `Sequence`
+    /// instead of an asset (`ClipInstance::nested_sequence_id`) rather than needing a second
+    /// sub-timeline concept — see `avcore::nested_sequence`'s own module doc comment for the
+    /// full design and its "renders synchronously, blocks briefly" known cost.
+    ///
+    /// Moves the selected clip's own data (trim range, every effect/keyframe) into a fresh
+    /// `Sequence`'s own new V1 track, rebased to start at `0.0`, then replaces it in place on
+    /// the original track with a plain nested-sequence clip spanning the same
+    /// `start_secs`/duration. Only a single clip — multi-selection/composite-group compounding
+    /// isn't supported yet, a real scope cut, not an oversight. Only `Video`-track clips (same
+    /// scope cut). A no-op if nothing is selected or the selection isn't a `Video`-track clip.
+    pub fn create_compound_clip_from_selected_clip(&mut self) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        if self.selected_clip_track_kind() != Some(TrackKind::Video) {
+            return;
+        }
+        let Some(original) = self.selected_clip().cloned() else {
+            return;
+        };
+        let duration_secs = original.duration_secs();
+
+        self.push_undo_snapshot();
+        let project = self.active_project_mut();
+        let new_sequence_id = project.sequences.iter().map(|s| s.id).max().unwrap_or(0) + 1;
+        let compound_number = project.sequences.len() + 1;
+        let export_settings = project.active_sequence().export_settings;
+
+        let mut nested_timeline = avcore::timeline::Timeline {
+            tracks: Vec::new(),
+            playhead_secs: 0.0,
+            markers: Vec::new(),
+            multicam_groups: Vec::new(),
+        };
+        let track_index = create_new_track(&mut nested_timeline, TrackKind::Video);
+        let mut inner_clip = original.clone();
+        inner_clip.start_secs = 0.0;
+        nested_timeline.tracks[track_index].clips.push(inner_clip);
+
+        project.sequences.push(avcore::project::Sequence {
+            id: new_sequence_id,
+            name: format!("Compound {compound_number}"),
+            timeline: nested_timeline,
+            export_settings,
+        });
+
+        let timeline = project.timeline_mut();
+        for track in &mut timeline.tracks {
+            if let Some(clip) = track.clips.iter_mut().find(|c| c.id == clip_id) {
+                let mut wrapper =
+                    default_clip_instance(clip_id, 0, original.start_secs, 0.0, duration_secs);
+                wrapper.nested_sequence_id = Some(new_sequence_id);
+                wrapper.composite_id = original.composite_id;
+                wrapper.color_label = original.color_label;
+                *clip = wrapper;
+                break;
+            }
+        }
+    }
+
+    /// Switches the Editor's active tab to `sequence_id` — what double-clicking a compound clip
+    /// (nested-sequence `ClipInstance`) on the timeline does, the common "enter" affordance
+    /// every NLE with this feature has. A no-op if `sequence_id` doesn't exist.
+    pub fn open_nested_sequence(&mut self, sequence_id: u64) {
+        let project = self.active_project_mut();
+        if let Some(index) = project.sequences.iter().position(|s| s.id == sequence_id) {
+            project.active_sequence = index;
+        }
+    }
+
     /// Applies a smooth, continuous speed ramp to the selected clip — the P4 item 29 follow-up
     /// [`App::apply_speed_ramp_to_selected_clip`]'s own doc comment flagged as needing a
     /// `log()`-based `setpts` derivation this codebase's sandboxed development environment
@@ -429,6 +502,7 @@ fn default_clip_instance(
         frozen: false,
         speed_factor: 1.0,
         speed_ramp_end_factor: None,
+        nested_sequence_id: None,
         crop_x: 0.0,
         crop_y: 0.0,
         crop_w: 1.0,

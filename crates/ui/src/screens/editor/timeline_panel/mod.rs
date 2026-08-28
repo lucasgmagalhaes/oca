@@ -194,6 +194,8 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut detach_audio_requests: Vec<u64> = Vec::new();
         let mut speed_ramp_requests: Vec<(u64, f32, f32)> = Vec::new();
         let mut speed_ramp_custom_request: Option<u64> = None;
+        let mut create_compound_clip_requested = false;
+        let mut open_nested_sequence_request: Option<u64> = None;
         let mut paste_requested = false;
         let mut merge_into_composite_requested = false;
         let mut split_at_playhead_requested = false;
@@ -394,6 +396,25 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 detach_audio_requests.push(clip.id);
                                 ui.close();
                             }
+                            if track.kind == avcore::timeline::TrackKind::Video
+                                && clip.nested_sequence_id.is_none()
+                                && ui
+                                    .button(Text::ContextMenuCreateCompoundClip.tr(locale))
+                                    .clicked()
+                            {
+                                clicked_clip_id = Some(clip.id);
+                                create_compound_clip_requested = true;
+                                ui.close();
+                            }
+                            if let Some(nested_id) = clip.nested_sequence_id {
+                                if ui
+                                    .button(Text::ContextMenuOpenCompoundClip.tr(locale))
+                                    .clicked()
+                                {
+                                    open_nested_sequence_request = Some(nested_id);
+                                    ui.close();
+                                }
+                            }
                             ui.menu_button(Text::ContextMenuSpeedRamp.tr(locale), |ui| {
                                 if ui.button(Text::SpeedRampSlowToFast.tr(locale)).clicked() {
                                     speed_ramp_requests.push((clip.id, 0.5, 2.0));
@@ -476,6 +497,11 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 multi_select_requests.push(clip.id);
                             } else {
                                 clicked_clip_id = Some(clip.id);
+                            }
+                        }
+                        if body_response.double_clicked() {
+                            if let Some(nested_id) = clip.nested_sequence_id {
+                                open_nested_sequence_request = Some(nested_id);
                             }
                         }
                         if body_response.drag_started() {
@@ -600,6 +626,25 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 egui::CornerRadius::same(4),
                                 egui::Stroke::new(1.5, theme::ACCENT_2),
                                 egui::StrokeKind::Inside,
+                            );
+                        }
+                        // Compound clip (nested sequence) — no `asset_id`/media-library entry to
+                        // draw a filmstrip/waveform from at all, so its own sequence name is the
+                        // only visual identity this block has.
+                        if let Some(nested_id) = clip.nested_sequence_id {
+                            let nested_name = app
+                                .active_project()
+                                .sequences
+                                .iter()
+                                .find(|s| s.id == nested_id)
+                                .map(|s| s.name.as_str())
+                                .unwrap_or("?");
+                            painter.text(
+                                clip_rect.left_top() + egui::vec2(4.0, 2.0),
+                                egui::Align2::LEFT_TOP,
+                                format!("📦 {nested_name}"),
+                                egui::FontId::proportional(11.0),
+                                theme::TEXT_PRIMARY,
                             );
                         }
                         if clip.speed_factor != 1.0 {
@@ -849,6 +894,12 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         if merge_into_composite_requested {
             app.merge_into_composite();
+        }
+        if create_compound_clip_requested {
+            app.create_compound_clip_from_selected_clip();
+        }
+        if let Some(nested_id) = open_nested_sequence_request {
+            app.open_nested_sequence(nested_id);
         }
         for track_id in toggle_track_visibility_requests {
             app.toggle_track_visibility(track_id);
