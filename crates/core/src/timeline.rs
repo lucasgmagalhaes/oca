@@ -179,6 +179,18 @@ pub struct TextClip {
     pub pos_x_keyframes: Vec<Keyframe<f32>>,
     #[serde(default)]
     pub pos_y_keyframes: Vec<Keyframe<f32>>,
+    /// General keyframe animation for this block's overall size, as a multiplier (`1.0` =
+    /// unscaled) — the last piece of P4 item 34's `TextClip` scope, same non-preview,
+    /// export-only shape `pos_x_keyframes` has. Unlike position, this needed no raster-baking
+    /// change at all: `keyframe::text_scale_sample_exprs` builds a `geq` inverse-sample remap
+    /// around the raster's own baked position anchor (`pos_x`/`pos_y`, or `pos_x_keyframes`/
+    /// `pos_y_keyframes`' first value when present) — an inverse zoom, not a literal `scale`
+    /// filter with `eval=frame`, which reliably corrupted the heap in a real export elsewhere in
+    /// this codebase when its output frame size varied per frame (see `CLAUDE.md`). Clamped to
+    /// the same `0.1..=20.0` bounds [`crate::timeline::ClipInstance::scale_keyframes`] uses.
+    /// `#[serde(default)]` so older saved projects load unscaled.
+    #[serde(default)]
+    pub scale_keyframes: Vec<Keyframe<f32>>,
     /// Per-word timestamps within this clip's own text, `start_secs`/`end_secs` relative to
     /// this clip's *own* start (not the timeline) — per `request.md`'s Fase 4 "Legenda com
     /// destaque de palavra (estilo shorts)". Populated when this clip was generated from
@@ -200,8 +212,9 @@ pub struct TextClip {
     #[serde(default = "default_highlight_color")]
     pub highlight_color_rgba: [u8; 4],
     /// General opacity fade over this clip's own on-timeline duration — the first slice of P4
-    /// item 34's `TextClip` scope, per `spec/ROADMAP.md` (position followed later, see
-    /// `pos_x_keyframes`/`pos_y_keyframes`; scale/rotation animation stay out of scope for now).
+    /// item 34's `TextClip` scope, per `spec/ROADMAP.md` (position and scale followed later, see
+    /// `pos_x_keyframes`/`pos_y_keyframes`/`scale_keyframes`; rotation animation stays out of
+    /// scope for now).
     /// The raster already carries a real alpha channel (transparent background around the text/
     /// background box), so a fade is just an alpha *multiplier* applied to the existing pixels in
     /// `avbridge::apply_text_overlays`'s filter graph (`keyframe::text_opacity_alpha_expr`) —
