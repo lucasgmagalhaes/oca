@@ -98,7 +98,9 @@ pub use persistence::{
     to_ocproj_bytes, to_ocqueue_bytes, PersistError,
 };
 pub use preview::{AudioLevel, Preview, PreviewError};
-pub use preview_effects::{apply_lut_to_rgba, apply_vignette_to_rgba, Lut3D, LutParseError};
+pub use preview_effects::{
+    apply_glitch_to_rgba, apply_lut_to_rgba, apply_vignette_to_rgba, Lut3D, LutParseError,
+};
 pub use probe::{probe_media, ProbeError, ProbedMedia};
 pub use project::{PanelLayout, Project, Recency, Sequence, SequenceExportSettings};
 pub use proxy::{ensure_proxy, PreviewQuality, ProxyError};

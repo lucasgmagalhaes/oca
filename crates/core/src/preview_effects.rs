@@ -31,12 +31,20 @@
 //! The LUT lookup, in contrast, *is* precise: the `.cube` format and trilinear interpolation are
 //! both fully specified, deterministic, and unit-testable without needing a GUI.
 //!
-//! **Explicitly not covered by this pass** (left as the roadmap item's remaining gap): glitch
-//! (there's no single well-specified "the" glitch algorithm to approximate — whatever look is
-//! chosen is a judgment call this sandbox can't visually verify), deflicker and stabilization
-//! (both need *temporal* state across multiple frames — a rolling frame history in `App` — a
-//! materially larger, stateful piece of work with its own seek/scrub edge cases, not a natural
-//! extension of this per-frame-only module).
+//! **Glitch is now covered too**, in a later follow-up: export's own `glitch_intensity` (see
+//! [`crate::timeline::ClipInstance::video_filter_chain`]) resolves to FFmpeg's `noise` avfilter
+//! (temporal luma/chroma noise, not an RGB-shift/block-displacement "datamosh" look — a real,
+//! already-settled fact about what this codebase's own glitch effect *is*, not a judgment call
+//! made from scratch) — [`apply_glitch_to_rgba`] mirrors that same "additive per-pixel temporal
+//! noise" shape in the RGBA domain (no luma/chroma split available on an already-decoded RGBA
+//! frame, so this adds independent noise per R/G/B channel instead — a preview approximation,
+//! same "not bit-exact" caveat vignette above already carries, not a reproduction of
+//! `libavfilter/vf_noise.c`'s own PRNG).
+//!
+//! **Still not covered by this pass** (left as the roadmap item's remaining gap): deflicker and
+//! stabilization (both need *temporal* state across multiple frames — a rolling frame history in
+//! `App` — a materially larger, stateful piece of work with its own seek/scrub edge cases, not a
+//! natural extension of this per-frame-only module).
 
 use std::path::Path;
 
@@ -232,6 +240,43 @@ pub fn apply_vignette_to_rgba(rgba: &mut [u8], width: u32, height: u32, intensit
     }
 }
 
+/// Applies temporal per-pixel RGB noise to `rgba` in place — a **preview approximation** of
+/// [`crate::timeline::ClipInstance::glitch_intensity`]'s export-side `noise` avfilter (see this
+/// module's doc comment for why this isn't a reproduction of that filter's own PRNG). `intensity`
+/// in `glitch_intensity`'s own `0.0..=1.0` range: `0.0` is a no-op, `1.0` adds up to `±40` per
+/// channel — a judgment call, same style as this module's other intensity-to-magnitude scale
+/// factors, not a value derived from anything. `seed` should differ frame to frame (e.g.
+/// derived from elapsed wall-clock time) so the noise pattern looks like "digital corruption,"
+/// not a static grain texture baked onto the image; a fixed `seed` gives fully reproducible
+/// output for the same input, which is what this function's own unit tests rely on. Uses a
+/// simple xorshift64* PRNG, seeded per pixel from `seed` — fast, deterministic, no external
+/// dependency, and no cryptographic-quality requirement (this is a visual effect, not security-
+/// sensitive). No-op if `rgba` is empty.
+pub fn apply_glitch_to_rgba(rgba: &mut [u8], intensity: f32, seed: u64) {
+    let intensity = intensity.clamp(0.0, 1.0);
+    if intensity <= 0.0 || rgba.is_empty() {
+        return;
+    }
+    let strength = (intensity * 40.0).round() as i64;
+    if strength <= 0 {
+        return;
+    }
+    let span = (2 * strength + 1) as u64;
+    for (pixel_index, chunk) in rgba.chunks_exact_mut(4).enumerate() {
+        let mut state = seed ^ (pixel_index as u64).wrapping_mul(0x9E3779B97F4A7C15);
+        for channel in chunk.iter_mut().take(3) {
+            // xorshift64* — https://en.wikipedia.org/wiki/Xorshift#xorshift*, a fast,
+            // deterministic, dependency-free PRNG; more than sufficient quality for a visual
+            // noise effect.
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let noise = (state % span) as i64 - strength;
+            *channel = (*channel as i64 + noise).clamp(0, 255) as u8;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -387,5 +432,64 @@ mod tests {
         let mut rgba = vec![0u8, 0, 0, 77];
         apply_vignette_to_rgba(&mut rgba, 1, 1, 1.0);
         assert_eq!(rgba[3], 77);
+    }
+
+    #[test]
+    fn zero_intensity_glitch_is_a_no_op() {
+        let mut rgba = vec![100u8; 4 * 8 * 4];
+        let before = rgba.clone();
+        apply_glitch_to_rgba(&mut rgba, 0.0, 1);
+        assert_eq!(rgba, before);
+    }
+
+    #[test]
+    fn empty_buffer_glitch_is_a_no_op() {
+        let mut rgba: Vec<u8> = Vec::new();
+        apply_glitch_to_rgba(&mut rgba, 1.0, 1);
+        assert!(rgba.is_empty());
+    }
+
+    #[test]
+    fn glitch_leaves_alpha_untouched() {
+        let mut rgba = vec![100u8, 100, 100, 42];
+        apply_glitch_to_rgba(&mut rgba, 1.0, 1);
+        assert_eq!(rgba[3], 42);
+    }
+
+    #[test]
+    fn glitch_stays_within_byte_bounds_at_full_intensity() {
+        // Mid-gray plus a worst-case ±40 noise swing should never wrap or clamp incorrectly.
+        let mut rgba = vec![128u8; 64 * 64 * 4];
+        apply_glitch_to_rgba(&mut rgba, 1.0, 12345);
+        assert!(rgba.iter().all(|&b| (0..=255).contains(&b)));
+    }
+
+    #[test]
+    fn glitch_is_deterministic_for_the_same_seed() {
+        let mut a = vec![128u8; 16 * 16 * 4];
+        let mut b = a.clone();
+        apply_glitch_to_rgba(&mut a, 0.5, 777);
+        apply_glitch_to_rgba(&mut b, 0.5, 777);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn glitch_differs_across_seeds() {
+        let mut a = vec![128u8; 16 * 16 * 4];
+        let mut b = a.clone();
+        apply_glitch_to_rgba(&mut a, 0.5, 1);
+        apply_glitch_to_rgba(&mut b, 0.5, 2);
+        assert_ne!(
+            a, b,
+            "different seeds should produce a different noise pattern"
+        );
+    }
+
+    #[test]
+    fn glitch_actually_perturbs_pixels_at_full_intensity() {
+        let mut rgba = vec![128u8; 16 * 16 * 4];
+        let before = rgba.clone();
+        apply_glitch_to_rgba(&mut rgba, 1.0, 999);
+        assert_ne!(rgba, before);
     }
 }
