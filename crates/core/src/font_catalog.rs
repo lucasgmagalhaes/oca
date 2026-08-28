@@ -20,9 +20,11 @@
 //! one-to-one via [`TextFontFamily::family_id`]/[`TextFontFamily::from_family_id`]. The manifest
 //! fields mirror the doc's required typed fields (`family_id`, `source_path`, `sha256`, license,
 //! weights, ...) so a later slice (FONT-01B) can grow this to the full 43-family/51-file catalog
-//! without a new format migration — this slice is the manifest and its self-consistency
-//! validation only, not the catalog expansion or the persisted-identity swap on `TextClip`
-//! (`.ocproj` still stores the plain enum variant name; see that struct's own doc comment).
+//! without a new format migration — this slice is the manifest, its self-consistency validation,
+//! and [`TextFontFamily`]'s `#[serde(other)]` corrupt-load guard, not the catalog expansion or
+//! the full persisted-identity swap on `TextClip` (`.ocproj` still stores the plain enum variant
+//! name rather than a `family_id` slug, so an unrecognized future family still normalizes to
+//! `Lato` on load instead of round-tripping losslessly; see that enum's own doc comment).
 //!
 //! Static data only. Acquisition/vendoring is a maintainer-time, offline operation per the doc's
 //! "Acquisition and update workflow" section — no network code belongs in this module, and none

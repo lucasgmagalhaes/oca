@@ -297,6 +297,50 @@ fn projects_saved_before_text_styles_load_with_safe_defaults() {
 }
 
 #[test]
+fn projects_with_an_unrecognized_font_family_name_load_with_the_lato_fallback() {
+    // FONT-01's forwards-compatibility rule (spec/architecture/built-in-font-catalog.md): a
+    // project saved by a future build with a font family this build doesn't know about must
+    // still load, not fail outright. TextFontFamily's `#[serde(other)]` on `Lato` is what makes
+    // this a safe fallback instead of a decode error.
+    let bytes = to_ocproj_bytes(&project_with_styled_text()).unwrap();
+    let header_len = 5;
+    let mut msgpack = Vec::new();
+    std::io::Read::read_to_end(
+        &mut flate2::read::GzDecoder::new(&bytes[header_len..]),
+        &mut msgpack,
+    )
+    .unwrap();
+
+    let mut value = rmpv::decode::read_value(&mut &msgpack[..]).unwrap();
+    let sequences = as_array_field_mut(&mut value, "sequences");
+    let timeline = as_map_field_mut(&mut sequences[0], "timeline");
+    let tracks = as_array_field_mut(timeline, "tracks");
+    let text_clips = as_array_field_mut(&mut tracks[1], "text_clips");
+    if let rmpv::Value::Map(pairs) = &mut text_clips[0] {
+        for (key, val) in pairs.iter_mut() {
+            if key.as_str() == Some("font_family") {
+                *val = rmpv::Value::String("InterVariable".into());
+            }
+        }
+    }
+
+    let mut edited_msgpack = Vec::new();
+    rmpv::encode::write_value(&mut edited_msgpack, &value).unwrap();
+    let mut edited_bytes = Vec::new();
+    edited_bytes.extend_from_slice(&bytes[..header_len]);
+    let mut encoder = flate2::write::GzEncoder::new(&mut edited_bytes, flate2::Compression::fast());
+    std::io::Write::write_all(&mut encoder, &edited_msgpack).unwrap();
+    encoder.finish().unwrap();
+
+    let restored: Project = from_ocproj_bytes(&edited_bytes).unwrap();
+    let text = &restored.sequences[0].timeline.tracks[1].text_clips[0];
+    assert_eq!(text.font_family, TextFontFamily::Lato);
+    // The originally-saved family (PlayfairDisplay in project_with_styled_text()) was a
+    // recognized name and must still round-trip untouched by an unrelated edit.
+    assert_eq!(text.font_style, TextFontStyle::Bold);
+}
+
+#[test]
 fn round_trips_a_project_with_a_saved_panel_layout() {
     let mut original = fixture_project();
     original.panel_layout = Some(avcore::PanelLayout {
