@@ -48,7 +48,11 @@ impl App {
     /// N") at each detected cut's timeline position. A no-op if nothing is selected or a run is
     /// already in flight.
     pub fn spawn_detect_scene_cuts_for_selected_clip(&mut self) {
-        if self.scene_cut_detection_clip_id.is_some() {
+        if self
+            .scene_cut_detection_state
+            .scene_cut_detection_clip_id
+            .is_some()
+        {
             return;
         }
         let Some(clip) = self.selected_clip() else {
@@ -68,8 +72,11 @@ impl App {
         };
         let source_path = asset.source_path.clone();
 
-        self.scene_cut_detection_clip_id = Some(clip_id);
-        let tx = self.scene_cut_detection_tx.clone();
+        self.scene_cut_detection_state.scene_cut_detection_clip_id = Some(clip_id);
+        let tx = self
+            .scene_cut_detection_state
+            .scene_cut_detection_tx
+            .clone();
         std::thread::spawn(move || {
             let cuts = detect_scene_cuts_one(&source_path, source_in_secs, source_out_secs);
             let _ = tx.send(SceneCutEvent::Done { clip_id, cuts });
@@ -79,10 +86,14 @@ impl App {
     /// Applies a finished scene-cut-detection run to the timeline. Called once per frame from
     /// [`eframe::App::ui`], same as [`App::pump_motion_tracking`].
     pub(super) fn pump_scene_cut_detection(&mut self) {
-        while let Ok(event) = self.scene_cut_detection_rx.try_recv() {
+        while let Ok(event) = self
+            .scene_cut_detection_state
+            .scene_cut_detection_rx
+            .try_recv()
+        {
             match event {
                 SceneCutEvent::Done { clip_id, cuts } => {
-                    self.scene_cut_detection_clip_id = None;
+                    self.scene_cut_detection_state.scene_cut_detection_clip_id = None;
                     if cuts.is_empty() {
                         self.push_toast(
                             crate::i18n::Text::SceneCutDetectionNone

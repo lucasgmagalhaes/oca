@@ -283,7 +283,8 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                     if ui.button(Text::CropReset.tr(locale)).clicked() {
                                         app.set_selected_clip_crop(0.0, 0.0, 1.0, 1.0);
                                     }
-                                    let reframing = app.auto_reframing_clip_id.is_some();
+                                    let reframing =
+                                        app.auto_reframe_state.auto_reframing_clip_id.is_some();
                                     let label = if reframing {
                                         Text::AutoReframeInProgress.tr(locale)
                                     } else {
@@ -684,7 +685,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                         Text::PropBackgroundRemoval.tr(locale),
                                     )
                                     .changed();
-                                let generating = app.matte_generating_clip_id.is_some();
+                                let generating = app
+                                    .matte_generation_state
+                                    .matte_generating_clip_id
+                                    .is_some();
                                 let label = if generating {
                                     Text::BackgroundRemovalGenerating.tr(locale)
                                 } else {
@@ -826,7 +830,8 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                             }
                         }
                         {
-                            let tracking = app.motion_tracking_clip_id.is_some();
+                            let tracking =
+                                app.motion_tracking_state.motion_tracking_clip_id.is_some();
                             components::property_section(
                                 ui,
                                 Text::PropMotionTrackRegion.tr(locale),

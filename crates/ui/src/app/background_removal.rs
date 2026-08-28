@@ -38,7 +38,11 @@ impl App {
     /// (`avcore::background_removal::mask_cache_dir_for_project`). A no-op if nothing is
     /// selected, no model is configured, or a run is already in flight.
     pub fn spawn_generate_matte_for_selected_clip(&mut self) {
-        if self.matte_generating_clip_id.is_some() {
+        if self
+            .matte_generation_state
+            .matte_generating_clip_id
+            .is_some()
+        {
             return;
         }
         if self.prefs.background_removal_model_path.trim().is_empty() {
@@ -70,8 +74,8 @@ impl App {
             avcore::background_removal::mask_cache_dir_for_project(self.active_project());
         let mask_path = avcore::background_removal::mask_path_for_clip(clip_id, &mask_dir);
 
-        self.matte_generating_clip_id = Some(clip_id);
-        let tx = self.matte_generation_tx.clone();
+        self.matte_generation_state.matte_generating_clip_id = Some(clip_id);
+        let tx = self.matte_generation_state.matte_generation_tx.clone();
         std::thread::spawn(move || {
             let event = match generate_matte_one(
                 &source_path,
@@ -91,10 +95,10 @@ impl App {
     /// Applies a finished matte-generation run to the timeline. Called once per frame from
     /// [`eframe::App::ui`], same as [`App::pump_auto_reframe`].
     pub(super) fn pump_matte_generation(&mut self) {
-        while let Ok(event) = self.matte_generation_rx.try_recv() {
+        while let Ok(event) = self.matte_generation_state.matte_generation_rx.try_recv() {
             match event {
                 MatteGenerationEvent::Done { clip_id, mask_path } => {
-                    self.matte_generating_clip_id = None;
+                    self.matte_generation_state.matte_generating_clip_id = None;
                     if self.selected_clip_id == Some(clip_id) {
                         self.set_selected_clip_background_removal_mask_path(
                             mask_path.display().to_string(),
@@ -102,7 +106,7 @@ impl App {
                     }
                 }
                 MatteGenerationEvent::Failed { message } => {
-                    self.matte_generating_clip_id = None;
+                    self.matte_generation_state.matte_generating_clip_id = None;
                     tracing::error!(error = %message, "matte generation failed");
                     self.push_toast(format!("Matte generation failed: {message}"));
                 }

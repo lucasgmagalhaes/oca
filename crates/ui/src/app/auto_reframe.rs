@@ -25,7 +25,7 @@ impl App {
     /// `Original`, same as export itself — see [`avcore::ExportAspectRatio::dims_or`]). A no-op
     /// if nothing is selected, no model is configured, or a run is already in flight.
     pub fn spawn_auto_reframe_selected_clip(&mut self) {
-        if self.auto_reframing_clip_id.is_some() {
+        if self.auto_reframe_state.auto_reframing_clip_id.is_some() {
             return;
         }
         if self.prefs.reframe_model_path.trim().is_empty() {
@@ -60,8 +60,8 @@ impl App {
             .dims_or((source_w, source_h));
         let model_path = PathBuf::from(self.prefs.reframe_model_path.clone());
 
-        self.auto_reframing_clip_id = Some(clip_id);
-        let tx = self.auto_reframe_tx.clone();
+        self.auto_reframe_state.auto_reframing_clip_id = Some(clip_id);
+        let tx = self.auto_reframe_state.auto_reframe_tx.clone();
         std::thread::spawn(move || {
             auto_reframe_one(
                 &source_path,
@@ -80,14 +80,14 @@ impl App {
     /// Applies a finished auto-reframe run to the timeline. Called once per frame from
     /// [`eframe::App::ui`], same as [`App::pump_transcribe`].
     pub(super) fn pump_auto_reframe(&mut self) {
-        while let Ok(event) = self.auto_reframe_rx.try_recv() {
+        while let Ok(event) = self.auto_reframe_state.auto_reframe_rx.try_recv() {
             match event {
                 AutoReframeEvent::Done {
                     clip_id,
                     crop,
                     subject_found,
                 } => {
-                    self.auto_reframing_clip_id = None;
+                    self.auto_reframe_state.auto_reframing_clip_id = None;
                     if self.selected_clip_id == Some(clip_id) {
                         self.set_selected_clip_crop(crop.x, crop.y, crop.w, crop.h);
                     }
@@ -100,7 +100,7 @@ impl App {
                     }
                 }
                 AutoReframeEvent::Failed { message } => {
-                    self.auto_reframing_clip_id = None;
+                    self.auto_reframe_state.auto_reframing_clip_id = None;
                     tracing::error!(error = %message, "auto-reframe failed");
                     self.push_toast(format!("Auto-reframe failed: {message}"));
                 }

@@ -239,24 +239,32 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         transcribe_tx,
         transcribe_rx,
         transcribing_asset_id: None,
-        auto_reframe_tx,
-        auto_reframe_rx,
-        auto_reframing_clip_id: None,
-        motion_tracking_tx,
-        motion_tracking_rx,
-        motion_tracking_clip_id: None,
-        scene_cut_detection_tx,
-        scene_cut_detection_rx,
-        scene_cut_detection_clip_id: None,
+        auto_reframe_state: AutoReframeState {
+            auto_reframe_tx,
+            auto_reframe_rx,
+            auto_reframing_clip_id: None,
+        },
+        motion_tracking_state: MotionTrackingState {
+            motion_tracking_tx,
+            motion_tracking_rx,
+            motion_tracking_clip_id: None,
+        },
+        scene_cut_detection_state: SceneCutDetectionState {
+            scene_cut_detection_tx,
+            scene_cut_detection_rx,
+            scene_cut_detection_clip_id: None,
+        },
         motion_track_center_x: 0.5,
         motion_track_center_y: 0.5,
         motion_track_width: 0.2,
         motion_track_height: 0.2,
         motion_track_search_radius: 0.08,
         picking_motion_track_region: false,
-        matte_generation_tx,
-        matte_generation_rx,
-        matte_generating_clip_id: None,
+        matte_generation_state: MatteGenerationState {
+            matte_generation_tx,
+            matte_generation_rx,
+            matte_generating_clip_id: None,
+        },
         tts_tx,
         tts_rx,
         tts_modal_text: None,
@@ -2492,7 +2500,7 @@ fn spawn_motion_track_selected_clip_is_a_no_op_when_nothing_is_selected() {
 
     // No background job started — the busy flag stays clear rather than getting stuck "in
     // progress" forever with nothing to ever complete it.
-    assert_eq!(app.motion_tracking_clip_id, None);
+    assert_eq!(app.motion_tracking_state.motion_tracking_clip_id, None);
 }
 
 #[test]
@@ -2509,12 +2517,12 @@ fn spawn_motion_track_selected_clip_is_a_no_op_while_a_run_is_already_in_flight(
         Vec::new(),
     );
     app.selected_clip_id = Some(1);
-    app.motion_tracking_clip_id = Some(99);
+    app.motion_tracking_state.motion_tracking_clip_id = Some(99);
 
     app.spawn_motion_track_selected_clip();
 
     // Stays pinned to the already-running clip's id, not overwritten by this second call.
-    assert_eq!(app.motion_tracking_clip_id, Some(99));
+    assert_eq!(app.motion_tracking_state.motion_tracking_clip_id, Some(99));
 }
 
 #[test]
@@ -2661,7 +2669,7 @@ fn spawn_generate_matte_for_selected_clip_is_a_no_op_when_no_model_is_configured
     app.spawn_generate_matte_for_selected_clip();
 
     // No background job started, and the user is told why.
-    assert_eq!(app.matte_generating_clip_id, None);
+    assert_eq!(app.matte_generation_state.matte_generating_clip_id, None);
     assert_eq!(app.toasts.len(), 1);
 }
 
@@ -2680,12 +2688,15 @@ fn spawn_generate_matte_for_selected_clip_is_a_no_op_while_a_run_is_already_in_f
     );
     app.prefs.background_removal_model_path = "/models/modnet.onnx".to_string();
     app.selected_clip_id = Some(1);
-    app.matte_generating_clip_id = Some(99);
+    app.matte_generation_state.matte_generating_clip_id = Some(99);
 
     app.spawn_generate_matte_for_selected_clip();
 
     // Stays pinned to the already-running clip's id, not overwritten by this second call.
-    assert_eq!(app.matte_generating_clip_id, Some(99));
+    assert_eq!(
+        app.matte_generation_state.matte_generating_clip_id,
+        Some(99)
+    );
 }
 
 #[test]
