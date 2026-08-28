@@ -26,6 +26,10 @@ Detail: `matrix/changelog.md` Fase 5/6.
 - [x] Undo/redo — `core::undo::UndoStack` and its UI integration cover timeline and effect
       mutations with coalesced drag snapshots; see `matrix/timeline-and-editing.md` and ROADMAP
       P0 item 1 for the exact coverage and verification.
+- [ ] Remote client error reporting — current panic traces, structured logs, and telemetry stay on
+      the client and require manual sharing. ER-01 adds explicit consent, a strict sanitized event
+      contract, bounded offline delivery, release/symbol management, and a separately validated
+      native-crash phase. See `../architecture/client-error-reporting.md`.
 
 ---
 

@@ -355,9 +355,11 @@ Do not prioritize these until usage proves they are necessary:
 
 ## Delivery order
 
-The intended order is CF-01, CF-02, CF-03, CF-04, CF-05, CF-06, CF-07, CF-08, CF-09, and
-CF-10. A feature may move earlier only when it unlocks an active PacoPaçoca production problem or
-provides a prerequisite for the next item. Each feature must still satisfy [RULES.md](../RULES.md)
-and update both ROADMAP and the relevant matrix when shipped.
+ER-01's client error-reporting foundation precedes CF-01 for broad beta distribution; see
+[client-error-reporting.md](client-error-reporting.md). The competitive feature order remains
+CF-01, CF-02, CF-03, CF-04, CF-05, CF-06, CF-07, CF-08, CF-09, and CF-10. A feature may move earlier
+only when it unlocks an active PacoPaçoca production problem or provides a prerequisite for the
+next item. Each feature must still satisfy [RULES.md](../RULES.md) and update both ROADMAP and the
+relevant matrix when shipped.
 
 [<- back to spec/INDEX.md](../INDEX.md)

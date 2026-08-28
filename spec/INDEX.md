@@ -16,6 +16,10 @@ For the post-P4 product-growth queue, read
 ROADMAP and RULES. It contains the current competitor evidence, ordered implementation slices,
 acceptance criteria, security constraints, and deliberate non-goals.
 
+Before broad beta distribution, read
+**[architecture/client-error-reporting.md](architecture/client-error-reporting.md)** for ER-01's
+consent, sanitization, offline delivery, symbolication, and native-crash rollout requirements.
+
 Do not read every file here for one task. Read `matrix/changelog.md` only when you need the
 historical "why was it built this way" detail (verification caveats, real bugs found, empirical
 discoveries) — it's a narrative log of already-completed work, not a task list.
@@ -41,6 +45,7 @@ spec/
 └── architecture/                     ← HOW to build it (principles, not per-feature status)
     ├── differentiators.md            (D1-D7: the proposed differentiator feature specs)
     ├── competitive-feature-plan.md   (CF-01-CF-10: next competitive implementation plan)
+    ├── client-error-reporting.md      (ER-01: secure remote error and crash collection)
     ├── performance-and-caching.md    (dirty flags, versioned cache, hot-path rules — from nimble)
     ├── undo-redo.md                  (P0 item 1: what's done, what's left, why per-sequence)
     ├── mobile-support.md             (Android/iOS ADR: proposed, not started — decision only)

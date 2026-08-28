@@ -16,6 +16,9 @@ yet applied here — see the gaps below) live in `architecture/performance-and-c
       (NVIDIA-only, `nvml-wrapper`-backed, own background thread, gracefully absent on a
       non-NVIDIA/no-driver machine — see "Known gaps" below), JSON-lines local file with
       size-based rotation (10 MiB), on-device only, toggleable in Preferences.
+      This remains separate from proposed remote error collection: ER-01 does not upload this
+      telemetry stream or reuse its free-form error messages; see
+      `../architecture/client-error-reporting.md`.
 - [x] Shared `avcore::FrameSampler` primitive (`architecture/performance-and-caching.md` §5) —
       replaces four independent open/seek/poll-for-a-decoded-frame loops (`ui`'s auto-reframe,
       motion tracking, background-removal matte generation, and thumbnail extraction).

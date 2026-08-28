@@ -763,6 +763,11 @@ competitive evidence, implementation slices, acceptance criteria, security requi
 deliberate non-goals. Implement in this order unless an active production problem justifies moving
 an item earlier:
 
+- `[ ]` **ER-01: client error reporting.** Add consent-based, sanitized, bounded remote reporting
+  for handled errors and Rust panics, exact release/symbol management, and a separately validated
+  native Crashpad phase. This is an operational prerequisite for broad beta distribution, not a
+  replacement for local telemetry. Read
+  [architecture/client-error-reporting.md](architecture/client-error-reporting.md).
 - `[~]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:
