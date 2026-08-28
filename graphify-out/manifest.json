@@ -35,8 +35,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/lib.rs": {
-    "mtime": 1787941063.0863245,
-    "ast_hash": "fd917d14c560c19b5a547bb40ca4c62c",
+    "mtime": 1787950312.11656,
+    "ast_hash": "48e5106722be3ccdf94a76f06c149340",
     "semantic_hash": ""
   },
   "crates/core/src/loudness.rs": {
@@ -140,8 +140,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1787941063.0883262,
-    "ast_hash": "1b2054161d8bb9923fdf2c1c6a8bbbfb",
+    "mtime": 1787951156.2613137,
+    "ast_hash": "bcdfcf41f4a81cd664380c1c2a6ccb6e",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
@@ -510,18 +510,18 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/export.rs": {
-    "mtime": 1787920067.5664778,
-    "ast_hash": "abcff834f704ad8fa32b3ae4c4cce68d",
+    "mtime": 1787950802.4499938,
+    "ast_hash": "2fe871f82e0da081a87e80efa381657e",
     "semantic_hash": ""
   },
   "crates/ui/src/app/import.rs": {
-    "mtime": 1787914737.6716275,
-    "ast_hash": "81225c36475696a83953abe9a61230ff",
+    "mtime": 1787950798.4274492,
+    "ast_hash": "87dd7627f992e045fcfc4ee74be99b81",
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1787941063.089327,
-    "ast_hash": "61934567519ad333628f5fa2939ca02e",
+    "mtime": 1787950791.3234494,
+    "ast_hash": "a5b9835d1e92e175d733896b7e940fd5",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
@@ -985,8 +985,8 @@
     "semantic_hash": ""
   },
   "spec/ROADMAP.md": {
-    "mtime": 1787941063.0933318,
-    "ast_hash": "01c02e82a715d49630ae5cb245df2269",
+    "mtime": 1787951173.3086822,
+    "ast_hash": "9b2e162527785aa7aa9a9df177da7678",
     "semantic_hash": ""
   },
   "spec/RULES.md": {
@@ -1055,8 +1055,8 @@
     "semantic_hash": ""
   },
   "spec/matrix/robustness.md": {
-    "mtime": 1787927132.8821344,
-    "ast_hash": "7500a6aa800f61d3274a84fd4d2f37c5",
+    "mtime": 1787951177.5118406,
+    "ast_hash": "f166bf9e38104a5fd858585c56e76c0a",
     "semantic_hash": ""
   },
   "spec/matrix/timeline-and-editing.md": {
@@ -1492,6 +1492,21 @@
   "crates/ui/src/screens/watch_folder.rs": {
     "mtime": 1787941063.0923297,
     "ast_hash": "b58025d9260f10f816f925a475c65e89",
+    "semantic_hash": ""
+  },
+  "crates/core/src/error_reporting.rs": {
+    "mtime": 1787950312.1031349,
+    "ast_hash": "8c83160326d3864da8b2b1280f9c7921",
+    "semantic_hash": ""
+  },
+  "crates/core/tests/error_reporting_test.rs": {
+    "mtime": 1787950370.7403831,
+    "ast_hash": "db34d497779c6f935e06e77373e44d9d",
+    "semantic_hash": ""
+  },
+  "crates/ui/src/app/error_reporting.rs": {
+    "mtime": 1787951156.271436,
+    "ast_hash": "39b09a0f350adaafe25eb427f411e950",
     "semantic_hash": ""
   }
 }
