@@ -103,6 +103,7 @@ fn rail_button(ui: &mut egui::Ui, app: &mut App, screen: Screen, icon: &str, lab
     }
     if response.clicked() {
         app.screen = screen;
+        app.prefs_open = false;
     }
     ui.add_space(2.0);
 }

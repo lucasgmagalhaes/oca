@@ -78,11 +78,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         .color(theme::TEXT_MUTED),
                 );
                 ui.label(RichText::new("›").color(theme::TEXT_MUTED));
-                ui.label(
-                    RichText::new(i18n::screen_title(app.locale, app.screen))
-                        .size(13.0)
-                        .strong(),
-                );
+                let title = if app.prefs_open {
+                    Text::ScreenTitlePrefs.tr(app.locale)
+                } else {
+                    i18n::screen_title(app.locale, app.screen)
+                };
+                ui.label(RichText::new(title).size(13.0).strong());
 
                 if app.screen == Screen::Editor {
                     ui.label(RichText::new("›").color(theme::TEXT_MUTED));
