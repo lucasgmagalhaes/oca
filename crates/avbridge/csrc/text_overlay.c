@@ -23,8 +23,11 @@
 #include <libavformat/avformat.h>
 #include <libavutil/opt.h>
 
-/* Maximum byte length of one movie+overlay filter fragment (per segment). */
-#define TEXT_OVERLAY_SEG_MAX 2048
+/* Maximum byte length of one movie+overlay filter fragment (per segment) -- sized to fit the
+   escaped path plus up to three up-to-2048-byte escaped expression fragments (opacity, x, y
+   position offset) with room to spare; the snprintf truncation check below is the real safety
+   net regardless. */
+#define TEXT_OVERLAY_SEG_MAX 8192
 
 /* Escapes `in` for use as a single-quoted avfilter movie filename. Backslash, single-quote,
    colon, comma, semicolon, and graph-label brackets each get a backslash prefix.
@@ -156,6 +159,18 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
                 status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
                 goto cleanup;
             }
+            /* Unescaped and single-quoted, same convention as timeline_export_multi.c's
+               build_overlay_vfilter -- an overlay x=/y= expression sits directly in its own
+               quoted option value, not nested inside another quoted expression the way the
+               fade's geq a=' ... ' value above is, so it needs no comma-escaping of its own. */
+            const char *pos_expr_x =
+                (seg->position_keyframe_expr_x && seg->position_keyframe_expr_x[0] != '\0')
+                    ? seg->position_keyframe_expr_x
+                    : "0";
+            const char *pos_expr_y =
+                (seg->position_keyframe_expr_y && seg->position_keyframe_expr_y[0] != '\0')
+                    ? seg->position_keyframe_expr_y
+                    : "0";
             double end_secs = seg->start_secs + seg->duration_secs;
             char main_label[32];
             char out_label[32];
@@ -187,18 +202,19 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
                     filter_str + pos, filter_buf_size - pos,
                     "movie=filename='%s',format=rgba,"
                     "geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='alpha(X\\,Y)*(%s)'[%s];"
-                    "[%s][%s]overlay=x=0:y=0:format=auto:alpha=straight:"
+                    "[%s][%s]overlay=x='%s':y='%s':format=auto:alpha=straight:"
                     "repeatlast=1:eof_action=repeat:enable='between(t\\,%.4f\\,%.4f)'[%s]%s",
-                    escaped, escaped_expr, text_label, main_label, text_label, seg->start_secs,
-                    end_secs, out_label, i == segment_count - 1 ? "" : ";");
+                    escaped, escaped_expr, text_label, main_label, text_label, pos_expr_x,
+                    pos_expr_y, seg->start_secs, end_secs, out_label,
+                    i == segment_count - 1 ? "" : ";");
             } else {
                 written = snprintf(
                     filter_str + pos, filter_buf_size - pos,
                     "movie=filename='%s',format=rgba[%s];"
-                    "[%s][%s]overlay=x=0:y=0:format=auto:alpha=straight:"
+                    "[%s][%s]overlay=x='%s':y='%s':format=auto:alpha=straight:"
                     "repeatlast=1:eof_action=repeat:enable='between(t\\,%.4f\\,%.4f)'[%s]%s",
-                    escaped, text_label, main_label, text_label, seg->start_secs, end_secs,
-                    out_label, i == segment_count - 1 ? "" : ";");
+                    escaped, text_label, main_label, text_label, pos_expr_x, pos_expr_y,
+                    seg->start_secs, end_secs, out_label, i == segment_count - 1 ? "" : ";");
             }
             if (written < 0 || pos + (size_t)written >= filter_buf_size) {
                 status = TEXT_OVERLAY_ERR_FILTER_GRAPH;
