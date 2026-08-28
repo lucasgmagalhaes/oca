@@ -125,10 +125,15 @@ yet applied here — see the gaps below) live in `architecture/performance-and-c
       `chroma_key_enabled`, a plain on/off toggle rather than a gradually-approached intensity —
       the first enable still needs the existing incidental-reopen fallback; only color/tolerance
       edits made after that go live. Two negative-path tests mirror the blur ones exactly, same
-      "type-checked, not run in this sandbox" status. Still not extended to any other effect
-      property — crop, pixelize, shake, mask, deflicker, stabilization all still need real
-      structural changes to the running filter graph beyond a single scalar property push,
-      genuinely the "materially bigger lift" category the original note above already called out.
+      "type-checked, not run in this sandbox" status.
+      **Third follow-up**: crop, pixelize, shake, and layer mask all update live now too —
+      `Preview::set_live_crop`/`set_live_pixelize`/`set_live_shake`/`set_live_mask`, each using a
+      different mechanism suited to what it actually needed (a plain property push for crop, a
+      live `capsfilter` caps renegotiation for pixelize, shared atomics a buffer probe already
+      reads for shake, an `appsrc`/`imagefreeze(allow-replace=true)` buffer push for mask, mirroring
+      `refresh_text_overlay`'s own pattern). See `spec/ROADMAP.md` P1 item 3 for the full writeup.
+      Deflicker/stabilization remain the genuinely open gap (temporal, not per-frame); shapes
+      (non-text overlays) still have no live-preview path.
 
 ---
 

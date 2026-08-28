@@ -100,12 +100,23 @@ Read [architecture/performance-and-caching.md](architecture/performance-and-cach
    this element at all, the other a mismatched clip id against a real chroma-key-enabled
    overlay clip — same "type-checked, not run in this sandbox" status.
 
-   **Still open**: every other effect property (crop, pixelize, shake, mask, deflicker,
-   stabilization, ...) — still genuinely a bigger lift, their own elements are only
-   conditionally built and most need real structural changes (a moving crop window, a growing/
-   shrinking mosaic block size, ...) beyond a single scalar property push; non-text overlay
-   kinds (shapes) never got any live-preview path at all, keyframed or not. See
-   `matrix/performance.md` for the full findings.
+   **Fourth follow-up**: crop, pixelize, shake, and (layer) mask all update live now too,
+   closing out this item's own "genuinely a bigger lift" note above — each needed a materially
+   different mechanism, not a copy-paste of `set_live_balance`'s plain property push:
+   `Preview::set_live_crop` names the static-crop `videocrop` element (`oca_crop_{clip_id}`) and
+   redoes the fraction-to-pixel math using a new `Preview::clip_resolutions` cache (populated at
+   build time) so `ui`'s `App` never needs to track decoded frame dimensions itself;
+   `Preview::set_live_pixelize` renegotiates the downscale `capsfilter`'s caps live (block-size
+   caps changes propagate as a real renegotiation, unlike shake/crop's window shape) rather than
+   rebuilding the two-`videoscale` chain; `Preview::set_live_shake` writes into a shared
+   `ShakeMarginHandle`'s atomics the buffer probe already reads every frame — no property push
+   or renegotiation needed at all, just new numbers; `Preview::set_live_mask` reuses the
+   `refresh_text_overlay` pattern (`appsrc ! imagefreeze(allow-replace=true)`) to push a freshly
+   rasterized `GRAY8` buffer. Deflicker/stabilization remain the genuinely open gap — both need
+   *temporal* state across multiple frames, a different problem shape entirely. Shapes (non-text
+   overlays) still have no live-preview path. Wired through the same `with_selected_clip_mut`
+   shared dispatch path as balance/blur/chroma-key. See `matrix/performance.md` for the full
+   findings.
 4. `[x]` Versioned cache for the timeline→avfilter-graph resolution
    (`resolve_timeline_segments_multi`). The confirmed hot spot was `screens::queue::show`
    recomputing it every UI frame the Fila screen is open, just for a size estimate — fixed via
@@ -374,14 +385,29 @@ not by default priority.
     *approximation*, explicitly not FFmpeg's own cosine-based formula (reproducing that exactly
     from `libavfilter` C source without being able to A/B it visually against export wasn't a
     risk worth taking). `App::pump_preview_frame` applies both to the live preview texture only
-    — export is untouched, still the real `lut3d`/`vignette` `avfilter`s. **Explicitly still
-    not done**: glitch (no single well-specified "the" algorithm to approximate — a judgment
-    call this sandbox can't visually verify), deflicker and stabilization (both need *temporal*
-    state across multiple frames, a materially larger, stateful piece of work with its own
-    seek/scrub edge cases — not a natural extension of this per-frame-only module). Verified via
-    a real-execution scratch crate (`preview_effects.rs` has zero heavy deps) — 12 tests, one of
-    which caught a real bug in a *test's own* expected value (a coarse 2-point LUT interpolates
-    rather than reproducing the exact original channel value) before it could pass silently.
+    — export is untouched, still the real `lut3d`/`vignette` `avfilter`s.
+
+    **Follow-up**: glitch is covered too now. The "no single well-specified algorithm" objection
+    dissolved once actually checked — export's own `glitch_intensity` already resolves to a
+    concrete, specific avfilter (`noise=c0s=...:c0f=t:c1s=...:c1f=t:c2s=...:c2f=t`, temporal
+    luma/chroma noise, not an RGB-shift/block-displacement "datamosh" look), so this isn't a
+    from-scratch judgment call, just mirroring what this codebase's own glitch effect already
+    *is*. `avcore::apply_glitch_to_rgba` adds per-pixel, per-channel additive noise (RGB, not a
+    luma/chroma split — no YUV conversion available on an already-decoded RGBA frame) via a
+    xorshift64* PRNG seeded per pixel from a caller-supplied `seed`; `App::pump_preview_frame`
+    passes elapsed wall-clock time (bit-cast to `u64`) as that seed, so the pattern actually
+    looks like temporal corruption frame to frame rather than a static grain overlay baked onto
+    the image. Still a **preview approximation**, not a reproduction of
+    `libavfilter/vf_noise.c`'s own PRNG — same "not bit-exact" caveat vignette already carries.
+    **Explicitly still not done**: deflicker and stabilization (both need *temporal* state across
+    multiple frames, a materially larger, stateful piece of work with its own seek/scrub edge
+    cases — not a natural extension of this per-frame-only module). Verified via a real-execution
+    scratch crate (`preview_effects.rs` has zero heavy deps) — 19 tests (12 original + 7 new for
+    glitch: no-op at zero intensity, empty-buffer no-op, alpha untouched, byte-bounds safety at
+    full intensity, determinism for a fixed seed, divergence across seeds, and an actual-
+    perturbation sanity check), one of which caught a real bug in a *test's own* expected value
+    (a coarse 2-point LUT interpolates rather than reproducing the exact original channel value)
+    before it could pass silently.
 22. `[x]` Smart bins (rule-based media-pool auto-organization) — real in DaVinci Resolve, but
     lower priority for a small/single-editor workflow than for a studio pipeline. The one P4 item
     tractable in this sandbox without special hardware or a missing GStreamer element (unlike 19-
@@ -416,7 +442,7 @@ not by default priority.
     rather than adding a third copy. No new render/preview pipeline work — per-track independent
     clips already mix correctly. Triggered via a "Destacar áudio" entry in the timeline clip's
     context menu, enabled only for Video-track clips.
-29. `[~]` Speed ramping — `App::apply_speed_ramp_to_selected_clip` ships a **stepped**
+29. `[x]` Speed ramping — `App::apply_speed_ramp_to_selected_clip` ships a **stepped**
     approximation, not the smooth continuous curve CapCut/Premiere/DaVinci/FCP all have. A
     deliberate scope decision (raised to and confirmed by the user, 2026-08-27): the smooth
     version needs the export-side `setpts` filter's output PTS to be the *integral* of
@@ -440,9 +466,50 @@ not by default priority.
     state, `App::show_speed_ramp_modal`, same `egui::Modal` pattern as `renaming_project`'s own
     dialog). UI-only — `App::apply_speed_ramp_to_selected_clip` itself already accepted
     `start_speed`/`end_speed`/`steps` as parameters before this, so no new avfilter/geq/setpts
-    math was needed, none of the sandbox-verification risk the smooth-curve version has. **Still
-    not done**: the smooth continuous-curve version (the real remaining gap, needs the `log()`
-    per-segment PTS-integral derivation flagged above, still unverifiable in this sandbox).
+    math was needed, none of the sandbox-verification risk the smooth-curve version has.
+
+    **Second follow-up: the smooth continuous-curve version now ships too**, and — unlike when
+    this item was first scoped — this development environment turned out to have a working,
+    fully-linked FFmpeg build capable of actually rendering and verifying the derivation, not
+    just type-checking it. `ClipInstance::speed_ramp_end_factor: Option<f32>` (`None` = plain
+    constant `speed_factor`, unchanged) carries the ramp's end speed directly on the clip — no
+    splitting needed at all, unlike the stepped mode.
+    `keyframe::smooth_speed_ramp_duration_secs`/`smooth_speed_ramp_source_secs_at` solve the
+    closed-form integral (`∫ 1/speed(t) dt` for a linear `speed(t)` — a natural-log term) and its
+    inverse; `ClipInstance::duration_secs()` and `Track::split_clip_at` (splitting a ramped clip
+    now continues the ramp correctly across both halves, sharing the exact speed-at-the-cut
+    boundary) both use them. Crosses the FFI boundary as
+    `avbridge::ClipSegment::smooth_speed_ramp_end_factor` (`<=0.0` = no ramp, same sentinel
+    convention `speed_factor` itself already uses elsewhere); `timeline_export.c`/
+    `timeline_export_multi.c` each gained a `build_setpts_str` helper emitting
+    `setpts=(K/TB)*log((V0+B*T)/V0)` instead of the old constant `setpts=PTS/speed`, expressed
+    entirely in the filter's own runtime `TB`/`T` variables so it's valid regardless of the
+    actual stream timebase. Audio has no continuous per-sample tempo-ramp primitive in this
+    FFmpeg build (`atempo` takes one fixed parameter, not a `t`-keyed expression) — both files'
+    audio tempo command uses the ramp's *average* speed instead, a deliberate, documented
+    approximation (exact av-sync isn't achievable here; staying audible and reasonably close
+    throughout beats jumping between discrete steps). `timeline_export_multi.c`'s per-frame
+    track-0-to-timeline time mapping (`ftl`, used to decide which overlay track is active "right
+    now," and progress-callback reporting) is also ramp-aware now
+    (`smooth_speed_ramp_timeline_elapsed`); an *overlay*-track clip's own ramp still uses the
+    old linear approximation for its end-time/seek math — a real, narrower, documented remaining
+    gap (only matters when a ramped clip sits on an overlay track specifically, not the common
+    single/background-track case). UI: the existing custom speed-ramp dialog gained a "smooth,
+    continuous curve" checkbox — checked calls the new
+    `App::apply_smooth_speed_ramp_to_selected_clip` (which just sets the two fields directly, no
+    splitting) instead of the stepped path, and hides the now-irrelevant step-count field.
+    **Verified for real, not just type-checked**: `keyframe::smooth_speed_ramp_duration_secs`
+    cross-checked against brute-force numerical integration (200,000 steps) to a `1e-4` tolerance,
+    plus an exact round-trip test through its own inverse function — both run for real in this
+    session (`cargo test -p core`, 230+ passing, this machine's FFmpeg/GStreamer toolchain
+    actually links here, unlike the more constrained sandbox earlier `ROADMAP.md` entries
+    describe); a new `Track::split_clip_at` test confirms ramp continuity across a real split;
+    and — the strongest evidence — a new `avbridge` integration test
+    (`smooth_speed_ramp_produces_a_real_export_with_the_predicted_duration`) actually encodes a
+    ramped segment through the real linked FFmpeg build and asserts the *exported file's own
+    probed duration* matches the closed-form prediction to within a loose bound — proof the
+    whole Rust-math-to-C-setpts-expression-to-real-decoder pipeline is correct end to end, not
+    just that the strings happen to parse.
 30. `[x]` Real-time audio level meter (VU/peak) during playback — `matrix/competitor-parity.md`.
     Present in Premiere (VU meters) and DaVinci (Fairlight LUFS/peak meter). A pad probe on the
     preview audio path (same pattern as the existing keyframe pad-probes, reading instead of
