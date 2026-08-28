@@ -744,12 +744,9 @@ pub struct App {
     pub sound_library_tracks: Vec<avcore::sound_library::LibraryTrack>,
     sound_library_tx: UnboundedSender<Vec<avcore::sound_library::LibraryTrack>>,
     sound_library_rx: UnboundedReceiver<Vec<avcore::sound_library::LibraryTrack>>,
-    transcribe_tx: UnboundedSender<TranscribeEvent>,
-    transcribe_rx: UnboundedReceiver<TranscribeEvent>,
-    /// The media asset id a background transcription is currently running for, if any — only
-    /// one transcription runs at a time (unlike imports, which are per-file parallel). The
-    /// Mídia screen shows a busy state on that asset's card while this is `Some`.
-    pub transcribing_asset_id: Option<u64>,
+    /// Transcription background-job channel/asset-tracking state — same pattern as
+    /// [`App::auto_reframe_state`].
+    pub(crate) transcribe_state: TranscribeState,
     /// Auto-reframe background-job channel/clip-tracking state, grouped the same way
     /// [`PreviewState`] was — see that struct's doc comment for why.
     pub(crate) auto_reframe_state: AutoReframeState,
@@ -785,34 +782,10 @@ pub struct App {
     /// Matte-generation background-job channel/clip-tracking state — same pattern as
     /// [`App::auto_reframe_state`].
     pub(crate) matte_generation_state: MatteGenerationState,
-    tts_tx: UnboundedSender<TtsEvent>,
-    tts_rx: UnboundedReceiver<TtsEvent>,
-    /// `Some(text)` while the "Texto-pra-fala" modal is open — the text buffer being edited.
-    /// `None` when the modal is closed.
-    pub tts_modal_text: Option<String>,
-    /// `true` while a background TTS synthesis run is in flight — only one at a time, same
-    /// shape as `transcribing_asset_id`.
-    pub tts_generating: bool,
-    youtube_download_tx: UnboundedSender<YoutubeDownloadEvent>,
-    youtube_download_rx: UnboundedReceiver<YoutubeDownloadEvent>,
-    /// `Some(url)` while the "Baixar do YouTube" modal is open — the URL text buffer being
-    /// edited. Unlike [`Self::tts_modal_text`], stays `Some` (rather than being taken) once a
-    /// download starts, so the modal can keep showing the URL alongside progress and an error
-    /// message stays actionable (retry without retyping the URL) instead of the modal just
-    /// closing on submit the way the TTS one does.
-    pub youtube_modal_url: Option<String>,
-    pub youtube_modal_format: YoutubeFormatChoice,
-    pub youtube_modal_mp4_quality: avcore::Mp4Quality,
-    pub youtube_modal_mp3_bitrate: avcore::Mp3Bitrate,
-    /// `true` while a background `yt-dlp` download is in flight — only one at a time.
-    pub youtube_downloading: bool,
-    /// `0.0..=1.0` fraction reported by `yt-dlp`'s own progress output — meaningless while
-    /// `youtube_downloading` is `false`.
-    pub youtube_download_progress: f32,
-    /// Set after a failed/cancelled download; cleared on the next successful submit. Shown
-    /// inline in the modal rather than as a toast, since the modal stays open for a retry.
-    pub youtube_download_error: Option<String>,
-    youtube_download_cancel: Option<Arc<AtomicBool>>,
+    /// Text-to-speech modal/background-job state, grouped the same way [`PreviewState`] was.
+    pub(crate) tts_state: TtsState,
+    /// YouTube-download modal/background-job state, grouped the same way [`PreviewState`] was.
+    pub(crate) youtube_download_state: YoutubeDownloadState,
     /// The timeline clip currently highlighted in the Editor's timeline strip, if any — a
     /// separate concept from `selected_asset_id` (that's the media-library selection driving
     /// the preview panel; this is a placed [`avcore::timeline::ClipInstance`]). `Delete`
@@ -1149,6 +1122,54 @@ pub(crate) struct MatteGenerationState {
     pub(crate) matte_generating_clip_id: Option<u64>,
 }
 
+/// Transcription background-job state — same pattern as [`AutoReframeState`].
+pub(crate) struct TranscribeState {
+    pub(crate) transcribe_tx: UnboundedSender<TranscribeEvent>,
+    pub(crate) transcribe_rx: UnboundedReceiver<TranscribeEvent>,
+    /// The media asset id a background transcription is currently running for, if any — only
+    /// one transcription runs at a time (unlike imports, which are per-file parallel). The
+    /// Mídia screen shows a busy state on that asset's card while this is `Some`.
+    pub(crate) transcribing_asset_id: Option<u64>,
+}
+
+/// Text-to-speech modal/background-job state, extracted from `App`'s own field list — see
+/// [`PreviewState`]'s doc comment for why.
+pub(crate) struct TtsState {
+    pub(crate) tts_tx: UnboundedSender<TtsEvent>,
+    pub(crate) tts_rx: UnboundedReceiver<TtsEvent>,
+    /// `Some(text)` while the "Texto-pra-fala" modal is open — the text buffer being edited.
+    /// `None` when the modal is closed.
+    pub(crate) tts_modal_text: Option<String>,
+    /// `true` while a background TTS synthesis run is in flight — only one at a time, same
+    /// shape as `TranscribeState::transcribing_asset_id`.
+    pub(crate) tts_generating: bool,
+}
+
+/// YouTube-download modal/background-job state, extracted from `App`'s own field list — see
+/// [`PreviewState`]'s doc comment for why.
+pub(crate) struct YoutubeDownloadState {
+    pub(crate) youtube_download_tx: UnboundedSender<YoutubeDownloadEvent>,
+    pub(crate) youtube_download_rx: UnboundedReceiver<YoutubeDownloadEvent>,
+    /// `Some(url)` while the "Baixar do YouTube" modal is open — the URL text buffer being
+    /// edited. Unlike `TtsState::tts_modal_text`, stays `Some` (rather than being taken) once a
+    /// download starts, so the modal can keep showing the URL alongside progress and an error
+    /// message stays actionable (retry without retyping the URL) instead of the modal just
+    /// closing on submit the way the TTS one does.
+    pub(crate) youtube_modal_url: Option<String>,
+    pub(crate) youtube_modal_format: YoutubeFormatChoice,
+    pub(crate) youtube_modal_mp4_quality: avcore::Mp4Quality,
+    pub(crate) youtube_modal_mp3_bitrate: avcore::Mp3Bitrate,
+    /// `true` while a background `yt-dlp` download is in flight — only one at a time.
+    pub(crate) youtube_downloading: bool,
+    /// `0.0..=1.0` fraction reported by `yt-dlp`'s own progress output — meaningless while
+    /// `youtube_downloading` is `false`.
+    pub(crate) youtube_download_progress: f32,
+    /// Set after a failed/cancelled download; cleared on the next successful submit. Shown
+    /// inline in the modal rather than as a toast, since the modal stays open for a retry.
+    pub(crate) youtube_download_error: Option<String>,
+    pub(crate) youtube_download_cancel: Option<Arc<AtomicBool>>,
+}
+
 impl App {
     /// Builds the initial app state: applies the theme and starts with an empty project list
     /// and export queue — every project, asset, and job comes from the user via "Novo
@@ -1228,9 +1249,11 @@ impl App {
             sound_library_tracks: Vec::new(),
             sound_library_tx,
             sound_library_rx,
-            transcribe_tx,
-            transcribe_rx,
-            transcribing_asset_id: None,
+            transcribe_state: TranscribeState {
+                transcribe_tx,
+                transcribe_rx,
+                transcribing_asset_id: None,
+            },
             auto_reframe_state: AutoReframeState {
                 auto_reframe_tx,
                 auto_reframe_rx,
@@ -1257,20 +1280,24 @@ impl App {
                 matte_generation_rx,
                 matte_generating_clip_id: None,
             },
-            tts_tx,
-            tts_rx,
-            tts_modal_text: None,
-            tts_generating: false,
-            youtube_download_tx,
-            youtube_download_rx,
-            youtube_modal_url: None,
-            youtube_modal_format: YoutubeFormatChoice::Mp4,
-            youtube_modal_mp4_quality: avcore::Mp4Quality::P720,
-            youtube_modal_mp3_bitrate: avcore::Mp3Bitrate::K192,
-            youtube_downloading: false,
-            youtube_download_progress: 0.0,
-            youtube_download_error: None,
-            youtube_download_cancel: None,
+            tts_state: TtsState {
+                tts_tx,
+                tts_rx,
+                tts_modal_text: None,
+                tts_generating: false,
+            },
+            youtube_download_state: YoutubeDownloadState {
+                youtube_download_tx,
+                youtube_download_rx,
+                youtube_modal_url: None,
+                youtube_modal_format: YoutubeFormatChoice::Mp4,
+                youtube_modal_mp4_quality: avcore::Mp4Quality::P720,
+                youtube_modal_mp3_bitrate: avcore::Mp3Bitrate::K192,
+                youtube_downloading: false,
+                youtube_download_progress: 0.0,
+                youtube_download_error: None,
+                youtube_download_cancel: None,
+            },
             selected_clip_id: None,
             undo_stack: avcore::undo::UndoStack::new(),
             undo_drag_active: false,

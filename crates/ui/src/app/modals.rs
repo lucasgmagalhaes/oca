@@ -1022,7 +1022,7 @@ impl App {
     /// (a no-op, leaving the modal open, while the buffer is blank or no voice model is
     /// configured); Escape/Cancel discards without generating anything.
     pub(super) fn show_tts_modal(&mut self, ctx: &egui::Context) {
-        if self.tts_modal_text.is_none() {
+        if self.tts_state.tts_modal_text.is_none() {
             return;
         }
         let locale = self.locale;
@@ -1045,7 +1045,7 @@ impl App {
                 );
                 ui.add_space(10.0);
             }
-            let buf = self.tts_modal_text.as_mut().unwrap();
+            let buf = self.tts_state.tts_modal_text.as_mut().unwrap();
             ui.add(
                 egui::TextEdit::multiline(buf)
                     .desired_width(f32::INFINITY)
@@ -1057,6 +1057,7 @@ impl App {
             ui.add_space(10.0);
             ui.horizontal(|ui| {
                 let text_blank = self
+                    .tts_state
                     .tts_modal_text
                     .as_ref()
                     .is_some_and(|t| t.trim().is_empty());
@@ -1075,7 +1076,7 @@ impl App {
             });
         });
         if response.should_close() || cancelled {
-            self.tts_modal_text = None;
+            self.tts_state.tts_modal_text = None;
             return;
         }
         if confirmed {
@@ -1089,11 +1090,11 @@ impl App {
     /// inline, closing only once a download actually completes
     /// ([`App::pump_youtube_download`]) or the user cancels/closes it explicitly.
     pub(super) fn show_youtube_download_modal(&mut self, ctx: &egui::Context) {
-        if self.youtube_modal_url.is_none() {
+        if self.youtube_download_state.youtube_modal_url.is_none() {
             return;
         }
         let locale = self.locale;
-        let downloading = self.youtube_downloading;
+        let downloading = self.youtube_download_state.youtube_downloading;
         let modal = egui::Modal::new(egui::Id::new("youtube_download_modal"));
         let mut start = false;
         let mut cancel_download = false;
@@ -1107,7 +1108,11 @@ impl App {
             );
             ui.add_space(10.0);
             ui.add_enabled_ui(!downloading, |ui| {
-                let buf = self.youtube_modal_url.as_mut().unwrap();
+                let buf = self
+                    .youtube_download_state
+                    .youtube_modal_url
+                    .as_mut()
+                    .unwrap();
                 ui.add(
                     egui::TextEdit::singleline(buf)
                         .hint_text(Text::YoutubeDownloadUrlHint.tr(locale))
@@ -1116,26 +1121,32 @@ impl App {
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
                     ui.selectable_value(
-                        &mut self.youtube_modal_format,
+                        &mut self.youtube_download_state.youtube_modal_format,
                         super::YoutubeFormatChoice::Mp4,
                         Text::YoutubeDownloadFormatMp4.tr(locale),
                     );
                     ui.selectable_value(
-                        &mut self.youtube_modal_format,
+                        &mut self.youtube_download_state.youtube_modal_format,
                         super::YoutubeFormatChoice::Mp3,
                         Text::YoutubeDownloadFormatMp3.tr(locale),
                     );
                 });
                 ui.horizontal(|ui| {
                     ui.label(Text::YoutubeDownloadQuality.tr(locale));
-                    match self.youtube_modal_format {
+                    match self.youtube_download_state.youtube_modal_format {
                         super::YoutubeFormatChoice::Mp4 => {
                             egui::ComboBox::new("youtube_mp4_quality", "")
-                                .selected_text(self.youtube_modal_mp4_quality.label())
+                                .selected_text(
+                                    self.youtube_download_state
+                                        .youtube_modal_mp4_quality
+                                        .label(),
+                                )
                                 .show_ui(ui, |ui| {
                                     for q in avcore::Mp4Quality::ALL {
                                         ui.selectable_value(
-                                            &mut self.youtube_modal_mp4_quality,
+                                            &mut self
+                                                .youtube_download_state
+                                                .youtube_modal_mp4_quality,
                                             q,
                                             q.label(),
                                         );
@@ -1144,11 +1155,17 @@ impl App {
                         }
                         super::YoutubeFormatChoice::Mp3 => {
                             egui::ComboBox::new("youtube_mp3_bitrate", "")
-                                .selected_text(self.youtube_modal_mp3_bitrate.label())
+                                .selected_text(
+                                    self.youtube_download_state
+                                        .youtube_modal_mp3_bitrate
+                                        .label(),
+                                )
                                 .show_ui(ui, |ui| {
                                     for b in avcore::Mp3Bitrate::ALL {
                                         ui.selectable_value(
-                                            &mut self.youtube_modal_mp3_bitrate,
+                                            &mut self
+                                                .youtube_download_state
+                                                .youtube_modal_mp3_bitrate,
                                             b,
                                             b.label(),
                                         );
@@ -1161,12 +1178,12 @@ impl App {
             ui.add_space(10.0);
             if downloading {
                 ui.add(
-                    egui::ProgressBar::new(self.youtube_download_progress)
+                    egui::ProgressBar::new(self.youtube_download_state.youtube_download_progress)
                         .text(Text::YoutubeDownloadInProgress.tr(locale)),
                 );
                 ui.add_space(10.0);
             }
-            if let Some(err) = &self.youtube_download_error {
+            if let Some(err) = &self.youtube_download_state.youtube_download_error {
                 ui.label(egui::RichText::new(err.as_str()).color(theme::ERROR));
                 ui.add_space(10.0);
             }
@@ -1175,6 +1192,7 @@ impl App {
             }
             ui.horizontal(|ui| {
                 let url_blank = self
+                    .youtube_download_state
                     .youtube_modal_url
                     .as_ref()
                     .is_some_and(|u| u.trim().is_empty());

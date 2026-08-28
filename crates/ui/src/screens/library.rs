@@ -46,7 +46,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 if ui.button(Text::YoutubeDownloadButton.tr(locale)).clicked() {
                     app.open_youtube_modal();
                 }
-                if app.tts_generating {
+                if app.tts_state.tts_generating {
                     ui.label(
                         RichText::new(Text::TtsGenerating.tr(locale))
                             .size(12.0)
@@ -126,7 +126,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                         .color(theme::TEXT_MUTED),
                                 );
                                 ui.add_space(4.0);
-                                if app.transcribing_asset_id == Some(asset.id) {
+                                if app.transcribe_state.transcribing_asset_id == Some(asset.id) {
                                     ui.label(
                                         RichText::new(Text::TranscribeInProgress.tr(locale))
                                             .size(10.5)

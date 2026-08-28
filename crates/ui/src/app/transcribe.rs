@@ -33,7 +33,7 @@ impl App {
     /// subtitles keeps its internal timing/spacing, just anchored wherever the user parked the
     /// playhead before transcribing (same placement convention as [`App::add_text_clip`]).
     pub fn spawn_transcribe(&mut self, asset_id: u64) {
-        if self.transcribing_asset_id.is_some() {
+        if self.transcribe_state.transcribing_asset_id.is_some() {
             return;
         }
         if self.prefs.whisper_model_path.trim().is_empty() {
@@ -54,9 +54,9 @@ impl App {
             return;
         };
 
-        self.transcribing_asset_id = Some(asset_id);
+        self.transcribe_state.transcribing_asset_id = Some(asset_id);
         let model_path = std::path::PathBuf::from(self.prefs.whisper_model_path.clone());
-        let tx = self.transcribe_tx.clone();
+        let tx = self.transcribe_state.transcribe_tx.clone();
         std::thread::spawn(move || {
             transcribe_one(&source_path, &model_path, asset_id, &tx);
         });
@@ -65,10 +65,10 @@ impl App {
     /// Applies a finished transcription to the active project's timeline. Called once per
     /// frame from [`eframe::App::ui`], same as [`App::pump_import_queue`].
     pub(super) fn pump_transcribe(&mut self) {
-        while let Ok(event) = self.transcribe_rx.try_recv() {
+        while let Ok(event) = self.transcribe_state.transcribe_rx.try_recv() {
             match event {
                 TranscribeEvent::Done { asset_id, segments } => {
-                    self.transcribing_asset_id = None;
+                    self.transcribe_state.transcribing_asset_id = None;
                     if segments.is_empty() {
                         self.push_toast(
                             crate::i18n::Text::TranscribeNoSpeechFound
@@ -85,7 +85,7 @@ impl App {
                     self.apply_transcription(segments);
                 }
                 TranscribeEvent::Failed { asset_id, message } => {
-                    self.transcribing_asset_id = None;
+                    self.transcribe_state.transcribing_asset_id = None;
                     tracing::error!(asset_id, error = %message, "transcription failed");
                     self.push_toast(format!("Transcription failed: {message}"));
                 }
