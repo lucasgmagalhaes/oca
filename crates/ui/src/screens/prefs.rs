@@ -225,7 +225,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 )
                 .changed()
             {
-                app.telemetry_enabled_flag.store(
+                app.telemetry_state.telemetry_enabled_flag.store(
                     app.prefs.telemetry_enabled,
                     std::sync::atomic::Ordering::Relaxed,
                 );

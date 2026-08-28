@@ -693,20 +693,10 @@ pub struct App {
     pub selected_asset_id: Option<u64>,
     pub export_jobs: Vec<ExportJob>,
     pub prefs: PrefsState,
-    /// Sends [`avcore::TelemetryEvent`]s to the dedicated background writer thread spawned in
-    /// [`App::new`] — see [`App::record_telemetry`]/`telemetry::spawn_telemetry_writer`. No
-    /// paired receiver is kept on `App`; that thread owns the only one.
-    telemetry_tx: UnboundedSender<avcore::TelemetryEvent>,
-    /// Live mirror of `prefs.telemetry_enabled`, checked by the background resource-sampling
-    /// thread spawned in [`App::new`] (`telemetry::spawn_resource_sampler`) — that thread has
-    /// no access to `App`/`prefs` directly, so this `Arc<AtomicBool>` is the one piece of
-    /// shared state it reads each tick. Kept in sync with `prefs.telemetry_enabled` wherever
-    /// the Preferences screen's checkbox mutates it.
-    pub(crate) telemetry_enabled_flag: Arc<AtomicBool>,
-    /// Wall-clock time [`App::record_telemetry`] last recorded a `PreviewFrameTime` sample —
-    /// throttles sampling to roughly once every [`PREVIEW_FRAME_TELEMETRY_INTERVAL`] rather
-    /// than every single frame, which would flood `telemetry.jsonl`.
-    last_preview_frame_telemetry: Option<std::time::Instant>,
+    /// Telemetry channel/flag/throttle-timestamp state, grouped the same way
+    /// [`PreviewState`] was — see that struct's doc comment for why. Field names, visibility,
+    /// and invariants unchanged from when they lived directly on `App`.
+    pub(crate) telemetry_state: TelemetryState,
     render_tx: UnboundedSender<RenderEvent>,
     render_rx: UnboundedReceiver<RenderEvent>,
     /// Cooperative pause/cancel controls for jobs a worker thread is currently rendering,
@@ -1109,6 +1099,26 @@ pub(crate) struct PreviewState {
     pub(crate) fullscreen_controls_last_moved: Option<std::time::Instant>,
 }
 
+/// Telemetry channel/flag/throttle state, extracted from `App`'s own field list — see
+/// [`PreviewState`]'s doc comment for why. Every field behaves exactly as it did as a flat
+/// `App` field before this extraction.
+pub(crate) struct TelemetryState {
+    /// Sends [`avcore::TelemetryEvent`]s to the dedicated background writer thread spawned in
+    /// [`App::new`] — see [`App::record_telemetry`]/`telemetry::spawn_telemetry_writer`. No
+    /// paired receiver is kept on `App`; that thread owns the only one.
+    pub(crate) telemetry_tx: UnboundedSender<avcore::TelemetryEvent>,
+    /// Live mirror of `prefs.telemetry_enabled`, checked by the background resource-sampling
+    /// thread spawned in [`App::new`] (`telemetry::spawn_resource_sampler`) — that thread has
+    /// no access to `App`/`prefs` directly, so this `Arc<AtomicBool>` is the one piece of
+    /// shared state it reads each tick. Kept in sync with `prefs.telemetry_enabled` wherever
+    /// the Preferences screen's checkbox mutates it.
+    pub(crate) telemetry_enabled_flag: Arc<AtomicBool>,
+    /// Wall-clock time [`App::record_telemetry`] last recorded a `PreviewFrameTime` sample —
+    /// throttles sampling to roughly once every [`PREVIEW_FRAME_TELEMETRY_INTERVAL`] rather
+    /// than every single frame, which would flood `telemetry.jsonl`.
+    pub(crate) last_preview_frame_telemetry: Option<std::time::Instant>,
+}
+
 impl App {
     /// Builds the initial app state: applies the theme and starts with an empty project list
     /// and export queue — every project, asset, and job comes from the user via "Novo
@@ -1169,9 +1179,11 @@ impl App {
             selected_asset_id: None,
             export_jobs: export::load_queue(),
             prefs,
-            telemetry_tx,
-            telemetry_enabled_flag,
-            last_preview_frame_telemetry: None,
+            telemetry_state: TelemetryState {
+                telemetry_tx,
+                telemetry_enabled_flag,
+                last_preview_frame_telemetry: None,
+            },
             render_tx,
             render_rx,
             active_renders: HashMap::new(),
