@@ -20,6 +20,13 @@ use tracing::{debug, error, warn};
 
 use super::App;
 
+/// Output resolution for [`App::pump_preview_frame`]'s waveform scope texture — wide enough to
+/// resolve per-column detail against a typical Editor panel width, short enough that the per-
+/// frame `avcore::luma_waveform_rgba` pass (opt-in via `scopes_enabled`) stays cheap.
+const SCOPE_WAVEFORM_SIZE: (u32, u32) = (256, 128);
+/// Output resolution (square) for the vectorscope texture.
+const SCOPE_VECTORSCOPE_SIZE: u32 = 128;
+
 /// Playhead for a frozen clip after `elapsed_secs` of wall-clock playback since
 /// `playhead_at_start`, clamped to the clip's own end (`clip_start_secs + clip_duration_secs`)
 /// — pulled out of [`App::pump_preview_frame`] as a pure function so the math is unit
@@ -41,6 +48,8 @@ impl App {
     pub fn invalidate_preview_rendering(&mut self) {
         self.preview = None;
         self.preview_texture = None;
+        self.waveform_texture = None;
+        self.vectorscope_texture = None;
         self.preview_clip_id = None;
         self.preview_overlay_clip_ids.clear();
         self.preview_audio_clip_ids.clear();
@@ -56,6 +65,97 @@ impl App {
         }
         self.prefs.preview_hardware_decode = enabled;
         self.invalidate_preview_rendering();
+    }
+
+    /// Just the id [`App::current_preview_clip`] would resolve to, without cloning the
+    /// `ClipInstance`/`MediaAsset` — see [`App::ensure_preview_loaded`]'s doc comment for why
+    /// this cheap pass exists.
+    fn current_preview_clip_id(&self) -> Option<u64> {
+        let project = self.active_project();
+        let timeline = project.timeline();
+        let track = timeline
+            .tracks
+            .iter()
+            .find(|t| t.kind == TrackKind::Video && t.visible)?;
+        let clip = track.clip_at(timeline.playhead_secs)?;
+        project
+            .media_library
+            .iter()
+            .find(|a| a.id == clip.asset_id)?;
+        Some(clip.id)
+    }
+
+    /// Just the ids [`App::current_preview_overlay_clips`] would resolve to, without cloning.
+    fn current_preview_overlay_clip_ids(&self) -> Vec<u64> {
+        let project = self.active_project();
+        let timeline = project.timeline();
+        timeline
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Video && t.visible)
+            .skip(1)
+            .filter_map(|t| {
+                let clip = t.clip_at(timeline.playhead_secs)?;
+                project
+                    .media_library
+                    .iter()
+                    .find(|a| a.id == clip.asset_id)?;
+                Some(clip.id)
+            })
+            .collect()
+    }
+
+    /// Just the ids [`App::current_preview_audio_clips`] would resolve to, without cloning.
+    fn current_preview_audio_clip_ids(&self) -> Vec<u64> {
+        let project = self.active_project();
+        let timeline = project.timeline();
+        timeline
+            .tracks
+            .iter()
+            .filter(|track| track.kind == TrackKind::Audio && track.visible)
+            .filter_map(|track| {
+                let clip = track.clip_at(timeline.playhead_secs)?;
+                project
+                    .media_library
+                    .iter()
+                    .find(|asset| asset.id == clip.asset_id && asset.has_audio)?;
+                Some(clip.id)
+            })
+            .collect()
+    }
+
+    /// Just the ids [`App::current_preview_text_clips`] would resolve to, without cloning.
+    fn current_preview_text_clip_ids(&self) -> Vec<u64> {
+        let timeline = self.active_project().timeline();
+        timeline
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Text)
+            .filter_map(|t| {
+                t.text_clips.iter().find(|c| {
+                    timeline.playhead_secs >= c.start_secs
+                        && timeline.playhead_secs < c.start_secs + c.duration_secs
+                })
+            })
+            .map(|c| c.id)
+            .collect()
+    }
+
+    /// Just the ids [`App::current_preview_shape_clips`] would resolve to, without cloning.
+    fn current_preview_shape_clip_ids(&self) -> Vec<u64> {
+        let timeline = self.active_project().timeline();
+        timeline
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Shape)
+            .filter_map(|t| {
+                t.shape_clips.iter().find(|c| {
+                    timeline.playhead_secs >= c.start_secs
+                        && timeline.playhead_secs < c.start_secs + c.duration_secs
+                })
+            })
+            .map(|c| c.id)
+            .collect()
     }
 
     /// The clip covering the active sequence's timeline playhead, and the asset it plays from,
@@ -76,6 +176,28 @@ impl App {
             .iter()
             .find(|a| a.id == clip.asset_id)?;
         Some((clip.clone(), asset.clone()))
+    }
+
+    /// Just [`ClipInstance::lut_path`]/[`ClipInstance::vignette_intensity`] for the clip at the
+    /// playhead, without [`App::current_preview_clip`]'s full `ClipInstance`/`MediaAsset` clone
+    /// (which includes every keyframe `Vec` on the clip) or its unused media-library lookup —
+    /// [`App::pump_preview_frame`] calls this every frame during playback and only ever reads
+    /// these two scalar fields, so paying for the rest was pure waste on the hottest UI-thread
+    /// path in the app. Defaults (`String::new()`, `0.0`) when nothing covers the playhead,
+    /// same as the `unwrap_or_default()` the caller used to apply to the full clone.
+    fn current_preview_clip_lut_and_vignette(&self) -> (String, f32) {
+        let timeline = self.active_project().timeline();
+        let Some(track) = timeline
+            .tracks
+            .iter()
+            .find(|t| t.kind == TrackKind::Video && t.visible)
+        else {
+            return (String::new(), 0.0);
+        };
+        let Some(clip) = track.clip_at(timeline.playhead_secs) else {
+            return (String::new(), 0.0);
+        };
+        (clip.lut_path.clone(), clip.vignette_intensity)
     }
 
     /// Every overlay-track (video track index 1+, in track order — matches
@@ -262,6 +384,22 @@ impl App {
     /// (`preview_playing` was already `true`) so crossing a cut doesn't pause playback, just
     /// hitches while the new pipeline opens.
     pub fn ensure_preview_loaded(&mut self) {
+        // Cheap id-only pass first -- called once per frame, including every frame of
+        // uninterrupted playback where nothing at the playhead has actually changed, so this
+        // avoids paying current_preview_clip()'s (and its overlay/audio/text/shape siblings')
+        // full ClipInstance/MediaAsset clone cost (every keyframe Vec on the clip, an asset
+        // clone entirely unused once ids are known to match) on the common no-op case. The full
+        // clone-based resolution below only runs when something actually changed, which is also
+        // exactly when a reopen needs that owned data anyway.
+        if self.current_preview_clip_id() == self.preview_clip_id
+            && self.current_preview_overlay_clip_ids() == self.preview_overlay_clip_ids
+            && self.current_preview_audio_clip_ids() == self.preview_audio_clip_ids
+            && self.current_preview_text_clip_ids() == self.preview_text_clip_ids
+            && self.current_preview_shape_clip_ids() == self.preview_shape_clip_ids
+        {
+            return;
+        }
+
         let current = self.current_preview_clip();
         let (overlays, audio_clips, text_clips, shape_clips) = if current.is_some() {
             (
@@ -278,16 +416,10 @@ impl App {
         let text_ids: Vec<u64> = text_clips.iter().map(|c| c.id).collect();
         let shape_ids: Vec<u64> = shape_clips.iter().map(|c| c.id).collect();
         let current_clip_id = current.as_ref().map(|(c, _)| c.id);
-        if current_clip_id == self.preview_clip_id
-            && overlay_ids == self.preview_overlay_clip_ids
-            && audio_ids == self.preview_audio_clip_ids
-            && text_ids == self.preview_text_clip_ids
-            && shape_ids == self.preview_shape_clip_ids
-        {
-            return;
-        }
         self.preview = None;
         self.preview_texture = None;
+        self.waveform_texture = None;
+        self.vectorscope_texture = None;
         // Not just the background id — `preview_clip_present()` (and the Editor's "preview
         // unavailable" vs. plain placeholder choice) needs to tell "a clip is here but its
         // pipeline failed to open" apart from "there's nothing to preview at all", and an
@@ -420,6 +552,42 @@ impl App {
                 self.preview = Some(preview);
             }
             Err(e) => error!(path = %path.display(), error = %e, "failed to open preview pipeline"),
+        }
+    }
+
+    /// Applies a content-only edit (text/font/color/background/position/highlight — anything
+    /// but `start_secs`/`duration_secs`) on `clip_id` to the live preview without tearing down
+    /// the pipeline: pushes a freshly rasterized buffer into the already-open text branch when
+    /// `clip_id` is part of the currently loaded composited preview
+    /// (`preview_text_clip_ids`). A no-op otherwise — nothing is open yet, or this clip
+    /// isn't currently composited — the caller's edit still lands in the project timeline
+    /// either way, just without a live visual update until the pipeline next reopens (e.g. the
+    /// playhead moving onto/off this clip). Mirrors the "position shouldn't force a rebuild"
+    /// shape [`App::seek_preview`]'s fast path already has, applied to styling edits instead of
+    /// scrubbing.
+    pub(crate) fn refresh_preview_text_content(&mut self, clip_id: u64) {
+        if !self.preview_text_clip_ids.contains(&clip_id) {
+            return;
+        }
+        let playhead = self.active_project().timeline().playhead_secs;
+        let Some(clip) = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Text)
+            .flat_map(|t| &t.text_clips)
+            .find(|c| c.id == clip_id)
+            .cloned()
+        else {
+            return;
+        };
+        let Some(preview) = self.preview.as_mut() else {
+            return;
+        };
+        let local_time_secs = playhead - clip.start_secs;
+        if let Err(error) = preview.refresh_text_overlay(&clip, local_time_secs) {
+            warn!(%error, "failed to refresh preview text style edit");
         }
     }
 
@@ -626,6 +794,45 @@ impl App {
         self.preview_clip_id.is_some()
     }
 
+    /// The live playback audio level (peak/RMS) for the Editor preview panel's meter widget —
+    /// `spec/ROADMAP.md` P4 item 30. Silent default (`AudioLevel::default()`) when no preview
+    /// pipeline is open at all, same as [`avcore::preview::Preview::current_audio_level`]
+    /// already reports when the pipeline is open but nothing has decoded yet (e.g. before the
+    /// first play) or the clip has no audio.
+    pub fn current_audio_level(&self) -> avcore::AudioLevel {
+        self.preview
+            .as_ref()
+            .map(|preview| preview.current_audio_level())
+            .unwrap_or_default()
+    }
+
+    /// Pushes `clip_id`'s current brightness/contrast/saturation live into the running preview
+    /// pipeline instead of waiting for the next incidental reopen — P1 item 3's remaining live-
+    /// preview-update gap (`spec/matrix/performance.md`), scoped to just this one property
+    /// group (the confirmed hot-path violation that motivated it): color-balance sliders are
+    /// dragged continuously, and every other `set_selected_clip_*` effect setter already only
+    /// updates once something else happens to reopen the pipeline anyway, unchanged by this.
+    /// A silent no-op — same as the pre-existing behavior, not a new failure mode — if `clip_id`
+    /// isn't currently previewed at all (background or an overlay branch), or
+    /// [`avcore::preview::Preview::set_live_balance`] finds no live element to update yet (see
+    /// its own doc comment for when that happens).
+    pub(super) fn push_live_balance_update(
+        &mut self,
+        clip_id: u64,
+        brightness: f32,
+        contrast: f32,
+        effective_saturation: f32,
+    ) {
+        let is_previewed = self.preview_clip_id == Some(clip_id)
+            || self.preview_overlay_clip_ids.contains(&clip_id);
+        if !is_previewed {
+            return;
+        }
+        if let Some(preview) = &self.preview {
+            preview.set_live_balance(clip_id, brightness, contrast, effective_saturation);
+        }
+    }
+
     /// Pulls the latest decoded video frame (if any) into `preview_texture`, and — while
     /// playing — mirrors the pipeline's position into the active project's timeline playhead,
     /// converting from the clip-relative position `Preview` reports back to timeline time.
@@ -635,11 +842,43 @@ impl App {
     /// position, continuing playback across the cut. Called once per frame from
     /// [`eframe::App::ui`], before the screens draw.
     pub(super) fn pump_preview_frame(&mut self, ctx: &egui::Context) {
+        // Read before borrowing `self.preview` below -- this is a method call, which needs an
+        // unencumbered `&self` the borrow checker can't reconcile with an already-live
+        // `&self.preview` borrow, even though the two fields are disjoint.
+        let (lut_path, vignette_intensity) = self.current_preview_clip_lut_and_vignette();
+
         let Some(preview) = &self.preview else {
             return;
         };
 
-        if let Some(frame) = preview.current_frame() {
+        if let Some(mut frame) = preview.current_frame() {
+            // P4 item 21 (`spec/ROADMAP.md`) -- CPU-side preview approximation for the two
+            // effects with no matching GStreamer element on any dev machine checked (see
+            // `avcore::preview_effects`'s own doc comment for why only these two, and why this
+            // is an approximation, not bit-exact to the real `lut3d`/`vignette` avfilters export
+            // uses). Applied in place, before upload, so it costs nothing when neither is set.
+            if !lut_path.is_empty() {
+                let needs_reparse = self
+                    .preview_lut_cache
+                    .as_ref()
+                    .is_none_or(|(cached_path, _)| cached_path != &lut_path);
+                if needs_reparse {
+                    let parsed = avcore::Lut3D::load(std::path::Path::new(&lut_path)).ok();
+                    self.preview_lut_cache = Some((lut_path.clone(), parsed));
+                }
+                if let Some((_, Some(lut))) = &self.preview_lut_cache {
+                    avcore::apply_lut_to_rgba(&mut frame.rgba, lut);
+                }
+            }
+            if vignette_intensity > 0.0 {
+                avcore::apply_vignette_to_rgba(
+                    &mut frame.rgba,
+                    frame.width,
+                    frame.height,
+                    vignette_intensity,
+                );
+            }
+
             let image = egui::ColorImage::from_rgba_unmultiplied(
                 [frame.width as usize, frame.height as usize],
                 &frame.rgba,
@@ -649,6 +888,57 @@ impl App {
                 None => {
                     self.preview_texture =
                         Some(ctx.load_texture("preview", image, egui::TextureOptions::LINEAR));
+                }
+            }
+
+            if self.scopes_enabled {
+                let waveform_rgba = avcore::luma_waveform_rgba(
+                    &frame.rgba,
+                    frame.width,
+                    frame.height,
+                    SCOPE_WAVEFORM_SIZE.0,
+                    SCOPE_WAVEFORM_SIZE.1,
+                );
+                let waveform_image = egui::ColorImage::from_rgba_unmultiplied(
+                    [
+                        SCOPE_WAVEFORM_SIZE.0 as usize,
+                        SCOPE_WAVEFORM_SIZE.1 as usize,
+                    ],
+                    &waveform_rgba,
+                );
+                match &mut self.waveform_texture {
+                    Some(texture) => texture.set(waveform_image, egui::TextureOptions::LINEAR),
+                    None => {
+                        self.waveform_texture = Some(ctx.load_texture(
+                            "scope-waveform",
+                            waveform_image,
+                            egui::TextureOptions::LINEAR,
+                        ));
+                    }
+                }
+
+                let vectorscope_rgba = avcore::vectorscope_rgba(
+                    &frame.rgba,
+                    frame.width,
+                    frame.height,
+                    SCOPE_VECTORSCOPE_SIZE,
+                );
+                let vectorscope_image = egui::ColorImage::from_rgba_unmultiplied(
+                    [
+                        SCOPE_VECTORSCOPE_SIZE as usize,
+                        SCOPE_VECTORSCOPE_SIZE as usize,
+                    ],
+                    &vectorscope_rgba,
+                );
+                match &mut self.vectorscope_texture {
+                    Some(texture) => texture.set(vectorscope_image, egui::TextureOptions::LINEAR),
+                    None => {
+                        self.vectorscope_texture = Some(ctx.load_texture(
+                            "scope-vectorscope",
+                            vectorscope_image,
+                            egui::TextureOptions::LINEAR,
+                        ));
+                    }
                 }
             }
         }

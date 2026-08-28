@@ -1,0 +1,17 @@
+{
+  "name": "oca",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Git hooks for oca (formatting only -- the project itself is Rust/C, not Node).",
+  "scripts": {
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.rs": "rustfmt --edition 2021",
+    "*.{c,h}": "clang-format -i"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.10"
+  }
+}

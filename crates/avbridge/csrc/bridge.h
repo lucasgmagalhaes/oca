@@ -118,16 +118,16 @@ typedef void (*ProgressCallback)(void *user_data, double seconds_processed);
 /* Renders `in_path` to `out_path`: video passthrough-copied, audio decoded, normalized
    (loudnorm to target_lufs + a true-peak safety limiter) and re-encoded to AAC 192kbps.
    Equivalent to:
-   ffmpeg -i in_path -af "loudnorm=I=<target_lufs>:TP=-1.0:LRA=11,alimiter=limit=0.95:attack=5:release=50"
-          -c:v copy -c:a aac -b:a 192k out_path
-   Fails with ENCODE_ERR_NO_AUDIO_STREAM if `in_path` has no audio stream.
+   ffmpeg -i in_path -af
+   "loudnorm=I=<target_lufs>:TP=-1.0:LRA=11,alimiter=limit=0.95:attack=5:release=50" -c:v copy -c:a
+   aac -b:a 192k out_path Fails with ENCODE_ERR_NO_AUDIO_STREAM if `in_path` has no audio stream.
 
    progress_cb/progress_user_data may both be NULL to skip progress reporting.
    cancel may be NULL to disable cancellation; otherwise checked between packets — once
    `*cancel` is nonzero, stops and returns ENCODE_CANCELLED without writing a trailer. */
-EncodeStatus avbridge_encode_export(const char *in_path, const char *out_path,
-                                            float target_lufs, ProgressCallback progress_cb,
-                                            void *progress_user_data, const uint8_t *cancel);
+EncodeStatus avbridge_encode_export(const char *in_path, const char *out_path, float target_lufs,
+                                    ProgressCallback progress_cb, void *progress_user_data,
+                                    const uint8_t *cancel);
 
 typedef struct {
     /* UTF-8, NUL-terminated. */
@@ -222,11 +222,13 @@ typedef struct {
    to the CPU (libopenh264) encoder if none open; CPU/1 forces libopenh264; NVENC/2,
    QUICKSYNC/3, AMF/4, VAAPI/5 force that specific hardware encoder, still falling back to CPU
    if it can't open (no compatible GPU/driver present). */
-EncodeStatus avbridge_encode_timeline_export(
-    const ClipSegment *segments, int segment_count, int canvas_width, int canvas_height,
-    int canvas_fps_num, int canvas_fps_den, int64_t canvas_bit_rate_bps, const char *out_path,
-    float target_lufs, int gpu_encoder_preference, ProgressCallback progress_cb,
-    void *progress_user_data, const uint8_t *cancel);
+EncodeStatus avbridge_encode_timeline_export(const ClipSegment *segments, int segment_count,
+                                             int canvas_width, int canvas_height,
+                                             int canvas_fps_num, int canvas_fps_den,
+                                             int64_t canvas_bit_rate_bps, const char *out_path,
+                                             float target_lufs, int gpu_encoder_preference,
+                                             ProgressCallback progress_cb, void *progress_user_data,
+                                             const uint8_t *cancel);
 
 /* Multi-track overlay compositor: composites n_tracks video tracks into a single output.
    track_segs[k] points to an array of track_n_segs[k] ClipSegment entries for track k.
@@ -240,11 +242,10 @@ EncodeStatus avbridge_encode_timeline_export(
    For n_tracks == 1, delegates to avbridge_encode_timeline_export unchanged.
    gpu_encoder_preference has the same meaning as avbridge_encode_timeline_export's. */
 EncodeStatus avbridge_encode_timeline_export_multi(
-    const ClipSegment * const *track_segs, const int *track_n_segs, int n_tracks,
-    int canvas_width, int canvas_height, int canvas_fps_num, int canvas_fps_den,
-    int64_t canvas_bit_rate_bps, const char *out_path, float target_lufs,
-    int gpu_encoder_preference, ProgressCallback progress_cb, void *progress_user_data,
-    const uint8_t *cancel);
+    const ClipSegment *const *track_segs, const int *track_n_segs, int n_tracks, int canvas_width,
+    int canvas_height, int canvas_fps_num, int canvas_fps_den, int64_t canvas_bit_rate_bps,
+    const char *out_path, float target_lufs, int gpu_encoder_preference,
+    ProgressCallback progress_cb, void *progress_user_data, const uint8_t *cancel);
 
 typedef struct {
     /* UTF-8, NUL-terminated source containing an audio stream. */
@@ -257,6 +258,18 @@ typedef struct {
     /* Per-clip gain and playback speed. */
     float gain_db;
     float speed_factor;
+    /* Optional FFmpeg `volume` filter expression (linear multiplier, `t`-keyed) driving a
+       keyframed gain ramp instead of the constant gain_db above -- NULL or empty means "use
+       gain_db unchanged", non-empty overrides it via `volume=<expr>:eval=frame` (see
+       audio_mix.c's build_mix_graph). Built by avcore::keyframe::gain_filter_db_expr from a
+       ClipInstance's gain_keyframes. */
+    const char *gain_keyframe_expr;
+    /* Audio-ducking role (P2 item 6, "Auto Ducking"): 0 = normal (mixed in as-is), 1 = trigger
+       (the sidechain signal that ducks target branches, and still plays itself), 2 = target
+       (ducked under trigger branches via sidechaincompress). Derived from the source track's
+       avcore::timeline::AudioRole (Mic -> trigger, Music -> target, everything else -> normal)
+       -- see audio_mix.c's build_mix_graph for the filter-graph topology this drives. */
+    int duck_role;
 } AudioSegment;
 
 typedef enum {
@@ -277,9 +290,9 @@ typedef enum {
    before the shared afftdn/loudnorm/limiter chain. Inputs without an audio stream are skipped;
    returns AUDIO_MIX_ERR_NO_AUDIO when none remain. timeline_duration_secs trims the final mix
    so an audio clip cannot extend the output past the rendered video. */
-AudioMixStatus avbridge_mix_audio_timeline(
-    const AudioSegment *segments, int segment_count, double timeline_duration_secs,
-    const char *out_path, float target_lufs, const uint8_t *cancel);
+AudioMixStatus avbridge_mix_audio_timeline(const AudioSegment *segments, int segment_count,
+                                           double timeline_duration_secs, const char *out_path,
+                                           float target_lufs, const uint8_t *cancel);
 
 typedef enum {
     MEDIA_MUX_OK = 0,
@@ -295,8 +308,8 @@ typedef enum {
 /* Stream-copies the first video stream from video_path and the first audio stream from
    audio_path into out_path. Used after avbridge_mix_audio_timeline so replacing a timeline's
    audio never incurs another lossy video encode. */
-MediaMuxStatus avbridge_mux_video_audio(
-    const char *video_path, const char *audio_path, const char *out_path);
+MediaMuxStatus avbridge_mux_video_audio(const char *video_path, const char *audio_path,
+                                        const char *out_path);
 
 typedef enum {
     LOUDNESS_OK = 0,
@@ -324,8 +337,7 @@ typedef enum {
    NOT thread-safe: installs a process-global libavutil log callback for the call's duration
    (reset to av_log_default_callback before returning) — do not call this from multiple
    threads concurrently. */
-LoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json,
-                                                 size_t out_json_len);
+LoudnessStatus avbridge_measure_loudness(const char *in_path, char *out_json, size_t out_json_len);
 
 typedef enum {
     PROXY_OK = 0,
@@ -358,8 +370,7 @@ typedef enum {
    ffmpeg -i in_path -vf scale=-2:<target_height> -c:v libopenh264 -c:a aac -b:a 128k out_path
    Fails with PROXY_ERR_NO_VIDEO_STREAM if in_path has no video stream. Audio is optional —
    a video-only input produces a video-only proxy, no error. */
-ProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path,
-                                            int target_height);
+ProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path, int target_height);
 
 typedef enum {
     WAVEFORM_OK = 0,
@@ -384,8 +395,8 @@ typedef enum {
    ffmpeg -i in_path -af "aformat=sample_fmts=flt:channel_layouts=mono" -f null -
    with peak tracking bolted on, but nothing is written or re-encoded.
    Fails with WAVEFORM_ERR_NO_AUDIO_STREAM if in_path has no audio stream. */
-WaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_count,
-                                                  float *out_min, float *out_max);
+WaveformStatus avbridge_generate_waveform(const char *in_path, int bucket_count, float *out_min,
+                                          float *out_max);
 
 typedef enum {
     TEXT_OVERLAY_OK = 0,
@@ -407,22 +418,31 @@ typedef struct {
     double duration_secs;
     /* UTF-8, NUL-terminated path to a full-canvas RGBA PNG. Must not be NULL. */
     const char *overlay_path;
+    /* NULL or empty means "always fully opaque, same as before this field existed" -- a
+       complete geq-expression-language fragment (e.g. "if(lt((T-1.000000),..." from
+       avcore::keyframe::text_opacity_alpha_expr) multiplied against the PNG's own alpha
+       channel. See avbridge_apply_text_overlays' doc comment for where this is spliced in. */
+    const char *opacity_keyframe_expr;
 } TextSegment;
 
 /* Opens `in_path` (an already-rendered H.264/AAC mp4), composites PNG overlays for every
    segment in `segments` using an enable='between(t,start,end)' avfilter expression, and writes
    the result to `out_path`. Each overlay is already rasterized as a transparent PNG so preview
-   and export share the exact same font/background renderer. Video is decoded, filtered, and
-   re-encoded via libopenh264; audio is stream-copied unchanged.
+   and export share the exact same font/background renderer. When a segment's
+   opacity_keyframe_expr is non-empty, a geq stage multiplies the PNG's own alpha channel by that
+   expression right after the movie source, before the overlay node -- both are in the same
+   filtergraph with a shared time origin (t=0 at graph start, same as the main video), so the
+   geq's own per-pixel T there is timeline-absolute, matching what the expression was built
+   against. Video is decoded, filtered, and re-encoded via libopenh264; audio is stream-copied
+   unchanged.
    canvas_width/canvas_height and canvas_fps_num/den are
    used only to size the output encoder context — they must match the actual rendered video.
 
    Returns TEXT_OVERLAY_OK immediately if segment_count <= 0 without touching any files. */
-TextOverlayStatus avbridge_apply_text_overlays(
-    const char *in_path, const char *out_path,
-    const TextSegment *segments, int segment_count,
-    int canvas_width, int canvas_height,
-    int canvas_fps_num, int canvas_fps_den);
+TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *out_path,
+                                               const TextSegment *segments, int segment_count,
+                                               int canvas_width, int canvas_height,
+                                               int canvas_fps_num, int canvas_fps_den);
 
 /* One geometric shape to composite over an already-rendered export video. `filter_desc` is a
    *complete*, ready-to-chain avfilter node description (a `geq=lum=...:cb=...:cr=...:enable=
@@ -442,11 +462,10 @@ typedef struct {
    decode/filter/re-encode-video + stream-copy-audio approach), but chains each segment's
    pre-built `geq` filter node instead of loading a pre-rasterized PNG. Returns
    TEXT_OVERLAY_OK immediately if segment_count <= 0 without touching any files. */
-TextOverlayStatus avbridge_apply_shape_overlays(
-    const char *in_path, const char *out_path,
-    const ShapeSegment *segments, int segment_count,
-    int canvas_width, int canvas_height,
-    int canvas_fps_num, int canvas_fps_den);
+TextOverlayStatus avbridge_apply_shape_overlays(const char *in_path, const char *out_path,
+                                                const ShapeSegment *segments, int segment_count,
+                                                int canvas_width, int canvas_height,
+                                                int canvas_fps_num, int canvas_fps_den);
 
 typedef enum {
     MATTE_OK = 0,
@@ -483,8 +502,7 @@ typedef enum {
    0, and MATTE_ERR_ODD_DIMENSIONS if width or height is odd, without touching out_path either
    way. */
 MatteStatus avbridge_encode_matte_video(const uint8_t *luma_frames, int frame_count, int width,
-                                         int height, int fps_num, int fps_den,
-                                         const char *out_path);
+                                        int height, int fps_num, int fps_den, const char *out_path);
 
 typedef enum {
     PCM_OK = 0,
@@ -502,7 +520,8 @@ typedef enum {
 
 /* Decodes `in_path`'s first audio stream to 16kHz mono 32-bit float PCM samples — the exact
    input format whisper.cpp (via the `whisper-rs` crate) requires. Equivalent to
-   `ffmpeg -i in_path -af "aresample=16000,aformat=sample_fmts=flt:channel_layouts=mono" -f f32le -`.
+   `ffmpeg -i in_path -af "aresample=16000,aformat=sample_fmts=flt:channel_layouts=mono" -f f32le
+   -`.
 
    On success, `*out_samples` points to a buffer of `*out_sample_count` floats, allocated with
    malloc() and owned by the caller — free it with `avbridge_free_pcm_buffer()`, not `free()`
@@ -510,7 +529,7 @@ typedef enum {
    against). Both out-params are left untouched on any non-OK status.
    Fails with `PCM_ERR_NO_AUDIO_STREAM` if `in_path` has no audio stream. */
 PcmStatus avbridge_extract_pcm_16k_mono(const char *in_path, float **out_samples,
-                                             int64_t *out_sample_count);
+                                        int64_t *out_sample_count);
 
 /* Frees a buffer previously returned via `avbridge_extract_pcm_16k_mono`'s `out_samples`.
    Safe to call with `samples == NULL` (no-op). */

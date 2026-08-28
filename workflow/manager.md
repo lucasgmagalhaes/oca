@@ -66,6 +66,9 @@ order | task_id     | semantic_type  | scope         | description
 
 ## Behavior rules
 
+- Use `docs/code-quality/README.md` as a router. Load `design-principles.md` for architecture or
+  refactor planning, and load performance or security guidance only when their triggers match.
+  Convert applicable rules into verifiable acceptance criteria rather than generic "best practices."
 - If the feature scope is ambiguous, **list the ambiguities and stop**. Don't assume.
 - If a task comes back with `size_violation` from the Reviewer or Git Agent, split it
   immediately and update `commit_plan.md` before redelegating.

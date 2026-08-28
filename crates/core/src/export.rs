@@ -65,6 +65,82 @@ impl ExportAspectRatio {
     }
 }
 
+/// A named export preset bundling a target aspect ratio (and, through it,
+/// [`ExportAspectRatio::dims_or`]'s fixed resolution) with a loudness normalization target
+/// under one platform-recognizable name — "pick once for TikTok" instead of separately setting
+/// an aspect ratio and a LUFS target and hoping they're the right combination. Every preset here
+/// happens to resolve to the same numbers today (1080x1920, -14 LUFS — the vertical/shorts
+/// convention this codebase's own `LUFS_PROFILES` already labels "YouTube"), which is a real
+/// current fact about these three platforms' delivery specs, not an assumption this type bakes
+/// in structurally: each variant carries its own [`Self::settings`] independently, so a future
+/// platform (or a spec change for one of these three) doesn't need this type's shape to change,
+/// only one match arm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlatformExportPreset {
+    YoutubeShorts,
+    InstagramReels,
+    TikTok,
+}
+
+impl PlatformExportPreset {
+    pub const ALL: &'static [PlatformExportPreset] = &[
+        PlatformExportPreset::YoutubeShorts,
+        PlatformExportPreset::InstagramReels,
+        PlatformExportPreset::TikTok,
+    ];
+
+    /// Platform name as every one of them brands it — a proper noun, identical in every locale,
+    /// same "not routed through `i18n::Text`" convention `ui`'s own `LUFS_PROFILES` labels use.
+    pub fn label(self) -> &'static str {
+        match self {
+            PlatformExportPreset::YoutubeShorts => "YouTube Shorts",
+            PlatformExportPreset::InstagramReels => "Instagram Reels",
+            PlatformExportPreset::TikTok => "TikTok",
+        }
+    }
+
+    /// This preset's target aspect ratio + loudness normalization target.
+    pub fn settings(self) -> (ExportAspectRatio, f32) {
+        match self {
+            PlatformExportPreset::YoutubeShorts => (ExportAspectRatio::Portrait, -14.0),
+            PlatformExportPreset::InstagramReels => (ExportAspectRatio::Portrait, -14.0),
+            PlatformExportPreset::TikTok => (ExportAspectRatio::Portrait, -14.0),
+        }
+    }
+}
+
+#[cfg(test)]
+mod platform_export_preset_test {
+    use super::*;
+
+    #[test]
+    fn every_preset_targets_the_vertical_aspect_ratio() {
+        for preset in PlatformExportPreset::ALL {
+            let (aspect_ratio, _) = preset.settings();
+            assert_eq!(aspect_ratio, ExportAspectRatio::Portrait);
+        }
+    }
+
+    #[test]
+    fn every_preset_has_a_distinct_non_empty_label() {
+        let labels: Vec<&str> = PlatformExportPreset::ALL
+            .iter()
+            .map(|p| p.label())
+            .collect();
+        for label in &labels {
+            assert!(!label.is_empty());
+        }
+        let mut deduped = labels.clone();
+        deduped.sort_unstable();
+        deduped.dedup();
+        assert_eq!(
+            deduped.len(),
+            labels.len(),
+            "preset labels must be unique so the UI picker never shows two identical entries"
+        );
+    }
+}
+
 /// A queued render's lifecycle. `Rendering`/`Paused` carry a snapshot progress percentage;
 /// the Fase 5 queue drives these via the background worker channel.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

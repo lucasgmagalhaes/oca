@@ -28,25 +28,35 @@
 pub mod auto_reframe;
 pub mod background_removal;
 pub mod bundle;
+pub mod collab_bundle;
 pub mod export;
+pub mod frame_sampler;
+pub mod highlight_detection;
 pub mod keyframe;
 pub mod loudness;
 pub mod media;
 pub mod motion_tracking;
+pub mod multicam_sync;
 pub mod overlay_render;
 pub mod persistence;
 pub mod preview;
+pub mod preview_effects;
 pub mod probe;
 pub mod project;
 pub mod proxy;
 pub mod render;
+pub mod scene_detection;
+pub mod scopes;
 pub mod shape_render;
+pub mod silence_detection;
+pub mod smart_bins;
 pub mod sound_library;
 pub mod subtitles;
 pub mod telemetry;
 pub mod text_metrics;
 pub mod text_to_speech;
 pub mod timeline;
+pub mod timeline_window;
 pub mod transcribe;
 pub mod undo;
 pub mod update_check;
@@ -56,24 +66,39 @@ pub mod youtube_download;
 pub use auto_reframe::{
     compute_reframe_crop, detect_faces, main_subject_center, CropRect, FaceBox, ReframeError,
 };
-pub use avbridge::{AudioSegment, Canvas, ClipSegment, GpuEncoderPreference, ShapeSegment};
+pub use avbridge::{
+    extract_pcm_16k_mono, AudioSegment, Canvas, ClipSegment, GpuEncoderPreference, PcmError,
+    ShapeSegment,
+};
 pub use background_removal::{encode_matte_video, segment_person, MatteEncodeError, SegmentError};
 pub use bundle::{
     bundled_resource_path, bundled_resources_dir, configure_bundled_runtime, resource_path_in,
     validate_bundled_resources, BundledResource, MissingBundleResources,
 };
-pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus};
+pub use collab_bundle::{export_collab_bundle, import_collab_bundle, CollabBundleError};
+pub use export::{ExportAspectRatio, ExportJob, ExportJobStatus, PlatformExportPreset};
+pub use frame_sampler::FrameSampler;
+pub use highlight_detection::{
+    clip_amplitude_samples, detect_highlight_candidates, HighlightCandidate,
+    TimelineAmplitudeSample, DEFAULT_HIGHLIGHT_GRID_SECS, DEFAULT_HIGHLIGHT_MIN_DURATION_SECS,
+    DEFAULT_HIGHLIGHT_THRESHOLD_LINEAR,
+};
 pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
 pub use motion_tracking::{
     rgba_to_gray, track_region, tracked_positions_to_keyframes, GrayFrame, TrackedPosition,
 };
+pub use multicam_sync::{
+    amplitude_envelope, best_lag_windows, compute_sync_offset_secs, DEFAULT_ENVELOPE_WINDOW_SECS,
+    DEFAULT_MAX_SYNC_OFFSET_SECS,
+};
 pub use persistence::{
     from_ocproj_bytes, from_ocqueue_bytes, load_project_from_file, save_project_to_file,
     to_ocproj_bytes, to_ocqueue_bytes, PersistError,
 };
-pub use preview::{Preview, PreviewError};
+pub use preview::{AudioLevel, Preview, PreviewError};
+pub use preview_effects::{apply_lut_to_rgba, apply_vignette_to_rgba, Lut3D, LutParseError};
 pub use probe::{probe_media, ProbeError, ProbedMedia};
 pub use project::{PanelLayout, Project, Recency, Sequence, SequenceExportSettings};
 pub use proxy::{ensure_proxy, PreviewQuality, ProxyError};
@@ -83,7 +108,14 @@ pub use render::{
     resolve_shape_segments, resolve_text_segments, resolve_timeline_segments,
     resolve_timeline_segments_multi, RenderError, RenderOutcome, TextSegment,
 };
+pub use scene_detection::{detect_scene_cuts, SceneCut, DEFAULT_SCENE_CUT_THRESHOLD};
+pub use scopes::{luma_waveform_rgba, vectorscope_rgba};
 pub use shape_render::{build_shape_filter_desc, point_in_polygon, ShapeRenderInput};
+pub use silence_detection::{
+    clip_silence_gaps, detect_silence_gaps, SilenceGap, DEFAULT_MIN_SILENCE_SECS,
+    DEFAULT_SILENCE_THRESHOLD_LINEAR,
+};
+pub use smart_bins::SmartBin;
 pub use sound_library::{scan_library_dir, LibraryTrack, SoundCategory};
 pub use subtitles::export_srt;
 pub use telemetry::{record_event, ResourceSampler, TelemetryError, TelemetryEvent};
@@ -91,9 +123,10 @@ pub use text_to_speech::{
     load_voice_config, phonemes_to_ids, synthesize, write_wav, PiperVoiceConfig, TtsError,
 };
 pub use timeline::{
-    ClipFormatting, ClipInstance, LayerTemplate, ShapeClip, ShapeKind, TextClip, TextFontFamily,
-    TextFontStyle, Timeline, Track, TrackKind,
+    AudioRole, ClipFormatting, ClipInstance, LayerTemplate, Marker, MarkerKind, ShapeClip,
+    ShapeKind, TextClip, TextFontFamily, TextFontStyle, Timeline, Track, TrackKind,
 };
+pub use timeline_window::extract_timeline_window;
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};
 pub use update_check::{
     apply_update, auto_update_supported, expected_update_asset_name, fetch_latest_release,

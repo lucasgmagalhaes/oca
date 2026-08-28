@@ -306,6 +306,99 @@ impl App {
         self.with_selected_clip_mut(|clip| clip.opacity_keyframes = keyframes);
     }
 
+    /// Replaces `selected_clip_id`'s audio gain keyframes
+    /// ([`avcore::timeline::ClipInstance::gain_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_position_keyframes`]. Values are clamped to
+    /// [`GAIN_DB_RANGE`], matching the constant `gain_db` slider this overrides when non-empty.
+    pub fn set_selected_clip_gain_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf.value.clamp(*GAIN_DB_RANGE.start(), *GAIN_DB_RANGE.end());
+        }
+        self.with_selected_clip_mut(|clip| clip.gain_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s brightness keyframes
+    /// ([`avcore::timeline::ClipInstance::brightness_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_position_keyframes`]. Values are clamped to
+    /// [`BRIGHTNESS_RANGE`], matching the constant `brightness` slider this overrides when
+    /// non-empty.
+    pub fn set_selected_clip_brightness_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf
+                .value
+                .clamp(*BRIGHTNESS_RANGE.start(), *BRIGHTNESS_RANGE.end());
+        }
+        self.with_selected_clip_mut(|clip| clip.brightness_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s contrast keyframes
+    /// ([`avcore::timeline::ClipInstance::contrast_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_position_keyframes`]. Values are clamped to
+    /// [`CONTRAST_RANGE`].
+    pub fn set_selected_clip_contrast_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf
+                .value
+                .clamp(*CONTRAST_RANGE.start(), *CONTRAST_RANGE.end());
+        }
+        self.with_selected_clip_mut(|clip| clip.contrast_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s saturation keyframes
+    /// ([`avcore::timeline::ClipInstance::saturation_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_position_keyframes`]. Values are clamped to
+    /// [`SATURATION_RANGE`].
+    pub fn set_selected_clip_saturation_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf
+                .value
+                .clamp(*SATURATION_RANGE.start(), *SATURATION_RANGE.end());
+        }
+        self.with_selected_clip_mut(|clip| clip.saturation_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s crop-x keyframes
+    /// ([`avcore::timeline::ClipInstance::crop_x_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_position_keyframes`]. Values are clamped to `[0.0, 1.0]`,
+    /// matching [`Self::set_selected_clip_crop`]'s existing constant clamp.
+    pub fn set_selected_clip_crop_x_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf.value.clamp(0.0, 1.0);
+        }
+        self.with_selected_clip_mut(|clip| clip.crop_x_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s crop-y keyframes
+    /// ([`avcore::timeline::ClipInstance::crop_y_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_crop_x_keyframes`].
+    pub fn set_selected_clip_crop_y_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf.value.clamp(0.0, 1.0);
+        }
+        self.with_selected_clip_mut(|clip| clip.crop_y_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s crop-width keyframes
+    /// ([`avcore::timeline::ClipInstance::crop_w_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_crop_x_keyframes`]. Values are floored at [`CROP_MIN_SIZE`],
+    /// matching [`Self::set_selected_clip_crop`]'s existing constant clamp.
+    pub fn set_selected_clip_crop_w_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf.value.clamp(CROP_MIN_SIZE, 1.0);
+        }
+        self.with_selected_clip_mut(|clip| clip.crop_w_keyframes = keyframes);
+    }
+
+    /// Replaces `selected_clip_id`'s crop-height keyframes
+    /// ([`avcore::timeline::ClipInstance::crop_h_keyframes`]) wholesale — see
+    /// [`Self::set_selected_clip_crop_x_keyframes`].
+    pub fn set_selected_clip_crop_h_keyframes(&mut self, mut keyframes: Vec<Keyframe<f32>>) {
+        for kf in &mut keyframes {
+            kf.value = kf.value.clamp(CROP_MIN_SIZE, 1.0);
+        }
+        self.with_selected_clip_mut(|clip| clip.crop_h_keyframes = keyframes);
+    }
+
     /// Adds one opacity keyframe at the current timeline playhead position, for the selected
     /// clip — what `Ctrl+O` (`request.md`'s Fase 6 key binding spec, "adicionar marcador de
     /// opacidade") does. The new marker's value is the clip's own current effective opacity at

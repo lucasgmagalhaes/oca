@@ -1,0 +1,122 @@
+// Copyright (C) 2026 by Lucas Gomes <lucasgsm88@gmail.com>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 2 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+use std::path::{Path, PathBuf};
+
+use avbridge::{apply_text_overlays, probe, StreamKind, TextOverlaySegment};
+
+fn fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
+}
+
+/// A 4x4 fully-opaque red RGBA PNG -- content doesn't matter for this test, only that the file
+/// exists and decodes, same as any other pre-rasterized text overlay `avbridge_apply_text_overlays`
+/// consumes.
+fn write_test_overlay_png(path: &Path) {
+    let width = 4u32;
+    let height = 4u32;
+    let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+    for _ in 0..(width * height) {
+        rgba.extend_from_slice(&[255, 0, 0, 255]);
+    }
+    image::save_buffer_with_format(
+        path,
+        &rgba,
+        width,
+        height,
+        image::ColorType::Rgba8,
+        image::ImageFormat::Png,
+    )
+    .unwrap();
+}
+
+#[test]
+fn applies_a_keyframed_opacity_fade_to_a_text_overlay() {
+    let out = std::env::temp_dir().join("avbridge_text_overlay_opacity_test.mp4");
+    let overlay_png = std::env::temp_dir().join("avbridge_text_overlay_opacity_test.png");
+    let _ = std::fs::remove_file(&out);
+    write_test_overlay_png(&overlay_png);
+
+    let source = fixture("video.mp4");
+    let probed = probe(&source).unwrap();
+    let (width, height) = probed.resolution.unwrap();
+    let fps = probed.fps.unwrap();
+
+    let segments = vec![TextOverlaySegment {
+        start_secs: 0.0,
+        duration_secs: probed.duration_secs.max(0.5),
+        overlay_path: overlay_png.clone(),
+        // Same shape keyframe::text_opacity_alpha_expr would build for a 0->1 fade.
+        opacity_keyframe_expr: "if(lt((T-0.000000),0.000000),0.0000000,\
+                                 if(between((T-0.000000),0.000000,0.500000),\
+                                 (0.0000000+2.0000000*((T-0.000000)-0.000000)),1.0000000))"
+            .to_string(),
+    }];
+
+    let result = apply_text_overlays(
+        &source,
+        &out,
+        &segments,
+        width,
+        height,
+        fps.round() as u32,
+        1,
+    );
+    assert!(result.is_ok(), "apply_text_overlays failed: {result:?}");
+    assert!(out.exists());
+    let out_info = probe(&out).unwrap();
+    assert_eq!(out_info.kind, StreamKind::Video);
+
+    let _ = std::fs::remove_file(&out);
+    let _ = std::fs::remove_file(&overlay_png);
+}
+
+#[test]
+fn applies_a_text_overlay_with_no_opacity_expr_unchanged() {
+    // Confirms the has_fade == false branch (the unanimated common case, same filter graph as
+    // before opacity keyframes existed) still works.
+    let out = std::env::temp_dir().join("avbridge_text_overlay_static_test.mp4");
+    let overlay_png = std::env::temp_dir().join("avbridge_text_overlay_static_test.png");
+    let _ = std::fs::remove_file(&out);
+    write_test_overlay_png(&overlay_png);
+
+    let source = fixture("video.mp4");
+    let probed = probe(&source).unwrap();
+    let (width, height) = probed.resolution.unwrap();
+    let fps = probed.fps.unwrap();
+
+    let segments = vec![TextOverlaySegment {
+        start_secs: 0.0,
+        duration_secs: probed.duration_secs.max(0.5),
+        overlay_path: overlay_png.clone(),
+        opacity_keyframe_expr: String::new(),
+    }];
+
+    let result = apply_text_overlays(
+        &source,
+        &out,
+        &segments,
+        width,
+        height,
+        fps.round() as u32,
+        1,
+    );
+    assert!(result.is_ok(), "apply_text_overlays failed: {result:?}");
+
+    let _ = std::fs::remove_file(&out);
+    let _ = std::fs::remove_file(&overlay_png);
+}

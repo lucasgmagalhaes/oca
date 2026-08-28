@@ -13,6 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::keyframe::{self, Keyframe, Position};
@@ -30,6 +32,37 @@ pub enum TrackKind {
     /// Fase 4 "Efeitos visuais" umbrella, a graphic-element counterpart to text overlays). No
     /// media assets are placed here — only `shape_clips`.
     Shape,
+}
+
+/// What kind of audio source a [`Track`] carries — user-set metadata (a track header picker),
+/// not inferred. `Video`/`Audio` tracks both carry real audio (a video capture's own embedded
+/// game audio counts) and both can be tagged; `Text`/`Shape` tracks stay `Unspecified` since
+/// they never carry audio at all. Exists so a feature that needs to reason about *which* track
+/// is which audio source — D2 (`spec/architecture/differentiators.md`, highlight detection
+/// needs to correlate simultaneous game-audio + mic spikes) and, later, multicam sync — has an
+/// actual answer instead of guessing from track order or name. `#[default]` `Unspecified` so an
+/// untagged/older-saved project's tracks are simply invisible to those features rather than
+/// misclassified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum AudioRole {
+    #[default]
+    Unspecified,
+    GameAudio,
+    Mic,
+    Music,
+}
+
+impl AudioRole {
+    /// Maps this role to the integer code used in [`avbridge::AudioSegment::duck_role`] and the
+    /// `AudioSegment.duck_role` C field (P2 item 6, "Audio ducking") — `Mic` is the sidechain
+    /// trigger, `Music` is what gets ducked under it, everything else mixes in unducked.
+    pub fn to_duck_role_code(self) -> u8 {
+        match self {
+            Self::Unspecified | Self::GameAudio => 0,
+            Self::Mic => 1,
+            Self::Music => 2,
+        }
+    }
 }
 
 /// Bundled font family used by a [`TextClip`]. Every family is shipped with oca under the
@@ -143,6 +176,22 @@ pub struct TextClip {
     /// rather than an invisible/transparent black.
     #[serde(default = "default_highlight_color")]
     pub highlight_color_rgba: [u8; 4],
+    /// General opacity fade over this clip's own on-timeline duration — the first (and, for
+    /// this pass, only) slice of P4 item 34's `TextClip` scope, per `spec/ROADMAP.md`. Position/
+    /// scale/rotation animation stay out of scope: `TextClip`'s export path pre-rasterizes a
+    /// full-canvas RGBA PNG per segment (`crate::overlay_render::render_text_segment_rgba`),
+    /// with position/size baked into the raster itself at generation time, not a moving overlay
+    /// — animating those would mean restructuring toward a small sprite +
+    /// `overlay=x=<expr>:y=<expr>`, a materially bigger lift. Opacity is different: the raster
+    /// already carries a real alpha channel (transparent background around the text/background
+    /// box), so a fade is just an alpha *multiplier* applied to the existing pixels in
+    /// `avbridge::apply_text_overlays`'s filter graph (`keyframe::text_opacity_alpha_expr`) —
+    /// zero changes to the Rust-side rasterization or highlight-layout code this doc comment's
+    /// sibling fields depend on. Empty means "no fade, same static visibility window as
+    /// before" — the exact same filter graph an unanimated `TextClip` always had.
+    /// `#[serde(default)]` so older saved projects load with no fade.
+    #[serde(default)]
+    pub opacity_keyframes: Vec<Keyframe<f32>>,
 }
 
 fn default_text_background_padding() -> f32 {
@@ -251,12 +300,50 @@ pub struct ShapeClip {
     /// Center, as a `0.0..=1.0` fraction of canvas width/height.
     pub center_x: f32,
     pub center_y: f32,
+    /// General keyframe animation for this shape's center position over its own on-timeline
+    /// duration, per the keyframe-expansion gap found while surveying what else the existing
+    /// keyframe system could drive (`spec/ROADMAP.md` P4 item 34) — the first slice of that
+    /// item to ship, since `ShapeClip`'s export path (a self-contained `geq` expression built
+    /// entirely in Rust, see `crate::shape_render`) turned out to already support a `T`-keyed
+    /// per-pixel expression without any FFI/C changes, unlike `TextClip`'s pre-rasterized-PNG
+    /// overlay approach (not yet animatable, a materially bigger restructuring — still not
+    /// done). Each field independently overrides its own constant (`center_x`/`center_y`) when
+    /// non-empty, same "keyframes win when present" relationship every other keyframe field in
+    /// this codebase already has. `#[serde(default)]` so older saved projects load with no
+    /// position animation.
+    #[serde(default)]
+    pub center_x_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub center_y_keyframes: Vec<Keyframe<f32>>,
     /// Size, as a `0.0..=1.0` fraction of canvas width/height — what dragging a resize handle
     /// changes.
     pub width: f32,
     pub height: f32,
+    /// General keyframe animation for width/height over this shape's own on-timeline duration —
+    /// the rest of `spec/ROADMAP.md` P4 item 34's `ShapeClip` scope, shipped after position
+    /// animation. `shape_render::inside_expr`'s geometry math (`ellipse_inside_expr`/
+    /// `polygon_inside_expr`) was reworked to accept `geq`-expression-language sub-expressions
+    /// for the half-extents instead of literal `f64`s, so the same multiply-through-avoid-
+    /// division trick the static case always used still applies verbatim — an unkeyframed
+    /// `width`/`height` degenerates back to the same plain numeric literal
+    /// `keyframe::shape_axis_expr` already returns for the unkeyframed position case, so the
+    /// static-shape math is unchanged in that (still the common) case. `#[serde(default)]` so
+    /// older saved projects load with no size animation.
+    #[serde(default)]
+    pub width_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub height_keyframes: Vec<Keyframe<f32>>,
     /// Clockwise rotation around the shape's own center, in degrees.
     pub rotation_deg: f32,
+    /// General keyframe animation for `rotation_deg` over this shape's own on-timeline
+    /// duration — the last piece of P4 item 34's `ShapeClip` scope. Unlike width/height, this
+    /// doesn't touch `inside_expr` at all: only the local-frame rotation (`rx`/`ry` in
+    /// `shape_render::build_shape_filter_desc`) changes, from Rust-precomputed `sin`/`cos`
+    /// literals to `geq`'s own `sin(...)`/`cos(...)`/`PI` expression-language functions (all
+    /// confirmed present in FFmpeg's expression evaluator, not assumed) evaluated per pixel.
+    /// `#[serde(default)]` so older saved projects load with no rotation animation.
+    #[serde(default)]
+    pub rotation_keyframes: Vec<Keyframe<f32>>,
     /// RGBA fill/stroke color: `[r, g, b, a]`, each 0–255. Alpha 255 = fully opaque.
     pub color_rgba: [u8; 4],
     /// Outline thickness in pixels. `0.0` = filled shape; `> 0.0` = outline only, that thick
@@ -334,6 +421,13 @@ pub struct ClipInstance {
     /// loads, every clip in it just standalone (`None`).
     #[serde(default)]
     pub composite_id: Option<u64>,
+    /// Optional RGB color label for this block, per `matrix/competitor-parity.md`'s 2026-08-27
+    /// update (`spec/ROADMAP.md` P4 item 27) — a purely cosmetic at-a-glance organization aid
+    /// (Premiere's clip labels, DaVinci's clip *and* track color), painted as the timeline
+    /// block's fill color in place of its usual kind-based color when set. `None` = use the
+    /// usual coloring. `#[serde(default)]` so older saved projects load with no label.
+    #[serde(default)]
+    pub color_label: Option<[u8; 3]>,
     /// Volume adjustment in decibels applied to this block's audio, independent of every other
     /// clip — per `request.md`'s Fase 4 "ganho de volume por bloco" spec. `0.0` is unity gain.
     /// Feeds the timeline waveform display (`ui`'s `draw_waveform`, scaled by
@@ -394,6 +488,29 @@ pub struct ClipInstance {
     pub crop_w: f32,
     #[serde(default = "default_crop_extent")]
     pub crop_h: f32,
+    /// General keyframe animation for this block's crop rectangle over time (a moving/resizing
+    /// pan window), per the keyframe-expansion gap found while surveying what else the existing
+    /// keyframe system could drive (`spec/ROADMAP.md` P4 item 33) — independent of
+    /// [`ClipInstance::scale_keyframes`]'s Ken-Burns zoom (a single symmetric zoom factor about
+    /// the frame center), this animates all four crop axes independently. Each field is
+    /// independent: a non-empty list overrides that axis's own constant field above (same
+    /// "keyframes win when present" relationship [`ClipInstance::gain_keyframes`] has with
+    /// `gain_db`). Wired into export ([`crate::keyframe::crop_filter_expr`], a `geq`-based
+    /// per-pixel approach — see that function's own doc comment for why, over `crop`+
+    /// `eval=frame`), spliced into [`ClipInstance::keyframe_video_filter_chain`] alongside
+    /// scale/rotation/opacity/color-balance rather than [`ClipInstance::video_filter_chain`]'s
+    /// own static `crop` stage, which this field being non-empty on any axis suppresses instead
+    /// of double-emitting (same pattern [`ClipInstance::brightness_keyframes`] established for
+    /// the static `eq` stage). Not yet wired into live preview. `#[serde(default)]` so older
+    /// saved projects load with no crop animation (using the constant fields as before).
+    #[serde(default)]
+    pub crop_x_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub crop_y_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub crop_w_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub crop_h_keyframes: Vec<Keyframe<f32>>,
     /// Layer mask shape ([`MaskShape::None`] by default — unmasked). Independent of the
     /// rectangular crop above; a block can be both cropped and masked. Wired into export
     /// ([`ClipInstance::video_filter_chain`]'s `geq`-based alpha stage) but, like
@@ -447,6 +564,28 @@ pub struct ClipInstance {
     /// `#[serde(default = ..)]` so older saved projects load unchanged.
     #[serde(default = "default_unity_multiplier")]
     pub saturation: f32,
+    /// General keyframe animation for this block's brightness/contrast/saturation over time, per
+    /// the keyframe-expansion gap found while surveying what else the existing keyframe system
+    /// could drive (`spec/ROADMAP.md` P4 item 32). Each field is independent: a non-empty list
+    /// overrides that axis's own constant field above (same "keyframes win when present"
+    /// relationship [`ClipInstance::gain_keyframes`] has with `gain_db`); an axis left empty
+    /// keeps using its constant. Wired into export
+    /// ([`crate::keyframe::color_balance_filter_expr`], spliced into
+    /// [`ClipInstance::keyframe_video_filter_chain`] alongside scale/rotation/opacity rather
+    /// than [`ClipInstance::video_filter_chain`]'s own static `eq` stage, which this field being
+    /// non-empty on any axis suppresses instead of double-emitting) — a real, narrow ordering
+    /// caveat: the animated `eq` stage runs at the *front* of the per-clip filter chain (with
+    /// scale/rotation/opacity) rather than its usual position after crop/deflicker/
+    /// stabilization, so a clip combining color-grading keyframes with any of those three sees
+    /// its color grading applied to the pre-crop/pre-deflicker/pre-stabilization frame instead.
+    /// Not yet wired into live preview. `#[serde(default)]` so older saved projects load with no
+    /// color-grading animation (using the constant fields as before).
+    #[serde(default)]
+    pub brightness_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub contrast_keyframes: Vec<Keyframe<f32>>,
+    #[serde(default)]
+    pub saturation_keyframes: Vec<Keyframe<f32>>,
     /// Sharpen strength for this block, `0.0..=1.0` (`0.0` is off) — per `request.md`'s Fase 4
     /// "Efeitos visuais" spec ("Nitidez (sharpen)"). Wired into export
     /// ([`ClipInstance::video_filter_chain`]'s `unsharp` stage); no live preview effect yet.
@@ -555,6 +694,20 @@ pub struct ClipInstance {
     /// `#[serde(default)]` so older saved projects load fully opaque.
     #[serde(default)]
     pub opacity_keyframes: Vec<Keyframe<f32>>,
+    /// General keyframe animation for this block's audio gain, in **dB** (same unit as
+    /// [`ClipInstance::gain_db`]), per the keyframe-expansion gap found while surveying what
+    /// else the existing keyframe system could drive (`spec/ROADMAP.md` P4 item 31). Empty =
+    /// use the constant [`ClipInstance::gain_db`] unchanged (this field, when non-empty,
+    /// overrides that constant rather than combining with it — same "one or the other, not
+    /// both" relationship `scale_keyframes` has with the old `zoom_start`/`zoom_end`). Wired
+    /// into export (`crate::keyframe::gain_filter_db_expr`, via `avbridge::AudioSegment::
+    /// gain_keyframe_expr`) — FFmpeg's `volume` filter's `eval=frame` expression mode is a
+    /// linear multiplier, not dB, so the expression wraps each interpolated dB value in
+    /// `pow(10,X/20)`. Not yet wired into live preview — same "export first" shape several
+    /// other keyframe fields on this struct started with. `#[serde(default)]` so older saved
+    /// projects load with no gain animation (using the constant `gain_db` as before).
+    #[serde(default)]
+    pub gain_keyframes: Vec<Keyframe<f32>>,
     /// Path to a `.cube` 3D LUT file applied to this block's color grading, per `request.md`'s
     /// Fase 4 "Filtros de cor e LUTs" spec. Empty string = no LUT (the FFI-friendly analog of
     /// `Option<PathBuf>` this codebase already uses for other optional string fields, since a
@@ -670,6 +823,14 @@ pub struct ClipFormatting {
     pub scale_keyframes: Vec<Keyframe<f32>>,
     pub rotation_keyframes: Vec<Keyframe<f32>>,
     pub opacity_keyframes: Vec<Keyframe<f32>>,
+    pub gain_keyframes: Vec<Keyframe<f32>>,
+    pub brightness_keyframes: Vec<Keyframe<f32>>,
+    pub contrast_keyframes: Vec<Keyframe<f32>>,
+    pub saturation_keyframes: Vec<Keyframe<f32>>,
+    pub crop_x_keyframes: Vec<Keyframe<f32>>,
+    pub crop_y_keyframes: Vec<Keyframe<f32>>,
+    pub crop_w_keyframes: Vec<Keyframe<f32>>,
+    pub crop_h_keyframes: Vec<Keyframe<f32>>,
     pub deflicker_enabled: bool,
     pub lut_path: String,
     pub layer_scale_x: f32,
@@ -798,11 +959,41 @@ impl ClipInstance {
         !self.opacity_keyframes.is_empty()
     }
 
-    /// Builds this clip's scale/rotation/opacity keyframe avfilter fragment, spliced into the
-    /// per-clip chain before [`ClipInstance::video_filter_chain`]'s own stages — the same
-    /// position the old `zoom` stage used to occupy. `None` if none of the three are animated.
-    /// Position keyframes aren't part of this — they apply to the *overlay* compositing stage,
-    /// not a per-clip filter (see [`keyframe::position_overlay_xy_expr`] and `crate::render`).
+    /// `true` if this block has any audio gain keyframes (overriding the constant `gain_db`).
+    pub fn has_gain_keyframes(&self) -> bool {
+        !self.gain_keyframes.is_empty()
+    }
+
+    /// `true` if this block has color-grading keyframes on any of brightness/contrast/
+    /// saturation — gates whether [`Self::video_filter_chain`]'s static `eq` stage should defer
+    /// to [`Self::keyframe_video_filter_chain`]'s animated one instead.
+    pub fn has_color_keyframes(&self) -> bool {
+        !self.brightness_keyframes.is_empty()
+            || !self.contrast_keyframes.is_empty()
+            || !self.saturation_keyframes.is_empty()
+    }
+
+    /// `true` if this block has crop/pan keyframes on any of x/y/width/height — gates whether
+    /// [`Self::video_filter_chain`]'s static `crop` stage should defer to
+    /// [`Self::keyframe_video_filter_chain`]'s animated one instead.
+    pub fn has_crop_keyframes(&self) -> bool {
+        !self.crop_x_keyframes.is_empty()
+            || !self.crop_y_keyframes.is_empty()
+            || !self.crop_w_keyframes.is_empty()
+            || !self.crop_h_keyframes.is_empty()
+    }
+
+    /// Builds this clip's crop/scale/rotation/opacity/color-balance keyframe avfilter fragment,
+    /// spliced into the per-clip chain before [`ClipInstance::video_filter_chain`]'s own stages
+    /// — the same position the old `zoom` stage used to occupy. `None` if none of the five are
+    /// animated. Position keyframes aren't part of this — they apply to the *overlay*
+    /// compositing stage, not a per-clip filter (see [`keyframe::position_overlay_xy_expr`] and
+    /// `crate::render`). Crop keyframes run first (mirroring the static `crop` stage's own
+    /// traditional "runs before every other effect" position in `video_filter_chain`, so a
+    /// crop/pan animation reframes the source before scale/rotate/color-balance operate on it).
+    /// Color-balance keyframes running here at all (rather than in their usual post-crop/
+    /// deflicker/stabilization spot in `video_filter_chain`) is a real, narrow ordering caveat —
+    /// see [`ClipInstance::brightness_keyframes`]'s doc comment.
     pub fn keyframe_video_filter_chain(
         &self,
         fps_num: u32,
@@ -810,6 +1001,23 @@ impl ClipInstance {
         timeline_duration_secs: f64,
     ) -> Option<String> {
         let mut stages = Vec::new();
+        if self.has_crop_keyframes() {
+            if let Some(crop) = keyframe::crop_filter_expr(
+                &self.crop_x_keyframes,
+                &self.crop_y_keyframes,
+                &self.crop_w_keyframes,
+                &self.crop_h_keyframes,
+                self.crop_x,
+                self.crop_y,
+                self.crop_w,
+                self.crop_h,
+                fps_num,
+                fps_den,
+                timeline_duration_secs,
+            ) {
+                stages.push(crop);
+            }
+        }
         if let Some(scale) = keyframe::scale_filter_expr(
             &self.scale_keyframes,
             fps_num,
@@ -834,6 +1042,19 @@ impl ClipInstance {
             stages.push(format!(
                 "format=yuva420p,geq=lum='p(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*({alpha_expr})'"
             ));
+        }
+        if self.has_color_keyframes() {
+            if let Some(eq) = keyframe::color_balance_filter_expr(
+                &self.brightness_keyframes,
+                &self.contrast_keyframes,
+                &self.saturation_keyframes,
+                self.brightness,
+                self.contrast,
+                self.saturation,
+                timeline_duration_secs,
+            ) {
+                stages.push(eq);
+            }
         }
         if stages.is_empty() {
             None
@@ -862,7 +1083,7 @@ impl ClipInstance {
     pub fn video_filter_chain(&self) -> String {
         let mut stages = Vec::new();
 
-        if self.is_cropped() {
+        if self.is_cropped() && !self.has_crop_keyframes() {
             stages.push(format!(
                 "crop=iw*{}:ih*{}:iw*{}:ih*{}",
                 self.crop_w, self.crop_h, self.crop_x, self.crop_y
@@ -884,7 +1105,9 @@ impl ClipInstance {
             let radius = (4.0 + self.stabilization_intensity.clamp(0.0, 1.0) * 60.0).round() as i32;
             stages.push(format!("deshake=rx={radius}:ry={radius}:edge=mirror"));
         }
-        if self.brightness != 0.0 || self.contrast != 1.0 || self.saturation != 1.0 {
+        if !self.has_color_keyframes()
+            && (self.brightness != 0.0 || self.contrast != 1.0 || self.saturation != 1.0)
+        {
             stages.push(format!(
                 "eq=brightness={}:contrast={}:saturation={}",
                 self.brightness, self.contrast, self.saturation
@@ -1061,6 +1284,14 @@ impl ClipInstance {
             scale_keyframes: self.scale_keyframes.clone(),
             rotation_keyframes: self.rotation_keyframes.clone(),
             opacity_keyframes: self.opacity_keyframes.clone(),
+            gain_keyframes: self.gain_keyframes.clone(),
+            brightness_keyframes: self.brightness_keyframes.clone(),
+            contrast_keyframes: self.contrast_keyframes.clone(),
+            saturation_keyframes: self.saturation_keyframes.clone(),
+            crop_x_keyframes: self.crop_x_keyframes.clone(),
+            crop_y_keyframes: self.crop_y_keyframes.clone(),
+            crop_w_keyframes: self.crop_w_keyframes.clone(),
+            crop_h_keyframes: self.crop_h_keyframes.clone(),
             deflicker_enabled: self.deflicker_enabled,
             lut_path: self.lut_path.clone(),
             layer_scale_x: self.layer_scale_x,
@@ -1102,6 +1333,14 @@ impl ClipInstance {
         self.scale_keyframes = f.scale_keyframes.clone();
         self.rotation_keyframes = f.rotation_keyframes.clone();
         self.opacity_keyframes = f.opacity_keyframes.clone();
+        self.gain_keyframes = f.gain_keyframes.clone();
+        self.brightness_keyframes = f.brightness_keyframes.clone();
+        self.contrast_keyframes = f.contrast_keyframes.clone();
+        self.saturation_keyframes = f.saturation_keyframes.clone();
+        self.crop_x_keyframes = f.crop_x_keyframes.clone();
+        self.crop_y_keyframes = f.crop_y_keyframes.clone();
+        self.crop_w_keyframes = f.crop_w_keyframes.clone();
+        self.crop_h_keyframes = f.crop_h_keyframes.clone();
         self.deflicker_enabled = f.deflicker_enabled;
         self.lut_path = f.lut_path.clone();
         self.layer_scale_x = f.layer_scale_x;
@@ -1130,6 +1369,28 @@ impl ClipInstance {
                 return false;
             }
         }
+        self.source_out_secs = new_source_out_secs;
+        true
+    }
+
+    /// Shifts which part of the source media this clip shows by `delta_secs`, without moving
+    /// it on the timeline or changing its duration — Premiere/DaVinci/FCP's "Slip" tool
+    /// (`ROADMAP.md` P2 item 11). `source_in_secs` and `source_out_secs` move together. No-op
+    /// (`false`) if that would push `source_in_secs` below zero, or (when
+    /// `max_source_out_secs` is known — the source asset's own duration) `source_out_secs`
+    /// past the end of the actual source media.
+    pub fn slip(&mut self, delta_secs: f64, max_source_out_secs: Option<f64>) -> bool {
+        let new_source_in_secs = self.source_in_secs + delta_secs;
+        let new_source_out_secs = self.source_out_secs + delta_secs;
+        if new_source_in_secs < 0.0 {
+            return false;
+        }
+        if let Some(max) = max_source_out_secs {
+            if new_source_out_secs > max {
+                return false;
+            }
+        }
+        self.source_in_secs = new_source_in_secs;
         self.source_out_secs = new_source_out_secs;
         true
     }
@@ -1165,6 +1426,18 @@ pub struct Track {
     /// deserializes as `true` via the serde default so existing projects are unaffected.
     #[serde(default = "default_true")]
     pub visible: bool,
+    /// Which audio source this track carries, if the user has said — see [`AudioRole`].
+    /// `#[serde(default)]` so a project saved before this field existed loads with every track
+    /// `Unspecified`, same as a never-tagged track in a new project.
+    #[serde(default)]
+    pub audio_role: AudioRole,
+    /// Optional RGB color label for this track, per `matrix/competitor-parity.md`'s 2026-08-27
+    /// update (`spec/ROADMAP.md` P4 item 27) — DaVinci Resolve's track color, called out by
+    /// users as something Premiere still lacks. Purely cosmetic, same "at-a-glance
+    /// organization" role as [`ClipInstance::color_label`]. `None` = use the usual track-header
+    /// coloring. `#[serde(default)]` so older saved projects load with no label.
+    #[serde(default)]
+    pub color_label: Option<[u8; 3]>,
 }
 
 impl Track {
@@ -1203,6 +1476,22 @@ impl Track {
             keyframe::split_keyframes_at(&clip.rotation_keyframes, split_frac, 0.0);
         let (opacity_first, opacity_second) =
             keyframe::split_keyframes_at(&clip.opacity_keyframes, split_frac, 1.0);
+        let (gain_first, gain_second) =
+            keyframe::split_keyframes_at(&clip.gain_keyframes, split_frac, 0.0);
+        let (brightness_first, brightness_second) =
+            keyframe::split_keyframes_at(&clip.brightness_keyframes, split_frac, 0.0);
+        let (contrast_first, contrast_second) =
+            keyframe::split_keyframes_at(&clip.contrast_keyframes, split_frac, 1.0);
+        let (saturation_first, saturation_second) =
+            keyframe::split_keyframes_at(&clip.saturation_keyframes, split_frac, 1.0);
+        let (crop_x_first, crop_x_second) =
+            keyframe::split_keyframes_at(&clip.crop_x_keyframes, split_frac, 0.0);
+        let (crop_y_first, crop_y_second) =
+            keyframe::split_keyframes_at(&clip.crop_y_keyframes, split_frac, 0.0);
+        let (crop_w_first, crop_w_second) =
+            keyframe::split_keyframes_at(&clip.crop_w_keyframes, split_frac, 1.0);
+        let (crop_h_first, crop_h_second) =
+            keyframe::split_keyframes_at(&clip.crop_h_keyframes, split_frac, 1.0);
         let second_half = ClipInstance {
             id: new_clip_id,
             asset_id: clip.asset_id,
@@ -1212,6 +1501,7 @@ impl Track {
             // Splitting a composite member must not silently ungroup it from the rest of the
             // block.
             composite_id: clip.composite_id,
+            color_label: clip.color_label,
             gain_db: clip.gain_db,
             frozen: clip.frozen,
             speed_factor: clip.speed_factor,
@@ -1245,6 +1535,14 @@ impl Track {
             scale_keyframes: scale_second,
             rotation_keyframes: rotation_second,
             opacity_keyframes: opacity_second,
+            gain_keyframes: gain_second,
+            brightness_keyframes: brightness_second,
+            contrast_keyframes: contrast_second,
+            saturation_keyframes: saturation_second,
+            crop_x_keyframes: crop_x_second,
+            crop_y_keyframes: crop_y_second,
+            crop_w_keyframes: crop_w_second,
+            crop_h_keyframes: crop_h_second,
             deflicker_enabled: clip.deflicker_enabled,
             lut_path: clip.lut_path.clone(),
             layer_scale_x: clip.layer_scale_x,
@@ -1262,6 +1560,14 @@ impl Track {
         clip.scale_keyframes = scale_first;
         clip.rotation_keyframes = rotation_first;
         clip.opacity_keyframes = opacity_first;
+        clip.gain_keyframes = gain_first;
+        clip.brightness_keyframes = brightness_first;
+        clip.contrast_keyframes = contrast_first;
+        clip.saturation_keyframes = saturation_first;
+        clip.crop_x_keyframes = crop_x_first;
+        clip.crop_y_keyframes = crop_y_first;
+        clip.crop_w_keyframes = crop_w_first;
+        clip.crop_h_keyframes = crop_h_first;
         // Same staleness reasoning as the second half above — the original clip's own trimmed
         // range changed too.
         clip.background_removal_enabled = false;
@@ -1292,6 +1598,237 @@ impl Track {
         true
     }
 
+    /// The id of the clip immediately before `clip_id` on this track (the one with the
+    /// greatest `start_secs` that's still less than `clip_id`'s own) — `None` if `clip_id`
+    /// isn't on this track or is already the earliest one. Shared by the roll/slide edits
+    /// below to find which neighbor a shared edge/absorbed gap belongs to.
+    pub fn previous_clip_id(&self, clip_id: u64) -> Option<u64> {
+        let this_start = self.clips.iter().find(|c| c.id == clip_id)?.start_secs;
+        self.clips
+            .iter()
+            .filter(|c| c.id != clip_id && c.start_secs < this_start)
+            .max_by(|a, b| a.start_secs.total_cmp(&b.start_secs))
+            .map(|c| c.id)
+    }
+
+    /// The id of the clip immediately after `clip_id` on this track, by the mirror-image rule
+    /// [`Self::previous_clip_id`] uses.
+    pub fn next_clip_id(&self, clip_id: u64) -> Option<u64> {
+        let this_start = self.clips.iter().find(|c| c.id == clip_id)?.start_secs;
+        self.clips
+            .iter()
+            .filter(|c| c.id != clip_id && c.start_secs > this_start)
+            .min_by(|a, b| a.start_secs.total_cmp(&b.start_secs))
+            .map(|c| c.id)
+    }
+
+    /// Trims `clip_id`'s start to `new_start_secs`, then shifts every clip whose `start_secs`
+    /// is past `clip_id`'s own (pre-trim) start by the same delta — Premiere/DaVinci/FCP's
+    /// "Ripple" tool (`ROADMAP.md` P2 item 11): no gap is left behind, later clips slide to
+    /// fill it. No-op (`false`) if the clip isn't on this track or the underlying
+    /// [`ClipInstance::trim_start`] refuses the edit — nothing is shifted in that case.
+    pub fn ripple_trim_start(
+        &mut self,
+        clip_id: u64,
+        new_start_secs: f64,
+        min_duration_secs: f64,
+    ) -> bool {
+        let Some(index) = self.clips.iter().position(|c| c.id == clip_id) else {
+            return false;
+        };
+        let old_start_secs = self.clips[index].start_secs;
+        if !self.clips[index].trim_start(new_start_secs, min_duration_secs) {
+            return false;
+        }
+        let delta = new_start_secs - old_start_secs;
+        for clip in &mut self.clips {
+            if clip.id != clip_id && clip.start_secs > old_start_secs {
+                clip.start_secs = (clip.start_secs + delta).max(0.0);
+            }
+        }
+        true
+    }
+
+    /// [`Self::ripple_trim_start`]'s mirror for the clip's *end* edge: trims `clip_id`'s end to
+    /// `new_end_secs`, then shifts every clip whose `start_secs` is past `clip_id`'s own by the
+    /// resulting duration delta.
+    pub fn ripple_trim_end(
+        &mut self,
+        clip_id: u64,
+        new_end_secs: f64,
+        min_duration_secs: f64,
+        max_source_out_secs: Option<f64>,
+    ) -> bool {
+        let Some(index) = self.clips.iter().position(|c| c.id == clip_id) else {
+            return false;
+        };
+        let this_start = self.clips[index].start_secs;
+        let old_end_secs = this_start + self.clips[index].duration_secs();
+        if !self.clips[index].trim_end(new_end_secs, min_duration_secs, max_source_out_secs) {
+            return false;
+        }
+        let delta = new_end_secs - old_end_secs;
+        for clip in &mut self.clips {
+            if clip.id != clip_id && clip.start_secs > this_start {
+                clip.start_secs = (clip.start_secs + delta).max(0.0);
+            }
+        }
+        true
+    }
+
+    /// Moves the cut point between `clip_id` and its immediate next neighbor
+    /// ([`Self::next_clip_id`]) to `new_boundary_secs` — Premiere/DaVinci/FCP's "Roll" tool
+    /// (`ROADMAP.md` P2 item 11): `clip_id`'s end and the neighbor's start move together, so
+    /// the pair's combined timeline span (and every other clip's position) stays unchanged.
+    /// No-op (`false`) if `clip_id` has no next neighbor on this track, or the edit would
+    /// violate either clip's own trim bounds — applied atomically: a rejection on either side
+    /// leaves both clips exactly as they were, never a half-rolled pair.
+    pub fn roll_edit(
+        &mut self,
+        clip_id: u64,
+        new_boundary_secs: f64,
+        min_duration_secs: f64,
+        this_max_source_out_secs: Option<f64>,
+    ) -> bool {
+        let Some(index) = self.clips.iter().position(|c| c.id == clip_id) else {
+            return false;
+        };
+        let Some(next_id) = self.next_clip_id(clip_id) else {
+            return false;
+        };
+        let next_index = self
+            .clips
+            .iter()
+            .position(|c| c.id == next_id)
+            .expect("next_clip_id only ever returns an id present on this track");
+
+        let this_snapshot = self.clips[index].clone();
+        let next_snapshot = self.clips[next_index].clone();
+        let next_old_start = self.clips[next_index].start_secs;
+
+        let this_ok = self.clips[index].trim_end(
+            new_boundary_secs,
+            min_duration_secs,
+            this_max_source_out_secs,
+        );
+        let next_delta = new_boundary_secs - next_old_start;
+        let next_new_start = next_old_start + next_delta;
+        // trim_start never needs a max-source-out bound: it only moves source_in toward
+        // source_out (which stays fixed), never past it.
+        let next_ok =
+            this_ok && self.clips[next_index].trim_start(next_new_start, min_duration_secs);
+
+        if !next_ok {
+            self.clips[index] = this_snapshot;
+            self.clips[next_index] = next_snapshot;
+            return false;
+        }
+        true
+    }
+
+    /// Moves `clip_id` to `new_start_secs` on this track, keeping its own duration/source
+    /// range unchanged — Premiere/DaVinci/FCP's "Slide" tool (`ROADMAP.md` P2 item 11): the
+    /// immediate previous and next clips ([`Self::previous_clip_id`]/[`Self::next_clip_id`],
+    /// resolved against `clip_id`'s *pre-move* position) absorb the movement by adjusting their
+    /// own out/in points to meet `clip_id`'s new position, so nothing else on the track shifts.
+    /// No-op (`false`) if `new_start_secs` is negative, `clip_id` isn't on this track, or
+    /// either affected neighbor's own trim bounds would be violated — applied atomically, same
+    /// as [`Self::roll_edit`]. A neighbor that doesn't exist (`clip_id` is first/last on the
+    /// track) simply isn't adjusted on that side.
+    pub fn slide_clip(
+        &mut self,
+        clip_id: u64,
+        new_start_secs: f64,
+        min_duration_secs: f64,
+        prev_max_source_out_secs: Option<f64>,
+    ) -> bool {
+        if new_start_secs < 0.0 {
+            return false;
+        }
+        let Some(index) = self.clips.iter().position(|c| c.id == clip_id) else {
+            return false;
+        };
+        let this_duration = self.clips[index].duration_secs();
+        let new_end_secs = new_start_secs + this_duration;
+
+        let prev_index = self
+            .previous_clip_id(clip_id)
+            .and_then(|id| self.clips.iter().position(|c| c.id == id));
+        let next_index = self
+            .next_clip_id(clip_id)
+            .and_then(|id| self.clips.iter().position(|c| c.id == id));
+
+        let snapshots: Vec<(usize, ClipInstance)> = [Some(index), prev_index, next_index]
+            .into_iter()
+            .flatten()
+            .map(|i| (i, self.clips[i].clone()))
+            .collect();
+
+        let prev_ok = match prev_index {
+            Some(i) => {
+                self.clips[i].trim_end(new_start_secs, min_duration_secs, prev_max_source_out_secs)
+            }
+            None => true,
+        };
+        // next's trim_start never needs a max-source-out bound, same reasoning as roll_edit.
+        let next_ok = prev_ok
+            && match next_index {
+                Some(i) => self.clips[i].trim_start(new_end_secs, min_duration_secs),
+                None => true,
+            };
+
+        if !next_ok {
+            for (i, snapshot) in snapshots {
+                self.clips[i] = snapshot;
+            }
+            return false;
+        }
+        self.clips[index].start_secs = new_start_secs;
+        true
+    }
+
+    /// Removes the timeline range `[start_secs, end_secs)` from this track and ripples every
+    /// later clip left to close the gap — "ripple delete," what D1's silence-gap review
+    /// (`spec/architecture/differentiators.md`) applies to each accepted
+    /// [`crate::silence_detection::SilenceGap`]. Any clip straddling either boundary is split
+    /// first via [`Self::split_clip_at`] (each split, if performed, consumes one id from
+    /// `next_clip_id` and increments it — a no-op split at an exact boundary leaves it
+    /// untouched), then every clip now falling fully inside the range is dropped, and every
+    /// clip starting at or after `end_secs` shifts left by the removed span. Only `self.clips`
+    /// is affected, matching [`Self::ripple_trim_start`]/[`Self::ripple_trim_end`]'s existing
+    /// scope (text/shape overlay tracks are never video/audio tracks, so this never applies to
+    /// them). No-op (`false`, `next_clip_id` untouched) if `end_secs <= start_secs`.
+    pub fn ripple_delete_range(
+        &mut self,
+        start_secs: f64,
+        end_secs: f64,
+        next_clip_id: &mut u64,
+    ) -> bool {
+        if end_secs <= start_secs {
+            return false;
+        }
+
+        if self.split_clip_at(start_secs, *next_clip_id) {
+            *next_clip_id += 1;
+        }
+        if self.split_clip_at(end_secs, *next_clip_id) {
+            *next_clip_id += 1;
+        }
+
+        const EPSILON: f64 = 1e-6;
+        let removed_span = end_secs - start_secs;
+        self.clips.retain(|c| {
+            let c_end = c.start_secs + c.duration_secs();
+            !(c.start_secs >= start_secs - EPSILON && c_end <= end_secs + EPSILON)
+        });
+        for clip in &mut self.clips {
+            if clip.start_secs >= end_secs - EPSILON {
+                clip.start_secs = (clip.start_secs - removed_span).max(0.0);
+            }
+        }
+        true
+    }
+
     /// The position, in seconds, where this track's last clip ends. `0.0` for an empty track —
     /// the natural "append here" position for a clip added to this track. Accounts for
     /// [`ClipInstance`]s, [`TextClip`]s, and [`ShapeClip`]s so every track kind reports its own
@@ -1316,11 +1853,101 @@ impl Track {
     }
 }
 
+/// A review/comment marker's category — Final Cut Pro's typed-marker model (per `ROADMAP.md`
+/// P2 item 9), not just a plain unstyled note: `ToDo` tracks a `completed` state a searchable
+/// Timeline Index panel can filter on, `Chapter` marks a navigable section boundary, `Standard`
+/// is a plain annotation. `Highlight` (D2, `spec/architecture/differentiators.md`) marks an
+/// auto-detected candidate moment — same non-destructive "add a marker, let the existing
+/// Timeline Index panel's rename/delete be the review step" shape D4's Chapter markers already
+/// established, rather than a separate accept/reject modal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum MarkerKind {
+    #[default]
+    Standard,
+    ToDo,
+    Chapter,
+    Highlight,
+}
+
+impl MarkerKind {
+    pub const ALL: &'static [MarkerKind] = &[
+        MarkerKind::Standard,
+        MarkerKind::ToDo,
+        MarkerKind::Chapter,
+        MarkerKind::Highlight,
+    ];
+}
+
+/// One review/comment marker on the timeline — a point in time (not a clip, not tied to any
+/// particular track) with a short label and a [`MarkerKind`]. `id`s are unique within a
+/// [`Timeline`], same convention [`ClipInstance::id`]/[`TextClip::id`] already use.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Marker {
+    pub id: u64,
+    pub position_secs: f64,
+    pub label: String,
+    pub kind: MarkerKind,
+    /// Only meaningful for [`MarkerKind::ToDo`] — a searchable Timeline Index panel can filter
+    /// these out once resolved without deleting the marker (the review history stays visible).
+    #[serde(default)]
+    pub completed: bool,
+}
+
 /// A project's full set of tracks plus the current playhead position.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Timeline {
     pub tracks: Vec<Track>,
     pub playhead_secs: f64,
+    /// Review/comment markers — `#[serde(default)]` so a project saved before this field
+    /// existed still loads (empty marker list), per this crate's struct-map `.ocproj` format
+    /// (see `CLAUDE.md`).
+    #[serde(default)]
+    pub markers: Vec<Marker>,
+    /// Multicam groups (P2 item 10, "Multicam editing") — `#[serde(default)]` so a project saved
+    /// before this field existed still loads (empty group list), same convention as `markers`.
+    #[serde(default)]
+    pub multicam_groups: Vec<MulticamGroup>,
+}
+
+/// A set of `Video` tracks recorded simultaneously from different sources (e.g. game capture,
+/// webcam, mic-facecam) that have been synced against each other by [`crate::multicam_sync`], so
+/// switching which one plays at a given moment ("switch to angle 2") is a matter of retargeting
+/// a clip on `program_track_id` to the right other member's asset at the right (offset-adjusted)
+/// source time — see [`Timeline::switch_multicam_angle`]. Angles are ordinary [`Track`]s, not a
+/// new [`TrackKind`]: this group is purely a sidecar grouping + offset record, same non-invasive
+/// shape [`Marker`] uses, so no existing per-track/per-clip code needs to know about multicam at
+/// all except `program_track_id`'s visibility (every non-program member is hidden — see
+/// [`Timeline::add_multicam_group`] — so only the currently active angle actually renders/
+/// exports; the others stay in the project purely as switchable source material).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MulticamGroup {
+    pub id: u64,
+    pub name: String,
+    /// Every track in this group, `program_track_id` included, in a stable, user-meaningful
+    /// order — index 0 is "angle 1", index 1 is "angle 2", etc., what number-key angle switching
+    /// refers to.
+    pub member_track_ids: Vec<u64>,
+    /// Which member is currently the one visible/exported track. Always one of
+    /// `member_track_ids`.
+    pub program_track_id: u64,
+    /// Each member track's sync offset in seconds, relative to every other member: for the same
+    /// real-world moment, `member_track_time = other_member_track_time + (offset[member] -
+    /// offset[other_member])`. The track chosen as the sync reference when the group was created
+    /// has offset `0.0`; every other member's offset is `crate::multicam_sync::
+    /// compute_sync_offset_secs`'s result against that reference. Absent an entry (shouldn't
+    /// happen for a member_track_ids member, but keeps lookups total) is treated as `0.0`.
+    pub sync_offsets_secs: HashMap<u64, f64>,
+}
+
+impl MulticamGroup {
+    /// This member's sync offset, or `0.0` if `track_id` isn't in `sync_offsets_secs` (should
+    /// only happen for a `track_id` that isn't actually a member of this group).
+    pub fn offset_secs(&self, track_id: u64) -> f64 {
+        self.sync_offsets_secs
+            .get(&track_id)
+            .copied()
+            .unwrap_or(0.0)
+    }
 }
 
 impl Timeline {
@@ -1337,6 +1964,43 @@ impl Timeline {
             .iter()
             .map(Track::duration_secs)
             .fold(0.0, f64::max)
+    }
+
+    /// Adds a new [`Marker`] at `position_secs` (clamped to `0.0`) with `kind`, `label` empty
+    /// and `completed: false`, and returns its freshly assigned id — one past the highest
+    /// existing marker id, `1` if there are none yet, same "max + 1" convention every other
+    /// timeline entity's id assignment already uses (see `next_clip_id` in `ui`).
+    pub fn add_marker(&mut self, position_secs: f64, kind: MarkerKind) -> u64 {
+        let id = self.markers.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+        self.markers.push(Marker {
+            id,
+            position_secs: position_secs.max(0.0),
+            label: String::new(),
+            kind,
+            completed: false,
+        });
+        id
+    }
+
+    /// Removes the marker with `marker_id`, if any. `true` if a marker was actually removed.
+    pub fn remove_marker(&mut self, marker_id: u64) -> bool {
+        let before = self.markers.len();
+        self.markers.retain(|m| m.id != marker_id);
+        self.markers.len() != before
+    }
+
+    /// Mutable access to the marker with `marker_id`, if it exists.
+    pub fn marker_mut(&mut self, marker_id: u64) -> Option<&mut Marker> {
+        self.markers.iter_mut().find(|m| m.id == marker_id)
+    }
+
+    /// Every marker sorted by `position_secs` ascending — what a searchable Timeline Index
+    /// panel (and the ruler's own left-to-right tick rendering) both want, rather than
+    /// insertion order.
+    pub fn markers_sorted(&self) -> Vec<&Marker> {
+        let mut markers: Vec<&Marker> = self.markers.iter().collect();
+        markers.sort_by(|a, b| a.position_secs.total_cmp(&b.position_secs));
+        markers
     }
 
     /// Moves the clip with `clip_id` onto `target_track_id` at `new_start_secs`, removing it
@@ -1376,6 +2040,157 @@ impl Timeline {
         let mut clip = self.tracks[source_index].clips.remove(clip_index);
         clip.start_secs = new_start_secs;
         self.tracks[target_index].clips.push(clip);
+        true
+    }
+}
+
+impl Timeline {
+    /// Adds a new [`MulticamGroup`] over `member_track_ids` (must have at least 2 members, all
+    /// existing `Video` tracks, or this is a no-op returning `None`) with `program_track_id`'s
+    /// offset implicitly `0.0` unless overridden in `sync_offsets_secs`, and hides every other
+    /// member (`Track::visible = false`) so only the program track actually renders/exports —
+    /// the rest stay in the project purely as switchable source material for
+    /// [`Timeline::switch_multicam_angle`]. Returns the freshly assigned group id ("max + 1",
+    /// same convention every other timeline entity's id assignment uses), or `None` if
+    /// `program_track_id` isn't one of `member_track_ids`, fewer than 2 members are given, or
+    /// any member id doesn't name an existing `Video` track.
+    pub fn add_multicam_group(
+        &mut self,
+        name: String,
+        member_track_ids: Vec<u64>,
+        program_track_id: u64,
+        sync_offsets_secs: HashMap<u64, f64>,
+    ) -> Option<u64> {
+        if member_track_ids.len() < 2 || !member_track_ids.contains(&program_track_id) {
+            return None;
+        }
+        if !member_track_ids.iter().all(|id| {
+            self.tracks
+                .iter()
+                .any(|t| t.id == *id && t.kind == TrackKind::Video)
+        }) {
+            return None;
+        }
+
+        for track_id in &member_track_ids {
+            if *track_id == program_track_id {
+                continue;
+            }
+            if let Some(track) = self.tracks.iter_mut().find(|t| t.id == *track_id) {
+                track.visible = false;
+            }
+        }
+
+        let id = self.multicam_groups.iter().map(|g| g.id).max().unwrap_or(0) + 1;
+        self.multicam_groups.push(MulticamGroup {
+            id,
+            name,
+            member_track_ids,
+            program_track_id,
+            sync_offsets_secs,
+        });
+        Some(id)
+    }
+
+    /// Mutable access to the multicam group with `group_id`, if it exists.
+    pub fn multicam_group_mut(&mut self, group_id: u64) -> Option<&mut MulticamGroup> {
+        self.multicam_groups.iter_mut().find(|g| g.id == group_id)
+    }
+
+    /// Removes the multicam group with `group_id` and re-shows every one of its member tracks
+    /// (undoing the hide [`Timeline::add_multicam_group`] applied) — the tracks and their clips
+    /// themselves are left alone, only the grouping/offset record and the non-program members'
+    /// visibility are undone. `true` if a group was actually removed.
+    pub fn remove_multicam_group(&mut self, group_id: u64) -> bool {
+        let Some(index) = self.multicam_groups.iter().position(|g| g.id == group_id) else {
+            return false;
+        };
+        let group = self.multicam_groups.remove(index);
+        for track_id in &group.member_track_ids {
+            if let Some(track) = self.tracks.iter_mut().find(|t| t.id == *track_id) {
+                track.visible = true;
+            }
+        }
+        true
+    }
+
+    /// Switches `group_id`'s active angle, at `at_secs` (timeline-relative), to
+    /// `member_track_ids[angle_index]`: splits the program track's clip covering `at_secs` (via
+    /// [`Track::split_clip_at`], `new_clip_id`) so the switch takes effect exactly at that point,
+    /// then retargets the resulting piece's `asset_id`/`source_in_secs`/`source_out_secs` to
+    /// whatever the target angle's own track was showing at the sync-offset-adjusted equivalent
+    /// time — same source-window duration, different source. Resets the retargeted piece's
+    /// `speed_factor` to `1.0` (a speed-ramped multicam switch is out of scope for this pass) and
+    /// clears its stale `background_removal_mask_path`/keyframes the same way an ordinary split
+    /// already does for its second half, since they're generated for/apply to the pre-switch
+    /// source.
+    ///
+    /// No-op (`false`) if: the group or `angle_index` don't exist; the target angle is already
+    /// the program track; the program track has no clip covering `at_secs`; or the target angle's
+    /// track has no clip covering the offset-adjusted time (e.g. that source hadn't started
+    /// recording yet at this moment).
+    pub fn switch_multicam_angle(
+        &mut self,
+        group_id: u64,
+        angle_index: usize,
+        at_secs: f64,
+        new_clip_id: u64,
+    ) -> bool {
+        let Some(group) = self.multicam_groups.iter().find(|g| g.id == group_id) else {
+            return false;
+        };
+        let Some(&target_track_id) = group.member_track_ids.get(angle_index) else {
+            return false;
+        };
+        if target_track_id == group.program_track_id {
+            return false;
+        }
+        let program_track_id = group.program_track_id;
+        let target_time =
+            at_secs - group.offset_secs(program_track_id) + group.offset_secs(target_track_id);
+
+        let Some(target_track) = self.tracks.iter().find(|t| t.id == target_track_id) else {
+            return false;
+        };
+        let Some(target_clip) = target_track.clip_at(target_time) else {
+            return false;
+        };
+        let new_asset_id = target_clip.asset_id;
+        let new_source_in_secs = target_clip.source_in_secs
+            + (target_time - target_clip.start_secs) * target_clip.speed_factor as f64;
+
+        let Some(program_track) = self.tracks.iter_mut().find(|t| t.id == program_track_id) else {
+            return false;
+        };
+        if program_track.clip_at(at_secs).is_none() {
+            return false;
+        }
+        let already_at_boundary = program_track.clips.iter().any(|c| c.start_secs == at_secs);
+        if !already_at_boundary && !program_track.split_clip_at(at_secs, new_clip_id) {
+            return false;
+        }
+        // Whether pre-existing or freshly created by the split above, the piece this switch
+        // targets is the one starting exactly at `at_secs`.
+        let Some(switched_clip) = program_track
+            .clips
+            .iter_mut()
+            .find(|c| c.start_secs == at_secs)
+        else {
+            return false;
+        };
+        let switched_duration_secs = (switched_clip.source_out_secs - switched_clip.source_in_secs)
+            as f64
+            / switched_clip.speed_factor as f64;
+        switched_clip.asset_id = new_asset_id;
+        switched_clip.speed_factor = 1.0;
+        switched_clip.source_in_secs = new_source_in_secs;
+        switched_clip.source_out_secs = new_source_in_secs + switched_duration_secs;
+        switched_clip.background_removal_enabled = false;
+        switched_clip.background_removal_mask_path = String::new();
+        switched_clip.position_keyframes.clear();
+        switched_clip.scale_keyframes.clear();
+        switched_clip.rotation_keyframes.clear();
+        switched_clip.opacity_keyframes.clear();
         true
     }
 }

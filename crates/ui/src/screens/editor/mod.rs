@@ -106,6 +106,25 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     if redo_pressed {
         app.redo();
     }
+    // Multicam angle switching (P2 item 10) -- 1..9 at the playhead, no modifier, matching
+    // every other bare-key editing shortcut above (Delete, split) rather than needing a
+    // configurable KeyCombo of its own.
+    const NUMBER_KEYS: [egui::Key; 9] = [
+        egui::Key::Num1,
+        egui::Key::Num2,
+        egui::Key::Num3,
+        egui::Key::Num4,
+        egui::Key::Num5,
+        egui::Key::Num6,
+        egui::Key::Num7,
+        egui::Key::Num8,
+        egui::Key::Num9,
+    ];
+    for (angle_index, key) in NUMBER_KEYS.into_iter().enumerate() {
+        if ui.input(|i| !i.modifiers.any() && i.key_pressed(key)) {
+            app.switch_multicam_angle_at_playhead(angle_index);
+        }
+    }
 
     ui.vertical(|ui| {
         toolbar(app, ui);
@@ -257,6 +276,16 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             app.split_at_playhead();
         }
         tool_button(app, ui, EditorTool::Trim, "⇔", Text::ToolTrim.tr(locale));
+        tool_button(
+            app,
+            ui,
+            EditorTool::Ripple,
+            "⇥",
+            Text::ToolRipple.tr(locale),
+        );
+        tool_button(app, ui, EditorTool::Roll, "⇄", Text::ToolRoll.tr(locale));
+        tool_button(app, ui, EditorTool::Slip, "↕", Text::ToolSlip.tr(locale));
+        tool_button(app, ui, EditorTool::Slide, "⇉", Text::ToolSlide.tr(locale));
         ui.separator();
         if ui
             .add_enabled(
@@ -321,6 +350,50 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         {
             app.redo();
         }
+        ui.separator();
+        if ui
+            .selectable_label(
+                app.timeline_index_open,
+                format!("🏷 {}", Text::TimelineIndexToggle.tr(locale)),
+            )
+            .clicked()
+        {
+            app.toggle_timeline_index();
+        }
+        if ui.button(Text::DetectSilence.tr(locale)).clicked() {
+            app.begin_silence_review();
+        }
+        if ui.button(Text::DetectChapters.tr(locale)).clicked() {
+            app.spawn_detect_scene_cuts_for_selected_clip();
+        }
+        if ui.button(Text::ExportChapters.tr(locale)).clicked() {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("text", &["txt"])
+                .set_file_name("chapters.txt")
+                .save_file()
+            {
+                app.export_chapters_txt(path);
+            }
+        }
+        if ui.button(Text::DetectHighlights.tr(locale)).clicked() {
+            app.detect_highlights();
+        }
+        if ui.button(Text::ShortsPack.tr(locale)).clicked() {
+            let mut dialog = rfd::FileDialog::new();
+            if !app.prefs.output_folder.is_empty() {
+                dialog = dialog.set_directory(&app.prefs.output_folder);
+            }
+            if let Some(output_dir) = dialog.pick_folder() {
+                app.spawn_shorts_pack(output_dir);
+            }
+        }
+        if ui
+            .button(Text::CreateMulticamGroup.tr(locale))
+            .on_hover_text("1-9")
+            .clicked()
+        {
+            app.create_multicam_group_from_video_tracks();
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button(Text::Export.tr(locale)).clicked() {
                 app.screen = crate::app::Screen::Queue;
@@ -338,6 +411,15 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
                 .clicked()
             {
                 export_srt_for_active_sequence(app);
+            }
+            if ui.button(Text::ExportCollabBundle.tr(locale)).clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("oca collaboration bundle", &["zip"])
+                    .set_file_name(format!("{}.zip", app.active_project().name))
+                    .save_file()
+                {
+                    app.export_collab_bundle(path);
+                }
             }
         });
     });
@@ -563,6 +645,9 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
     let mut clicked_id = None;
     let mut add_to_timeline_id = None;
     let mut dropped_asset = None;
+    let mut selected_bin_id = None;
+    let mut edited_bin_id = None;
+    let mut new_bin_clicked = false;
 
     egui::Frame::new()
         .inner_margin(egui::Margin::same(12))
@@ -570,9 +655,50 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
             ui.set_width(width);
             ui.set_height(height);
             ui.vertical(|ui| {
+                components::section_label(ui, Text::MediaLibrary.tr(app.locale));
+                // Smart bins (P4 item 22) -- a row of filter chips above the asset list. "All"
+                // clears the filter; each bin is click-to-select, double-click-to-edit (the
+                // rules, not the assets themselves -- there's nothing else to double-click a
+                // filter chip for).
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .selectable_label(
+                            app.active_smart_bin_id.is_none(),
+                            Text::SmartBinAll.tr(app.locale),
+                        )
+                        .clicked()
+                    {
+                        selected_bin_id = Some(None);
+                    }
+                    for bin in &app.active_project().smart_bins {
+                        let response =
+                            ui.selectable_label(app.active_smart_bin_id == Some(bin.id), &bin.name);
+                        if response.clicked() {
+                            selected_bin_id = Some(Some(bin.id));
+                        }
+                        if response.double_clicked() {
+                            edited_bin_id = Some(bin.id);
+                        }
+                    }
+                    if ui.button(Text::SmartBinNew.tr(app.locale)).clicked() {
+                        new_bin_clicked = true;
+                    }
+                });
+                ui.add_space(6.0);
+
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    components::section_label(ui, Text::MediaLibrary.tr(app.locale));
-                    for asset in &app.active_project().media_library {
+                    // Only the (small) bin rule is cloned here, not the assets it filters --
+                    // `active_project()` is borrowed again right below for the actual iteration,
+                    // which is fine since both borrows are immutable.
+                    let bin = app.active_smart_bin_id.and_then(|id| {
+                        app.active_project()
+                            .smart_bins
+                            .iter()
+                            .find(|b| b.id == id)
+                            .cloned()
+                    });
+                    let assets = app.active_project().media_library.iter();
+                    for asset in assets.filter(|a| bin.as_ref().is_none_or(|b| b.matches(a))) {
                         let selected = app.selected_asset_id == Some(asset.id);
                         let bg = if selected {
                             theme::ACCENT.gamma_multiply(0.18)
@@ -651,6 +777,15 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
     if let Some(id) = add_to_timeline_id {
         app.add_asset_to_timeline(id);
     }
+    if let Some(bin_id) = selected_bin_id {
+        app.active_smart_bin_id = bin_id;
+    }
+    if let Some(bin_id) = edited_bin_id {
+        app.begin_edit_smart_bin(bin_id);
+    }
+    if new_bin_clicked {
+        app.begin_new_smart_bin();
+    }
 }
 
 fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
@@ -718,6 +853,17 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             {
                 app.toggle_fullscreen_preview();
             }
+            if ui
+                .selectable_label(
+                    app.scopes_enabled,
+                    RichText::new("📊").color(theme::TEXT_SECONDARY),
+                )
+                .on_hover_text(Text::PreviewScopesToggle.tr(locale))
+                .clicked()
+            {
+                app.scopes_enabled = !app.scopes_enabled;
+            }
+            audio_level_meter(app, ui);
         });
         if timeline_duration > 0.0 {
             let mut position = app.active_project().timeline().playhead_secs;
@@ -727,7 +873,49 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 app.seek_preview(position);
             }
         }
+        if app.scopes_enabled {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if let Some(texture) = &app.waveform_texture {
+                    ui.image((texture.id(), egui::vec2(200.0, 100.0)));
+                }
+                if let Some(texture) = &app.vectorscope_texture {
+                    ui.image((texture.id(), egui::vec2(100.0, 100.0)));
+                }
+            });
+        }
     });
+}
+
+/// Small live peak/RMS bar for the Editor preview panel's transport row — `spec/ROADMAP.md`
+/// P4 item 30. Reads [`App::current_audio_level`] every frame the panel draws; stays visually
+/// flat at zero when no pipeline is open, playback is paused, or the current clip has no
+/// audio, same as any other VU meter idling on silence.
+fn audio_level_meter(app: &App, ui: &mut egui::Ui) {
+    let level = app.current_audio_level();
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(60.0, 14.0), egui::Sense::hover());
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    let painter = ui.painter();
+    painter.rect_filled(rect, 2.0, theme::SURFACE_2);
+    let peak = level.peak.clamp(0.0, 1.0);
+    let rms = level.rms.clamp(0.0, 1.0);
+    if rms > 0.0 {
+        let mut rms_rect = rect;
+        rms_rect.set_width(rect.width() * rms);
+        painter.rect_filled(rms_rect, 2.0, theme::ACCENT);
+    }
+    if peak > 0.0 {
+        let peak_x = rect.left() + rect.width() * peak;
+        let peak_color = if peak > 0.98 {
+            theme::ERROR
+        } else {
+            theme::ACCENT_2
+        };
+        painter.vline(peak_x, rect.y_range(), egui::Stroke::new(2.0, peak_color));
+    }
+    response.on_hover_text(Text::PreviewAudioLevelMeter.tr(app.locale));
 }
 
 /// Idle time (no pointer movement/click) before the fullscreen preview overlay's controls

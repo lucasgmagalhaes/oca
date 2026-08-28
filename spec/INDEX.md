@@ -37,6 +37,7 @@ spec/
     ├── differentiators.md            (D1-D7: the proposed differentiator feature specs)
     ├── performance-and-caching.md    (dirty flags, versioned cache, hot-path rules — from nimble)
     ├── undo-redo.md                  (P0 item 1: what's done, what's left, why per-sequence)
+    ├── mobile-support.md             (Android/iOS ADR: proposed, not started — decision only)
     └── rules-and-dod.md              (full text behind RULES.md's summary)
 ```
 

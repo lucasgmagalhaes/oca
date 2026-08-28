@@ -13,9 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+use std::collections::HashMap;
+
 use avcore::timeline::{
-    ClipInstance, ColorFilter, MaskShape, ShapeClip, ShapeKind, Timeline, Track, TrackKind,
-    TransitionType,
+    AudioRole, ClipInstance, ColorFilter, MarkerKind, MaskShape, ShapeClip, ShapeKind, Timeline,
+    Track, TrackKind, TransitionType,
 };
 use avcore::ClipFormatting;
 use avcore::{Keyframe, Position};
@@ -28,6 +30,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         source_in_secs,
         source_out_secs,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -57,6 +60,14 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         scale_keyframes: vec![],
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
+        gain_keyframes: vec![],
+        brightness_keyframes: vec![],
+        contrast_keyframes: vec![],
+        saturation_keyframes: vec![],
+        crop_x_keyframes: vec![],
+        crop_y_keyframes: vec![],
+        crop_w_keyframes: vec![],
+        crop_h_keyframes: vec![],
         deflicker_enabled: false,
         lut_path: String::new(),
         layer_scale_x: 1.0,
@@ -328,6 +339,8 @@ fn empty_timeline_has_zero_duration() {
     let timeline = Timeline {
         tracks: vec![],
         playhead_secs: 0.0,
+        markers: Vec::new(),
+        multicam_groups: Vec::new(),
     };
     assert_eq!(timeline.duration_secs(), 0.0);
 }
@@ -346,6 +359,8 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
                 shape_clips: vec![],
 
                 visible: true,
+                audio_role: AudioRole::Unspecified,
+                color_label: None,
             },
             Track {
                 id: 2,
@@ -358,9 +373,13 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
                 shape_clips: vec![],
 
                 visible: true,
+                audio_role: AudioRole::Unspecified,
+                color_label: None,
             },
         ],
         playhead_secs: 0.0,
+        markers: Vec::new(),
+        multicam_groups: Vec::new(),
     };
     // Track V1's second clip ends at 30 + (44 - 0) = 74.
     assert_eq!(timeline.duration_secs(), 74.0);
@@ -377,6 +396,8 @@ fn track_with(clips: Vec<ClipInstance>) -> Track {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     }
 }
 
@@ -410,6 +431,11 @@ fn track_duration_accounts_for_shape_clips() {
         shape_kind: ShapeKind::rectangle(),
         center_x: 0.5,
         center_y: 0.5,
+        center_x_keyframes: vec![],
+        center_y_keyframes: vec![],
+        width_keyframes: vec![],
+        height_keyframes: vec![],
+        rotation_keyframes: vec![],
         width: 0.3,
         height: 0.3,
         rotation_deg: 0.0,
@@ -812,13 +838,205 @@ fn split_clip_at_keeps_transition_on_both_halves() {
 }
 
 #[test]
+fn new_clip_defaults_to_no_color_label() {
+    let c = clip(1, 0.0, 0.0, 10.0);
+    assert_eq!(c.color_label, None);
+}
+
+#[test]
+fn split_clip_at_keeps_the_color_label_on_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.color_label = Some([229, 83, 83]);
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    for half in &track.clips {
+        assert_eq!(half.color_label, Some([229, 83, 83]));
+    }
+}
+
+#[test]
 fn new_clip_defaults_to_no_keyframes() {
     let c = clip(1, 0.0, 0.0, 10.0);
     assert!(c.position_keyframes.is_empty());
     assert!(c.scale_keyframes.is_empty());
     assert!(c.rotation_keyframes.is_empty());
     assert!(c.opacity_keyframes.is_empty());
+    assert!(c.gain_keyframes.is_empty());
+    assert!(c.brightness_keyframes.is_empty());
+    assert!(c.contrast_keyframes.is_empty());
+    assert!(c.saturation_keyframes.is_empty());
+    assert!(c.crop_x_keyframes.is_empty());
+    assert!(c.crop_y_keyframes.is_empty());
+    assert!(c.crop_w_keyframes.is_empty());
+    assert!(c.crop_h_keyframes.is_empty());
     assert!(!c.has_scale_keyframes());
+    assert!(!c.has_gain_keyframes());
+    assert!(!c.has_color_keyframes());
+    assert!(!c.has_crop_keyframes());
+}
+
+#[test]
+fn video_filter_chain_uses_the_static_crop_stage_with_no_crop_keyframes() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.crop_x = 0.1;
+    c.crop_w = 0.5;
+    assert_eq!(c.video_filter_chain(), "crop=iw*0.5:ih*1:iw*0.1:ih*0");
+}
+
+#[test]
+fn video_filter_chain_suppresses_the_static_crop_stage_when_crop_keyframes_are_present() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.crop_x = 0.1;
+    c.crop_w = 0.5;
+    c.crop_x_keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: 0.2,
+    }];
+    assert_eq!(c.video_filter_chain(), "");
+}
+
+#[test]
+fn split_clip_at_rescales_crop_keyframes_onto_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.crop_x_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.4,
+        },
+    ];
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    assert!(track.clips[0].has_crop_keyframes());
+    assert!(track.clips[1].has_crop_keyframes());
+    assert_eq!(
+        track.clips[0].crop_x_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: 0.0
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: 0.2
+            },
+        ]
+    );
+}
+
+#[test]
+fn video_filter_chain_uses_the_static_eq_stage_with_no_color_keyframes() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.brightness = 0.3;
+    assert_eq!(
+        c.video_filter_chain(),
+        "eq=brightness=0.3:contrast=1:saturation=1"
+    );
+}
+
+#[test]
+fn video_filter_chain_suppresses_the_static_eq_stage_when_color_keyframes_are_present() {
+    let mut c = clip(1, 0.0, 0.0, 10.0);
+    c.brightness = 0.3;
+    c.brightness_keyframes = vec![Keyframe {
+        time_fraction: 0.0,
+        value: -0.5,
+    }];
+    // The static path defers entirely to keyframe_video_filter_chain -- no eq stage here, even
+    // though `brightness` is still non-neutral, so it never gets double-emitted.
+    assert_eq!(c.video_filter_chain(), "");
+}
+
+#[test]
+fn split_clip_at_rescales_color_keyframes_onto_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.brightness_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: -0.5,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.5,
+        },
+    ];
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    assert!(track.clips[0].has_color_keyframes());
+    assert!(track.clips[1].has_color_keyframes());
+    assert_eq!(
+        track.clips[0].brightness_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: -0.5
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: 0.0
+            },
+        ]
+    );
+}
+
+#[test]
+fn split_clip_at_rescales_gain_keyframes_onto_both_halves() {
+    let mut clip = clip(1, 10.0, 0.0, 20.0);
+    clip.gain_keyframes = vec![
+        Keyframe {
+            time_fraction: 0.0,
+            value: -20.0,
+        },
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.0,
+        },
+    ];
+    let mut track = track_with(vec![clip]);
+
+    let split = track.split_clip_at(20.0, 99);
+
+    assert!(split);
+    assert!(track.clips[0].has_gain_keyframes());
+    assert!(track.clips[1].has_gain_keyframes());
+    assert_eq!(
+        track.clips[0].gain_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: -20.0
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: -10.0
+            },
+        ]
+    );
+    assert_eq!(
+        track.clips[1].gain_keyframes,
+        vec![
+            Keyframe {
+                time_fraction: 0.0,
+                value: -10.0
+            },
+            Keyframe {
+                time_fraction: 1.0,
+                value: 0.0
+            },
+        ]
+    );
 }
 
 #[test]
@@ -1013,6 +1231,8 @@ fn timeline_with(tracks: Vec<Track>) -> Timeline {
     Timeline {
         tracks,
         playhead_secs: 0.0,
+        markers: Vec::new(),
+        multicam_groups: Vec::new(),
     }
 }
 
@@ -1029,6 +1249,8 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
         Track {
             id: 2,
@@ -1040,6 +1262,8 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
     ]);
 
@@ -1063,6 +1287,8 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
         Track {
             id: 2,
@@ -1074,6 +1300,8 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
     ]);
 
@@ -1096,6 +1324,8 @@ fn move_clip_to_track_is_a_no_op_for_an_unknown_target_track() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     }]);
 
     let moved = timeline.move_clip_to_track(1, 99, 5.0);
@@ -1117,6 +1347,8 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
         Track {
             id: 2,
@@ -1128,6 +1360,8 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
     ]);
 
@@ -1198,6 +1432,38 @@ fn formatting_roundtrip_preserves_all_fields() {
         time_fraction: 0.5,
         value: 0.6,
     }];
+    c.gain_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: -12.0,
+    }];
+    c.brightness_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: -0.2,
+    }];
+    c.contrast_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 1.3,
+    }];
+    c.saturation_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.7,
+    }];
+    c.crop_x_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.15,
+    }];
+    c.crop_y_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.25,
+    }];
+    c.crop_w_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.6,
+    }];
+    c.crop_h_keyframes = vec![Keyframe {
+        time_fraction: 0.5,
+        value: 0.7,
+    }];
     c.deflicker_enabled = true;
 
     let fmt = c.formatting();
@@ -1241,6 +1507,8 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
         Track {
             id: 2,
@@ -1252,6 +1520,8 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
             shape_clips: vec![],
 
             visible: true,
+            audio_role: AudioRole::Unspecified,
+            color_label: None,
         },
     ]);
 
@@ -1274,7 +1544,541 @@ fn timeline_clip_mut_returns_none_for_an_unknown_id() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     }]);
 
     assert!(timeline.clip_mut(99).is_none());
+}
+
+#[test]
+fn add_marker_assigns_ids_starting_at_one_and_clamps_a_negative_position() {
+    let mut timeline = timeline_with(vec![]);
+
+    let first = timeline.add_marker(5.0, MarkerKind::Standard);
+    let second = timeline.add_marker(-3.0, MarkerKind::ToDo);
+
+    assert_eq!(first, 1);
+    assert_eq!(second, 2);
+    assert_eq!(timeline.markers[0].position_secs, 5.0);
+    assert_eq!(timeline.markers[1].position_secs, 0.0);
+    assert_eq!(timeline.markers[1].kind, MarkerKind::ToDo);
+    assert!(!timeline.markers[1].completed);
+}
+
+#[test]
+fn add_marker_reuses_the_max_plus_one_id_even_after_a_removal() {
+    let mut timeline = timeline_with(vec![]);
+    let first = timeline.add_marker(0.0, MarkerKind::Standard);
+    let second = timeline.add_marker(1.0, MarkerKind::Standard);
+    timeline.remove_marker(second);
+
+    let third = timeline.add_marker(2.0, MarkerKind::Standard);
+
+    assert_eq!(first, 1);
+    assert_eq!(second, 2);
+    assert_eq!(
+        third, 2,
+        "the freed id 2 is reused since it's max(remaining) + 1"
+    );
+}
+
+#[test]
+fn remove_marker_reports_whether_anything_was_removed() {
+    let mut timeline = timeline_with(vec![]);
+    let id = timeline.add_marker(0.0, MarkerKind::Standard);
+
+    assert!(timeline.remove_marker(id));
+    assert!(timeline.markers.is_empty());
+    assert!(
+        !timeline.remove_marker(id),
+        "already removed, second call is a no-op"
+    );
+}
+
+#[test]
+fn marker_mut_edits_the_right_marker_and_none_for_an_unknown_id() {
+    let mut timeline = timeline_with(vec![]);
+    let id = timeline.add_marker(0.0, MarkerKind::ToDo);
+
+    timeline.marker_mut(id).unwrap().label = "Fix the intro".to_string();
+    timeline.marker_mut(id).unwrap().completed = true;
+
+    assert_eq!(timeline.markers[0].label, "Fix the intro");
+    assert!(timeline.markers[0].completed);
+    assert!(timeline.marker_mut(404).is_none());
+}
+
+#[test]
+fn markers_sorted_orders_by_position_regardless_of_insertion_order() {
+    let mut timeline = timeline_with(vec![]);
+    timeline.add_marker(10.0, MarkerKind::Standard);
+    timeline.add_marker(2.0, MarkerKind::Standard);
+    timeline.add_marker(6.0, MarkerKind::Standard);
+
+    let positions: Vec<f64> = timeline
+        .markers_sorted()
+        .iter()
+        .map(|m| m.position_secs)
+        .collect();
+
+    assert_eq!(positions, vec![2.0, 6.0, 10.0]);
+}
+
+// --- Named trim modes (ROADMAP.md P2 item 11): Ripple / Roll / Slip / Slide ---
+
+#[test]
+fn slip_shifts_source_in_and_out_together_without_moving_on_the_timeline() {
+    let mut c = clip(1, 5.0, 2.0, 8.0);
+
+    assert!(c.slip(1.0, None));
+
+    assert_eq!(
+        c.start_secs, 5.0,
+        "slip never moves the clip on the timeline"
+    );
+    assert_eq!(c.source_in_secs, 3.0);
+    assert_eq!(c.source_out_secs, 9.0);
+    assert_eq!(c.duration_secs(), 6.0, "duration is unchanged by a slip");
+}
+
+#[test]
+fn slip_refuses_to_push_source_in_below_zero() {
+    let mut c = clip(1, 5.0, 2.0, 8.0);
+
+    assert!(!c.slip(-3.0, None));
+    assert_eq!(
+        c.source_in_secs, 2.0,
+        "a refused slip leaves the clip untouched"
+    );
+    assert_eq!(c.source_out_secs, 8.0);
+}
+
+#[test]
+fn slip_refuses_to_push_source_out_past_the_assets_own_duration() {
+    let mut c = clip(1, 5.0, 2.0, 8.0);
+
+    assert!(!c.slip(5.0, Some(10.0)));
+    assert_eq!(c.source_out_secs, 8.0);
+}
+
+#[test]
+fn previous_and_next_clip_id_walk_the_track_by_position() {
+    let track = track_with(vec![clip(1, 0.0, 0.0, 6.0), clip(2, 6.0, 0.0, 9.0)]);
+
+    assert_eq!(track.previous_clip_id(2), Some(1));
+    assert_eq!(track.next_clip_id(1), Some(2));
+    assert_eq!(
+        track.previous_clip_id(1),
+        None,
+        "the earliest clip has no previous neighbor"
+    );
+    assert_eq!(
+        track.next_clip_id(2),
+        None,
+        "the latest clip has no next neighbor"
+    );
+    assert_eq!(
+        track.previous_clip_id(404),
+        None,
+        "an unknown id has no neighbors"
+    );
+}
+
+#[test]
+fn ripple_trim_start_shifts_only_clips_after_the_trimmed_clips_own_start() {
+    let mut track = track_with(vec![
+        clip(1, 0.0, 0.0, 10.0),
+        clip(2, 10.0, 0.0, 5.0),
+        clip(3, 15.0, 0.0, 5.0),
+    ]);
+
+    assert!(track.ripple_trim_start(2, 12.0, 0.1));
+
+    assert_eq!(
+        track.clips[0].start_secs, 0.0,
+        "clips before the edit point don't move"
+    );
+    let clip2 = track.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip2.start_secs, 12.0);
+    assert_eq!(clip2.source_in_secs, 2.0);
+    let clip3 = track.clips.iter().find(|c| c.id == 3).unwrap();
+    assert_eq!(
+        clip3.start_secs, 17.0,
+        "later clips shift by the same delta, no gap left"
+    );
+}
+
+#[test]
+fn ripple_trim_start_leaves_the_track_untouched_when_the_trim_itself_is_refused() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 0.0, 5.0)]);
+
+    // Shrinking clip 2 below the minimum duration refuses the underlying trim_start.
+    assert!(!track.ripple_trim_start(2, 14.95, 0.1));
+    assert_eq!(track.clips[1].start_secs, 10.0);
+}
+
+#[test]
+fn ripple_trim_end_shifts_only_clips_after_the_trimmed_clip() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 0.0, 5.0)]);
+
+    assert!(track.ripple_trim_end(1, 8.0, 0.1, None));
+
+    let clip1 = track.clips.iter().find(|c| c.id == 1).unwrap();
+    assert_eq!(clip1.source_out_secs, 8.0);
+    let clip2 = track.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(
+        clip2.start_secs, 8.0,
+        "shifted left by the 2s shrink, no gap left"
+    );
+}
+
+#[test]
+fn roll_edit_moves_the_shared_boundary_leaving_the_pairs_overall_span_unchanged() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 2.0, 7.0)]);
+
+    assert!(track.roll_edit(1, 8.0, 0.1, None));
+
+    let clip1 = track.clips.iter().find(|c| c.id == 1).unwrap();
+    assert_eq!(clip1.start_secs + clip1.duration_secs(), 8.0);
+    let clip2 = track.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(
+        clip2.start_secs, 8.0,
+        "the boundary landed exactly where clip 1's end did"
+    );
+    assert_eq!(
+        clip2.start_secs + clip2.duration_secs(),
+        15.0,
+        "the pair's overall span (0..15) is unchanged, just reallocated between them"
+    );
+}
+
+#[test]
+fn roll_edit_is_atomic_a_refused_neighbor_trim_leaves_both_clips_untouched() {
+    // clip 2's source_in_secs is already 0.0 -- rolling the boundary earlier would need it to
+    // show footage before its own start, which doesn't exist, so its trim_start must refuse.
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 0.0, 5.0)]);
+
+    assert!(!track.roll_edit(1, 8.0, 0.1, None));
+
+    assert_eq!(
+        track.clips[0].source_out_secs, 10.0,
+        "clip 1 must not be left half-rolled"
+    );
+    assert_eq!(
+        track.clips[1].start_secs, 10.0,
+        "clip 2 must not be left half-rolled either"
+    );
+}
+
+#[test]
+fn roll_edit_is_a_no_op_without_a_next_neighbor() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0)]);
+    assert!(!track.roll_edit(1, 8.0, 0.1, None));
+}
+
+#[test]
+fn slide_clip_absorbs_the_move_into_both_neighbors_without_changing_its_own_content() {
+    let mut track = track_with(vec![
+        clip(1, 0.0, 0.0, 6.0),
+        clip(2, 6.0, 0.0, 9.0),
+        clip(3, 15.0, 0.0, 5.0),
+    ]);
+
+    assert!(track.slide_clip(2, 8.0, 0.1, None));
+
+    let clip2 = track.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip2.start_secs, 8.0);
+    assert_eq!(
+        clip2.duration_secs(),
+        9.0,
+        "slide never changes the slid clip's own content"
+    );
+    let clip1 = track.clips.iter().find(|c| c.id == 1).unwrap();
+    assert_eq!(
+        clip1.start_secs + clip1.duration_secs(),
+        8.0,
+        "the previous clip's end absorbs the move, meeting clip 2's new start"
+    );
+    let clip3 = track.clips.iter().find(|c| c.id == 3).unwrap();
+    assert_eq!(
+        clip3.start_secs, 17.0,
+        "the next clip's start absorbs the move"
+    );
+    assert_eq!(
+        clip3.start_secs + clip3.duration_secs(),
+        20.0,
+        "the next clip's own end stays put -- nothing past it shifts"
+    );
+}
+
+#[test]
+fn slide_clip_is_atomic_a_refused_neighbor_trim_leaves_everything_untouched() {
+    // Sliding clip 2 to 8.0 would need clip 1 to extend to an 8s duration, which is fine, but
+    // clip 3's start would need to move to 17.0, shrinking it to a 3s duration -- refuse by
+    // asking for an impossibly high minimum duration so the whole edit rolls back.
+    let mut track = track_with(vec![
+        clip(1, 0.0, 0.0, 6.0),
+        clip(2, 6.0, 0.0, 9.0),
+        clip(3, 15.0, 0.0, 5.0),
+    ]);
+
+    assert!(!track.slide_clip(2, 8.0, 4.0, None));
+
+    assert_eq!(track.clips[0].source_out_secs, 6.0);
+    assert_eq!(track.clips[1].start_secs, 6.0);
+    assert_eq!(track.clips[2].start_secs, 15.0);
+}
+
+#[test]
+fn slide_clip_with_no_neighbors_just_moves_it() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 6.0)]);
+    assert!(track.slide_clip(1, 3.0, 0.1, None));
+    assert_eq!(track.clips[0].start_secs, 3.0);
+}
+
+#[test]
+fn ripple_delete_range_drops_a_clip_fully_inside_the_range_and_ripples_later_clips_left() {
+    let mut track = track_with(vec![
+        clip(1, 0.0, 0.0, 5.0),
+        clip(2, 5.0, 0.0, 3.0),
+        clip(3, 8.0, 0.0, 5.0),
+    ]);
+    let mut next_id = 4;
+
+    assert!(track.ripple_delete_range(5.0, 8.0, &mut next_id));
+
+    assert_eq!(
+        track.clips.len(),
+        2,
+        "clip 2 (fully inside the range) is dropped"
+    );
+    assert!(track.clips.iter().any(|c| c.id == 1));
+    let clip3 = track.clips.iter().find(|c| c.id == 3).unwrap();
+    assert_eq!(clip3.start_secs, 5.0, "shifted left by the removed 3s span");
+    assert_eq!(next_id, 4, "no split was needed, no id consumed");
+}
+
+#[test]
+fn ripple_delete_range_splits_a_clip_straddling_either_boundary() {
+    // A single 20s clip; deleting [5, 15) should leave two remainders: [0,5) and [15,20)
+    // ripple-shifted left to close the 10s gap, i.e. starting at 0 and 5.
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 20.0)]);
+    let mut next_id = 2;
+
+    assert!(track.ripple_delete_range(5.0, 15.0, &mut next_id));
+
+    assert_eq!(
+        next_id, 4,
+        "both boundaries needed a split, two ids consumed"
+    );
+    assert_eq!(track.clips.len(), 2);
+    let first = track.clips.iter().find(|c| c.id == 1).unwrap();
+    assert_eq!(first.start_secs, 0.0);
+    assert_eq!(first.source_out_secs, 5.0);
+    let second = track.clips.iter().find(|c| c.id == 3).unwrap();
+    assert_eq!(
+        second.start_secs, 5.0,
+        "ripple-shifted left by the removed 10s span"
+    );
+    assert_eq!(second.source_in_secs, 15.0);
+}
+
+#[test]
+fn ripple_delete_range_no_op_split_at_an_exact_boundary_consumes_no_id() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 5.0), clip(2, 5.0, 0.0, 5.0)]);
+    let mut next_id = 3;
+
+    // [0, 5) exactly matches clip 1's own span -- no clip straddles either boundary.
+    assert!(track.ripple_delete_range(0.0, 5.0, &mut next_id));
+
+    assert_eq!(next_id, 3, "no split was performed, id counter untouched");
+    assert_eq!(track.clips.len(), 1);
+    assert_eq!(track.clips[0].id, 2);
+    assert_eq!(track.clips[0].start_secs, 0.0);
+}
+
+#[test]
+fn ripple_delete_range_rejects_an_empty_or_inverted_range() {
+    let mut track = track_with(vec![clip(1, 0.0, 0.0, 10.0)]);
+    let mut next_id = 2;
+    assert!(!track.ripple_delete_range(5.0, 5.0, &mut next_id));
+    assert!(!track.ripple_delete_range(8.0, 3.0, &mut next_id));
+    assert_eq!(next_id, 2);
+    assert_eq!(track.clips.len(), 1);
+}
+
+// P2 item 10, "Multicam editing" -- MulticamGroup grouping/hiding and
+// Timeline::switch_multicam_angle's split+retarget logic.
+
+fn track_with_id_and_asset(id: u64, asset_id: u64, clips: Vec<ClipInstance>) -> Track {
+    let mut track = track_with(clips);
+    track.id = id;
+    for clip in &mut track.clips {
+        clip.asset_id = asset_id;
+    }
+    track
+}
+
+#[test]
+fn add_multicam_group_hides_every_member_except_the_program_track() {
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 20.0)]);
+    let angle_3 = track_with_id_and_asset(3, 30, vec![clip(3, 0.0, 0.0, 20.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2, angle_3]);
+
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2, 3], 1, HashMap::new())
+        .unwrap();
+
+    assert_eq!(timeline.multicam_groups.len(), 1);
+    assert_eq!(timeline.multicam_groups[0].id, group_id);
+    assert!(timeline.tracks[0].visible, "program track stays visible");
+    assert!(!timeline.tracks[1].visible, "non-program angle is hidden");
+    assert!(!timeline.tracks[2].visible, "non-program angle is hidden");
+}
+
+#[test]
+fn add_multicam_group_rejects_fewer_than_two_members_or_an_unknown_program_track() {
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 20.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+
+    assert!(timeline
+        .clone()
+        .add_multicam_group("Solo".to_string(), vec![1], 1, HashMap::new())
+        .is_none());
+    assert!(timeline
+        .add_multicam_group("Bad program".to_string(), vec![1, 2], 99, HashMap::new())
+        .is_none());
+    assert!(timeline.multicam_groups.is_empty());
+}
+
+#[test]
+fn remove_multicam_group_re_shows_every_member() {
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 20.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2], 1, HashMap::new())
+        .unwrap();
+    assert!(!timeline.tracks[1].visible);
+
+    assert!(timeline.remove_multicam_group(group_id));
+
+    assert!(timeline.tracks[1].visible, "hide is undone on removal");
+    assert!(timeline.multicam_groups.is_empty());
+}
+
+#[test]
+fn switch_multicam_angle_splits_the_program_clip_and_retargets_the_second_half() {
+    // Two in-sync (offset 0) 20s angles, different assets. Program (angle 1, asset 10) plays
+    // the whole 20s; switching to angle 2 (asset 20) at t=8 should leave [0, 8) on asset 10 and
+    // retarget [8, 20) to asset 20 at the same source position (no offset between them).
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 20.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2], 1, HashMap::new())
+        .unwrap();
+
+    let switched = timeline.switch_multicam_angle(group_id, 1, 8.0, 100);
+
+    assert!(switched);
+    let program_clips = &timeline.tracks[0].clips;
+    assert_eq!(program_clips.len(), 2);
+    assert_eq!(program_clips[0].id, 1);
+    assert_eq!(program_clips[0].asset_id, 10);
+    assert_eq!(program_clips[0].start_secs, 0.0);
+    assert_eq!(program_clips[0].source_out_secs, 8.0);
+    assert_eq!(program_clips[1].id, 100);
+    assert_eq!(
+        program_clips[1].asset_id, 20,
+        "retargeted to angle 2's asset"
+    );
+    assert_eq!(program_clips[1].start_secs, 8.0);
+    assert_eq!(
+        program_clips[1].source_in_secs, 8.0,
+        "same source position, 0 offset"
+    );
+    assert_eq!(program_clips[1].source_out_secs, 20.0);
+}
+
+#[test]
+fn switch_multicam_angle_accounts_for_a_nonzero_sync_offset() {
+    // Angle 2 started recording 2s *after* angle 1: for the same real-world moment,
+    // angle_2_time = angle_1_time - 2.0, i.e. offset(angle_2) = -2.0 relative to angle 1's 0.0.
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 18.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+    let mut offsets = HashMap::new();
+    offsets.insert(2u64, -2.0);
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2], 1, offsets)
+        .unwrap();
+
+    // Switching at t=8 on the program track's own clock -> angle 2's equivalent time is 8 - 2 = 6.
+    let switched = timeline.switch_multicam_angle(group_id, 1, 8.0, 100);
+
+    assert!(switched);
+    let switched_clip = &timeline.tracks[0].clips[1];
+    assert_eq!(switched_clip.source_in_secs, 6.0);
+}
+
+#[test]
+fn switch_multicam_angle_reuses_an_existing_boundary_without_a_redundant_split() {
+    let program = track_with_id_and_asset(
+        1,
+        10,
+        vec![clip(1, 0.0, 0.0, 10.0), clip(2, 10.0, 0.0, 10.0)],
+    );
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(3, 0.0, 0.0, 20.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2], 1, HashMap::new())
+        .unwrap();
+
+    // 10.0 is already the boundary between clip 1 and clip 2 -- no split should occur.
+    let switched = timeline.switch_multicam_angle(group_id, 1, 10.0, 100);
+
+    assert!(switched);
+    assert_eq!(
+        timeline.tracks[0].clips.len(),
+        2,
+        "reused the existing boundary, did not add a third clip"
+    );
+    assert_eq!(timeline.tracks[0].clips[1].id, 2, "kept clip 2's own id");
+    assert_eq!(timeline.tracks[0].clips[1].asset_id, 20);
+}
+
+#[test]
+fn switch_multicam_angle_is_a_no_op_for_an_unknown_group_or_angle_index() {
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 20.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2], 1, HashMap::new())
+        .unwrap();
+
+    assert!(!timeline.switch_multicam_angle(999, 1, 8.0, 100));
+    assert!(!timeline.switch_multicam_angle(group_id, 5, 8.0, 100));
+    assert!(
+        !timeline.switch_multicam_angle(group_id, 0, 8.0, 100),
+        "angle 0 is already the program track"
+    );
+    assert_eq!(timeline.tracks[0].clips.len(), 1, "nothing was split");
+}
+
+#[test]
+fn switch_multicam_angle_is_a_no_op_when_the_target_angle_has_no_footage_at_that_time() {
+    let program = track_with_id_and_asset(1, 10, vec![clip(1, 0.0, 0.0, 20.0)]);
+    // Angle 2 only covers [0, 5) -- nothing there at t=8.
+    let angle_2 = track_with_id_and_asset(2, 20, vec![clip(2, 0.0, 0.0, 5.0)]);
+    let mut timeline = timeline_with(vec![program, angle_2]);
+    let group_id = timeline
+        .add_multicam_group("Multicam 1".to_string(), vec![1, 2], 1, HashMap::new())
+        .unwrap();
+
+    assert!(!timeline.switch_multicam_angle(group_id, 1, 8.0, 100));
+    assert_eq!(timeline.tracks[0].clips.len(), 1, "nothing was split");
 }

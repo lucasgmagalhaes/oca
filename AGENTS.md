@@ -156,6 +156,22 @@ queue.
 - Write all code and commit messages in English.
 - Commit using Conventional Commits format (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, etc.), always in English.
 
+## On-demand code quality references
+
+Use [`docs/code-quality/README.md`](docs/code-quality/README.md) as a router. Do not preload every
+quality document. Load only the guide whose trigger matches the current task, and load each selected
+guide once per task:
+
+- behavior, refactor, architecture, or code review: `design-principles.md`
+- Rust code or Rust-facing APIs: `rust.md`
+- hot paths, media processing, caches, concurrency, I/O, or optimization: `performance.md`
+- behavior or test changes: `testing.md`
+- untrusted input, paths, downloads, dependencies, secrets, or FFI: `security.md`
+- patch/PR review: `review-checklist.md`, followed only by the applicable topical guides
+
+Skip this library for documentation-only and mechanical changes unless the changed document defines
+one of these contracts.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

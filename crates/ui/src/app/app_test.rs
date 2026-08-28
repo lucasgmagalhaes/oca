@@ -14,7 +14,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use super::*;
-use avcore::timeline::{ClipInstance, Track, TrackKind};
+use avcore::timeline::{AudioRole, ClipInstance, Track, TrackKind};
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Recency, Sequence, Timeline};
 use eframe::egui;
 
@@ -31,17 +31,30 @@ fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
             timeline: Timeline {
                 tracks: Vec::new(),
                 playhead_secs: 0.0,
+                markers: Vec::new(),
+                multicam_groups: Vec::new(),
             },
             export_settings: Default::default(),
         }],
         active_sequence: 0,
         file_path: None,
         panel_layout: None,
+        smart_bins: Vec::new(),
     }
 }
 
 fn test_project_with_tracks(id: u64, tracks: Vec<Track>) -> Project {
     let mut project = test_project(id, Vec::new());
+    project.timeline_mut().tracks = tracks;
+    project
+}
+
+fn test_project_with_tracks_and_assets(
+    id: u64,
+    tracks: Vec<Track>,
+    assets: Vec<MediaAsset>,
+) -> Project {
+    let mut project = test_project(id, assets);
     project.timeline_mut().tracks = tracks;
     project
 }
@@ -57,6 +70,8 @@ fn test_track(id: u64, kind: TrackKind, clips: Vec<ClipInstance>) -> Track {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     }
 }
 
@@ -68,6 +83,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         source_in_secs,
         source_out_secs,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -97,6 +113,14 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         scale_keyframes: vec![],
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
+        gain_keyframes: vec![],
+        brightness_keyframes: vec![],
+        contrast_keyframes: vec![],
+        saturation_keyframes: vec![],
+        crop_x_keyframes: vec![],
+        crop_y_keyframes: vec![],
+        crop_w_keyframes: vec![],
+        crop_h_keyframes: vec![],
         deflicker_enabled: false,
         lut_path: String::new(),
         layer_scale_x: 1.0,
@@ -110,6 +134,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
 fn test_composite_clip(id: u64, start_secs: f64, composite_id: u64) -> ClipInstance {
     ClipInstance {
         composite_id: Some(composite_id),
+        color_label: None,
         ..test_clip(id, start_secs, 0.0, 10.0)
     }
 }
@@ -176,6 +201,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
     let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
     let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
+    let (scene_cut_detection_tx, scene_cut_detection_rx) = mpsc::unbounded_channel();
     let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
     let (tts_tx, tts_rx) = mpsc::unbounded_channel();
     let (youtube_download_tx, youtube_download_rx) = mpsc::unbounded_channel();
@@ -197,6 +223,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         render_tx,
         render_rx,
         active_renders: HashMap::new(),
+        export_preview_cache: None,
         preview: None,
         preview_clip_id: None,
         preview_overlay_clip_ids: Vec::new(),
@@ -204,6 +231,10 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         preview_text_clip_ids: Vec::new(),
         preview_shape_clip_ids: Vec::new(),
         preview_texture: None,
+        preview_lut_cache: None,
+        scopes_enabled: false,
+        waveform_texture: None,
+        vectorscope_texture: None,
         preview_playing: false,
         preview_frozen_since: None,
         fullscreen_preview: false,
@@ -226,6 +257,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         motion_tracking_tx,
         motion_tracking_rx,
         motion_tracking_clip_id: None,
+        scene_cut_detection_tx,
+        scene_cut_detection_rx,
+        scene_cut_detection_clip_id: None,
         motion_track_center_x: 0.5,
         motion_track_center_y: 0.5,
         motion_track_width: 0.2,
@@ -271,6 +305,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         clipboard_clip: None,
         formatting_clipboard: None,
         multi_selected_clip_ids: HashSet::new(),
+        active_multicam_group_id: None,
+        active_smart_bin_id: None,
+        editing_smart_bin: None,
         toasts: Vec::new(),
         prefs_open: false,
         prev_prefs_open: false,
@@ -286,6 +323,9 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         saving_layer_template: None,
         applying_layer_template: None,
         layer_templates_menu_open: false,
+        timeline_index_open: false,
+        marker_search: String::new(),
+        silence_review: None,
         binding_capture: None,
         update_check_tx,
         update_check_rx,
@@ -747,6 +787,59 @@ fn queue_export_starts_at_one_when_no_jobs_exist() {
 }
 
 #[test]
+fn resolved_active_sequence_export_preview_resolves_the_active_sequences_clips() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 4.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.active_project_mut().media_library = vec![test_asset(1)];
+
+    let (track_segments, _audio_segments, canvas) =
+        app.resolved_active_sequence_export_preview().unwrap();
+
+    assert_eq!(track_segments.len(), 1);
+    assert_eq!(track_segments[0].len(), 1);
+    assert_eq!(canvas.width, 1920);
+}
+
+#[test]
+fn resolved_active_sequence_export_preview_ignores_a_playhead_only_change() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 4.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.active_project_mut().media_library = vec![test_asset(1)];
+
+    let (before, _, _) = app.resolved_active_sequence_export_preview().unwrap();
+    app.active_project_mut().timeline_mut().playhead_secs = 2.5;
+    let (after, _, _) = app.resolved_active_sequence_export_preview().unwrap();
+
+    assert_eq!(before.len(), after.len());
+    assert_eq!(
+        before[0][0].source_out_secs, after[0][0].source_out_secs,
+        "scrubbing must not change the resolved segments"
+    );
+}
+
+#[test]
+fn resolved_active_sequence_export_preview_picks_up_a_later_clip_edit() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 4.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.active_project_mut().media_library = vec![test_asset(1)];
+
+    let (before, ..) = app.resolved_active_sequence_export_preview().unwrap();
+    assert_eq!(before[0][0].source_out_secs, 4.0);
+
+    app.active_project_mut()
+        .timeline_mut()
+        .clip_mut(1)
+        .unwrap()
+        .source_out_secs = 6.0;
+    let (after, ..) = app.resolved_active_sequence_export_preview().unwrap();
+
+    assert_eq!(
+        after[0][0].source_out_secs, 6.0,
+        "a real clip edit must not be served a stale cached result"
+    );
+}
+
+#[test]
 fn queued_job_keeps_the_sequence_export_snapshot_after_settings_change() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
     app.set_active_sequence_export_aspect_ratio(avcore::ExportAspectRatio::Portrait);
@@ -773,6 +866,35 @@ fn queued_job_keeps_the_sequence_export_snapshot_after_settings_change() {
 }
 
 #[test]
+fn apply_platform_export_preset_sets_both_aspect_ratio_and_loudness_target() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    // Starts on defaults distinct from every preset's own settings, so this test can't pass by
+    // coincidence.
+    app.set_active_sequence_export_aspect_ratio(avcore::ExportAspectRatio::Landscape);
+    app.set_active_sequence_target_lufs(-23.0);
+
+    app.apply_platform_export_preset(avcore::PlatformExportPreset::TikTok);
+
+    let settings = app.active_sequence_export_settings();
+    assert_eq!(settings.aspect_ratio, avcore::ExportAspectRatio::Portrait);
+    assert_eq!(settings.target_lufs, -14.0);
+}
+
+#[test]
+fn apply_platform_export_preset_leaves_the_pickers_free_to_fine_tune_afterward() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.apply_platform_export_preset(avcore::PlatformExportPreset::InstagramReels);
+    app.set_active_sequence_export_aspect_ratio(avcore::ExportAspectRatio::Square);
+
+    assert_eq!(
+        app.active_sequence_export_settings().aspect_ratio,
+        avcore::ExportAspectRatio::Square,
+        "a manual pick after a preset must still take effect, not be locked by the preset"
+    );
+}
+
+#[test]
 fn cancel_export_job_removes_a_job_that_has_not_started_rendering() {
     let mut app = test_app(
         vec![test_project(1, Vec::new())],
@@ -782,6 +904,30 @@ fn cancel_export_job_removes_a_job_that_has_not_started_rendering() {
     app.cancel_export_job(1);
 
     assert!(app.export_jobs.is_empty());
+}
+
+#[test]
+fn match_loudness_across_queued_jobs_only_touches_queued_jobs() {
+    let mut app = test_app(
+        vec![test_project(1, Vec::new())],
+        vec![
+            test_job(1, ExportJobStatus::Queued),
+            test_job(2, ExportJobStatus::Rendering { percent: 40 }),
+            test_job(3, ExportJobStatus::Done),
+        ],
+    );
+
+    app.match_loudness_across_queued_jobs(-23.0);
+
+    assert_eq!(app.export_jobs[0].target_lufs, -23.0);
+    assert_eq!(
+        app.export_jobs[1].target_lufs, -14.0,
+        "an in-flight render already captured its own target -- changing it now would be a no-op lie"
+    );
+    assert_eq!(
+        app.export_jobs[2].target_lufs, -14.0,
+        "a finished job is done -- changing it would just be misleading"
+    );
 }
 
 #[test]
@@ -1251,6 +1397,25 @@ fn changing_preview_hardware_decode_invalidates_preview_state() {
 }
 
 #[test]
+fn invalidate_preview_rendering_drops_the_scope_textures_too() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let ctx = egui::Context::default();
+    let image = egui::ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
+    app.waveform_texture = Some(ctx.load_texture(
+        "waveform-test",
+        image.clone(),
+        egui::TextureOptions::default(),
+    ));
+    app.vectorscope_texture =
+        Some(ctx.load_texture("vectorscope-test", image, egui::TextureOptions::default()));
+
+    app.invalidate_preview_rendering();
+
+    assert!(app.waveform_texture.is_none());
+    assert!(app.vectorscope_texture.is_none());
+}
+
+#[test]
 fn ensure_preview_loaded_is_a_no_op_with_no_video_track() {
     let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 
@@ -1614,6 +1779,129 @@ fn trim_clip_end_is_bounded_by_the_source_assets_own_duration() {
         app.active_project().timeline().tracks[0].clips[0].source_out_secs,
         8.0
     );
+}
+
+#[test]
+fn ripple_trim_clip_start_shifts_only_later_clips() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 0.0, 5.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.ripple_trim_clip_start(2, 12.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    assert_eq!(tracks.clips[0].start_secs, 0.0);
+    let clip2 = tracks.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip2.start_secs, 12.0);
+    assert_eq!(clip2.source_in_secs, 2.0);
+}
+
+#[test]
+fn ripple_trim_clip_end_is_bounded_by_the_source_assets_own_duration() {
+    // test_asset's duration_secs is a fixed 10.0, so trimming clip 1's end past it must
+    // refuse -- same bound App::trim_clip_end already enforces.
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 8.0), test_clip(2, 8.0, 0.0, 5.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.ripple_trim_clip_end(1, 50.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    assert_eq!(tracks.clips[0].source_out_secs, 8.0);
+    assert_eq!(
+        tracks.clips[1].start_secs, 8.0,
+        "a refused trim must not shift the later clip either"
+    );
+}
+
+#[test]
+fn roll_edit_clip_moves_the_shared_boundary() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 2.0, 7.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.roll_edit_clip(1, 8.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    let clip1 = tracks.clips.iter().find(|c| c.id == 1).unwrap();
+    let clip2 = tracks.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip1.start_secs + clip1.duration_secs(), 8.0);
+    assert_eq!(clip2.start_secs, 8.0);
+}
+
+#[test]
+fn roll_edit_from_start_edge_resolves_the_previous_neighbor() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 10.0), test_clip(2, 10.0, 2.0, 7.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    // Dragging clip 2's own start edge should produce the same roll as dragging clip 1's end.
+    app.roll_edit_from_start_edge(2, 8.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    let clip1 = tracks.clips.iter().find(|c| c.id == 1).unwrap();
+    let clip2 = tracks.clips.iter().find(|c| c.id == 2).unwrap();
+    assert_eq!(clip1.start_secs + clip1.duration_secs(), 8.0);
+    assert_eq!(clip2.start_secs, 8.0);
+}
+
+#[test]
+fn slip_clip_shifts_source_range_without_moving_on_the_timeline() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 5.0, 1.0, 6.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.slip_clip(1, 1.0);
+
+    let clip = &app.active_project().timeline().tracks[0].clips[0];
+    assert_eq!(clip.start_secs, 5.0);
+    assert_eq!(clip.source_in_secs, 2.0);
+    assert_eq!(clip.source_out_secs, 7.0);
+}
+
+#[test]
+fn slide_clip_absorbs_the_move_into_both_neighbors() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![
+            test_clip(1, 0.0, 0.0, 6.0),
+            test_clip(2, 6.0, 0.0, 9.0),
+            test_clip(3, 15.0, 0.0, 5.0),
+        ],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.slide_clip(2, 8.0);
+
+    let tracks = &app.active_project().timeline().tracks[0];
+    let clip1 = tracks.clips.iter().find(|c| c.id == 1).unwrap();
+    let clip2 = tracks.clips.iter().find(|c| c.id == 2).unwrap();
+    let clip3 = tracks.clips.iter().find(|c| c.id == 3).unwrap();
+    assert_eq!(clip2.start_secs, 8.0);
+    assert_eq!(clip1.start_secs + clip1.duration_secs(), 8.0);
+    assert_eq!(clip3.start_secs, 17.0);
 }
 
 #[test]
@@ -4419,6 +4707,11 @@ fn add_shape_clip_ids_stay_unique_past_an_existing_high_shape_clip_id() {
         shape_kind: avcore::timeline::ShapeKind::rectangle(),
         center_x: 0.5,
         center_y: 0.5,
+        center_x_keyframes: vec![],
+        center_y_keyframes: vec![],
+        width_keyframes: vec![],
+        height_keyframes: vec![],
+        rotation_keyframes: vec![],
         width: 0.3,
         height: 0.3,
         rotation_deg: 0.0,
@@ -4773,4 +5066,847 @@ fn load_panel_layout_keeps_live_values_when_project_has_no_saved_layout() {
     app.load_panel_layout_for_active_project();
 
     assert_eq!(app.lib_panel_width, 999.0);
+}
+
+#[test]
+fn toggle_timeline_index_flips_the_open_flag() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    assert!(!app.timeline_index_open);
+
+    app.toggle_timeline_index();
+    assert!(app.timeline_index_open);
+
+    app.toggle_timeline_index();
+    assert!(!app.timeline_index_open);
+}
+
+#[test]
+fn add_marker_at_playhead_places_it_at_the_current_playhead() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.active_project_mut().timeline_mut().playhead_secs = 12.5;
+
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::Chapter);
+
+    let timeline = app.active_project().timeline();
+    let marker = timeline.markers.iter().find(|m| m.id == id).unwrap();
+    assert_eq!(marker.position_secs, 12.5);
+    assert_eq!(marker.kind, avcore::MarkerKind::Chapter);
+}
+
+#[test]
+fn remove_marker_deletes_it() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::Standard);
+
+    app.remove_marker(id);
+
+    assert!(app.active_project().timeline().markers.is_empty());
+}
+
+#[test]
+fn set_marker_label_updates_the_right_marker() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::Standard);
+
+    app.set_marker_label(id, "Needs a re-take".to_string());
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(
+        timeline.markers.iter().find(|m| m.id == id).unwrap().label,
+        "Needs a re-take"
+    );
+}
+
+#[test]
+fn set_marker_kind_updates_the_right_marker() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::Standard);
+
+    app.set_marker_kind(id, avcore::MarkerKind::ToDo);
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(
+        timeline.markers.iter().find(|m| m.id == id).unwrap().kind,
+        avcore::MarkerKind::ToDo
+    );
+}
+
+#[test]
+fn toggle_marker_completed_flips_the_flag() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let id = app.add_marker_at_playhead(avcore::MarkerKind::ToDo);
+
+    app.toggle_marker_completed(id);
+    assert!(
+        app.active_project()
+            .timeline()
+            .markers
+            .iter()
+            .find(|m| m.id == id)
+            .unwrap()
+            .completed
+    );
+
+    app.toggle_marker_completed(id);
+    assert!(
+        !app.active_project()
+            .timeline()
+            .markers
+            .iter()
+            .find(|m| m.id == id)
+            .unwrap()
+            .completed
+    );
+}
+
+#[test]
+fn marker_mutations_are_no_ops_for_an_unknown_id() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.remove_marker(404);
+    app.set_marker_label(404, "x".to_string());
+    app.set_marker_kind(404, avcore::MarkerKind::Chapter);
+    app.toggle_marker_completed(404);
+
+    assert!(app.active_project().timeline().markers.is_empty());
+}
+
+fn silence_review_asset() -> MediaAsset {
+    // 20 one-second buckets, loud except a silent run [8, 12).
+    let mut peaks = vec![(-0.8, 0.8); 20];
+    for p in &mut peaks[8..12] {
+        *p = (0.0, 0.0);
+    }
+    MediaAsset {
+        duration_secs: 20.0,
+        waveform_peaks: Some(peaks),
+        ..test_asset(1)
+    }
+}
+
+#[test]
+fn begin_silence_review_maps_a_detected_gap_into_timeline_coordinates() {
+    // Clip shows source 5..15 starting at timeline 100 -- same setup as
+    // avcore::silence_detection's own clip_silence_gaps test, exercised here end-to-end
+    // through the App wrapper.
+    let track = test_track(1, TrackKind::Audio, vec![test_clip(1, 100.0, 5.0, 15.0)]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![silence_review_asset()],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.begin_silence_review();
+
+    let review = app.silence_review.as_ref().expect("review should open");
+    assert_eq!(review.track_id, 1);
+    assert_eq!(review.gaps.len(), 1);
+    assert_eq!(review.gaps[0].clip_id, 1);
+    assert_eq!(review.gaps[0].gap.start_secs, 103.0);
+    assert_eq!(review.gaps[0].gap.end_secs, 107.0);
+    assert!(review.gaps[0].accepted, "gaps default to accepted");
+}
+
+#[test]
+fn begin_silence_review_without_a_selected_clip_toasts_instead_of_opening() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.begin_silence_review();
+
+    assert!(app.silence_review.is_none());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn begin_silence_review_skips_clips_whose_asset_has_no_cached_waveform() {
+    let track = test_track(1, TrackKind::Audio, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![test_asset(1)],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.begin_silence_review();
+
+    assert!(app.silence_review.as_ref().unwrap().gaps.is_empty());
+}
+
+#[test]
+fn toggle_silence_gap_accepted_flips_only_the_targeted_entry() {
+    let track = test_track(1, TrackKind::Audio, vec![test_clip(1, 100.0, 5.0, 15.0)]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![silence_review_asset()],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.begin_silence_review();
+
+    app.toggle_silence_gap_accepted(0);
+
+    assert!(!app.silence_review.as_ref().unwrap().gaps[0].accepted);
+}
+
+#[test]
+fn apply_silence_review_ripple_deletes_only_accepted_gaps_and_closes_the_modal() {
+    // Two clips, each with its own silent run, on the same track.
+    let track = test_track(
+        1,
+        TrackKind::Audio,
+        vec![test_clip(1, 0.0, 0.0, 20.0), test_clip(2, 20.0, 0.0, 20.0)],
+    );
+    let mut asset2 = silence_review_asset();
+    asset2.id = 2;
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![silence_review_asset(), asset2],
+        )],
+        Vec::new(),
+    );
+    // clip 1 uses asset 1, clip 2 uses asset 2 -- fix up asset_id on the second clip.
+    app.active_project_mut().timeline_mut().tracks[0].clips[1].asset_id = 2;
+    app.selected_clip_id = Some(1);
+    app.begin_silence_review();
+    assert_eq!(app.silence_review.as_ref().unwrap().gaps.len(), 2);
+
+    // Reject the first clip's gap; only the second clip's 4s gap should actually be cut.
+    app.toggle_silence_gap_accepted(0);
+    app.apply_silence_review();
+
+    assert!(app.silence_review.is_none(), "modal closes after apply");
+    let track = &app.active_project().timeline().tracks[0];
+    assert_eq!(
+        track.clips.len(),
+        3,
+        "clip 1 kept whole, clip 2 split in two"
+    );
+    let total_duration: f64 = track.clips.iter().map(|c| c.duration_secs()).sum();
+    assert_eq!(
+        total_duration, 36.0,
+        "only the second clip's 4s silent run was removed (20 + 20 - 4)"
+    );
+}
+
+#[test]
+fn apply_silence_review_with_nothing_accepted_is_a_no_op() {
+    let track = test_track(1, TrackKind::Audio, vec![test_clip(1, 100.0, 5.0, 15.0)]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![silence_review_asset()],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.begin_silence_review();
+    app.toggle_silence_gap_accepted(0);
+
+    app.apply_silence_review();
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].duration_secs(),
+        10.0,
+        "nothing was accepted -- the clip is untouched"
+    );
+}
+
+#[test]
+fn close_silence_review_discards_the_staged_review() {
+    let track = test_track(1, TrackKind::Audio, vec![test_clip(1, 100.0, 5.0, 15.0)]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![silence_review_asset()],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.begin_silence_review();
+
+    app.close_silence_review();
+
+    assert!(app.silence_review.is_none());
+}
+
+fn collab_bundle_scratch_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("oca_app_collab_bundle_test_{name}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn export_collab_bundle_writes_a_zip_and_toasts_success() {
+    let dir = collab_bundle_scratch_dir("export_ok");
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let output_path = dir.join("handoff.zip");
+
+    app.export_collab_bundle(output_path.clone());
+
+    assert!(output_path.exists());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn export_collab_bundle_toasts_on_failure_instead_of_panicking() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    // A parent directory that doesn't exist -- File::create fails.
+    let output_path = PathBuf::from("/nonexistent-oca-test-dir/handoff.zip");
+
+    app.export_collab_bundle(output_path);
+
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn import_collab_bundle_opens_the_project_with_its_new_file_path() {
+    let dir = collab_bundle_scratch_dir("import_ok");
+    let bundle_path = dir.join("handoff.zip");
+    let mut sender = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    sender.export_collab_bundle(bundle_path.clone());
+
+    let mut recipient = test_app(Vec::new(), Vec::new());
+    let dest_project_path = dir.join("recipient/project.ocproj");
+
+    recipient.import_collab_bundle(bundle_path, dest_project_path.clone());
+
+    assert_eq!(recipient.projects.len(), 1);
+    assert_eq!(
+        recipient.projects[0].file_path,
+        Some(dest_project_path.clone())
+    );
+    assert_eq!(
+        recipient.screen,
+        Screen::Editor,
+        "opens the imported project"
+    );
+    assert!(dest_project_path.exists());
+}
+
+#[test]
+fn import_collab_bundle_toasts_on_failure_instead_of_panicking() {
+    let mut app = test_app(Vec::new(), Vec::new());
+    let missing_zip = PathBuf::from("/nonexistent-oca-test-dir/handoff.zip");
+    let dest_project_path =
+        std::env::temp_dir().join("oca_app_collab_bundle_test_never_written.ocproj");
+
+    app.import_collab_bundle(missing_zip, dest_project_path);
+
+    assert!(app.projects.is_empty());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn apply_detected_scene_cuts_adds_numbered_chapter_markers_at_timeline_coordinates() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 100.0, 5.0, 15.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.locale = Locale::En;
+
+    app.apply_detected_scene_cuts(
+        1,
+        vec![
+            avcore::SceneCut {
+                at_secs: 8.0,
+                score: 0.5,
+            },
+            avcore::SceneCut {
+                at_secs: 12.0,
+                score: 0.6,
+            },
+        ],
+    );
+
+    let markers = app.active_project().timeline().markers_sorted();
+    assert_eq!(markers.len(), 2);
+    assert_eq!(markers[0].position_secs, 103.0);
+    assert_eq!(markers[0].label, "Chapter 1");
+    assert_eq!(markers[0].kind, avcore::MarkerKind::Chapter);
+    assert_eq!(markers[1].position_secs, 107.0);
+    assert_eq!(markers[1].label, "Chapter 2");
+}
+
+#[test]
+fn apply_detected_scene_cuts_numbering_continues_from_existing_chapters() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.locale = Locale::En;
+    app.active_project_mut()
+        .timeline_mut()
+        .add_marker(1.0, avcore::MarkerKind::Chapter);
+
+    app.apply_detected_scene_cuts(
+        1,
+        vec![avcore::SceneCut {
+            at_secs: 5.0,
+            score: 0.5,
+        }],
+    );
+
+    let markers = app.active_project().timeline().markers_sorted();
+    let new_marker = markers.iter().find(|m| m.position_secs == 5.0).unwrap();
+    assert_eq!(new_marker.label, "Chapter 2");
+}
+
+#[test]
+fn apply_detected_scene_cuts_is_a_no_op_for_an_unknown_clip() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.apply_detected_scene_cuts(
+        404,
+        vec![avcore::SceneCut {
+            at_secs: 1.0,
+            score: 0.5,
+        }],
+    );
+
+    assert!(app.active_project().timeline().markers.is_empty());
+}
+
+#[test]
+fn export_chapters_txt_writes_sorted_timecode_lines() {
+    let dir = std::env::temp_dir().join("oca_app_export_chapters_test");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let output_path = dir.join("chapters.txt");
+
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let timeline = app.active_project_mut().timeline_mut();
+    let later_id = timeline.add_marker(65.0, avcore::MarkerKind::Chapter);
+    timeline.marker_mut(later_id).unwrap().label = "Boss fight".to_string();
+    let earlier_id = timeline.add_marker(0.0, avcore::MarkerKind::Chapter);
+    timeline.marker_mut(earlier_id).unwrap().label = "Intro".to_string();
+    // A non-Chapter marker should never show up in the export.
+    timeline.add_marker(30.0, avcore::MarkerKind::Standard);
+
+    app.export_chapters_txt(output_path.clone());
+
+    let contents = std::fs::read_to_string(&output_path).unwrap();
+    assert_eq!(contents, "00:00 Intro\n01:05 Boss fight\n");
+}
+
+#[test]
+fn export_chapters_txt_toasts_instead_of_writing_when_no_chapters_exist() {
+    let dir = std::env::temp_dir().join("oca_app_export_chapters_test_empty");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let output_path = dir.join("chapters.txt");
+
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.export_chapters_txt(output_path.clone());
+
+    assert!(!output_path.exists());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn set_track_audio_role_writes_the_role_on_the_targeted_track() {
+    let track = test_track(1, TrackKind::Audio, Vec::new());
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.set_track_audio_role(1, avcore::AudioRole::Mic);
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].audio_role,
+        avcore::AudioRole::Mic
+    );
+}
+
+#[test]
+fn set_track_audio_role_is_a_no_op_for_an_unknown_track() {
+    let track = test_track(1, TrackKind::Audio, Vec::new());
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.set_track_audio_role(404, avcore::AudioRole::GameAudio);
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].audio_role,
+        avcore::AudioRole::Unspecified
+    );
+}
+
+#[test]
+fn set_track_color_label_writes_the_label_on_the_targeted_track() {
+    let track = test_track(1, TrackKind::Audio, Vec::new());
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.set_track_color_label(1, Some([229, 83, 83]));
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].color_label,
+        Some([229, 83, 83])
+    );
+}
+
+#[test]
+fn set_track_color_label_is_a_no_op_for_an_unknown_track() {
+    let track = test_track(1, TrackKind::Audio, Vec::new());
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.set_track_color_label(404, Some([229, 83, 83]));
+
+    assert_eq!(app.active_project().timeline().tracks[0].color_label, None);
+}
+
+#[test]
+fn set_clip_color_label_writes_the_label_on_the_targeted_clip_regardless_of_selection() {
+    let clip = test_clip(1, 0.0, 0.0, 10.0);
+    let track = test_track(1, TrackKind::Video, vec![clip]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.selected_clip_id = None;
+
+    app.set_clip_color_label(1, Some([86, 156, 214]));
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].color_label,
+        Some([86, 156, 214])
+    );
+}
+
+#[test]
+fn detach_audio_mutes_the_video_clip_and_adds_a_synced_audio_clip() {
+    let video_clip = test_clip(1, 5.0, 1.0, 4.0);
+    let video_track = test_track(1, TrackKind::Video, vec![video_clip]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![video_track],
+            vec![test_asset(1)],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.detach_audio_from_selected_clip();
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks[0].clips[0].gain_db, *GAIN_DB_RANGE.start());
+    let audio_track = timeline
+        .tracks
+        .iter()
+        .find(|t| t.kind == TrackKind::Audio)
+        .expect("an audio track should have been created");
+    assert_eq!(audio_track.clips.len(), 1);
+    let detached = &audio_track.clips[0];
+    assert_eq!(detached.asset_id, 1);
+    assert_eq!(detached.start_secs, 5.0);
+    assert_eq!(detached.source_in_secs, 1.0);
+    assert_eq!(detached.source_out_secs, 4.0);
+    assert_eq!(detached.gain_db, 0.0);
+}
+
+#[test]
+fn detach_audio_is_a_no_op_when_the_asset_has_no_audio() {
+    let video_clip = test_clip(1, 5.0, 1.0, 4.0);
+    let video_track = test_track(1, TrackKind::Video, vec![video_clip]);
+    let mut silent_asset = test_asset(1);
+    silent_asset.has_audio = false;
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![video_track],
+            vec![silent_asset],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.detach_audio_from_selected_clip();
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks.len(), 1);
+    assert_eq!(timeline.tracks[0].clips[0].gain_db, 0.0);
+}
+
+#[test]
+fn detach_audio_is_a_no_op_for_a_non_video_clip() {
+    let audio_clip = test_clip(1, 5.0, 1.0, 4.0);
+    let audio_track = test_track(1, TrackKind::Audio, vec![audio_clip]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![audio_track],
+            vec![test_asset(1)],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.detach_audio_from_selected_clip();
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks.len(), 1);
+    assert_eq!(timeline.tracks[0].clips[0].gain_db, 0.0);
+}
+
+#[test]
+fn apply_speed_ramp_splits_into_contiguous_steps_with_interpolated_speed() {
+    // A clip from 10s..20s (10s long at 1.0x, the default speed_factor test_clip already uses).
+    let video_clip = test_clip(1, 10.0, 0.0, 10.0);
+    let video_track = test_track(1, TrackKind::Video, vec![video_clip]);
+    let mut app = test_app(
+        vec![test_project_with_tracks(1, vec![video_track])],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.apply_speed_ramp_to_selected_clip(0.5, 2.0, 4);
+
+    let mut clips = app.active_project().timeline().tracks[0].clips.clone();
+    clips.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
+    assert_eq!(clips.len(), 4);
+
+    // Speeds interpolate linearly from 0.5 to 2.0 across the 4 pieces.
+    let speeds: Vec<f32> = clips.iter().map(|c| c.speed_factor).collect();
+    assert_eq!(speeds, vec![0.5, 1.0, 1.5, 2.0]);
+
+    // The pieces stay contiguous (no gaps/overlaps) even though each one's duration_secs now
+    // differs from the others, since speed_factor changed per piece.
+    let mut cursor = 10.0;
+    for clip in &clips {
+        assert_eq!(clip.start_secs, cursor);
+        cursor += clip.duration_secs();
+    }
+
+    // Splitting at equal ORIGINAL (unramped) 2.5s boundaries means each piece's own trimmed
+    // source range is 2.5s wide, so its post-ramp duration is 2.5 / speed_factor.
+    for (clip, speed) in clips.iter().zip(&speeds) {
+        assert!((clip.duration_secs() - 2.5 / *speed as f64).abs() < 1e-9);
+    }
+}
+
+#[test]
+fn apply_speed_ramp_is_a_no_op_with_fewer_than_two_steps() {
+    let video_clip = test_clip(1, 10.0, 0.0, 10.0);
+    let video_track = test_track(1, TrackKind::Video, vec![video_clip]);
+    let mut app = test_app(
+        vec![test_project_with_tracks(1, vec![video_track])],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.apply_speed_ramp_to_selected_clip(0.5, 2.0, 1);
+
+    assert_eq!(app.active_project().timeline().tracks[0].clips.len(), 1);
+}
+
+#[test]
+fn apply_speed_ramp_clamps_to_speed_factor_range() {
+    let video_clip = test_clip(1, 10.0, 0.0, 10.0);
+    let video_track = test_track(1, TrackKind::Video, vec![video_clip]);
+    let mut app = test_app(
+        vec![test_project_with_tracks(1, vec![video_track])],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    // 10.0x and 0.01x are both outside SPEED_FACTOR_RANGE (0.25..=4.0).
+    app.apply_speed_ramp_to_selected_clip(10.0, 0.01, 2);
+
+    let mut clips = app.active_project().timeline().tracks[0].clips.clone();
+    clips.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
+    assert_eq!(clips[0].speed_factor, *SPEED_FACTOR_RANGE.end());
+    assert_eq!(clips[1].speed_factor, *SPEED_FACTOR_RANGE.start());
+}
+
+#[test]
+fn set_clip_color_label_none_clears_an_existing_label() {
+    let mut clip = test_clip(1, 0.0, 0.0, 10.0);
+    clip.color_label = Some([86, 156, 214]);
+    let track = test_track(1, TrackKind::Video, vec![clip]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+
+    app.set_clip_color_label(1, None);
+
+    assert_eq!(
+        app.active_project().timeline().tracks[0].clips[0].color_label,
+        None
+    );
+}
+
+// 20 half-second buckets over a 10s asset -- matches DEFAULT_HIGHLIGHT_GRID_SECS (0.5s) exactly
+// so each spiking bucket lands in its own grid cell instead of several buckets sharing one.
+fn spiky_peaks(spike_range: std::ops::Range<usize>) -> Vec<(f32, f32)> {
+    let mut peaks = vec![(-0.1, 0.1); 20];
+    for p in &mut peaks[spike_range] {
+        *p = (-0.9, 0.9);
+    }
+    peaks
+}
+
+fn highlight_test_project() -> Project {
+    let game_asset = MediaAsset {
+        waveform_peaks: Some(spiky_peaks(6..12)),
+        duration_secs: 10.0,
+        ..test_asset(1)
+    };
+    let mic_asset = MediaAsset {
+        id: 2,
+        waveform_peaks: Some(spiky_peaks(6..12)),
+        duration_secs: 10.0,
+        ..test_asset(2)
+    };
+    let mut game_track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    game_track.audio_role = avcore::AudioRole::GameAudio;
+
+    let mic_clip = ClipInstance {
+        asset_id: 2,
+        ..test_clip(2, 0.0, 0.0, 10.0)
+    };
+    let mut mic_track = test_track(2, TrackKind::Audio, vec![mic_clip]);
+    mic_track.audio_role = avcore::AudioRole::Mic;
+
+    test_project_with_tracks_and_assets(1, vec![game_track, mic_track], vec![game_asset, mic_asset])
+}
+
+#[test]
+fn detect_highlights_adds_a_marker_at_the_simultaneous_spike() {
+    let mut app = test_app(vec![highlight_test_project()], Vec::new());
+
+    app.detect_highlights();
+
+    let markers = app.active_project().timeline().markers_sorted();
+    assert_eq!(markers.len(), 1);
+    assert_eq!(markers[0].kind, avcore::MarkerKind::Highlight);
+    assert_eq!(markers[0].position_secs, 3.0);
+}
+
+#[test]
+fn detect_highlights_toasts_when_a_role_is_missing() {
+    // Only a game-audio track, no mic track tagged.
+    let track = {
+        let mut t = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+        t.audio_role = avcore::AudioRole::GameAudio;
+        t
+    };
+    let asset = MediaAsset {
+        waveform_peaks: Some(spiky_peaks(3..6)),
+        duration_secs: 10.0,
+        ..test_asset(1)
+    };
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![asset],
+        )],
+        Vec::new(),
+    );
+
+    app.detect_highlights();
+
+    assert!(app.active_project().timeline().markers.is_empty());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn detect_highlights_toasts_when_nothing_spikes_together() {
+    let project = {
+        let mut p = highlight_test_project();
+        // Mic never spikes.
+        p.media_library[1].waveform_peaks = Some(vec![(-0.1, 0.1); 20]);
+        p
+    };
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.detect_highlights();
+
+    assert!(app.active_project().timeline().markers.is_empty());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+fn shorts_pack_scratch_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("oca_app_shorts_pack_test_{name}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn shorts_pack_test_project() -> Project {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 60.0)]);
+    let mut project = test_project_with_tracks_and_assets(1, vec![track], vec![test_asset(1)]);
+    project
+        .timeline_mut()
+        .add_marker(10.0, avcore::MarkerKind::Highlight);
+    project
+        .timeline_mut()
+        .add_marker(40.0, avcore::MarkerKind::Highlight);
+    project
+}
+
+#[test]
+fn spawn_shorts_pack_queues_one_job_per_highlight_marker() {
+    let dir = shorts_pack_scratch_dir("basic");
+    let mut app = test_app(vec![shorts_pack_test_project()], Vec::new());
+
+    app.spawn_shorts_pack(dir.clone());
+
+    assert_eq!(app.export_jobs.len(), 2);
+    assert!(app.export_jobs[0].title.contains("short_1"));
+    assert!(app.export_jobs[1].title.contains("short_2"));
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn spawn_shorts_pack_uses_portrait_aspect_ratio() {
+    let dir = shorts_pack_scratch_dir("portrait");
+    let mut app = test_app(vec![shorts_pack_test_project()], Vec::new());
+
+    app.spawn_shorts_pack(dir);
+
+    assert_eq!(app.export_jobs[0].canvas.width, 1080);
+    assert_eq!(app.export_jobs[0].canvas.height, 1920);
+}
+
+#[test]
+fn spawn_shorts_pack_toasts_when_there_are_no_highlight_markers() {
+    let dir = shorts_pack_scratch_dir("none");
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 60.0)]);
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![track],
+            vec![test_asset(1)],
+        )],
+        Vec::new(),
+    );
+
+    app.spawn_shorts_pack(dir);
+
+    assert!(app.export_jobs.is_empty());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn spawn_shorts_pack_skips_a_window_landing_entirely_in_a_gap() {
+    let dir = shorts_pack_scratch_dir("gap");
+    // A single short clip [0, 5); a highlight far past it has no clip content in its window.
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 5.0)]);
+    let mut project = test_project_with_tracks_and_assets(1, vec![track], vec![test_asset(1)]);
+    project
+        .timeline_mut()
+        .add_marker(500.0, avcore::MarkerKind::Highlight);
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.spawn_shorts_pack(dir);
+
+    assert!(
+        app.export_jobs.is_empty(),
+        "the only candidate's window had no clip content"
+    );
 }

@@ -19,6 +19,9 @@ request changes, or flag that a task needs to be re-split.
 
 Review **one task_id at a time**, in the order given by `commit_plan.md`.
 
+Before reviewing, load `docs/code-quality/review-checklist.md`, then use
+`docs/code-quality/README.md` to load only the topical guides triggered by the patch.
+
 ---
 
 ## Required checklist

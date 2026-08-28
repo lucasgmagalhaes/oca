@@ -21,8 +21,8 @@ use avcore::persistence::{
     to_ocproj_bytes, to_ocqueue_bytes, PersistError,
 };
 use avcore::timeline::{
-    ClipInstance, ColorFilter, MaskShape, TextClip, TextFontFamily, TextFontStyle, Timeline, Track,
-    TrackKind, TransitionType,
+    AudioRole, ClipInstance, ColorFilter, MaskShape, TextClip, TextFontFamily, TextFontStyle,
+    Timeline, Track, TrackKind, TransitionType,
 };
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency, Sequence, TextSegment};
 
@@ -58,6 +58,7 @@ fn clip(id: u64, asset_id: u64) -> ClipInstance {
         source_in_secs: 0.0,
         source_out_secs: 10.0,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -87,6 +88,14 @@ fn clip(id: u64, asset_id: u64) -> ClipInstance {
         scale_keyframes: vec![],
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
+        gain_keyframes: vec![],
+        brightness_keyframes: vec![],
+        contrast_keyframes: vec![],
+        saturation_keyframes: vec![],
+        crop_x_keyframes: vec![],
+        crop_y_keyframes: vec![],
+        crop_w_keyframes: vec![],
+        crop_h_keyframes: vec![],
         deflicker_enabled: false,
         lut_path: String::new(),
         layer_scale_x: 1.0,
@@ -138,13 +147,18 @@ fn fixture_project() -> Project {
                     shape_clips: vec![],
 
                     visible: true,
+                    audio_role: AudioRole::Unspecified,
+                    color_label: None,
                 }],
+                markers: Vec::new(),
+                multicam_groups: Vec::new(),
             },
             export_settings: Default::default(),
         }],
         active_sequence: 0,
         file_path: None,
         panel_layout: None,
+        smart_bins: Vec::new(),
     }
 }
 
@@ -161,12 +175,15 @@ fn empty_project() -> Project {
             timeline: Timeline {
                 tracks: vec![],
                 playhead_secs: 0.0,
+                markers: Vec::new(),
+                multicam_groups: Vec::new(),
             },
             export_settings: Default::default(),
         }],
         active_sequence: 0,
         file_path: None,
         panel_layout: None,
+        smart_bins: Vec::new(),
     }
 }
 
@@ -194,9 +211,12 @@ fn project_with_styled_text() -> Project {
             words: vec![],
             highlight_enabled: false,
             highlight_color_rgba: [255, 220, 0, 255],
+            opacity_keyframes: vec![],
         }],
         shape_clips: vec![],
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     });
     project
 }
@@ -453,6 +473,27 @@ fn from_ocproj_bytes_rejects_an_unsupported_version() {
 }
 
 #[test]
+fn from_ocproj_bytes_rejects_a_decompression_bomb() {
+    // Bypasses to_ocproj_bytes to build the raw gzip stream by hand: a run of zero bytes well
+    // past MAX_DECOMPRESSED_BYTES (256 MiB), which flate2 compresses down to a few KB -- the
+    // exact "tiny file, huge decompressed size" shape a real gzip-bomb DoS attempt would have.
+    use std::io::Write;
+    let mut bytes = b"OCPJ".to_vec();
+    bytes.push(1); // FORMAT_VERSION
+    let mut encoder = flate2::write::GzEncoder::new(&mut bytes, flate2::Compression::fast());
+    let chunk = vec![0u8; 1024 * 1024];
+    for _ in 0..(257) {
+        encoder.write_all(&chunk).unwrap();
+    }
+    encoder.finish().unwrap();
+
+    assert!(matches!(
+        from_ocproj_bytes::<Project>(&bytes),
+        Err(PersistError::Corrupt(_))
+    ));
+}
+
+#[test]
 fn ocqueue_round_trip_uses_its_own_magic_bytes() {
     let original = vec![1_u64, 5, 9];
 
@@ -483,6 +524,7 @@ fn queued_text_segments_without_a_glyph_range_load_as_whole_text() {
         glyph_byte_range: Some([4, 10]),
         pos_x: 0.1,
         pos_y: 0.8,
+        opacity_keyframe_expr: String::new(),
     }];
     let bytes = to_ocqueue_bytes(&original).unwrap();
     let mut msgpack = Vec::new();

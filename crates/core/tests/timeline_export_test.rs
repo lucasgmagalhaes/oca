@@ -19,8 +19,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use avcore::project::Sequence;
 use avcore::render::{render_timeline_export, RenderError, RenderOutcome};
 use avcore::timeline::{
-    ClipInstance, ColorFilter, MaskShape, TextClip, Timeline, Track, TrackKind, TransitionType,
-    WordTiming,
+    AudioRole, ClipInstance, ColorFilter, MaskShape, TextClip, Timeline, Track, TrackKind,
+    TransitionType, WordTiming,
 };
 use avcore::Keyframe;
 use avcore::{probe_media, MediaAsset, MediaKind};
@@ -45,6 +45,7 @@ fn clip(
         source_in_secs,
         source_out_secs,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -74,6 +75,14 @@ fn clip(
         scale_keyframes: vec![],
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
+        gain_keyframes: vec![],
+        brightness_keyframes: vec![],
+        contrast_keyframes: vec![],
+        saturation_keyframes: vec![],
+        crop_x_keyframes: vec![],
+        crop_y_keyframes: vec![],
+        crop_w_keyframes: vec![],
+        crop_h_keyframes: vec![],
         deflicker_enabled: false,
         lut_path: String::new(),
         layer_scale_x: 1.0,
@@ -98,6 +107,8 @@ fn sequence_with(tracks: Vec<Track>) -> Sequence {
         timeline: Timeline {
             tracks,
             playhead_secs: 0.0,
+            markers: Vec::new(),
+            multicam_groups: Vec::new(),
         },
         export_settings: Default::default(),
     }
@@ -121,6 +132,8 @@ fn renders_two_clips_with_different_effects_as_one_concatenated_export() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![track]);
 
@@ -164,6 +177,8 @@ fn frozen_clip_still_exports_its_full_timeline_duration() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![track]);
 
@@ -221,6 +236,8 @@ fn rejects_a_clip_with_a_missing_asset() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![track]);
     let output = std::env::temp_dir().join("avcore_test_timeline_export_missing_asset.mp4");
@@ -254,6 +271,8 @@ fn cancelling_mid_timeline_export_reports_cancelled() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![track]);
     let output = std::env::temp_dir().join("avcore_test_timeline_export_cancelled.mp4");
@@ -297,6 +316,8 @@ fn deflicker_exports_without_error() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![track]);
 
@@ -335,6 +356,8 @@ fn word_highlight_text_overlay_exports_without_error() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let text_track = Track {
         id: 2,
@@ -369,9 +392,12 @@ fn word_highlight_text_overlay_exports_without_error() {
             ],
             highlight_enabled: true,
             highlight_color_rgba: [255, 220, 0, 255],
+            opacity_keyframes: vec![],
         }],
         shape_clips: vec![],
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![video_track, text_track]);
 
@@ -414,6 +440,8 @@ fn fade_transition_exports_without_error() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![track]);
 
@@ -456,6 +484,8 @@ fn slide_transition_exports_without_error() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![track]);
 
@@ -498,6 +528,8 @@ fn zoom_transition_exports_without_error() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![track]);
 
@@ -555,6 +587,8 @@ fn animated_scale_keyframes_export_without_error() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![track]);
 
@@ -605,6 +639,8 @@ fn animated_rotation_keyframes_export_without_error() {
         shape_clips: vec![],
 
         visible: true,
+        audio_role: AudioRole::Unspecified,
+        color_label: None,
     };
     let sequence = sequence_with(vec![track]);
 

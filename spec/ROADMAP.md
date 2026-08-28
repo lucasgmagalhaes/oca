@@ -42,36 +42,129 @@ feature that touches the timeline.
 
 Read [architecture/performance-and-caching.md](architecture/performance-and-caching.md).
 
-3. `[ ]` Dirty-flag mutation classification for timeline edits (position vs. content vs.
-   effect vs. track) — today likely every edit forces the same full-pipeline-reopen path in
-   preview; confirm, then fix.
-4. `[ ]` Versioned cache for the timeline→avfilter-graph resolution
-   (`resolve_timeline_segments_multi`) — rebuilds from scratch on every call today.
-5. `[ ]` Extract a shared `FrameSampler` primitive — auto-reframe, motion tracking, and
-   background-removal matte generation each reimplement their own seek-and-poll sampling loop.
+3. `[~]` Dirty-flag mutation classification for timeline edits (position vs. content vs.
+   effect vs. track). Confirmed the premise didn't hold as stated — position/effect edits
+   already skip a reopen (they just don't live-update the pipeline either, a separate gap);
+   the one real hot-path violation found (text-clip property panel forcing a full pipeline
+   reopen on every dragged-slider frame, bundling position/content with start/duration) is
+   fixed via a cheap `appsrc` buffer refresh. **Partial follow-up**: color-balance sliders
+   (brightness/contrast/saturation — the confirmed hot-path violation's own motivating
+   example) now update live too, via `Preview::set_live_balance` pushing directly to the
+   already-built `videobalance` element (`gst::Bin::by_name`, named `oca_balance_{clip_id}`)
+   instead of waiting for an incidental reopen — deliberately scoped to just this one
+   property group, not the full "every effect setter" scope, which stays a materially
+   bigger lift (most effects' elements are only conditionally present at all — e.g. no
+   `gaussianblur` exists in the pipeline until `blur_intensity` first goes non-zero — so a
+   live update for those needs restructuring the running filter graph, not just a property
+   push; color balance was tractable specifically because brightness/contrast/saturation all
+   share one element that, once built, stays present across any further change among the
+   three). Verified against a real GStreamer pipeline in a scratch crate (this sandbox's
+   `core` test binary can't link — the ONNX Runtime gap — but `avbridge` alone can, so a
+   scratch crate depending on real `avbridge` + `gstreamer` proved the negative-path logic
+   for real): `set_live_balance` correctly declines when no element was built, and correctly
+   declines for a mismatched clip id. **Not verified**: that it finds/updates the element
+   once one exists, or that a push actually changes decoded output — this sandbox's `playbin`
+   never constructs a working video output branch at all (`current_frame()` returns `None`
+   for every clip, confirmed against an unmodified copy of `preview_test.rs`'s own
+   pre-existing test), the same GUI/hardware-dependent-verification limitation this codebase's
+   test suite already carries elsewhere. See `matrix/performance.md` for the full findings
+   and what's still open (every other effect-property's live preview update, non-text overlay
+   kinds).
+4. `[x]` Versioned cache for the timeline→avfilter-graph resolution
+   (`resolve_timeline_segments_multi`). The confirmed hot spot was `screens::queue::show`
+   recomputing it every UI frame the Fila screen is open, just for a size estimate — fixed via
+   `App::resolved_active_sequence_export_preview`'s value-equality cache. See
+   `matrix/performance.md` for what is/isn't covered.
+5. `[x]` Extract a shared `FrameSampler` primitive — `avcore::FrameSampler`
+   (`crates/core/src/frame_sampler.rs`) now backs auto-reframe, motion tracking,
+   background-removal matte generation, and (found during the same pass) thumbnail extraction,
+   which had the identical shape. Session-reuse for `background_removal::segment_person`'s ONNX
+   session is a related but separate gap, left open — see `architecture/performance-and-
+   caching.md` §5.
 
 ## P2 — High-Impact Parity
 
 Read [matrix/effects-and-color.md](matrix/effects-and-color.md),
 [matrix/robustness.md](matrix/robustness.md), [matrix/competitor-parity.md](matrix/competitor-parity.md).
 
-6. `[ ]` Audio ducking (auto-lower music under speech) — `audio_mix.c`'s multi-branch mixing
-   already provides the infra this builds on. Confirmed standard in CapCut/Premiere/DaVinci.
-7. `[ ]` Color scopes (waveform/vectorscope) for calibrated grading.
-8. `[ ]` Export presets per platform (YouTube Shorts / Instagram Reels / TikTok — resolution +
-   aspect + LUFS target bundled under one name).
-9. `[ ]` Review/comment markers on the timeline — consider Final Cut Pro's typed-marker +
-   searchable Timeline Index model, not just a plain note.
-10. `[ ]` **Multicam editing** — sync footage from multiple sources (game capture, webcam, mic)
-    by timecode or audio waveform, switch angles dynamically on one track. In all four editors
-    surveyed (`matrix/competitor-parity.md`); directly matches this channel's actual multi-
-    source recording setup.
-11. `[ ]` **Named trim modes: Ripple / Roll / Slip / Slide** — confirm which of the four oca's
-    current trim tool actually covers, fill the rest. See `matrix/competitor-parity.md` for
-    the exact definition of each.
-12. `[ ]` **D3 — series-level loudness consistency** across an export-queue batch
-    (`architecture/differentiators.md`). Low effort, pure orchestration over LUFS analysis +
-    export queue, both already built.
+6. `[x]` Audio ducking (auto-lower music under speech). Reuses the existing `AudioRole`
+   (`Mic`/`Music`/`GameAudio`/`Unspecified`) rather than new per-track metadata:
+   `AudioRole::to_duck_role_code()` (core) maps it to a raw `u8` crossing the FFI boundary as
+   `AudioSegment::duck_role`, and `build_mix_graph` in `avbridge/csrc/audio_mix.c` routes every
+   `Music`-tagged branch through a `sidechaincompress` keyed by the mixed `Mic`-tagged branches
+   whenever both roles are present on the timeline — opt-in and additive, byte-identical to the
+   old flat `amix` otherwise. A trigger (mic) branch needs its audio in two places at once (the
+   sidechain control input *and* still audible in the final mix) but a filter output pad can
+   only be consumed once, so each trigger branch gets its own `asplit` feeding both consumers —
+   the bug that produced `AVERROR(EINVAL)` on the first attempt, found by real
+   `avfilter_graph_config` runs, not by re-reading the C. Verified for real, not just
+   syntax-checked: `crates/avbridge` has zero heavy dependencies (no ONNX/whisper/GStreamer), so
+   `cargo test -p avbridge --test audio_mix_test` fully links and runs in this sandbox against
+   real fixture media — three new integration tests cover single-branch-per-role, multiple
+   branches per role (the `music_mix`/`trigger_mix` sub-`amix` paths), and a target with no
+   trigger falling back to the original flat mix. `resolve_audio_segments` wiring covered in
+   `core`'s own test suite. The prior skip note (no FFmpeg dev headers, `pkg-config` found
+   nothing) no longer applies in this sandbox — `pkg-config --cflags/--modversion libavfilter`
+   both resolve now.
+7. `[x]` Color scopes (waveform/vectorscope) for calibrated grading. `avcore::scopes`
+   (pure pixel analysis, no new avfilter/GStreamer element) + an opt-in "📊" toggle on the
+   Editor preview panel. Grayscale-intensity simplification, not a calibrated-graticule
+   broadcast scope — see `matrix/effects-and-color.md` for the exact scope (pun intended) of
+   what shipped.
+8. `[x]` Export presets per platform (YouTube Shorts / Instagram Reels / TikTok — resolution +
+   aspect + LUFS target bundled under one name). `avcore::PlatformExportPreset`
+   (`crates/core/src/export.rs`) + `App::apply_platform_export_preset` + a one-click button row
+   on the Fila screen, above the existing aspect-ratio/LUFS pickers (which stay live afterward
+   for fine-tuning — a preset isn't a lock). All three presets currently resolve to the same
+   numbers (1080x1920, -14 LUFS, matching this codebase's own existing "YouTube" LUFS profile)
+   — a real current fact about these platforms' delivery specs, not a shortcut: each preset
+   still carries its own independent mapping, ready to diverge without a shape change. Pure
+   Rust/UI, no `avbridge` C changes — picked deliberately over item 6 for that reason.
+9. `[x]` Review/comment markers on the timeline — `avcore::timeline::Marker`/`MarkerKind`
+   (Standard/ToDo/Chapter, FCP's typed-marker model) + a searchable Timeline Index panel
+   (text search, click-to-seek, inline edit). Not done: markers as a magnetic-snap target, and
+   ruler tick-mark rendering — see `matrix/timeline-and-editing.md` for the exact scope.
+10. `[x]` **Multicam editing** — sync footage from multiple sources (game capture, webcam, mic),
+    switch angles dynamically. Scoped to the smallest end-to-end vertical slice that's honestly
+    "shipped," not half-wired: angles are ordinary `Video` tracks (no new `TrackKind`), grouped
+    by a new `avcore::timeline::MulticamGroup` sidecar record (member tracks, program/active
+    track, per-track sync offsets) — same non-invasive shape `Marker` uses.
+    - **Sync**: audio-waveform only (not timecode — no code in this repo reads embedded
+      timecode/creation-time metadata, and waveform sync alone satisfies "sync by audio").
+      `avcore::multicam_sync` cross-correlates each track's first clip's audio (via the
+      already-existing `avbridge::extract_pcm_16k_mono`, previously whisper.cpp-only) against a
+      reference track — a coarse RMS envelope + bounded lag search, not full-resolution
+      correlation (too slow over a multi-minute recording). Pure Rust, no new `avbridge`/C code.
+    - **Switching**: `Timeline::switch_multicam_angle` splits the program track's clip at the
+      playhead (`Track::split_clip_at`, already used by D1/D6) and retargets the new piece's
+      `asset_id`/`source_in_secs`/`source_out_secs` to the target angle's footage at the
+      sync-offset-adjusted equivalent time — reuses existing editing primitives end to end,
+      no new avfilter/C wiring. `App::create_multicam_group_from_video_tracks` (Editor toolbar's
+      "Sync Multicam" button) builds the group; number keys 1-9 at the playhead switch angles.
+    - **Export correctness falls out for free**: once a switch is materialized as an ordinary
+      same-track clip split, `resolve_timeline_segments_multi`/`resolve_audio_segments` already
+      produce correct segments — no `render.rs` changes needed.
+    - **Explicitly not done** (documented, not silently missing): live multi-feed preview during
+      scrub/playback — still plays one decoded source, same "no live preview effect yet" gap
+      every other per-clip effect has; a real multicam monitor needs GStreamer multi-branch
+      preview-pipeline work, a separate and larger task. Verified via a real-execution scratch-
+      crate (this sandbox's `core` test binary can't *link* — the pre-existing ONNX Runtime gap
+      — but `timeline.rs`/`keyframe.rs`/`multicam_sync.rs` have zero heavy deps, so copying them
+      into a throwaway crate gives genuine `cargo test` runs, not just type-checking) — 15 new
+      tests across sync-offset correlation and group/switch semantics, all passing for real.
+11. `[x]` **Named trim modes: Ripple / Roll / Slip / Slide.** Confirmed: oca's existing trim/move
+    (`ClipInstance::trim_start`/`trim_end`, `Track::move_clip`) matched none of the four —
+    trimming an edge never touched neighboring clips at all (no ripple, no roll), and there was
+    no way to change source-in/out without moving the clip or changing its duration (no slip).
+    All four now implemented as their own `EditorTool` toolbar modes — see
+    `matrix/timeline-and-editing.md` for the exact scope and what's still unverified.
+12. `[x]` **D3 — series-level loudness consistency** across an export-queue batch
+    (`architecture/differentiators.md`). `App::match_loudness_across_queued_jobs` + a button row
+    on the Fila screen (shown once ≥2 `Queued` jobs exist) sets one target LUFS across every
+    not-yet-started job in the batch — each queued job otherwise keeps whatever `target_lufs`
+    its own sequence/tab happened to have when it was queued, so episode 1 and episode 5 of a
+    series could silently end up with mismatched targets. Pure orchestration, no new DSP —
+    reuses the existing per-job `target_lufs` field and `LUFS_PROFILES` picker.
 
 ## P3 — Differentiators
 
@@ -80,14 +173,143 @@ effort and dependency, not by the doc's own numbering. CapCut's "Long Video to S
 Premiere's Auto Ducking independently confirm D2/D6 and P2 item 6 are competitively expected,
 not novel guesses — see `matrix/competitor-parity.md`.
 
-13. `[ ]` **D1 — automatic silence/dead-air cut.** Low effort, no dependencies. Highest
-    time-saved-per-effort of the set.
-14. `[ ]` **D7 — lightweight collaboration package.** Low effort, no dependencies.
-15. `[ ]` **D4 — automatic chapter markers from scene cuts.** Medium effort.
-16. `[ ]` **D5 — beat-aligned cut snapping.** Medium effort. Depends on P0 item 2 (general
-    snap mechanism).
-17. `[ ]` **D2 — highlight detection from audio spikes.** High effort. Unblocks D6.
-18. `[ ]` **D6 — one-click shorts pack.** High effort. Depends on D2.
+13. `[x]` **D1 — automatic silence/dead-air cut** (`architecture/differentiators.md`). Built on
+    `avcore::waveform`'s per-bucket `(min, max)` peaks, not `avcore::loudness` as the doc
+    originally assumed — `measure_loudness` is a single-pass whole-file aggregate (one
+    LUFS/TruePeak/LRA report), not a time series, so it can't say *where* in a clip a silence
+    falls; `generate_waveform`'s peaks already are windowed amplitude data, and most assets have
+    them cached (`MediaAsset::waveform_peaks`) with no new decode pass needed.
+    `avcore::silence_detection::{detect_silence_gaps, clip_silence_gaps}` are pure, fully unit-
+    tested functions; `Track::ripple_delete_range` is the apply side (splits any clip straddling
+    a gap's boundaries, drops what's fully inside, ripples the rest left). `ui`'s toolbar
+    "Detect Silence" button + a review modal (`App::begin_silence_review`/
+    `toggle_silence_gap_accepted`/`apply_silence_review`/`close_silence_review`) lists every
+    detected gap with an accept/reject checkbox defaulting to accepted — nothing touches the
+    timeline until "Apply selected cuts" is pressed, per the doc's explicit "not a silent
+    auto-apply" requirement. Not yet run against a real GUI session (this environment can't
+    launch the eframe app) — verified via `cargo check --workspace --all-targets` (temporary
+    local FFmpeg-7.1 shim, see `CLAUDE.md`) and unit/integration tests covering the detection
+    math, the ripple-delete edit, and every App-level review method.
+14. `[x]` **D7 — lightweight collaboration package** (`architecture/differentiators.md`).
+    `avcore::collab_bundle::{export_collab_bundle, import_collab_bundle}` package a project's
+    `.ocproj` snapshot plus whatever editing proxies already exist in its proxy cache
+    (`avcore::proxy`) into one portable `.zip` — never the multi-GB source media. On import, each
+    asset's `proxy_path` is resolved by matching its `source_path`'s filename stem against the
+    unpacked proxy dir across every `PreviewQuality`, so the recipient's preview works
+    immediately even though the original source almost certainly isn't at that `source_path` on
+    their machine at all. `zip` added as a `default-features = false` dependency —
+    `CompressionMethod::Stored` is used explicitly since every entry (already-gzip-compressed
+    project bytes, already-encoded proxy `.mp4`s) is incompressible in practice, so no optional
+    codec needs linking. `ui`: Editor toolbar's "📦 Export Collaboration Bundle..." (save-file
+    dialog) and Início's "📦 Import Collaboration Bundle..." (pick `.zip`, then a destination
+    folder). **Not run against a live GUI session** — same verification ceiling as D1 above
+    (`cargo check --workspace --all-targets` via the temporary local FFmpeg shim, plus
+    `cargo check -p core --lib` actually linking and one `cargo test` attempt confirming the
+    ONNX Runtime link gap is the only remaining blocker to real execution here); the round-trip
+    (export → import, including a fake proxy file surviving intact and resolving to a *new* path
+    under the recipient's own cache dir) is covered by `core`'s integration tests and mirrored at
+    the `App` level in `ui`.
+15. `[x]` **D4 — automatic chapter markers from scene cuts** (`architecture/differentiators.md`).
+    `avcore::scene_detection::detect_scene_cuts` scores consecutive sampled-frame pairs by mean
+    absolute luma difference (reuses `motion_tracking::rgba_to_gray` for grayscale conversion,
+    `avcore::FrameSampler` for sampling — same primitives motion tracking's own background
+    thread already uses, not a new decode pass). Detected cuts become non-destructive
+    `MarkerKind::Chapter` markers (P2 item 9) rather than a separate accept/reject modal — the
+    existing Timeline Index panel's rename/delete already is the review step, since a marker
+    (unlike D1's ripple-delete) never mutates the timeline itself. `ui`: Editor toolbar's
+    "Detect Chapters" button (background thread, mirrors `motion_tracking.rs`'s split exactly)
+    and "Export chapters (.txt)" (plain-text `H:MM:SS Label` list, YouTube's own chapter
+    format). Verified the same way as D1/D7 above (`cargo check --workspace --all-targets` via
+    the temporary local FFmpeg shim); `core`'s frame-diff scoring and every `App`-level chapter
+    method are unit tested, but the actual FrameSampler-driven background thread isn't run
+    against real video in this sandbox.
+16. `[x]` **D5 — beat-aligned cut snapping** (`architecture/differentiators.md`).
+    `waveform_snap_points_for_clip` (`screens::editor::timeline_panel`) reuses
+    `avcore::clip_silence_gaps` (built for D1) purely as a "quiet moment finder": each detected
+    gap's midpoint is a candidate snap target, with a much shorter minimum gap (0.05s) than D1's
+    own cuttable-gap threshold (0.5s) — D5 wants any brief natural pause, not just a length worth
+    actually cutting. Wired into the two trim-edge (cut-point) drag handlers only, not the
+    whole-clip body-move handler — moving a clip doesn't cut audio. Every trim-driven
+    `EditorTool` (plain trim, Ripple, Roll) shares the same snapped value downstream, so one
+    change benefits all of them. Verified via `cargo check --workspace --all-targets` (temporary
+    local FFmpeg shim) plus new unit tests for the pure mapping function; the actual drag
+    interaction isn't run against a live GUI session, same caveat every other timeline-panel
+    interaction change in this file already carries.
+17. `[x]` **D2 — highlight detection from audio spikes** (`architecture/differentiators.md`).
+    Resolved the design fork this item's own investigation note (2026-08-27, preserved below)
+    found — per-track role metadata, not the scoped-down independent-scoring fallback, since it
+    matches the doc's actual "simultaneous" premise and doubles as groundwork for the
+    already-queued Multicam item (P2 item 10).
+    - `avcore::timeline::AudioRole` (Unspecified/GameAudio/Mic/Music) on `Track`, user-set via a
+      small icon `ComboBox` on the timeline track header (`App::set_track_audio_role`, not
+      undo-tracked — metadata, not content).
+    - `avcore::highlight_detection::{clip_amplitude_samples, detect_highlight_candidates}`:
+      `clip_amplitude_samples` maps one clip's asset waveform into timeline-relative amplitude
+      samples (same source-to-timeline mapping `clip_silence_gaps`/D1 uses, but every bucket's
+      peak, not just below-threshold runs — a highlight cares about loud moments).
+      `detect_highlight_candidates` correlates two independently-sampled, irregularly-spaced
+      series onto a common coarse time grid and flags windows where both channels spike at once.
+    - `MarkerKind::Highlight` — auto-detected candidates become non-destructive markers, same
+      "Timeline Index panel's rename/delete is the review step" shape D4's Chapter markers
+      already established, not a separate accept/reject modal.
+    - `ui`: `App::detect_highlights` runs synchronously (no background thread — only reads
+      `MediaAsset::waveform_peaks`, already cached in memory, same reasoning D1's
+      `begin_silence_review` relies on) from the Editor toolbar's "Detect Highlights" button.
+    - Verified via `cargo check --workspace --all-targets` (temporary local FFmpeg shim);
+      `core`'s own math was independently confirmed by extracting `highlight_detection.rs` into
+      a throwaway no-dependency scratch crate and running its tests for real (this sandbox's
+      `core` crate itself only type-checks — the ONNX Runtime link gap blocks `cargo test`
+      outright, see `CLAUDE.md`), plus new `App`-level unit tests for the full detect-and-mark
+      flow.
+    <details><summary>Original investigation note (2026-08-27), preserved for context</summary>
+
+    Not started as of that note: the doc's premise is "simultaneous game-audio + mic spikes,"
+    but `Project`/`Timeline` had no structural game-audio-vs-mic distinction —
+    `create_new_project` starts with zero tracks, and Video/Audio track *kind* alone doesn't say
+    which audio track is the mic and which is a video asset's embedded game audio (the "V1"/
+    "A1"/"A2" names seen in test fixtures were just convention, never an enforced or even
+    UI-surfaced role). Scoring "two streams at once" needed *some* answer to "which track is
+    which" before any DSP could be written — either new per-track metadata (a "role" tag the
+    user sets) or a scoped-down v1 that scores every audio-bearing track independently and OR's
+    the results (loses the "simultaneous" cross-correlation the doc specifically calls out). Left
+    open rather than guessed at; resolved above once asked.
+    </details>
+18. `[x]` **D6 — one-click shorts pack** (`architecture/differentiators.md`). Confirmed three
+    scope decisions with the user before writing this — the biggest single item in P3, several
+    real design forks, not a blind-implementable reuse:
+    - **Highlight window size**: D2 only stores a single marker position per highlight, not a
+      range, so D6 needed its own heuristic — a fixed 5s lead-in + 10s reaction (15s total),
+      clamped to the sequence's own bounds, over a user-configurable setting (no new UI surface
+      needed).
+    - **Auto-reframe**: reuses whatever `position_keyframes` the windowed clip already carries
+      rather than running a fresh face-detection pass per short — a short whose source clip was
+      never auto-reframed just exports centered, a real documented gap, not a silently-forced
+      extra pipeline run.
+    - **Subtitles**: reuses existing transcribed `TextClip`s that fall inside the window rather
+      than triggering a fresh Whisper run — a never-transcribed source just exports without
+      subtitles, same reasoning as auto-reframe above.
+
+    `avcore::extract_timeline_window` (new `core` primitive, `timeline_window.rs`) turns one
+    `[start, end)` slice of a `Timeline` into its own standalone, rebased-to-zero `Timeline`:
+    Video/Audio clips straddling a boundary are split precisely via the existing
+    `Track::split_clip_at`; Text/Shape overlays skip splitting entirely (word-highlight timing is
+    relative to a `TextClip`'s own `start_secs`, so approximating a mid-clip split risks
+    desyncing captions from audio) — only overlay clips *entirely* inside the window are kept.
+    `App::spawn_shorts_pack` loops every `MarkerKind::Highlight` marker, extracts its window,
+    resolves it exactly the way "Adicionar exportação" resolves the whole sequence (forced to
+    `ExportAspectRatio::Portrait`), and queues it — a window that resolves to zero clips (e.g. it
+    landed entirely in a gap) is skipped, not treated as a hard error, and the toolbar's "Shorts
+    Pack" button reports a queued-vs-skipped summary toast.
+
+    Verified via `cargo check --workspace --all-targets` (temporary local FFmpeg shim);
+    `extract_timeline_window`'s split/boundary math was independently confirmed for real by
+    extracting `timeline.rs`/`keyframe.rs`/`timeline_window.rs` into a throwaway no-dependency
+    scratch crate and running its tests (this sandbox's `core` crate itself only type-checks —
+    the ONNX Runtime link gap blocks `cargo test` outright, see `CLAUDE.md`), plus new `App`-level
+    unit tests for the full extract-resolve-queue flow. **Not run against a live GUI session** —
+    the actual exported `.mp4` files (correct framing/timing/audio for a real windowed short)
+    haven't been visually verified, same caveat every UI-only change in this sandboxed
+    environment already carries.
 
 ## P4 — Hardware-Dependent / Confirmed Hard Walls / Lower-Priority Parity
 
@@ -99,12 +321,201 @@ not by default priority.
     `matrix/engine.md`. Code path exists, never run against real hardware.
 20. `[ ]` GPU usage telemetry — `matrix/performance.md`. No cross-platform reader exists;
     needs a vendor-specific one (NVML/etc.).
-21. `[ ]` Preview support for vignette/glitch/deflicker/3D-LUT/stabilization —
-    `matrix/effects-and-color.md`. Confirmed no matching GStreamer element on the dev machine;
-    needs a custom-coded element or CPU-side frame processing, a materially bigger lift than
-    every other preview gap closed so far.
-22. `[ ]` Smart bins (rule-based media-pool auto-organization) — real in DaVinci Resolve, but
-    lower priority for a small/single-editor workflow than for a studio pipeline.
+21. `[~]` Preview support for vignette/glitch/deflicker/3D-LUT/stabilization —
+    `matrix/effects-and-color.md`. Confirmed no matching GStreamer element on the dev machine for
+    any of the five; a custom-coded element was never attempted (no way to visually verify a
+    GStreamer plugin in this sandbox). Instead, **partial**: `avcore::preview_effects` covers
+    3D LUT and vignette as CPU-side post-processing of the already-decoded preview frame — same
+    pattern `avcore::scopes` established for the waveform/vectorscope overlays. `Lut3D::parse`/
+    `load` read the standard `.cube` format with real trilinear interpolation (precise,
+    unit-tested, no visual-verification risk); the vignette is a simple radial-falloff
+    *approximation*, explicitly not FFmpeg's own cosine-based formula (reproducing that exactly
+    from `libavfilter` C source without being able to A/B it visually against export wasn't a
+    risk worth taking). `App::pump_preview_frame` applies both to the live preview texture only
+    — export is untouched, still the real `lut3d`/`vignette` `avfilter`s. **Explicitly still
+    not done**: glitch (no single well-specified "the" algorithm to approximate — a judgment
+    call this sandbox can't visually verify), deflicker and stabilization (both need *temporal*
+    state across multiple frames, a materially larger, stateful piece of work with its own
+    seek/scrub edge cases — not a natural extension of this per-frame-only module). Verified via
+    a real-execution scratch crate (`preview_effects.rs` has zero heavy deps) — 12 tests, one of
+    which caught a real bug in a *test's own* expected value (a coarse 2-point LUT interpolates
+    rather than reproducing the exact original channel value) before it could pass silently.
+22. `[x]` Smart bins (rule-based media-pool auto-organization) — real in DaVinci Resolve, but
+    lower priority for a small/single-editor workflow than for a studio pipeline. The one P4 item
+    tractable in this sandbox without special hardware or a missing GStreamer element (unlike 19-
+    21) — pure filtering over `Project::media_library`, no `avbridge`/GStreamer/GPU dependency.
+    `avcore::SmartBin` (`kind_filter`/`name_contains`/`requires_audio`, every set criterion
+    ANDed) + `Project::add_smart_bin`/`remove_smart_bin`/`smart_bin_mut`. Membership isn't
+    stored — `SmartBin::matches` is evaluated fresh against the live `media_library` every time,
+    same "recompute, don't cache" shape `Marker`/`MulticamGroup` already follow. Editor Library
+    panel: a filter-chip row above the asset list ("All" + one chip per bin, click-to-select/
+    double-click-to-edit) plus "+ New Bin", backed by a create/edit modal (name, kind Any/Video/
+    Audio, file-name-contains text, has-audio Either/Yes/No, Save/Cancel/Delete). Verified via a
+    real-execution scratch crate (same ONNX-link-gap workaround as multicam) — 5 passing tests on
+    `SmartBin::matches`.
+27. `[x]` Clip/track color labels — `matrix/competitor-parity.md`'s 2026-08-27 update. Present
+    in Premiere (clip), DaVinci Resolve (clip *and* track), FCP (clip). The cheapest gap in
+    that update: pure data (`ClipInstance::color_label`/`Track::color_label`, `Option<[u8;3]>`)
+    + timeline-widget rendering, no `avbridge`/GStreamer work — same cost tier as `Marker`/
+    `SmartBin`, both already shipped. A fixed 6-swatch palette (matching Premiere/DaVinci/FCP's
+    own fixed-palette convention, not a free color picker) offered via a right-click context
+    menu on a timeline clip or the track-header name; clears via a "Limpar rótulo" entry.
+    Overrides the clip/track's usual kind-based fill color when set. Carried across
+    `Track::split_clip_at` (both halves keep the label, same as `transition_in`). Deliberately
+    excluded from `ClipFormatting` — an organizational tag, not a rendering style, same
+    reasoning `background_removal_mask_path` is excluded for a different reason.
+28. `[x]` Detach/unlink audio from a clip (the mechanical precondition for J-cuts/L-cuts) —
+    `matrix/competitor-parity.md`. `App::detach_audio_from_selected_clip` mutes the video
+    clip's own audio (`gain_db` set to `GAIN_DB_RANGE`'s floor — no separate "muted" flag exists,
+    so muting reuses the existing gain primitive as scoped) and places a new clip on an Audio
+    track pointing at the same asset, with the same trim range and timeline placement, at unity
+    gain — both then independently trimmable. Reused a factored-out `default_clip_instance`
+    helper (previously duplicated between `add_asset_to_timeline`/`add_asset_to_timeline_at`)
+    rather than adding a third copy. No new render/preview pipeline work — per-track independent
+    clips already mix correctly. Triggered via a "Destacar áudio" entry in the timeline clip's
+    context menu, enabled only for Video-track clips.
+29. `[~]` Speed ramping — `App::apply_speed_ramp_to_selected_clip` ships a **stepped**
+    approximation, not the smooth continuous curve CapCut/Premiere/DaVinci/FCP all have. A
+    deliberate scope decision (raised to and confirmed by the user, 2026-08-27): the smooth
+    version needs the export-side `setpts` filter's output PTS to be the *integral* of
+    `1/speed` over time, which for a piecewise-linear speed curve has no simple closed form
+    (needs a `log()` term per segment) — a real, easy-to-get-subtly-wrong derivation with no
+    way to render/verify it in this sandbox (no decode capability), unlike every other
+    `Keyframe<T>`-reusing item in this list. Shipped instead: splits the selected clip into N
+    equal-timeline-duration pieces (reusing the already-correct, already-tested
+    `Track::split_clip_at`, unchanged) and assigns each piece a constant `speed_factor`
+    linearly interpolated between a start/end speed (reusing the existing field, unchanged) —
+    a real, visible "staircase" speed ramp built entirely from primitives that were already
+    correct before this item, with zero new avfilter/geq/setpts math to get wrong. Since
+    `duration_secs()` depends on `speed_factor`, each piece's `start_secs` is reflowed left to
+    right after the speed assignment so the pieces stay contiguous. Triggered via a "Rampa de
+    velocidade" submenu in the timeline clip's context menu, with two fixed presets (0.5x→2x
+    slow-to-fast, 2x→0.5x fast-to-slow, 4 steps each) rather than a custom-curve dialog — also
+    deliberately out of scope for this pass. **Not done**: the smooth continuous-curve version;
+    a UI for custom start/end speed and step count.
+30. `[x]` Real-time audio level meter (VU/peak) during playback — `matrix/competitor-parity.md`.
+    Present in Premiere (VU meters) and DaVinci (Fairlight LUFS/peak meter). A pad probe on the
+    preview audio path (same pattern as the existing keyframe pad-probes, reading instead of
+    writing): `Preview::build_metering_audio_sink` wraps the real audio-sink element (both the
+    single-clip `playbin` path and the manually-built compositor audio-mix path) in a small
+    `audioconvert!capsfilter(F32LE)!sink` bin, forcing a known sample format so a buffer probe
+    on the capsfilter's src pad can parse raw f32 bytes directly and compute peak/RMS combined
+    across every channel (a flat sequence, not per-channel — matches this item's "small meter
+    widget" scope, not a full per-channel Fairlight-style meter). Stored in a shared
+    `Arc<Mutex<AudioLevel>>` updated from GStreamer's own streaming thread, read from the UI
+    thread via `Preview::current_audio_level()`. UI: a small peak/RMS bar in the Editor preview
+    panel's transport row, next to the scopes toggle, with the peak marker turning red above
+    0.98 amplitude to flag near-clipping. Verified via a scratch-crate real-execution check
+    (this sandbox's `core` test binary can't link — missing `libonnxruntime`): the metering
+    probe logic, run against a real audio fixture through a real GStreamer `playbin`, observed
+    real nonzero peak/RMS from actual decoded samples — audio decode/preroll works in this
+    sandbox, unlike video decode (confirmed separately: the same harness against a video
+    fixture failed with a missing-decoder-plugin error, the known pre-existing video-decode gap,
+    not a metering bug).
+31. `[x]` Audio gain keyframes (volume fade/ramp within one clip, not just a constant
+    `gain_db`) — found while surveying what else the existing `Keyframe<T>` infrastructure
+    could drive. Same shape as position/scale/rotation/opacity: `gain_keyframes: Vec<Keyframe<
+    f32>>` on `ClipInstance`, overriding the constant `gain_db` when non-empty. Export-side,
+    FFmpeg's `volume` filter's `eval=frame` expression mode evaluates to a *linear* multiplier
+    (not dB), so the dB-space keyframe curve needs `pow(10, X/20)` wrapping before being handed
+    to `volume=<expr>:eval=frame` — verified against FFmpeg's own filter docs, not assumed.
+    Crosses the `avbridge` FFI boundary (a new expression-string field on `AudioSegment`/
+    `RawAudioSegment`, and an `audio_mix.c` branch alongside the existing literal-`%.6fdB` path).
+    Verified: `gain_filter_db_expr`'s unit tests run for real in a scratch crate; a real
+    `avbridge` integration test exercises the new `av_asprintf`-built `volume=<expr>:eval=frame`
+    path end-to-end against a real FFmpeg filter graph (`avfilter_graph_config` succeeding is
+    proof the expression syntax is valid, not just that the C compiles).
+32. `[x]` Color grading keyframes (brightness/contrast/saturation ramping over a clip, not a
+    constant value) — `ClipInstance::brightness_keyframes`/`contrast_keyframes`/
+    `saturation_keyframes`, each independently overriding its own constant field when non-empty
+    (same relationship `gain_keyframes` has with `gain_db`). `keyframe::color_balance_filter_expr`
+    builds the combined `eq=brightness=...:contrast=...:saturation=...[:eval=frame]` stage —
+    `eval=frame` only appended when at least one axis is actually animated, each un-animated axis
+    still using its own plain constant. Spliced into `keyframe_video_filter_chain` (alongside
+    scale/rotation/opacity) rather than `video_filter_chain`'s own static `eq` stage, which is
+    now suppressed whenever any color-grading keyframe list is non-empty (`has_color_keyframes`)
+    to avoid double-emitting. **Known caveat, documented in code**: this moves the animated `eq`
+    stage to the *front* of the per-clip filter chain instead of its usual post-crop/deflicker/
+    stabilization spot — a clip combining color-grading keyframes with crop/deflicker/
+    stabilization sees color grading applied to the pre-crop/pre-deflicker/pre-stabilization
+    frame. Preview-side piggybacking on `Preview::set_live_balance` (item 3's follow-up) is not
+    done — export only, same "export first" shape every other keyframe field started with.
+    Verified: `color_balance_filter_expr`'s 3 new unit tests run for real in the same
+    `keyframe.rs` scratch crate as `gain_filter_db_expr`'s (32/32 passing); new `video_filter_chain`/
+    `split_clip_at` tests in `timeline_test.rs`.
+33. `[x]` Crop/pan keyframes (`crop_x`/`crop_y`/`crop_w`/`crop_h` animated over a clip, e.g. a
+    slow pan/reveal independent of the existing `scale_keyframes` symmetric zoom) —
+    `ClipInstance::crop_x_keyframes`/`crop_y_keyframes`/`crop_w_keyframes`/`crop_h_keyframes`,
+    each independently overriding its own constant field when non-empty. `keyframe::
+    crop_filter_expr` generalizes `scale_filter_expr`'s single-axis `geq`-based per-pixel inverse
+    sample (chosen over `crop`+`eval=frame` for the same real heap-corruption reason, see
+    CLAUDE.md) to four independent axes — the sampled window's x/y/width/height — so a moving/
+    resizing crop rectangle animates without the frame's own resolution changing frame-to-frame.
+    Spliced into `keyframe_video_filter_chain` *first* (before scale/rotation/opacity/color-
+    balance — crop reframes the source before those geometric/color stages operate on it, mirroring
+    the static `crop` stage's own traditional first-in-chain position) rather than `video_filter_
+    chain`'s own static `crop` stage, which `has_crop_keyframes()` now suppresses to avoid
+    double-emitting. Wired into `Track::split_clip_at`. Not yet wired into live preview.
+    Verified: `crop_filter_expr`'s 3 new unit tests run for real in the same `keyframe.rs`
+    scratch crate as the other keyframe expression builders' (35/35 passing); new
+    `video_filter_chain`/`split_clip_at` tests in `timeline_test.rs`.
+34. `[~]` Text/shape clip animation keyframes — `TextClip`/`ShapeClip` had *zero* keyframe fields
+    (position/scale/rotation/opacity keyframes only existed on `ClipInstance` before this), so
+    this was a structural gap, not a one-field addition. **Partial, now covers all of
+    `ShapeClip`**: `center_x_keyframes`/`center_y_keyframes` (position) and, in a follow-up
+    pass, `width_keyframes`/`height_keyframes`/`rotation_keyframes` (size/rotation) all ship —
+    `ShapeClip`'s export path (a self-contained `geq` filter expression built entirely in Rust,
+    `crate::shape_render`) turned out to already support a `T`-keyed per-pixel expression with
+    zero FFI/C changes (`geq` natively exposes `T`, elapsed seconds, per pixel — confirmed
+    against FFmpeg's own filter docs, not assumed). `keyframe::shape_axis_expr` offsets `T` by
+    the shape's own `start_secs` (the overlay is composited onto the already-exported full video
+    in a post-pass, not inside a per-clip filter chain with its own PTS reset, so `T` is
+    timeline-*absolute*, unlike every other `*_filter_expr` builder in this module — a real,
+    documented difference). The size/rotation follow-up reworked `shape_render::inside_expr`'s
+    ellipse/polygon geometry math to accept `geq`-expression-language sub-expressions for the
+    half-extents instead of literal `f64`s — the multiply-through-avoid-division trick the
+    static case always used generalizes verbatim, so an unkeyframed width/height still
+    degenerates to the same plain numeric literal as before. Rotation swaps the old
+    Rust-precomputed `sin_a`/`cos_a` literals for `geq`'s own `sin()`/`cos()`/`PI`
+    expression-language functions (confirmed present via FFmpeg's `eval.c`-backed docs, not
+    assumed), evaluated per pixel instead of once; a scratch-crate numeric check confirmed the
+    new per-pixel formula produces the same sin/cos values the old precomputed literals did, at
+    several angles, so this is not a behavior change in the unkeyframed (still the common) case.
+    Verified: `shape_axis_expr`'s unit tests and `build_shape_filter_desc`/`inside_expr`
+    animation tests (position, then size/rotation) all run for real in a scratch crate
+    (`keyframe.rs`+`timeline.rs`+`shape_render.rs` have zero heavy deps) — 58/58 passing,
+    including every pre-existing `shape_render` test (confirms the already-visually-verified
+    static geometry math is unchanged).
+
+    **`TextClip` opacity keyframes also ship**, in a further follow-up: `TextClip`'s export path
+    pre-rasterizes a full-canvas PNG per segment with position baked in at generation time, not a
+    moving overlay — so position/scale animation stays out of scope (would mean restructuring
+    that pipeline toward a small sprite + `overlay=x=<expr>:y=<expr>`, a materially bigger lift).
+    Opacity is different: the raster already carries a real alpha channel, so a fade is just an
+    alpha *multiplier* applied to the existing pixels, no rasterization change needed.
+    `keyframe::text_opacity_alpha_expr` builds the same `T`-keyed-offset-by-`start_secs`
+    expression `shape_axis_expr` does; `avbridge_apply_text_overlays` splices a `geq` alpha
+    stage between the movie source and the overlay node when a segment's
+    `opacity_keyframe_expr` is non-empty. **Real, non-obvious finding from testing this against
+    this project's actual linked FFmpeg build** (`avbridge/tests/text_overlay_test.rs`, not just
+    reasoning from docs): `geq`'s alpha read-back function is spelled `alpha(X,Y)`, not `a(X,Y)`
+    as FFmpeg's own docs otherwise imply — `a(X,Y)` parses as "Unknown function" against the
+    real library. A `colorchannelmixer=aa=<expr>:eval=frame` alternative (no per-pixel read-back
+    needed at all) was tried first and ruled out the same way: that filter has no `eval` option
+    in this build. The full encode still fails in this sandbox with a `Pipeline` error — but
+    that reproduces identically on the *unmodified* (no-fade) code path too, confirming it's the
+    same pre-existing encoder-availability gap `CLAUDE.md` already documents elsewhere in this
+    codebase, not something this change introduced.
+
+    **Explicitly still not done**: `TextClip` position/scale/rotation animation (the pre-
+    rasterization restructuring described above, still the largest remaining sub-item in this
+    whole roadmap item).
+
+Found but deliberately not added as a P4 item: **nested sequences / compound clips** (Premiere/
+DaVinci/FCP) — closer to Multicam's own tier of effort than to the four above (the render/
+preview pipeline would need to recurse into a sub-timeline resolved as one clip, not a bolt-on
+field). See `matrix/competitor-parity.md` for the full note — worth its own scoping pass if
+ever prioritized, not proposed here as a small item.
 
 ## P5 — Explicitly Deferred
 

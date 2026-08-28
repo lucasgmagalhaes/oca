@@ -14,7 +14,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use avcore::{Keyframe, Position};
 
@@ -159,12 +159,16 @@ fn motion_track_one(
     if duration <= 0.0 {
         return Vec::new();
     }
-    let sample_count = ((duration * SAMPLES_PER_SEC).round() as usize).clamp(2, MAX_SAMPLES);
-    let sample_times: Vec<f64> = (0..sample_count)
-        .map(|i| source_in_secs + duration * (i as f64 / (sample_count - 1) as f64))
-        .collect();
+    let sample_times = avcore::FrameSampler::even_sample_times(
+        source_in_secs,
+        source_out_secs,
+        SAMPLES_PER_SEC,
+        2,
+        MAX_SAMPLES,
+    );
 
-    let Some(preview) = avcore::preview::Preview::open(source_path, None).ok() else {
+    let Some(sampler) = avcore::FrameSampler::open(source_path, Duration::from_millis(10)).ok()
+    else {
         return Vec::new();
     };
 
@@ -174,18 +178,7 @@ fn motion_track_one(
     // keeps that correct even when some samples are skipped).
     let mut decoded = Vec::with_capacity(sample_times.len());
     for &t in &sample_times {
-        let _ = preview.seek(t.max(0.0));
-        let deadline = Instant::now() + Duration::from_millis(800);
-        let frame = loop {
-            if let Some(f) = preview.current_frame() {
-                break Some(f);
-            }
-            if Instant::now() >= deadline {
-                break None;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        };
-        let Some(frame) = frame else {
+        let Some(frame) = sampler.sample(t, Duration::from_millis(800)) else {
             continue;
         };
         let time_fraction = ((t - source_in_secs) / duration) as f32;

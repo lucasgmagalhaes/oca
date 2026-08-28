@@ -32,6 +32,7 @@ fn clip() -> ClipInstance {
         source_in_secs: 0.0,
         source_out_secs: 1.0,
         composite_id: None,
+        color_label: None,
         gain_db: 0.0,
         frozen: false,
         speed_factor: 1.0,
@@ -61,6 +62,14 @@ fn clip() -> ClipInstance {
         scale_keyframes: vec![],
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
+        gain_keyframes: vec![],
+        brightness_keyframes: vec![],
+        contrast_keyframes: vec![],
+        saturation_keyframes: vec![],
+        crop_x_keyframes: vec![],
+        crop_y_keyframes: vec![],
+        crop_w_keyframes: vec![],
+        crop_h_keyframes: vec![],
         deflicker_enabled: false,
         lut_path: String::new(),
         layer_scale_x: 1.0,
@@ -177,6 +186,22 @@ fn current_frame_returns_correctly_sized_rgba() {
 fn current_frame_is_none_for_audio_only_input() {
     let preview = Preview::open(&fixture("audio.m4a"), None).unwrap();
     assert!(preview.current_frame().is_none());
+}
+
+#[test]
+fn current_audio_level_reports_the_prerolled_audio_fixture() {
+    let preview = Preview::open(&fixture("audio.m4a"), None).unwrap();
+    let level = preview.current_audio_level();
+    assert!(level.peak > 0.0 && level.peak <= 1.0);
+    assert!(level.rms > 0.0 && level.rms <= level.peak);
+}
+
+#[test]
+fn current_audio_level_reports_prerolled_embedded_audio_too() {
+    let preview = Preview::open(&fixture("video.mp4"), None).unwrap();
+    let level = preview.current_audio_level();
+    assert!(level.peak > 0.0 && level.peak <= 1.0);
+    assert!(level.rms > 0.0 && level.rms <= level.peak);
 }
 
 #[test]
@@ -460,6 +485,7 @@ fn open_composited_with_text_and_shape_overlays_composites_without_error() {
         words: vec![],
         highlight_enabled: false,
         highlight_color_rgba: [255, 220, 0, 255],
+        opacity_keyframes: vec![],
     };
     let shape_clip = avcore::timeline::ShapeClip {
         id: 2,
@@ -468,6 +494,11 @@ fn open_composited_with_text_and_shape_overlays_composites_without_error() {
         shape_kind: avcore::timeline::ShapeKind::Ellipse,
         center_x: 0.5,
         center_y: 0.5,
+        center_x_keyframes: vec![],
+        center_y_keyframes: vec![],
+        width_keyframes: vec![],
+        height_keyframes: vec![],
+        rotation_keyframes: vec![],
         width: 0.2,
         height: 0.2,
         rotation_deg: 0.0,
@@ -516,6 +547,7 @@ fn composited_text_highlight_replaces_its_buffer_during_playback() {
         ],
         highlight_enabled: true,
         highlight_color_rgba: [255, 0, 255, 255],
+        opacity_keyframes: vec![],
     };
 
     let mut preview =
@@ -563,6 +595,81 @@ fn composited_text_highlight_replaces_its_buffer_during_playback() {
     assert!(
         moved_x.is_some(),
         "the visible magenta highlight never moved from the first word at x={initial_x}"
+    );
+    preview.pause().unwrap();
+}
+
+#[test]
+fn refresh_text_overlay_redraws_a_content_only_edit_without_reopening_the_pipeline() {
+    let bg = fixture("video.mp4");
+    let text_clip = avcore::timeline::TextClip {
+        id: 9,
+        start_secs: 0.0,
+        duration_secs: 2.0,
+        text: "HELLO".to_string(),
+        font_size: 40.0,
+        font_family: Default::default(),
+        font_style: Default::default(),
+        color_rgba: [255, 0, 255, 255],
+        background_rgba: [0, 0, 0, 0],
+        background_padding: 8.0,
+        background_corner_radius: 8.0,
+        pos_x: 0.05,
+        pos_y: 0.1,
+        words: Vec::new(),
+        highlight_enabled: false,
+        highlight_color_rgba: [255, 220, 0, 255],
+        opacity_keyframes: vec![],
+    };
+
+    let mut preview =
+        Preview::open_composited(&bg, None, &[], &[], &[(&text_clip, 0.0)], &[]).unwrap();
+    let magenta_pixels = |frame: &avcore::preview::VideoFrame| {
+        frame
+            .rgba
+            .chunks_exact(4)
+            .filter(|p| p[0] > 220 && p[1] < 40 && p[2] > 220)
+            .count()
+    };
+    let initial_count = magenta_pixels(
+        &preview
+            .current_frame()
+            .expect("a frame should be available right after preroll"),
+    );
+    assert!(
+        initial_count > 0,
+        "the magenta caption should be visible before any edit"
+    );
+
+    // Same clip id, moved off-screen and repainted invisible (alpha 0) — a content-only edit
+    // (position + color), not a start/duration change, so this goes through
+    // `refresh_text_overlay` rather than a pipeline reopen.
+    let mut edited = text_clip.clone();
+    edited.pos_x = 2.0;
+    edited.color_rgba = [255, 0, 255, 0];
+    assert!(
+        preview.refresh_text_overlay(&edited, 0.1).unwrap(),
+        "a branch should already be open for this clip id"
+    );
+    preview.play().unwrap();
+
+    let refreshed_count = (0..20)
+        .find_map(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            preview.current_frame()
+        })
+        .map(|frame| magenta_pixels(&frame))
+        .expect("a frame should still be available after the refresh");
+    assert_eq!(
+        refreshed_count, 0,
+        "the edited clip should no longer render any magenta pixels"
+    );
+
+    let mut unknown_clip = text_clip.clone();
+    unknown_clip.id = 404;
+    assert!(
+        !preview.refresh_text_overlay(&unknown_clip, 0.0).unwrap(),
+        "an id with no open branch must report false, not silently no-op as success"
     );
     preview.pause().unwrap();
 }
@@ -772,4 +879,30 @@ fn open_composited_mixes_an_audio_only_timeline_branch() {
     preview.seek_composited(&[0.1, 0.2], &[1.0, 1.25]).unwrap();
     preview.play().unwrap();
     preview.pause().unwrap();
+}
+
+// P1 item 3's remaining live-preview-update gap (`spec/matrix/performance.md`):
+// Preview::set_live_balance pushes a brightness/contrast/saturation change to the already-built
+// `videobalance` element instead of needing a full pipeline reopen.
+
+/// A clip whose brightness/contrast/saturation are all neutral never gets a `videobalance`
+/// element built at all (see `build_video_filter_bin`) -- `set_live_balance` must not silently
+/// pretend it worked when there's nothing to update.
+#[test]
+fn set_live_balance_returns_false_when_no_element_was_built() {
+    let neutral_clip = clip();
+    let preview = Preview::open(&fixture("video.mp4"), Some(&neutral_clip)).unwrap();
+
+    assert!(!preview.set_live_balance(neutral_clip.id, 0.5, 1.0, 1.0));
+}
+
+/// A mismatched clip id (not the one the pipeline was actually built for) must not find some
+/// other clip's element by accident.
+#[test]
+fn set_live_balance_returns_false_for_a_mismatched_clip_id() {
+    let mut dark_clip = clip();
+    dark_clip.brightness = -0.5;
+    let preview = Preview::open(&fixture("video.mp4"), Some(&dark_clip)).unwrap();
+
+    assert!(!preview.set_live_balance(dark_clip.id + 1, 0.9, 1.0, 1.0));
 }
