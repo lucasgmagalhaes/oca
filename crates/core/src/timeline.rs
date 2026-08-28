@@ -68,11 +68,23 @@ impl AudioRole {
 /// Bundled font family used by a [`TextClip`]. Every family is shipped with oca under the
 /// SIL Open Font License, so projects render identically even when the host has no fonts
 /// installed. The actual font bytes are parsed lazily by [`crate::text_metrics`].
+///
+/// Persisted in `.ocproj` by variant name (`serde`'s default unit-variant encoding, confirmed
+/// against `rmp-serde`'s own `serialize_unit_variant` — it writes the name string unconditionally,
+/// never a positional index, so reordering these variants in source has never been able to change
+/// on-disk meaning). `Lato` carries `#[serde(other)]` — FONT-01's forwards-compatibility rule
+/// (`spec/architecture/built-in-font-catalog.md`: "an unknown future ID... renders with the
+/// deterministic fallback rather than corrupting project load") for the one part achievable
+/// without a data-carrying persisted type: a project saved by a future build with a family this
+/// build doesn't know falls back to Lato instead of failing to load at all. The remaining half of
+/// that rule — preserving the unrecognized name itself through a resave, rather than silently
+/// normalizing it to `Lato` — needs [`crate::font_catalog`]'s `family_id` to become the actual
+/// persisted representation, deliberately deferred (see that module's own doc comment).
+/// `#[serde(other)]` requires its variant to be declared last, which is why `Lato` (already
+/// `#[default]`) moved to the bottom of this list — [`Self::ALL`]'s own order is a separate,
+/// explicit array and keeps Lato first for the UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum TextFontFamily {
-    /// Modern sans-serif suitable for body text and general captions.
-    #[default]
-    Lato,
     /// Condensed display face suitable for titles.
     BebasNeue,
     /// High-contrast serif display face.
@@ -83,6 +95,11 @@ pub enum TextFontFamily {
     AnonymousPro,
     /// Heavy, high-contrast face intended for short-form captions.
     ArchivoBlack,
+    /// Modern sans-serif suitable for body text and general captions. Also the deterministic
+    /// fallback for a font family this build doesn't recognize (see this enum's own doc comment).
+    #[default]
+    #[serde(other)]
+    Lato,
 }
 
 impl TextFontFamily {

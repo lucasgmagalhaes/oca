@@ -855,6 +855,25 @@ an item earlier:
   --check` and `cargo clippy -p core --lib --no-deps` (via the same temporary shim) both stayed
   clean for the new code; `cargo check --workspace --all-targets` passed for the whole
   workspace on the same shim.
+
+  **Follow-up: `TextFontFamily` now survives loading a project saved by a newer build.**
+  `#[serde(other)]` on `Lato` (moved to be the enum's last declared variant, which the attribute
+  requires) makes an unrecognized persisted family name fall back to Lato instead of failing the
+  whole project load — the doc's forwards-compatibility rule, minus the "keeps its serialized
+  value" half, which still needs the full `family_id`-as-persisted-type swap this slice
+  continues to defer. Confirmed against `rmp-serde`'s own source that `serialize_unit_variant`
+  always writes the variant's name string, never a positional index, so reordering the variant
+  declaration order cannot change the meaning of already-persisted `.ocproj` bytes for the five
+  untouched variants. Verified for real: a new `core` integration test
+  (`projects_with_an_unrecognized_font_family_name_load_with_the_lato_fallback`,
+  `crates/core/tests/persistence_test.rs`) hand-edits a saved project's encoded MessagePack to
+  reference a fictitious `"InterVariable"` family and confirms the project still loads, with
+  that one field falling back to Lato while unrelated fields on the same clip round-trip
+  untouched; a second scratch-crate check (real `rmp-serde` round-trips, not `core`'s own
+  unlinkable test binary) independently proves both the name-not-index wire format and the
+  fallback for an unrecognized/empty name, 4/4 passing. `cargo check --workspace --all-targets`
+  (including this new persistence test) and `cargo clippy -p core --lib --no-deps` both stayed
+  clean via the same temporary shim.
 - `[ ]` **TEXT-01: complex text shaping and bidirectional layout.** Replace per-character
   `fontdue` layout with one bundled-only shaping/layout/rasterization engine covering OpenType
   ligatures/contextual forms, UAX #9 bidi, UAX #14 wrapping, cluster-safe timed highlights,
