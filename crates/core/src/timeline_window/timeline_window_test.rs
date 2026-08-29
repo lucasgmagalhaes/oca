@@ -97,6 +97,7 @@ fn video_track(clips: Vec<crate::timeline::ClipInstance>) -> Track {
         shape_clips: vec![],
         visible: true,
         audio_role: AudioRole::Unspecified,
+        locked: false,
         color_label: None,
     }
 }

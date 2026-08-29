@@ -1605,6 +1605,13 @@ pub struct Track {
     /// coloring. `#[serde(default)]` so older saved projects load with no label.
     #[serde(default)]
     pub color_label: Option<[u8; 3]>,
+    /// Whether this track refuses clip moves/trims from its header's lock toggle — matches
+    /// `oca-editor-mock.html`'s `.tl-track-tool` lock icon. Distinct from `visible`: a locked
+    /// track still renders/exports, it just can't be edited by accident while working on other
+    /// tracks nearby. `#[serde(default)]` so older saved projects load with every track
+    /// unlocked.
+    #[serde(default)]
+    pub locked: bool,
 }
 
 impl Track {

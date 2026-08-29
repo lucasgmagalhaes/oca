@@ -155,6 +155,7 @@ fn fixture_project() -> Project {
 
                     visible: true,
                     audio_role: AudioRole::Unspecified,
+                    locked: false,
                     color_label: None,
                 }],
                 markers: Vec::new(),
@@ -227,6 +228,7 @@ fn project_with_styled_text() -> Project {
         shape_clips: vec![],
         visible: true,
         audio_role: AudioRole::Unspecified,
+        locked: false,
         color_label: None,
     });
     project

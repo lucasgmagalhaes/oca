@@ -367,6 +367,7 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
 
                 visible: true,
                 audio_role: AudioRole::Unspecified,
+                locked: false,
                 color_label: None,
             },
             Track {
@@ -381,6 +382,7 @@ fn timeline_duration_is_the_furthest_clip_end_across_all_tracks() {
 
                 visible: true,
                 audio_role: AudioRole::Unspecified,
+                locked: false,
                 color_label: None,
             },
         ],
@@ -404,6 +406,7 @@ fn track_with(clips: Vec<ClipInstance>) -> Track {
 
         visible: true,
         audio_role: AudioRole::Unspecified,
+        locked: false,
         color_label: None,
     }
 }
@@ -1292,6 +1295,7 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            locked: false,
             color_label: None,
         },
         Track {
@@ -1305,6 +1309,7 @@ fn move_clip_to_track_relocates_the_clip_to_a_same_kind_track() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            locked: false,
             color_label: None,
         },
     ]);
@@ -1330,6 +1335,7 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            locked: false,
             color_label: None,
         },
         Track {
@@ -1343,6 +1349,7 @@ fn move_clip_to_track_is_a_no_op_across_mismatched_kinds() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            locked: false,
             color_label: None,
         },
     ]);
@@ -1367,6 +1374,7 @@ fn move_clip_to_track_is_a_no_op_for_an_unknown_target_track() {
 
         visible: true,
         audio_role: AudioRole::Unspecified,
+        locked: false,
         color_label: None,
     }]);
 
@@ -1390,6 +1398,7 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            locked: false,
             color_label: None,
         },
         Track {
@@ -1403,6 +1412,7 @@ fn move_clip_to_track_is_a_no_op_for_a_negative_position() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            locked: false,
             color_label: None,
         },
     ]);
@@ -1550,6 +1560,7 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            locked: false,
             color_label: None,
         },
         Track {
@@ -1563,6 +1574,7 @@ fn timeline_clip_mut_finds_a_clip_across_tracks() {
 
             visible: true,
             audio_role: AudioRole::Unspecified,
+            locked: false,
             color_label: None,
         },
     ]);
@@ -1587,6 +1599,7 @@ fn timeline_clip_mut_returns_none_for_an_unknown_id() {
 
         visible: true,
         audio_role: AudioRole::Unspecified,
+        locked: false,
         color_label: None,
     }]);
 
