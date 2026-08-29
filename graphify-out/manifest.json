@@ -145,8 +145,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1788007949.2193637,
-    "ast_hash": "eb9766acca926e84cd258c3bfa5e8d2f",
+    "mtime": 1788008058.9815102,
+    "ast_hash": "e32421a86a07d7a6edd1e9c6a3509c0a",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -545,8 +545,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/mod.rs": {
-    "mtime": 1788005352.0782406,
-    "ast_hash": "44e96f17baeeca714b5e3ef844298c21",
+    "mtime": 1788008072.2448556,
+    "ast_hash": "44a7ca61bd76b648f863e8dfc11ea934",
     "semantic_hash": ""
   },
   ".github/FFMPEG_UPDATE.md": {
