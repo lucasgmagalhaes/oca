@@ -701,6 +701,11 @@ pub(crate) struct WatchedFileRow {
     pub(crate) error: Option<String>,
     pub(crate) before: Option<avcore::LoudnessMetrics>,
     pub(crate) after: Option<avcore::LoudnessMetrics>,
+    /// CF-02 slice 1's tractable follow-up (bringing a cleaned-up recording into a project's
+    /// media library, reusing this watcher's own [`avcore::StabilityTracker`]): `true` once
+    /// [`App::add_watched_file_to_project`] has queued this row's cleaned-up output for import,
+    /// so the Limpeza screen shows "Added" instead of a re-clickable button.
+    pub(crate) added_to_project: bool,
 }
 
 /// A message from the watch-folder worker thread (see [`App::start_watching_folder`]) back to

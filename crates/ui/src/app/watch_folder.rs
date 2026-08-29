@@ -75,6 +75,7 @@ impl App {
                             error: None,
                             before: None,
                             after: None,
+                            added_to_project: false,
                         },
                     );
                 }
@@ -115,6 +116,40 @@ impl App {
                 }
             }
         }
+    }
+
+    /// Queues a completed row's cleaned-up output (`avcore::output_path_for`'s deterministic
+    /// `processed/` path — recomputed here rather than stored on the event, since it's a pure
+    /// function of `watch_path`/`row.path` that never changes after the fact) for import into
+    /// the active project's media library, through the same [`App::spawn_import`] pipeline
+    /// every other import path uses — what the Limpeza screen's "Add to project" button does on
+    /// a `Done` row. CF-02 slice 1's tractable follow-up: this watcher already reuses
+    /// [`avcore::StabilityTracker`] to detect a finished recording; this closes the loop by
+    /// bringing its cleaned-up result into a project, rather than leaving that as a manual
+    /// "Import..." step. A no-op if there's no active project open, or if this row was already
+    /// queued (guards a double-click, since [`App::spawn_import`] has no dedup of its own).
+    pub fn add_watched_file_to_project(&mut self, source_path: std::path::PathBuf) {
+        if self.projects.is_empty() {
+            self.push_toast(
+                crate::i18n::Text::WatchFolderNeedsOpenProject
+                    .tr(self.locale)
+                    .to_string(),
+            );
+            return;
+        }
+        let Some(row) = self.find_watched_row_mut(&source_path) else {
+            return;
+        };
+        if row.added_to_project {
+            return;
+        }
+        row.added_to_project = true;
+        let Some(watch_path) = self.watch_folder_state.watch_path.clone() else {
+            return;
+        };
+        let output =
+            avcore::output_path_for(&watch_path, avcore::DEFAULT_OUTPUT_SUBFOLDER, &source_path);
+        self.spawn_import(vec![output]);
     }
 
     fn find_watched_row_mut(&mut self, path: &std::path::Path) -> Option<&mut WatchedFileRow> {

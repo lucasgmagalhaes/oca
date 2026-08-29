@@ -25,6 +25,7 @@ use crate::theme;
 /// active project needed.
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
+    let mut add_to_project: Option<std::path::PathBuf> = None;
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(theme::SPACE_LG);
         components::page_title(ui, Text::WatchFolderTitle.tr(locale));
@@ -93,6 +94,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             return;
         }
 
+        let has_open_project = !app.projects.is_empty();
         for row in &app.watch_folder_state.files {
             components::card_frame().show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -148,8 +150,31 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 if let Some(error) = &row.error {
                     ui.label(RichText::new(error).size(11.0).color(theme::ERROR));
                 }
+
+                if row.status == WatchFolderFileStatus::Done {
+                    if row.added_to_project {
+                        ui.label(
+                            RichText::new(Text::WatchFolderAddedToProject.tr(locale))
+                                .size(11.5)
+                                .color(theme::TEXT_MUTED),
+                        );
+                    } else {
+                        ui.add_enabled_ui(has_open_project, |ui| {
+                            if ui
+                                .button(Text::WatchFolderAddToProject.tr(locale))
+                                .clicked()
+                            {
+                                add_to_project = Some(row.path.clone());
+                            }
+                        });
+                    }
+                }
             });
             ui.add_space(theme::SPACE_XS);
         }
     });
+
+    if let Some(path) = add_to_project {
+        app.add_watched_file_to_project(path);
+    }
 }

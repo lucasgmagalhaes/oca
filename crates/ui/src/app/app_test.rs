@@ -6431,6 +6431,7 @@ fn start_watching_folder_is_a_no_op_while_already_running() {
             error: None,
             before: None,
             after: None,
+            added_to_project: false,
         });
 
     app.start_watching_folder();
@@ -6475,6 +6476,7 @@ fn pump_watch_folder_inserts_a_newly_detected_file_at_the_front() {
             error: None,
             before: None,
             after: None,
+            added_to_project: false,
         });
     let _ = app
         .watch_folder_state
@@ -6504,6 +6506,7 @@ fn pump_watch_folder_applies_progress_and_completion_to_the_matching_row() {
             error: None,
             before: None,
             after: None,
+            added_to_project: false,
         });
     let before = avcore::LoudnessMetrics {
         integrated_lufs: -22.0,
@@ -6550,6 +6553,7 @@ fn pump_watch_folder_applies_a_failure_to_the_matching_row() {
             error: None,
             before: None,
             after: None,
+            added_to_project: false,
         });
     let _ = app
         .watch_folder_state
@@ -6564,6 +6568,81 @@ fn pump_watch_folder_applies_a_failure_to_the_matching_row() {
     let row = &app.watch_folder_state.files[0];
     assert_eq!(row.status, crate::app::WatchFolderFileStatus::Error);
     assert_eq!(row.error.as_deref(), Some("ffmpeg exited with code 1"));
+}
+
+#[test]
+fn add_watched_file_to_project_queues_the_cleaned_up_output_for_import() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let watch_path = std::path::PathBuf::from("E:/records");
+    app.watch_folder_state.watch_path = Some(watch_path.clone());
+    let source = watch_path.join("a.mp4");
+    app.watch_folder_state
+        .files
+        .push(crate::app::WatchedFileRow {
+            path: source.clone(),
+            status: crate::app::WatchFolderFileStatus::Done,
+            percent: 100,
+            error: None,
+            before: None,
+            after: None,
+            added_to_project: false,
+        });
+
+    app.add_watched_file_to_project(source.clone());
+
+    assert!(app.watch_folder_state.files[0].added_to_project);
+    assert_eq!(app.import_state.pending_imports, 1);
+}
+
+#[test]
+fn add_watched_file_to_project_toasts_without_an_open_project() {
+    let mut app = test_app(Vec::new(), Vec::new());
+    let watch_path = std::path::PathBuf::from("E:/records");
+    app.watch_folder_state.watch_path = Some(watch_path.clone());
+    let source = watch_path.join("a.mp4");
+    app.watch_folder_state
+        .files
+        .push(crate::app::WatchedFileRow {
+            path: source.clone(),
+            status: crate::app::WatchFolderFileStatus::Done,
+            percent: 100,
+            error: None,
+            before: None,
+            after: None,
+            added_to_project: false,
+        });
+
+    app.add_watched_file_to_project(source);
+
+    assert!(!app.watch_folder_state.files[0].added_to_project);
+    assert_eq!(app.import_state.pending_imports, 0);
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn add_watched_file_to_project_is_a_no_op_once_already_queued() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let watch_path = std::path::PathBuf::from("E:/records");
+    app.watch_folder_state.watch_path = Some(watch_path.clone());
+    let source = watch_path.join("a.mp4");
+    app.watch_folder_state
+        .files
+        .push(crate::app::WatchedFileRow {
+            path: source.clone(),
+            status: crate::app::WatchFolderFileStatus::Done,
+            percent: 100,
+            error: None,
+            before: None,
+            after: None,
+            added_to_project: true,
+        });
+
+    app.add_watched_file_to_project(source);
+
+    assert_eq!(
+        app.import_state.pending_imports, 0,
+        "a row already marked added_to_project must not be re-queued"
+    );
 }
 
 /// Captures everything [`App::report_error`] hands to its reporter, for asserting on the
