@@ -328,6 +328,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
             thumbnail_usage_clock: 0,
         },
         pending_asset_drop: None,
+        media_search: String::new(),
         clipboard_clip: None,
         formatting_clipboard: None,
         multi_selected_clip_ids: HashSet::new(),
