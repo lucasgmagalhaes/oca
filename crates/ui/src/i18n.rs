@@ -697,6 +697,17 @@ pub fn nav_label(locale: Locale, screen: Screen) -> &'static str {
     }
 }
 
+/// Formats the media library panel's item count (e.g. "18 itens"/"18 items"), matching
+/// `oca-editor-mock.html`'s `.panel-head` secondary count text.
+pub fn media_item_count_label(locale: Locale, count: usize) -> String {
+    match locale {
+        Locale::PtBr if count == 1 => "1 item".to_string(),
+        Locale::PtBr => format!("{count} itens"),
+        Locale::En if count == 1 => "1 item".to_string(),
+        Locale::En => format!("{count} items"),
+    }
+}
+
 /// Formats a project's "last edited" recency (e.g. "Edited 2 hours ago").
 pub fn recency_label(locale: Locale, recency: Recency) -> String {
     match (locale, recency) {

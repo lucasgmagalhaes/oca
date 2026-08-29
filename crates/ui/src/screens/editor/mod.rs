@@ -730,7 +730,20 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
             ui.set_width(width);
             ui.set_height(height);
             ui.vertical(|ui| {
-                components::section_label(ui, Text::MediaLibrary.tr(app.locale));
+                ui.horizontal(|ui| {
+                    components::section_label(ui, Text::MediaLibrary.tr(app.locale));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            RichText::new(crate::i18n::media_item_count_label(
+                                app.locale,
+                                app.active_project().media_library.len(),
+                            ))
+                            .size(11.0)
+                            .color(theme::TEXT_MUTED),
+                        );
+                    });
+                });
+                ui.add_space(theme::SPACE_SM);
                 ui.add(
                     egui::TextEdit::singleline(&mut app.media_search)
                         .hint_text(Text::SearchMediaPlaceholder.tr(app.locale))
