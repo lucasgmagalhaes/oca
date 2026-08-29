@@ -473,6 +473,7 @@ pub(super) fn create_new_track(
         shape_clips: Vec::new(),
         visible: true,
         audio_role: AudioRole::Unspecified,
+        locked: false,
         color_label: None,
     });
     timeline.tracks.len() - 1
@@ -589,6 +590,7 @@ pub(super) fn resolve_or_create_track(
         shape_clips: Vec::new(),
         visible: true,
         audio_role: AudioRole::Unspecified,
+        locked: false,
         color_label: None,
     });
     timeline.tracks.len() - 1

@@ -71,6 +71,7 @@ fn test_track(id: u64, kind: TrackKind, clips: Vec<ClipInstance>) -> Track {
 
         visible: true,
         audio_role: AudioRole::Unspecified,
+        locked: false,
         color_label: None,
     }
 }

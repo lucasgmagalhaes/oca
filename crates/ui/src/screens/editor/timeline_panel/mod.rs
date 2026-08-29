@@ -220,6 +220,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut clip_drags: Vec<ClipDrag> = Vec::new();
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
         let mut toggle_track_visibility_requests: Vec<u64> = Vec::new();
+        let mut toggle_track_lock_requests: Vec<u64> = Vec::new();
         let mut track_audio_role_requests: Vec<(u64, avcore::AudioRole)> = Vec::new();
         let mut track_color_label_requests: Vec<(u64, Option<[u8; 3]>)> = Vec::new();
         // Set the first time a trim/move drag starts this frame — `app` is immutably borrowed
@@ -253,6 +254,23 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             .clicked()
                             {
                                 toggle_track_visibility_requests.push(track_id);
+                            }
+                            let locked = track.locked;
+                            let lock_glyph = if locked { "🔒" } else { "🔓" };
+                            let lock_tooltip = if locked {
+                                Text::TrackUnlock.tr(locale)
+                            } else {
+                                Text::TrackLock.tr(locale)
+                            };
+                            if components::icon_button(
+                                ui,
+                                lock_glyph,
+                                lock_tooltip,
+                                components::IconButtonOpts::default(),
+                            )
+                            .clicked()
+                            {
+                                toggle_track_lock_requests.push(track_id);
                             }
                             let name_response = ui.add(
                                 egui::Label::new(RichText::new(&track.name).size(11.0).color(
@@ -363,10 +381,17 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             egui::vec2(edge_w, clip_rect.height()),
                         );
 
+                        // A locked track (`oca-editor-mock.html`'s lock icon) still allows
+                        // clicking a clip to select/inspect it, just not dragging it — same
+                        // "metadata, not content" split as `visible` above.
                         let body_response = ui.interact(
                             clip_rect,
                             ui.id().with(("timeline_clip", clip.id)),
-                            egui::Sense::click_and_drag(),
+                            if track.locked {
+                                egui::Sense::click()
+                            } else {
+                                egui::Sense::click_and_drag()
+                            },
                         );
                         let covers_playhead = clip.start_secs <= playhead_secs
                             && playhead_secs < clip.start_secs + clip.duration_secs();
@@ -497,15 +522,20 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 ui.close();
                             }
                         });
+                        let edge_sense = if track.locked {
+                            egui::Sense::hover()
+                        } else {
+                            egui::Sense::drag()
+                        };
                         let left_response = ui.interact(
                             left_edge_rect,
                             ui.id().with(("timeline_clip_trim_start", clip.id)),
-                            egui::Sense::drag(),
+                            edge_sense,
                         );
                         let right_response = ui.interact(
                             right_edge_rect,
                             ui.id().with(("timeline_clip_trim_end", clip.id)),
-                            egui::Sense::drag(),
+                            edge_sense,
                         );
                         if left_response.hovered()
                             || left_response.dragged()
@@ -944,6 +974,9 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         for track_id in toggle_track_visibility_requests {
             app.toggle_track_visibility(track_id);
+        }
+        for track_id in toggle_track_lock_requests {
+            app.toggle_track_locked(track_id);
         }
         for (track_id, role) in track_audio_role_requests {
             app.set_track_audio_role(track_id, role);

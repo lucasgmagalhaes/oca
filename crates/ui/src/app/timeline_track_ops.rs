@@ -38,6 +38,16 @@ impl App {
         }
     }
 
+    /// Toggles the `locked` flag on the track with `track_id` in the active sequence — the
+    /// timeline track header's lock icon (`oca-editor-mock.html`'s `.tl-track-tool`). Same
+    /// "metadata about a track" reasoning as [`Self::toggle_track_visibility`]: not undo-tracked.
+    pub fn toggle_track_locked(&mut self, track_id: u64) {
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(track) = timeline.tracks.iter_mut().find(|t| t.id == track_id) {
+            track.locked = !track.locked;
+        }
+    }
+
     /// Sets the `AudioRole` on the track with `track_id` — what the timeline track header's
     /// role picker does (D2, `spec/architecture/differentiators.md`: highlight detection needs
     /// to know which track is the mic vs. game audio). Not undo-tracked, same as
@@ -87,6 +97,7 @@ impl App {
                 shape_clips: Vec::new(),
                 visible: true,
                 audio_role: AudioRole::Unspecified,
+                locked: false,
                 color_label: None,
             });
     }
@@ -156,6 +167,7 @@ impl App {
                 shape_clips: Vec::new(),
                 visible: true,
                 audio_role: AudioRole::Unspecified,
+                locked: false,
                 color_label: None,
             });
     }
