@@ -1,16 +1,16 @@
 # Graph Report - oca  (2026-08-29)
 
 ## Corpus Check
-- 303 files · ~476,988 words
+- 303 files · ~477,050 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4215 nodes · 8396 edges · 248 communities (213 shown, 35 thin omitted)
+- 4215 nodes · 8396 edges · 250 communities (215 shown, 35 thin omitted)
 - Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 481 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `465bd478`
+- Built from commit: `9f3ca381`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -217,6 +217,7 @@
 - UI Review Checklist
 - Monetization and Licensing Architecture
 - Claude Code Configuration for Rust + egui Video Editor
+- QueueEnvelope
 - generate
 - text_layout_test.rs
 - egui-specialist.md
@@ -226,6 +227,7 @@
 - feature.md
 - PROFESSIONAL_UI.md
 - Quality Gates
+- KeyCombo
 - TranscribeError
 - collect
 - TextLayoutEngine
@@ -269,7 +271,7 @@
 ## Import Cycles
 - 2-file cycle: `crates/ui/src/app/mod.rs -> crates/ui/src/i18n.rs -> crates/ui/src/app/mod.rs`
 
-## Communities (248 total, 35 thin omitted)
+## Communities (250 total, 35 thin omitted)
 
 ### Community 0 - "keyframe_test.rs"
 Cohesion: 0.04
@@ -464,8 +466,8 @@ Cohesion: 0.21
 Nodes (26): clamp_scale(), color_balance_filter_expr(), crop_filter_expr(), eq_axis_expr(), gain_filter_db_expr(), scale_filter_expr_builds_a_geq_expression_for_an_animated_ramp(), scale_filter_expr_is_static_crop_scale_for_a_single_non_unity_keyframe(), text_rotation_sample_exprs_builds_a_piecewise_ramp_for_an_animated_angle() (+18 more)
 
 ### Community 56 - "PrefsState"
-Cohesion: 0.09
-Nodes (21): apply_bundled_model_defaults(), default_add_opacity_marker_binding(), default_lib_panel_width(), default_props_panel_width(), default_redo_binding(), default_timeline_height(), default_undo_binding(), KeyBindings (+13 more)
+Cohesion: 0.11
+Nodes (16): apply_bundled_model_defaults(), default_lib_panel_width(), default_props_panel_width(), default_timeline_height(), KeyBindings, LayoutScope, load_prefs(), prefs_path() (+8 more)
 
 ### Community 57 - "bridge_internal.h"
 Cohesion: 0.16
@@ -524,8 +526,8 @@ Cohesion: 0.13
 Nodes (10): f32, position_overlay_xy_expr_builds_a_t_based_ramp_for_an_animated_axis(), position_overlay_xy_expr_scales_a_single_keyframe_by_canvas_dimensions(), Lerp, Position, position_overlay_xy_expr(), App, motion_track_one() (+2 more)
 
 ### Community 73 - "app/error_reporting.rs"
-Cohesion: 0.12
-Nodes (34): QueueEnvelope, build_sentry_envelope(), delete_all_queued(), delete_all_queued_in(), delete_envelope_in(), deliver_with_retry(), enqueue_to_disk_in(), envelope_path() (+26 more)
+Cohesion: 0.11
+Nodes (38): App, delete_all_queued(), delete_all_queued_in(), delete_envelope_in(), deliver_with_retry(), enqueue_to_disk_in(), ensure_worker_spawned(), envelope_path() (+30 more)
 
 ### Community 74 - "preview_test.rs"
 Cohesion: 0.11
@@ -704,8 +706,8 @@ Cohesion: 0.50
 Nodes (4): Directory map, Keeping this in sync, Reading order, spec/ — Start Here
 
 ### Community 134 - "ErrorReport"
-Cohesion: 0.10
-Nodes (28): ErrorCode, ErrorReport, ErrorReporter, ErrorSeverity, NullReporter, Operation, RecoveryOutcome, Send (+20 more)
+Cohesion: 0.14
+Nodes (18): ErrorCode, ErrorReport, ErrorReporter, ErrorSeverity, NullReporter, Operation, RecoveryOutcome, Send (+10 more)
 
 ### Community 135 - "encode_timeline_export"
 Cohesion: 0.21
@@ -772,7 +774,7 @@ Cohesion: 0.45
 Nodes (10): apply_text_overlays(), applies_a_keyframed_opacity_fade_to_a_text_overlay(), applies_a_keyframed_position_offset_to_a_text_overlay(), applies_a_keyframed_rotation_to_a_text_overlay(), applies_a_keyframed_scale_to_a_text_overlay(), applies_a_text_overlay_with_no_opacity_expr_unchanged(), fixture(), Path (+2 more)
 
 ### Community 156 - "Option"
-Cohesion: 0.20
+Cohesion: 0.22
 Nodes (17): AutoReframeState, ImportState, MatteGenerationState, MotionTrackingState, HashMap, HashSet, Option, ThumbnailKey (+9 more)
 
 ### Community 157 - "mix_audio_timeline"
@@ -805,7 +807,7 @@ Nodes (7): App, String, Ui, shape_clip_properties(), shape_kind_to_preset(), sha
 
 ### Community 164 - "error_reporting/error_reporting_test.rs"
 Cohesion: 0.13
-Nodes (32): DeliveryOutcome, build_sentry_envelope_is_well_formed_ndjson_with_no_forbidden_content(), build_sentry_envelope_uses_the_undoubled_event_id_as_the_oca_dedup_key(), delete_all_queued_in_empties_the_directory(), deliver_with_retry_gives_up_immediately_when_not_configured(), deliver_with_retry_returns_true_immediately_on_success(), deliver_with_retry_stops_retrying_after_a_permanent_failure(), enqueue_then_load_round_trips() (+24 more)
+Nodes (31): DeliveryOutcome, build_sentry_envelope_is_well_formed_ndjson_with_no_forbidden_content(), build_sentry_envelope_uses_the_undoubled_event_id_as_the_oca_dedup_key(), deliver_with_retry_gives_up_immediately_when_not_configured(), deliver_with_retry_returns_true_immediately_on_success(), deliver_with_retry_stops_retrying_after_a_permanent_failure(), enqueue_then_load_round_trips(), enqueue_write_is_atomic_no_tmp_file_left_behind() (+23 more)
 
 ### Community 165 - "code-quality/README.md"
 Cohesion: 0.29
@@ -848,7 +850,7 @@ Cohesion: 0.29
 Nodes (7): Approval blockers, Dependencies, Files and paths, Native and external boundaries, Secrets, logs, and diagnostics, Security and trust boundaries, Untrusted input
 
 ### Community 175 - "src/error_reporting.rs"
-Cohesion: 0.07
+Cohesion: 0.08
 Nodes (39): Breadcrumb, ClipCountBucket, contains_forbidden_content(), default_environment(), ErrorReportBuilder, ExportStage, field_nonempty_ok(), floor_char_boundary() (+31 more)
 
 ### Community 177 - "tests/frame_sampler_test.rs"
@@ -983,6 +985,10 @@ Nodes (35): Acceptance criteria, Account, payment, and entitlement architecture,
 Cohesion: 0.40
 Nodes (4): Claude Code Configuration for Rust + egui Video Editor, Important, Install, Recommended workflow
 
+### Community 221 - "QueueEnvelope"
+Cohesion: 0.28
+Nodes (7): QueueEnvelope, build_sentry_envelope(), load_queue(), queue_len(), Value, Vec, sentry_event_payload()
+
 ### Community 222 - "generate"
 Cohesion: 0.28
 Nodes (15): add_document_group(), cargo_metadata(), component_documents(), copy_document(), expression_ids(), generate(), is_license_document(), load_spdx() (+7 more)
@@ -994,6 +1000,10 @@ Nodes (6): FnOnce, Self, SwashCache, with_shared_engine_reuses_the_same_engine_a
 ### Community 230 - "Quality Gates"
 Cohesion: 0.33
 Nodes (5): Commit discipline (repo-wide convention, applies to UI work too), "Done" gate for a UI change specifically, Git hooks, Quality Gates, Test placement — real convention
+
+### Community 231 - "KeyCombo"
+Cohesion: 0.38
+Nodes (5): default_add_opacity_marker_binding(), default_redo_binding(), default_undo_binding(), KeyCombo, InputState
 
 ### Community 233 - "TranscribeError"
 Cohesion: 0.20
