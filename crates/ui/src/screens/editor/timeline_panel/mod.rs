@@ -150,6 +150,24 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     .size(11.0)
                     .color(theme::TEXT_MUTED),
             );
+            // A visible zoom affordance for `timeline_px_per_sec` — until now only reachable via
+            // Ctrl+scroll, with no on-screen indicator of the current zoom level at all. Matches
+            // `oca-editor-mock.html`'s `.tl-zoom` slider in the timeline toolbar's right corner.
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add(
+                    egui::Slider::new(
+                        &mut app.timeline_px_per_sec,
+                        MIN_PX_PER_SEC..=MAX_PX_PER_SEC,
+                    )
+                    .show_value(false)
+                    .logarithmic(true),
+                );
+                ui.label(
+                    RichText::new(Text::TimelineZoom.tr(app.locale))
+                        .size(11.0)
+                        .color(theme::TEXT_MUTED),
+                );
+            });
         });
         ui.separator();
 
