@@ -798,6 +798,36 @@ pub struct ClipInstance {
     /// projects load with no gain animation (using the constant `gain_db` as before).
     #[serde(default)]
     pub gain_keyframes: Vec<Keyframe<f32>>,
+    /// `true` to run this block's audio through CF-02's "Gameplay Voice" cleanup chain before
+    /// mixing — `highpass=f=80,afftdn=nf=<noise_floor>,acompressor=threshold=<threshold>dB:
+    /// ratio=<ratio>:attack=10:release=250:makeup=1.5,alimiter=limit=<ceiling>` (values from
+    /// `scripts/Watch-Gameplay.ps1`'s own proven chain — `spec/architecture/
+    /// competitive-feature-plan.md`'s CF-03), applied per clip in `avbridge::audio_mix`'s
+    /// per-branch filter graph, ahead of the existing final `afftdn`/`loudnorm`/`alimiter`
+    /// mastering pass every export already runs on the finished mix. Meant for `Mic`-role
+    /// tracks, but this is a plain per-clip toggle regardless of role — the "Mic by default,
+    /// explicit override elsewhere" gate is a `ui` selector concern, not a data constraint.
+    /// Non-destructive/reversible like every other effect toggle on this struct. `#[serde(
+    /// default)]` so older saved projects load with it off. Not yet wired into live preview —
+    /// export only, same "export first" shape several other effect fields here started with.
+    #[serde(default)]
+    pub voice_cleanup_enabled: bool,
+    /// `afftdn`'s `nf` (expected noise floor), in dB — more negative removes less noise floor
+    /// (afftdn's own convention: `nf` is where it expects the *noise* to sit, not a cut amount).
+    /// `#[serde(default = ..)]` matches the proven script default.
+    #[serde(default = "default_voice_cleanup_noise_floor_db")]
+    pub voice_cleanup_noise_floor_db: f32,
+    /// `acompressor`'s `threshold`, in dB — audio above this level gets compressed.
+    #[serde(default = "default_voice_cleanup_compressor_threshold_db")]
+    pub voice_cleanup_compressor_threshold_db: f32,
+    /// `acompressor`'s `ratio` — how strongly audio above the threshold is compressed (higher =
+    /// stronger leveling).
+    #[serde(default = "default_voice_cleanup_compressor_ratio")]
+    pub voice_cleanup_compressor_ratio: f32,
+    /// `alimiter`'s `limit`, linear (not dB) — matches this chain's own `alimiter` stage and the
+    /// unrelated final-mastering `alimiter` stage's own convention (both `0.0..=1.0`).
+    #[serde(default = "default_voice_cleanup_ceiling_linear")]
+    pub voice_cleanup_ceiling_linear: f32,
     /// Path to a `.cube` 3D LUT file applied to this block's color grading, per `request.md`'s
     /// Fase 4 "Filtros de cor e LUTs" spec. Empty string = no LUT (the FFI-friendly analog of
     /// `Option<PathBuf>` this codebase already uses for other optional string fields, since a
@@ -914,6 +944,11 @@ pub struct ClipFormatting {
     pub rotation_keyframes: Vec<Keyframe<f32>>,
     pub opacity_keyframes: Vec<Keyframe<f32>>,
     pub gain_keyframes: Vec<Keyframe<f32>>,
+    pub voice_cleanup_enabled: bool,
+    pub voice_cleanup_noise_floor_db: f32,
+    pub voice_cleanup_compressor_threshold_db: f32,
+    pub voice_cleanup_compressor_ratio: f32,
+    pub voice_cleanup_ceiling_linear: f32,
     pub brightness_keyframes: Vec<Keyframe<f32>>,
     pub contrast_keyframes: Vec<Keyframe<f32>>,
     pub saturation_keyframes: Vec<Keyframe<f32>>,
@@ -966,6 +1001,22 @@ fn default_chroma_key_color() -> [u8; 3] {
 
 fn default_chroma_key_tolerance() -> f32 {
     0.4
+}
+
+fn default_voice_cleanup_noise_floor_db() -> f32 {
+    -30.0
+}
+
+fn default_voice_cleanup_compressor_threshold_db() -> f32 {
+    -18.0
+}
+
+fn default_voice_cleanup_compressor_ratio() -> f32 {
+    3.0
+}
+
+fn default_voice_cleanup_ceiling_linear() -> f32 {
+    0.95
 }
 
 impl ClipInstance {
@@ -1391,6 +1442,11 @@ impl ClipInstance {
             rotation_keyframes: self.rotation_keyframes.clone(),
             opacity_keyframes: self.opacity_keyframes.clone(),
             gain_keyframes: self.gain_keyframes.clone(),
+            voice_cleanup_enabled: self.voice_cleanup_enabled,
+            voice_cleanup_noise_floor_db: self.voice_cleanup_noise_floor_db,
+            voice_cleanup_compressor_threshold_db: self.voice_cleanup_compressor_threshold_db,
+            voice_cleanup_compressor_ratio: self.voice_cleanup_compressor_ratio,
+            voice_cleanup_ceiling_linear: self.voice_cleanup_ceiling_linear,
             brightness_keyframes: self.brightness_keyframes.clone(),
             contrast_keyframes: self.contrast_keyframes.clone(),
             saturation_keyframes: self.saturation_keyframes.clone(),
@@ -1440,6 +1496,11 @@ impl ClipInstance {
         self.rotation_keyframes = f.rotation_keyframes.clone();
         self.opacity_keyframes = f.opacity_keyframes.clone();
         self.gain_keyframes = f.gain_keyframes.clone();
+        self.voice_cleanup_enabled = f.voice_cleanup_enabled;
+        self.voice_cleanup_noise_floor_db = f.voice_cleanup_noise_floor_db;
+        self.voice_cleanup_compressor_threshold_db = f.voice_cleanup_compressor_threshold_db;
+        self.voice_cleanup_compressor_ratio = f.voice_cleanup_compressor_ratio;
+        self.voice_cleanup_ceiling_linear = f.voice_cleanup_ceiling_linear;
         self.brightness_keyframes = f.brightness_keyframes.clone();
         self.contrast_keyframes = f.contrast_keyframes.clone();
         self.saturation_keyframes = f.saturation_keyframes.clone();
@@ -1679,6 +1740,11 @@ impl Track {
             rotation_keyframes: rotation_second,
             opacity_keyframes: opacity_second,
             gain_keyframes: gain_second,
+            voice_cleanup_enabled: clip.voice_cleanup_enabled,
+            voice_cleanup_noise_floor_db: clip.voice_cleanup_noise_floor_db,
+            voice_cleanup_compressor_threshold_db: clip.voice_cleanup_compressor_threshold_db,
+            voice_cleanup_compressor_ratio: clip.voice_cleanup_compressor_ratio,
+            voice_cleanup_ceiling_linear: clip.voice_cleanup_ceiling_linear,
             brightness_keyframes: brightness_second,
             contrast_keyframes: contrast_second,
             saturation_keyframes: saturation_second,
