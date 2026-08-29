@@ -876,7 +876,8 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
     let locale = app.locale;
     ui.vertical(|ui| {
         ui.set_height(height);
-        egui::Frame::new()
+        let preview_texture_size = app.preview_state.preview_texture.as_ref().map(|t| t.size());
+        let frame_response = egui::Frame::new()
             .fill(egui::Color32::BLACK)
             .show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
@@ -898,7 +899,29 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         });
                     }
                 };
-            });
+            })
+            .response;
+        // A small resolution readout in the preview's top-left corner — matching
+        // oca-editor-mock.html's `.preview-hud-top` chip — from the actually decoded texture's
+        // own size, not a fabricated/asset-declared value, so it never drifts from what's on
+        // screen (proxy playback, letterboxing, etc.).
+        if let Some([w, h]) = preview_texture_size {
+            let chip_pos = frame_response.rect.left_top() + egui::vec2(8.0, 8.0);
+            let painter = ui.painter();
+            let text_pos = chip_pos + egui::vec2(4.0, 2.0);
+            let galley = painter.layout_no_wrap(
+                format!("{w}×{h}"),
+                egui::FontId::monospace(10.5),
+                theme::TEXT_SECONDARY,
+            );
+            let bg_rect = egui::Rect::from_min_size(chip_pos, galley.size() + egui::vec2(8.0, 4.0));
+            painter.rect_filled(
+                bg_rect,
+                egui::CornerRadius::same(theme::RADIUS_SM),
+                egui::Color32::from_black_alpha(160),
+            );
+            painter.galley(text_pos, galley, theme::TEXT_SECONDARY);
+        }
         let timeline_duration = app.active_project().timeline().duration_secs();
         ui.horizontal(|ui| {
             if components::icon_button(
