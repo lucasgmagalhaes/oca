@@ -257,11 +257,23 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         |ui| {
                             let track_id = track.id;
                             let visible = track.visible;
-                            let eye = if visible { "👁" } else { "⊘" };
-                            let tooltip = if visible {
-                                Text::TrackHide.tr(locale)
-                            } else {
-                                Text::TrackShow.tr(locale)
+                            // Audio tracks read as "muted/unmuted" (a speaker glyph) rather than
+                            // "hidden/shown" (an eye) — same `visible` flag underneath, since an
+                            // invisible video track and a muted audio track are the same "doesn't
+                            // contribute to preview/export" concept, just named per the mock's
+                            // own per-kind icon convention (`.tl-track-tool` 👁 vs 🔊).
+                            let is_audio = track.kind == avcore::timeline::TrackKind::Audio;
+                            let eye = match (is_audio, visible) {
+                                (true, true) => "🔊",
+                                (true, false) => "🔇",
+                                (false, true) => "👁",
+                                (false, false) => "⊘",
+                            };
+                            let tooltip = match (is_audio, visible) {
+                                (true, true) => Text::TrackMute.tr(locale),
+                                (true, false) => Text::TrackUnmute.tr(locale),
+                                (false, true) => Text::TrackHide.tr(locale),
+                                (false, false) => Text::TrackShow.tr(locale),
                             };
                             if components::icon_button(
                                 ui,
