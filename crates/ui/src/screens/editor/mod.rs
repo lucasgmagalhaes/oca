@@ -731,6 +731,12 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
             ui.set_height(height);
             ui.vertical(|ui| {
                 components::section_label(ui, Text::MediaLibrary.tr(app.locale));
+                ui.add(
+                    egui::TextEdit::singleline(&mut app.media_search)
+                        .hint_text(Text::SearchMediaPlaceholder.tr(app.locale))
+                        .desired_width(f32::INFINITY),
+                );
+                ui.add_space(6.0);
                 // Smart bins (P4 item 22) -- a row of filter chips above the asset list. "All"
                 // clears the filter; each bin is click-to-select, double-click-to-edit (the
                 // rules, not the assets themselves -- there's nothing else to double-click a
@@ -772,8 +778,12 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                             .find(|b| b.id == id)
                             .cloned()
                     });
+                    let search = app.media_search.to_lowercase();
                     let assets = app.active_project().media_library.iter();
-                    for asset in assets.filter(|a| bin.as_ref().is_none_or(|b| b.matches(a))) {
+                    for asset in assets.filter(|a| {
+                        bin.as_ref().is_none_or(|b| b.matches(a))
+                            && (search.is_empty() || a.file_name.to_lowercase().contains(&search))
+                    }) {
                         let selected = app.selected_asset_id == Some(asset.id);
                         let bg = if selected {
                             theme::ACCENT.gamma_multiply(0.18)

@@ -886,6 +886,12 @@ pub struct App {
     /// how dragging an asset out of the library and dropping it on the timeline works. Always
     /// `None` between frames.
     pub pending_asset_drop: Option<(u64, egui::Pos2)>,
+    /// Live text typed into the Editor's media-library search box (`editor.rs::
+    /// media_library_panel`) — filters the visible asset list by substring match on file name,
+    /// same as the search field in `oca-editor-mock.html`'s `.search-input`. Transient UI state,
+    /// not persisted: like `selected_clip_id`, a search-in-progress has no meaning across a
+    /// save/reload.
+    pub media_search: String,
     /// The last clip(s) copied or cut via `Ctrl+C`/`Ctrl+X`/the timeline context menu, and the
     /// track kind they came from (so a paste lands on a matching-kind track — same rule as a
     /// drag-move). More than one clip only when the copied clip was a composite block member —
@@ -1515,6 +1521,7 @@ impl App {
                 thumbnail_usage_clock: 0,
             },
             pending_asset_drop: None,
+            media_search: String::new(),
             clipboard_clip: None,
             formatting_clipboard: None,
             multi_selected_clip_ids: HashSet::new(),
