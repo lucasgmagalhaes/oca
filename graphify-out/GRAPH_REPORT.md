@@ -1,16 +1,16 @@
 # Graph Report - oca  (2026-08-29)
 
 ## Corpus Check
-- 303 files · ~476,659 words
+- 303 files · ~476,988 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4214 nodes · 8395 edges · 256 communities (220 shown, 36 thin omitted)
+- 4215 nodes · 8396 edges · 248 communities (213 shown, 35 thin omitted)
 - Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 481 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `013d303e`
+- Built from commit: `465bd478`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -22,12 +22,12 @@
 - timeline_test.rs
 - Preview
 - encode_write_packet
-- Sequence
+- UndoStack
 - Plano de Execução — oca (PacoPaçoca)
 - track_with
 - ensure_proxy
 - MediaAsset
-- App
+- next_clip_id
 - Task Breakdown — Fase 1 (Motor central)
 - Required checklist
 - record_event
@@ -83,7 +83,7 @@
 - Position
 - app/error_reporting.rs
 - preview_test.rs
-- render_test.rs
+- Sequence
 - core/build.rs
 - split_keyframes_at
 - draw.rs
@@ -144,7 +144,7 @@
 - editor/mod.rs
 - Track
 - LibraryTrack
-- transcript_search_test.rs
+- save_transcript_document
 - src/highlight_detection.rs
 - timeline_window_test.rs
 - transcript_test.rs
@@ -154,7 +154,7 @@
 - ProbeError
 - CURRENTLY IMPLEMENTED
 - SmartBin
-- TranscribeSegment
+- RenderControl
 - apply_text_overlays
 - Option
 - mix_audio_timeline
@@ -179,7 +179,7 @@
 - tests/frame_sampler_test.rs
 - App
 - persistence.rs
-- QueueEnvelope
+- ShapeKind
 - SOLID adapted to Rust
 - Testing quality
 - PathBuf
@@ -194,7 +194,7 @@
 - font_catalog_test.rs
 - generate_matte_one
 - silence_detection.rs
-- timeline.rs
+- Timeline
 - Design System
 - tag.rs
 - UX Principles
@@ -217,7 +217,6 @@
 - UI Review Checklist
 - Monetization and Licensing Architecture
 - Claude Code Configuration for Rust + egui Video Editor
-- undo_test.rs
 - generate
 - text_layout_test.rs
 - egui-specialist.md
@@ -227,27 +226,21 @@
 - feature.md
 - PROFESSIONAL_UI.md
 - Quality Gates
-- Timeline
 - TranscribeError
 - collect
 - TextLayoutEngine
-- MarkerKind
 - tests/background_removal_test.rs
 - sample_pending_crash
-- next_clip_id
 - App
 - text_layout.rs
-- App
 - text_clip_properties
 - .import_gameplay_events
-- create_new_track
+- App
 - app/gameplay_events.rs
 - enum_combo
 - nested_sequence_test.rs
 - parsing.rs
 - __init__.py
-- render_shape_clip_rgba
-- nav_rail.rs
 
 ## God Nodes (most connected - your core abstractions)
 1. `test_app()` - 295 edges
@@ -276,7 +269,7 @@
 ## Import Cycles
 - 2-file cycle: `crates/ui/src/app/mod.rs -> crates/ui/src/i18n.rs -> crates/ui/src/app/mod.rs`
 
-## Communities (256 total, 36 thin omitted)
+## Communities (248 total, 35 thin omitted)
 
 ### Community 0 - "keyframe_test.rs"
 Cohesion: 0.04
@@ -306,9 +299,9 @@ Nodes (64): AppSink, AppSrc, AtomicI32, BoolError, FrameSampler, Duration, Optio
 Cohesion: 0.18
 Nodes (24): AVStream, avbridge_encode_export(), EncodeStatus, ProgressCallback, AudioFilterChain, AVCodecContext, AVFormatContext, AVFrame (+16 more)
 
-### Community 8 - "Sequence"
-Cohesion: 0.23
-Nodes (6): Sequence, Default, Option, Self, Vec, UndoStack
+### Community 8 - "UndoStack"
+Cohesion: 0.13
+Nodes (11): Default, Option, Self, Vec, UndoStack, a_new_push_after_undo_clears_the_redo_branch(), capacity_bounds_the_undo_stack_by_dropping_the_oldest_entry(), clear_drops_both_stacks() (+3 more)
 
 ### Community 9 - "Plano de Execução — oca (PacoPaçoca)"
 Cohesion: 0.17
@@ -323,12 +316,12 @@ Cohesion: 0.07
 Nodes (32): cache_dir_for_project(), ensure_proxy(), is_up_to_date(), PreviewQuality, proxy_path_for(), a_proxy_newer_than_its_source_is_up_to_date(), a_proxy_older_than_its_source_is_not_up_to_date(), missing_proxy_is_not_up_to_date() (+24 more)
 
 ### Community 12 - "MediaAsset"
-Cohesion: 0.18
-Nodes (20): format_timecode(), MediaAsset, MediaKind, Option, PathBuf, String, Vec, cache_dir_for_project() (+12 more)
+Cohesion: 0.13
+Nodes (26): format_timecode(), MediaAsset, MediaKind, Option, PathBuf, String, Vec, cache_dir_for_project() (+18 more)
 
-### Community 13 - "App"
-Cohesion: 0.18
-Nodes (4): App, default_clip_instance(), FnOnce, Option
+### Community 13 - "next_clip_id"
+Cohesion: 0.08
+Nodes (10): TrackKind, App, App, create_new_track(), default_clip_instance(), next_clip_id(), resolve_or_create_track(), Option (+2 more)
 
 ### Community 14 - "Task Breakdown — Fase 1 (Motor central)"
 Cohesion: 0.12
@@ -372,7 +365,7 @@ Nodes (19): download_youtube(), Event, is_yt_dlp_available(), Mp3Bitrate, Mp4Qua
 
 ### Community 24 - "transcript_proposals_test.rs"
 Cohesion: 0.09
-Nodes (32): detect_proposals(), filler_word_set(), map_source_range_to_timeline(), merge_source_ranges(), norm(), Option, String, Vec (+24 more)
+Nodes (31): detect_proposals(), filler_word_set(), map_source_range_to_timeline(), merge_source_ranges(), norm(), Option, String, Vec (+23 more)
 
 ### Community 25 - "Built-in Font Catalog"
 Cohesion: 0.06
@@ -391,8 +384,8 @@ Cohesion: 0.19
 Nodes (14): generate_waveform(), Display, Error, Formatter, Path, Result, Vec, WaveformError (+6 more)
 
 ### Community 36 - "transcribe"
-Cohesion: 0.23
-Nodes (14): Arc, AtomicBool, FnMut, Option, Path, transcribe(), cancelling_before_the_call_skips_inference_entirely(), fails_on_a_missing_model_file() (+6 more)
+Cohesion: 0.13
+Nodes (26): abort_trampoline(), collect_segments(), collect_words(), Arc, AtomicBool, c_void, FnMut, Option (+18 more)
 
 ### Community 37 - "run"
 Cohesion: 0.28
@@ -415,8 +408,8 @@ Cohesion: 0.17
 Nodes (25): AVFilterInOut, add_graph_input(), advance_overlay_decoder(), avbridge_encode_timeline_export_multi(), build_overlay_vfilter(), build_setpts_str(), build_vfilter_descr(), AVCodecContext (+17 more)
 
 ### Community 42 - "ClipInstance"
-Cohesion: 0.11
-Nodes (3): ClipInstance, String, clip()
+Cohesion: 0.10
+Nodes (5): ClipInstance, String, clip(), clip(), FnOnce
 
 ### Community 43 - "watched_folder.rs"
 Cohesion: 0.08
@@ -472,7 +465,7 @@ Nodes (26): clamp_scale(), color_balance_filter_expr(), crop_filter_expr(), eq_a
 
 ### Community 56 - "PrefsState"
 Cohesion: 0.09
-Nodes (19): apply_bundled_model_defaults(), default_add_opacity_marker_binding(), default_lib_panel_width(), default_props_panel_width(), default_redo_binding(), default_timeline_height(), default_undo_binding(), KeyBindings (+11 more)
+Nodes (21): apply_bundled_model_defaults(), default_add_opacity_marker_binding(), default_lib_panel_width(), default_props_panel_width(), default_redo_binding(), default_timeline_height(), default_undo_binding(), KeyBindings (+13 more)
 
 ### Community 57 - "bridge_internal.h"
 Cohesion: 0.16
@@ -487,8 +480,8 @@ Cohesion: 0.29
 Nodes (10): append_pcm_frame(), avbridge_extract_pcm_16k_mono(), AudioFilterChain, AVCodecContext, AVFrame, drain_pcm_frame(), init_pcm_filter_chain(), pcm_buffer_reserve() (+2 more)
 
 ### Community 60 - "overlay_render_test.rs"
-Cohesion: 0.16
-Nodes (22): a_highlighted_word_follows_the_base_layout_onto_the_next_line(), a_local_time_covered_by_no_word_leaves_only_the_base_color(), circle_mask_center_is_visible_and_corners_are_masked(), empty_text_produces_a_fully_transparent_buffer(), highlight_disabled_never_draws_the_highlight_color_even_within_a_words_window(), long_text_wraps_onto_multiple_lines_once_narrower_than_the_canvas(), non_empty_text_draws_at_least_one_opaque_pixel(), none_mask_shape_is_fully_masked_out() (+14 more)
+Cohesion: 0.13
+Nodes (28): a_highlighted_word_follows_the_base_layout_onto_the_next_line(), a_local_time_covered_by_no_word_leaves_only_the_base_color(), circle_mask_center_is_visible_and_corners_are_masked(), ellipse_center_pixel_is_opaque_and_corners_are_transparent(), empty_text_produces_a_fully_transparent_buffer(), highlight_disabled_never_draws_the_highlight_color_even_within_a_words_window(), long_text_wraps_onto_multiple_lines_once_narrower_than_the_canvas(), non_empty_text_draws_at_least_one_opaque_pixel() (+20 more)
 
 ### Community 61 - "probe_media"
 Cohesion: 0.20
@@ -511,16 +504,12 @@ Cohesion: 0.61
 Nodes (7): AVRational, AVCodecContext, open_video_encoder(), pix_fmt_for_encoder_name(), try_open_encoder(), try_open_vaapi_device(), try_open_vaapi_encoder()
 
 ### Community 66 - "render.rs"
-Cohesion: 0.14
-Nodes (42): AudioSegment, Canvas, ClipSegment, GpuEncoderPreference, PathBuf, String, ShapeSegment, TextOverlaySegment (+34 more)
+Cohesion: 0.22
+Nodes (27): Canvas, GpuEncoderPreference, apply_audio_mix_pass(), apply_export_aspect_ratio(), apply_shape_overlay_pass(), apply_text_overlay_pass(), clip_segment_duration_secs(), fps_to_rational() (+19 more)
 
 ### Community 67 - "transcript.rs"
-Cohesion: 0.16
-Nodes (22): cache_dir_for_project(), load_transcript_document(), Display, Error, Formatter, Option, Path, PathBuf (+14 more)
-
-### Community 68 - "App"
 Cohesion: 0.14
-Nodes (5): ClipFormatting, LayerTemplate, TrackKind, App, Pos2
+Nodes (21): cache_dir_for_project(), load_transcript_document(), word(), Display, Error, Formatter, Option, Path (+13 more)
 
 ### Community 69 - "audio_mix.c"
 Cohesion: 0.24
@@ -535,16 +524,16 @@ Cohesion: 0.13
 Nodes (10): f32, position_overlay_xy_expr_builds_a_t_based_ramp_for_an_animated_axis(), position_overlay_xy_expr_scales_a_single_keyframe_by_canvas_dimensions(), Lerp, Position, position_overlay_xy_expr(), App, motion_track_one() (+2 more)
 
 ### Community 73 - "app/error_reporting.rs"
-Cohesion: 0.11
-Nodes (38): App, delete_all_queued(), delete_all_queued_in(), delete_envelope_in(), deliver_with_retry(), enqueue_to_disk_in(), ensure_worker_spawned(), envelope_path() (+30 more)
+Cohesion: 0.12
+Nodes (34): QueueEnvelope, build_sentry_envelope(), delete_all_queued(), delete_all_queued_in(), delete_envelope_in(), deliver_with_retry(), enqueue_to_disk_in(), envelope_path() (+26 more)
 
 ### Community 74 - "preview_test.rs"
 Cohesion: 0.11
 Nodes (44): a_cropped_clip_shrinks_the_decoded_frame(), a_fade_transition_clip_still_opens_and_decodes(), a_flipped_clip_still_opens_and_decodes(), a_gained_clip_opens_with_a_real_audio_sink_and_still_decodes_video(), a_neutral_clip_applies_no_filter_bin_and_frame_size_is_unchanged(), a_pixelized_clip_still_opens_and_decodes_at_full_size(), a_shaken_clip_still_opens_and_decodes_at_full_size(), a_slide_transition_clip_still_opens_and_decodes_at_full_size() (+36 more)
 
-### Community 75 - "render_test.rs"
-Cohesion: 0.21
-Nodes (19): resolve_shape_segments(), resolve_text_segments(), cancelling_mid_render_reports_cancelled(), fixture(), rejects_a_missing_source(), renders_and_normalizes_loudness_toward_target(), resolve_shape_segments_returns_empty_when_no_shape_track_exists(), resolve_shape_segments_returns_one_segment_for_a_shape_clip() (+11 more)
+### Community 75 - "Sequence"
+Cohesion: 0.20
+Nodes (21): Sequence, resolve_shape_segments(), resolve_text_segments(), shape_clip_to_segment(), cancelling_mid_render_reports_cancelled(), fixture(), rejects_a_missing_source(), renders_and_normalizes_loudness_toward_target() (+13 more)
 
 ### Community 76 - "core/build.rs"
 Cohesion: 0.44
@@ -567,12 +556,12 @@ Cohesion: 0.16
 Nodes (24): apply_update(), ApplyUpdateError, ApplyUpdateOutcome, auto_update_supported(), expected_update_asset_name(), fetch_latest_release(), GithubAsset, GithubRelease (+16 more)
 
 ### Community 81 - "ExportJob"
-Cohesion: 0.09
-Nodes (31): Box, Condvar, ExportJob, ExportJobStatus, String, Vec, ocqueue_file_atomically_replaces_the_previous_snapshot(), test_job() (+23 more)
+Cohesion: 0.12
+Nodes (34): Box, AudioSegment, ClipSegment, PathBuf, String, ShapeSegment, TextOverlaySegment, ExportJob (+26 more)
 
 ### Community 82 - "generate_tts_one"
-Cohesion: 0.22
-Nodes (6): App, generate_tts_one(), Path, PathBuf, Result, String
+Cohesion: 0.20
+Nodes (7): tts_output_dir(), App, generate_tts_one(), Path, PathBuf, Result, String
 
 ### Community 84 - "error_reporting_test.rs"
 Cohesion: 0.15
@@ -595,16 +584,16 @@ Cohesion: 0.40
 Nodes (4): Application flow, Asset names, Auto-update release contract, Publishing checklist
 
 ### Community 90 - "shape_render_test.rs"
-Cohesion: 0.10
-Nodes (27): build_shape_filter_desc(), ellipse_inside_expr(), inside_expr(), polygon_inside_expr(), rgb_to_ycbcr(), String, build_shape_filter_desc_animates_position_when_center_keyframes_are_present(), build_shape_filter_desc_animates_rotation_via_geq_sin_cos_when_rotation_keyframes_are_present() (+19 more)
+Cohesion: 0.12
+Nodes (24): build_shape_filter_desc(), ellipse_inside_expr(), inside_expr(), polygon_inside_expr(), rgb_to_ycbcr(), String, build_shape_filter_desc_animates_position_when_center_keyframes_are_present(), build_shape_filter_desc_animates_rotation_via_geq_sin_cos_when_rotation_keyframes_are_present() (+16 more)
 
 ### Community 95 - "preview_effects.rs"
-Cohesion: 0.05
-Nodes (53): amplitude_envelope(), amplitude_envelope_reports_rms_per_window(), best_lag_windows(), best_lag_windows_finds_a_burst_shifted_earlier(), best_lag_windows_finds_a_burst_shifted_later(), burst_signal(), compute_sync_offset_secs(), compute_sync_offset_secs_matches_a_known_delay() (+45 more)
+Cohesion: 0.09
+Nodes (30): a_lut_that_zeroes_red_darkens_only_the_red_channel_of_the_frame(), apply_glitch_to_rgba(), apply_lut_to_rgba(), apply_vignette_to_rgba(), empty_buffer_glitch_is_a_no_op(), glitch_actually_perturbs_pixels_at_full_intensity(), glitch_differs_across_seeds(), glitch_is_deterministic_for_the_same_seed() (+22 more)
 
 ### Community 96 - "app/mod.rs"
-Cohesion: 0.14
-Nodes (29): LoudnessMetrics, AutoReframeEvent, AvailableUpdate, BindableAction, EditorTool, ImportEvent, MatteGenerationEvent, MotionTrackRegionState (+21 more)
+Cohesion: 0.13
+Nodes (32): LoudnessMetrics, AutoReframeEvent, AvailableUpdate, BindableAction, ImportEvent, MatteGenerationEvent, MotionTrackEvent, MotionTrackRegionState (+24 more)
 
 ### Community 97 - "Complex Text Shaping and Bidirectional Layout"
 Cohesion: 0.08
@@ -615,8 +604,8 @@ Cohesion: 0.90
 Nodes (4): copy_dir_all(), copy_file(), main(), Path
 
 ### Community 100 - "App"
-Cohesion: 0.08
-Nodes (16): App, format_color_hex(), parse_alpha(), parse_byte(), parse_color_value(), parse_hex_color(), Result, String (+8 more)
+Cohesion: 0.06
+Nodes (19): MarkerKind, App, format_color_hex(), parse_alpha(), parse_byte(), parse_color_value(), parse_hex_color(), Result (+11 more)
 
 ### Community 101 - "bundle_macos_dylibs.py"
 Cohesion: 0.38
@@ -671,8 +660,8 @@ Cohesion: 0.22
 Nodes (9): P0 — Editing Foundations, P1 — Performance Infrastructure, P2 — High-Impact Parity, P3 — Differentiators, P4 — Hardware-Dependent / Confirmed Hard Walls / Lower-Priority Parity, P5 — Competitive Product Growth, P6 — Explicitly Deferred, P7 — Design System Consolidation (+1 more)
 
 ### Community 116 - "EGUI.md"
-Cohesion: 0.11
-Nodes (18): card_frame(), Frame, open_in_finder(), App, PathBuf, Ui, show(), App (+10 more)
+Cohesion: 0.09
+Nodes (23): card_frame(), Frame, open_in_finder(), App, PathBuf, Ui, show(), App (+15 more)
 
 ### Community 117 - "Runtime dependency bundle"
 Cohesion: 0.40
@@ -715,8 +704,8 @@ Cohesion: 0.50
 Nodes (4): Directory map, Keeping this in sync, Reading order, spec/ — Start Here
 
 ### Community 134 - "ErrorReport"
-Cohesion: 0.14
-Nodes (18): ErrorCode, ErrorReport, ErrorReporter, ErrorSeverity, NullReporter, Operation, RecoveryOutcome, Send (+10 more)
+Cohesion: 0.10
+Nodes (28): ErrorCode, ErrorReport, ErrorReporter, ErrorSeverity, NullReporter, Operation, RecoveryOutcome, Send (+20 more)
 
 ### Community 135 - "encode_timeline_export"
 Cohesion: 0.21
@@ -731,28 +720,28 @@ Cohesion: 0.20
 Nodes (16): ColorFilter, color_filter_label(), f32_keyframe_editor(), mask_shape_label(), polygon_vertex_editor(), position_keyframe_editor(), Option, String (+8 more)
 
 ### Community 141 - "editor/mod.rs"
-Cohesion: 0.26
-Nodes (22): asset_thumb(), audio_level_meter(), draw_custom_shape_surface(), draw_motion_track_region_picker(), export_srt_for_active_sequence(), fullscreen_preview_overlay(), layer_transform_preview(), media_library_panel() (+14 more)
+Cohesion: 0.24
+Nodes (23): EditorTool, asset_thumb(), audio_level_meter(), draw_custom_shape_surface(), draw_motion_track_region_picker(), export_srt_for_active_sequence(), fullscreen_preview_overlay(), layer_transform_preview() (+15 more)
 
 ### Community 143 - "LibraryTrack"
 Cohesion: 0.14
 Nodes (13): LibraryTrack, Path, PathBuf, String, Vec, scan_library_dir(), SoundCategory, fixture() (+5 more)
 
-### Community 144 - "transcript_search_test.rs"
+### Community 144 - "save_transcript_document"
 Cohesion: 0.26
-Nodes (15): ProjectTranscriptHit, Path, String, Vec, search_transcripts_in_project(), asset(), case_insensitive_and_partial_word_match(), doc() (+7 more)
+Nodes (16): save_transcript_document(), ProjectTranscriptHit, Path, String, Vec, search_transcripts_in_project(), asset(), case_insensitive_and_partial_word_match() (+8 more)
 
 ### Community 145 - "src/highlight_detection.rs"
 Cohesion: 0.05
 Nodes (56): EventSidecar, empty_timeline(), every_event_kind_has_a_distinct_label(), import_maps_source_timestamps_through_the_callers_offset(), imported_markers_carry_a_human_readable_label(), importing_a_different_kind_at_the_same_position_is_not_deduplicated(), imports_events_as_highlight_markers(), re_importing_the_same_events_is_idempotent() (+48 more)
 
 ### Community 146 - "timeline_window_test.rs"
-Cohesion: 0.23
-Nodes (16): extract_timeline_window(), clip(), drops_a_clip_entirely_outside_the_window(), drops_a_text_clip_straddling_a_boundary_rather_than_trimming_word_timing(), drops_markers_and_resets_the_playhead(), empty_or_inverted_window_yields_no_tracks(), extracts_a_clip_fully_inside_the_window_and_rebases_it(), extracts_a_shape_clip_fully_inside_the_window_and_rebases_it() (+8 more)
+Cohesion: 0.25
+Nodes (15): extract_timeline_window(), drops_a_clip_entirely_outside_the_window(), drops_a_text_clip_straddling_a_boundary_rather_than_trimming_word_timing(), drops_markers_and_resets_the_playhead(), empty_or_inverted_window_yields_no_tracks(), extracts_a_clip_fully_inside_the_window_and_rebases_it(), extracts_a_shape_clip_fully_inside_the_window_and_rebases_it(), Vec (+7 more)
 
 ### Community 147 - "transcript_test.rs"
-Cohesion: 0.23
-Nodes (11): from_transcribe_segments_flattens_words_with_sequential_ids(), Vec, segments(), validate_accepts_a_well_formed_document(), validate_rejects_a_duplicate_word_id(), validate_rejects_a_negative_start(), validate_rejects_a_newer_schema_version(), validate_rejects_end_before_start() (+3 more)
+Cohesion: 0.22
+Nodes (12): from_transcribe_segments_flattens_words_with_sequential_ids(), Vec, save_and_load_round_trips_a_document(), segments(), validate_accepts_a_well_formed_document(), validate_rejects_a_duplicate_word_id(), validate_rejects_a_negative_start(), validate_rejects_a_newer_schema_version() (+4 more)
 
 ### Community 148 - "package.json"
 Cohesion: 0.13
@@ -774,17 +763,17 @@ Nodes (17): ClipInstance (`timeline.rs`), CURRENTLY IMPLEMENTED, Effects / Keyfr
 Cohesion: 0.26
 Nodes (9): an_empty_bin_matches_everything(), kind_filter_excludes_the_other_kind(), multiple_criteria_are_anded_together(), name_contains_is_case_insensitive(), requires_audio_filters_either_way(), Option, Self, String (+1 more)
 
-### Community 154 - "TranscribeSegment"
-Cohesion: 0.27
-Nodes (12): abort_trampoline(), collect_segments(), collect_words(), c_void, String, Vec, TranscribeOutcome, TranscribeSegment (+4 more)
+### Community 154 - "RenderControl"
+Cohesion: 0.22
+Nodes (5): Condvar, RenderControl, AtomicBool, Mutex, MutexGuard
 
 ### Community 155 - "apply_text_overlays"
 Cohesion: 0.45
 Nodes (10): apply_text_overlays(), applies_a_keyframed_opacity_fade_to_a_text_overlay(), applies_a_keyframed_position_offset_to_a_text_overlay(), applies_a_keyframed_rotation_to_a_text_overlay(), applies_a_keyframed_scale_to_a_text_overlay(), applies_a_text_overlay_with_no_opacity_expr_unchanged(), fixture(), Path (+2 more)
 
 ### Community 156 - "Option"
-Cohesion: 0.14
-Nodes (25): AutoReframeState, ImportState, MatteGenerationState, MotionTrackEvent, MotionTrackingState, PreviewState, HashMap, HashSet (+17 more)
+Cohesion: 0.20
+Nodes (17): AutoReframeState, ImportState, MatteGenerationState, MotionTrackingState, HashMap, HashSet, Option, ThumbnailKey (+9 more)
 
 ### Community 157 - "mix_audio_timeline"
 Cohesion: 0.30
@@ -816,7 +805,7 @@ Nodes (7): App, String, Ui, shape_clip_properties(), shape_kind_to_preset(), sha
 
 ### Community 164 - "error_reporting/error_reporting_test.rs"
 Cohesion: 0.13
-Nodes (31): DeliveryOutcome, build_sentry_envelope_is_well_formed_ndjson_with_no_forbidden_content(), build_sentry_envelope_uses_the_undoubled_event_id_as_the_oca_dedup_key(), deliver_with_retry_gives_up_immediately_when_not_configured(), deliver_with_retry_returns_true_immediately_on_success(), deliver_with_retry_stops_retrying_after_a_permanent_failure(), enqueue_then_load_round_trips(), enqueue_write_is_atomic_no_tmp_file_left_behind() (+23 more)
+Nodes (32): DeliveryOutcome, build_sentry_envelope_is_well_formed_ndjson_with_no_forbidden_content(), build_sentry_envelope_uses_the_undoubled_event_id_as_the_oca_dedup_key(), delete_all_queued_in_empties_the_directory(), deliver_with_retry_gives_up_immediately_when_not_configured(), deliver_with_retry_returns_true_immediately_on_success(), deliver_with_retry_stops_retrying_after_a_permanent_failure(), enqueue_then_load_round_trips() (+24 more)
 
 ### Community 165 - "code-quality/README.md"
 Cohesion: 0.29
@@ -859,7 +848,7 @@ Cohesion: 0.29
 Nodes (7): Approval blockers, Dependencies, Files and paths, Native and external boundaries, Secrets, logs, and diagnostics, Security and trust boundaries, Untrusted input
 
 ### Community 175 - "src/error_reporting.rs"
-Cohesion: 0.08
+Cohesion: 0.07
 Nodes (39): Breadcrumb, ClipCountBucket, contains_forbidden_content(), default_environment(), ErrorReportBuilder, ExportStage, field_nonempty_ok(), floor_char_boundary() (+31 more)
 
 ### Community 177 - "tests/frame_sampler_test.rs"
@@ -870,9 +859,9 @@ Nodes (4): fixture(), PathBuf, sample_can_be_called_repeatedly_against_the_same_
 Cohesion: 0.23
 Nodes (20): from_framed_bytes(), from_ocqueue_bytes(), from_octr_bytes(), load_project_from_file(), PersistError, Display, Error, Formatter (+12 more)
 
-### Community 180 - "QueueEnvelope"
-Cohesion: 0.28
-Nodes (7): QueueEnvelope, build_sentry_envelope(), load_queue(), queue_len(), Value, Vec, sentry_event_payload()
+### Community 180 - "ShapeKind"
+Cohesion: 0.42
+Nodes (3): Default, Self, ShapeKind
 
 ### Community 181 - "SOLID adapted to Rust"
 Cohesion: 0.18
@@ -895,8 +884,8 @@ Cohesion: 0.31
 Nodes (10): probe(), ProbeInfo, Option, StreamKind, falls_back_to_audio_when_there_is_no_video_stream(), fixture(), missing_file_returns_open_error(), non_media_file_returns_open_error() (+2 more)
 
 ### Community 192 - "property.rs"
-Cohesion: 0.29
-Nodes (10): property_block(), property_row(), property_section(), property_toggle(), FnOnce, Ui, modal_title(), page_title() (+2 more)
+Cohesion: 0.15
+Nodes (16): icon_button(), IconButtonOpts, Color32, Option, Response, Ui, property_block(), property_row() (+8 more)
 
 ### Community 193 - ".apply_transcription"
 Cohesion: 0.28
@@ -915,16 +904,20 @@ Cohesion: 0.25
 Nodes (6): App, generate_matte_one(), Path, PathBuf, Result, String
 
 ### Community 197 - "silence_detection.rs"
-Cohesion: 0.15
-Nodes (19): amplitude_exactly_at_threshold_counts_as_silent(), clip_silence_gaps(), clips_a_gap_that_straddles_the_clips_trim_boundary(), detect_silence_gaps(), detects_a_single_silent_run_in_the_middle(), detects_silence_running_to_the_very_end(), ignores_runs_shorter_than_the_minimum_duration(), loud() (+11 more)
+Cohesion: 0.07
+Nodes (42): amplitude_envelope(), amplitude_envelope_reports_rms_per_window(), best_lag_windows(), best_lag_windows_finds_a_burst_shifted_earlier(), best_lag_windows_finds_a_burst_shifted_later(), burst_signal(), compute_sync_offset_secs(), compute_sync_offset_secs_matches_a_known_delay() (+34 more)
+
+### Community 198 - "Timeline"
+Cohesion: 0.07
+Nodes (9): ClipFormatting, LayerTemplate, Marker, MaskShape, MulticamGroup, HashMap, Vec, Timeline (+1 more)
 
 ### Community 199 - "Design System"
 Cohesion: 0.20
 Nodes (9): Borders and shadows, Color — real tokens, `crates/ui/src/theme.rs`, Design System, Hierarchy, Icons, Personality, Spacing, States (+1 more)
 
 ### Community 200 - "tag.rs"
-Cohesion: 0.20
-Nodes (13): icon_button(), IconButtonOpts, Color32, Option, Response, Ui, Color32, Ui (+5 more)
+Cohesion: 0.54
+Nodes (7): Color32, Ui, tag(), tag_accent(), tag_error(), tag_outline(), tag_warning()
 
 ### Community 201 - "UX Principles"
 Cohesion: 0.20
@@ -990,10 +983,6 @@ Nodes (35): Acceptance criteria, Account, payment, and entitlement architecture,
 Cohesion: 0.40
 Nodes (4): Claude Code Configuration for Rust + egui Video Editor, Important, Install, Recommended workflow
 
-### Community 221 - "undo_test.rs"
-Cohesion: 0.36
-Nodes (6): a_new_push_after_undo_clears_the_redo_branch(), capacity_bounds_the_undo_stack_by_dropping_the_oldest_entry(), clear_drops_both_stacks(), redo_restores_what_undo_moved_away_from(), sequence_named(), undo_restores_the_pushed_snapshot()
-
 ### Community 222 - "generate"
 Cohesion: 0.28
 Nodes (15): add_document_group(), cargo_metadata(), component_documents(), copy_document(), expression_ids(), generate(), is_license_document(), load_spdx() (+7 more)
@@ -1005,10 +994,6 @@ Nodes (6): FnOnce, Self, SwashCache, with_shared_engine_reuses_the_same_engine_a
 ### Community 230 - "Quality Gates"
 Cohesion: 0.33
 Nodes (5): Commit discipline (repo-wide convention, applies to UI work too), "Done" gate for a UI change specifically, Git hooks, Quality Gates, Test placement — real convention
-
-### Community 231 - "Timeline"
-Cohesion: 0.20
-Nodes (5): Marker, MulticamGroup, HashMap, Vec, Timeline
 
 ### Community 233 - "TranscribeError"
 Cohesion: 0.20
@@ -1022,10 +1007,6 @@ Nodes (6): collect(), load_allowlist(), main(), plugin_id(), Path, CollectGStrea
 Cohesion: 0.29
 Nodes (6): Option, TextFontFamily, TextLayoutEngine, TextFontStyle, FontSystem, Weight
 
-### Community 237 - "MarkerKind"
-Cohesion: 0.20
-Nodes (3): MarkerKind, App, String
-
 ### Community 238 - "tests/background_removal_test.rs"
 Cohesion: 0.32
 Nodes (5): mask_cache_dir_falls_back_to_a_temp_dir_for_an_unsaved_project(), mask_cache_dir_is_a_hidden_sibling_of_a_saved_project_file(), Option, PathBuf, test_project()
@@ -1033,10 +1014,6 @@ Nodes (5): mask_cache_dir_falls_back_to_a_temp_dir_for_an_unsaved_project(), mas
 ### Community 239 - "sample_pending_crash"
 Cohesion: 0.40
 Nodes (5): always_send_pending_crash_opts_in_and_reports_through_the_new_consent(), crash_review_payload_preview_shows_the_exact_post_sanitization_payload(), dismiss_pending_crash_review_clears_state_without_sending_anything(), sample_pending_crash(), send_pending_crash_once_marks_reviewed_without_changing_steady_state_consent()
-
-### Community 240 - "next_clip_id"
-Cohesion: 0.31
-Nodes (3): App, next_clip_id(), resolve_or_create_track()
 
 ### Community 243 - "text_layout.rs"
 Cohesion: 0.33
@@ -1058,28 +1035,20 @@ Nodes (14): clip(), detects_a_direct_self_nesting_cycle(), detects_an_indirect_n
 Cohesion: 0.67
 Nodes (5): bench_parse_loudnorm_stderr(), bench_project_ocproj_round_trip(), bench_timeline_duration(), large_project(), Criterion
 
-### Community 254 - "render_shape_clip_rgba"
-Cohesion: 0.47
-Nodes (6): ellipse_center_pixel_is_opaque_and_corners_are_transparent(), rectangle_fills_its_whole_local_square_not_just_the_center(), sample_shape(), stroke_only_shape_leaves_its_own_center_transparent(), put_pixel(), render_shape_clip_rgba()
-
-### Community 255 - "nav_rail.rs"
-Cohesion: 0.53
-Nodes (5): rail_button(), App, Response, Ui, show()
-
 ## Knowledge Gaps
 - **525 isolated node(s):** `MatchingClip`, `App`, `App`, `App`, `SequenceTabDrag` (+520 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **36 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **35 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `ClipInstance` connect `ClipInstance` to `timeline_test.rs`, `Preview`, `properties_panel`, `track_with`, `App`, `Track`, `src/highlight_detection.rs`, `timeline_window_test.rs`, `transcript_proposals_test.rs`, `timeline_export_multi_test.rs`, `timeline_with`, `Keyframe`, `App`, `probe_media`, `render.rs`, `App`, `silence_detection.rs`, `timeline.rs`, `Position`, `preview_test.rs`, `draw.rs`, `App`, `Timeline`, `test_track`, `nested_sequence_test.rs`?**
-  _High betweenness centrality (0.162) - this node is a cross-community bridge._
-- **Why does `App` connect `App` to `app/mod.rs`, `render.rs`, `App`, `silence_detection.rs`, `ErrorReport`, `Project`, `Sequence`, `ClipInstance`, `MediaAsset`, `LibraryTrack`, `ExportJob`, `Locale`, `crash_review_test.rs`, `PrefsState`, `SmartBin`, `Option`, `transcript_proposals_test.rs`?**
+- **Why does `ClipInstance` connect `ClipInstance` to `timeline_test.rs`, `Preview`, `properties_panel`, `track_with`, `next_clip_id`, `Track`, `src/highlight_detection.rs`, `timeline_window_test.rs`, `transcript_proposals_test.rs`, `timeline_export_multi_test.rs`, `timeline_with`, `Keyframe`, `App`, `probe_media`, `render.rs`, `App`, `silence_detection.rs`, `Timeline`, `Position`, `preview_test.rs`, `draw.rs`, `App`, `test_track`, `nested_sequence_test.rs`?**
+  _High betweenness centrality (0.165) - this node is a cross-community bridge._
+- **Why does `App` connect `App` to `ErrorReport`, `UndoStack`, `MediaAsset`, `next_clip_id`, `editor/mod.rs`, `LibraryTrack`, `transcript_proposals_test.rs`, `SmartBin`, `RenderControl`, `Option`, `Project`, `ClipInstance`, `PrefsState`, `silence_detection.rs`, `Timeline`, `ExportJob`, `Locale`, `crash_review_test.rs`, `app/mod.rs`, `App`?**
   _High betweenness centrality (0.128) - this node is a cross-community bridge._
-- **Why does `Project` connect `Project` to `persistence_test.rs`, `app_test.rs`, `Sequence`, `ensure_proxy`, `MediaAsset`, `project_test.rs`, `SmartBin`, `test_project`, `src/background_removal.rs`, `CollabBundleError`, `persistence.rs`, `PrefsState`, `transcript.rs`, `App`, `Locale`, `Timeline`, `test_asset`, `test_track`, `tests/background_removal_test.rs`, `parsing.rs`?**
-  _High betweenness centrality (0.067) - this node is a cross-community bridge._
+- **Why does `Project` connect `Project` to `persistence_test.rs`, `app_test.rs`, `ensure_proxy`, `MediaAsset`, `project_test.rs`, `SmartBin`, `test_project`, `src/background_removal.rs`, `CollabBundleError`, `persistence.rs`, `PrefsState`, `transcript.rs`, `App`, `Timeline`, `Sequence`, `Locale`, `test_asset`, `test_track`, `tests/background_removal_test.rs`, `parsing.rs`?**
+  _High betweenness centrality (0.066) - this node is a cross-community bridge._
 - **What connects `MatchingClip`, `App`, `App` to the rest of the system?**
   _525 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `keyframe_test.rs` be split into smaller, more focused modules?**
