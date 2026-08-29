@@ -33,6 +33,7 @@ pub mod error_reporting;
 pub mod export;
 pub mod font_catalog;
 pub mod frame_sampler;
+pub mod gameplay_events;
 pub mod highlight_detection;
 pub mod keyframe;
 pub mod loudness;

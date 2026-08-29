@@ -180,6 +180,118 @@ pub fn detect_highlight_candidates(
     candidates
 }
 
+/// CF-02 (`spec/architecture/competitive-feature-plan.md`)'s "event-only" highlight scoring —
+/// one [`HighlightCandidate`] window per [`crate::gameplay_events::GameplayEvent`], independently
+/// testable from the audio-only detector above per that item's own acceptance criteria.
+/// `to_timeline_secs` maps an event's source-relative timestamp onto the timeline, same shape
+/// [`crate::gameplay_events::import_events_as_markers`] takes. `default_pre_roll_secs`/
+/// `default_post_roll_secs` apply whenever an event doesn't specify its own override. Overlapping
+/// windows (two events close enough together) merge into one, taking the higher `confidence` —
+/// the same "don't double-count adjacent evidence" reasoning [`detect_highlight_candidates`]'s
+/// own consecutive-hot-window merging already uses.
+pub fn event_highlight_candidates(
+    events: &[crate::gameplay_events::GameplayEvent],
+    to_timeline_secs: impl Fn(f64) -> f64,
+    default_pre_roll_secs: f64,
+    default_post_roll_secs: f64,
+) -> Vec<HighlightCandidate> {
+    let mut windows: Vec<HighlightCandidate> = events
+        .iter()
+        .map(|event| {
+            let center = to_timeline_secs(event.source_timestamp_secs);
+            let pre = event
+                .pre_roll_secs
+                .map(|v| v as f64)
+                .unwrap_or(default_pre_roll_secs);
+            let post = event
+                .post_roll_secs
+                .map(|v| v as f64)
+                .unwrap_or(default_post_roll_secs);
+            HighlightCandidate {
+                start_secs: (center - pre).max(0.0),
+                end_secs: center + post,
+                score: event.confidence,
+            }
+        })
+        .collect();
+    windows.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
+
+    let mut merged: Vec<HighlightCandidate> = Vec::with_capacity(windows.len());
+    for window in windows {
+        if let Some(last) = merged.last_mut() {
+            if window.start_secs <= last.end_secs {
+                last.end_secs = last.end_secs.max(window.end_secs);
+                last.score = last.score.max(window.score);
+                continue;
+            }
+        }
+        merged.push(window);
+    }
+    merged
+}
+
+/// CF-02's "combined" highlight scoring: unions `audio_candidates` (from
+/// [`detect_highlight_candidates`]) and `event_candidates` (from
+/// [`event_highlight_candidates`]), independently testable from either input alone per that
+/// item's acceptance criteria. A window flagged by *both* sources is strictly stronger evidence
+/// than either alone, so an overlap's merged score is boosted to `1.0` (maximum confidence)
+/// rather than averaged; a window flagged by only one source keeps that source's own score
+/// unchanged. Unlike [`detect_highlight_candidates`] itself (which requires *both* game-audio
+/// and mic channels hot at once), combining doesn't require both an audio spike and an event —
+/// CF-02's own goal is refining the existing detector with events as an additional signal, not
+/// replacing it with a stricter one.
+pub fn combine_highlight_candidates(
+    audio_candidates: &[HighlightCandidate],
+    event_candidates: &[HighlightCandidate],
+) -> Vec<HighlightCandidate> {
+    struct Tagged {
+        window: HighlightCandidate,
+        from_audio: bool,
+        from_event: bool,
+    }
+
+    let mut tagged: Vec<Tagged> = audio_candidates
+        .iter()
+        .map(|c| Tagged {
+            window: *c,
+            from_audio: true,
+            from_event: false,
+        })
+        .chain(event_candidates.iter().map(|c| Tagged {
+            window: *c,
+            from_audio: false,
+            from_event: true,
+        }))
+        .collect();
+    tagged.sort_by(|a, b| a.window.start_secs.total_cmp(&b.window.start_secs));
+
+    let mut merged: Vec<Tagged> = Vec::with_capacity(tagged.len());
+    for t in tagged {
+        if let Some(last) = merged.last_mut() {
+            if t.window.start_secs <= last.window.end_secs {
+                last.window.end_secs = last.window.end_secs.max(t.window.end_secs);
+                last.window.score = last.window.score.max(t.window.score);
+                last.from_audio |= t.from_audio;
+                last.from_event |= t.from_event;
+                continue;
+            }
+        }
+        merged.push(t);
+    }
+
+    merged
+        .into_iter()
+        .map(|t| HighlightCandidate {
+            score: if t.from_audio && t.from_event {
+                1.0
+            } else {
+                t.window.score
+            },
+            ..t.window
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +459,115 @@ mod tests {
         let mic = vec![sample(1.0, 0.9)];
         assert!(detect_highlight_candidates(&[], &mic, 0.5, 1.0, 1.0).is_empty());
         assert!(detect_highlight_candidates(&mic, &[], 0.5, 1.0, 1.0).is_empty());
+    }
+
+    fn test_event(source_secs: f64, confidence: f32) -> crate::gameplay_events::GameplayEvent {
+        crate::gameplay_events::GameplayEvent {
+            kind: crate::gameplay_events::GameplayEventKind::Kill,
+            source_timestamp_secs: source_secs,
+            confidence,
+            pre_roll_secs: None,
+            post_roll_secs: None,
+        }
+    }
+
+    #[test]
+    fn event_highlight_candidates_windows_each_event_by_the_default_roll() {
+        let events = vec![test_event(100.0, 0.7)];
+        let candidates = event_highlight_candidates(&events, |t| t, 5.0, 2.0);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].start_secs, 95.0);
+        assert_eq!(candidates[0].end_secs, 102.0);
+        assert_eq!(candidates[0].score, 0.7);
+    }
+
+    #[test]
+    fn event_highlight_candidates_uses_the_events_own_roll_override() {
+        let mut event = test_event(100.0, 1.0);
+        event.pre_roll_secs = Some(1.0);
+        event.post_roll_secs = Some(0.5);
+        let candidates = event_highlight_candidates(&[event], |t| t, 5.0, 2.0);
+        assert_eq!(candidates[0].start_secs, 99.0);
+        assert_eq!(candidates[0].end_secs, 100.5);
+    }
+
+    #[test]
+    fn event_highlight_candidates_clamps_the_window_start_to_zero() {
+        let events = vec![test_event(1.0, 1.0)];
+        let candidates = event_highlight_candidates(&events, |t| t, 5.0, 2.0);
+        assert_eq!(candidates[0].start_secs, 0.0);
+    }
+
+    #[test]
+    fn event_highlight_candidates_maps_through_the_timeline_offset() {
+        let events = vec![test_event(10.0, 1.0)];
+        let candidates = event_highlight_candidates(&events, |t| t + 50.0, 1.0, 1.0);
+        assert_eq!(candidates[0].start_secs, 59.0);
+        assert_eq!(candidates[0].end_secs, 61.0);
+    }
+
+    #[test]
+    fn event_highlight_candidates_merges_overlapping_windows_keeping_the_higher_score() {
+        let events = vec![test_event(100.0, 0.4), test_event(102.0, 0.9)];
+        let candidates = event_highlight_candidates(&events, |t| t, 3.0, 3.0);
+        assert_eq!(candidates.len(), 1, "the two 3s-wide windows overlap");
+        assert_eq!(candidates[0].score, 0.9);
+    }
+
+    #[test]
+    fn event_highlight_candidates_is_empty_for_no_events() {
+        assert!(event_highlight_candidates(&[], |t| t, 1.0, 1.0).is_empty());
+    }
+
+    #[test]
+    fn combine_keeps_non_overlapping_windows_from_both_sources_unchanged() {
+        let audio = vec![HighlightCandidate {
+            start_secs: 0.0,
+            end_secs: 2.0,
+            score: 0.6,
+        }];
+        let event = vec![HighlightCandidate {
+            start_secs: 10.0,
+            end_secs: 12.0,
+            score: 0.5,
+        }];
+        let combined = combine_highlight_candidates(&audio, &event);
+        assert_eq!(combined.len(), 2);
+        assert_eq!(combined[0].score, 0.6);
+        assert_eq!(combined[1].score, 0.5);
+    }
+
+    #[test]
+    fn combine_boosts_an_overlapping_window_to_maximum_confidence() {
+        let audio = vec![HighlightCandidate {
+            start_secs: 0.0,
+            end_secs: 5.0,
+            score: 0.6,
+        }];
+        let event = vec![HighlightCandidate {
+            start_secs: 3.0,
+            end_secs: 8.0,
+            score: 0.5,
+        }];
+        let combined = combine_highlight_candidates(&audio, &event);
+        assert_eq!(combined.len(), 1, "overlapping windows merge into one");
+        assert_eq!(combined[0].start_secs, 0.0);
+        assert_eq!(combined[0].end_secs, 8.0);
+        assert_eq!(combined[0].score, 1.0);
+    }
+
+    #[test]
+    fn combine_is_empty_when_both_inputs_are_empty() {
+        assert!(combine_highlight_candidates(&[], &[]).is_empty());
+    }
+
+    #[test]
+    fn combine_returns_audio_only_candidates_when_no_events_exist() {
+        let audio = vec![HighlightCandidate {
+            start_secs: 0.0,
+            end_secs: 2.0,
+            score: 0.8,
+        }];
+        assert_eq!(combine_highlight_candidates(&audio, &[]), audio);
     }
 }

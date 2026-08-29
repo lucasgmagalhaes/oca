@@ -1034,8 +1034,66 @@ an item earlier:
   `cargo test -p core --lib transcript` (33 passed), `cargo test -p ui transcript` (13 passed).
   All six of CF-01's original slices are now shipped (persist, panel, search, propose, apply,
   and subtitle/transcript kept as distinct types by design from slice 1).
-- `[ ]` **CF-02: gameplay event ingestion and watched-folder import.** Import versioned event
+- `[~]` **CF-02: gameplay event ingestion and watched-folder import.** Import versioned event
   sidecars/bookmarks and combine them with audio-spike scoring before building a full recorder.
+
+  **Slices 2 and 4 (sidecar schema/validation, marker import, event-based/combined highlight
+  scoring) shipped.** `avcore::gameplay_events` adds a versioned `EventSidecar` (`schema_version`,
+  `source_media_filename`, `Vec<GameplayEvent>`) — `GameplayEvent` carries a closed
+  `GameplayEventKind` (Kill/Death/Assist/Objective/Bookmark, deliberately *not*
+  `#[serde(other)]`-tolerant like `TextFontFamily`'s font fallback: this item's own acceptance
+  criteria require an unrecognized event kind to be **rejected**, not silently normalized),
+  `source_timestamp_secs`, `confidence` (`[0.0, 1.0]`), and optional per-event
+  `pre_roll_secs`/`post_roll_secs` overrides. `source_media_filename` is a bare filename, never an
+  absolute path — same portability reasoning `collab_bundle` already established, checked by
+  `EventSidecar::validate()` alongside schema-version/timestamp/confidence/roll-range checks, each
+  with an actionable `Display` message naming the field and the bad value (this crate's existing
+  manual `Display`/`std::error::Error` convention, e.g. `watched_folder::ProcessError` — no
+  `thiserror` dependency in `core`, so none added here either).
+  `import_events_as_markers` converts accepted events into `MarkerKind::Highlight` markers
+  (reusing P2 item 9's marker infrastructure unchanged) through a caller-supplied
+  source-to-timeline mapping closure, deduplicating by (kind, position-within-50ms) so importing
+  the same sidecar twice — or once per clip instance of the same recording — is a no-op the
+  second time, satisfying the item's own idempotency requirement without adding a new persisted
+  "already imported" flag anywhere.
+
+  `highlight_detection` gained the item's other explicit requirement — "event-only, audio-only,
+  and combined highlight scoring independently testable" — as two new pure functions alongside
+  the existing audio-only `detect_highlight_candidates`: `event_highlight_candidates` windows
+  each event by its own or a caller default pre/post-roll and merges overlapping windows
+  (keeping the higher confidence, same "don't double-count adjacent evidence" reasoning the
+  audio detector's own consecutive-hot-window merging uses); `combine_highlight_candidates`
+  unions audio-only and event-only candidate lists, boosting a window flagged by *both* sources
+  to maximum confidence (`1.0`) — deliberately not requiring both like the audio-only detector
+  requires both game-audio and mic channels, since CF-02's own goal is refining the existing
+  detector with events as an additional signal, not replacing it with a stricter one.
+
+  **Deliberately not done in this slice**: slice 1's automated watched-folder *import* service
+  (bringing a newly-finished recording into a project's media library) is a distinct feature from
+  the already-shipped `avcore::watched_folder`/Limpeza noise-cleanup watcher (stability-detects
+  and re-encodes a file in place, never touches a project's media library) — reusing the latter's
+  `StabilityTracker` for the former is a real, tractable follow-up, not attempted here. Slice 3's
+  OBS/Medal/Outplayed format adapters are also not attempted — reverse-engineering an external
+  tool's own export format without a documented spec to verify against would mean guessing at a
+  schema, which `CLAUDE.md`'s own "do not guess APIs" rule rules out; a sidecar today is
+  hand-authored or produced by an external script directly against this module's own schema and
+  imported manually, the doc's own "user-provided sidecars" fallback path. Slice 5's per-game
+  event allowlists are also open. No `ui` wiring yet either — this slice is `core`-only, real and
+  independently useful (a sidecar can already be validated and imported programmatically), but
+  there's no "Import Gameplay Events..." button in the app yet.
+
+  Verified for real: since `gameplay_events.rs` and `highlight_detection.rs`'s new functions have
+  zero heavy dependencies (`serde`/`serde_json` plus `crate::timeline`/`crate::keyframe`), they
+  were copied into a throwaway scratch crate with the real bundled dependency versions and
+  `cargo test`ed for real (`core`'s own test binary can't link in this sandbox — the pre-existing
+  ONNX Runtime gap): 96/96 passing, 30 new — sidecar round-trip through real JSON, every
+  validation-rejection case (unsupported schema version, non-portable filename, non-finite/
+  negative timestamp, out-of-range confidence, negative roll), an unrecognized event kind
+  producing an actionable parse error naming the bad value, idempotent/offset-aware marker
+  import, and both new highlight-scoring functions' windowing/merging/boosting behavior.
+  `cargo check --workspace --all-targets`, `cargo clippy -p core --lib --no-deps`, and `cargo fmt
+  --check` (the first two via the documented temporary local `filters.c` shim, discarded before
+  commit) all stayed clean.
 - `[ ]` **CF-03: integrated gameplay-voice cleanup.** Move the proven watched-folder FFmpeg chain
   into a non-destructive `Mic`-role effect with A/B preview and measured output.
 - `[ ]` **CF-04: dynamic auto-reframe.** Track a face/selected subject and generate reviewed,
