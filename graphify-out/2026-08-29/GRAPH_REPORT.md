@@ -1,16 +1,16 @@
 # Graph Report - oca  (2026-08-29)
 
 ## Corpus Check
-- 300 files · ~471,330 words
+- 300 files · ~471,560 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4153 nodes · 8261 edges · 254 communities (220 shown, 34 thin omitted)
+- 4153 nodes · 8261 edges · 255 communities (222 shown, 33 thin omitted)
 - Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 476 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `1f107e36`
+- Built from commit: `7c0b2e4d`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -240,11 +240,13 @@
 - text_layout.rs
 - App
 - text_clip_properties
-- create_new_track
+- TrackKind
 - parsing.rs
 - enum_combo
+- nested_sequence_test.rs
 - App
 - __init__.py
+- home.rs
 
 ## God Nodes (most connected - your core abstractions)
 1. `test_app()` - 280 edges
@@ -273,7 +275,7 @@
 ## Import Cycles
 - 2-file cycle: `crates/ui/src/app/mod.rs -> crates/ui/src/i18n.rs -> crates/ui/src/app/mod.rs`
 
-## Communities (254 total, 34 thin omitted)
+## Communities (255 total, 33 thin omitted)
 
 ### Community 0 - "keyframe_test.rs"
 Cohesion: 0.04
@@ -320,12 +322,12 @@ Cohesion: 0.07
 Nodes (32): cache_dir_for_project(), ensure_proxy(), is_up_to_date(), PreviewQuality, proxy_path_for(), a_proxy_newer_than_its_source_is_up_to_date(), a_proxy_older_than_its_source_is_not_up_to_date(), missing_proxy_is_not_up_to_date() (+24 more)
 
 ### Community 12 - "MediaAsset"
-Cohesion: 0.13
-Nodes (34): format_timecode(), MediaAsset, MediaKind, Option, PathBuf, String, Vec, cache_dir_for_project() (+26 more)
+Cohesion: 0.18
+Nodes (20): format_timecode(), MediaAsset, MediaKind, Option, PathBuf, String, Vec, cache_dir_for_project() (+12 more)
 
 ### Community 13 - "App"
-Cohesion: 0.18
-Nodes (3): App, default_clip_instance(), FnOnce
+Cohesion: 0.21
+Nodes (3): App, FnOnce, Option
 
 ### Community 14 - "Task Breakdown — Fase 1 (Motor central)"
 Cohesion: 0.12
@@ -664,8 +666,8 @@ Cohesion: 0.22
 Nodes (9): P0 — Editing Foundations, P1 — Performance Infrastructure, P2 — High-Impact Parity, P3 — Differentiators, P4 — Hardware-Dependent / Confirmed Hard Walls / Lower-Priority Parity, P5 — Competitive Product Growth, P6 — Explicitly Deferred, P7 — Design System Consolidation (+1 more)
 
 ### Community 116 - "EGUI.md"
-Cohesion: 0.11
-Nodes (18): card_frame(), Frame, open_in_finder(), App, PathBuf, Ui, show(), App (+10 more)
+Cohesion: 0.14
+Nodes (13): card_frame(), Frame, App, Ui, show(), App, Ui, show() (+5 more)
 
 ### Community 117 - "Runtime dependency bundle"
 Cohesion: 0.40
@@ -1036,8 +1038,8 @@ Cohesion: 0.25
 Nodes (9): default_add_opacity_marker_binding(), default_redo_binding(), default_undo_binding(), KeyBindings, KeyCombo, LayoutScope, PrefsState, Default (+1 more)
 
 ### Community 240 - "next_clip_id"
-Cohesion: 0.38
-Nodes (4): TrackKind, next_clip_id(), resolve_or_create_track(), Option
+Cohesion: 0.26
+Nodes (3): default_clip_instance(), next_clip_id(), resolve_or_create_track()
 
 ### Community 241 - "TranscribeError"
 Cohesion: 0.20
@@ -1051,6 +1053,10 @@ Nodes (7): Range, Vec, ShapedGlyph, ShapedLine, ShapedText, ID, PhysicalGlyph
 Cohesion: 0.36
 Nodes (8): App, Response, TextFontFamily, Ui, text_clip_properties(), text_color_button(), text_font_family_label(), text_font_style_label()
 
+### Community 247 - "TrackKind"
+Cohesion: 0.20
+Nodes (3): TrackKind, App, create_new_track()
+
 ### Community 248 - "parsing.rs"
 Cohesion: 0.67
 Nodes (5): bench_parse_loudnorm_stderr(), bench_project_ocproj_round_trip(), bench_timeline_duration(), large_project(), Criterion
@@ -1059,17 +1065,25 @@ Nodes (5): bench_parse_loudnorm_stderr(), bench_project_ocproj_round_trip(), ben
 Cohesion: 0.33
 Nodes (5): enum_combo(), Fn, String, T, Ui
 
+### Community 250 - "nested_sequence_test.rs"
+Cohesion: 0.36
+Nodes (14): clip(), detects_a_direct_self_nesting_cycle(), detects_an_indirect_nesting_cycle(), errors_on_a_missing_nested_sequence(), fixture(), is_a_noop_when_no_clip_is_nested(), project(), renders_a_real_nested_sequence_to_a_probeable_synthetic_asset() (+6 more)
+
+### Community 254 - "home.rs"
+Cohesion: 0.47
+Nodes (5): open_in_finder(), App, PathBuf, Ui, show()
+
 ## Knowledge Gaps
 - **523 isolated node(s):** `App`, `App`, `SequenceTabDrag`, `TrimEdge`, `name` (+518 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **34 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **33 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `ClipInstance` connect `ClipInstance` to `timeline_test.rs`, `Preview`, `properties_panel`, `track_with`, `MediaAsset`, `App`, `Timeline`, `src/highlight_detection.rs`, `timeline_window_test.rs`, `transcript_proposals_test.rs`, `timeline_export_multi_test.rs`, `timeline_with`, `Keyframe`, `App`, `probe_media`, `render.rs`, `App`, `silence_detection.rs`, `timeline.rs`, `Position`, `preview_test.rs`, `draw.rs`, `App`, `test_track`?**
+- **Why does `ClipInstance` connect `ClipInstance` to `timeline_test.rs`, `Preview`, `properties_panel`, `track_with`, `App`, `Timeline`, `src/highlight_detection.rs`, `timeline_window_test.rs`, `transcript_proposals_test.rs`, `timeline_export_multi_test.rs`, `timeline_with`, `Keyframe`, `App`, `probe_media`, `render.rs`, `App`, `silence_detection.rs`, `timeline.rs`, `Position`, `preview_test.rs`, `draw.rs`, `App`, `test_track`, `next_clip_id`, `nested_sequence_test.rs`?**
   _High betweenness centrality (0.158) - this node is a cross-community bridge._
-- **Why does `App` connect `App` to `app/mod.rs`, `render.rs`, `App`, `silence_detection.rs`, `Project`, `UndoStack`, `ClipInstance`, `MediaAsset`, `LibraryTrack`, `next_clip_id`, `ExportJob`, `seed_error_reporting`, `PrefsState`, `Locale`, `.new`, `SmartBin`, `Option`, `transcript_proposals_test.rs`?**
+- **Why does `App` connect `App` to `app/mod.rs`, `render.rs`, `App`, `silence_detection.rs`, `Project`, `UndoStack`, `ClipInstance`, `MediaAsset`, `LibraryTrack`, `PrefsState`, `ExportJob`, `seed_error_reporting`, `Locale`, `TrackKind`, `.new`, `SmartBin`, `Option`, `transcript_proposals_test.rs`?**
   _High betweenness centrality (0.121) - this node is a cross-community bridge._
 - **Why does `Project` connect `Project` to `persistence_test.rs`, `app_test.rs`, `ensure_proxy`, `MediaAsset`, `Timeline`, `project_test.rs`, `SmartBin`, `test_project`, `src/background_removal.rs`, `CollabBundleError`, `.new`, `render.rs`, `transcript.rs`, `App`, `Locale`, `persistence.rs`, `test_asset`, `test_track`, `parsing.rs`?**
   _High betweenness centrality (0.067) - this node is a cross-community bridge._
