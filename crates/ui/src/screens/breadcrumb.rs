@@ -92,15 +92,19 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             .size(13.0)
                             .color(theme::TEXT_SECONDARY),
                     );
-                    ui.add_space(2.0);
+                    ui.add_space(6.0);
                     egui::Frame::new()
                         .fill(theme::ACCENT)
                         .corner_radius(theme::RADIUS_PILL)
                         .show(ui, |ui| {
                             ui.allocate_exact_size(egui::vec2(6.0, 6.0), egui::Sense::hover());
-                        })
-                        .response
-                        .on_hover_text(Text::UnsavedChanges.tr(app.locale));
+                        });
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(Text::UnsavedChanges.tr(app.locale))
+                            .size(11.0)
+                            .color(theme::TEXT_MUTED),
+                    );
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
