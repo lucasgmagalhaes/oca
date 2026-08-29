@@ -1094,8 +1094,51 @@ an item earlier:
   `cargo check --workspace --all-targets`, `cargo clippy -p core --lib --no-deps`, and `cargo fmt
   --check` (the first two via the documented temporary local `filters.c` shim, discarded before
   commit) all stayed clean.
-- `[ ]` **CF-03: integrated gameplay-voice cleanup.** Move the proven watched-folder FFmpeg chain
+- `[~]` **CF-03: integrated gameplay-voice cleanup.** Move the proven watched-folder FFmpeg chain
   into a non-destructive `Mic`-role effect with A/B preview and measured output.
+
+  **Slice 1 (export-side non-destructive effect) shipped.** Reuses `scripts/Watch-Gameplay.ps1`'s
+  own proven `highpass=f=80,afftdn=nf=-30,acompressor=threshold=-18dB:ratio=3:attack=10:
+  release=250:makeup=1.5,alimiter=limit=0.95` chain verbatim (real values read from the script
+  itself, not guessed) as `ClipInstance::voice_cleanup_enabled` plus four adjustable params
+  (`voice_cleanup_noise_floor_db`, `voice_cleanup_compressor_threshold_db`,
+  `voice_cleanup_compressor_ratio`, `voice_cleanup_ceiling_linear` — the "small advanced panel"
+  scope this item's own doc calls for; highpass frequency and compressor attack/release/makeup
+  stay fixed at the proven defaults, not exposed). A plain per-clip toggle, not role-gated at the
+  data layer — the "Mic by default, explicit override elsewhere" acceptance criterion is a `ui`
+  selector concern for a later slice, deliberately not baked into the model itself. Wired through
+  the FFI boundary as five new `avbridge::AudioSegment` fields, spliced into `audio_mix.c`'s
+  per-branch filter chain (`build_mix_graph`) between that branch's own `volume` and `delay`
+  stages when enabled — ahead of the existing whole-mix `afftdn`/`loudnorm`/`alimiter` mastering
+  pass every export already runs, so a Mic branch gets cleaned up before mixing, not just at the
+  very end. `render.rs::resolve_audio_segments` passes the `ClipInstance` fields straight through
+  unchanged, and `ClipFormatting`/`split_clip_at`/copy-formatting carry them the same way every
+  other per-clip effect field already does.
+
+  **Deliberately not done**: no live GStreamer preview effect (export-only, the same "export
+  first" shape several other effect fields on `ClipInstance` started with — P4 item 32's own
+  entry documents why: most effects' elements are only conditionally present in the running
+  pipeline at all), no `ui` wiring at all yet (no properties-panel toggle, no advanced-params
+  panel, no A/B preview, no measured before/after loudness display — this slice is `core`+
+  `avbridge` only), and no per-clip role-based default/suggestion UI. All real, separate
+  follow-up slices, not silently dropped.
+
+  Verified for real, not just type-checked: `crates/avbridge` has zero heavy dependencies (no
+  ONNX/whisper/GStreamer), so `cargo test -p avbridge --test audio_mix_test` fully links and runs
+  in this sandbox against real fixture audio (the pre-existing FFmpeg-too-old `filters.c` gap
+  worked around via the documented temporary local shim, discarded before commit) — three new
+  integration tests: cleanup enabled and disabled both mix successfully (`avfilter_graph_config`
+  succeeding is the real proof this exact filter syntax is valid against this build's actual
+  linked FFmpeg, not just that the C compiles), and — the strongest evidence — an A/B test
+  proving the extra stages actually change the encoded output: not just byte-for-byte difference,
+  but the compressed file's own measured loudness range (via `avbridge::measure_loudness_json`,
+  the same real `loudnorm`-analysis primitive `avcore::loudness` already uses) comes back
+  narrower than the uncompressed file's, real confirmation `acompressor` measurably reduced
+  dynamic range. `cargo check --workspace --all-targets` (confirming every `ClipInstance`
+  construction site across `core`/`ui` — 15 call sites, both production and test code — was
+  updated for the five new fields), `cargo clippy -p core --lib --no-deps` / `-p avbridge
+  --all-targets --no-deps`, `cargo fmt --check`, and `clang-format --dry-run --Werror` on the
+  touched C files all stayed clean.
 - `[ ]` **CF-04: dynamic auto-reframe.** Track a face/selected subject and generate reviewed,
   smoothed crop/position keyframes for vertical exports and Shorts Pack.
 - `[ ]` **CF-05: OpenTimelineIO interchange.** Round-trip the supported editorial subset and
