@@ -140,13 +140,13 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1787972837.116724,
-    "ast_hash": "86834e3308f0b04143239c940e77e0ab",
+    "mtime": 1788005398.0834231,
+    "ast_hash": "9119a213efd6fcc7af78516d994b09ee",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1787952948.711327,
-    "ast_hash": "f51f8323a32327e4ca169e3cb3f874df",
+    "mtime": 1788005300.5949092,
+    "ast_hash": "93662071d823a7e3275ef2d77ae30ec7",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -520,8 +520,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1787952308.2900424,
-    "ast_hash": "14ac5d3019949f65c8c09fa3d1537256",
+    "mtime": 1788005295.7175841,
+    "ast_hash": "04c524fd2bc2d9fcc96a34691a906fcf",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
@@ -545,8 +545,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/mod.rs": {
-    "mtime": 1788004976.2966516,
-    "ast_hash": "66236222c16ecb60cdce2a03556cbfb1",
+    "mtime": 1788005352.0782406,
+    "ast_hash": "44e96f17baeeca714b5e3ef844298c21",
     "semantic_hash": ""
   },
   ".github/FFMPEG_UPDATE.md": {
@@ -985,8 +985,8 @@
     "semantic_hash": ""
   },
   "spec/ROADMAP.md": {
-    "mtime": 1787972837.1202796,
-    "ast_hash": "530b0b545619ba30d8a37291374936b7",
+    "mtime": 1788005030.5193448,
+    "ast_hash": "eb8da84851a23cbf82a7c381295b3980",
     "semantic_hash": ""
   },
   "spec/RULES.md": {
@@ -1225,7 +1225,7 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel/draw.rs": {
-    "mtime": 1788004813.2906902,
+    "mtime": 1788005031.2716296,
     "ast_hash": "0c8643121a120c71ee7d8773648e7f45",
     "semantic_hash": ""
   },
@@ -1485,18 +1485,18 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/watch_folder.rs": {
-    "mtime": 1787941063.090328,
-    "ast_hash": "668717932e239c3e09a311f16d211662",
+    "mtime": 1788005030.4726677,
+    "ast_hash": "076fab2a28481a5718233d71e4a5199d",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/watch_folder.rs": {
-    "mtime": 1787941063.0923297,
-    "ast_hash": "b58025d9260f10f816f925a475c65e89",
+    "mtime": 1788005030.4757261,
+    "ast_hash": "0aa9382f1f8ec87f27309ef6602bc9dc",
     "semantic_hash": ""
   },
   "crates/core/src/error_reporting.rs": {
-    "mtime": 1787950312.1031349,
-    "ast_hash": "8c83160326d3864da8b2b1280f9c7921",
+    "mtime": 1788005030.4663959,
+    "ast_hash": "63b7b7eb0054b3fcb5312f8640550b26",
     "semantic_hash": ""
   },
   "crates/core/tests/error_reporting_test.rs": {
@@ -1505,8 +1505,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/error_reporting.rs": {
-    "mtime": 1787952871.806578,
-    "ast_hash": "3ba09f4a4124f3486490d611034496de",
+    "mtime": 1788005030.4706306,
+    "ast_hash": "d5a208173c86f1fc1d7118957c05bcd8",
     "semantic_hash": ""
   },
   "crates/core/src/font_catalog.rs": {
@@ -1692,6 +1692,21 @@
   "spec/architecture/monetization-and-licensing.md": {
     "mtime": 1787951515.4601457,
     "ast_hash": "1b4b8ff629d90242bae0bc9dee998a49",
+    "semantic_hash": ""
+  },
+  "crates/ui/src/app/crash_review.rs": {
+    "mtime": 1788005030.469629,
+    "ast_hash": "c187f79e58098a998d1ea8c98476c6c1",
+    "semantic_hash": ""
+  },
+  "crates/ui/src/app/crash_review/crash_review_test.rs": {
+    "mtime": 1788005030.469629,
+    "ast_hash": "98fe34da57d89394d768d085f7716421",
+    "semantic_hash": ""
+  },
+  "crates/ui/src/app/gameplay_events.rs": {
+    "mtime": 1788005030.4716606,
+    "ast_hash": "11644d53671a80dd74a2a1509bbd98f8",
     "semantic_hash": ""
   }
 }

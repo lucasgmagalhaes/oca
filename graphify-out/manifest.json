@@ -145,8 +145,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1788005300.5949092,
-    "ast_hash": "93662071d823a7e3275ef2d77ae30ec7",
+    "mtime": 1788005504.524588,
+    "ast_hash": "6f8ba9c4c79f2cea02051eeb34db28c7",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -160,8 +160,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/breadcrumb.rs": {
-    "mtime": 1788003728.513506,
-    "ast_hash": "6f4bd03f38911dede881cdba60d00a94",
+    "mtime": 1788005526.4489846,
+    "ast_hash": "c6ae67cdbe911ddc868bd4753c04296c",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/home.rs": {
