@@ -130,6 +130,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                     }
+                    ui.add_space(12.0);
+                    ui.label(
+                        RichText::new(locale.short_code())
+                            .size(10.5)
+                            .color(theme::TEXT_MUTED)
+                            .monospace(),
+                    );
                 });
             });
         });

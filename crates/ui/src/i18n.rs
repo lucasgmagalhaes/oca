@@ -48,6 +48,16 @@ impl Locale {
             Locale::En => "English",
         }
     }
+
+    /// A short locale-code label (e.g. "PT-BR") for compact chrome like the breadcrumb's
+    /// locale indicator, matching `oca-editor-mock.html`'s `.bc-locale` — `native_name` is too
+    /// wide for that spot.
+    pub fn short_code(self) -> &'static str {
+        match self {
+            Locale::PtBr => "PT-BR",
+            Locale::En => "EN",
+        }
+    }
 }
 
 /// Defines the [`Text`] enum from a `Variant: pt_br = "...", en = "...";` list — one variant
