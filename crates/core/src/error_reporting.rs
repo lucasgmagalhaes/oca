@@ -132,6 +132,11 @@ pub enum ErrorCode {
     /// A plugin/model failure — any AI feature (Whisper transcription, TTS, auto-reframe,
     /// background removal, motion tracking) whose model/bindings failed.
     Model,
+    /// An unhandled Rust panic crashed the previous session. Reported only after the user
+    /// reviews it on the next launch (ER-01B's "Send once / Always send / Do not send" offer) —
+    /// never from the panic handler itself, since a crashing process cannot reliably complete a
+    /// network request.
+    Panic,
 }
 
 /// How bad an error is. Three levels, coarse on purpose — fine-grained triage is the
@@ -179,6 +184,10 @@ pub enum Operation {
     ExportQueue,
     Update,
     Model,
+    /// The whole application process rather than one subsystem — used for
+    /// [`ErrorCode::Panic`]'s post-crash review report, where the failing subsystem generally
+    /// isn't recoverable from a bare panic message/backtrace.
+    App,
 }
 
 // ---------------------------------------------------------------------------
