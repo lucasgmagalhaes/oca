@@ -350,6 +350,22 @@ pub(super) fn draw_playhead(
             rect.y_range(),
             egui::Stroke::new(stroke_width, theme::ACCENT),
         );
+        // The ruler's playhead (the thicker of the two calls to this function — the per-track
+        // row line stays a bare vline) gets a downward-pointing triangle head at its top,
+        // matching oca-editor-mock.html's `.playhead::before`.
+        if stroke_width > 1.5 {
+            let half_w = 5.0;
+            let tip = egui::pos2(x, rect.top() + 6.0);
+            ui.painter().add(egui::Shape::convex_polygon(
+                vec![
+                    egui::pos2(x - half_w, rect.top()),
+                    egui::pos2(x + half_w, rect.top()),
+                    tip,
+                ],
+                theme::ACCENT,
+                egui::Stroke::NONE,
+            ));
+        }
     }
 }
 
