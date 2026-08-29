@@ -43,6 +43,7 @@ mod color;
 mod crash_review;
 pub(crate) mod error_reporting;
 pub mod export;
+mod gameplay_events;
 mod highlight_detection;
 mod import;
 mod layer_templates;
