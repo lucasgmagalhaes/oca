@@ -651,6 +651,9 @@ fn export_srt_for_active_sequence(app: &mut App) {
     }
 }
 
+/// Toolbar tool-select chip: a filled, bordered pill that reads active/inactive at a glance,
+/// matching `oca-editor-mock.html`'s `.tb-btn`/`.tb-btn.active` (accent-tinted fill + accent
+/// border when selected) instead of the plain color-only text button this used to be.
 fn tool_button(app: &mut App, ui: &mut egui::Ui, tool: EditorTool, icon: &str, label: &str) {
     let active = app.tool == tool;
     let text = RichText::new(format!("{icon} {label}")).color(if active {
@@ -658,7 +661,21 @@ fn tool_button(app: &mut App, ui: &mut egui::Ui, tool: EditorTool, icon: &str, l
     } else {
         theme::TEXT_SECONDARY
     });
-    if ui.button(text).clicked() {
+    let button = egui::Button::new(text)
+        .fill(if active {
+            theme::ACCENT_TINT
+        } else {
+            egui::Color32::TRANSPARENT
+        })
+        .stroke(egui::Stroke::new(
+            1.0,
+            if active {
+                theme::ACCENT
+            } else {
+                egui::Color32::TRANSPARENT
+            },
+        ));
+    if ui.add(button).clicked() {
         app.tool = tool;
     }
 }
