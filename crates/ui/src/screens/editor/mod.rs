@@ -655,6 +655,42 @@ fn tool_button(app: &mut App, ui: &mut egui::Ui, tool: EditorTool, icon: &str, l
     }
 }
 
+/// A small colored placeholder thumbnail with a duration badge in the bottom-right corner,
+/// matching the media-library asset row from `oca-editor-mock.html`'s `.asset-thumb` — video
+/// and audio assets get distinct fills so the kind reads at a glance without a real decoded
+/// frame (fetching/caching one here would duplicate `thumbnail_state`'s timeline-clip pipeline
+/// for a list row that's rarely more than a name lookup).
+const ASSET_THUMB_SIZE: egui::Vec2 = egui::vec2(48.0, 28.0);
+
+fn asset_thumb(ui: &mut egui::Ui, asset: &avcore::media::MediaAsset) {
+    let (rect, _response) = ui.allocate_exact_size(ASSET_THUMB_SIZE, egui::Sense::hover());
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    let (fill, glyph) = match asset.kind {
+        avcore::media::MediaKind::Video => (theme::SURFACE_2, "▶"),
+        avcore::media::MediaKind::Audio => (theme::ACCENT_2.gamma_multiply(0.25), "♪"),
+    };
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, egui::CornerRadius::same(theme::RADIUS_SM), fill);
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        glyph,
+        egui::FontId::proportional(11.0),
+        theme::TEXT_MUTED,
+    );
+    let badge_text = asset.duration_label();
+    let badge_pos = rect.right_bottom() - egui::vec2(2.0, 2.0);
+    painter.text(
+        badge_pos,
+        egui::Align2::RIGHT_BOTTOM,
+        &badge_text,
+        egui::FontId::proportional(8.0),
+        theme::TEXT_PRIMARY,
+    );
+}
+
 fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32) {
     let mut clicked_id = None;
     let mut add_to_timeline_id = None;
@@ -724,23 +760,26 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                             .corner_radius(theme::RADIUS_MD)
                             .inner_margin(egui::Margin::same(6))
                             .show(ui, |ui| {
-                                ui.vertical(|ui| {
-                                    ui.label(RichText::new(&asset.file_name).size(12.0));
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "{} · {}",
-                                            asset.duration_label(),
-                                            asset
-                                                .resolution
-                                                .map(|(w, h)| format!("{w}×{h}"))
-                                                .unwrap_or_else(|| asset
-                                                    .sample_rate_khz
-                                                    .map(|k| format!("{k:.0}kHz"))
-                                                    .unwrap_or_default())
-                                        ))
-                                        .size(10.0)
-                                        .color(theme::TEXT_MUTED),
-                                    );
+                                ui.horizontal(|ui| {
+                                    asset_thumb(ui, asset);
+                                    ui.vertical(|ui| {
+                                        ui.label(RichText::new(&asset.file_name).size(12.0));
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "{} · {}",
+                                                asset.duration_label(),
+                                                asset
+                                                    .resolution
+                                                    .map(|(w, h)| format!("{w}×{h}"))
+                                                    .unwrap_or_else(|| asset
+                                                        .sample_rate_khz
+                                                        .map(|k| format!("{k:.0}kHz"))
+                                                        .unwrap_or_default())
+                                            ))
+                                            .size(10.0)
+                                            .color(theme::TEXT_MUTED),
+                                        );
+                                    });
                                 });
                             })
                             .response
