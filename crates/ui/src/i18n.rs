@@ -377,6 +377,9 @@ text_catalog! {
     WatchFolderStatusDone: pt_br = "Concluído", en = "Done";
     WatchFolderStatusError: pt_br = "Erro", en = "Error";
     WatchFolderLufsBeforeAfter: pt_br = "{before} → {after} LUFS", en = "{before} → {after} LUFS";
+    WatchFolderAddToProject: pt_br = "+ Adicionar ao projeto", en = "+ Add to project";
+    WatchFolderAddedToProject: pt_br = "✓ Adicionado ao projeto", en = "✓ Added to project";
+    WatchFolderNeedsOpenProject: pt_br = "Abra um projeto para adicionar arquivos limpos a ele.", en = "Open a project to add cleaned-up files to it.";
 
     QueueTitle: pt_br = "Fila de exportação", en = "Export queue";
     AddExport: pt_br = "＋ Adicionar exportação", en = "＋ Add export";
