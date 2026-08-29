@@ -391,6 +391,14 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         if ui.button(Text::DetectHighlights.tr(locale)).clicked() {
             app.detect_highlights();
         }
+        if ui.button(Text::ImportGameplayEvents.tr(locale)).clicked() {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("json", &["json"])
+                .pick_file()
+            {
+                app.import_gameplay_events(path);
+            }
+        }
         if ui.button(Text::ShortsPack.tr(locale)).clicked() {
             let mut dialog = rfd::FileDialog::new();
             if !app.prefs.output_folder.is_empty() {

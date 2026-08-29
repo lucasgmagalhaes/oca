@@ -1108,22 +1108,47 @@ an item earlier:
   schema, which `CLAUDE.md`'s own "do not guess APIs" rule rules out; a sidecar today is
   hand-authored or produced by an external script directly against this module's own schema and
   imported manually, the doc's own "user-provided sidecars" fallback path. Slice 5's per-game
-  event allowlists are also open. No `ui` wiring yet either — this slice is `core`-only, real and
-  independently useful (a sidecar can already be validated and imported programmatically), but
-  there's no "Import Gameplay Events..." button in the app yet.
+  event allowlists are also open.
 
-  Verified for real: since `gameplay_events.rs` and `highlight_detection.rs`'s new functions have
-  zero heavy dependencies (`serde`/`serde_json` plus `crate::timeline`/`crate::keyframe`), they
-  were copied into a throwaway scratch crate with the real bundled dependency versions and
-  `cargo test`ed for real (`core`'s own test binary can't link in this sandbox — the pre-existing
-  ONNX Runtime gap): 96/96 passing, 30 new — sidecar round-trip through real JSON, every
-  validation-rejection case (unsupported schema version, non-portable filename, non-finite/
-  negative timestamp, out-of-range confidence, negative roll), an unrecognized event kind
-  producing an actionable parse error naming the bad value, idempotent/offset-aware marker
-  import, and both new highlight-scoring functions' windowing/merging/boosting behavior.
-  `cargo check --workspace --all-targets`, `cargo clippy -p core --lib --no-deps`, and `cargo fmt
-  --check` (the first two via the documented temporary local `filters.c` shim, discarded before
-  commit) all stayed clean.
+  **`ui` wiring shipped too**: the Editor toolbar's new "🎮 Import Events" button (`ui`'s new
+  `gameplay_events.rs`) opens a file picker, reads and validates the picked sidecar through
+  `avcore::gameplay_events::EventSidecar::parse_and_validate`, then imports its events as
+  `Highlight` markers onto every timeline clip whose source asset's `MediaAsset::file_name`
+  matches the sidecar's `source_media_filename` — this module supplies the source-to-timeline
+  mapping `import_events_as_markers` deliberately leaves to its caller. Only events whose
+  `source_timestamp_secs` falls within a given clip's trimmed `[source_in_secs,
+  source_out_secs]` range are imported onto that clip, mapped through the same `start_secs +
+  (source_secs - source_in_secs) / speed_factor` formula
+  `transcript_proposals::map_source_range_to_timeline` already uses for the same purpose — so a
+  sidecar covering a whole recording cut into several clips only places each event where it's
+  actually visible, not extrapolated past a clip's own trim. Toasts on read/parse/validation
+  failure, when no clip covers any of the sidecar's events (either no clip uses the recording,
+  or every event falls outside the trimmed range of the clips that do), and when nothing new
+  was imported (the import itself stays idempotent per `import_events_as_markers`' own dedup
+  rule).
+
+  Verified for real: since `gameplay_events.rs` and `highlight_detection.rs`'s new `core`
+  functions have zero heavy dependencies (`serde`/`serde_json` plus
+  `crate::timeline`/`crate::keyframe`), they were copied into a throwaway scratch crate with the
+  real bundled dependency versions and `cargo test`ed for real (`core`'s own test binary can't
+  link in this sandbox — the pre-existing ONNX Runtime gap): 96/96 passing, 30 new — sidecar
+  round-trip through real JSON, every validation-rejection case (unsupported schema version,
+  non-portable filename, non-finite/negative timestamp, out-of-range confidence, negative
+  roll), an unrecognized event kind producing an actionable parse error naming the bad value,
+  idempotent/offset-aware marker import, and both new highlight-scoring functions' windowing/
+  merging/boosting behavior. The `ui` wiring's 6 new `App`-level tests (marker added at the
+  mapped position, idempotent re-import, no-covering-clip toast, event-outside-trimmed-range
+  toast, invalid-JSON toast, unreadable-path toast) type-check cleanly under `cargo check` but
+  could not run for real this pass — this sandbox's `ui` test binary genuinely can't link here
+  (confirmed directly, not assumed: `nm -D` on this box's packaged FFmpeg 6.1.1 shared libs shows
+  `av_opt_set_array` is absent — a real FFmpeg-version gap, not a build misconfiguration — and no
+  `libonnxruntime` package is installed), and unlike a pure-logic module this glue exercises
+  `App`/`Project`/`Timeline` directly, so it can't be lifted into a scratch crate the way
+  `gameplay_events.rs`'s own `core` functions were. `cargo check --workspace --all-targets`,
+  `cargo clippy -p core --lib --no-deps` / `-p ui --bin ui --no-deps` / `-p ui --tests --no-deps`,
+  and `cargo fmt --check` (the first three via the documented temporary local `filters.c` shim,
+  discarded before every commit) all stayed clean — no new warnings beyond the pre-existing
+  baseline.
 - `[~]` **CF-03: integrated gameplay-voice cleanup.** Move the proven watched-folder FFmpeg chain
   into a non-destructive `Mic`-role effect with A/B preview and measured output.
 
