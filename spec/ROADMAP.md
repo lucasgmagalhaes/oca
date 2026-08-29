@@ -1098,17 +1098,31 @@ an item earlier:
   requires both game-audio and mic channels, since CF-02's own goal is refining the existing
   detector with events as an additional signal, not replacing it with a stricter one.
 
-  **Deliberately not done in this slice**: slice 1's automated watched-folder *import* service
-  (bringing a newly-finished recording into a project's media library) is a distinct feature from
-  the already-shipped `avcore::watched_folder`/Limpeza noise-cleanup watcher (stability-detects
-  and re-encodes a file in place, never touches a project's media library) — reusing the latter's
-  `StabilityTracker` for the former is a real, tractable follow-up, not attempted here. Slice 3's
-  OBS/Medal/Outplayed format adapters are also not attempted — reverse-engineering an external
+  **Slice 1's automated watched-folder *import* — the "reusing the latter's `StabilityTracker`"
+  follow-up this entry used to flag — is now shipped, in its tractable narrow form.** Rather
+  than a second full watcher, the Limpeza screen's existing `avcore::watched_folder` cleanup
+  pipeline (stability-detects a finished recording, re-encodes its audio into `processed/`)
+  gained the missing last step: each `Done` row now shows a "+ Add to project" button.
+  `App::add_watched_file_to_project` recomputes that row's deterministic `processed/` output
+  path via `avcore::output_path_for` and queues it through the existing `App::spawn_import`
+  pipeline unchanged — the same import path every other source uses, not a bespoke one — and
+  marks the row so a second click can't queue it twice. Toasts instead if no project is open.
+  Deliberately *not* a fully automatic "watch → clean → auto-import with no user action"
+  pipeline: an explicit per-file click keeps the user in control of which recordings actually
+  enter a project's media library, matching how every other import path in this app already
+  works (no auto-import exists anywhere else in the codebase either). Slice 3's OBS/Medal/
+  Outplayed format adapters are also not attempted — reverse-engineering an external
   tool's own export format without a documented spec to verify against would mean guessing at a
   schema, which `CLAUDE.md`'s own "do not guess APIs" rule rules out; a sidecar today is
   hand-authored or produced by an external script directly against this module's own schema and
   imported manually, the doc's own "user-provided sidecars" fallback path. Slice 5's per-game
   event allowlists are also open.
+
+  Verified: 3 new `App`-level `app_test.rs` cases for `add_watched_file_to_project` (a `Done`
+  row's output queued through `spawn_import` and marked added; toasts and queues nothing
+  without an open project; a no-op on a second call once already added) — type-checked cleanly
+  under `cargo check`, same "can't link this sandbox's `ui` test binary" caveat as the sidecar-
+  import `ui` wiring below.
 
   **`ui` wiring shipped too**: the Editor toolbar's new "🎮 Import Events" button (`ui`'s new
   `gameplay_events.rs`) opens a file picker, reads and validates the picked sidecar through
