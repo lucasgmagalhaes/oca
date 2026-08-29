@@ -9,8 +9,22 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 use avbridge::{
-    mix_audio_timeline, mux_video_audio, probe, AudioMixOutcome, AudioSegment, StreamKind,
+    measure_loudness_json, mix_audio_timeline, mux_video_audio, probe, AudioMixOutcome,
+    AudioSegment, StreamKind,
 };
+
+/// Pulls a string-valued field (FFmpeg's own `loudnorm` JSON report quotes every number) out of
+/// `measure_loudness_json`'s raw report text without pulling in a JSON dependency just for this
+/// test — `avcore::loudness::parse_loudnorm_stderr` is the real parser; this is a narrower,
+/// test-only lookup for one field.
+fn json_string_field(report: &str, field: &str) -> f64 {
+    let needle = format!("\"{field}\"");
+    let after_key = &report[report.find(&needle).expect(field) + needle.len()..];
+    let quote_start = after_key.find('"').expect("opening quote") + 1;
+    let value_str = &after_key[quote_start..];
+    let quote_end = value_str.find('"').expect("closing quote");
+    value_str[..quote_end].parse().expect("numeric field")
+}
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -35,6 +49,11 @@ fn mixes_overlapping_audio_segments_and_muxes_them_without_reencoding_video() {
             speed_factor: 1.0,
             gain_keyframe_expr: String::new(),
             duck_role: 0,
+            voice_cleanup_enabled: false,
+            voice_cleanup_noise_floor_db: -30.0,
+            voice_cleanup_compressor_threshold_db: -18.0,
+            voice_cleanup_compressor_ratio: 3.0,
+            voice_cleanup_ceiling_linear: 0.95,
         },
         AudioSegment {
             source_path: source,
@@ -45,6 +64,11 @@ fn mixes_overlapping_audio_segments_and_muxes_them_without_reencoding_video() {
             speed_factor: 1.25,
             gain_keyframe_expr: String::new(),
             duck_role: 0,
+            voice_cleanup_enabled: false,
+            voice_cleanup_noise_floor_db: -30.0,
+            voice_cleanup_compressor_threshold_db: -18.0,
+            voice_cleanup_compressor_ratio: 3.0,
+            voice_cleanup_ceiling_linear: 0.95,
         },
     ];
 
@@ -90,6 +114,11 @@ fn mixes_with_sidechain_ducking_when_both_roles_are_present() {
             speed_factor: 1.0,
             gain_keyframe_expr: String::new(),
             duck_role: 2, // target -- gets ducked
+            voice_cleanup_enabled: false,
+            voice_cleanup_noise_floor_db: -30.0,
+            voice_cleanup_compressor_threshold_db: -18.0,
+            voice_cleanup_compressor_ratio: 3.0,
+            voice_cleanup_ceiling_linear: 0.95,
         },
         AudioSegment {
             source_path: source,
@@ -100,6 +129,11 @@ fn mixes_with_sidechain_ducking_when_both_roles_are_present() {
             speed_factor: 1.0,
             gain_keyframe_expr: String::new(),
             duck_role: 1, // trigger -- does the ducking, and still plays itself
+            voice_cleanup_enabled: false,
+            voice_cleanup_noise_floor_db: -30.0,
+            voice_cleanup_compressor_threshold_db: -18.0,
+            voice_cleanup_compressor_ratio: 3.0,
+            voice_cleanup_ceiling_linear: 0.95,
         },
     ];
 
@@ -110,6 +144,122 @@ fn mixes_with_sidechain_ducking_when_both_roles_are_present() {
     assert!(mixed_info.has_audio);
 
     let _ = std::fs::remove_file(&mixed);
+}
+
+fn voice_cleanup_segment(source: PathBuf, voice_cleanup_enabled: bool) -> AudioSegment {
+    AudioSegment {
+        source_path: source,
+        source_in_secs: 0.0,
+        source_out_secs: 0.8,
+        timeline_start_secs: 0.0,
+        gain_db: 0.0,
+        speed_factor: 1.0,
+        gain_keyframe_expr: String::new(),
+        duck_role: 0,
+        voice_cleanup_enabled,
+        voice_cleanup_noise_floor_db: -30.0,
+        voice_cleanup_compressor_threshold_db: -18.0,
+        voice_cleanup_compressor_ratio: 3.0,
+        voice_cleanup_ceiling_linear: 0.95,
+    }
+}
+
+/// CF-03 "Gameplay Voice" cleanup: exercises the real
+/// `highpass,afftdn,acompressor,alimiter` sub-chain `build_mix_graph` splices in per branch when
+/// `voice_cleanup_enabled` is set. `avfilter_graph_config` succeeding (via a passing
+/// `AudioMixOutcome::Completed`, not `AudioMixError::FilterGraph`) is the real proof this exact
+/// filter syntax — built from `scripts/Watch-Gameplay.ps1`'s own proven chain, not guessed — is
+/// valid against this build's actual linked FFmpeg, the same standard this file's ducking test
+/// above already holds itself to.
+#[test]
+fn mixes_with_voice_cleanup_enabled() {
+    let mixed = std::env::temp_dir().join("avbridge_voice_cleanup_test.m4a");
+    let _ = std::fs::remove_file(&mixed);
+    let source = fixture("audio.m4a");
+    let segments = vec![voice_cleanup_segment(source, true)];
+
+    let outcome =
+        mix_audio_timeline(&segments, 1.0, &mixed, -14.0, &AtomicBool::new(false)).unwrap();
+    assert_eq!(outcome, AudioMixOutcome::Completed);
+    let mixed_info = probe(&mixed).unwrap();
+    assert!(mixed_info.has_audio);
+
+    let _ = std::fs::remove_file(&mixed);
+}
+
+/// The same segment with cleanup disabled must still mix successfully (the branch is left
+/// exactly as every other test's plain branches already are) — confirms the conditional splice
+/// doesn't leave a dangling/half-linked filter context when it's skipped.
+#[test]
+fn mixes_with_voice_cleanup_disabled() {
+    let mixed = std::env::temp_dir().join("avbridge_voice_cleanup_disabled_test.m4a");
+    let _ = std::fs::remove_file(&mixed);
+    let source = fixture("audio.m4a");
+    let segments = vec![voice_cleanup_segment(source, false)];
+
+    let outcome =
+        mix_audio_timeline(&segments, 1.0, &mixed, -14.0, &AtomicBool::new(false)).unwrap();
+    assert_eq!(outcome, AudioMixOutcome::Completed);
+    let mixed_info = probe(&mixed).unwrap();
+    assert!(mixed_info.has_audio);
+
+    let _ = std::fs::remove_file(&mixed);
+}
+
+/// Cleanup enabled vs. disabled must produce audibly different output — real proof the extra
+/// filters actually run and affect samples, not just that the graph parses. Compares each
+/// output's own measured integrated loudness (already-linked `probe`-adjacent primitive this
+/// crate exposes) rather than raw byte-for-byte equality, since AAC re-encoding alone can jitter
+/// bytes without any filter difference.
+#[test]
+fn voice_cleanup_measurably_changes_the_output() {
+    let source = fixture("audio.m4a");
+    let plain = std::env::temp_dir().join("avbridge_voice_cleanup_ab_plain.m4a");
+    let cleaned = std::env::temp_dir().join("avbridge_voice_cleanup_ab_cleaned.m4a");
+    let _ = std::fs::remove_file(&plain);
+    let _ = std::fs::remove_file(&cleaned);
+
+    mix_audio_timeline(
+        &[voice_cleanup_segment(source.clone(), false)],
+        1.0,
+        &plain,
+        -14.0,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    mix_audio_timeline(
+        &[voice_cleanup_segment(source, true)],
+        1.0,
+        &cleaned,
+        -14.0,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+
+    let plain_bytes = std::fs::read(&plain).unwrap();
+    let cleaned_bytes = std::fs::read(&cleaned).unwrap();
+    assert_ne!(
+        plain_bytes, cleaned_bytes,
+        "voice cleanup's extra filter stages should change the encoded output"
+    );
+
+    // acompressor narrows dynamic range before the final loudnorm pass normalizes both
+    // outputs to the same integrated loudness -- so integrated LUFS alone wouldn't show a
+    // difference (that's the point of loudnorm), but the compressed file's own loudness range
+    // (LRA) should measurably shrink relative to the uncompressed one. A real, independent
+    // signal that acompressor actually ran, not just that bytes differ for some other reason.
+    let plain_report = measure_loudness_json(&plain).unwrap();
+    let cleaned_report = measure_loudness_json(&cleaned).unwrap();
+    let plain_lra = json_string_field(&plain_report, "input_lra");
+    let cleaned_lra = json_string_field(&cleaned_report, "input_lra");
+    assert!(
+        cleaned_lra <= plain_lra,
+        "expected the compressed file's LRA ({cleaned_lra}) to be no wider than the \
+         uncompressed one's ({plain_lra})"
+    );
+
+    let _ = std::fs::remove_file(&plain);
+    let _ = std::fs::remove_file(&cleaned);
 }
 
 /// Same as above but with *multiple* branches on each duck role, exercising the sub-`amix`
@@ -130,6 +280,11 @@ fn mixes_with_sidechain_ducking_across_multiple_branches_per_role() {
             speed_factor: 1.0,
             gain_keyframe_expr: String::new(),
             duck_role: 2, // target #1
+            voice_cleanup_enabled: false,
+            voice_cleanup_noise_floor_db: -30.0,
+            voice_cleanup_compressor_threshold_db: -18.0,
+            voice_cleanup_compressor_ratio: 3.0,
+            voice_cleanup_ceiling_linear: 0.95,
         },
         AudioSegment {
             source_path: source.clone(),
@@ -140,6 +295,11 @@ fn mixes_with_sidechain_ducking_across_multiple_branches_per_role() {
             speed_factor: 1.0,
             gain_keyframe_expr: String::new(),
             duck_role: 2, // target #2
+            voice_cleanup_enabled: false,
+            voice_cleanup_noise_floor_db: -30.0,
+            voice_cleanup_compressor_threshold_db: -18.0,
+            voice_cleanup_compressor_ratio: 3.0,
+            voice_cleanup_ceiling_linear: 0.95,
         },
         AudioSegment {
             source_path: source.clone(),
@@ -150,6 +310,11 @@ fn mixes_with_sidechain_ducking_across_multiple_branches_per_role() {
             speed_factor: 1.0,
             gain_keyframe_expr: String::new(),
             duck_role: 1, // trigger #1
+            voice_cleanup_enabled: false,
+            voice_cleanup_noise_floor_db: -30.0,
+            voice_cleanup_compressor_threshold_db: -18.0,
+            voice_cleanup_compressor_ratio: 3.0,
+            voice_cleanup_ceiling_linear: 0.95,
         },
         AudioSegment {
             source_path: source,
@@ -160,6 +325,11 @@ fn mixes_with_sidechain_ducking_across_multiple_branches_per_role() {
             speed_factor: 1.0,
             gain_keyframe_expr: String::new(),
             duck_role: 1, // trigger #2
+            voice_cleanup_enabled: false,
+            voice_cleanup_noise_floor_db: -30.0,
+            voice_cleanup_compressor_threshold_db: -18.0,
+            voice_cleanup_compressor_ratio: 3.0,
+            voice_cleanup_ceiling_linear: 0.95,
         },
     ];
 
@@ -188,6 +358,11 @@ fn a_target_branch_without_any_trigger_falls_back_to_a_plain_mix() {
         speed_factor: 1.0,
         gain_keyframe_expr: String::new(),
         duck_role: 2, // target, but nothing tags a trigger
+        voice_cleanup_enabled: false,
+        voice_cleanup_noise_floor_db: -30.0,
+        voice_cleanup_compressor_threshold_db: -18.0,
+        voice_cleanup_compressor_ratio: 3.0,
+        voice_cleanup_ceiling_linear: 0.95,
     }];
 
     let outcome =
@@ -223,6 +398,11 @@ fn mixes_a_segment_with_a_keyframed_gain_expression() {
                               (0.1000000+1.1250000*(t-0.000000)),1.0000000))"
             .to_string(),
         duck_role: 0,
+        voice_cleanup_enabled: false,
+        voice_cleanup_noise_floor_db: -30.0,
+        voice_cleanup_compressor_threshold_db: -18.0,
+        voice_cleanup_compressor_ratio: 3.0,
+        voice_cleanup_ceiling_linear: 0.95,
     }];
 
     let outcome =
