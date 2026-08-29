@@ -35,11 +35,14 @@
 //! delivery, so a report survives a crash between being handed to the reporter and actually
 //! reaching the network; and a minimal, provider-owned-format-free Sentry envelope builder
 //! ([`build_sentry_envelope`]) behind an [`EnvelopeSender`] trait so the transport is swappable
-//! and testable without a live Sentry project. **Not yet wired**: the post-crash one-time
-//! "Send once / Always send / Do not send" review offer (ER-01B item 1's other half) — this pass
-//! covers the steady-state opt-in toggle in Preferences, not a fresh crash's next-launch prompt;
-//! that needs hooking into `main.rs`'s existing crash-sentinel detection, a separate follow-up.
-//! Also not done: an actual configured Sentry DSN — `OCA_SENTRY_DSN` is read at startup and, when
+//! and testable without a live Sentry project. The post-crash one-time "Send once / Always send
+//! / Do not send" review offer (ER-01B item 1's other half) is now wired too — see
+//! `crash_review.rs`, which scans `main.rs`'s existing `crash_<unix>.txt` files for one newer
+//! than the last one reviewed and stages it on [`App`] for a startup modal; [`build_crash_report`]
+//! and [`one_shot_reporter`] are this module's half of that (turning the crash file's captured
+//! location/message/backtrace into a validated [`avcore::ErrorReport`] and a reporter reachable
+//! regardless of the steady-state consent preference). Also not done: an actual configured
+//! Sentry DSN — `OCA_SENTRY_DSN` is read at startup and, when
 //! unset (true in every build today, since the ER-01 doc's own "Sentry organization/project
 //! ownership" open decision is unresolved), the worker still queues and validates every report
 //! but never attempts a network call, so opting in today is inert-but-safe until a real DSN is
@@ -195,10 +198,11 @@ impl App {
 
 /// The persisted ER-01B consent decision — separate from `PrefsState::telemetry_enabled`
 /// (local-only, never sent, a different purpose per the ER-01 doc's "separate preferences with
-/// separate explanations" requirement). Only two states in this pass: the ER-01 doc's
-/// post-crash "Send once" one-time offer isn't wired yet (see this module's doc comment), so
-/// there is no `SendOnce` variant to persist — a one-time send, when it lands, will be a
-/// direct one-shot call bypassing this preference entirely, not a stored state.
+/// separate explanations" requirement). Only two states: the ER-01 doc's post-crash "Send once"
+/// one-time offer (see `crash_review.rs`) is a direct one-shot call through [`one_shot_reporter`]
+/// that bypasses this preference entirely — sending one specific crash report once never implies
+/// (and never persists) a change to the steady-state decision, so there is no `SendOnce` variant
+/// here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorReportingConsent {
@@ -516,26 +520,18 @@ fn severity_level(severity: ErrorSeverity) -> &'static str {
     }
 }
 
-/// Builds the raw bytes of a minimal Sentry envelope (the newline-delimited
-/// header/item-header/payload framing Sentry's ingestion endpoint expects) from one queued
-/// [`ErrorReport`], using only the allowlisted fields already on the report — no additional
-/// provider-owned type crosses into this function, and every value placed under `tags`/`extra`
-/// is either an `oca`-owned enum's stable string form or an already-sanitized field, never a raw
-/// caller string. Pure and unit-tested without any network dependency.
-pub(crate) fn build_sentry_envelope(public_key: &str, envelope: &QueueEnvelope) -> Vec<u8> {
-    let report = &envelope.report;
-    // Sentry event ids are 32 lowercase hex chars; our own `event_id` is a 16-hex-char
-    // dedup key (see `avcore::error_reporting::next_id_hex`) — doubled rather than pulling in
-    // a UUID dependency for one field. `tags.oca_event_id` below carries the real, undoubled id.
+/// The Sentry event body alone — everything [`build_sentry_envelope`] puts under its envelope's
+/// `payload` item, factored out so [`App::crash_review_payload_preview`] can show the user
+/// exactly this JSON (pretty-printed) as the ER-01 doc's required pre-send payload preview,
+/// without duplicating the field list or actually building an envelope.
+pub(super) fn sentry_event_payload(
+    report: &avcore::ErrorReport,
+    queued_at_unix: u64,
+) -> serde_json::Value {
     let sentry_event_id = format!("{0}{0}", report.event_id);
-    let header = serde_json::json!({
+    serde_json::json!({
         "event_id": sentry_event_id,
-        "sent_at": envelope.queued_at_unix,
-        "dsn_key": public_key,
-    });
-    let payload = serde_json::json!({
-        "event_id": sentry_event_id,
-        "timestamp": envelope.queued_at_unix,
+        "timestamp": queued_at_unix,
         "platform": "other",
         "release": report.release,
         "environment": report.build_channel,
@@ -564,7 +560,27 @@ pub(crate) fn build_sentry_envelope(public_key: &str, envelope: &QueueEnvelope) 
             "os": { "name": report.os, "version": report.os_version },
             "runtime": { "name": "oca", "version": report.app_version },
         },
+    })
+}
+
+/// Builds the raw bytes of a minimal Sentry envelope (the newline-delimited
+/// header/item-header/payload framing Sentry's ingestion endpoint expects) from one queued
+/// [`ErrorReport`], using only the allowlisted fields already on the report — no additional
+/// provider-owned type crosses into this function, and every value placed under `tags`/`extra`
+/// is either an `oca`-owned enum's stable string form or an already-sanitized field, never a raw
+/// caller string. Pure and unit-tested without any network dependency.
+pub(crate) fn build_sentry_envelope(public_key: &str, envelope: &QueueEnvelope) -> Vec<u8> {
+    let report = &envelope.report;
+    // Sentry event ids are 32 lowercase hex chars; our own `event_id` is a 16-hex-char
+    // dedup key (see `avcore::error_reporting::next_id_hex`) — doubled rather than pulling in
+    // a UUID dependency for one field. `tags.oca_event_id` below carries the real, undoubled id.
+    let sentry_event_id = format!("{0}{0}", report.event_id);
+    let header = serde_json::json!({
+        "event_id": sentry_event_id,
+        "sent_at": envelope.queued_at_unix,
+        "dsn_key": public_key,
     });
+    let payload = sentry_event_payload(report, envelope.queued_at_unix);
     let payload_bytes = serde_json::to_vec(&payload).unwrap_or_default();
     let item_header = serde_json::json!({
         "type": "event",
@@ -696,6 +712,48 @@ fn reporter_handle() -> Arc<dyn ErrorReporter> {
     Arc::new(SentryReporter {
         tx: ensure_worker_spawned(),
     })
+}
+
+/// The reporter [`App::send_pending_crash_once`] hands a crash review's one-off report to —
+/// same handle as steady-state [`ErrorReportingConsent::AlwaysSend`] reporting (spawning the
+/// delivery worker on first use), but reachable regardless of the persisted consent, since
+/// "Send once" is one explicit user action on one specific report, not a change to the
+/// steady-state preference.
+pub(super) fn one_shot_reporter() -> Arc<dyn ErrorReporter> {
+    reporter_handle()
+}
+
+// ---------------------------------------------------------------------------
+// ER-01B: post-crash review report building
+// ---------------------------------------------------------------------------
+
+/// Builds the ER-01 structured report for a previous launch's captured panic (see
+/// `crash_review.rs`, this pass's post-crash review offer). `crash_stack` is the
+/// location/message/backtrace `ui::install_panic_hook` wrote to its `crash_<unix>.txt` file,
+/// already assembled by the caller into one string — folded into `sanitized_stack_trace` through
+/// the same [`avcore::ErrorReportBuilder::build_report`]/sanitizer path every other report goes
+/// through, rather than a bespoke crash schema. Uses *this* launch's session/locale/OS identity
+/// (the crashed launch's own session no longer exists to report through) but overrides
+/// `release`/`app_version` with the crashed launch's own recorded version, since an update
+/// between the crash and this review would otherwise misattribute which build crashed.
+pub(super) fn build_crash_report(
+    crash_stack: &str,
+    crashed_app_version: &str,
+) -> avcore::ErrorReport {
+    let mut report = builder()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .build_report(
+            ErrorCode::Panic,
+            ErrorSeverity::Fatal,
+            Operation::App,
+            RecoveryOutcome::Aborted,
+            false,
+            Some(crash_stack),
+        );
+    report.release = format!("oca-{crashed_app_version}");
+    report.app_version = crashed_app_version.to_owned();
+    report
 }
 
 #[cfg(test)]
