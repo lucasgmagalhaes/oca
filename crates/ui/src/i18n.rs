@@ -533,6 +533,11 @@ text_catalog! {
     ProjectNameLabel: pt_br = "Nome", en = "Name";
     ProjectSummaryLabel: pt_br = "Descrição", en = "Description";
     CrashDetected: pt_br = "oca não foi encerrado corretamente na sessão anterior. Reabra seus projetos para verificar se há autosaves de recuperação.", en = "oca did not exit cleanly in the previous session. Reopen your projects to check for recovery autosaves.";
+    CrashReviewOffer: pt_br = "oca travou na última sessão. Deseja enviar um relatório de erro sanitizado para ajudar a corrigir isso?", en = "oca crashed in the last session. Would you like to send a sanitized error report to help fix this?";
+    CrashReviewShowPayload: pt_br = "Ver dados que seriam enviados", en = "View data that would be sent";
+    CrashReviewSendOnce: pt_br = "Enviar uma vez", en = "Send once";
+    CrashReviewAlwaysSend: pt_br = "Sempre enviar relatórios de erro", en = "Always send error reports";
+    CrashReviewDoNotSend: pt_br = "Não enviar", en = "Do not send";
 
     AddTextTrack: pt_br = "T+ Texto", en = "T+ Text";
     DefaultTextTrackName: pt_br = "Texto", en = "Text";

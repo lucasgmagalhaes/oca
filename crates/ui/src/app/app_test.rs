@@ -343,6 +343,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         last_autosave_instant: None,
         autosave_restore_pending: None,
         crash_detected: false,
+        pending_crash_review: None,
         renaming_project: None::<(usize, String, String)>,
         renaming_sequence: None,
         deleting_sequence: None,
@@ -6548,4 +6549,111 @@ fn seed_error_reporting_seeds_launch_identity_and_breadcrumb() {
         "seed_error_reporting must record the launch breadcrumb"
     );
     assert!(report.release.starts_with("oca-"));
+}
+
+fn sample_pending_crash(timestamp: u64) -> crate::app::crash_review::PendingCrashReview {
+    crate::app::crash_review::PendingCrashReview {
+        timestamp,
+        app_version: "1.4.2".to_owned(),
+        location: "crates/ui/src/app/mod.rs:1:1".to_owned(),
+        message: "index out of bounds".to_owned(),
+        backtrace: "0: oca::main".to_owned(),
+    }
+}
+
+#[test]
+fn crash_review_payload_preview_is_none_without_a_pending_crash() {
+    let app = test_app(Vec::new(), Vec::new());
+    assert!(app.crash_review_payload_preview().is_none());
+}
+
+#[test]
+fn crash_review_payload_preview_shows_the_exact_post_sanitization_payload() {
+    let mut app = test_app(Vec::new(), Vec::new());
+    app.pending_crash_review = Some(sample_pending_crash(1_700_000_000));
+
+    let preview = app
+        .crash_review_payload_preview()
+        .expect("a pending crash must produce a payload preview");
+    let value: serde_json::Value = serde_json::from_str(&preview).unwrap();
+    assert_eq!(value["tags"]["error_code"], "panic");
+    assert_eq!(value["tags"]["operation"], "app");
+    assert_eq!(value["release"], "oca-1.4.2");
+    let stack = value["extra"]["stack_trace"].as_str().unwrap();
+    assert!(stack.contains("index out of bounds"));
+    assert!(stack.contains("crates/ui/src/app/mod.rs:1:1"));
+}
+
+#[test]
+fn dismiss_pending_crash_review_clears_state_without_sending_anything() {
+    let mut app = test_app(Vec::new(), Vec::new());
+    let capturer = std::sync::Arc::new(CapturingReporter::default());
+    app.error_reporter =
+        Some(std::sync::Arc::clone(&capturer) as std::sync::Arc<dyn avcore::ErrorReporter>);
+    app.pending_crash_review = Some(sample_pending_crash(1_700_000_042));
+
+    app.dismiss_pending_crash_review();
+
+    assert!(app.pending_crash_review.is_none());
+    assert_eq!(app.prefs.last_reviewed_crash_unix, 1_700_000_042);
+    assert!(
+        capturer.reports.lock().unwrap().is_empty(),
+        "Do not send must never report anything"
+    );
+    assert_eq!(
+        app.prefs.error_reporting_consent,
+        crate::app::error_reporting::ErrorReportingConsent::Disabled,
+        "dismissing must not change the steady-state consent preference"
+    );
+}
+
+#[test]
+fn always_send_pending_crash_opts_in_and_reports_through_the_new_consent() {
+    let mut app = test_app(Vec::new(), Vec::new());
+    app.pending_crash_review = Some(sample_pending_crash(1_700_000_100));
+
+    app.always_send_pending_crash();
+
+    assert!(app.pending_crash_review.is_none());
+    assert_eq!(app.prefs.last_reviewed_crash_unix, 1_700_000_100);
+    assert_eq!(
+        app.prefs.error_reporting_consent,
+        crate::app::error_reporting::ErrorReportingConsent::AlwaysSend
+    );
+    assert!(
+        app.error_reporter.is_some(),
+        "opting in must leave a live reporter wired for future reports"
+    );
+}
+
+#[test]
+fn send_pending_crash_once_marks_reviewed_without_changing_steady_state_consent() {
+    let mut app = test_app(Vec::new(), Vec::new());
+    app.pending_crash_review = Some(sample_pending_crash(1_700_000_200));
+
+    app.send_pending_crash_once();
+
+    assert!(app.pending_crash_review.is_none());
+    assert_eq!(app.prefs.last_reviewed_crash_unix, 1_700_000_200);
+    assert_eq!(
+        app.prefs.error_reporting_consent,
+        crate::app::error_reporting::ErrorReportingConsent::Disabled,
+        "Send once must stay a one-off action, never flipping the steady-state preference"
+    );
+}
+
+#[test]
+fn crash_review_actions_are_a_noop_without_a_pending_crash() {
+    let mut app = test_app(Vec::new(), Vec::new());
+    app.prefs.last_reviewed_crash_unix = 5;
+
+    app.send_pending_crash_once();
+    app.always_send_pending_crash();
+    app.dismiss_pending_crash_review();
+
+    assert!(app.pending_crash_review.is_none());
+    assert_eq!(
+        app.prefs.last_reviewed_crash_unix, 5,
+        "with nothing pending, none of the three actions should touch the reviewed marker"
+    );
 }

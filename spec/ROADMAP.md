@@ -798,18 +798,48 @@ an item earlier:
   decision is still unresolved, so `OCA_SENTRY_DSN` is read at startup and, being unset in every
   build today, the worker still validates and queues every report but never attempts a real
   network call (`DeliveryOutcome::NotConfigured`) — opting in today is inert-but-safe, not yet
-  actually connected to a live Sentry project. **Also not done**: the post-crash "Send once /
-  Always send / Do not send" one-time review offer (ER-01B's other half) — this pass covers the
-  steady-state Preferences toggle only; the next-launch crash-review prompt needs hooking into
-  `main.rs`'s existing crash-sentinel detection, left as a follow-up. Releases/symbolication
-  (ER-01C), native capture (ER-01D), and operations (ER-01E) also remain.
+  actually connected to a live Sentry project. Releases/symbolication (ER-01C), native capture
+  (ER-01D), and operations (ER-01E) also remain.
 
-  Verified for real: `cargo test -p ui` (349/349, including 25 new `error_reporting` tests —
-  disk-queue round-trip/corruption/expiry/pruning/atomicity, the Sentry envelope builder's shape
-  and forbidden-content-freedom, DSN parsing, the delivery worker's persist-then-deliver and
-  transient-failure-stays-queued and startup-resweep behavior against a fake sender, and the real
-  `ureq` transport's 2xx/4xx/5xx branching against a real local TCP mock server) on this
-  machine's fully-linked toolchain. Read
+  **The post-crash "Send once / Always send / Do not send" one-time review offer (ER-01B's
+  other half) is now shipped too.** `core::error_reporting` gained `ErrorCode::Panic`/
+  `Operation::App` for this report shape. `ui`'s new `crash_review.rs` scans the log directory
+  at startup for a `crash_<unix>.txt` (already written by `main.rs`'s panic hook — the "crash
+  sentinel detection" this item's own doc previously flagged as the hook point) newer than a
+  new persisted `PrefsState::last_reviewed_crash_unix`, parses it back into
+  `PendingCrashReview`, and stages it on `App::pending_crash_review` for a startup modal
+  (`show_crash_review_modal`, same `egui::Modal` shape `pump_autosave_restore` already
+  established) offering the ER-01 doc's exact three choices, with a collapsible section
+  showing the precise post-sanitization JSON payload "Send once"/"Always send" would transmit
+  — the doc's own "before a one-time send, the user can inspect the exact structured payload"
+  requirement, satisfied by factoring the Sentry event body out of `build_sentry_envelope`
+  into a standalone `sentry_event_payload` so the preview is literally the same JSON a real
+  send builds, not a hand-approximated stand-in. `error_reporting.rs` gained
+  `build_crash_report` (folds the crash's location/message/backtrace into
+  `sanitized_stack_trace` through the same builder/sanitizer path every other report goes
+  through, with `release`/`app_version` overridden to the crashed launch's own recorded
+  version rather than this launch's, since an update between the crash and the review would
+  otherwise misattribute which build crashed) and `one_shot_reporter` (reachable regardless of
+  the persisted steady-state consent, since "Send once" is one explicit action on one specific
+  report, never a change to the steady-state preference — only "Always send" touches
+  `error_reporting_consent`). Any of the three choices marks the crash reviewed and persists
+  that immediately, so the same crash is never re-prompted.
+
+  Verified for real: `crash_review.rs`'s pure file-scanning/parsing logic (11 tests — a real
+  crash file found and parsed, the most recent among several, one already reviewed correctly
+  excluded, and malformed/unrecognized siblings skipped rather than escalated) ran in a
+  throwaway scratch crate against a real filesystem, since this sandbox's `ui` test binary
+  still can't *link* (the same pre-existing ONNX/FFmpeg gaps `CLAUDE.md` documents — confirmed
+  directly this pass: `cargo test -p ui` fails at the final link step on both `OrtGetApiBase`
+  and `av_opt_set_array`, not a code issue). App-level state-transition tests (the payload
+  preview matching the built report's real fields, each of the three actions marking the crash
+  reviewed and persisting that, only "Always send" flipping the steady-state consent, and all
+  three being a no-op with nothing pending) were added directly to `app_test.rs` instead,
+  type-checked the same way the rest of that file's App-level tests are in this sandbox.
+  `cargo check --workspace --all-targets`, `cargo clippy -p core --lib --no-deps` / `-p ui
+  --bin ui --no-deps` / `-p ui --tests --no-deps`, and `cargo fmt --check` all stayed clean
+  (via the documented temporary `filters.c` shim, discarded before every commit) — no new
+  warnings beyond the same pre-existing baseline. Read
   [architecture/client-error-reporting.md](architecture/client-error-reporting.md).
 - `[~]` **FONT-01: expanded built-in font catalog.** Grow the deterministic offline catalog from
   6 to 43 families (51 locked OFL binaries, measured at 17.07 MiB), replace the fixed enum/match

@@ -40,6 +40,7 @@ mod background_removal;
 mod clip_props;
 mod collab_bundle;
 mod color;
+mod crash_review;
 pub(crate) mod error_reporting;
 pub mod export;
 mod highlight_detection;
@@ -330,6 +331,13 @@ pub struct PrefsState {
     /// unchanged behavior.
     #[serde(default)]
     pub layout_scope: LayoutScope,
+    /// Unix timestamp of the most recent `crash_<unix>.txt` the user has already responded to
+    /// through ER-01B's post-crash review modal (`crash_review.rs`) — `App::new` only stages a
+    /// crash file newer than this for review, so the same crash is never re-prompted on a later
+    /// launch. `0` (the default for an older `prefs.oc` with no such crash yet reviewed) means
+    /// every crash file found is still unreviewed.
+    #[serde(default)]
+    pub last_reviewed_crash_unix: u64,
 }
 
 /// See [`PrefsState::layout_scope`].
@@ -386,6 +394,7 @@ impl Default for PrefsState {
             props_panel_width: default_props_panel_width(),
             timeline_height: default_timeline_height(),
             layout_scope: LayoutScope::default(),
+            last_reviewed_crash_unix: 0,
         }
     }
 }
@@ -936,8 +945,15 @@ pub struct App {
     /// [`App::pump_autosave_restore`] consumes it to show the restore/discard modal.
     autosave_restore_pending: Option<PathBuf>,
     /// `true` when a crash sentinel from a previous session was found at startup — consumed
-    /// by [`App::ui`] to show a one-time toast, then cleared.
+    /// by [`App::ui`] to show a one-time toast, then cleared. Independent of
+    /// [`App::pending_crash_review`]: the sentinel just means the previous process didn't exit
+    /// cleanly (crash, kill, power loss), while the pending review is only set when that crash
+    /// was specifically a captured Rust panic with a matching `crash_<unix>.txt` file.
     crash_detected: bool,
+    /// ER-01B's post-crash review offer (see `crash_review.rs`): `Some` when a `crash_<unix>.txt`
+    /// file newer than `prefs.last_reviewed_crash_unix` was found at startup, consumed by
+    /// [`App::show_crash_review_modal`].
+    pending_crash_review: Option<crash_review::PendingCrashReview>,
     /// When `Some((index, name_buf, summary_buf))`, a project-settings modal is shown for
     /// `projects[index]` with editable name and summary fields. Committed on confirm, discarded
     /// on Escape/cancel.
@@ -1375,6 +1391,12 @@ impl App {
         // (`prefs.error_reporting_consent`, default disabled), spawns the delivery worker.
         let error_reporter =
             error_reporting::seed_error_reporting(prefs.locale, prefs.error_reporting_consent);
+        // ER-01B's post-crash review offer: only set when a previous launch's panic hook left a
+        // `crash_<unix>.txt` newer than the last one the user already reviewed.
+        let pending_crash_review = crash_review::find_latest_unreviewed_crash(
+            &crate::platform_log_dir(),
+            prefs.last_reviewed_crash_unix,
+        );
         let mut app = Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
@@ -1502,6 +1524,7 @@ impl App {
             last_autosave_instant: None,
             autosave_restore_pending: None,
             crash_detected,
+            pending_crash_review,
             pending_export_conflict: None,
             renaming_project: None,
             renaming_sequence: None,
@@ -2239,6 +2262,7 @@ impl eframe::App for App {
         self.show_delete_sequence_modal(ui.ctx());
         self.show_text_color_modal(ui.ctx());
         self.show_export_conflict_modal(ui.ctx());
+        self.show_crash_review_modal(ui.ctx());
         self.show_save_layer_template_modal(ui.ctx());
         self.show_layer_templates_menu(ui.ctx());
         self.show_apply_layer_template_modal(ui.ctx());
