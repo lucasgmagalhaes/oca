@@ -131,11 +131,46 @@ static int build_mix_graph(const AudioSegment *segments, const uint8_t *valid, i
         snprintf(args, sizeof(args), "delays=%.3f:all=1", delay_ms);
         if ((ret = create_filter(graph, &delay, "adelay", name, args)) < 0) goto fail;
 
+        /* CF-03 "Gameplay Voice" cleanup (see bridge.h's AudioSegment doc comment): three extra
+           stages spliced between this branch's own volume and delay when enabled, ahead of the
+           final afftdn/loudnorm/limiter mastering pass below (which runs on the whole mix, not
+           per branch) -- so a Mic branch gets cleaned up before it's mixed with everything else,
+           not just at the very end. */
+        AVFilterContext *vc_highpass = NULL, *vc_denoise = NULL, *vc_compressor = NULL;
+        AVFilterContext *voice_cleanup_tail = volume;
+        if (seg->voice_cleanup_enabled) {
+            snprintf(name, sizeof(name), "vc_highpass_%d", branch);
+            if ((ret = create_filter(graph, &vc_highpass, "highpass", name, "f=80")) < 0) goto fail;
+
+            snprintf(name, sizeof(name), "vc_denoise_%d", branch);
+            snprintf(args, sizeof(args), "nf=%.3f", (double)seg->voice_cleanup_noise_floor_db);
+            if ((ret = create_filter(graph, &vc_denoise, "afftdn", name, args)) < 0) goto fail;
+
+            snprintf(name, sizeof(name), "vc_compressor_%d", branch);
+            snprintf(args, sizeof(args),
+                     "threshold=%.3fdB:ratio=%.3f:attack=10:release=250:makeup=1.5",
+                     (double)seg->voice_cleanup_compressor_threshold_db,
+                     (double)seg->voice_cleanup_compressor_ratio);
+            if ((ret = create_filter(graph, &vc_compressor, "acompressor", name, args)) < 0)
+                goto fail;
+
+            snprintf(name, sizeof(name), "vc_limiter_%d", branch);
+            snprintf(args, sizeof(args), "limit=%.6f", (double)seg->voice_cleanup_ceiling_linear);
+            if ((ret = create_filter(graph, &voice_cleanup_tail, "alimiter", name, args)) < 0)
+                goto fail;
+
+            if ((ret = avfilter_link(volume, 0, vc_highpass, 0)) < 0 ||
+                (ret = avfilter_link(vc_highpass, 0, vc_denoise, 0)) < 0 ||
+                (ret = avfilter_link(vc_denoise, 0, vc_compressor, 0)) < 0 ||
+                (ret = avfilter_link(vc_compressor, 0, voice_cleanup_tail, 0)) < 0)
+                goto fail;
+        }
+
         if ((ret = avfilter_link(movie, 0, trim, 0)) < 0 ||
             (ret = avfilter_link(trim, 0, pts, 0)) < 0 ||
             (ret = avfilter_link(pts, 0, tempo, 0)) < 0 ||
             (ret = avfilter_link(tempo, 0, volume, 0)) < 0 ||
-            (ret = avfilter_link(volume, 0, delay, 0)) < 0)
+            (ret = avfilter_link(voice_cleanup_tail, 0, delay, 0)) < 0)
             goto fail;
 
         branch_ctx[branch] = delay;

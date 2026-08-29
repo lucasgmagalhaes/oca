@@ -63,6 +63,12 @@ struct RawAudioSegment {
     /// NULL or empty means "use gain_db unchanged" — see `AudioSegment::gain_keyframe_expr`.
     gain_keyframe_expr: *const c_char,
     duck_role: c_int,
+    /// CF-03 "Gameplay Voice" cleanup — see `AudioSegment::voice_cleanup_enabled`'s doc comment.
+    voice_cleanup_enabled: c_int,
+    voice_cleanup_noise_floor_db: f32,
+    voice_cleanup_compressor_threshold_db: f32,
+    voice_cleanup_compressor_ratio: f32,
+    voice_cleanup_ceiling_linear: f32,
 }
 
 /// Mirror of `TextSegment` in `bridge.h` — one pre-rasterized text overlay image.
@@ -609,6 +615,40 @@ pub struct AudioSegment {
     /// than failing to parse.
     #[serde(default)]
     pub duck_role: u8,
+    /// CF-03 "Gameplay Voice" cleanup (`spec/architecture/competitive-feature-plan.md`) — `true`
+    /// splices `highpass=f=80,afftdn=nf=<voice_cleanup_noise_floor_db>,acompressor=threshold=
+    /// <voice_cleanup_compressor_threshold_db>dB:ratio=<voice_cleanup_compressor_ratio>:
+    /// attack=10:release=250:makeup=1.5,alimiter=limit=<voice_cleanup_ceiling_linear>` between
+    /// this branch's own `volume` and `delay` stages in `audio_mix.c`'s `build_mix_graph`, ahead
+    /// of the whole-mix `afftdn`/`loudnorm`/`alimiter` mastering pass every export already runs.
+    /// Values match `scripts/Watch-Gameplay.ps1`'s own proven chain. `#[serde(default)]` so an
+    /// `.ocqueue` job persisted before this field existed loads with cleanup off.
+    #[serde(default)]
+    pub voice_cleanup_enabled: bool,
+    #[serde(default = "default_voice_cleanup_noise_floor_db")]
+    pub voice_cleanup_noise_floor_db: f32,
+    #[serde(default = "default_voice_cleanup_compressor_threshold_db")]
+    pub voice_cleanup_compressor_threshold_db: f32,
+    #[serde(default = "default_voice_cleanup_compressor_ratio")]
+    pub voice_cleanup_compressor_ratio: f32,
+    #[serde(default = "default_voice_cleanup_ceiling_linear")]
+    pub voice_cleanup_ceiling_linear: f32,
+}
+
+fn default_voice_cleanup_noise_floor_db() -> f32 {
+    -30.0
+}
+
+fn default_voice_cleanup_compressor_threshold_db() -> f32 {
+    -18.0
+}
+
+fn default_voice_cleanup_compressor_ratio() -> f32 {
+    3.0
+}
+
+fn default_voice_cleanup_ceiling_linear() -> f32 {
+    0.95
 }
 
 /// The fixed output frame size/rate every segment in an [`encode_timeline_export`] call is
@@ -1004,6 +1044,11 @@ pub fn mix_audio_timeline(
             speed_factor: seg.speed_factor,
             gain_keyframe_expr: gain_expr.as_ptr(),
             duck_role: seg.duck_role as c_int,
+            voice_cleanup_enabled: seg.voice_cleanup_enabled as c_int,
+            voice_cleanup_noise_floor_db: seg.voice_cleanup_noise_floor_db,
+            voice_cleanup_compressor_threshold_db: seg.voice_cleanup_compressor_threshold_db,
+            voice_cleanup_compressor_ratio: seg.voice_cleanup_compressor_ratio,
+            voice_cleanup_ceiling_linear: seg.voice_cleanup_ceiling_linear,
         })
         .collect();
 
