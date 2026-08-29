@@ -560,6 +560,11 @@ pub fn resolve_audio_segments(
                 )
                 .unwrap_or_default(),
                 duck_role: track.audio_role.to_duck_role_code(),
+                voice_cleanup_enabled: clip.voice_cleanup_enabled,
+                voice_cleanup_noise_floor_db: clip.voice_cleanup_noise_floor_db,
+                voice_cleanup_compressor_threshold_db: clip.voice_cleanup_compressor_threshold_db,
+                voice_cleanup_compressor_ratio: clip.voice_cleanup_compressor_ratio,
+                voice_cleanup_ceiling_linear: clip.voice_cleanup_ceiling_linear,
             });
         }
     }

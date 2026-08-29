@@ -143,6 +143,12 @@ impl App {
                     rotation_keyframes: source.rotation_keyframes,
                     opacity_keyframes: source.opacity_keyframes,
                     gain_keyframes: source.gain_keyframes,
+                    voice_cleanup_enabled: source.voice_cleanup_enabled,
+                    voice_cleanup_noise_floor_db: source.voice_cleanup_noise_floor_db,
+                    voice_cleanup_compressor_threshold_db: source
+                        .voice_cleanup_compressor_threshold_db,
+                    voice_cleanup_compressor_ratio: source.voice_cleanup_compressor_ratio,
+                    voice_cleanup_ceiling_linear: source.voice_cleanup_ceiling_linear,
                     brightness_keyframes: source.brightness_keyframes,
                     contrast_keyframes: source.contrast_keyframes,
                     saturation_keyframes: source.saturation_keyframes,

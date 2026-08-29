@@ -286,6 +286,20 @@ typedef struct {
        avcore::timeline::AudioRole (Mic -> trigger, Music -> target, everything else -> normal)
        -- see audio_mix.c's build_mix_graph for the filter-graph topology this drives. */
     int duck_role;
+    /* CF-03 "Gameplay Voice" cleanup (spec/architecture/competitive-feature-plan.md), from
+       avcore::timeline::ClipInstance::voice_cleanup_enabled. 0 = off (this branch's audio is
+       unchanged beyond gain/tempo, same as before this field existed); non-zero inserts
+       highpass=f=80,afftdn=nf=<voice_cleanup_noise_floor_db>,acompressor=threshold=
+       <voice_cleanup_compressor_threshold_db>dB:ratio=<voice_cleanup_compressor_ratio>:
+       attack=10:release=250:makeup=1.5,alimiter=limit=<voice_cleanup_ceiling_linear> between
+       this branch's own volume and delay stages, before it joins the final mix -- see
+       audio_mix.c's build_mix_graph. Values come from scripts/Watch-Gameplay.ps1's own proven
+       chain, not guessed. */
+    int voice_cleanup_enabled;
+    float voice_cleanup_noise_floor_db;
+    float voice_cleanup_compressor_threshold_db;
+    float voice_cleanup_compressor_ratio;
+    float voice_cleanup_ceiling_linear;
 } AudioSegment;
 
 typedef enum {
