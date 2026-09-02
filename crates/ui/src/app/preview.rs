@@ -797,7 +797,12 @@ impl App {
                 if let Err(e) = preview.seek_with_rate(offset, speed) {
                     warn!(error = %e, "failed to seek preview");
                 }
-                self.active_project_mut().timeline_mut().playhead_secs = position_secs;
+                // See pump_preview_frame's own comment -- a scrub-driven playhead move is not
+                // an edit worth resetting the autosave debounce timer over, and a drag calls
+                // this every frame too.
+                self.projects[self.active_project]
+                    .timeline_mut()
+                    .playhead_secs = position_secs;
             }
             (Some(preview), Some(clip)) => {
                 let timeline = self.active_project().timeline();
@@ -823,10 +828,14 @@ impl App {
                 if let Err(e) = preview.seek_composited(&offsets, &rates) {
                     warn!(error = %e, "failed to seek composited preview");
                 }
-                self.active_project_mut().timeline_mut().playhead_secs = position_secs;
+                self.projects[self.active_project]
+                    .timeline_mut()
+                    .playhead_secs = position_secs;
             }
             _ => {
-                self.active_project_mut().timeline_mut().playhead_secs = position_secs;
+                self.projects[self.active_project]
+                    .timeline_mut()
+                    .playhead_secs = position_secs;
             }
         }
         self.refresh_preview_text_highlights(position_secs);
@@ -1197,7 +1206,16 @@ impl App {
                 start_secs + (position - source_in_secs) / speed
             }
         };
-        self.active_project_mut().timeline_mut().playhead_secs = new_playhead;
+        // Not `active_project_mut()` -- that marks the project dirty and resets the autosave
+        // debounce timer, and this runs every frame during playback. Left unfixed, the 2s
+        // debounce never elapses (last_edit_instant is refreshed every frame) so only the 30s
+        // ceiling remains, and it always finds a "dirty" project -- a full synchronous
+        // gzip+msgpack serialize (pump_autosave) firing on the UI thread roughly every 30s of
+        // playback, visible as a periodic multi-hundred-ms stutter. Mirroring the pipeline's own
+        // playhead position is not a user edit worth autosave-protecting at every frame anyway.
+        self.projects[self.active_project]
+            .timeline_mut()
+            .playhead_secs = new_playhead;
         self.refresh_preview_text_highlights(new_playhead);
     }
 }
