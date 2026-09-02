@@ -2512,13 +2512,24 @@ impl Preview {
     /// `ClipInstance::is_masked()` was `false` when the pipeline was last built (a plain on/off
     /// gate, same as chroma key) — the first enable still needs the existing incidental-reopen
     /// fallback to build the branch at all; this only covers shape/corner-radius edits made
-    /// *after* that, while it's already enabled.
+    /// *after* that, while it's already enabled. Also declines
+    /// [`MaskShape::None`][crate::timeline::MaskShape::None]: turning masking back *off* isn't
+    /// covered either, same "on/off toggle needs the reopen fallback" contract — pushing
+    /// [`crate::overlay_render::render_mask_shape_gray8`]'s own `MaskShape::None` output live
+    /// would be actively wrong here, since that function returns an all-zero (fully *masked*,
+    /// not unmasked) buffer for `None`, correct only because every other caller already gates
+    /// on [`crate::timeline::ClipInstance::is_masked`] first and never reaches it. Without this
+    /// guard, dragging a live-previewed clip's mask shape back to "None" would make the whole
+    /// overlay vanish instead of removing the mask.
     pub fn set_live_mask(
         &self,
         clip_id: u64,
         mask_shape: crate::timeline::MaskShape,
         mask_corner_radius: f32,
     ) -> Result<bool, PreviewError> {
+        if mask_shape == crate::timeline::MaskShape::None {
+            return Ok(false);
+        }
         let Some(branch) = self
             .mask_shape_branches
             .iter()
