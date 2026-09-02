@@ -31,7 +31,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     // thumbnail requests, needed here because `App::request_thumbnail` takes `&mut self` while
     // the loop below iterates a shared borrow of `app.active_project().media_library`.
     let mut thumbnail_requests: Vec<u64> = Vec::new();
-    let mut thumbnail_touches: Vec<(u64, i64)> = Vec::new();
+    let mut thumbnail_touches: Vec<(u64, u64, i64)> = Vec::new();
+    let project_id = app.active_project().id;
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(theme::SPACE_LG);
         ui.horizontal(|ui| {
@@ -93,12 +94,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                         .then(|| {
                                             app.thumbnail_state
                                                 .thumbnail_textures
-                                                .get(&(asset.id, 0))
+                                                .get(&(project_id, asset.id, 0))
                                         })
                                         .flatten();
                                     match thumbnail {
                                         Some(texture) => {
-                                            thumbnail_touches.push((asset.id, 0));
+                                            thumbnail_touches.push((project_id, asset.id, 0));
                                             let size = ui.available_size();
                                             ui.add(
                                                 egui::Image::new((texture.id(), size))
@@ -173,7 +174,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 
         app.touch_thumbnails(&thumbnail_touches);
         for asset_id in thumbnail_requests {
-            app.request_thumbnail(asset_id, 0);
+            app.request_thumbnail(project_id, asset_id, 0);
         }
 
         if let Some(asset_id) = transcribe_clicked {

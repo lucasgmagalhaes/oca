@@ -54,15 +54,23 @@ pub(super) fn filmstrip_frame_index_for_tile(
 /// distance between adjacent tiles and therefore reveals denser, distinct frames; zooming out
 /// spaces them farther apart. Tile columns remain anchored to the full clip rect so vertical
 /// scrolling/repaint clipping never changes which frame a given column represents.
+/// `(project_id, asset_id, frame_index)` — matches `crate::app::ThumbnailKey`. Spelled out here
+/// rather than importing that alias since `project_id` disambiguates asset ids that are only
+/// unique *within* a project (`MediaAsset::id` is assigned per-project, starting from 1 in each
+/// one), not globally — without it, two different projects' assets sharing an id would collide
+/// in the shared `thumbnail_textures` cache.
+type ThumbnailKey = (u64, u64, i64);
+
 pub(super) struct ThumbnailDrawWork<'a> {
-    pub(super) requests: &'a mut Vec<(u64, i64)>,
-    pub(super) touches: &'a mut Vec<(u64, i64)>,
+    pub(super) requests: &'a mut Vec<ThumbnailKey>,
+    pub(super) touches: &'a mut Vec<ThumbnailKey>,
 }
 
 pub(super) fn draw_filmstrip(
-    thumbnail_textures: &HashMap<(u64, i64), egui::TextureHandle>,
+    thumbnail_textures: &HashMap<ThumbnailKey, egui::TextureHandle>,
     painter: &egui::Painter,
     clip_rect: egui::Rect,
+    project_id: u64,
     asset: &MediaAsset,
     source_in_secs: f64,
     px_per_sec: f32,
@@ -100,7 +108,7 @@ pub(super) fn draw_filmstrip(
             px_per_sec,
             asset.fps,
         );
-        let key = (asset.id, frame_index);
+        let key = (project_id, asset.id, frame_index);
         match thumbnail_textures.get(&key) {
             Some(texture) => {
                 thumbnail_work.touches.push(key);
@@ -123,9 +131,10 @@ pub(super) fn draw_filmstrip(
 /// `draw_filmstrip`'s texture cache/request plumbing, just pinned to the exact held source frame
 /// instead of sampling one frame per column. Only visible columns are iterated.
 pub(super) fn draw_frozen_poster(
-    thumbnail_textures: &HashMap<(u64, i64), egui::TextureHandle>,
+    thumbnail_textures: &HashMap<ThumbnailKey, egui::TextureHandle>,
     painter: &egui::Painter,
     clip_rect: egui::Rect,
+    project_id: u64,
     asset: &MediaAsset,
     source_in_secs: f64,
     thumbnail_work: &mut ThumbnailDrawWork<'_>,
@@ -143,7 +152,7 @@ pub(super) fn draw_frozen_poster(
         return;
     }
     let frame_index = thumbnail_frame_index(source_in_secs, asset.fps);
-    let key = (asset.id, frame_index);
+    let key = (project_id, asset.id, frame_index);
 
     match thumbnail_textures.get(&key) {
         Some(texture) => {

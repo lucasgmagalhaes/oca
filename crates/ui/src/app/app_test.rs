@@ -691,10 +691,10 @@ fn add_asset_to_timeline_is_a_no_op_for_an_unknown_asset_id() {
 fn request_thumbnail_marks_the_frame_pending_and_does_not_duplicate_on_a_second_call() {
     let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 
-    app.request_thumbnail(1, 0);
-    assert!(app.thumbnail_state.pending_thumbnails.contains(&(1, 0)));
+    app.request_thumbnail(1, 1, 0);
+    assert!(app.thumbnail_state.pending_thumbnails.contains(&(1, 1, 0)));
 
-    app.request_thumbnail(1, 0);
+    app.request_thumbnail(1, 1, 0);
     assert_eq!(app.thumbnail_state.pending_thumbnails.len(), 1);
 }
 
@@ -702,9 +702,12 @@ fn request_thumbnail_marks_the_frame_pending_and_does_not_duplicate_on_a_second_
 fn request_thumbnail_remembers_an_unknown_asset_as_a_bounded_failure() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
 
-    app.request_thumbnail(99, 0);
+    app.request_thumbnail(1, 99, 0);
 
-    assert!(app.thumbnail_state.failed_thumbnails.contains_key(&(99, 0)));
+    assert!(app
+        .thumbnail_state
+        .failed_thumbnails
+        .contains_key(&(1, 99, 0)));
     assert!(app.thumbnail_state.pending_thumbnails.is_empty());
 }
 
@@ -721,7 +724,7 @@ fn thumbnail_requests_cap_concurrent_extractions() {
     let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 
     for frame_index in 0..(THUMBNAIL_MAX_PENDING as i64 + 10) {
-        app.request_thumbnail(1, frame_index);
+        app.request_thumbnail(1, 1, frame_index);
     }
 
     assert_eq!(
@@ -735,18 +738,22 @@ fn failed_thumbnail_suppression_is_bounded() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
 
     for frame_index in 0..(THUMBNAIL_FAILURE_CAPACITY as i64 + 1) {
-        app.request_thumbnail(99, frame_index);
+        app.request_thumbnail(1, 99, frame_index);
     }
 
     assert_eq!(
         app.thumbnail_state.failed_thumbnails.len(),
         THUMBNAIL_FAILURE_CAPACITY
     );
-    assert!(!app.thumbnail_state.failed_thumbnails.contains_key(&(99, 0)));
-    assert!(app
+    assert!(!app
         .thumbnail_state
         .failed_thumbnails
-        .contains_key(&(99, THUMBNAIL_FAILURE_CAPACITY as i64)));
+        .contains_key(&(1, 99, 0)));
+    assert!(app.thumbnail_state.failed_thumbnails.contains_key(&(
+        1,
+        99,
+        THUMBNAIL_FAILURE_CAPACITY as i64
+    )));
 }
 
 #[test]
@@ -757,6 +764,7 @@ fn thumbnail_texture_cache_evicts_the_least_recently_used_entry() {
         app.thumbnail_state
             .thumbnail_tx
             .send(ThumbnailReady::Ready {
+                project_id: 1,
                 asset_id: 1,
                 frame_index,
                 width: 1,
@@ -766,11 +774,12 @@ fn thumbnail_texture_cache_evicts_the_least_recently_used_entry() {
             .unwrap();
     }
     app.pump_thumbnail_queue(&ctx);
-    app.touch_thumbnails(&[(1, 0)]);
+    app.touch_thumbnails(&[(1, 1, 0)]);
 
     app.thumbnail_state
         .thumbnail_tx
         .send(ThumbnailReady::Ready {
+            project_id: 1,
             asset_id: 1,
             frame_index: THUMBNAIL_CACHE_CAPACITY as i64,
             width: 1,
@@ -784,12 +793,19 @@ fn thumbnail_texture_cache_evicts_the_least_recently_used_entry() {
         app.thumbnail_state.thumbnail_textures.len(),
         THUMBNAIL_CACHE_CAPACITY
     );
-    assert!(app.thumbnail_state.thumbnail_textures.contains_key(&(1, 0)));
-    assert!(!app.thumbnail_state.thumbnail_textures.contains_key(&(1, 1)));
     assert!(app
         .thumbnail_state
         .thumbnail_textures
-        .contains_key(&(1, THUMBNAIL_CACHE_CAPACITY as i64)));
+        .contains_key(&(1, 1, 0)));
+    assert!(!app
+        .thumbnail_state
+        .thumbnail_textures
+        .contains_key(&(1, 1, 1)));
+    assert!(app.thumbnail_state.thumbnail_textures.contains_key(&(
+        1,
+        1,
+        THUMBNAIL_CACHE_CAPACITY as i64
+    )));
 }
 
 #[test]

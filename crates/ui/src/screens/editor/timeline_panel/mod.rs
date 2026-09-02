@@ -245,8 +245,11 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         // for the whole track/clip iteration below, so the undo snapshot itself is pushed once,
         // after that borrow ends, rather than inline at the drag_started() check.
         let mut drag_started_this_frame = false;
-        let mut thumbnail_requests: Vec<(u64, i64)> = Vec::new();
-        let mut thumbnail_touches: Vec<(u64, i64)> = Vec::new();
+        // `(project_id, asset_id, frame_index)` — see `draw::ThumbnailKey`'s own doc comment for
+        // why project_id is part of the key (asset ids are only unique within one project).
+        let mut thumbnail_requests: Vec<(u64, u64, i64)> = Vec::new();
+        let mut thumbnail_touches: Vec<(u64, u64, i64)> = Vec::new();
+        let project_id = app.active_project().id;
         egui::ScrollArea::vertical().show(ui, |ui| {
             for track in &app.active_project().timeline().tracks {
                 ui.horizontal(|ui| {
@@ -664,6 +667,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         &app.thumbnail_state.thumbnail_textures,
                                         painter,
                                         clip_rect,
+                                        project_id,
                                         asset,
                                         clip.source_in_secs,
                                         &mut thumbnail_work,
@@ -677,6 +681,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         &app.thumbnail_state.thumbnail_textures,
                                         painter,
                                         clip_rect,
+                                        project_id,
                                         asset,
                                         clip.source_in_secs,
                                         px_per_sec,
@@ -1109,8 +1114,8 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             }
         }
         app.touch_thumbnails(&thumbnail_touches);
-        for (asset_id, frame_index) in thumbnail_requests {
-            app.request_thumbnail(asset_id, frame_index);
+        for (project_id, asset_id, frame_index) in thumbnail_requests {
+            app.request_thumbnail(project_id, asset_id, frame_index);
         }
         // An asset dragged out of the media library and released somewhere at or below the
         // ruler: whichever track row's Y-range the pointer landed on becomes the preferred
