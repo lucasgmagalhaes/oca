@@ -121,6 +121,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                 );
 
                 if let Some(clip) = app.selected_clip() {
+                    let clip_id = clip.id;
                     let mut gain_db = clip.gain_db;
                     let mut frozen = clip.frozen;
                     let mut deflicker_enabled = clip.deflicker_enabled;
@@ -166,8 +167,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let crop_h_keyframes = clip.crop_h_keyframes.clone();
                     if components::property_section(
                         ui,
+                        clip_id,
                         Text::PropGain.tr(locale),
                         Text::GainExportNote.tr(locale),
+                        gain_db != 0.0,
                         |ui| {
                             ui.add(
                                 egui::Slider::new(&mut gain_db, GAIN_DB_RANGE)
@@ -183,8 +186,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let mut new_gain_keyframes = None;
                     if components::property_section(
                         ui,
+                        clip_id,
                         Text::PropGainKeyframes.tr(locale),
                         Text::GainKeyframesExportNote.tr(locale),
+                        !gain_keyframes.is_empty(),
                         |ui| {
                             new_gain_keyframes = f32_keyframe_editor(
                                 ui,
@@ -228,8 +233,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
 
                     if components::property_section(
                         ui,
+                        clip_id,
                         Text::PropSpeed.tr(locale),
                         Text::SpeedExportNote.tr(locale),
+                        (speed_factor - 1.0).abs() > 1e-4,
                         |ui| {
                             ui.add(
                                 egui::Slider::new(&mut speed_factor, SPEED_FACTOR_RANGE)
@@ -246,8 +253,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     if app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Video) {
                         components::property_section(
                             ui,
+                            clip_id,
                             Text::PropCrop.tr(locale),
                             Text::CropExportNote.tr(locale),
+                            crop_x != 0.0 || crop_y != 0.0 || crop_w != 1.0 || crop_h != 1.0,
                             |ui| {
                                 let mut crop_changed = false;
                                 ui.horizontal(|ui| {
@@ -314,8 +323,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut new_crop_x_keyframes = None;
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropCropXKeyframes.tr(locale),
                             Text::CropKeyframesExportNote.tr(locale),
+                            !crop_x_keyframes.is_empty(),
                             |ui| {
                                 new_crop_x_keyframes = f32_keyframe_editor(
                                     ui,
@@ -335,8 +346,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut new_crop_y_keyframes = None;
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropCropYKeyframes.tr(locale),
                             Text::CropKeyframesExportNote.tr(locale),
+                            !crop_y_keyframes.is_empty(),
                             |ui| {
                                 new_crop_y_keyframes = f32_keyframe_editor(
                                     ui,
@@ -356,8 +369,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut new_crop_w_keyframes = None;
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropCropWKeyframes.tr(locale),
                             Text::CropKeyframesExportNote.tr(locale),
+                            !crop_w_keyframes.is_empty(),
                             |ui| {
                                 new_crop_w_keyframes = f32_keyframe_editor(
                                     ui,
@@ -377,8 +392,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut new_crop_h_keyframes = None;
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropCropHKeyframes.tr(locale),
                             Text::CropKeyframesExportNote.tr(locale),
+                            !crop_h_keyframes.is_empty(),
                             |ui| {
                                 new_crop_h_keyframes = f32_keyframe_editor(
                                     ui,
@@ -397,8 +414,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
 
                         let mask_changed = components::property_section(
                             ui,
+                            clip_id,
                             Text::PropMask.tr(locale),
                             Text::MaskExportNote.tr(locale),
+                            mask_shape != avcore::timeline::MaskShape::None,
                             |ui| {
                                 let mut mask_changed = components::enum_combo(
                                     ui,
@@ -440,8 +459,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
 
                         let color_filter_changed = components::property_section(
                             ui,
+                            clip_id,
                             Text::PropColorFilter.tr(locale),
                             Text::ColorFilterExportNote.tr(locale),
+                            color_filter != avcore::timeline::ColorFilter::None,
                             |ui| {
                                 components::enum_combo(
                                     ui,
@@ -462,8 +483,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
 
                         let lut_changed = components::property_section(
                             ui,
+                            clip_id,
                             Text::PropLut.tr(locale),
                             Text::LutExportNote.tr(locale),
+                            !lut_path.is_empty(),
                             |ui| {
                                 let mut changed = false;
                                 ui.horizontal(|ui| {
@@ -501,8 +524,11 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
 
                         let layer_size_changed = components::property_section(
                             ui,
+                            clip_id,
                             Text::PropLayerSize.tr(locale),
                             Text::LayerSizeExportNote.tr(locale),
+                            (layer_scale_x - 1.0).abs() > 1e-4
+                                || (layer_scale_y - 1.0).abs() > 1e-4,
                             |ui| {
                                 let mut changed = ui
                                     .add(
@@ -525,8 +551,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
 
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropVignette.tr(locale),
                             Text::VignetteExportNote.tr(locale),
+                            vignette_intensity > 0.0,
                             |ui| {
                                 ui.add(
                                     egui::Slider::new(
@@ -543,8 +571,12 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
 
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropColorAdjust.tr(locale),
                             Text::ColorAdjustExportNote.tr(locale),
+                            brightness != 0.0
+                                || (contrast - 1.0).abs() > 1e-4
+                                || (saturation - 1.0).abs() > 1e-4,
                             |ui| {
                                 let mut changed = ui
                                     .add(
@@ -573,8 +605,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut new_brightness_keyframes = None;
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropBrightnessKeyframes.tr(locale),
                             Text::ColorKeyframesExportNote.tr(locale),
+                            !brightness_keyframes.is_empty(),
                             |ui| {
                                 new_brightness_keyframes = f32_keyframe_editor(
                                     ui,
@@ -594,8 +628,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut new_contrast_keyframes = None;
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropContrastKeyframes.tr(locale),
                             Text::ColorKeyframesExportNote.tr(locale),
+                            !contrast_keyframes.is_empty(),
                             |ui| {
                                 new_contrast_keyframes = f32_keyframe_editor(
                                     ui,
@@ -615,8 +651,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut new_saturation_keyframes = None;
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropSaturationKeyframes.tr(locale),
                             Text::ColorKeyframesExportNote.tr(locale),
+                            !saturation_keyframes.is_empty(),
                             |ui| {
                                 new_saturation_keyframes = f32_keyframe_editor(
                                     ui,
@@ -635,8 +673,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
 
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropSharpen.tr(locale),
                             Text::SharpenExportNote.tr(locale),
+                            sharpen > 0.0,
                             |ui| {
                                 ui.add(
                                     egui::Slider::new(&mut sharpen, SHARPEN_RANGE)
@@ -718,8 +758,13 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
 
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropOtherEffects.tr(locale),
                             Text::OtherEffectsExportNote.tr(locale),
+                            blur_intensity > 0.0
+                                || shake_intensity > 0.0
+                                || glitch_intensity > 0.0
+                                || pixelize_intensity > 0.0,
                             |ui| {
                                 let mut changed = ui
                                     .add(
@@ -768,8 +813,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
 
                         let stabilization_changed = components::property_section(
                             ui,
+                            clip_id,
                             Text::PropStabilization.tr(locale),
                             Text::StabilizationExportNote.tr(locale),
+                            stabilization_intensity > 0.0,
                             |ui| {
                                 ui.add(
                                     egui::Slider::new(
@@ -787,8 +834,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
 
                         let transition_changed = components::property_section(
                             ui,
+                            clip_id,
                             Text::PropTransition.tr(locale),
                             Text::TransitionExportNote.tr(locale),
+                            transition_in != avcore::timeline::TransitionType::None,
                             |ui| {
                                 let mut changed = components::enum_combo(
                                     ui,
@@ -827,8 +876,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut new_position_keyframes = None;
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropPositionKeyframes.tr(locale),
                             Text::PositionExportNote.tr(locale),
+                            !position_keyframes.is_empty(),
                             |ui| {
                                 new_position_keyframes =
                                     position_keyframe_editor(ui, &position_keyframes, locale);
@@ -844,8 +895,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                 app.motion_tracking_state.motion_tracking_clip_id.is_some();
                             components::property_section(
                                 ui,
+                                clip_id,
                                 Text::PropMotionTrackRegion.tr(locale),
                                 Text::PropMotionTrackRegionHint.tr(locale),
+                                false,
                                 |ui| {
                                     ui.add_enabled_ui(!tracking, |ui| {
                                         ui.horizontal(|ui| {
@@ -941,8 +994,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut new_scale_keyframes = None;
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropScaleKeyframes.tr(locale),
                             Text::ScaleExportNote.tr(locale),
+                            !scale_keyframes.is_empty(),
                             |ui| {
                                 new_scale_keyframes = f32_keyframe_editor(
                                     ui,
@@ -962,8 +1017,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut new_rotation_keyframes = None;
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropRotationKeyframes.tr(locale),
                             Text::RotationExportNote.tr(locale),
+                            !rotation_keyframes.is_empty(),
                             |ui| {
                                 new_rotation_keyframes = f32_keyframe_editor(
                                     ui,
@@ -983,8 +1040,10 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut new_opacity_keyframes = None;
                         if components::property_section(
                             ui,
+                            clip_id,
                             Text::PropOpacityKeyframes.tr(locale),
                             Text::OpacityExportNote.tr(locale),
+                            !opacity_keyframes.is_empty(),
                             |ui| {
                                 new_opacity_keyframes = f32_keyframe_editor(
                                     ui,
