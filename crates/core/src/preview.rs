@@ -1682,7 +1682,7 @@ impl Preview {
             .build();
         let video_sink = gst_app::AppSink::builder()
             .caps(&video_caps)
-            .sync(false)
+            .sync(true)
             .max_buffers(1)
             .drop(true)
             .build();
@@ -1901,7 +1901,7 @@ impl Preview {
             .build();
         let video_sink = gst_app::AppSink::builder()
             .caps(&video_caps)
-            .sync(false)
+            .sync(true)
             .max_buffers(1)
             .drop(true)
             .build();
