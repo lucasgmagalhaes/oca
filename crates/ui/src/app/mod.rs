@@ -2220,6 +2220,7 @@ impl eframe::App for App {
         self.pump_preview_frame(ui.ctx());
         self.pump_autosave();
         self.pump_autosave_restore(ui.ctx());
+        self.handle_dropped_files(ui.ctx());
         // Detect the prefs modal closing (true → false) and persist the new settings.
         if self.prev_prefs_open && !self.prefs_open {
             self.save_prefs();
@@ -2287,6 +2288,7 @@ impl eframe::App for App {
         self.show_transcript_proposals_modal(ui.ctx());
         self.show_smart_bin_modal(ui.ctx());
         self.show_toasts(ui.ctx());
+        self.show_drop_hint_overlay(ui.ctx());
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {

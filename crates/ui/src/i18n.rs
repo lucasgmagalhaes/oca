@@ -334,6 +334,7 @@ text_catalog! {
     ImportFiles: pt_br = "⭱ Importar arquivos", en = "⭱ Import files";
     Importing: pt_br = "Importando arquivos…", en = "Importing files…";
     LibraryEmpty: pt_br = "Nenhum arquivo importado neste projeto ainda.", en = "No files imported into this project yet.";
+    DropFilesHint: pt_br = "Solte os arquivos aqui para importar", en = "Drop files here to import";
     ProxyReady: pt_br = "Proxy 540p", en = "540p proxy";
     TranscribeAction: pt_br = "Transcrever", en = "Transcribe";
     TranscribeInProgress: pt_br = "Transcrevendo...", en = "Transcribing...";

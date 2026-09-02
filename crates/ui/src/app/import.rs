@@ -20,11 +20,83 @@ use eframe::egui;
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::{
-    thumbnail_frame_time, App, ImportEvent, ThumbnailKey, ThumbnailReady, THUMBNAIL_CACHE_CAPACITY,
-    THUMBNAIL_FAILURE_CAPACITY, THUMBNAIL_MAX_DIM, THUMBNAIL_MAX_PENDING,
+    thumbnail_frame_time, App, ImportEvent, Screen, ThumbnailKey, ThumbnailReady,
+    THUMBNAIL_CACHE_CAPACITY, THUMBNAIL_FAILURE_CAPACITY, THUMBNAIL_MAX_DIM, THUMBNAIL_MAX_PENDING,
 };
 
 impl App {
+    /// Imports every dropped file that carries a real filesystem path (a plain OS drag-and-drop
+    /// always does; a drop coming from inside a web view would not, but this is a native
+    /// `eframe`/glow app, not a wasm build, so that case doesn't arise here) through the same
+    /// [`App::spawn_import`] pipeline as the "Importar arquivos" button — probe/loudness/proxy/
+    /// waveform all run identically regardless of how the file reached the media library.
+    /// Called once per frame from [`eframe::App::ui`], same as the other `pump_*`/`handle_*`
+    /// per-frame helpers. A no-op when nothing was dropped this frame, or when the active screen
+    /// has no project media library to import into (only `Editor`/`Library` do) — dropping a
+    /// file onto, say, the export queue screen has nowhere sensible to land.
+    pub(super) fn handle_dropped_files(&mut self, ctx: &egui::Context) {
+        if !matches!(self.screen, Screen::Editor | Screen::Library) {
+            return;
+        }
+        let dropped = ctx.input(|i| i.raw.dropped_files.clone());
+        if dropped.is_empty() {
+            return;
+        }
+        let paths: Vec<PathBuf> = dropped
+            .into_iter()
+            .map(|f| f.path().to_path_buf())
+            .filter(|p| !p.as_os_str().is_empty())
+            .collect();
+        if paths.is_empty() {
+            return;
+        }
+        self.ensure_active_project();
+        self.spawn_import(paths);
+    }
+
+    /// Paints a full-window "Drop files here" overlay while the OS is hovering a file drag over
+    /// the app and the active screen is one [`App::handle_dropped_files`] would actually import
+    /// into — the interaction has no other visual feedback otherwise, since nothing in
+    /// `screens/` opts into `egui`'s drag-and-drop payload API (this is OS-level file dragging,
+    /// reported through `egui::RawInput::hovered_files`, not an in-app drag). Drawn in its own
+    /// foreground `Area` so it sits above whatever screen is currently painted underneath, and
+    /// only for the duration of the hover — it never leaves a residual layer once the drag
+    /// leaves the window or is dropped.
+    pub(super) fn show_drop_hint_overlay(&self, ctx: &egui::Context) {
+        if !matches!(self.screen, Screen::Editor | Screen::Library) {
+            return;
+        }
+        let hovering = ctx.input(|i| !i.raw.hovered_files.is_empty());
+        if !hovering {
+            return;
+        }
+        let screen_rect = ctx.content_rect();
+        egui::Area::new(egui::Id::new("drop_files_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen_rect.min)
+            .show(ctx, |ui| {
+                let painter = ui.painter();
+                painter.rect_filled(
+                    screen_rect,
+                    0.0,
+                    egui::Color32::from_rgba_unmultiplied(0x0a, 0x14, 0x14, 200),
+                );
+                painter.rect_stroke(
+                    screen_rect.shrink(16.0),
+                    crate::theme::RADIUS_MD as f32,
+                    egui::Stroke::new(2.0, crate::theme::ACCENT),
+                    egui::StrokeKind::Inside,
+                );
+                painter.text(
+                    screen_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    crate::i18n::Text::DropFilesHint.tr(self.locale),
+                    egui::FontId::proportional(20.0),
+                    crate::theme::TEXT_PRIMARY,
+                );
+            });
+    }
+
     /// Probes each of `paths` on its own background thread — what "Importar arquivos" does.
     /// Each file becomes usable in the media library as soon as its probe (cheap: container/
     /// stream metadata only, no decode) comes back, the same way other NLEs show an imported
