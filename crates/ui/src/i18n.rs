@@ -418,6 +418,8 @@ text_catalog! {
     PauseJob: pt_br = "Pausar", en = "Pause";
     Resume: pt_br = "Retomar", en = "Resume";
     OpenFolder: pt_br = "Abrir pasta", en = "Open folder";
+    MoveJobUp: pt_br = "Mover para cima na fila", en = "Move up in queue";
+    MoveJobDown: pt_br = "Mover para baixo na fila", en = "Move down in queue";
     RetryExport: pt_br = "↻ Tentar novamente", en = "↻ Retry";
     ErrorPrefix: pt_br = "Erro", en = "Error";
 

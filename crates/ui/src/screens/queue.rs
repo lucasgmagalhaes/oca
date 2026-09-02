@@ -305,10 +305,18 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                 {
                                     cancel = Some(job.id);
                                 }
-                                if ui.button("▼").clicked() {
+                                if ui
+                                    .button("▼")
+                                    .on_hover_text(Text::MoveJobDown.tr(locale))
+                                    .clicked()
+                                {
                                     move_down = Some(i);
                                 }
-                                if ui.button("▲").clicked() {
+                                if ui
+                                    .button("▲")
+                                    .on_hover_text(Text::MoveJobUp.tr(locale))
+                                    .clicked()
+                                {
                                     move_up = Some(i);
                                 }
                                 if ui
