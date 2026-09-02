@@ -18,9 +18,9 @@ env:
   CARGO_TERM_COLOR: always
   # Same FFmpeg pinning as ci.yml's build-and-test-linux job -- keep these two in sync when
   # upgrading FFmpeg. See .github/FFMPEG_UPDATE.md for detailed instructions.
-  FFMPEG_RELEASE_TAG: "autobuild-2026-08-17-13-05"
-  FFMPEG_BUILD_ID: "n8.1.2-44-g7c533d0f86"
-  FFMPEG_LINUX64_SHA256: "194dc8d525ac8cea5a5ff2e6fd44754747e69af5a766e7a6727cce363bd65de6"
+  FFMPEG_RELEASE_TAG: "autobuild-2026-09-02-13-13"
+  FFMPEG_BUILD_ID: "n8.1.2-50-g1a748fe2cd"
+  FFMPEG_LINUX64_SHA256: "628c408c13e8fda95a730cba1aa0b250a858e0b35d3c36a9764eaf6141b58cb3"
 
 jobs:
   analyze:
