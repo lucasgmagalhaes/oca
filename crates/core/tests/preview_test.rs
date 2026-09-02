@@ -983,3 +983,71 @@ fn set_live_chroma_key_returns_false_for_a_mismatched_clip_id() {
 
     assert!(!preview.set_live_chroma_key(overlay_clip.id + 1, [0, 255, 0], 0.4));
 }
+
+// Same P1 item 3 gap, same shape, for Preview::set_live_mask's mask appsrc -- built only for a
+// composited-overlay branch with a non-None mask_shape, unlike balance/blur (and like chroma
+// key, gated behind a condition rather than a gradually-approached intensity).
+
+/// A single-clip (non-composited) pipeline never builds a mask branch at all -- `set_live_mask`
+/// must not silently pretend it worked.
+#[test]
+fn set_live_mask_returns_false_when_no_element_was_built() {
+    let plain_clip = clip();
+    let preview = Preview::open(&fixture("video.mp4"), Some(&plain_clip)).unwrap();
+
+    assert!(!preview
+        .set_live_mask(plain_clip.id, MaskShape::Circle, 0.2)
+        .unwrap());
+}
+
+/// A mismatched clip id (not the overlay clip the pipeline was actually built for) must not
+/// find some other clip's element by accident.
+#[test]
+fn set_live_mask_returns_false_for_a_mismatched_clip_id() {
+    let background = fixture("video.mp4");
+    let overlay_source = fixture("video.mp4");
+    let mut overlay_clip = clip();
+    overlay_clip.id = 2;
+    overlay_clip.mask_shape = MaskShape::Circle;
+
+    let preview = Preview::open_composited(
+        &background,
+        None,
+        &[(overlay_source.as_path(), &overlay_clip)],
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
+
+    assert!(!preview
+        .set_live_mask(overlay_clip.id + 1, MaskShape::Circle, 0.2)
+        .unwrap());
+}
+
+/// Pushing `MaskShape::None` live must always decline -- `render_mask_shape_gray8` returns an
+/// all-zero (fully *masked*) buffer for `None`, which would be actively wrong to push live (it
+/// would make the whole overlay vanish instead of removing the mask). Turning masking back off
+/// still needs the existing incidental-reopen fallback.
+#[test]
+fn set_live_mask_returns_false_for_mask_shape_none() {
+    let background = fixture("video.mp4");
+    let overlay_source = fixture("video.mp4");
+    let mut overlay_clip = clip();
+    overlay_clip.id = 2;
+    overlay_clip.mask_shape = MaskShape::Circle;
+
+    let preview = Preview::open_composited(
+        &background,
+        None,
+        &[(overlay_source.as_path(), &overlay_clip)],
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
+
+    assert!(!preview
+        .set_live_mask(overlay_clip.id, MaskShape::None, 0.2)
+        .unwrap());
+}
