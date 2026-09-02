@@ -1,0 +1,141 @@
+name: CodeQL
+
+# Runs automatically (unlike ci.yml, whose push/pull_request triggers are disabled for CI-credit
+# reasons) -- static analysis is cheap relative to this workspace's own build/test matrix and the
+# user explicitly wants it always on.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly sweep so languages with no recent commits still get re-scanned against newly
+    # published CodeQL query packs.
+    - cron: "0 5 * * 1"
+  workflow_dispatch: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  # Same FFmpeg pinning as ci.yml's build-and-test-linux job -- keep these two in sync when
+  # upgrading FFmpeg. See .github/FFMPEG_UPDATE.md for detailed instructions.
+  FFMPEG_RELEASE_TAG: "autobuild-2026-09-02-13-13"
+  FFMPEG_BUILD_ID: "n8.1.2-50-g1a748fe2cd"
+  FFMPEG_LINUX64_SHA256: "628c408c13e8fda95a730cba1aa0b250a858e0b35d3c36a9764eaf6141b58cb3"
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      # security-events: write is what lets the upload-sarif step publish results to the repo's
+      # Security tab; actions: read and contents: read are CodeQL's own minimum for a private repo.
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Rust (avcore/avbridge/ui) and Python (e2e/ UI tests, packaging/ release scripts) are
+          # both database-extraction languages -- CodeQL builds their database straight from
+          # source, no compiler invocation needed.
+          - language: rust
+            build-mode: none
+          - language: python
+            build-mode: none
+          # The hand-written FFI bridge in crates/avbridge/csrc/ (bridge.c, filters.c, export.c,
+          # timeline_export*.c, ...) is plain C calling libavformat/libavcodec/libavfilter/
+          # libavutil directly -- exactly the buffer-handling/pointer-arithmetic surface CodeQL's
+          # C/C++ queries are aimed at. build-mode: manual (not autobuild) since this is a Cargo
+          # workspace, not a Makefile/CMake project -- CodeQL traces the cc invocations build.rs
+          # itself makes during a normal `cargo build`, so the actual build step below is just
+          # that.
+          - language: c-cpp
+            build-mode: manual
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust stable
+        if: matrix.language == 'rust' || matrix.language == 'c-cpp'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        if: matrix.language == 'c-cpp'
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache FFmpeg dev build
+        if: matrix.language == 'c-cpp'
+        id: ffmpeg-cache
+        uses: actions/cache@v6
+        with:
+          path: ffmpeg-dev
+          key: ffmpeg-btbn-linux64-lgpl-shared-${{ env.FFMPEG_RELEASE_TAG }}-${{ env.FFMPEG_LINUX64_SHA256 }}
+
+      # Same pinned-release-plus-checksum download as ci.yml's build-and-test-linux job -- see
+      # that job's own comment for the update procedure (.github/FFMPEG_UPDATE.md).
+      - name: Download and verify FFmpeg dev build (BtbN)
+        if: matrix.language == 'c-cpp' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: |
+          release_tag="${{ env.FFMPEG_RELEASE_TAG }}"
+          expected_sha256="${{ env.FFMPEG_LINUX64_SHA256 }}"
+
+          if [[ "$expected_sha256" == *"PLACEHOLDER"* ]]; then
+            echo "FFMPEG_LINUX64_SHA256 contains a placeholder value." >&2
+            echo "Please update the checksums in .github/workflows/codeql.yml" >&2
+            echo "See .github/FFMPEG_UPDATE.md for instructions." >&2
+            exit 1
+          fi
+
+          build_id="${{ env.FFMPEG_BUILD_ID }}"
+          uri="https://github.com/BtbN/FFmpeg-Builds/releases/download/${release_tag}/ffmpeg-${build_id}-linux64-lgpl-shared-8.1.tar.xz"
+          max_attempts=5
+          for attempt in $(seq 1 $max_attempts); do
+            if curl -fsSL -o ffmpeg.tar.xz "$uri"; then
+              break
+            fi
+            if [ "$attempt" -eq "$max_attempts" ]; then
+              echo "Download failed after $max_attempts attempts" >&2
+              exit 1
+            fi
+            delay=$((15 * attempt))
+            echo "Download failed (attempt $attempt/$max_attempts). Retrying in ${delay}s..."
+            sleep "$delay"
+          done
+          actual_sha256=$(sha256sum ffmpeg.tar.xz | awk '{print $1}')
+          if [ "$actual_sha256" != "$expected_sha256" ]; then
+            echo "FFmpeg checksum mismatch! Expected: $expected_sha256, Got: $actual_sha256" >&2
+            echo "This may indicate a compromised download or an outdated checksum." >&2
+            exit 1
+          fi
+          echo "FFmpeg checksum verified: $actual_sha256"
+          tar -xf ffmpeg.tar.xz
+          dir=$(find . -maxdepth 1 -name 'ffmpeg-*' -type d | head -1)
+          mv "$dir" ffmpeg-dev
+
+      - name: Export FFMPEG_DIR and LD_LIBRARY_PATH
+        if: matrix.language == 'c-cpp'
+        run: |
+          echo "FFMPEG_DIR=$(pwd)/ffmpeg-dev" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$(pwd)/ffmpeg-dev/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      # Only the C/C++ database needs an actual compile -- avbridge's build.rs is what invokes
+      # cc against csrc/*.c, so a normal cargo build is enough for CodeQL's build tracer to see
+      # every compilation unit. Building just the -p avbridge crate (not --workspace) keeps this
+      # from also having to satisfy whisper-rs/ort's own heavier build requirements for a job
+      # that only cares about the C sources.
+      - name: Build (C/C++ only)
+        if: matrix.build-mode == 'manual'
+        run: cargo build -p avbridge
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
