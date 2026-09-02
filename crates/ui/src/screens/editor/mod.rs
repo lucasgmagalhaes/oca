@@ -370,44 +370,59 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             app.toggle_transcript_panel();
         }
         ui.separator();
-        if ui.button(Text::DetectSilence.tr(locale)).clicked() {
-            app.begin_silence_review();
-        }
-        if ui.button(Text::DetectSpeechEdits.tr(locale)).clicked() {
-            app.begin_transcript_proposals();
-        }
-        if ui.button(Text::DetectChapters.tr(locale)).clicked() {
-            app.spawn_detect_scene_cuts_for_selected_clip();
-        }
-        if ui.button(Text::ExportChapters.tr(locale)).clicked() {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("text", &["txt"])
-                .set_file_name("chapters.txt")
-                .save_file()
-            {
-                app.export_chapters_txt(path);
+        // Detection/analysis actions (silence, speech edits, chapters, highlights, gameplay
+        // events, shorts pack) are reach-for-occasionally passes over the whole sequence, not
+        // moment-to-moment editing tools — grouped behind one menu instead of seven permanent
+        // toolbar buttons sitting alongside Select/Trim/Cut, per UX_PRINCIPLES.md's progressive
+        // disclosure ("advanced operations should not permanently clutter the workspace").
+        ui.menu_button(Text::AnalyzeMenu.tr(locale), |ui| {
+            if ui.button(Text::DetectSilence.tr(locale)).clicked() {
+                app.begin_silence_review();
+                ui.close();
             }
-        }
-        if ui.button(Text::DetectHighlights.tr(locale)).clicked() {
-            app.detect_highlights();
-        }
-        if ui.button(Text::ImportGameplayEvents.tr(locale)).clicked() {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("json", &["json"])
-                .pick_file()
-            {
-                app.import_gameplay_events(path);
+            if ui.button(Text::DetectSpeechEdits.tr(locale)).clicked() {
+                app.begin_transcript_proposals();
+                ui.close();
             }
-        }
-        if ui.button(Text::ShortsPack.tr(locale)).clicked() {
-            let mut dialog = rfd::FileDialog::new();
-            if !app.prefs.output_folder.is_empty() {
-                dialog = dialog.set_directory(&app.prefs.output_folder);
+            if ui.button(Text::DetectChapters.tr(locale)).clicked() {
+                app.spawn_detect_scene_cuts_for_selected_clip();
+                ui.close();
             }
-            if let Some(output_dir) = dialog.pick_folder() {
-                app.spawn_shorts_pack(output_dir);
+            if ui.button(Text::ExportChapters.tr(locale)).clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("text", &["txt"])
+                    .set_file_name("chapters.txt")
+                    .save_file()
+                {
+                    app.export_chapters_txt(path);
+                }
+                ui.close();
             }
-        }
+            if ui.button(Text::DetectHighlights.tr(locale)).clicked() {
+                app.detect_highlights();
+                ui.close();
+            }
+            if ui.button(Text::ImportGameplayEvents.tr(locale)).clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("json", &["json"])
+                    .pick_file()
+                {
+                    app.import_gameplay_events(path);
+                }
+                ui.close();
+            }
+            ui.separator();
+            if ui.button(Text::ShortsPack.tr(locale)).clicked() {
+                let mut dialog = rfd::FileDialog::new();
+                if !app.prefs.output_folder.is_empty() {
+                    dialog = dialog.set_directory(&app.prefs.output_folder);
+                }
+                if let Some(output_dir) = dialog.pick_folder() {
+                    app.spawn_shorts_pack(output_dir);
+                }
+                ui.close();
+            }
+        });
         ui.separator();
         if ui
             .button(Text::CreateMulticamGroup.tr(locale))

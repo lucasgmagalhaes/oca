@@ -134,8 +134,10 @@ pub(super) fn shape_clip_properties(
         let mut new_vertices = None;
         if components::property_section(
             ui,
+            sc_id,
             Text::PropShapeVertices.tr(locale),
             Text::ShapeVerticesHint.tr(locale),
+            true,
             |ui| {
                 new_vertices =
                     super::keyframe_editors::polygon_vertex_editor(ui, &vertices, locale);
@@ -192,8 +194,10 @@ pub(super) fn shape_clip_properties(
     let mut new_center_x_keyframes = None;
     if components::property_section(
         ui,
+        sc_id,
         Text::PropShapePosXKeyframes.tr(locale),
         Text::ShapePositionKeyframesExportNote.tr(locale),
+        !sc.center_x_keyframes.is_empty(),
         |ui| {
             new_center_x_keyframes = super::keyframe_editors::f32_keyframe_editor(
                 ui,
@@ -213,8 +217,10 @@ pub(super) fn shape_clip_properties(
     let mut new_center_y_keyframes = None;
     if components::property_section(
         ui,
+        sc_id,
         Text::PropShapePosYKeyframes.tr(locale),
         Text::ShapePositionKeyframesExportNote.tr(locale),
+        !sc.center_y_keyframes.is_empty(),
         |ui| {
             new_center_y_keyframes = super::keyframe_editors::f32_keyframe_editor(
                 ui,
@@ -260,8 +266,10 @@ pub(super) fn shape_clip_properties(
     let mut new_width_keyframes = None;
     if components::property_section(
         ui,
+        sc_id,
         Text::PropShapeWidthKeyframes.tr(locale),
         Text::ShapeSizeKeyframesExportNote.tr(locale),
+        !sc.width_keyframes.is_empty(),
         |ui| {
             new_width_keyframes = super::keyframe_editors::f32_keyframe_editor(
                 ui,
@@ -281,8 +289,10 @@ pub(super) fn shape_clip_properties(
     let mut new_height_keyframes = None;
     if components::property_section(
         ui,
+        sc_id,
         Text::PropShapeHeightKeyframes.tr(locale),
         Text::ShapeSizeKeyframesExportNote.tr(locale),
+        !sc.height_keyframes.is_empty(),
         |ui| {
             new_height_keyframes = super::keyframe_editors::f32_keyframe_editor(
                 ui,
@@ -315,8 +325,10 @@ pub(super) fn shape_clip_properties(
     let mut new_rotation_keyframes = None;
     if components::property_section(
         ui,
+        sc_id,
         Text::PropShapeRotationKeyframes.tr(locale),
         Text::ShapeRotationKeyframesExportNote.tr(locale),
+        !sc.rotation_keyframes.is_empty(),
         |ui| {
             new_rotation_keyframes = super::keyframe_editors::f32_keyframe_editor(
                 ui,

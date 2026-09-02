@@ -232,13 +232,15 @@ impl App {
         }
     }
 
-    /// Requests a source frame for one visible timeline filmstrip tile. A no-op when the key is
-    /// cached, pending, recently failed, or [`THUMBNAIL_MAX_PENDING`] extractions are already
-    /// running. Skipped-over visible keys are offered again next frame as slots free up.
-    /// Extraction still runs on a background thread because opening/seeking/decoding a real
-    /// GStreamer pipeline must never block the UI thread.
-    pub fn request_thumbnail(&mut self, asset_id: u64, frame_index: i64) {
-        let key = (asset_id, frame_index);
+    /// Requests a source frame for one visible timeline filmstrip tile, or (frame 0) one media
+    /// library/project card poster frame. `project_id` need not be the active project's — the
+    /// Início screen's project cards request thumbnails for every project's assets, not just
+    /// the currently open one. A no-op when the key is cached, pending, recently failed, or
+    /// [`THUMBNAIL_MAX_PENDING`] extractions are already running. Skipped-over visible keys are
+    /// offered again next frame as slots free up. Extraction still runs on a background thread
+    /// because opening/seeking/decoding a real GStreamer pipeline must never block the UI thread.
+    pub fn request_thumbnail(&mut self, project_id: u64, asset_id: u64, frame_index: i64) {
+        let key = (project_id, asset_id, frame_index);
         if self.thumbnail_state.thumbnail_textures.contains_key(&key)
             || self.thumbnail_state.pending_thumbnails.contains(&key)
             || self.thumbnail_state.failed_thumbnails.contains_key(&key)
@@ -248,10 +250,10 @@ impl App {
         }
 
         let Some(asset) = self
-            .active_project()
-            .media_library
+            .projects
             .iter()
-            .find(|a| a.id == asset_id)
+            .find(|p| p.id == project_id)
+            .and_then(|p| p.media_library.iter().find(|a| a.id == asset_id))
         else {
             self.remember_thumbnail_failure(key);
             return;
@@ -267,6 +269,7 @@ impl App {
         std::thread::spawn(move || {
             let result = match extract_thumbnail(&path, at_secs) {
                 Some((width, height, rgba)) => ThumbnailReady::Ready {
+                    project_id,
                     asset_id,
                     frame_index,
                     width,
@@ -274,6 +277,7 @@ impl App {
                     rgba,
                 },
                 None => ThumbnailReady::Failed {
+                    project_id,
                     asset_id,
                     frame_index,
                 },
@@ -305,20 +309,21 @@ impl App {
         while let Ok(ready) = self.thumbnail_state.thumbnail_rx.try_recv() {
             match ready {
                 ThumbnailReady::Ready {
+                    project_id,
                     asset_id,
                     frame_index,
                     width,
                     height,
                     rgba,
                 } => {
-                    let key = (asset_id, frame_index);
+                    let key = (project_id, asset_id, frame_index);
                     self.thumbnail_state.pending_thumbnails.remove(&key);
                     let image = egui::ColorImage::from_rgba_unmultiplied(
                         [width as usize, height as usize],
                         &rgba,
                     );
                     let texture = ctx.load_texture(
-                        format!("thumb-{asset_id}-{frame_index}"),
+                        format!("thumb-{project_id}-{asset_id}-{frame_index}"),
                         image,
                         egui::TextureOptions::LINEAR,
                     );
@@ -328,10 +333,11 @@ impl App {
                     self.evict_thumbnail_textures();
                 }
                 ThumbnailReady::Failed {
+                    project_id,
                     asset_id,
                     frame_index,
                 } => {
-                    let key = (asset_id, frame_index);
+                    let key = (project_id, asset_id, frame_index);
                     self.thumbnail_state.pending_thumbnails.remove(&key);
                     self.remember_thumbnail_failure(key);
                 }

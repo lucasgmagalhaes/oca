@@ -13,9 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use eframe::egui::{RichText, Ui};
+use eframe::egui::{CollapsingHeader, RichText, Ui};
 
-use crate::components::section::section_label;
 use crate::theme;
 
 /// The separator/spacing/note shell every clip-properties block shares: a leading `separator()`
@@ -31,17 +30,40 @@ pub fn property_block(ui: &mut Ui, note: &str, content: impl FnOnce(&mut Ui) -> 
     changed
 }
 
-/// A [`property_block`] headed by a [`section_label`] (e.g. "GANHO", a slider, then the export
-/// note) — the shape most clip-properties controls (sliders, combos) share.
+/// A [`property_block`] headed by a collapsible header (e.g. "GANHO", a slider, then the export
+/// note) — the shape most clip-properties controls (sliders, combos) share. Collapsed by default
+/// (`default_open`) unless the caller reports this property already holds a non-default value on
+/// the selected clip — an already-cropped clip's "Crop" section starts open, a clip with no crop
+/// starts closed — so a ~30-section panel doesn't force scrolling past two dozen irrelevant
+/// controls to find the handful actually in use (see `UX_PRINCIPLES.md`'s progressive disclosure
+/// principle). `clip_id` salts the header's remembered open/closed state so switching the
+/// selected clip re-seeds it from that clip's own `default_open`, rather than carrying over
+/// whatever the previously selected clip's section happened to be left at.
 pub fn property_section(
     ui: &mut Ui,
+    clip_id: u64,
     label: &str,
     note: &str,
+    default_open: bool,
     content: impl FnOnce(&mut Ui) -> bool,
 ) -> bool {
     property_block(ui, note, |ui| {
-        section_label(ui, label);
-        content(ui)
+        let mut changed = false;
+        // Matches section_label's uppercase/muted/small/strong treatment rather than
+        // CollapsingHeader's default button-like text, so this still reads as the same section
+        // label it always has — just with a disclosure triangle added, not a different style.
+        CollapsingHeader::new(
+            RichText::new(label.to_uppercase())
+                .size(11.0)
+                .color(theme::TEXT_MUTED)
+                .strong(),
+        )
+        .id_salt((clip_id, label))
+        .default_open(default_open)
+        .show(ui, |ui| {
+            changed = content(ui);
+        });
+        changed
     })
 }
 

@@ -418,6 +418,8 @@ text_catalog! {
     PauseJob: pt_br = "Pausar", en = "Pause";
     Resume: pt_br = "Retomar", en = "Resume";
     OpenFolder: pt_br = "Abrir pasta", en = "Open folder";
+    MoveJobUp: pt_br = "Mover para cima na fila", en = "Move up in queue";
+    MoveJobDown: pt_br = "Mover para baixo na fila", en = "Move down in queue";
     RetryExport: pt_br = "↻ Tentar novamente", en = "↻ Retry";
     ErrorPrefix: pt_br = "Erro", en = "Error";
 
@@ -508,6 +510,7 @@ text_catalog! {
     TimelineIndexAddStandard: pt_br = "+ Marcador", en = "+ Marker";
     TimelineIndexAddToDo: pt_br = "+ Tarefa", en = "+ To Do";
     TimelineIndexAddChapter: pt_br = "+ Capítulo", en = "+ Chapter";
+    AnalyzeMenu: pt_br = "🔍 Detectar/Analisar", en = "🔍 Detect/Analyze";
     DetectSilence: pt_br = "🔇 Detectar silêncio", en = "🔇 Detect Silence";
     SilenceReviewSelectClipFirst: pt_br = "Selecione um clipe na faixa que deseja escanear.", en = "Select a clip on the track you want to scan.";
     SilenceReviewTitle: pt_br = "Revisar silêncios detectados", en = "Review Detected Silence";

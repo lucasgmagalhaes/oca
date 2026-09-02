@@ -732,6 +732,7 @@ enum WatchFolderEvent {
 /// keeps nearby zoom levels able to share cached textures.
 enum ThumbnailReady {
     Ready {
+        project_id: u64,
         asset_id: u64,
         frame_index: i64,
         width: u32,
@@ -739,12 +740,20 @@ enum ThumbnailReady {
         rgba: Vec<u8>,
     },
     Failed {
+        project_id: u64,
         asset_id: u64,
         frame_index: i64,
     },
 }
 
-type ThumbnailKey = (u64, i64);
+/// `(project_id, asset_id, frame_index)` — `project_id` is part of the key because
+/// `MediaAsset::id` is only unique *within* one project (assigned per-project, starting from 1
+/// in each), not globally; without it, two different projects' assets sharing an id would
+/// collide in the shared `thumbnail_textures` cache. Needed since [`App::request_thumbnail`]
+/// serves both the active project's timeline/library (`screens::editor::timeline_panel`,
+/// `screens::library`) and, for the Início screen's project cards, any project in `App::projects`
+/// regardless of which one is active.
+type ThumbnailKey = (u64, u64, i64);
 
 // ClipFormatting is defined in core::timeline and re-exported as avcore::ClipFormatting;
 // the type alias below is kept for in-module readability only.

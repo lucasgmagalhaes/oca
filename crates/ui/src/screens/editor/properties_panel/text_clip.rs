@@ -221,8 +221,10 @@ pub(super) fn text_clip_properties(
     let mut new_pos_x_keyframes = None;
     if components::property_section(
         ui,
+        tc_id,
         Text::PropTextPosXKeyframes.tr(locale),
         Text::TextPositionKeyframesExportNote.tr(locale),
+        !tc.pos_x_keyframes.is_empty(),
         |ui| {
             new_pos_x_keyframes = super::keyframe_editors::f32_keyframe_editor(
                 ui,
@@ -242,8 +244,10 @@ pub(super) fn text_clip_properties(
     let mut new_pos_y_keyframes = None;
     if components::property_section(
         ui,
+        tc_id,
         Text::PropTextPosYKeyframes.tr(locale),
         Text::TextPositionKeyframesExportNote.tr(locale),
+        !tc.pos_y_keyframes.is_empty(),
         |ui| {
             new_pos_y_keyframes = super::keyframe_editors::f32_keyframe_editor(
                 ui,
@@ -266,8 +270,10 @@ pub(super) fn text_clip_properties(
     let mut new_scale_keyframes = None;
     if components::property_section(
         ui,
+        tc_id,
         Text::PropTextScaleKeyframes.tr(locale),
         Text::TextScaleKeyframesExportNote.tr(locale),
+        !tc.scale_keyframes.is_empty(),
         |ui| {
             new_scale_keyframes = super::keyframe_editors::f32_keyframe_editor(
                 ui,
@@ -291,8 +297,10 @@ pub(super) fn text_clip_properties(
     let mut new_rotation_keyframes = None;
     if components::property_section(
         ui,
+        tc_id,
         Text::PropTextRotationKeyframes.tr(locale),
         Text::TextRotationKeyframesExportNote.tr(locale),
+        !tc.rotation_keyframes.is_empty(),
         |ui| {
             new_rotation_keyframes = super::keyframe_editors::f32_keyframe_editor(
                 ui,
@@ -315,8 +323,10 @@ pub(super) fn text_clip_properties(
     let mut new_opacity_keyframes = None;
     if components::property_section(
         ui,
+        tc_id,
         Text::PropTextOpacityKeyframes.tr(locale),
         Text::TextOpacityKeyframesExportNote.tr(locale),
+        !tc.opacity_keyframes.is_empty(),
         |ui| {
             new_opacity_keyframes = super::keyframe_editors::f32_keyframe_editor(
                 ui,

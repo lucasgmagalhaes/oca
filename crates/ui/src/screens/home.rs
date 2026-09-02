@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use avcore::media::MediaKind;
 use eframe::egui::{self, RichText};
 
 use crate::app::App;
@@ -97,8 +98,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 let mut rename_index: Option<usize> = None;
                 let mut col = 0usize;
                 let cols_per_row = 3usize;
+                // (project_id, asset_id) pairs collected during this loop's card rendering,
+                // applied after it ends — same "collect-during-loop, apply-after" shape
+                // `screens::library` uses, needed because `App::request_thumbnail` takes
+                // `&mut self` while the card closures below only ever borrow `app` immutably.
+                let mut thumbnail_requests: Vec<(u64, u64)> = Vec::new();
+                let mut thumbnail_touches: Vec<(u64, u64, i64)> = Vec::new();
                 for i in 0..count {
                     let project = &app.projects[i];
+                    let project_id = project.id;
                     let name = project.name.clone();
                     let summary = project.summary.clone();
                     let meta = crate::i18n::recency_label(app.locale, project.last_edited);
@@ -113,6 +121,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         project.media_library.len(),
                         &track_names,
                     );
+                    // A representative poster frame for the project card — the first video
+                    // asset in its library, same "real content over a generic icon" reasoning
+                    // as `screens::library`'s own media cards, reusing the same thumbnail
+                    // pipeline/cache rather than a separate one.
+                    let poster_asset_id = project
+                        .media_library
+                        .iter()
+                        .find(|a| a.kind == MediaKind::Video)
+                        .map(|a| a.id);
 
                     let resp = components::card_frame().show(ui, |ui| {
                         ui.set_width(card_width - 28.0);
@@ -123,11 +140,39 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                 .show(ui, |ui| {
                                     ui.set_min_width(ui.available_width());
                                     ui.set_min_height(90.0);
-                                    ui.centered_and_justified(|ui| {
-                                        ui.label(
-                                            RichText::new("▶").size(26.0).color(theme::TEXT_MUTED),
-                                        );
+                                    let thumbnail = poster_asset_id.and_then(|asset_id| {
+                                        app.thumbnail_state
+                                            .thumbnail_textures
+                                            .get(&(project_id, asset_id, 0))
                                     });
+                                    match thumbnail {
+                                        Some(texture) => {
+                                            thumbnail_touches.push((
+                                                project_id,
+                                                poster_asset_id
+                                                    .expect("thumbnail implies asset id"),
+                                                0,
+                                            ));
+                                            let size = ui.available_size();
+                                            ui.add(
+                                                egui::Image::new((texture.id(), size))
+                                                    .fit_to_exact_size(size)
+                                                    .corner_radius(theme::RADIUS_SM),
+                                            );
+                                        }
+                                        None => {
+                                            if let Some(asset_id) = poster_asset_id {
+                                                thumbnail_requests.push((project_id, asset_id));
+                                            }
+                                            ui.centered_and_justified(|ui| {
+                                                ui.label(
+                                                    RichText::new("▶")
+                                                        .size(26.0)
+                                                        .color(theme::TEXT_MUTED),
+                                                );
+                                            });
+                                        }
+                                    }
                                 });
                             ui.add_space(10.0);
                             ui.label(RichText::new(kicker).size(11.0).color(theme::TEXT_MUTED));
@@ -184,6 +229,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         col = 0;
                         ui.end_row();
                     }
+                }
+
+                app.touch_thumbnails(&thumbnail_touches);
+                for (project_id, asset_id) in thumbnail_requests {
+                    app.request_thumbnail(project_id, asset_id, 0);
                 }
 
                 if let Some(i) = rename_index {
