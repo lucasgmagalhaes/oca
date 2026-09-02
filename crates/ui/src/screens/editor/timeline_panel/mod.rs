@@ -378,6 +378,28 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     let painter = ui.painter();
                     for clip in &track.clips {
                         let x = track_rect.left() + clip.start_secs as f32 * px_per_sec;
+                        // Viewport culling (TIMELINE_PERFORMANCE.md's documented "no track/clip-
+                        // level culling" gap): a clip whose left edge already starts past the
+                        // visible right edge is entirely off-screen — nothing before x=0 is ever
+                        // hidden (the timeline has no horizontal scroll offset of its own, only
+                        // zoom, so the visible window always starts at 0), so this one-sided
+                        // check is enough to skip every off-screen clip's interaction/paint/
+                        // thumbnail cost without risking a false negative on a partially visible
+                        // one. Never skip a clip currently mid-drag/trim, even if the drag has
+                        // carried it past the visible edge — this loop is also what keeps
+                        // `ui.interact`'s click_and_drag/drag response alive for that id every
+                        // frame; skipping it mid-gesture would silently abandon the drag instead
+                        // of just not painting an off-screen clip. Checked against all three
+                        // widget ids this clip can register (body move, start trim, end trim).
+                        let clip_widget_id = ui.id().with(("timeline_clip", clip.id));
+                        let trim_start_id = ui.id().with(("timeline_clip_trim_start", clip.id));
+                        let trim_end_id = ui.id().with(("timeline_clip_trim_end", clip.id));
+                        let clip_being_dragged = ui.ctx().dragged_id().is_some_and(|id| {
+                            id == clip_widget_id || id == trim_start_id || id == trim_end_id
+                        });
+                        if x > track_rect.right() && !clip_being_dragged {
+                            continue;
+                        }
                         let w = (clip.duration_secs() as f32 * px_per_sec).max(3.0);
                         let clip_rect = egui::Rect::from_min_size(
                             egui::pos2(x, track_rect.top()),
@@ -419,7 +441,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         // "metadata, not content" split as `visible` above.
                         let body_response = ui.interact(
                             clip_rect,
-                            ui.id().with(("timeline_clip", clip.id)),
+                            clip_widget_id,
                             if track.locked {
                                 egui::Sense::click()
                             } else {
@@ -560,16 +582,8 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         } else {
                             egui::Sense::drag()
                         };
-                        let left_response = ui.interact(
-                            left_edge_rect,
-                            ui.id().with(("timeline_clip_trim_start", clip.id)),
-                            edge_sense,
-                        );
-                        let right_response = ui.interact(
-                            right_edge_rect,
-                            ui.id().with(("timeline_clip_trim_end", clip.id)),
-                            edge_sense,
-                        );
+                        let left_response = ui.interact(left_edge_rect, trim_start_id, edge_sense);
+                        let right_response = ui.interact(right_edge_rect, trim_end_id, edge_sense);
                         if left_response.hovered()
                             || left_response.dragged()
                             || right_response.hovered()
@@ -817,6 +831,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     if track.kind == avcore::timeline::TrackKind::Text {
                         for tc in &track.text_clips {
                             let x = track_rect.left() + tc.start_secs as f32 * px_per_sec;
+                            // Same viewport-culling reasoning as the video/audio clip loop above.
+                            if x > track_rect.right() {
+                                continue;
+                            }
                             let w = (tc.duration_secs as f32 * px_per_sec).max(3.0);
                             let tc_rect = egui::Rect::from_min_size(
                                 egui::pos2(x, track_rect.top()),
@@ -872,6 +890,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     if track.kind == avcore::timeline::TrackKind::Shape {
                         for sc in &track.shape_clips {
                             let x = track_rect.left() + sc.start_secs as f32 * px_per_sec;
+                            // Same viewport-culling reasoning as the video/audio clip loop above.
+                            if x > track_rect.right() {
+                                continue;
+                            }
                             let w = (sc.duration_secs as f32 * px_per_sec).max(3.0);
                             let sc_rect = egui::Rect::from_min_size(
                                 egui::pos2(x, track_rect.top()),
