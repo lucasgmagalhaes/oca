@@ -1143,18 +1143,39 @@ impl App {
         let Some(clip_id) = self.preview_state.preview_clip_id else {
             return;
         };
-        let Some(clip) = self
+        // Just the scalar fields this playhead-advance math actually reads, not a full
+        // ClipInstance clone (which would drag along every keyframe Vec on the clip) — this
+        // runs every frame during playback, the same hot-path discipline
+        // current_preview_clip_lut_and_vignette already applies a few lines up.
+        let Some((
+            frozen,
+            start_secs,
+            duration_secs,
+            source_in_secs,
+            source_out_secs,
+            speed_factor,
+        )) = self
             .active_project()
             .timeline()
             .tracks
             .iter()
-            .find_map(|t| t.clips.iter().find(|c| c.id == clip_id))
-            .cloned()
+            .find_map(|t| {
+                t.clips.iter().find(|c| c.id == clip_id).map(|c| {
+                    (
+                        c.frozen,
+                        c.start_secs,
+                        c.duration_secs(),
+                        c.source_in_secs,
+                        c.source_out_secs,
+                        c.speed_factor,
+                    )
+                })
+            })
         else {
             return;
         };
 
-        let new_playhead = if clip.frozen {
+        let new_playhead = if frozen {
             // The pipeline is paused on the held anchor frame (see ensure_preview_loaded), so
             // there's no Preview::position_secs to derive playback progress from — advance the
             // playhead by wall-clock time elapsed since playback started instead, same
@@ -1162,23 +1183,18 @@ impl App {
             let (started_at, playhead_at_start) = *self
                 .preview_state
                 .preview_frozen_since
-                .get_or_insert_with(|| (std::time::Instant::now(), clip.start_secs));
+                .get_or_insert_with(|| (std::time::Instant::now(), start_secs));
             let elapsed = started_at.elapsed().as_secs_f64();
-            frozen_playhead(
-                playhead_at_start,
-                elapsed,
-                clip.start_secs,
-                clip.duration_secs(),
-            )
+            frozen_playhead(playhead_at_start, elapsed, start_secs, duration_secs)
         } else {
             let Some(position) = preview.position_secs() else {
                 return;
             };
-            if position >= clip.source_out_secs {
-                clip.start_secs + clip.duration_secs()
+            if position >= source_out_secs {
+                start_secs + duration_secs
             } else {
-                let speed = clip.speed_factor.max(0.01) as f64;
-                clip.start_secs + (position - clip.source_in_secs) / speed
+                let speed = speed_factor.max(0.01) as f64;
+                start_secs + (position - source_in_secs) / speed
             }
         };
         self.active_project_mut().timeline_mut().playhead_secs = new_playhead;
