@@ -81,6 +81,31 @@ make clean     # cargo clean
 Without `make`, the equivalent `cargo`/`rustup` commands are in the `Makefile` itself — every
 target is a one-liner.
 
+### Optional: caching the whisper-rs-sys C++ build with sccache
+
+`whisper-rs-sys` (Whisper subtitles) shells out to `cmake` to build `whisper.cpp` — one of
+the slowest single build steps from a clean `target/` (~30s alone). Its `build.rs` forwards
+any `CMAKE_*`/`GGML_*`/`WHISPER_*` env var straight into the `cmake` invocation, so
+[`sccache`](https://github.com/mozilla/sccache) can cache that C++ compilation across clean
+builds — but only if CMake actually uses a generator that honors compiler-launcher vars.
+The default generator on Windows (`Visual Studio 17 2022`) silently ignores
+`CMAKE_C_COMPILER_LAUNCHER`/`CMAKE_CXX_COMPILER_LAUNCHER` — confirmed empirically (0 sccache
+compile requests with it set). Switching to Ninja makes sccache get invoked, but Ninja calls
+`cl.exe` directly without the `INCLUDE`/`LIB` env the VS generator normally injects via its
+generated `.vcxproj` files — running this from a plain shell (not a VS dev prompt) breaks the
+build outright (cmake exit code 2). To actually get cache hits, run from a shell that has
+already sourced `vcvarsall.bat x64` (or an "x64 Native Tools Command Prompt"), then:
+
+```bash
+export CMAKE_GENERATOR=Ninja
+export CMAKE_C_COMPILER_LAUNCHER=sccache
+export CMAKE_CXX_COMPILER_LAUNCHER=sccache
+```
+
+alongside the usual `FFMPEG_DIR`/`PKG_CONFIG_PATH`/`LIBCLANG_PATH` before `cargo build`. This
+is a manual, per-shell opt-in — not wired into `make build` or CI, and not worth it unless
+`target/` gets wiped often.
+
 ## Status
 
 The original Fase 1-8 plan is effectively complete. Oca now has a wired GStreamer preview,
