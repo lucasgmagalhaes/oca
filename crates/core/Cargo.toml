@@ -111,7 +111,7 @@ rmpv = "1"
 # match the bundled font bytes (spec/architecture/built-in-font-catalog.md's "verify SHA-256"
 # requirement). Hashing belongs in CI/tests, not the shipped binary — see that doc's security
 # section ("parse in CI and isolated tests, not in the privileged acquisition process").
-sha2 = "0.10"
+sha2 = "0.11"
 # Only for persistence_test.rs's decompression-bomb-cap test: builds a raw gzip stream by hand
 # (bypassing to_ocproj_bytes) so the test can assert on the framing internals directly.
 flate2 = "1"
