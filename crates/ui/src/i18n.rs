@@ -619,6 +619,8 @@ text_catalog! {
     TextAlignLeft: pt_br = "Esquerda", en = "Left";
     TextAlignCenter: pt_br = "Centro", en = "Center";
     TextAlignRight: pt_br = "Direita", en = "Right";
+    TextAlignStart: pt_br = "Início", en = "Start";
+    TextAlignEnd: pt_br = "Fim", en = "End";
     TextBidiControlWarning: pt_br = "⚠ Este texto contém caracteres invisíveis de controle de direção que podem alterar como ele é exibido.", en = "⚠ This text contains invisible directional-control characters that can change how it renders.";
     PropTextColor: pt_br = "Cor do texto", en = "Text color";
     PropTextBackgroundEnabled: pt_br = "Fundo", en = "Background";
