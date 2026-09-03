@@ -40,6 +40,7 @@ pub mod interchange;
 pub mod keyframe;
 pub mod loudness;
 pub mod media;
+pub mod motion_template;
 pub mod motion_tracking;
 pub mod multicam_sync;
 pub mod nested_sequence;
