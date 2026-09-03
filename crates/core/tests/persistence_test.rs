@@ -224,6 +224,8 @@ fn project_with_styled_text() -> Project {
             pos_y_keyframes: vec![],
             scale_keyframes: vec![],
             rotation_keyframes: vec![],
+            direction: Default::default(),
+            language: None,
         }],
         shape_clips: vec![],
         visible: true,
@@ -588,6 +590,7 @@ fn queued_text_segments_without_a_glyph_range_load_as_whole_text() {
         scale_keyframe_expr_y: String::new(),
         rotation_keyframe_expr_x: String::new(),
         rotation_keyframe_expr_y: String::new(),
+        direction: Default::default(),
     }];
     let bytes = to_ocqueue_bytes(&original).unwrap();
     let mut msgpack = Vec::new();

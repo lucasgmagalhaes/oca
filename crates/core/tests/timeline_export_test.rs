@@ -410,6 +410,8 @@ fn word_highlight_text_overlay_exports_without_error() {
             pos_y_keyframes: vec![],
             scale_keyframes: vec![],
             rotation_keyframes: vec![],
+            direction: Default::default(),
+            language: None,
         }],
         shape_clips: vec![],
         visible: true,

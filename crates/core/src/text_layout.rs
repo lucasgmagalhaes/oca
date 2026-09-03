@@ -32,6 +32,7 @@
 //! for the same reason the acceptance spike relied on: it only ever matches families already
 //! present in the `fontdb::Database` it was built with.
 
+use std::borrow::Cow;
 use std::ops::Range;
 use std::sync::{Mutex, OnceLock};
 
@@ -40,7 +41,17 @@ use cosmic_text::{
 };
 
 use crate::font_catalog;
-use crate::timeline::{TextFontFamily, TextFontStyle};
+use crate::timeline::{TextDirection, TextFontFamily, TextFontStyle};
+
+/// Left-to-right mark (U+200E) / right-to-left mark (U+200F) — invisible, zero-advance format
+/// characters whose own bidi class (`L`/`R`) is "strong" for UAX #9's P2/P3 first-strong-char
+/// paragraph-direction detection. Prepending one forces [`TextDirection::Ltr`]/`::Rtl` as the
+/// paragraph's base level without acting as a bidi *override*: unlike LRE/RLE/LRO/RLO, embedded
+/// runs of the opposite script still resolve normally within that pinned level (matching CSS's
+/// `direction` property, not `unicode-bidi: bidi-override`) — see [`TextDirection`]'s own doc
+/// comment. Both are 3 bytes in UTF-8.
+const LEFT_TO_RIGHT_MARK: char = '\u{200E}';
+const RIGHT_TO_LEFT_MARK: char = '\u{200F}';
 
 /// One positioned glyph within a [`ShapedLine`], already placed at its final canvas-relative
 /// pixel position (the `origin` passed to [`TextLayoutEngine::shape`] is baked in).
@@ -153,6 +164,12 @@ impl TextLayoutEngine {
     /// previous `overlay_render.rs` renderer used). `font_size_px` is treated the same way that
     /// renderer already treated [`crate::timeline::TextClip::font_size`] — as a plain pixel size,
     /// not converted from points — so this stays numerically comparable.
+    ///
+    /// `direction` overrides UAX #9's own auto-detected paragraph base level when not
+    /// [`TextDirection::Auto`] — see [`TextDirection`]'s own doc comment. Every returned
+    /// [`ShapedGlyph::cluster`] is still a byte range into `text` exactly as passed in: the
+    /// bidi-mark prefix this uses internally to pin the direction is stripped back out of both
+    /// the glyph list and every cluster offset before returning, so callers never see it.
     pub fn shape(
         &mut self,
         text: &str,
@@ -161,7 +178,19 @@ impl TextLayoutEngine {
         font_size_px: f32,
         max_width_px: Option<f32>,
         origin: (f32, f32),
+        direction: TextDirection,
     ) -> ShapedText {
+        let mark = match direction {
+            TextDirection::Auto => None,
+            TextDirection::Ltr => Some(LEFT_TO_RIGHT_MARK),
+            TextDirection::Rtl => Some(RIGHT_TO_LEFT_MARK),
+        };
+        let prefix_len = mark.map_or(0, char::len_utf8);
+        let shaped_text: Cow<str> = match mark {
+            Some(mark) => Cow::Owned(format!("{mark}{text}")),
+            None => Cow::Borrowed(text),
+        };
+
         let metrics = Metrics::new(font_size_px, font_size_px * 1.25);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         let attrs = Attrs::new()
@@ -170,7 +199,7 @@ impl TextLayoutEngine {
         {
             let mut buffer = buffer.borrow_with(&mut self.font_system);
             buffer.set_size(max_width_px, None);
-            buffer.set_text(text, &attrs, Shaping::Advanced, None);
+            buffer.set_text(&shaped_text, &attrs, Shaping::Advanced, None);
             buffer.shape_until_scroll(true);
         }
 
@@ -187,6 +216,12 @@ impl TextLayoutEngine {
             let mut glyphs = Vec::with_capacity(run.glyphs.len());
             let mut line_width = 0.0f32;
             for g in run.glyphs.iter() {
+                // The bidi-mark's own cluster never corresponds to any character in the
+                // caller's original `text` — drop it rather than emit a cluster range that
+                // would underflow when `prefix_len` is subtracted below.
+                if g.end <= prefix_len {
+                    continue;
+                }
                 let level_is_rtl = g.level.number() % 2 == 1;
                 let right_edge = g.x + g.w;
                 if right_edge > line_width {
@@ -199,7 +234,7 @@ impl TextLayoutEngine {
                     x: line_origin.0 + g.x,
                     y: line_origin.1 + g.y,
                     w: g.w,
-                    cluster: g.start..g.end,
+                    cluster: g.start.saturating_sub(prefix_len)..g.end.saturating_sub(prefix_len),
                     rtl: level_is_rtl,
                     physical,
                 });
@@ -228,8 +263,16 @@ impl TextLayoutEngine {
         style: TextFontStyle,
         font_size_px: f32,
     ) -> f32 {
-        self.shape(text, family, style, font_size_px, None, (0.0, 0.0))
-            .width
+        self.shape(
+            text,
+            family,
+            style,
+            font_size_px,
+            None,
+            (0.0, 0.0),
+            TextDirection::Auto,
+        )
+        .width
     }
 }
 
