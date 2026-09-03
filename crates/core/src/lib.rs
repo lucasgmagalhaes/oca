@@ -29,6 +29,7 @@ pub mod auto_reframe;
 pub mod background_removal;
 pub mod bundle;
 pub mod collab_bundle;
+pub mod dynamic_reframe;
 pub mod error_reporting;
 pub mod export;
 pub mod font_catalog;
@@ -85,6 +86,10 @@ pub use bundle::{
     validate_bundled_resources, BundledResource, MissingBundleResources,
 };
 pub use collab_bundle::{export_collab_bundle, import_collab_bundle, CollabBundleError};
+pub use dynamic_reframe::{
+    fill_reframe_gaps, smooth_subject_centers, sparse_crop_keyframes, ReframeSample,
+    DEFAULT_SPARSIFY_EPSILON, MAX_HOLD_GAP_SAMPLES,
+};
 pub use error_reporting::{
     contains_forbidden_content, sanitize_stack_trace, sanitize_text, validate_envelope,
     validate_report, Breadcrumb, ClipCountBucket, ErrorCode, ErrorReport, ErrorReportBuilder,

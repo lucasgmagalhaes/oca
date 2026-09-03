@@ -441,6 +441,36 @@ impl App {
         self.with_selected_clip_mut(|clip| clip.crop_h_keyframes = keyframes);
     }
 
+    /// Replaces all four crop keyframe lists at once, in a single undo snapshot — what dynamic
+    /// auto-reframe applies, as opposed to the four `set_selected_clip_crop_*_keyframes` calls
+    /// the properties panel's own keyframe editor makes one at a time.
+    pub fn set_selected_clip_crop_keyframes(
+        &mut self,
+        mut x: Vec<Keyframe<f32>>,
+        mut y: Vec<Keyframe<f32>>,
+        mut w: Vec<Keyframe<f32>>,
+        mut h: Vec<Keyframe<f32>>,
+    ) {
+        for kf in &mut x {
+            kf.value = kf.value.clamp(0.0, 1.0);
+        }
+        for kf in &mut y {
+            kf.value = kf.value.clamp(0.0, 1.0);
+        }
+        for kf in &mut w {
+            kf.value = kf.value.clamp(CROP_MIN_SIZE, 1.0);
+        }
+        for kf in &mut h {
+            kf.value = kf.value.clamp(CROP_MIN_SIZE, 1.0);
+        }
+        self.with_selected_clip_mut(|clip| {
+            clip.crop_x_keyframes = x;
+            clip.crop_y_keyframes = y;
+            clip.crop_w_keyframes = w;
+            clip.crop_h_keyframes = h;
+        });
+    }
+
     /// Adds one opacity keyframe at the current timeline playhead position, for the selected
     /// clip — what `Ctrl+O` (`request.md`'s Fase 6 key binding spec, "adicionar marcador de
     /// opacidade") does. The new marker's value is the clip's own current effective opacity at

@@ -152,27 +152,44 @@ fn auto_reframe_one(
 /// enough that a small/distant face survives that resize as more than a couple of pixels.
 /// Uses [`avcore::FrameSampler`], same as `import.rs`'s `extract_thumbnail`, just a different
 /// size cap and a different destination (a detector, not a UI texture).
-const REFRAME_FRAME_MAX_DIM: u32 = 960;
+pub(super) const REFRAME_FRAME_MAX_DIM: u32 = 960;
 
 fn extract_frame(path: &Path, at_secs: f64) -> Option<(u32, u32, Vec<u8>)> {
     let sampler = avcore::FrameSampler::open(path, Duration::from_millis(20)).ok()?;
     let frame = sampler.sample(at_secs, Duration::from_millis(1500))?;
+    Some(downscale_frame_rgba(
+        frame.width,
+        frame.height,
+        frame.rgba,
+        REFRAME_FRAME_MAX_DIM,
+    ))
+}
 
-    let scale = (REFRAME_FRAME_MAX_DIM as f32 / frame.width.max(frame.height) as f32).min(1.0);
+/// Nearest-neighbor downscale to fit within `max_dim` on the longer side, no-op if the frame is
+/// already smaller. Shared by [`extract_frame`] (static auto-reframe) and dynamic auto-reframe's
+/// per-sample decoding — both feed the same [`avcore::detect_faces`] detector at the same size
+/// cap, so this stays a single implementation rather than two copies drifting apart.
+pub(super) fn downscale_frame_rgba(
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+    max_dim: u32,
+) -> (u32, u32, Vec<u8>) {
+    let scale = (max_dim as f32 / width.max(height) as f32).min(1.0);
     if scale >= 1.0 {
-        return Some((frame.width, frame.height, frame.rgba));
+        return (width, height, rgba);
     }
-    let new_width = ((frame.width as f32 * scale) as u32).max(1);
-    let new_height = ((frame.height as f32 * scale) as u32).max(1);
-    let mut rgba = vec![0u8; (new_width * new_height * 4) as usize];
+    let new_width = ((width as f32 * scale) as u32).max(1);
+    let new_height = ((height as f32 * scale) as u32).max(1);
+    let mut out = vec![0u8; (new_width * new_height * 4) as usize];
     for y in 0..new_height {
-        let src_y = (y * frame.height / new_height).min(frame.height - 1);
+        let src_y = (y * height / new_height).min(height - 1);
         for x in 0..new_width {
-            let src_x = (x * frame.width / new_width).min(frame.width - 1);
-            let src = ((src_y * frame.width + src_x) * 4) as usize;
+            let src_x = (x * width / new_width).min(width - 1);
+            let src = ((src_y * width + src_x) * 4) as usize;
             let dst = ((y * new_width + x) * 4) as usize;
-            rgba[dst..dst + 4].copy_from_slice(&frame.rgba[src..src + 4]);
+            out[dst..dst + 4].copy_from_slice(&rgba[src..src + 4]);
         }
     }
-    Some((new_width, new_height, rgba))
+    (new_width, new_height, out)
 }

@@ -208,6 +208,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
     let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
     let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
+    let (dynamic_reframe_tx, dynamic_reframe_rx) = mpsc::unbounded_channel();
     let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
     let (scene_cut_detection_tx, scene_cut_detection_rx) = mpsc::unbounded_channel();
     let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
@@ -258,6 +259,11 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
             auto_reframe_tx,
             auto_reframe_rx,
             auto_reframing_clip_id: None,
+        },
+        dynamic_reframe_state: DynamicReframeState {
+            dynamic_reframe_tx,
+            dynamic_reframe_rx,
+            dynamic_reframing_clip_id: None,
         },
         motion_tracking_state: MotionTrackingState {
             motion_tracking_tx,

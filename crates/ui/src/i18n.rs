@@ -357,6 +357,9 @@ text_catalog! {
     AutoReframeInProgress: pt_br = "Reenquadrando...", en = "Reframing...";
     AutoReframeNoModelConfigured: pt_br = "O modelo de reenquadramento não está disponível no pacote.", en = "The auto-reframe model is missing from the application bundle.";
     AutoReframeNoSubjectFound: pt_br = "Nenhum rosto detectado — recorte centralizado aplicado.", en = "No face detected — applied a centered crop instead.";
+    DynamicReframeAction: pt_br = "Reenquadramento dinâmico", en = "Dynamic reframe";
+    DynamicReframeInProgress: pt_br = "Reenquadrando...", en = "Reframing...";
+    DynamicReframeHint: pt_br = "Acompanha o sujeito ao longo do clipe, gerando keyframes de recorte em vez de um único enquadramento fixo.", en = "Tracks the subject across the clip, generating crop keyframes instead of a single fixed framing.";
 
     MotionTrackAction: pt_br = "Rastrear movimento", en = "Track motion";
     MotionTrackInProgress: pt_br = "Rastreando...", en = "Tracking...";

@@ -41,6 +41,7 @@ mod clip_props;
 mod collab_bundle;
 mod color;
 mod crash_review;
+mod dynamic_reframe;
 pub(crate) mod error_reporting;
 pub mod export;
 mod gameplay_events;
@@ -612,6 +613,25 @@ enum AutoReframeEvent {
     },
 }
 
+/// A message from a background dynamic-reframe worker thread (see
+/// [`App::spawn_dynamic_reframe_selected_clip`]) back to the UI thread.
+enum DynamicReframeEvent {
+    Done {
+        clip_id: u64,
+        crop_x_keyframes: Vec<avcore::Keyframe<f32>>,
+        crop_y_keyframes: Vec<avcore::Keyframe<f32>>,
+        crop_w_keyframes: Vec<avcore::Keyframe<f32>>,
+        crop_h_keyframes: Vec<avcore::Keyframe<f32>>,
+        /// Whether a subject was detected at any sample — `false` means every sample fell back
+        /// to a centered crop, worth telling the user about (same as [`AutoReframeEvent::Done`]'s
+        /// `subject_found`).
+        subject_found: bool,
+    },
+    Failed {
+        message: String,
+    },
+}
+
 /// A message from a background motion-tracking worker thread (see
 /// [`App::spawn_motion_track_selected_clip`]) back to the UI thread.
 enum MotionTrackEvent {
@@ -842,6 +862,8 @@ pub struct App {
     /// Auto-reframe background-job channel/clip-tracking state, grouped the same way
     /// [`PreviewState`] was — see that struct's doc comment for why.
     pub(crate) auto_reframe_state: AutoReframeState,
+    /// Dynamic-reframe (CF-04) background-job channel/clip-tracking state — same pattern.
+    pub(crate) dynamic_reframe_state: DynamicReframeState,
     /// Motion-tracking background-job channel/clip-tracking state — same pattern.
     pub(crate) motion_tracking_state: MotionTrackingState,
     /// Scene-cut-detection background-job channel/clip-tracking state — same pattern.
@@ -1233,6 +1255,17 @@ pub(crate) struct AutoReframeState {
     pub(crate) auto_reframing_clip_id: Option<u64>,
 }
 
+/// Dynamic-reframe (CF-04) background-job state — same pattern as [`AutoReframeState`], kept
+/// separate since a static and a dynamic run could otherwise race each other's `Option<u64>`.
+pub(crate) struct DynamicReframeState {
+    pub(crate) dynamic_reframe_tx: UnboundedSender<DynamicReframeEvent>,
+    pub(crate) dynamic_reframe_rx: UnboundedReceiver<DynamicReframeEvent>,
+    /// The timeline clip id a background dynamic-reframe run is currently computing crop
+    /// keyframes for, if any — only one runs at a time, same shape as
+    /// `AutoReframeState::auto_reframing_clip_id`.
+    pub(crate) dynamic_reframing_clip_id: Option<u64>,
+}
+
 /// Motion-tracking background-job state — same pattern as [`AutoReframeState`]. Distinct from
 /// `App`'s `motion_track_*`/`picking_motion_track_region` fields, which are the region-picker
 /// UI's own session state, not this one-shot background job's channel/clip-tracking state.
@@ -1415,6 +1448,7 @@ impl App {
         let (thumbnail_tx, thumbnail_rx) = mpsc::unbounded_channel();
         let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
         let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
+        let (dynamic_reframe_tx, dynamic_reframe_rx) = mpsc::unbounded_channel();
         let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
         let (scene_cut_detection_tx, scene_cut_detection_rx) = mpsc::unbounded_channel();
         let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
@@ -1482,6 +1516,11 @@ impl App {
                 auto_reframe_tx,
                 auto_reframe_rx,
                 auto_reframing_clip_id: None,
+            },
+            dynamic_reframe_state: DynamicReframeState {
+                dynamic_reframe_tx,
+                dynamic_reframe_rx,
+                dynamic_reframing_clip_id: None,
             },
             motion_tracking_state: MotionTrackingState {
                 motion_tracking_tx,
@@ -2241,6 +2280,7 @@ impl eframe::App for App {
         self.pump_sound_library_queue();
         self.pump_transcribe();
         self.pump_auto_reframe();
+        self.pump_dynamic_reframe();
         self.pump_motion_tracking();
         self.pump_scene_cut_detection();
         self.pump_matte_generation();
