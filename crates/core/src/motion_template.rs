@@ -39,11 +39,20 @@
 //! format; every field is a plain literal or a named reference into [`GraphicTemplate::
 //! parameters`], matching the doc's own "no scripts or executable expressions" constraint for
 //! this whole feature.
+//!
+//! Slice 2 ("support text, color, image, timing, safe-area anchors, and aspect-ratio variants")
+//! adds two of those five here: [`safe_area_violations`] (a non-blocking design-time check, not
+//! a repositioning mechanism — see its own doc comment) and [`TemplateFamily`] (grouping sibling
+//! [`GraphicTemplate`]s prepared for different [`crate::export::ExportAspectRatio`]s, rather than
+//! one template auto-adapting its own layout across canvas shapes). `Image` and timing
+//! (animation in/out) remain open — `Image` for the same "no overlay-clip kind to reuse yet"
+//! reason slice 1 documented, timing as a real, separate follow-up.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::export::ExportAspectRatio;
 use crate::timeline::{ShapeKind, TextFontFamily, TextFontStyle};
 
 /// The only schema version this build understands — see [`TemplateValidationError::
@@ -150,10 +159,20 @@ pub struct GraphicTemplate {
     pub schema_version: u32,
     pub name: String,
     /// The canvas this template's `pos_x`/`pos_y`/`center_x`/`center_y` fractions were designed
-    /// against — not yet a *variant* (CF-07 slice 2's "aspect-ratio variants"), just this
-    /// template's own single native size.
+    /// against — see [`TemplateFamily`] for how a template groups with sibling variants designed
+    /// for other aspect ratios.
     pub canvas_width: u32,
     pub canvas_height: u32,
+    /// CF-07 slice 2's own "safe-area anchors," scoped as a non-blocking design-time check
+    /// rather than a repositioning mechanism: the fraction (`0.0..=1.0`) of the shorter canvas
+    /// dimension near every edge that platform chrome (captions, app UI, rounded-corner crop on
+    /// some players) commonly occupies — [`safe_area_violations`] flags any element whose
+    /// position/extent intrudes into it. `0.0` (the default) disables the check entirely, so a
+    /// template authored under slice 1 (before this field existed) loads with the exact same
+    /// "never flagged" behavior it always had. `#[serde(default)]` for that same forwards-
+    /// compatibility reason.
+    #[serde(default)]
+    pub safe_area_margin: f32,
     pub parameters: Vec<TemplateParameter>,
     pub elements: Vec<TemplateElement>,
 }
@@ -526,6 +545,179 @@ pub fn instantiate(
             }),
         })
         .collect()
+}
+
+/// One element [`safe_area_violations`] flagged, and why — always names the offending element,
+/// same "actionable, not just a bare bool" convention this module's other diagnostics follow.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SafeAreaViolation {
+    pub element_id: String,
+    pub message: String,
+}
+
+/// Flags every element whose position (text) or bounding box (shape) intrudes into
+/// [`GraphicTemplate::safe_area_margin`] — a non-blocking design-time check, never a
+/// [`GraphicTemplate::validate`] failure, since a template legitimately wanting a full-bleed
+/// background or edge-anchored element is a real, valid design choice this shouldn't forbid
+/// (same "warn, don't block" precedent [`crate::text_layout::scan_bidi_controls`] established
+/// for a different feature). A no-op returning no violations when `safe_area_margin <= 0.0`.
+///
+/// A text element has no baked width in this format (no shaping happens until the `ui`-side
+/// apply step) — this only checks its anchor point (`pos_x`/`pos_y`) clears the margin, not the
+/// full rendered text extent, a real, documented simplification. A shape element's bounding box
+/// is conservatively approximated as a square of side `max(width, height)` centered on
+/// `center_x`/`center_y` — cheap and rotation-safe (the true rotated extent can only shrink
+/// toward this square, never exceed it), at the cost of occasionally over-flagging a shape that
+/// would actually clear the margin once its real rotated footprint is considered.
+pub fn safe_area_violations(template: &GraphicTemplate) -> Vec<SafeAreaViolation> {
+    let margin = template.safe_area_margin;
+    if margin <= 0.0 {
+        return Vec::new();
+    }
+
+    let mut violations = Vec::new();
+    for element in &template.elements {
+        match element {
+            TemplateElement::Text(t) => {
+                let clear = t.pos_x >= margin
+                    && t.pos_x <= 1.0 - margin
+                    && t.pos_y >= margin
+                    && t.pos_y <= 1.0 - margin;
+                if !clear {
+                    violations.push(SafeAreaViolation {
+                        element_id: t.id.clone(),
+                        message: format!(
+                            "text anchor at ({:.3}, {:.3}) is inside the {:.0}% safe-area margin",
+                            t.pos_x,
+                            t.pos_y,
+                            margin * 100.0
+                        ),
+                    });
+                }
+            }
+            TemplateElement::Shape(s) => {
+                let half_extent = s.width.max(s.height) / 2.0;
+                let left = s.center_x - half_extent;
+                let right = s.center_x + half_extent;
+                let top = s.center_y - half_extent;
+                let bottom = s.center_y + half_extent;
+                let clear = left >= margin
+                    && right <= 1.0 - margin
+                    && top >= margin
+                    && bottom <= 1.0 - margin;
+                if !clear {
+                    violations.push(SafeAreaViolation {
+                        element_id: s.id.clone(),
+                        message: format!(
+                            "shape bounding box ({:.3}, {:.3}) to ({:.3}, {:.3}) intrudes into \
+                             the {:.0}% safe-area margin",
+                            left,
+                            top,
+                            right,
+                            bottom,
+                            margin * 100.0
+                        ),
+                    });
+                }
+            }
+        }
+    }
+    violations
+}
+
+/// One aspect-ratio-specific rendition of a [`TemplateFamily`] — CF-07 slice 2's own
+/// "aspect-ratio variants," modeled as sibling [`GraphicTemplate`]s rather than a single
+/// template with a formula that auto-adapts position across canvas shapes: a lower third
+/// designed for 16:9 and one designed for 9:16 are, in practice, different layouts (different
+/// element placement, not just a rescale), so this reuses [`crate::export::ExportAspectRatio`]
+/// (already this crate's own aspect-ratio vocabulary — see `spec/RULES.md`'s reuse-before-
+/// building rule) to tag which one each prepared variant is for, rather than inventing a second
+/// aspect-ratio type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TemplateVariant {
+    pub aspect_ratio: ExportAspectRatio,
+    pub template: GraphicTemplate,
+}
+
+/// A named group of [`TemplateVariant`]s — what CF-07's own doc means by "reusable channel
+/// assets... and aspect-ratio variants": one conceptual template (e.g. "Scoreboard"), prepared
+/// once per aspect ratio a caller wants to support, rather than a single template forced to
+/// auto-adapt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TemplateFamily {
+    pub name: String,
+    pub variants: Vec<TemplateVariant>,
+}
+
+/// Why a [`TemplateFamily`] failed [`TemplateFamily::validate`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum TemplateFamilyValidationError {
+    /// A family with no variants at all has nothing a caller could ever apply.
+    Empty,
+    DuplicateAspectRatio(ExportAspectRatio),
+    Variant {
+        aspect_ratio: ExportAspectRatio,
+        error: TemplateValidationError,
+    },
+}
+
+impl std::fmt::Display for TemplateFamilyValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => write!(f, "template family has no variants"),
+            Self::DuplicateAspectRatio(ratio) => {
+                write!(f, "template family has more than one variant for {ratio:?}")
+            }
+            Self::Variant {
+                aspect_ratio,
+                error,
+            } => {
+                write!(f, "variant {aspect_ratio:?}: {error}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for TemplateFamilyValidationError {}
+
+impl TemplateFamily {
+    /// Checks every variant's own [`GraphicTemplate::validate`], plus this family's own
+    /// constraints: at least one variant, and no aspect ratio repeated across variants (which
+    /// aspect_ratio a caller should pick would otherwise be ambiguous).
+    pub fn validate(&self) -> Result<(), TemplateFamilyValidationError> {
+        if self.variants.is_empty() {
+            return Err(TemplateFamilyValidationError::Empty);
+        }
+        // `ExportAspectRatio` doesn't derive `Hash`, and this crate's own convention is to reuse
+        // shared types as-is rather than adding derives elsewhere for one caller's convenience —
+        // a linear scan is plenty for the handful of variants a real template family ever has.
+        let mut seen: Vec<ExportAspectRatio> = Vec::new();
+        for variant in &self.variants {
+            if seen.contains(&variant.aspect_ratio) {
+                return Err(TemplateFamilyValidationError::DuplicateAspectRatio(
+                    variant.aspect_ratio,
+                ));
+            }
+            seen.push(variant.aspect_ratio);
+            variant.template.validate().map_err(|error| {
+                TemplateFamilyValidationError::Variant {
+                    aspect_ratio: variant.aspect_ratio,
+                    error,
+                }
+            })?;
+        }
+        Ok(())
+    }
+
+    /// The prepared variant for `aspect_ratio`, if this family has one — the lookup a `ui`-side
+    /// "apply template to the current sequence" flow would use, matching the sequence's own
+    /// [`crate::project::SequenceExportSettings::aspect_ratio`].
+    pub fn variant_for(&self, aspect_ratio: ExportAspectRatio) -> Option<&GraphicTemplate> {
+        self.variants
+            .iter()
+            .find(|v| v.aspect_ratio == aspect_ratio)
+            .map(|v| &v.template)
+    }
 }
 
 #[cfg(test)]
