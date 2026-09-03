@@ -210,6 +210,17 @@ typedef struct {
        (same reasoning as position_x_expr/position_y_expr above) — ignored by
        avbridge_encode_timeline_export. */
     const char *mask_video_path;
+    /* FFmpeg blend filter mode name (e.g. "multiply", "screen" -- any name blend's all_mode
+       option accepts), UTF-8, NUL-terminated. Empty string ("") means "no blend mode" -- this
+       segment composites via plain alpha-over overlay, same as before this field existed.
+       When set, avbridge_encode_timeline_export_multi's overlay graph builds a
+       "blend=all_mode=<name>" stage in place of the usual "overlay=x=...:y=..." stage for
+       this layer -- position_x_expr/position_y_expr above are ignored in that case (blend
+       has no x/y placement option; it blends two same-size, already-aligned frames), so this
+       layer composites at full canvas size, not at an offset position. Only consulted by
+       avbridge_encode_timeline_export_multi's overlay path -- ignored by
+       avbridge_encode_timeline_export. */
+    const char *blend_mode;
 } ClipSegment;
 
 /* Renders an ordered sequence of trimmed clips (`segments`, `segment_count` of them) as one

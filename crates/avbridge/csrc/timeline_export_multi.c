@@ -486,14 +486,25 @@ static int init_overlay_graph(AVCodecContext *vdec0, const char *f0, OverlayTrac
             snprintf(composited_label, sizeof(composited_label), "%s%d", layer_label, i + 1);
         }
 
-        const char *px = (track->segment->position_x_expr && track->segment->position_x_expr[0])
-                             ? track->segment->position_x_expr
-                             : "0";
-        const char *py = (track->segment->position_y_expr && track->segment->position_y_expr[0])
-                             ? track->segment->position_y_expr
-                             : "0";
-        av_bprintf(&description, "[base%d][%s]overlay=x='%s':y='%s'[base%d];", layer_number,
-                   composited_label, px, py, layer_number + 1);
+        /* A blend mode replaces overlay entirely for this layer, per ClipSegment::blend_mode's
+           own doc comment (bridge.h): blend has no x/y placement option (it blends two
+           same-size, already-aligned frames), so position_x_expr/position_y_expr are ignored
+           here -- this layer composites at full canvas size, not at an offset position. */
+        if (track->segment->blend_mode && track->segment->blend_mode[0]) {
+            av_bprintf(&description, "[base%d][%s]blend=all_mode=%s[base%d];", layer_number,
+                       composited_label, track->segment->blend_mode, layer_number + 1);
+        } else {
+            const char *px =
+                (track->segment->position_x_expr && track->segment->position_x_expr[0])
+                    ? track->segment->position_x_expr
+                    : "0";
+            const char *py =
+                (track->segment->position_y_expr && track->segment->position_y_expr[0])
+                    ? track->segment->position_y_expr
+                    : "0";
+            av_bprintf(&description, "[base%d][%s]overlay=x='%s':y='%s'[base%d];", layer_number,
+                       composited_label, px, py, layer_number + 1);
+        }
         layer_number++;
     }
     av_bprintf(&description, "[base%d]format=%s[out]", layer_number, pix_fmt_name);

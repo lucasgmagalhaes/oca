@@ -50,6 +50,10 @@ struct RawClipSegment {
     /// Path to a grayscale-as-luma alpha-matte video, or an empty string for none — see
     /// `ClipSegment::mask_video_path`'s doc comment in `bridge.h`.
     mask_video_path: *const c_char,
+    /// FFmpeg `blend` filter mode name (`blend=all_mode=<name>`), or an empty string for
+    /// "no blend mode, use plain `overlay` compositing" — see `ClipSegment::blend_mode`'s doc
+    /// comment in `bridge.h`.
+    blend_mode: *const c_char,
 }
 
 #[repr(C)]
@@ -585,6 +589,22 @@ pub struct ClipSegment {
     /// backwards-compatible deserialization of jobs saved before this field existed.
     #[serde(default)]
     pub mask_video_path: String,
+    /// FFmpeg `blend` filter mode name (e.g. `"multiply"`, `"screen"` — the exact string
+    /// `blend`'s `all_mode` option accepts; this crate doesn't depend on `core`, so it takes
+    /// the mode as a plain string built by `avcore::timeline::BlendMode::ffmpeg_name` rather
+    /// than that enum itself, same convention [`ClipSegment::transition_in`] already uses for
+    /// `avcore::timeline::TransitionType`). Empty string means "no blend mode" — this segment
+    /// composites via plain alpha-over `overlay` (the behavior before this field existed).
+    /// Only consulted by [`encode_timeline_export_multi`]'s overlay path (a single/background-
+    /// track clip has no compositing stage to apply this to) — ignored by
+    /// [`encode_timeline_export`]. **When set, replaces `overlay` entirely for this layer**:
+    /// `position_x_expr`/`position_y_expr` above are ignored for this segment while a blend
+    /// mode is active — the layer blends at full canvas size, not at an offset position (see
+    /// `avcore::timeline::ClipInstance::blend_mode`'s own doc comment for why combining the two
+    /// isn't supported yet). Defaults to an empty string for backwards-compatible
+    /// deserialization of jobs saved before this field existed.
+    #[serde(default)]
+    pub blend_mode: String,
 }
 
 /// One independently placed audio contributor in a timeline mix. Unlike [`ClipSegment`], this
@@ -732,6 +752,7 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
     let mut c_pos_x = Vec::with_capacity(segments.len());
     let mut c_pos_y = Vec::with_capacity(segments.len());
     let mut c_mask_paths = Vec::with_capacity(segments.len());
+    let mut c_blend_modes = Vec::with_capacity(segments.len());
     for seg in segments {
         c_paths.push(
             CString::new(seg.source_path.to_string_lossy().as_bytes())
@@ -745,6 +766,8 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
             .push(CString::new(seg.position_y_expr.as_bytes()).map_err(EncodeError::InvalidPath)?);
         c_mask_paths
             .push(CString::new(seg.mask_video_path.as_bytes()).map_err(EncodeError::InvalidPath)?);
+        c_blend_modes
+            .push(CString::new(seg.blend_mode.as_bytes()).map_err(EncodeError::InvalidPath)?);
     }
     let raw_segments: Vec<RawClipSegment> = segments
         .iter()
@@ -753,8 +776,9 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
         .zip(c_pos_x.iter())
         .zip(c_pos_y.iter())
         .zip(c_mask_paths.iter())
+        .zip(c_blend_modes.iter())
         .map(
-            |(((((seg, path), filt), pos_x), pos_y), mask_path)| RawClipSegment {
+            |((((((seg, path), filt), pos_x), pos_y), mask_path), blend_mode)| RawClipSegment {
                 source_path: path.as_ptr(),
                 source_in_secs: seg.source_in_secs,
                 source_out_secs: seg.source_out_secs,
@@ -769,13 +793,14 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
                 transition_duration_secs: seg.transition_duration_secs,
                 timeline_start_secs: seg.timeline_start_secs,
                 mask_video_path: mask_path.as_ptr(),
+                blend_mode: blend_mode.as_ptr(),
             },
         )
         .collect();
 
-    // SAFETY: raw_segments' pointers stay valid for the call — c_paths/c_filters/c_mask_paths
-    // (which they point into) and raw_segments itself are all stack locals held alive until
-    // this function returns, none of them mutated during the call. c_out,
+    // SAFETY: raw_segments' pointers stay valid for the call — c_paths/c_filters/c_mask_paths/
+    // c_blend_modes (which they point into) and raw_segments itself are all stack locals held
+    // alive until this function returns, none of them mutated during the call. c_out,
     // progress_trampoline::<F>, and cancel.as_ptr() carry the same safety argument as
     // encode_export's identical call.
     let status = unsafe {
@@ -866,6 +891,7 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
     let mut per_track_pos_x: Vec<Vec<CString>> = Vec::with_capacity(tracks.len());
     let mut per_track_pos_y: Vec<Vec<CString>> = Vec::with_capacity(tracks.len());
     let mut per_track_mask_paths: Vec<Vec<CString>> = Vec::with_capacity(tracks.len());
+    let mut per_track_blend_modes: Vec<Vec<CString>> = Vec::with_capacity(tracks.len());
     let mut per_track_raw: Vec<Vec<RawClipSegment>> = Vec::with_capacity(tracks.len());
     for segs in tracks {
         let mut paths = Vec::with_capacity(segs.len());
@@ -873,6 +899,7 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
         let mut pos_xs = Vec::with_capacity(segs.len());
         let mut pos_ys = Vec::with_capacity(segs.len());
         let mut mask_paths = Vec::with_capacity(segs.len());
+        let mut blend_modes = Vec::with_capacity(segs.len());
         for seg in segs {
             paths.push(
                 CString::new(seg.source_path.to_string_lossy().as_bytes())
@@ -889,6 +916,8 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
             mask_paths.push(
                 CString::new(seg.mask_video_path.as_bytes()).map_err(EncodeError::InvalidPath)?,
             );
+            blend_modes
+                .push(CString::new(seg.blend_mode.as_bytes()).map_err(EncodeError::InvalidPath)?);
         }
         let raw: Vec<RawClipSegment> = segs
             .iter()
@@ -897,8 +926,9 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
             .zip(pos_xs.iter())
             .zip(pos_ys.iter())
             .zip(mask_paths.iter())
+            .zip(blend_modes.iter())
             .map(
-                |(((((seg, path), filt), pos_x), pos_y), mask_path)| RawClipSegment {
+                |((((((seg, path), filt), pos_x), pos_y), mask_path), blend_mode)| RawClipSegment {
                     source_path: path.as_ptr(),
                     source_in_secs: seg.source_in_secs,
                     source_out_secs: seg.source_out_secs,
@@ -913,6 +943,7 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
                     transition_duration_secs: seg.transition_duration_secs,
                     timeline_start_secs: seg.timeline_start_secs,
                     mask_video_path: mask_path.as_ptr(),
+                    blend_mode: blend_mode.as_ptr(),
                 },
             )
             .collect();
@@ -921,6 +952,7 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
         per_track_pos_x.push(pos_xs);
         per_track_pos_y.push(pos_ys);
         per_track_mask_paths.push(mask_paths);
+        per_track_blend_modes.push(blend_modes);
         per_track_raw.push(raw);
     }
 
@@ -928,10 +960,11 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
     let track_ptrs: Vec<*const RawClipSegment> = per_track_raw.iter().map(|v| v.as_ptr()).collect();
     let track_counts: Vec<c_int> = per_track_raw.iter().map(|v| v.len() as c_int).collect();
 
-    // SAFETY: all pointer-backing storage (per_track_paths, per_track_filts, per_track_raw,
-    // track_ptrs, track_counts, c_out) is held alive until after avbridge_encode_timeline_export_multi
-    // returns. The function does not retain any pointer after returning. cancel is an AtomicBool
-    // aligned to at least 1 byte; its value is read atomically by the C side between frames.
+    // SAFETY: all pointer-backing storage (per_track_paths, per_track_filts, per_track_mask_paths,
+    // per_track_blend_modes, per_track_raw, track_ptrs, track_counts, c_out) is held alive until
+    // after avbridge_encode_timeline_export_multi returns. The function does not retain any
+    // pointer after returning. cancel is an AtomicBool aligned to at least 1 byte; its value is
+    // read atomically by the C side between frames.
     let status = unsafe {
         avbridge_encode_timeline_export_multi(
             track_ptrs.as_ptr(),
