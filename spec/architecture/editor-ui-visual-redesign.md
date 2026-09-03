@@ -442,6 +442,13 @@ Mapping:
   `compositor` element (live preview) has no equivalent to FFmpeg's `blend` filter at all —
   only Porter-Duff `source`/`over`/`add` (verified via `gst-inspect-1.0 compositor`) — so live
   preview needs a different mechanism than export did; see below for that slice's own status.
+  **UI wiring done**: the properties panel's Inspector tab has a Composite section (Blend Mode
+  dropdown, grouped with the existing Opacity keyframe editor per the mockup) backed by a new
+  `App::set_selected_clip_blend_mode`. Mode names in the dropdown are kept in English regardless
+  of locale (`blend_mode_label`, not the `Text` i18n catalog `color_filter_label`/`mask_shape_
+  label` go through) — deliberate: these are industry-standard names shown untranslated in a
+  Portuguese UI by every mainstream NLE too, so a `Text` entry per mode would be pure `pt_br =
+  en` duplication, not real localization.
   Real, executable regression coverage: `avbridge/tests/encode_test.rs`'s
   `multi_track_export_with_a_blend_mode_set_produces_a_valid_file` runs a real two-track export
   with `blend_mode: "multiply"` set and probes the result.
