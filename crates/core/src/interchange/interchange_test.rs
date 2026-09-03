@@ -17,7 +17,8 @@ use super::*;
 use crate::media::{MediaAsset, MediaKind};
 use crate::project::{Project, Recency, SequenceExportSettings};
 use crate::timeline::{
-    AudioRole, ClipInstance, ColorFilter, Marker, MaskShape, Track, TrackKind, TransitionType,
+    AudioRole, BlendMode, ClipInstance, ColorFilter, Marker, MaskShape, Track, TrackKind,
+    TransitionType,
 };
 
 fn clip(id: u64, asset_id: u64, start_secs: f64, duration_secs: f64) -> ClipInstance {
@@ -80,6 +81,7 @@ fn clip(id: u64, asset_id: u64, start_secs: f64, duration_secs: f64) -> ClipInst
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: BlendMode::Normal,
     }
 }
 

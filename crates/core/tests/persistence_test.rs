@@ -21,8 +21,8 @@ use avcore::persistence::{
     to_ocproj_bytes, to_ocqueue_bytes, PersistError,
 };
 use avcore::timeline::{
-    AudioRole, ClipInstance, ColorFilter, MaskShape, TextClip, TextFontFamily, TextFontStyle,
-    Timeline, Track, TrackKind, TransitionType,
+    AudioRole, BlendMode, ClipInstance, ColorFilter, MaskShape, TextClip, TextFontFamily,
+    TextFontStyle, Timeline, Track, TrackKind, TransitionType,
 };
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency, Sequence, TextSegment};
 
@@ -110,6 +110,7 @@ fn clip(id: u64, asset_id: u64) -> ClipInstance {
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: BlendMode::Normal,
     }
 }
 

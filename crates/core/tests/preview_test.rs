@@ -16,7 +16,7 @@
 use std::path::{Path, PathBuf};
 
 use avcore::preview::Preview;
-use avcore::timeline::{ClipInstance, ColorFilter, MaskShape, TransitionType};
+use avcore::timeline::{BlendMode, ClipInstance, ColorFilter, MaskShape, TransitionType};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -84,6 +84,7 @@ fn clip() -> ClipInstance {
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: BlendMode::Normal,
     }
 }
 

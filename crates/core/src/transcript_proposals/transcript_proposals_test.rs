@@ -14,7 +14,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use super::*;
-use crate::timeline::{ColorFilter, MaskShape, TransitionType};
+use crate::timeline::{BlendMode, ColorFilter, MaskShape, TransitionType};
 
 fn word(text: &str, start: f64, end: f64, id: u64) -> TranscriptWord {
     TranscriptWord {
@@ -92,6 +92,7 @@ fn test_clip(
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: BlendMode::Normal,
     }
 }
 

@@ -18,7 +18,9 @@ use std::path::{Path, PathBuf};
 use super::*;
 use crate::probe::probe_media;
 use crate::project::{Recency, SequenceExportSettings};
-use crate::timeline::{ClipInstance, ColorFilter, MaskShape, Track, TrackKind, TransitionType};
+use crate::timeline::{
+    BlendMode, ClipInstance, ColorFilter, MaskShape, Track, TrackKind, TransitionType,
+};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -92,6 +94,7 @@ fn clip(
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: BlendMode::Normal,
     }
 }
 

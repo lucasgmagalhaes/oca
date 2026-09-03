@@ -28,7 +28,8 @@ use avcore::render::{
     render_export_job_multi, resolve_audio_segments, resolve_timeline_segments_multi, RenderOutcome,
 };
 use avcore::timeline::{
-    AudioRole, ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
+    AudioRole, BlendMode, ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind,
+    TransitionType,
 };
 use avcore::GpuEncoderPreference;
 use avcore::{probe_media, MediaAsset};
@@ -106,6 +107,7 @@ fn clip(
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: BlendMode::Normal,
     }
 }
 

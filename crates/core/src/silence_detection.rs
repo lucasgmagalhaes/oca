@@ -221,7 +221,7 @@ mod tests {
         source_out_secs: f64,
         speed_factor: f32,
     ) -> ClipInstance {
-        use crate::timeline::{ColorFilter, MaskShape, TransitionType};
+        use crate::timeline::{BlendMode, ColorFilter, MaskShape, TransitionType};
         ClipInstance {
             id: 1,
             asset_id: 1,
@@ -281,6 +281,7 @@ mod tests {
             stabilization_intensity: 0.0,
             background_removal_enabled: false,
             background_removal_mask_path: String::new(),
+            blend_mode: BlendMode::Normal,
         }
     }
 

@@ -41,8 +41,8 @@
 
 use crate::project::{Project, Sequence};
 use crate::timeline::{
-    ClipInstance, ColorFilter, Marker, MarkerKind, MaskShape, Timeline, Track, TrackKind,
-    TransitionType,
+    BlendMode, ClipInstance, ColorFilter, Marker, MarkerKind, MaskShape, Timeline, Track,
+    TrackKind, TransitionType,
 };
 
 /// The fixed time rate [`sequence_to_interchange`] expresses every [`RationalTime`] in — see this
@@ -386,6 +386,7 @@ fn clip_instance_from_interchange(
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: BlendMode::Normal,
     }
 }
 
