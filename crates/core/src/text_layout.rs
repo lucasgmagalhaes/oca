@@ -20,10 +20,10 @@
 //!
 //! This module is the adapter (the doc's TEXT-01A steps 1-2: a provider-neutral [`ShapedText`]
 //! value plus a bundled-only [`TextLayoutEngine`]) **and** step 3's rasterization consumer —
-//! [`crate::overlay_render`] now shapes and paints through [`with_shared_engine`] instead of
-//! `fontdue`. `crate::text_metrics`'s own per-character advance-summing measurement functions are
-//! untouched for now (still `fontdue`-backed) since nothing outside `overlay_render` calls them
-//! for pixel-affecting work; see that module's own doc comment for the remaining gap.
+//! [`crate::overlay_render`] now shapes and paints through [`with_shared_engine`] instead of the
+//! old `fontdue`-based per-character advance-summing measurement, which TEXT-01B step 4 removed
+//! from `crate::text_metrics` entirely once it had no remaining caller — see that module's own
+//! doc comment.
 //!
 //! Loads only [`crate::font_catalog`]'s locked bytes into a `fontdb::Database` via
 //! `FontSystem::new_with_locale_and_db` — never `FontSystem::new()`, which the architecture doc
@@ -270,9 +270,10 @@ impl TextLayoutEngine {
         }
     }
 
-    /// Measures `text`'s rendered width in pixels at `font_size_px`, unwrapped — a `cosmic-text`
-    /// counterpart to [`crate::text_metrics::text_width_px_with_font`], not yet wired as its
-    /// replacement (see this module's own doc comment).
+    /// Measures `text`'s rendered width in pixels at `font_size_px`, unwrapped — has no caller of
+    /// its own yet outside this module's tests, same "unused until something needs it" shape the
+    /// removed `fontdue`-based `crate::text_metrics::text_width_px_with_font` had before TEXT-01B
+    /// step 4 deleted it.
     pub fn text_width_px(
         &mut self,
         text: &str,
@@ -297,11 +298,11 @@ impl TextLayoutEngine {
 static SHARED_ENGINE: OnceLock<Mutex<(TextLayoutEngine, SwashCache)>> = OnceLock::new();
 
 /// Runs `f` against one process-wide [`TextLayoutEngine`] + `cosmic_text::SwashCache` pair,
-/// built once on first use and reused after — mirrors [`crate::text_metrics`]'s own
-/// per-face `OnceLock` caching, just one shared engine instead of one lock per face, since
-/// `cosmic-text`'s own shaping/rasterization caches already key internally by face/size/glyph.
-/// Guarded by a `Mutex` (not `Sync` on its own — `FontSystem` mutates internal caches on every
-/// shape/rasterize call) since callers span the UI thread (`preview.rs`, refreshed on each timed
+/// built once on first use and reused after (a single shared `OnceLock`, since `cosmic-text`'s
+/// own shaping/rasterization caches already key internally by face/size/glyph — no need for one
+/// lock per face the way the removed `fontdue`-based `crate::text_metrics::bundled_font` used to
+/// have). Guarded by a `Mutex` (not `Sync` on its own — `FontSystem` mutates internal caches on
+/// every shape/rasterize call) since callers span the UI thread (`preview.rs`, refreshed on each timed
 /// word change) and export's background render thread (`render.rs`, one call per text segment) —
 /// neither is a per-video-frame hot path, so lock contention here is not a real concern.
 pub fn with_shared_engine<R>(f: impl FnOnce(&mut TextLayoutEngine, &mut SwashCache) -> R) -> R {

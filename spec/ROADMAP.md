@@ -1066,15 +1066,28 @@ an item earlier:
   type-checks. `cargo check --workspace --all-targets` (the documented temporary `filters.c`
   shim, discarded before commit) and `cargo fmt --check` both stayed clean.
 
+  **TEXT-01B step 4 (cluster/run-geometry replacing the approximate word-width helpers) is now
+  done too — as a deletion, not a rewrite.** `text_metrics.rs`'s `fontdue`-based `bundled_font`/
+  `text_width_px`/`word_x_offsets_px` (and their font-selecting counterparts) turned out to
+  already have zero callers outside their own tests, confirmed by grep across `core`+`ui` before
+  touching anything — `TextLayoutEngine::shape`'s real shaped-glyph geometry has been the only
+  measurement path actually wired to pixel-affecting output since TEXT-01A's rendering swap
+  shipped. Removed the dead functions, their nine per-face `OnceLock` font caches, and the now-
+  entirely-unused `fontdue` dependency itself (confirmed gone from `Cargo.lock` after removal —
+  a real, verified reduction, not just an unused-import warning suppressed). `word_byte_ranges`
+  (pure string search, engine-independent, still used by both `overlay_render.rs` and `render.rs`
+  regardless of shaping engine) is untouched. `cargo check --workspace --all-targets` (the
+  documented temporary `filters.c` shim, discarded before commit) and `cargo fmt --check` both
+  stayed clean.
+
   **Deliberately not done**: `Start`/`End` semantic alignment, the `language` hint's own
   consumption, TEXT-01B's own remaining steps (directional-control visibility/warnings,
-  mixed-direction golden tests, cluster/run-geometry replacing the approximate word-width
-  helpers), and its original cluster-safe-highlight note (the current `glyph_excluded` filter
-  already only ever includes a whole cluster, never splits one — real cluster-safety for
-  RTL/conjunct scripts specifically still needs TEXT-01C's international fonts to verify against
-  real glyphs, not just bidi levels against a font that can't render them) all remain open.
-  TEXT-01C (international fallback families, gated on FONT-01B actually vendoring those fonts
-  into the repo) and TEXT-01D (performance/caching/
+  mixed-direction golden tests), and its original cluster-safe-highlight note (the current
+  `glyph_excluded` filter already only ever includes a whole cluster, never splits one — real
+  cluster-safety for RTL/conjunct scripts specifically still needs TEXT-01C's international fonts
+  to verify against real glyphs, not just bidi levels against a font that can't render them) all
+  remain open. TEXT-01C (international fallback families, gated on FONT-01B actually vendoring
+  those fonts into the repo) and TEXT-01D (performance/caching/
   optional packs) remain fully open. See `architecture/complex-text-shaping.md`'s own writeup for
   the full detail.
 - `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to

@@ -13,162 +13,26 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Pure-Rust access to oca's bundled fonts and text/word mapping helpers. Font files are compiled
-//! into the application, but each face is parsed only on its first render or measurement through
-//! a dedicated [`OnceLock`] — opening the text-properties panel therefore doesn't eagerly parse
-//! every bundled family.
+//! Text/word byte-range mapping — [`word_byte_ranges`] locates each timed/transcribed word inside
+//! a caption string, pure string search independent of whichever engine actually shapes and
+//! rasterizes the glyphs ([`crate::text_layout`], see that module's own doc comment).
 //!
-//! Font shaping is deliberately simple: per-character advance widths summed left to right, no
-//! kerning, no ligatures, no bidi/complex script shaping. Fine for the short Latin-script
-//! captions this feature targets; wrong for e.g. Arabic or tightly-kerned display faces.
-//!
-//! **Now unused for rendering**: TEXT-01A's `cosmic-text` swap
-//! (`spec/architecture/complex-text-shaping.md`) moved [`crate::overlay_render`]'s actual glyph
-//! placement/rasterization onto [`crate::text_layout`], so [`text_width_px`]/
-//! [`word_x_offsets_px`] (and, transitively, [`bundled_font`]) currently have no caller outside
-//! this module's own tests. [`word_byte_ranges`] is unaffected — it's pure string search, used by
-//! both `overlay_render.rs` and `render.rs` regardless of shaping engine. Left in place rather
-//! than deleted: removing the whole per-character-advance measurement surface is its own,
-//! separate cleanup, not a side effect of the rendering swap.
+//! TEXT-01A's `cosmic-text` swap (`spec/architecture/complex-text-shaping.md`) moved
+//! [`crate::overlay_render`]'s actual glyph placement/rasterization onto [`crate::text_layout`],
+//! which left this module's own per-character `fontdue`-based advance-width measurement
+//! (`text_width_px`/`word_x_offsets_px`/`bundled_font`) with no caller outside its own tests —
+//! removed here (TEXT-01B step 4, "replace approximate word-width helpers with cluster/run
+//! geometry") along with the now-unused `fontdue` dependency, since `TextLayoutEngine::shape`'s
+//! real shaped-glyph geometry is that replacement and has been the only measurement path actually
+//! wired to pixel-affecting output since TEXT-01A shipped.
 
-use std::sync::OnceLock;
-
-use crate::timeline::{TextFontFamily, TextFontStyle};
-
-static LATO_REGULAR: OnceLock<Option<fontdue::Font>> = OnceLock::new();
-static LATO_BOLD: OnceLock<Option<fontdue::Font>> = OnceLock::new();
-static BEBAS_NEUE: OnceLock<Option<fontdue::Font>> = OnceLock::new();
-static PLAYFAIR_REGULAR: OnceLock<Option<fontdue::Font>> = OnceLock::new();
-static PLAYFAIR_BOLD: OnceLock<Option<fontdue::Font>> = OnceLock::new();
-static PATRICK_HAND: OnceLock<Option<fontdue::Font>> = OnceLock::new();
-static ANONYMOUS_PRO_REGULAR: OnceLock<Option<fontdue::Font>> = OnceLock::new();
-static ANONYMOUS_PRO_BOLD: OnceLock<Option<fontdue::Font>> = OnceLock::new();
-static ARCHIVO_BLACK: OnceLock<Option<fontdue::Font>> = OnceLock::new();
-
-fn parse_font(
-    cache: &'static OnceLock<Option<fontdue::Font>>,
-    bytes: &'static [u8],
-) -> Option<&'static fontdue::Font> {
-    cache
-        .get_or_init(|| fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).ok())
-        .as_ref()
-}
-
-/// Returns one selected bundled face, parsing it on first use and reusing it thereafter.
-/// Families with one designed weight ignore `Bold` and return that same face.
-pub(crate) fn bundled_font(
-    family: TextFontFamily,
-    style: TextFontStyle,
-) -> Option<&'static fontdue::Font> {
-    match (family, style) {
-        (TextFontFamily::Lato, TextFontStyle::Regular) => parse_font(
-            &LATO_REGULAR,
-            include_bytes!("../assets/fonts/lato/Lato-Regular.ttf"),
-        ),
-        (TextFontFamily::Lato, TextFontStyle::Bold) => parse_font(
-            &LATO_BOLD,
-            include_bytes!("../assets/fonts/lato/Lato-Bold.ttf"),
-        ),
-        (TextFontFamily::BebasNeue, _) => parse_font(
-            &BEBAS_NEUE,
-            include_bytes!("../assets/fonts/bebas-neue/BebasNeue-Regular.ttf"),
-        ),
-        (TextFontFamily::PlayfairDisplay, TextFontStyle::Regular) => parse_font(
-            &PLAYFAIR_REGULAR,
-            include_bytes!("../assets/fonts/playfair-display-sc/PlayfairDisplaySC-Regular.ttf"),
-        ),
-        (TextFontFamily::PlayfairDisplay, TextFontStyle::Bold) => parse_font(
-            &PLAYFAIR_BOLD,
-            include_bytes!("../assets/fonts/playfair-display-sc/PlayfairDisplaySC-Bold.ttf"),
-        ),
-        (TextFontFamily::PatrickHand, _) => parse_font(
-            &PATRICK_HAND,
-            include_bytes!("../assets/fonts/patrick-hand/PatrickHand-Regular.ttf"),
-        ),
-        (TextFontFamily::AnonymousPro, TextFontStyle::Regular) => parse_font(
-            &ANONYMOUS_PRO_REGULAR,
-            include_bytes!("../assets/fonts/anonymous-pro/AnonymousPro-Regular.ttf"),
-        ),
-        (TextFontFamily::AnonymousPro, TextFontStyle::Bold) => parse_font(
-            &ANONYMOUS_PRO_BOLD,
-            include_bytes!("../assets/fonts/anonymous-pro/AnonymousPro-Bold.ttf"),
-        ),
-        (TextFontFamily::ArchivoBlack, _) => parse_font(
-            &ARCHIVO_BLACK,
-            include_bytes!("../assets/fonts/archivo-black/ArchivoBlack-Regular.ttf"),
-        ),
-    }
-}
-
-/// Sums each character's advance width (no kerning) to get `text`'s total rendered width in
-/// pixels at `font_size_px`. Falls back to a rough `0.6 * font_size_px` per character if a
-/// bundled font is unexpectedly unparseable — better than refusing to position word highlights
-/// at all, though visibly less accurate.
-pub fn text_width_px(text: &str, font_size_px: f32) -> f32 {
-    text_width_px_with_font(
-        text,
-        font_size_px,
-        TextFontFamily::default(),
-        TextFontStyle::default(),
-    )
-}
-
-/// Font-selecting counterpart of [`text_width_px`].
-pub fn text_width_px_with_font(
-    text: &str,
-    font_size_px: f32,
-    family: TextFontFamily,
-    style: TextFontStyle,
-) -> f32 {
-    match bundled_font(family, style) {
-        Some(font) => text
-            .chars()
-            .map(|c| font.metrics(c, font_size_px).advance_width)
-            .sum(),
-        None => text.chars().count() as f32 * font_size_px * 0.6,
-    }
-}
-
-/// Splits `text` on ASCII spaces and returns each word's left-edge x offset in pixels from the
-/// start of the line (word 0 is always at offset `0.0`), for positioning per-word highlight
-/// overlays under [`crate::render::resolve_text_segments`]. A single space's width is included
-/// between words but not before the first or after the last. Multi-space runs collapse to one
-/// gap, matching how the words were presumably joined when transcribed.
-pub fn word_x_offsets_px(words: &[&str], font_size_px: f32) -> Vec<f32> {
-    word_x_offsets_px_with_font(
-        words,
-        font_size_px,
-        TextFontFamily::default(),
-        TextFontStyle::default(),
-    )
-}
-
-/// Font-selecting counterpart of [`word_x_offsets_px`].
-pub fn word_x_offsets_px_with_font(
-    words: &[&str],
-    font_size_px: f32,
-    family: TextFontFamily,
-    style: TextFontStyle,
-) -> Vec<f32> {
-    let space_width = text_width_px_with_font(" ", font_size_px, family, style);
-    let mut offsets = Vec::with_capacity(words.len());
-    let mut x = 0.0f32;
-    for (i, word) in words.iter().enumerate() {
-        if i > 0 {
-            x += space_width;
-        }
-        offsets.push(x);
-        x += text_width_px_with_font(word, font_size_px, family, style);
-    }
-    offsets
-}
-
-/// Locates each timed/transcribed word inside the exact caption string, in order, returning
-/// UTF-8 byte ranges suitable for matching [`fontdue::layout::GlyphPosition::byte_offset`].
-/// Searching continues after the previous match, so repeated words map to their own occurrence
-/// and arbitrary whitespace/newlines in the edited caption remain intact. A word that no longer
-/// appears after the previous match returns `None` instead of drawing a highlight over unrelated
-/// text — useful when a user edits the caption without regenerating its word timings.
+/// Locates each timed/transcribed word inside the exact caption string, in order, returning UTF-8
+/// byte ranges — matched against [`crate::text_layout::ShapedGlyph::cluster`] by
+/// `crate::overlay_render::glyph_excluded`. Searching continues after the previous match, so
+/// repeated words map to their own occurrence and arbitrary whitespace/newlines in the edited
+/// caption remain intact. A word that no longer appears after the previous match returns `None`
+/// instead of drawing a highlight over unrelated text — useful when a user edits the caption
+/// without regenerating its word timings.
 pub fn word_byte_ranges(text: &str, words: &[&str]) -> Vec<Option<[usize; 2]>> {
     let mut search_from = 0usize;
     words
