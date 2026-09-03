@@ -126,6 +126,7 @@ fn text_clip(words: Vec<WordTiming>, highlight_enabled: bool) -> TextClip {
         rotation_keyframes: vec![],
         direction: Default::default(),
         language: None,
+        text_align: Default::default(),
     }
 }
 

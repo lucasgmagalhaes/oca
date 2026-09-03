@@ -146,6 +146,28 @@ pub enum TextDirection {
     Rtl,
 }
 
+/// Horizontal text alignment for a [`TextClip`] (TEXT-01B, `spec/architecture/
+/// complex-text-shaping.md`'s "semantic alignment" goal, scoped down to plain visual Left/
+/// Center/Right for this slice — see that doc's own TEXT-01B step 1 note). `Auto` (the default)
+/// preserves this clip's exact pre-existing behavior byte-for-byte: [`TextClip::pos_x`] is the
+/// text block's *left* edge, wrapping into the remaining space to the canvas's right edge, and
+/// per-line alignment within that box falls back to `cosmic-text`'s own direction-aware default
+/// (left for an LTR-detected paragraph, right for RTL). Choosing `Left`/`Center`/`Right`
+/// explicitly instead **redefines what `pos_x` anchors**: the text block's left edge, horizontal
+/// center, or right edge respectively — matching how most caption/design tools bind a position
+/// handle to the alignment currently selected, at the cost of `pos_x` meaning something different
+/// depending on this field (a real, deliberate trade-off, not an oversight — the alternative of
+/// always aligning within a fixed canvas-wide box was rejected because it would make `pos_x`
+/// silently stop mattering the moment alignment left `Auto`/`Left`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum TextAlign {
+    #[default]
+    Auto,
+    Left,
+    Center,
+    Right,
+}
+
 /// One placed text overlay on a [`Track`] whose [`TrackKind`] is [`TrackKind::Text`].
 /// Rasterized with the selected bundled font into an RGBA image, then composited in a native
 /// post-processing pass after the main timeline encode — see `avbridge::apply_text_overlays`.
@@ -279,6 +301,11 @@ pub struct TextClip {
     /// with no language hint.
     #[serde(default)]
     pub language: Option<String>,
+    /// Horizontal text alignment — see [`TextAlign`]. `#[serde(default)]` so older saved projects
+    /// load as `Auto`, the exact behavior this clip already had before `TextAlign` existed
+    /// (`pos_x` as a plain left edge, direction-aware per-line fallback).
+    #[serde(default)]
+    pub text_align: TextAlign,
 }
 
 fn default_text_background_padding() -> f32 {

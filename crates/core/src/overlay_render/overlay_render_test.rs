@@ -94,6 +94,7 @@ fn sample_text(text: &str) -> TextClip {
         rotation_keyframes: vec![],
         direction: Default::default(),
         language: None,
+        text_align: Default::default(),
     }
 }
 
@@ -329,4 +330,124 @@ fn rounded_rect_mask_with_full_radius_masks_out_the_corner() {
     let buf = render_mask_shape_gray8(MaskShape::RoundedRect, 1.0, 100, 100);
     assert_eq!(gray_pixel(&buf, 100, 50, 50), 255);
     assert_eq!(gray_pixel(&buf, 100, 0, 0), 0);
+}
+
+#[test]
+fn text_horizontal_box_auto_and_left_anchor_the_left_edge_at_the_pos_x_pixel() {
+    // Auto and Left must be pixel-identical to this clip's exact pre-existing behavior: the box
+    // starts at the anchor and extends to the canvas's right edge.
+    for align in [
+        crate::timeline::TextAlign::Auto,
+        crate::timeline::TextAlign::Left,
+    ] {
+        let (origin_x, max_width) = text_horizontal_box(align, 40.0, 200.0);
+        assert_eq!(origin_x, 40.0);
+        assert_eq!(max_width, 160.0);
+    }
+}
+
+#[test]
+fn text_horizontal_box_center_is_symmetric_around_the_anchor() {
+    let (origin_x, max_width) =
+        text_horizontal_box(crate::timeline::TextAlign::Center, 50.0, 200.0);
+    // The box's own center (origin_x + max_width / 2) must land exactly on the anchor.
+    assert!((origin_x + max_width / 2.0 - 50.0).abs() < 0.001);
+    // Symmetric around a near-left anchor means the box is bounded by the closer edge (the
+    // anchor itself, 50px from the left) on one side and mirrors that same 50px on the other.
+    assert_eq!(origin_x, 0.0);
+    assert_eq!(max_width, 100.0);
+}
+
+#[test]
+fn text_horizontal_box_center_stays_symmetric_when_the_anchor_is_past_the_midpoint() {
+    let (origin_x, max_width) =
+        text_horizontal_box(crate::timeline::TextAlign::Center, 150.0, 200.0);
+    assert!((origin_x + max_width / 2.0 - 150.0).abs() < 0.001);
+    // Now the canvas's right edge (50px from the anchor) is the closer bound.
+    assert_eq!(origin_x, 100.0);
+    assert_eq!(max_width, 100.0);
+}
+
+#[test]
+fn text_horizontal_box_right_anchors_the_right_edge_at_the_pos_x_pixel() {
+    let (origin_x, max_width) =
+        text_horizontal_box(crate::timeline::TextAlign::Right, 150.0, 200.0);
+    assert_eq!(origin_x, 0.0);
+    assert_eq!(max_width, 150.0);
+    assert!((origin_x + max_width - 150.0).abs() < 0.001);
+}
+
+#[test]
+fn text_horizontal_box_never_produces_a_non_positive_width() {
+    // An anchor pinned exactly at a canvas edge (or past it) must still produce a box a caller
+    // can hand to shape()'s max_width_px without it collapsing to zero/negative.
+    for align in [
+        crate::timeline::TextAlign::Auto,
+        crate::timeline::TextAlign::Left,
+        crate::timeline::TextAlign::Center,
+        crate::timeline::TextAlign::Right,
+    ] {
+        for anchor in [0.0, 200.0, -10.0, 250.0] {
+            let (_, max_width) = text_horizontal_box(align, anchor, 200.0);
+            assert!(
+                max_width > 0.0,
+                "align={align:?} anchor={anchor} produced max_width={max_width}"
+            );
+        }
+    }
+}
+
+#[test]
+fn center_alignment_lands_the_lines_own_center_on_the_pos_x_anchor() {
+    // Real end-to-end proof, not just the box-geometry math above: cosmic-text's own per-line
+    // centering within a symmetric box does land each line's center exactly on the anchor pixel.
+    let mut engine = crate::text_layout::TextLayoutEngine::new_from_locked_catalog();
+    let (origin_x, max_width) =
+        text_horizontal_box(crate::timeline::TextAlign::Center, 100.0, 200.0);
+    let shaped = engine.shape(
+        "Hi",
+        crate::timeline::TextFontFamily::Lato,
+        crate::timeline::TextFontStyle::Regular,
+        32.0,
+        Some(max_width),
+        (origin_x, 0.0),
+        crate::timeline::TextDirection::Auto,
+        crate::timeline::TextAlign::Center,
+    );
+    let line = &shaped.lines[0];
+    let min_x = line
+        .glyphs
+        .iter()
+        .map(|g| g.x)
+        .fold(f32::INFINITY, f32::min);
+    let max_x = line
+        .glyphs
+        .iter()
+        .map(|g| g.x + g.w)
+        .fold(f32::NEG_INFINITY, f32::max);
+    assert!(((min_x + max_x) / 2.0 - 100.0).abs() < 0.5);
+}
+
+#[test]
+fn right_alignment_lands_the_lines_own_right_edge_on_the_pos_x_anchor() {
+    let mut engine = crate::text_layout::TextLayoutEngine::new_from_locked_catalog();
+    let (origin_x, max_width) =
+        text_horizontal_box(crate::timeline::TextAlign::Right, 150.0, 200.0);
+    let shaped = engine.shape(
+        "Hi",
+        crate::timeline::TextFontFamily::Lato,
+        crate::timeline::TextFontStyle::Regular,
+        32.0,
+        Some(max_width),
+        (origin_x, 0.0),
+        crate::timeline::TextDirection::Auto,
+        crate::timeline::TextAlign::Right,
+    );
+    let line = &shaped.lines[0];
+    let max_x = line
+        .glyphs
+        .iter()
+        .map(|g| g.x + g.w)
+        .fold(f32::NEG_INFINITY, f32::max);
+    assert!((max_x - 150.0).abs() < 0.5);
 }

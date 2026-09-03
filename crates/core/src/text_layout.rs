@@ -37,11 +37,12 @@ use std::ops::Range;
 use std::sync::{Mutex, OnceLock};
 
 use cosmic_text::{
-    fontdb, Attrs, Buffer, Family, FontSystem, Metrics, PhysicalGlyph, Shaping, SwashCache, Weight,
+    fontdb, Align, Attrs, Buffer, Family, FontSystem, Metrics, PhysicalGlyph, Shaping, SwashCache,
+    Weight,
 };
 
 use crate::font_catalog;
-use crate::timeline::{TextDirection, TextFontFamily, TextFontStyle};
+use crate::timeline::{TextAlign, TextDirection, TextFontFamily, TextFontStyle};
 
 /// Left-to-right mark (U+200E) / right-to-left mark (U+200F) — invisible, zero-advance format
 /// characters whose own bidi class (`L`/`R`) is "strong" for UAX #9's P2/P3 first-strong-char
@@ -170,6 +171,15 @@ impl TextLayoutEngine {
     /// [`ShapedGlyph::cluster`] is still a byte range into `text` exactly as passed in: the
     /// bidi-mark prefix this uses internally to pin the direction is stripped back out of both
     /// the glyph list and every cluster offset before returning, so callers never see it.
+    ///
+    /// `align` selects each line's horizontal alignment *within* the `(origin.0, max_width_px)`
+    /// box the caller already computed — see [`TextAlign`]'s own doc comment for how a caller is
+    /// expected to pick that box differently per alignment (`Auto`/`Left` anchor the box's own
+    /// left edge at `origin.0`; `Center`/`Right` expect the caller to have already centered or
+    /// right-anchored the box around its own intended position). `TextAlign::Auto` passes `None`
+    /// through unchanged, keeping `cosmic-text`'s own direction-aware default (left for LTR,
+    /// right for RTL) exactly as before this parameter existed.
+    #[allow(clippy::too_many_arguments)]
     pub fn shape(
         &mut self,
         text: &str,
@@ -179,6 +189,7 @@ impl TextLayoutEngine {
         max_width_px: Option<f32>,
         origin: (f32, f32),
         direction: TextDirection,
+        align: TextAlign,
     ) -> ShapedText {
         let mark = match direction {
             TextDirection::Auto => None,
@@ -190,6 +201,12 @@ impl TextLayoutEngine {
             Some(mark) => Cow::Owned(format!("{mark}{text}")),
             None => Cow::Borrowed(text),
         };
+        let cosmic_align = match align {
+            TextAlign::Auto => None,
+            TextAlign::Left => Some(Align::Left),
+            TextAlign::Center => Some(Align::Center),
+            TextAlign::Right => Some(Align::Right),
+        };
 
         let metrics = Metrics::new(font_size_px, font_size_px * 1.25);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
@@ -199,7 +216,7 @@ impl TextLayoutEngine {
         {
             let mut buffer = buffer.borrow_with(&mut self.font_system);
             buffer.set_size(max_width_px, None);
-            buffer.set_text(&shaped_text, &attrs, Shaping::Advanced, None);
+            buffer.set_text(&shaped_text, &attrs, Shaping::Advanced, cosmic_align);
             buffer.shape_until_scroll(true);
         }
 
@@ -271,6 +288,7 @@ impl TextLayoutEngine {
             None,
             (0.0, 0.0),
             TextDirection::Auto,
+            TextAlign::Auto,
         )
         .width
     }

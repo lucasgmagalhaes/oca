@@ -412,6 +412,7 @@ fn word_highlight_text_overlay_exports_without_error() {
             rotation_keyframes: vec![],
             direction: Default::default(),
             language: None,
+            text_align: Default::default(),
         }],
         shape_clips: vec![],
         visible: true,
