@@ -1,0 +1,387 @@
+// Copyright (C) 2026 by Lucas Gomes <lucasgsm88@gmail.com>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+use super::*;
+use crate::timeline::{ShapeKind, TextFontFamily, TextFontStyle};
+
+fn text_element(id: &str, text: TextBinding, color: ColorBinding) -> TemplateTextElement {
+    TemplateTextElement {
+        id: id.to_string(),
+        text,
+        color_rgba: color,
+        font_family: TextFontFamily::Lato,
+        font_style: TextFontStyle::Regular,
+        font_size: 32.0,
+        pos_x: 0.1,
+        pos_y: 0.8,
+    }
+}
+
+fn shape_element(id: &str, color: ColorBinding) -> TemplateShapeElement {
+    TemplateShapeElement {
+        id: id.to_string(),
+        shape_kind: ShapeKind::rectangle(),
+        color_rgba: color,
+        center_x: 0.5,
+        center_y: 0.5,
+        width: 0.3,
+        height: 0.1,
+        rotation_deg: 0.0,
+        stroke_thickness_px: 0.0,
+    }
+}
+
+fn minimal_template() -> GraphicTemplate {
+    GraphicTemplate {
+        schema_version: TEMPLATE_SCHEMA_VERSION,
+        name: "Scoreboard".to_string(),
+        canvas_width: 1920,
+        canvas_height: 1080,
+        parameters: vec![],
+        elements: vec![],
+    }
+}
+
+#[test]
+fn a_minimal_template_with_no_elements_is_valid() {
+    let template = minimal_template();
+    assert!(template.validate().is_ok());
+}
+
+#[test]
+fn rejects_an_unsupported_schema_version() {
+    let mut template = minimal_template();
+    template.schema_version = 99;
+    assert_eq!(
+        template.validate(),
+        Err(TemplateValidationError::UnsupportedSchemaVersion { found: 99 })
+    );
+}
+
+#[test]
+fn rejects_a_zero_canvas_dimension() {
+    let mut template = minimal_template();
+    template.canvas_width = 0;
+    assert_eq!(
+        template.validate(),
+        Err(TemplateValidationError::InvalidCanvasSize {
+            width: 0,
+            height: 1080
+        })
+    );
+}
+
+#[test]
+fn rejects_duplicate_parameter_ids() {
+    let mut template = minimal_template();
+    template.parameters = vec![
+        TemplateParameter {
+            id: "name".to_string(),
+            label: "Name".to_string(),
+            kind: TemplateParameterKind::Text,
+        },
+        TemplateParameter {
+            id: "name".to_string(),
+            label: "Name again".to_string(),
+            kind: TemplateParameterKind::Text,
+        },
+    ];
+    assert_eq!(
+        template.validate(),
+        Err(TemplateValidationError::DuplicateParameterId(
+            "name".to_string()
+        ))
+    );
+}
+
+#[test]
+fn rejects_duplicate_element_ids_across_text_and_shape() {
+    let mut template = minimal_template();
+    template.elements = vec![
+        TemplateElement::Text(text_element(
+            "e1",
+            TextBinding::Fixed("Hi".to_string()),
+            ColorBinding::Fixed([255, 255, 255, 255]),
+        )),
+        TemplateElement::Shape(shape_element("e1", ColorBinding::Fixed([0, 0, 0, 255]))),
+    ];
+    assert_eq!(
+        template.validate(),
+        Err(TemplateValidationError::DuplicateElementId(
+            "e1".to_string()
+        ))
+    );
+}
+
+#[test]
+fn rejects_a_text_binding_referencing_an_undeclared_parameter() {
+    let mut template = minimal_template();
+    template.elements = vec![TemplateElement::Text(text_element(
+        "e1",
+        TextBinding::Parameter("missing".to_string()),
+        ColorBinding::Fixed([255, 255, 255, 255]),
+    ))];
+    assert_eq!(
+        template.validate(),
+        Err(TemplateValidationError::UnknownParameterReference {
+            element_id: "e1".to_string(),
+            parameter_id: "missing".to_string(),
+        })
+    );
+}
+
+#[test]
+fn rejects_a_text_binding_referencing_a_color_typed_parameter() {
+    let mut template = minimal_template();
+    template.parameters = vec![TemplateParameter {
+        id: "team_color".to_string(),
+        label: "Team color".to_string(),
+        kind: TemplateParameterKind::Color,
+    }];
+    template.elements = vec![TemplateElement::Text(text_element(
+        "e1",
+        TextBinding::Parameter("team_color".to_string()),
+        ColorBinding::Fixed([255, 255, 255, 255]),
+    ))];
+    assert_eq!(
+        template.validate(),
+        Err(TemplateValidationError::ParameterKindMismatch {
+            element_id: "e1".to_string(),
+            parameter_id: "team_color".to_string(),
+            expected: TemplateParameterKind::Text,
+        })
+    );
+}
+
+#[test]
+fn accepts_a_correctly_typed_parameter_reference() {
+    let mut template = minimal_template();
+    template.parameters = vec![
+        TemplateParameter {
+            id: "player_name".to_string(),
+            label: "Player name".to_string(),
+            kind: TemplateParameterKind::Text,
+        },
+        TemplateParameter {
+            id: "team_color".to_string(),
+            label: "Team color".to_string(),
+            kind: TemplateParameterKind::Color,
+        },
+    ];
+    template.elements = vec![TemplateElement::Text(text_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+        ColorBinding::Parameter("team_color".to_string()),
+    ))];
+    assert!(template.validate().is_ok());
+}
+
+#[test]
+fn rejects_a_non_positive_font_size() {
+    let mut template = minimal_template();
+    let mut t = text_element(
+        "e1",
+        TextBinding::Fixed("Hi".to_string()),
+        ColorBinding::Fixed([255, 255, 255, 255]),
+    );
+    t.font_size = 0.0;
+    template.elements = vec![TemplateElement::Text(t)];
+    assert_eq!(
+        template.validate(),
+        Err(TemplateValidationError::NonPositiveFontSize {
+            element_id: "e1".to_string(),
+            value: 0.0,
+        })
+    );
+}
+
+#[test]
+fn rejects_a_non_positive_shape_extent() {
+    let mut template = minimal_template();
+    let mut s = shape_element("e1", ColorBinding::Fixed([0, 0, 0, 255]));
+    s.width = 0.0;
+    template.elements = vec![TemplateElement::Shape(s)];
+    assert_eq!(
+        template.validate(),
+        Err(TemplateValidationError::NonPositiveShapeExtent {
+            element_id: "e1".to_string(),
+            width: 0.0,
+            height: 0.1,
+        })
+    );
+}
+
+#[test]
+fn parse_and_validate_rejects_an_unrecognized_primitive_kind() {
+    let json = r#"{
+        "schema_version": 1,
+        "name": "Bad",
+        "canvas_width": 100,
+        "canvas_height": 100,
+        "parameters": [],
+        "elements": [
+            { "Video": { "id": "e1" } }
+        ]
+    }"#;
+    let result = GraphicTemplate::parse_and_validate(json);
+    assert!(matches!(
+        result,
+        Err(TemplateParseOrValidationError::Parse(_))
+    ));
+}
+
+#[test]
+fn parse_and_validate_round_trips_a_real_template_through_json() {
+    let mut template = minimal_template();
+    template.parameters = vec![TemplateParameter {
+        id: "name".to_string(),
+        label: "Name".to_string(),
+        kind: TemplateParameterKind::Text,
+    }];
+    template.elements = vec![TemplateElement::Text(text_element(
+        "e1",
+        TextBinding::Parameter("name".to_string()),
+        ColorBinding::Fixed([255, 0, 0, 255]),
+    ))];
+
+    let json = serde_json::to_string(&template).unwrap();
+    let parsed = GraphicTemplate::parse_and_validate(&json).unwrap();
+    assert_eq!(parsed, template);
+}
+
+#[test]
+fn instantiate_resolves_fixed_and_parameter_bound_values() {
+    let mut template = minimal_template();
+    template.parameters = vec![
+        TemplateParameter {
+            id: "player_name".to_string(),
+            label: "Player name".to_string(),
+            kind: TemplateParameterKind::Text,
+        },
+        TemplateParameter {
+            id: "team_color".to_string(),
+            label: "Team color".to_string(),
+            kind: TemplateParameterKind::Color,
+        },
+    ];
+    template.elements = vec![TemplateElement::Text(text_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+        ColorBinding::Parameter("team_color".to_string()),
+    ))];
+
+    let mut values = HashMap::new();
+    values.insert(
+        "player_name".to_string(),
+        ParameterValue::Text("PacoPaçoca".to_string()),
+    );
+    values.insert(
+        "team_color".to_string(),
+        ParameterValue::Color([10, 20, 30, 255]),
+    );
+
+    let result = instantiate(&template, &values).unwrap();
+    assert_eq!(result.len(), 1);
+    match &result[0] {
+        InstantiatedElement::Text {
+            text, color_rgba, ..
+        } => {
+            assert_eq!(text, "PacoPaçoca");
+            assert_eq!(*color_rgba, [10, 20, 30, 255]);
+        }
+        InstantiatedElement::Shape { .. } => panic!("expected a text element"),
+    }
+}
+
+#[test]
+fn instantiate_fails_with_a_missing_parameter_value() {
+    let mut template = minimal_template();
+    template.parameters = vec![TemplateParameter {
+        id: "player_name".to_string(),
+        label: "Player name".to_string(),
+        kind: TemplateParameterKind::Text,
+    }];
+    template.elements = vec![TemplateElement::Text(text_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+        ColorBinding::Fixed([255, 255, 255, 255]),
+    ))];
+
+    let values = HashMap::new();
+    assert_eq!(
+        instantiate(&template, &values),
+        Err(TemplateInstantiateError::MissingParameterValue(
+            "player_name".to_string()
+        ))
+    );
+}
+
+#[test]
+fn instantiate_fails_when_a_supplied_value_has_the_wrong_kind() {
+    let mut template = minimal_template();
+    template.parameters = vec![TemplateParameter {
+        id: "player_name".to_string(),
+        label: "Player name".to_string(),
+        kind: TemplateParameterKind::Text,
+    }];
+    template.elements = vec![TemplateElement::Text(text_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+        ColorBinding::Fixed([255, 255, 255, 255]),
+    ))];
+
+    let mut values = HashMap::new();
+    values.insert(
+        "player_name".to_string(),
+        ParameterValue::Color([1, 2, 3, 255]),
+    );
+    assert_eq!(
+        instantiate(&template, &values),
+        Err(TemplateInstantiateError::WrongParameterValueKind {
+            parameter_id: "player_name".to_string(),
+            expected: TemplateParameterKind::Text,
+        })
+    );
+}
+
+#[test]
+fn instantiate_rejects_an_invalid_template_before_touching_values() {
+    let mut template = minimal_template();
+    template.schema_version = 99;
+    let values = HashMap::new();
+    assert_eq!(
+        instantiate(&template, &values),
+        Err(TemplateInstantiateError::Validation(
+            TemplateValidationError::UnsupportedSchemaVersion { found: 99 }
+        ))
+    );
+}
+
+#[test]
+fn instantiate_resolves_a_shape_element_with_a_fixed_color() {
+    let mut template = minimal_template();
+    template.elements = vec![TemplateElement::Shape(shape_element(
+        "s1",
+        ColorBinding::Fixed([9, 9, 9, 255]),
+    ))];
+    let values = HashMap::new();
+    let result = instantiate(&template, &values).unwrap();
+    match &result[0] {
+        InstantiatedElement::Shape { color_rgba, .. } => {
+            assert_eq!(*color_rgba, [9, 9, 9, 255]);
+        }
+        InstantiatedElement::Text { .. } => panic!("expected a shape element"),
+    }
+}

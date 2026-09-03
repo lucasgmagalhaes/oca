@@ -1598,9 +1598,67 @@ an item earlier:
   are normalized and cannot escape an explicitly selected media root" security requirement (only
   meaningful once real file import exists) remain open.
 - `[ ]` **CF-06: live multicam monitor.** Show synchronized proxy-backed feeds and materialize
-  angle decisions through the existing ordinary clip-split representation.
-- `[ ]` **CF-07: parameterized motion-graphics templates.** Add a declarative, script-free,
+  angle decisions through the existing ordinary clip-split representation. **Deliberately skipped
+  for now** (user-confirmed): every one of its 4 implementation slices needs a live GStreamer
+  pipeline with real hardware/display to verify frame sync, preview/program distinction, and
+  decode-capacity degradation — this sandbox has neither, and writing that code with only a
+  type-check as verification would carry real risk of shipping subtly wrong pipeline code
+  untested. Revisit on a real dev machine, or once a display becomes available in this
+  environment.
+- `[~]` **CF-07: parameterized motion-graphics templates.** Add a declarative, script-free,
   versioned asset format for reusable channel graphics and aspect-ratio variants.
+
+  **Slice 1 (the versioned JSON format itself) shipped.** `avcore::motion_template` adds
+  `GraphicTemplate` — `schema_version`, `name`, `canvas_width`/`canvas_height`, a
+  `Vec<TemplateParameter>` (named, typed editable slots: `Text`/`Color`, the two the doc's own
+  slice 1/2 split lists first), and a `Vec<TemplateElement>` of allowlisted primitives.
+  Deliberately just `TemplateElement::Text`/`::Shape` for this slice — the exact two overlay
+  kinds `crate::timeline`/`crate::overlay_render`/`crate::shape_render` already render, per
+  `spec/RULES.md`'s reuse-before-building rule; an `Image` primitive (the doc's own slice 2
+  scope) has no existing overlay-clip kind to reuse yet (`TrackKind` has no `Image` variant), so
+  it stays a real, separate follow-up rather than inventing new overlay-rendering infrastructure
+  this slice was never meant to cover. `TemplateElement` is a closed enum (no `#[serde(other)]`,
+  matching `GameplayEventKind`'s own CF-02 precedent) — an unrecognized primitive kind fails to
+  deserialize outright. `GraphicTemplate::validate` covers the rest of the doc's "unknown
+  primitives/parameters are rejected rather than executed or ignored" acceptance criterion:
+  schema version, positive canvas size, unique parameter/element ids, positive font
+  size/shape extent, and every `TextBinding::Parameter`/`ColorBinding::Parameter` reference
+  resolving to a declared parameter of the matching kind. Every field is a plain literal or a
+  named parameter reference — no scripts or executable expressions anywhere in the format, per
+  the doc's own explicit constraint for this whole feature. `GraphicTemplate::parse_and_validate`
+  is the one recommended untrusted-input entry point, mirroring `EventSidecar::parse_and_validate`'s
+  own established shape.
+
+  `instantiate(template, values)` makes "editable parameters" real, not just declared: resolves a
+  validated template's `Text`/`Color` bindings against caller-supplied `ParameterValue`s into
+  placement-ready `InstantiatedElement`s, failing on a missing or wrong-kind value. Deliberately
+  timeline/track-agnostic — building an actual `TextClip`/`ShapeClip` from an `InstantiatedElement`
+  and placing it on a track (assigning its own id/`start_secs`/`duration_secs`) is left to a
+  `ui`-side follow-up slice, the same "core stays UI-agnostic" boundary every other feature in
+  this crate keeps.
+
+  Templates serialize via plain `serde_json`, not this crate's usual gzip-MessagePack `.ocproj`
+  framing — deliberate, since a template is meant to be an inspectable, shareable asset file
+  (the doc's own slice 3 "package templates as data" goal), not just internal persisted state.
+
+  **Deliberately not done**: `Image` primitive, timing (animation-in/out), safe-area anchor
+  semantics, and aspect-ratio variants (all the doc's own slice 2 scope); packaging templates
+  with their own validated media assets and the `ui`-side apply/preview flow (slice 3); and
+  migration tests for a second schema version, which has no reason to exist yet (slice 4). All
+  real, separate follow-ups.
+
+  Verified for real, not just type-checked: since `motion_template.rs` depends only on
+  `crate::timeline`'s three plain enums (`ShapeKind`/`TextFontFamily`/`TextFontStyle`, no
+  `avbridge`/GStreamer/ONNX), it was copied unmodified into a throwaway scratch crate — this time
+  with the *real* `serde`/`serde_json` dependencies rather than stand-ins, since the format's own
+  JSON round-trip and closed-enum rejection are exactly what needed proving — and `cargo test`ed
+  there for real: 17/17 passing, covering every validation rule, a real JSON round-trip through
+  `serde_json::to_string`/`parse_and_validate`, an unrecognized primitive kind actually failing
+  JSON deserialization (not just asserted to), and `instantiate`'s fixed/parameter-bound
+  resolution, missing-value, wrong-kind-value, and validate-before-touching-values behavior.
+  `cargo check --workspace --all-targets` and `cargo clippy -p core --lib --no-deps` (via the
+  documented temporary `filters.c` shim, discarded before commit) and `cargo fmt --check` all
+  stayed clean.
 - `[ ]` **CF-08: semantic transcript and visual search.** Build a bounded, versioned local index
   after exact transcript search ships in CF-01.
 - `[ ]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and
