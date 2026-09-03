@@ -61,17 +61,31 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 
                 for (screen, icon) in ITEMS {
                     let label = i18n::nav_label(app.locale, screen);
-                    rail_button(ui, app.screen == screen, icon, label)
-                        .clicked()
-                        .then(|| {
-                            app.screen = screen;
-                            app.prefs_open = false;
-                        });
+                    rail_button(
+                        ui,
+                        app.screen == screen,
+                        icon,
+                        egui::FontFamily::Proportional,
+                        label,
+                    )
+                    .clicked()
+                    .then(|| {
+                        app.screen = screen;
+                        app.prefs_open = false;
+                    });
                 }
 
                 ui.add_space(4.0);
                 let prefs_label = i18n::Text::NavPrefs.tr(app.locale);
-                if rail_button(ui, app.prefs_open, "⚙", prefs_label).clicked() {
+                if rail_button(
+                    ui,
+                    app.prefs_open,
+                    crate::icons::SETTINGS_STR,
+                    crate::icons::family(),
+                    prefs_label,
+                )
+                .clicked()
+                {
                     app.prefs_open = !app.prefs_open;
                 }
             });
@@ -81,7 +95,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 /// One icon-only rail button: a centered glyph, an accent-tinted rounded background plus a
 /// left-edge accent bar when active, and a plain hover tint otherwise. Tooltip carries the
 /// accessible name (`widget_info` below) since there's no visible label glyph.
-fn rail_button(ui: &mut egui::Ui, active: bool, icon: &str, label: &str) -> egui::Response {
+fn rail_button(
+    ui: &mut egui::Ui,
+    active: bool,
+    icon: &str,
+    icon_family: egui::FontFamily,
+    label: &str,
+) -> egui::Response {
     let color = if active {
         theme::ACCENT
     } else {
@@ -117,7 +137,7 @@ fn rail_button(ui: &mut egui::Ui, active: bool, icon: &str, label: &str) -> egui
             rect.center(),
             egui::Align2::CENTER_CENTER,
             icon,
-            egui::FontId::proportional(16.0),
+            egui::FontId::new(16.0, icon_family),
             color,
         );
     }

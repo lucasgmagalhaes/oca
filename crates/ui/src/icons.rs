@@ -87,6 +87,35 @@ pub const TYPE: char = '\u{E016}';
 pub const UPLOAD: char = '\u{E017}';
 pub const WAND_SPARKLES: char = '\u{E018}';
 
+// `&str` twins of the constants above — call sites almost always need a `&str` (egui's
+// `RichText`/`icon_button` take `&str`, not `char`), and a `char` can't become a `&'static str`
+// in a const context. `tests::str_constants_match_char_constants` keeps each pair in sync.
+pub const CAMERA_STR: &str = "\u{E000}";
+pub const CHEVRON_DOWN_STR: &str = "\u{E001}";
+pub const CHEVRON_LEFT_STR: &str = "\u{E002}";
+pub const CHEVRON_RIGHT_STR: &str = "\u{E003}";
+pub const ELLIPSIS_VERTICAL_STR: &str = "\u{E004}";
+pub const EYE_STR: &str = "\u{E005}";
+pub const EYE_OFF_STR: &str = "\u{E006}";
+pub const FAST_FORWARD_STR: &str = "\u{E007}";
+pub const FOLD_HORIZONTAL_STR: &str = "\u{E008}";
+pub const HAND_STR: &str = "\u{E009}";
+pub const LOCK_STR: &str = "\u{E00A}";
+pub const LOCK_OPEN_STR: &str = "\u{E00B}";
+pub const MOUSE_POINTER_2_STR: &str = "\u{E00C}";
+pub const MUSIC_STR: &str = "\u{E00D}";
+pub const PAUSE_STR: &str = "\u{E00E}";
+pub const PLAY_STR: &str = "\u{E00F}";
+pub const REPEAT_STR: &str = "\u{E010}";
+pub const REWIND_STR: &str = "\u{E011}";
+pub const SCISSORS_STR: &str = "\u{E012}";
+pub const SETTINGS_STR: &str = "\u{E013}";
+pub const SKIP_BACK_STR: &str = "\u{E014}";
+pub const SKIP_FORWARD_STR: &str = "\u{E015}";
+pub const TYPE_STR: &str = "\u{E016}";
+pub const UPLOAD_STR: &str = "\u{E017}";
+pub const WAND_SPARKLES_STR: &str = "\u{E018}";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,6 +172,49 @@ mod tests {
             assert_eq!(
                 *actual, expected,
                 "icons::{name} constant doesn't match lucide-oca.json's codepoint for `{name}`"
+            );
+        }
+    }
+
+    /// Every `_STR` constant must be its `char` twin's single-character string form — call
+    /// sites (`icon_button`, etc.) use the `_STR` constants, but [`constants_match_generated_mapping`]
+    /// only checks the `char` ones, so this is what actually catches a copy-paste drift between
+    /// a pair.
+    #[test]
+    fn str_constants_match_char_constants() {
+        let pairs: &[(char, &str)] = &[
+            (CAMERA, CAMERA_STR),
+            (CHEVRON_DOWN, CHEVRON_DOWN_STR),
+            (CHEVRON_LEFT, CHEVRON_LEFT_STR),
+            (CHEVRON_RIGHT, CHEVRON_RIGHT_STR),
+            (ELLIPSIS_VERTICAL, ELLIPSIS_VERTICAL_STR),
+            (EYE, EYE_STR),
+            (EYE_OFF, EYE_OFF_STR),
+            (FAST_FORWARD, FAST_FORWARD_STR),
+            (FOLD_HORIZONTAL, FOLD_HORIZONTAL_STR),
+            (HAND, HAND_STR),
+            (LOCK, LOCK_STR),
+            (LOCK_OPEN, LOCK_OPEN_STR),
+            (MOUSE_POINTER_2, MOUSE_POINTER_2_STR),
+            (MUSIC, MUSIC_STR),
+            (PAUSE, PAUSE_STR),
+            (PLAY, PLAY_STR),
+            (REPEAT, REPEAT_STR),
+            (REWIND, REWIND_STR),
+            (SCISSORS, SCISSORS_STR),
+            (SETTINGS, SETTINGS_STR),
+            (SKIP_BACK, SKIP_BACK_STR),
+            (SKIP_FORWARD, SKIP_FORWARD_STR),
+            (TYPE, TYPE_STR),
+            (UPLOAD, UPLOAD_STR),
+            (WAND_SPARKLES, WAND_SPARKLES_STR),
+        ];
+        for (ch, s) in pairs {
+            let mut buf = [0u8; 4];
+            assert_eq!(
+                ch.encode_utf8(&mut buf) as &str,
+                *s,
+                "a char/_STR constant pair in icons.rs is out of sync"
             );
         }
     }

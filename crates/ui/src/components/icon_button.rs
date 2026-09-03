@@ -13,17 +13,21 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-use eframe::egui::{self, Color32, Response, RichText, Ui};
+use eframe::egui::{self, Color32, FontFamily, Response, RichText, Ui};
 
-/// Escape hatches for [`icon_button`] — deliberately only two, not open-ended configurability,
+/// Escape hatches for [`icon_button`] — deliberately kept small, not open-ended configurability,
 /// so this stays one canonical component instead of becoming a fifth convention with extra
 /// steps. `size` covers the transport controls' enlarged (48-64pt) glyphs; `hover_color` covers
-/// window-chrome's close-button-red-on-hover convention. Leave both `None` for the default,
-/// small-button-styled icon action (delete/utility buttons).
-#[derive(Default, Clone, Copy)]
+/// window-chrome's close-button-red-on-hover convention; `family` selects a non-default font —
+/// today only the vendored Lucide icon font (`crate::icons::family()`) for a glyph that has a
+/// real vendored icon (see `spec/architecture/editor-ui-visual-redesign.md`'s Icon set section),
+/// left `None` (the default proportional font) for every emoji/text glyph that doesn't. Leave
+/// all three `None` for the default, small-button-styled icon action (delete/utility buttons).
+#[derive(Default, Clone)]
 pub struct IconButtonOpts {
     pub size: Option<f32>,
     pub hover_color: Option<Color32>,
+    pub family: Option<FontFamily>,
 }
 
 /// The one shared icon-button component — collapses what were four independent conventions
@@ -36,6 +40,10 @@ pub fn icon_button(ui: &mut Ui, glyph: &str, tooltip: &str, opts: IconButtonOpts
     let text = match opts.size {
         Some(size) => RichText::new(glyph).size(size),
         None => RichText::new(glyph),
+    };
+    let text = match opts.family {
+        Some(family) => text.family(family),
+        None => text,
     };
     let button = if opts.size.is_none() {
         egui::Button::new(text).small()

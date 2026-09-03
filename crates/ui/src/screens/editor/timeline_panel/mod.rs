@@ -21,6 +21,7 @@ use eframe::egui::{self, RichText};
 use crate::app::{App, EditorTool};
 use crate::components;
 use crate::i18n::Text;
+use crate::icons;
 use crate::theme;
 
 /// Bounds for `App::timeline_px_per_sec` — tight enough to stay readable, loose enough to
@@ -269,12 +270,16 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             // invisible video track and a muted audio track are the same "doesn't
                             // contribute to preview/export" concept, just named per the mock's
                             // own per-kind icon convention (`.tl-track-tool` 👁 vs 🔊).
+                            // No Lucide speaker icon is vendored (`spec/architecture/
+                            // editor-ui-visual-redesign.md`'s Icon set section only covers
+                            // `eye`/`eye-off`, matched to the video-track states below) — audio
+                            // tracks keep the emoji glyph, in the default font.
                             let is_audio = track.kind == avcore::timeline::TrackKind::Audio;
-                            let eye = match (is_audio, visible) {
-                                (true, true) => "🔊",
-                                (true, false) => "🔇",
-                                (false, true) => "👁",
-                                (false, false) => "⊘",
+                            let (eye, eye_family) = match (is_audio, visible) {
+                                (true, true) => ("🔊", None),
+                                (true, false) => ("🔇", None),
+                                (false, true) => (icons::EYE_STR, Some(icons::family())),
+                                (false, false) => (icons::EYE_OFF_STR, Some(icons::family())),
                             };
                             let tooltip = match (is_audio, visible) {
                                 (true, true) => Text::TrackMute.tr(locale),
@@ -286,14 +291,21 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 ui,
                                 eye,
                                 tooltip,
-                                components::IconButtonOpts::default(),
+                                components::IconButtonOpts {
+                                    family: eye_family,
+                                    ..Default::default()
+                                },
                             )
                             .clicked()
                             {
                                 toggle_track_visibility_requests.push(track_id);
                             }
                             let locked = track.locked;
-                            let lock_glyph = if locked { "🔒" } else { "🔓" };
+                            let lock_glyph = if locked {
+                                icons::LOCK_STR
+                            } else {
+                                icons::LOCK_OPEN_STR
+                            };
                             let lock_tooltip = if locked {
                                 Text::TrackUnlock.tr(locale)
                             } else {
@@ -303,7 +315,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 ui,
                                 lock_glyph,
                                 lock_tooltip,
-                                components::IconButtonOpts::default(),
+                                components::IconButtonOpts {
+                                    family: Some(icons::family()),
+                                    ..Default::default()
+                                },
                             )
                             .clicked()
                             {
