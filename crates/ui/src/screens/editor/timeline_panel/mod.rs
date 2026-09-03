@@ -28,6 +28,10 @@ use crate::theme;
 const MIN_PX_PER_SEC: f32 = 0.5;
 const MAX_PX_PER_SEC: f32 = 60.0;
 const TRACK_LABEL_WIDTH: f32 = 86.0;
+/// Height of one track row, header and clip content alike. Was 26-28px — tall enough for a
+/// label but too thin to make the filmstrip thumbnails (`draw::draw_filmstrip`, which sizes its
+/// tiles to `track_rect.height()`) or a waveform actually useful at a glance. Doubled.
+const TRACK_ROW_HEIGHT: f32 = 56.0;
 
 /// Fixed color-label swatches offered in the clip/track "Rótulo de cor" context menu — per
 /// `spec/ROADMAP.md` P4 item 27, matching Premiere/DaVinci/FCP's own fixed-palette convention
@@ -255,7 +259,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 ui.horizontal(|ui| {
                     // Track header: visibility toggle + name.
                     ui.allocate_ui_with_layout(
-                        egui::vec2(TRACK_LABEL_WIDTH, 28.0),
+                        egui::vec2(TRACK_LABEL_WIDTH, TRACK_ROW_HEIGHT),
                         egui::Layout::left_to_right(egui::Align::Center),
                         |ui| {
                             let track_id = track.id;
@@ -371,7 +375,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         },
                     );
                     let (track_rect, _resp) = ui.allocate_exact_size(
-                        egui::vec2(ui.available_width(), 26.0),
+                        egui::vec2(ui.available_width(), TRACK_ROW_HEIGHT),
                         egui::Sense::hover(),
                     );
                     track_rows.push((track.id, track.kind, track_rect));

@@ -138,11 +138,27 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         app.lib_panel_width = app.lib_panel_width.clamp(min_col, max_col);
         app.props_panel_width = app.props_panel_width.clamp(min_col, max_col);
 
+        // Reported bug: the timeline strip would sometimes vanish outright. Root cause — the
+        // body row's own minimum height (used to be a hardcoded 160.0 floor below) and the
+        // timeline's minimum height were each enforced independently, with no check that the
+        // two together actually fit `available_height`. Once the Editor's vertical space got
+        // small enough (a short window, a small display, whatever), `body_height`'s floor plus
+        // `timeline_height`'s floor plus the divider between them could add up to more than
+        // `available_height` — egui doesn't shrink an overflowing `ui.vertical` to fit, so the
+        // timeline (painted last) just got pushed past the visible/clipped area and disappeared,
+        // with no error and no obvious trigger from the user's side beyond "the window got
+        // short enough at some point." Fixed by deriving both heights from the same
+        // `content_height` budget so `body_height + timeline_height` can never exceed what's
+        // actually available, with each floor scaled down (not dropped — still visible, just
+        // thinner) rather than held fixed when that budget itself is tight.
         let available_height = ui.available_height();
-        let min_timeline = 120.0_f32;
-        let max_timeline = (available_height - 200.0).max(min_timeline);
+        let divider_overhead = 4.0 + DIVIDER_HIT_WIDTH + 4.0; // the add_space(4.0) calls flanking resizable_divider_horizontal below
+        let content_height = (available_height - divider_overhead).max(0.0);
+        let min_timeline = 120.0_f32.min(content_height * 0.5);
+        let min_body = 160.0_f32.min(content_height - min_timeline).max(0.0);
+        let max_timeline = (content_height - min_body).max(min_timeline);
         app.timeline_height = app.timeline_height.clamp(min_timeline, max_timeline);
-        let body_height = (available_height - app.timeline_height - 24.0).max(160.0);
+        let body_height = (content_height - app.timeline_height).max(0.0);
 
         let gaps = ui.spacing().item_spacing.x * 2.0 + DIVIDER_HIT_WIDTH * 2.0;
         let preview_w =
@@ -1234,10 +1250,16 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
 /// default) — dragging writes exactly what export reads, no separate UI-only representation.
 ///
 /// Layer *size* (`ClipInstance::layer_scale_x`/`_y`) is a multiplier on top of a fixed
-/// stand-in baseline footprint (40% of the canvas's shorter side) rather than a real pixel
-/// dimension — this panel doesn't know the clip's actual export-time decoded resolution (the
-/// preview texture may be a lower-res editing proxy), so it can't draw the box at its true
-/// composited size. Dragging the bottom-right handle still writes the real multiplier
+/// stand-in baseline footprint — the video fit to the *full* canvas, preserving its own aspect
+/// ratio (letterboxed/pillarboxed against `canvas_aspect` if it doesn't match) — rather than a
+/// real pixel dimension: this panel doesn't know the clip's actual export-time decoded
+/// resolution (the preview texture may be a lower-res editing proxy), so it can't draw the box
+/// at its true composited size. `layer_scale_x`/`_y` default to `1.0`
+/// ([`crate::app::LAYER_SCALE_RANGE`] is `0.1..=3.0`), so the baseline has to *be* "fills the
+/// canvas" for an untouched clip to preview at its expected full size instead of shrunk before
+/// the multiplier is even applied — this was previously a fixed 40%-of-canvas stand-in
+/// regardless of `layer_scale`, which made every clip preview as a small box even with no
+/// transform ever applied. Dragging the bottom-right handle still writes the real multiplier
 /// `set_selected_clip_layer_scale` reads at export, same "editable but visually approximate"
 /// shape as most of this panel. `Some(_)` in `preview_panel`'s match already guarantees
 /// `app.preview_state.preview_texture` is set, but this re-checks (and bails) rather than trust that
@@ -1277,10 +1299,10 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
 
-    // Fixed stand-in baseline (40% of the canvas's shorter side, clipped to the canvas width) —
-    // see this function's doc comment on why this is a multiplier applied to a stand-in size
-    // rather than a real pixel dimension.
-    let mut base_h = canvas_rect.height().min(canvas_rect.width()) * 0.4;
+    // Fixed stand-in baseline — the video fit to fill the canvas — see this function's doc
+    // comment on why `layer_scale` needs "fills the canvas" as its own baseline (1.0 = full
+    // size) rather than some smaller stand-in fraction of it.
+    let mut base_h = canvas_rect.height().min(canvas_rect.width());
     let mut base_w = base_h * tex_aspect;
     if base_w > canvas_rect.width() {
         base_w = canvas_rect.width();
