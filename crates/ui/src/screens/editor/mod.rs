@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+mod menu_bar;
 mod properties_panel;
 mod timeline_panel;
 
@@ -127,6 +128,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     }
 
     ui.vertical(|ui| {
+        menu_bar::menu_bar(app, ui);
         toolbar(app, ui);
         ui.add_space(4.0);
         sequence_tab_bar(app, ui);

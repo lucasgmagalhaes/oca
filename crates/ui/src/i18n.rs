@@ -141,6 +141,20 @@ text_catalog! {
     ClipsUnit: pt_br = "clipes", en = "clips";
     ClipUnitSingular: pt_br = "clipe", en = "clip";
 
+    MenuFile: pt_br = "Arquivo", en = "File";
+    MenuEdit: pt_br = "Editar", en = "Edit";
+    MenuView: pt_br = "Ver", en = "View";
+    MenuSequence: pt_br = "Sequência", en = "Sequence";
+    MenuClip: pt_br = "Clipe", en = "Clip";
+    MenuMarkers: pt_br = "Marcadores", en = "Markers";
+    MenuGraphics: pt_br = "Gráficos", en = "Graphics";
+    MenuSequenceAddTab: pt_br = "Nova sequência", en = "New sequence";
+    MenuSequenceRename: pt_br = "Renomear...", en = "Rename...";
+    MenuSequenceDuplicate: pt_br = "Duplicar", en = "Duplicate";
+    MenuSequenceMoveLeft: pt_br = "Mover para esquerda", en = "Move left";
+    MenuSequenceMoveRight: pt_br = "Mover para direita", en = "Move right";
+    MenuSequenceDelete: pt_br = "Excluir...", en = "Delete...";
+    MenuClipMode: pt_br = "Modo de edição", en = "Edit mode";
     ToolSelect: pt_br = "Selecionar", en = "Select";
     ToolCut: pt_br = "Cortar / Split", en = "Cut / Split";
     ToolTrim: pt_br = "Aparar", en = "Trim";

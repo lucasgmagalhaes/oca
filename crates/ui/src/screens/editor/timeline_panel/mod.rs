@@ -38,7 +38,7 @@ const TRACK_ROW_HEIGHT: f32 = 56.0;
 /// `spec/ROADMAP.md` P4 item 27, matching Premiere/DaVinci/FCP's own fixed-palette convention
 /// (a free color picker would let two clips end up with visually indistinguishable colors,
 /// defeating the "recognize at a glance" point of a label).
-const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
+pub(super) const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
     [229, 83, 83],   // red
     [230, 145, 56],  // orange
     [230, 200, 56],  // yellow
