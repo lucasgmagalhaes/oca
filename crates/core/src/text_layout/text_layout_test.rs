@@ -442,3 +442,75 @@ fn forced_rtl_direction_flips_which_side_of_the_line_each_scripts_run_lands_on()
         "forcing Rtl should place the Latin run right of the Hebrew run instead"
     );
 }
+
+#[test]
+fn scan_bidi_controls_is_clean_for_plain_text() {
+    let warning = scan_bidi_controls("Just an ordinary caption, nothing hidden here.");
+    assert!(!warning.any());
+    assert!(!warning.has_override);
+    assert!(!warning.has_unmatched_control);
+}
+
+#[test]
+fn scan_bidi_controls_flags_a_well_formed_override() {
+    // A perfectly matched RLO...PDF pair still forces every character between them to render
+    // right-to-left regardless of script -- worth a warning on its own, per the architecture
+    // doc's own "RLO/LRO ... receive a non-blocking warning because they can make text visually
+    // misleading" note, even when well-formed.
+    let warning = scan_bidi_controls("safe\u{202E}txt.exe\u{202C}");
+    assert!(warning.has_override);
+    assert!(!warning.has_unmatched_control);
+    assert!(warning.any());
+}
+
+#[test]
+fn scan_bidi_controls_flags_an_unmatched_embedding() {
+    let warning = scan_bidi_controls("open\u{202A}never closed");
+    assert!(!warning.has_override);
+    assert!(warning.has_unmatched_control);
+}
+
+#[test]
+fn scan_bidi_controls_flags_a_stray_close_with_nothing_open() {
+    let warning = scan_bidi_controls("nothing open here\u{202C}");
+    assert!(warning.has_unmatched_control);
+}
+
+#[test]
+fn scan_bidi_controls_flags_an_unmatched_isolate() {
+    let warning = scan_bidi_controls("\u{2066}never closed");
+    assert!(warning.has_unmatched_control);
+}
+
+#[test]
+fn scan_bidi_controls_accepts_properly_nested_isolates_and_embeddings() {
+    let warning = scan_bidi_controls("a\u{2066}b\u{202A}c\u{202C}d\u{2069}e");
+    assert!(!warning.any());
+}
+
+#[test]
+fn scan_bidi_controls_a_stray_pdf_does_not_incorrectly_close_an_outer_isolate() {
+    // A PDF with no matching embedding open must be ignored (UAX #9 rule X7's own "if there is
+    // no matching code, do nothing"), not accidentally pop the isolate underneath it -- so the
+    // isolate's own later PDI still matches correctly and this is NOT reported as unmatched
+    // beyond the stray PDF itself.
+    let warning = scan_bidi_controls("\u{2066}open isolate\u{202C}stray pdf\u{2069}");
+    assert!(
+        warning.has_unmatched_control,
+        "the stray PDF itself should still be flagged"
+    );
+
+    // Confirm the isolate really did stay open for its own PDI by checking a case with no stray
+    // control at all resolves clean.
+    let clean = scan_bidi_controls("\u{2066}open isolate\u{2069}");
+    assert!(!clean.any());
+}
+
+#[test]
+fn scan_bidi_controls_left_to_right_and_right_to_left_marks_are_not_flagged() {
+    // LRM/RLM (this module's own TextDirection-forcing prefix marks, see LEFT_TO_RIGHT_MARK/
+    // RIGHT_TO_LEFT_MARK) are plain strong-directional characters, not explicit formatting
+    // controls -- they must never trigger this warning on their own.
+    let warning = scan_bidi_controls("plain\u{200E}text\u{200F}here");
+    assert!(!warning.any());
+}

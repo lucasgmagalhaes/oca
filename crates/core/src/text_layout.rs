@@ -54,6 +54,102 @@ use crate::timeline::{TextAlign, TextDirection, TextFontFamily, TextFontStyle};
 const LEFT_TO_RIGHT_MARK: char = '\u{200E}';
 const RIGHT_TO_LEFT_MARK: char = '\u{200F}';
 
+/// Explicit UAX #9 directional-formatting characters this module scans for in
+/// [`scan_bidi_controls`] — invisible codepoints a user's typed or pasted text can contain that
+/// change how later text renders, distinct from [`LEFT_TO_RIGHT_MARK`]/[`RIGHT_TO_LEFT_MARK`]
+/// (which this module itself only ever inserts internally, never reads back out of caller text).
+const LRE: char = '\u{202A}'; // Left-to-Right Embedding
+const RLE: char = '\u{202B}'; // Right-to-Left Embedding
+const PDF: char = '\u{202C}'; // Pop Directional Formatting (closes LRE/RLE/LRO/RLO)
+const LRO: char = '\u{202D}'; // Left-to-Right Override
+const RLO: char = '\u{202E}'; // Right-to-Left Override
+const LRI: char = '\u{2066}'; // Left-to-Right Isolate
+const RLI: char = '\u{2067}'; // Right-to-Left Isolate
+const FSI: char = '\u{2068}'; // First Strong Isolate
+const PDI: char = '\u{2069}'; // Pop Directional Isolate
+
+/// Whether an opened embedding/override (closed by [`PDF`]) or isolate (closed by [`PDI`]) is
+/// waiting on the scan stack in [`scan_bidi_controls`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpenControlKind {
+    Embedding,
+    Isolate,
+}
+
+/// Result of [`scan_bidi_controls`] — see the architecture doc's own "The editor should expose
+/// invisible directional controls on demand" note
+/// (`spec/architecture/complex-text-shaping.md`'s TEXT-01B section): a caller should surface a
+/// non-blocking warning, never silently strip anything, since legitimate bidi content must
+/// round-trip exactly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BidiControlWarning {
+    /// `true` if the text contains [`LRO`]/[`RLO`] anywhere. These force every character between
+    /// the override and its close (or the end of the paragraph, if never closed) to render in
+    /// one direction regardless of its own script — visually misleading by design, so this is
+    /// worth a warning even when perfectly well-formed.
+    pub has_override: bool,
+    /// `true` if the text contains an explicit directional control ([`LRE`]/[`RLE`]/[`LRO`]/
+    /// [`RLO`]/[`LRI`]/[`RLI`]/[`FSI`]) with no matching close by the end of the string, or a
+    /// close ([`PDF`]/[`PDI`]) with nothing open to match — either shape means the text's
+    /// rendered direction depends on invisible characters a reader (and this editor's own text
+    /// box) can't see.
+    pub has_unmatched_control: bool,
+}
+
+impl BidiControlWarning {
+    /// Whether a caller should show *any* warning at all.
+    pub fn any(self) -> bool {
+        self.has_override || self.has_unmatched_control
+    }
+}
+
+/// Scans `text` for explicit UAX #9 directional-formatting characters and reports whether a
+/// caller should show a non-blocking warning — see [`BidiControlWarning`]'s own doc comment.
+/// Matching is a simple single combined stack (an opener pushes its [`OpenControlKind`]; [`PDF`]
+/// pops only when the top is an `Embedding`, [`PDI`] pops only when the top is an `Isolate` —
+/// matching UAX #9's own rule X7/X6a "if there is no matching code, do nothing" behavior, so a
+/// stray close never incorrectly closes an unrelated open control underneath it) — not full
+/// UAX #9 isolate-run resolution, which this only needs to *flag*, not actually apply (that's
+/// [`TextLayoutEngine::shape`]'s job via `cosmic-text`'s own `unicode-bidi`-backed
+/// implementation).
+pub fn scan_bidi_controls(text: &str) -> BidiControlWarning {
+    let mut has_override = false;
+    let mut has_unmatched_control = false;
+    let mut stack: Vec<OpenControlKind> = Vec::new();
+    for c in text.chars() {
+        match c {
+            LRE | RLE => stack.push(OpenControlKind::Embedding),
+            LRO | RLO => {
+                has_override = true;
+                stack.push(OpenControlKind::Embedding);
+            }
+            LRI | RLI | FSI => stack.push(OpenControlKind::Isolate),
+            PDF => {
+                if stack.last() == Some(&OpenControlKind::Embedding) {
+                    stack.pop();
+                } else {
+                    has_unmatched_control = true;
+                }
+            }
+            PDI => {
+                if stack.last() == Some(&OpenControlKind::Isolate) {
+                    stack.pop();
+                } else {
+                    has_unmatched_control = true;
+                }
+            }
+            _ => {}
+        }
+    }
+    if !stack.is_empty() {
+        has_unmatched_control = true;
+    }
+    BidiControlWarning {
+        has_override,
+        has_unmatched_control,
+    }
+}
+
 /// One positioned glyph within a [`ShapedLine`], already placed at its final canvas-relative
 /// pixel position (the `origin` passed to [`TextLayoutEngine::shape`] is baked in).
 #[derive(Debug, Clone)]
