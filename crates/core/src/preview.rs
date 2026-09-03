@@ -1473,14 +1473,22 @@ struct MaskShapeBranch {
 /// Real-time audio level snapshot (linear `0.0..=1.0` amplitude, not dBFS) computed from the
 /// preview's own downstream audio-sink pad probe — per `spec/ROADMAP.md` P4 item 30, "Real-time
 /// audio level meter (VU/peak) during playback". `peak` is the loudest single sample's absolute
-/// value seen in the most recently probed buffer; `rms` is that buffer's root-mean-square. Both
-/// are combined across every channel (a stereo/5.1 buffer's interleaved samples are treated as
-/// one flat sequence) rather than reported per channel, matching this feature's "small meter
-/// widget" scope rather than a full per-channel Fairlight-style meter.
+/// value seen in the most recently probed buffer; `rms` is that buffer's root-mean-square,
+/// combined across every channel (a stereo/5.1 buffer's interleaved samples treated as one flat
+/// sequence). `peak_l`/`rms_l`/`peak_r`/`rms_r` are the same two measures split to channel 0
+/// ("L") and channel 1 ("R") of the source — a mono buffer reports the same values on both (a
+/// mono source, like a real hardware VU meter, still reads identically on both bars); a buffer
+/// with more than two channels (5.1, etc.) still counts every channel toward `peak`/`rms`
+/// above, but only channels 0/1 feed the L/R split — this stays a small stereo meter widget,
+/// not a full per-channel Fairlight-style one.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct AudioLevel {
     pub peak: f32,
     pub rms: f32,
+    pub peak_l: f32,
+    pub rms_l: f32,
+    pub peak_r: f32,
+    pub rms_r: f32,
 }
 
 /// Builds a small `audioconvert ! capsfilter(F32LE) ! sink` bin usable as `playbin`'s
@@ -1522,13 +1530,33 @@ fn build_metering_audio_sink(
     let capsfilter_src = capsfilter
         .static_pad("src")
         .expect("capsfilter always has a src pad");
-    capsfilter_src.add_probe(gst::PadProbeType::BUFFER, move |_pad, info| {
+    capsfilter_src.add_probe(gst::PadProbeType::BUFFER, move |pad, info| {
         if let Some(buffer) = info.buffer() {
             if let Ok(map) = buffer.map_readable() {
                 let bytes = map.as_slice();
                 let sample_count = bytes.len() / 4;
+                // Negotiated channel count, read off the pad's own caps (same `current_caps`
+                // pattern used elsewhere in this file) -- needed to de-interleave channel 0
+                // ("L") from channel 1 ("R") below. Missing/zero falls back to 1 (mono), the
+                // safe default: every sample then counts as both L and R via the `channels <=
+                // 1` branch after the loop, never an out-of-bounds or wrong split.
+                let channels = pad
+                    .current_caps()
+                    .and_then(|caps| {
+                        caps.structure(0)
+                            .and_then(|s| s.get::<i32>("channels").ok())
+                    })
+                    .filter(|&c| c > 0)
+                    .unwrap_or(1) as usize;
+
                 let mut peak = 0.0f32;
                 let mut sum_sq = 0.0f64;
+                let mut peak_l = 0.0f32;
+                let mut sum_sq_l = 0.0f64;
+                let mut count_l = 0usize;
+                let mut peak_r = 0.0f32;
+                let mut sum_sq_r = 0.0f64;
+                let mut count_r = 0usize;
                 for i in 0..sample_count {
                     let sample = f32::from_le_bytes([
                         bytes[i * 4],
@@ -1541,14 +1569,56 @@ fn build_metering_audio_sink(
                         peak = abs;
                     }
                     sum_sq += (sample as f64) * (sample as f64);
+
+                    match i % channels {
+                        0 => {
+                            if abs > peak_l {
+                                peak_l = abs;
+                            }
+                            sum_sq_l += (sample as f64) * (sample as f64);
+                            count_l += 1;
+                        }
+                        1 => {
+                            if abs > peak_r {
+                                peak_r = abs;
+                            }
+                            sum_sq_r += (sample as f64) * (sample as f64);
+                            count_r += 1;
+                        }
+                        // Channel 2+ (5.1, etc.) -- still counted in the combined peak/rms
+                        // above, not split into a third/fourth bar this small meter doesn't have.
+                        _ => {}
+                    }
                 }
                 let rms = if sample_count > 0 {
                     (sum_sq / sample_count as f64).sqrt() as f32
                 } else {
                     0.0
                 };
+                let (peak_l, rms_l, peak_r, rms_r) = if channels <= 1 {
+                    (peak, rms, peak, rms)
+                } else {
+                    let rms_l = if count_l > 0 {
+                        (sum_sq_l / count_l as f64).sqrt() as f32
+                    } else {
+                        0.0
+                    };
+                    let rms_r = if count_r > 0 {
+                        (sum_sq_r / count_r as f64).sqrt() as f32
+                    } else {
+                        0.0
+                    };
+                    (peak_l, rms_l, peak_r, rms_r)
+                };
                 if let Ok(mut level) = level_for_probe.lock() {
-                    *level = AudioLevel { peak, rms };
+                    *level = AudioLevel {
+                        peak,
+                        rms,
+                        peak_l,
+                        rms_l,
+                        peak_r,
+                        rms_r,
+                    };
                 }
             }
         }
