@@ -36,6 +36,7 @@ pub mod font_catalog;
 pub mod frame_sampler;
 pub mod gameplay_events;
 pub mod highlight_detection;
+pub mod interchange;
 pub mod keyframe;
 pub mod loudness;
 pub mod media;
