@@ -14,6 +14,7 @@ fn sample_sidecar() -> EventSidecar {
     EventSidecar {
         schema_version: CURRENT_SCHEMA_VERSION,
         source_media_filename: "2026-08-29_ranked.mp4".to_string(),
+        game_id: None,
         events: vec![
             GameplayEvent {
                 kind: GameplayEventKind::Kill,
@@ -238,4 +239,96 @@ fn every_event_kind_has_a_distinct_label() {
         .map(|kind| marker_label_for(*kind))
         .collect();
     assert_eq!(labels.len(), GameplayEventKind::ALL.len());
+}
+
+fn sample_event(kind: GameplayEventKind) -> GameplayEvent {
+    GameplayEvent {
+        kind,
+        source_timestamp_secs: 10.0,
+        confidence: 1.0,
+        pre_roll_secs: None,
+        post_roll_secs: None,
+    }
+}
+
+#[test]
+fn apply_game_event_allowlist_returns_events_unchanged_when_no_allowlist_matches() {
+    let events = vec![
+        sample_event(GameplayEventKind::Kill),
+        sample_event(GameplayEventKind::Death),
+    ];
+    let result = apply_game_event_allowlist(&events, None);
+    assert_eq!(result, events);
+}
+
+#[test]
+fn apply_game_event_allowlist_filters_to_only_the_allowed_kinds() {
+    let events = vec![
+        sample_event(GameplayEventKind::Kill),
+        sample_event(GameplayEventKind::Death),
+        sample_event(GameplayEventKind::Bookmark),
+    ];
+    let allowlist = GameEventAllowlist {
+        game_id: "valorant".to_string(),
+        allowed_kinds: vec![GameplayEventKind::Kill, GameplayEventKind::Bookmark],
+        default_pre_roll_secs: None,
+        default_post_roll_secs: None,
+    };
+    let result = apply_game_event_allowlist(&events, Some(&allowlist));
+    let kinds: Vec<GameplayEventKind> = result.iter().map(|e| e.kind).collect();
+    assert_eq!(
+        kinds,
+        vec![GameplayEventKind::Kill, GameplayEventKind::Bookmark]
+    );
+}
+
+#[test]
+fn apply_game_event_allowlist_with_empty_allowed_kinds_filters_out_everything() {
+    let events = vec![sample_event(GameplayEventKind::Kill)];
+    let allowlist = GameEventAllowlist {
+        game_id: "valorant".to_string(),
+        allowed_kinds: vec![],
+        default_pre_roll_secs: None,
+        default_post_roll_secs: None,
+    };
+    let result = apply_game_event_allowlist(&events, Some(&allowlist));
+    assert!(result.is_empty());
+}
+
+#[test]
+fn apply_game_event_allowlist_fills_roll_defaults_only_when_the_event_has_none() {
+    let mut with_override = sample_event(GameplayEventKind::Death);
+    with_override.pre_roll_secs = Some(9.0);
+    let events = vec![sample_event(GameplayEventKind::Kill), with_override];
+    let allowlist = GameEventAllowlist {
+        game_id: "valorant".to_string(),
+        allowed_kinds: vec![GameplayEventKind::Kill, GameplayEventKind::Death],
+        default_pre_roll_secs: Some(2.0),
+        default_post_roll_secs: Some(1.5),
+    };
+    let result = apply_game_event_allowlist(&events, Some(&allowlist));
+    // The Kill event had no override -- gets the allowlist defaults.
+    assert_eq!(result[0].pre_roll_secs, Some(2.0));
+    assert_eq!(result[0].post_roll_secs, Some(1.5));
+    // The Death event's own pre_roll_secs override must survive; only its missing post_roll
+    // gets the default.
+    assert_eq!(result[1].pre_roll_secs, Some(9.0));
+    assert_eq!(result[1].post_roll_secs, Some(1.5));
+}
+
+#[test]
+fn event_sidecar_without_a_game_id_field_parses_as_none() {
+    // Back-compat: a sidecar produced before game_id existed must still parse.
+    let json = r#"{"schema_version":1,"source_media_filename":"a.mp4","events":[]}"#;
+    let sidecar = EventSidecar::parse_and_validate(json).unwrap();
+    assert_eq!(sidecar.game_id, None);
+}
+
+#[test]
+fn event_sidecar_game_id_round_trips_through_json() {
+    let mut sidecar = sample_sidecar();
+    sidecar.game_id = Some("valorant".to_string());
+    let json = serde_json::to_string(&sidecar).unwrap();
+    let parsed = EventSidecar::parse_and_validate(&json).unwrap();
+    assert_eq!(parsed.game_id, Some("valorant".to_string()));
 }
