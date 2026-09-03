@@ -1564,9 +1564,39 @@ an item earlier:
   -p core --lib --no-deps` (via the documented temporary `filters.c` shim, discarded before
   commit) and `cargo fmt --check` all stayed clean.
 
-  Import (the reverse direction), real OTIO JSON export/import once the schema can be verified,
-  and the doc's own "imported paths are normalized and cannot escape an explicitly selected media
-  root" security requirement all remain open.
+  **Slice 3 (the import/reverse direction) shipped too, scoped to this module's own intermediate
+  representation.** `interchange_to_timeline(interchange, project, next_id)` reconstructs a
+  `Timeline` from an `InterchangeTimeline` — walking each track's items in order (a `Gap` just
+  advances the reconstruction cursor; a `Clip` gets placed at the cursor's current position),
+  resolving each clip's `MediaReference` back to an asset id by matching `target_url` against the
+  target project's own media library (`resolve_asset_id`, the reverse of
+  `resolve_media_reference`), and rebuilding a `ClipInstance` with only what `InterchangeClip`
+  itself carries (source range, speed, transition kind) — every other field (crop, color grading,
+  masks, every other effect/keyframe animation) at its own untouched default, matching what
+  `interchange_compatibility_report` already says doesn't round-trip. Takes `next_id: &mut u64`
+  so every allocated `Track`/`ClipInstance`/`Marker` id increments it in place, letting a caller
+  keep allocating unique ids afterward without recomputing a high-water mark.
+
+  A clip whose `MediaReference` doesn't resolve against the target project (an asset genuinely
+  offline, or importing into a different project than the one exported) is skipped — never given
+  a placeholder/sentinel asset id — and reported in `InterchangeImportResult::warnings` with
+  track context instead, extending the doc's own "preserve unsupported fields as warnings, never
+  silently approximate them" rule to unresolvable references as well as unsupported fields.
+
+  Verified for real, not just type-checked: 6 new tests (round-tripping `sequence_to_interchange`
+  through `interchange_to_timeline` and back) ran in the same scratch-crate setup slice 1 used,
+  25/25 total passing — no-timing-drift round-trip for a single clip, **no accumulated drift
+  across a 500-clip long sequence with gaps between every clip** (the doc's own "without timing
+  drift over long sequences" acceptance criterion, checked directly rather than assumed), speed/
+  transition carrying, a warning-and-skip for an unresolvable reference, strictly-increasing
+  unique id allocation across tracks/clips advancing the caller's counter, and marker round-trip.
+  `cargo check --workspace --all-targets`, `cargo clippy -p core --lib --no-deps` (via the
+  documented temporary `filters.c` shim, discarded before commit), and `cargo fmt --check` all
+  stayed clean.
+
+  Real OTIO JSON export/import once the schema can be verified, and the doc's own "imported paths
+  are normalized and cannot escape an explicitly selected media root" security requirement (only
+  meaningful once real file import exists) remain open.
 - `[ ]` **CF-06: live multicam monitor.** Show synchronized proxy-backed feeds and materialize
   angle decisions through the existing ordinary clip-split representation.
 - `[ ]` **CF-07: parameterized motion-graphics templates.** Add a declarative, script-free,

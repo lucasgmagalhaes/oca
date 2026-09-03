@@ -420,3 +420,136 @@ fn compatibility_report_reports_marker_count() {
         .iter()
         .any(|e| e.description == "1 marker(s)"));
 }
+
+#[test]
+fn interchange_to_timeline_round_trips_a_clip_with_no_timing_drift() {
+    let clips = vec![clip(1, 10, 3.0, 5.0)];
+    let tracks = vec![track(1, TrackKind::Video, clips)];
+    let seq = sequence("Main", timeline_with(tracks));
+    let proj = project(vec![asset(10, "gameplay.mp4")], vec![]);
+
+    let ic = sequence_to_interchange(&seq, &proj);
+    let mut next_id = 100;
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id);
+
+    assert!(result.warnings.is_empty());
+    assert_eq!(result.timeline.tracks.len(), 1);
+    assert_eq!(result.timeline.tracks[0].clips.len(), 1);
+    let reconstructed = &result.timeline.tracks[0].clips[0];
+    let original = &seq.timeline.tracks[0].clips[0];
+    assert!((reconstructed.start_secs - original.start_secs).abs() < 1e-6);
+    assert!((reconstructed.source_in_secs - original.source_in_secs).abs() < 1e-6);
+    assert!((reconstructed.source_out_secs - original.source_out_secs).abs() < 1e-6);
+    assert_eq!(reconstructed.speed_factor, original.speed_factor);
+    assert_eq!(reconstructed.asset_id, original.asset_id);
+}
+
+#[test]
+fn interchange_to_timeline_round_trips_a_long_sequence_without_accumulating_drift() {
+    let mut clips = Vec::new();
+    let mut cursor = 0.0;
+    for i in 0..500u64 {
+        let duration = 1.7;
+        clips.push(clip(i + 1, 10, cursor, duration));
+        cursor += duration + 0.3; // leave a gap between every clip
+    }
+    let expected_starts: Vec<f64> = clips.iter().map(|c| c.start_secs).collect();
+    let tracks = vec![track(1, TrackKind::Video, clips)];
+    let seq = sequence("Main", timeline_with(tracks));
+    let proj = project(vec![asset(10, "gameplay.mp4")], vec![]);
+
+    let ic = sequence_to_interchange(&seq, &proj);
+    let mut next_id = 10_000;
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id);
+
+    assert!(result.warnings.is_empty());
+    let reconstructed_starts: Vec<f64> = result.timeline.tracks[0]
+        .clips
+        .iter()
+        .map(|c| c.start_secs)
+        .collect();
+    assert_eq!(reconstructed_starts.len(), expected_starts.len());
+    for (expected, actual) in expected_starts.iter().zip(reconstructed_starts.iter()) {
+        assert!(
+            (expected - actual).abs() < 1e-6,
+            "expected {expected}, got {actual}"
+        );
+    }
+}
+
+#[test]
+fn interchange_to_timeline_carries_speed_factor_and_transition_kind() {
+    let mut c = clip(1, 10, 0.0, 5.0);
+    c.speed_factor = 2.0;
+    c.transition_in = TransitionType::Zoom;
+    let tracks = vec![track(1, TrackKind::Video, vec![c])];
+    let seq = sequence("Main", timeline_with(tracks));
+    let proj = project(vec![asset(10, "gameplay.mp4")], vec![]);
+
+    let ic = sequence_to_interchange(&seq, &proj);
+    let mut next_id = 100;
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id);
+
+    let reconstructed = &result.timeline.tracks[0].clips[0];
+    assert_eq!(reconstructed.speed_factor, 2.0);
+    assert_eq!(reconstructed.transition_in, TransitionType::Zoom);
+}
+
+#[test]
+fn interchange_to_timeline_reports_a_warning_and_skips_a_clip_with_unresolvable_media() {
+    let clips = vec![clip(1, 999, 0.0, 5.0)];
+    let tracks = vec![track(1, TrackKind::Video, clips)];
+    let seq = sequence("Main", timeline_with(tracks));
+    let proj = project(vec![], vec![]);
+
+    let ic = sequence_to_interchange(&seq, &proj);
+    let mut next_id = 100;
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id);
+
+    assert!(result.timeline.tracks[0].clips.is_empty());
+    assert_eq!(result.warnings.len(), 1);
+    assert_eq!(result.warnings[0].track_name, "T1");
+}
+
+#[test]
+fn interchange_to_timeline_allocates_strictly_increasing_ids_and_advances_next_id() {
+    let clips = vec![clip(1, 10, 0.0, 5.0), clip(2, 10, 5.0, 5.0)];
+    let tracks = vec![track(1, TrackKind::Video, clips)];
+    let seq = sequence("Main", timeline_with(tracks));
+    let proj = project(vec![asset(10, "gameplay.mp4")], vec![]);
+
+    let ic = sequence_to_interchange(&seq, &proj);
+    let mut next_id = 50;
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id);
+
+    let mut ids = vec![result.timeline.tracks[0].id];
+    ids.extend(result.timeline.tracks[0].clips.iter().map(|c| c.id));
+    let mut sorted = ids.clone();
+    sorted.sort();
+    sorted.dedup();
+    assert_eq!(ids.len(), sorted.len(), "every allocated id must be unique");
+    assert!(next_id > 50, "next_id must advance past its starting value");
+}
+
+#[test]
+fn interchange_to_timeline_round_trips_markers() {
+    let mut timeline = timeline_with(vec![]);
+    timeline.markers = vec![Marker {
+        id: 1,
+        position_secs: 42.0,
+        label: "Boss fight".to_string(),
+        kind: MarkerKind::Highlight,
+        completed: false,
+    }];
+    let seq = sequence("Main", timeline);
+    let proj = project(vec![], vec![]);
+
+    let ic = sequence_to_interchange(&seq, &proj);
+    let mut next_id = 100;
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id);
+
+    assert_eq!(result.timeline.markers.len(), 1);
+    assert_eq!(result.timeline.markers[0].label, "Boss fight");
+    assert_eq!(result.timeline.markers[0].kind, MarkerKind::Highlight);
+    assert!((result.timeline.markers[0].position_secs - 42.0).abs() < 1e-6);
+}
