@@ -427,6 +427,15 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
                 }
                 ui.close();
             }
+            if ui.button(Text::LoadGraphicTemplate.tr(locale)).clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("json", &["json"])
+                    .pick_file()
+                {
+                    app.load_graphic_template_from_file(path);
+                }
+                ui.close();
+            }
             ui.separator();
             if ui.button(Text::ShortsPack.tr(locale)).clicked() {
                 let mut dialog = rfd::FileDialog::new();

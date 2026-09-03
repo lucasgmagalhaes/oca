@@ -14,9 +14,14 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use super::*;
-use avcore::timeline::{AudioRole, ClipInstance, Track, TrackKind};
+use avcore::motion_template::{
+    ColorBinding, GraphicTemplate, ParameterValue, TemplateElement, TemplateParameter,
+    TemplateParameterKind, TemplateShapeElement, TemplateTextElement, TextBinding,
+};
+use avcore::timeline::{AudioRole, ClipInstance, ShapeKind, Track, TrackKind};
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Recency, Sequence, Timeline};
 use eframe::egui;
+use std::collections::HashMap;
 
 fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
     Project {
@@ -6997,5 +7002,159 @@ fn crash_review_actions_are_a_noop_without_a_pending_crash() {
     assert_eq!(
         app.prefs.last_reviewed_crash_unix, 5,
         "with nothing pending, none of the three actions should touch the reviewed marker"
+    );
+}
+
+fn text_template_element(id: &str, text: TextBinding) -> TemplateElement {
+    TemplateElement::Text(TemplateTextElement {
+        id: id.to_string(),
+        text,
+        color_rgba: ColorBinding::Fixed([255, 255, 255, 255]),
+        font_family: Default::default(),
+        font_style: Default::default(),
+        font_size: 32.0,
+        pos_x: 0.2,
+        pos_y: 0.8,
+    })
+}
+
+fn shape_template_element(id: &str) -> TemplateElement {
+    TemplateElement::Shape(TemplateShapeElement {
+        id: id.to_string(),
+        shape_kind: ShapeKind::rectangle(),
+        color_rgba: ColorBinding::Fixed([0, 0, 0, 255]),
+        center_x: 0.5,
+        center_y: 0.5,
+        width: 0.3,
+        height: 0.1,
+        rotation_deg: 0.0,
+        stroke_thickness_px: 0.0,
+    })
+}
+
+fn minimal_graphic_template(elements: Vec<TemplateElement>) -> GraphicTemplate {
+    GraphicTemplate {
+        schema_version: avcore::motion_template::TEMPLATE_SCHEMA_VERSION,
+        name: "Test template".to_string(),
+        canvas_width: 1920,
+        canvas_height: 1080,
+        safe_area_margin: 0.0,
+        parameters: vec![TemplateParameter {
+            id: "player_name".to_string(),
+            label: "Player name".to_string(),
+            kind: TemplateParameterKind::Text,
+        }],
+        elements,
+    }
+}
+
+#[test]
+fn apply_graphic_template_places_a_text_element_at_the_playhead() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.active_project_mut().timeline_mut().playhead_secs = 5.0;
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Fixed("PacoPaçoca".to_string()),
+    )]);
+
+    app.apply_graphic_template(&template, &HashMap::new());
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].kind, TrackKind::Text);
+    assert_eq!(tracks[0].text_clips.len(), 1);
+    let clip = &tracks[0].text_clips[0];
+    assert_eq!(clip.start_secs, 5.0);
+    assert_eq!(clip.text, "PacoPaçoca");
+    assert_eq!(clip.pos_x, 0.2);
+    assert_eq!(clip.pos_y, 0.8);
+}
+
+#[test]
+fn apply_graphic_template_places_a_shape_element_on_its_own_track() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![shape_template_element("s1")]);
+
+    app.apply_graphic_template(&template, &HashMap::new());
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].kind, TrackKind::Shape);
+    assert_eq!(tracks[0].shape_clips.len(), 1);
+}
+
+#[test]
+fn apply_graphic_template_places_text_and_shape_elements_on_separate_tracks() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![
+        text_template_element("e1", TextBinding::Fixed("Hi".to_string())),
+        shape_template_element("s1"),
+    ]);
+
+    app.apply_graphic_template(&template, &HashMap::new());
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 2);
+    assert_eq!(tracks[0].kind, TrackKind::Text);
+    assert_eq!(tracks[1].kind, TrackKind::Shape);
+}
+
+#[test]
+fn apply_graphic_template_resolves_a_parameter_bound_text_value() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+    )]);
+    let mut values = HashMap::new();
+    values.insert(
+        "player_name".to_string(),
+        ParameterValue::Text("Zé".to_string()),
+    );
+
+    app.apply_graphic_template(&template, &values);
+
+    let clip = &app.active_project().timeline().tracks[0].text_clips[0];
+    assert_eq!(clip.text, "Zé");
+}
+
+#[test]
+fn apply_graphic_template_toasts_and_makes_no_change_on_a_missing_parameter_value() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+    )]);
+
+    app.apply_graphic_template(&template, &HashMap::new());
+
+    assert!(app.active_project().timeline().tracks.is_empty());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn apply_graphic_template_pushes_exactly_one_undo_snapshot_for_the_whole_batch() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.undo_stack.clear();
+    let template = minimal_graphic_template(vec![
+        text_template_element("e1", TextBinding::Fixed("Hi".to_string())),
+        shape_template_element("s1"),
+    ]);
+
+    app.apply_graphic_template(&template, &HashMap::new());
+    assert!(app.undo_stack.can_undo());
+
+    let sequence = app.active_project().sequences[app.active_project().active_sequence].clone();
+    let restored = app
+        .undo_stack
+        .undo(sequence)
+        .expect("one snapshot was pushed");
+    assert!(
+        restored.timeline.tracks.is_empty(),
+        "undoing the apply should restore the pre-apply (empty) timeline"
+    );
+    assert!(
+        !app.undo_stack.can_undo(),
+        "exactly one snapshot should have been pushed for the whole batch"
     );
 }

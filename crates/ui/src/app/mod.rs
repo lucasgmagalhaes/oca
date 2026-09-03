@@ -51,6 +51,7 @@ mod import;
 mod layer_templates;
 mod markers;
 mod modals;
+mod motion_template;
 mod motion_tracking;
 mod multicam;
 mod preview;
