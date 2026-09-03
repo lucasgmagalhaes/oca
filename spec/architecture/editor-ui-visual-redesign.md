@@ -37,37 +37,70 @@ regions as follows:
 | `chevron-left.svg` / `chevron-right.svg` | Timeline track header — `< >` collapse | matches existing collapse-arrow affordance |
 | `settings.svg` | Top bar — gear icon | matches `nav_rail.rs`'s existing ⚙ Prefs entry |
 | `camera.svg` | Preview transport row — snapshot | new capability per "Program monitor" section above |
-| `skip-forward.svg` | Preview transport row | matches existing seek-to-end affordance |
+| `skip-forward.svg` | Preview transport row — seek-to-end | matches existing seek-to-end affordance |
+| `mouse-pointer-2.svg` | Tool rail — Select | matches `EditorTool::Select` |
+| `fold-horizontal.svg` | Tool rail — Trim/Ripple | best-guess slot resolved by pixel-comparing the mockup's ~20px glyph against several Lucide candidates (`dumbbell`, `infinity`, `link-2`, `chevrons-left-right`, `move-horizontal`) cropped and upscaled with nearest-neighbor scaling — `fold-horizontal`'s two inward-pointing chevrons plus center gap was the closest match; `move-horizontal`'s arrows point outward (expand), which is the opposite direction from what the mockup shows |
+| `type.svg` | Tool rail — Text tool | matches `EditorTool` text entry |
+| `wand-sparkles.svg` | Tool rail — Effects | Lucide renamed `wand-2` → `wand-sparkles` upstream; confirmed via directory listing (`wand-2.svg` 404s, `wand-sparkles.svg` 200s) |
+| `hand.svg` | Tool rail — Pan | no current `EditorTool` equivalent, see "Left icon rail" section above |
+| `lock-open.svg` | Timeline track header — unlocked state | pairs with `lock.svg` for `track.locked`'s two states |
+| `eye.svg` / `eye-off.svg` | Timeline track header — visibility toggle | pairs for `track.visible`'s two states |
+| `ellipsis-vertical.svg` | Timeline track header — ⋮ menu | Lucide renamed `more-vertical` → `ellipsis-vertical` upstream; confirmed via directory listing the same way as `wand-sparkles` above |
+| `chevron-down.svg` | Top bar — "Sequence: Interview ▾" breadcrumb dropdown | |
+| `upload.svg` | Top bar — Export button | |
+| `skip-back.svg` / `rewind.svg` / `pause.svg` / `play.svg` / `fast-forward.svg` / `repeat.svg` | Preview transport row | rest of the transport row alongside the existing `skip-forward.svg` |
+| `music.svg` | Preview transport row — rightmost small icon | resolved the doc's earlier `share-2` guess: pixel-cropping this icon at native resolution shows two note-heads joined by a beam, i.e. Lucide's `music` (two circles + one connecting path), not a share icon — likely an "add/detach audio" affordance, not yet mapped to a real `App` action |
 
-**Not yet fetched** — GitHub's unauthenticated API rate limit was hit mid-session after the
-first ~7 requests (further calls to `api.github.com/repos/lucide-icons/lucide/contents/icons/
-<name>.svg` returned empty even for names known to exist, e.g. `play.svg` — confirmed against a
-deliberately-fake name returning the identical empty response, so this is a rate limit/abuse
-guard being silently swallowed by the fetch tool, not proof those names are wrong):
-`mouse-pointer-2` (Select), `move-horizontal` (Trim/Ripple — best-guess name, unconfirmed),
-`type` (Text tool), `wand-2` (Effects), `hand` (Pan — no current `EditorTool` equivalent, see
-"Left icon rail" section above), `lock-open`/`eye`/`eye-off` (the other three track-header
-states — only `lock`'s closed state got fetched), `more-vertical` (track ⋮ menu),
-`chevron-down` (breadcrumb dropdown), `upload` (Export button), `skip-back`/`rewind`/`pause`/
-`play`/`fast-forward`/`repeat` (rest of the transport row), `share-2` (uncertain guess for one
-transport-row icon whose meaning wasn't fully identified from the crop — verify against the
-image before fetching). Same fetch method, just needs pacing (a handful per request, not all
-~20 at once) — direct `.svg` URLs (unpkg, jsdelivr, raw.githubusercontent.com) don't work at all
-in this environment regardless of rate limits (the fetch tool returns them empty regardless of
-host, likely an `image/svg+xml` content-type handling gap) — the working path is
-`api.github.com/repos/lucide-icons/lucide/contents/icons/<name>.svg`, which wraps the file in a
-JSON envelope with `text/plain`-ish handling and a base64 `content` field to decode locally.
+All 24 mockup icon glyphs identified so far are now vendored. Fetch method used throughout:
+`api.github.com/repos/lucide-icons/lucide/contents/icons/<name>.svg` (JSON envelope, base64
+`content` field, works but has a low unauthenticated rate limit — hit it once this session
+after ~20 requests spent partly on identifying `fold-horizontal`/`music` above) and, once that
+limit was hit, `raw.githubusercontent.com/lucide-icons/lucide/main/icons/<name>.svg` directly
+via `curl` — which, contrary to this doc's earlier note, works fine from a shell `curl` call and
+isn't subject to the same rate limit; the earlier "direct .svg URLs don't work in this
+environment" finding was specific to whatever fetch tool produced that empty-response behavior,
+not a property of the URLs themselves.
 
-**Not addressed at all**: getting these into the actual running app. `egui` here has zero SVG
-rendering capability today (checked `crates/ui/Cargo.toml` — no `resvg`/`usvg`/`egui_extras`
-`svg` feature), so these files are a **design asset set for reference**, not yet wired into any
-screen. Wiring them in for real needs one of: (a) add an SVG-rasterization dependency and
-convert each to a texture at startup/on-demand — a real new capability, not currently present
-anywhere in this codebase; or (b) go the icon-font route instead (a crate that bundles Lucide's
-glyphs as a font with Unicode-private-use codepoints, rendered exactly like every existing
-single-glyph icon already is via `RichText`/`painter.text` — zero new rendering pipeline, but no
-standalone `.svg` files). This doc's own scope was "vendor the reference SVGs"; which of (a)/(b)
-to build is a separate, not-yet-made decision.
+**Decided, not yet implemented**: getting these into the actual running app. `egui` here has
+zero SVG rendering capability today (checked `crates/ui/Cargo.toml` — no `resvg`/`usvg`/
+`egui_extras` `svg` feature), so the vendored `.svg` files above are source assets, not yet
+wired into any screen. Two routes were considered — (a) add an SVG-rasterization dependency and
+convert each icon to a texture at startup, or (b) an **icon font**: bundle the Lucide glyphs as
+a font with Unicode-private-use-area codepoints, rendered exactly like every existing
+single-glyph icon already is via `RichText`/`painter.text`. **(b) is the chosen route** — same
+runtime cost as (a) (`epaint`'s glyph atlas caches a rasterized icon exactly like it caches any
+other font glyph, so cost is paid once per codepoint, not per frame), but zero new rendering
+pipeline or dependency, and it reuses the exact mechanism `theme.rs`/existing screens already use
+for single-glyph icons (⚙, 🔒, 👁, etc.) instead of introducing a second, image-based one
+alongside it.
+
+Mechanics of the chosen route, for whoever implements it:
+
+1. **Build a font from the vendored SVGs** — this does not need a new `Cargo.toml` dependency:
+   the conversion (SVG paths → TTF glyphs with PUA codepoints) is a one-off/regenerate-on-demand
+   step, not something the running app or its build (`cargo build`) needs to do. A small script
+   outside the Rust toolchain (e.g. `fantasticon`/`fonttools` via Node or Python, invoked
+   manually or from a `make` target like the existing `make fmt`/`make lint`) reads
+   `assets/icons/*.svg`, regenerates `lucide.ttf` + the name→codepoint mapping, and both get
+   checked in like any other asset — the same "generate once, commit the output" shape as, say,
+   a schema-generated file. Adding a new icon later means: fetch its SVG into `assets/icons/`
+   the same way this doc's fetch process did, add its name to the script's icon list, rerun the
+   script, commit the regenerated `.ttf` and the updated mapping — no Rust dependency added or
+   touched.
+2. **Register it with egui** — `egui::FontDefinitions::font_data` + a dedicated
+   `FontFamily::Name("icons")`, set once via `ctx.set_fonts(...)` at app startup, alongside
+   whatever `theme.rs`/font setup already runs there.
+3. **Render each icon** — `egui::RichText::new('\u{E0xx}').family(FontFamily::Name("icons".into())).size(..).color(theme::TOKEN)`,
+   the same call shape every other themed label in this codebase already uses. Color, size, and
+   opacity come from the existing text-rendering pipeline for free — no separate tint/blend code
+   path the way an image-texture icon would need.
+4. **Caveat carried over from the SVGs themselves**: this only works because every vendored
+   icon is a single-color `stroke="currentColor"` glyph (true for all 24 fetched above) — a
+   route that needs a two-color icon later would need texture-based rendering instead.
+
+Not yet done: the font-build step itself, the codepoint mapping, and the `ctx.set_fonts` wiring
+— this section records the decision and the mechanism, not an implementation. Scope for a
+follow-up change.
 
 ## Headline finding: the structure is already ~80% there
 
