@@ -92,6 +92,8 @@ fn sample_text(text: &str) -> TextClip {
         pos_y_keyframes: vec![],
         scale_keyframes: vec![],
         rotation_keyframes: vec![],
+        direction: Default::default(),
+        language: None,
     }
 }
 

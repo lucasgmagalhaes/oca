@@ -150,7 +150,7 @@ pub use text_to_speech::{
 };
 pub use timeline::{
     AudioRole, ClipFormatting, ClipInstance, LayerTemplate, Marker, MarkerKind, ShapeClip,
-    ShapeKind, TextClip, TextFontFamily, TextFontStyle, Timeline, Track, TrackKind,
+    ShapeKind, TextClip, TextDirection, TextFontFamily, TextFontStyle, Timeline, Track, TrackKind,
 };
 pub use timeline_window::extract_timeline_window;
 pub use transcribe::{transcribe, TranscribeError, TranscribeOutcome, TranscribeSegment};

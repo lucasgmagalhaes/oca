@@ -130,6 +130,22 @@ pub enum TextFontStyle {
     Bold,
 }
 
+/// Paragraph base direction for a [`TextClip`] (TEXT-01B,
+/// `spec/architecture/complex-text-shaping.md`) — UAX #9's own P2/P3 auto-detection by default,
+/// or an explicit override for text whose script alone doesn't disambiguate direction (e.g. a
+/// caption that is only digits/punctuation, or mixed RTL/LTR text where the author wants the
+/// *paragraph's* level pinned regardless of which script happens to lead). Does not force every
+/// character's direction like a bidi *override* would — numbers and embedded opposite-script
+/// runs still follow ordinary UAX #9 resolution within that pinned paragraph level, same as CSS's
+/// `direction` property (as opposed to `unicode-bidi: bidi-override`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum TextDirection {
+    #[default]
+    Auto,
+    Ltr,
+    Rtl,
+}
+
 /// One placed text overlay on a [`Track`] whose [`TrackKind`] is [`TrackKind::Text`].
 /// Rasterized with the selected bundled font into an RGBA image, then composited in a native
 /// post-processing pass after the main timeline encode — see `avbridge::apply_text_overlays`.
@@ -249,6 +265,20 @@ pub struct TextClip {
     /// `#[serde(default)]` so older saved projects load with no fade.
     #[serde(default)]
     pub opacity_keyframes: Vec<Keyframe<f32>>,
+    /// Explicit paragraph base-direction override — see [`TextDirection`]. `#[serde(default)]`
+    /// so older saved projects load as `Auto` (UAX #9 auto-detection), the exact behavior this
+    /// clip already had before `TextDirection` existed.
+    #[serde(default)]
+    pub direction: TextDirection,
+    /// Optional BCP-47-ish language tag (e.g. `"pt-BR"`, `"ar"`), persisted for a future shaping
+    /// pass (TEXT-01C's international-fallback face selection) to consume — not yet read by
+    /// [`crate::text_layout`] or [`crate::overlay_render`], since `cosmic-text` 0.19's `Attrs`
+    /// has no language field to feed it into. A real, deliberately deferred gap, not silently
+    /// dropped: kept here now so a project authored with this metadata doesn't need a second
+    /// migration once shaping does consume it. `#[serde(default)]` so older saved projects load
+    /// with no language hint.
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 fn default_text_background_padding() -> f32 {

@@ -111,6 +111,30 @@ pub(super) fn text_clip_properties(
         changed = true;
     }
 
+    // Paragraph base direction (TEXT-01B) — Auto (UAX #9 detection) by default; an explicit
+    // override for text whose own script doesn't disambiguate direction.
+    components::property_row(ui, Text::PropTextDirection.tr(locale));
+    let previous_direction = tc.direction;
+    egui::ComboBox::from_id_salt(("text_direction", tc_id))
+        .selected_text(text_direction_label(tc.direction, locale))
+        .width(ui.available_width())
+        .show_ui(ui, |ui| {
+            for direction in [
+                avcore::TextDirection::Auto,
+                avcore::TextDirection::Ltr,
+                avcore::TextDirection::Rtl,
+            ] {
+                ui.selectable_value(
+                    &mut tc.direction,
+                    direction,
+                    text_direction_label(direction, locale),
+                );
+            }
+        });
+    if tc.direction != previous_direction {
+        changed = true;
+    }
+
     // Font size
     components::property_row(ui, Text::PropTextFontSize.tr(locale));
     if ui
@@ -445,5 +469,16 @@ fn text_font_style_label(
     match style {
         avcore::TextFontStyle::Regular => Text::TextFontRegular.tr(locale),
         avcore::TextFontStyle::Bold => Text::TextFontBold.tr(locale),
+    }
+}
+
+fn text_direction_label(
+    direction: avcore::TextDirection,
+    locale: crate::i18n::Locale,
+) -> &'static str {
+    match direction {
+        avcore::TextDirection::Auto => Text::TextDirectionAuto.tr(locale),
+        avcore::TextDirection::Ltr => Text::TextDirectionLtr.tr(locale),
+        avcore::TextDirection::Rtl => Text::TextDirectionRtl.tr(locale),
     }
 }

@@ -241,6 +241,7 @@ fn draw_text_segment_onto(
             segment.font_size,
             Some(max_width),
             (x, y),
+            segment.direction,
         );
         if let Some(ink_bbox) =
             shaped_ink_bbox(&shaped, segment.glyph_byte_range, engine, swash_cache)
@@ -324,6 +325,7 @@ pub fn render_text_clip_rgba(
         scale_keyframe_expr_y: String::new(),
         rotation_keyframe_expr_x: String::new(),
         rotation_keyframe_expr_y: String::new(),
+        direction: clip.direction,
     };
     let mut buf = render_text_segment_rgba(&base, canvas_width, canvas_height);
 
