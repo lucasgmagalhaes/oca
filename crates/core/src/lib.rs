@@ -30,6 +30,7 @@ pub mod background_removal;
 pub mod bundle;
 pub mod collab_bundle;
 pub mod dynamic_reframe;
+pub mod entitlement;
 pub mod error_reporting;
 pub mod export;
 pub mod font_catalog;
