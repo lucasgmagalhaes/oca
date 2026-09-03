@@ -606,3 +606,163 @@ fn resolve_text_align_passes_non_logical_variants_through_unchanged() {
         );
     }
 }
+
+#[test]
+fn shape_cache_hits_on_a_repeated_identical_call() {
+    let mut engine = TextLayoutEngine::new_from_locked_catalog();
+    let (hits0, misses0) = engine.shape_cache_stats();
+    assert_eq!((hits0, misses0), (0, 0));
+
+    engine.shape(
+        "Boss fight",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        32.0,
+        None,
+        (10.0, 20.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    let (hits1, misses1) = engine.shape_cache_stats();
+    assert_eq!((hits1, misses1), (0, 1), "first call must be a miss");
+
+    let shaped_again = engine.shape(
+        "Boss fight",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        32.0,
+        None,
+        (10.0, 20.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    let (hits2, misses2) = engine.shape_cache_stats();
+    assert_eq!(
+        (hits2, misses2),
+        (1, 1),
+        "identical repeated call must be a cache hit"
+    );
+    assert!(shaped_again.glyph_count() > 0);
+}
+
+#[test]
+fn shape_cache_result_matches_a_fresh_uncached_shape() {
+    let mut engine = TextLayoutEngine::new_from_locked_catalog();
+    let first = engine.shape(
+        "Victory screen",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        24.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    let cached = engine.shape(
+        "Victory screen",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        24.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    assert_eq!(first.width, cached.width);
+    assert_eq!(first.height, cached.height);
+    assert_eq!(first.glyph_count(), cached.glyph_count());
+    for (a, b) in first.lines[0]
+        .glyphs
+        .iter()
+        .zip(cached.lines[0].glyphs.iter())
+    {
+        assert_eq!(a.glyph_id, b.glyph_id);
+        assert_eq!(a.x, b.x);
+        assert_eq!(a.y, b.y);
+    }
+}
+
+#[test]
+fn shape_cache_misses_when_any_input_differs() {
+    let mut engine = TextLayoutEngine::new_from_locked_catalog();
+    engine.shape(
+        "Boss fight",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        32.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    // Different text.
+    engine.shape(
+        "Boss fight!",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        32.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    // Different origin.
+    engine.shape(
+        "Boss fight",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        32.0,
+        None,
+        (5.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    // Different font size.
+    engine.shape(
+        "Boss fight",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        40.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    let (hits, misses) = engine.shape_cache_stats();
+    assert_eq!(hits, 0, "every call above has at least one differing input");
+    assert_eq!(misses, 4);
+}
+
+#[test]
+fn shape_cache_evicts_the_least_recently_used_entry_once_over_capacity() {
+    let mut engine = TextLayoutEngine::new_from_locked_catalog();
+    for i in 0..(SHAPE_CACHE_CAPACITY + 1) {
+        engine.shape(
+            &format!("caption {i}"),
+            TextFontFamily::Lato,
+            TextFontStyle::Regular,
+            32.0,
+            None,
+            (0.0, 0.0),
+            TextDirection::Auto,
+            TextAlign::Auto,
+        );
+    }
+    assert_eq!(engine.shape_cache.len(), SHAPE_CACHE_CAPACITY);
+
+    // "caption 0" was the least-recently-used entry and should have been evicted -- shaping it
+    // again must be a fresh miss, not a hit.
+    let (_, misses_before) = engine.shape_cache_stats();
+    engine.shape(
+        "caption 0",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        32.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    let (_, misses_after) = engine.shape_cache_stats();
+    assert_eq!(misses_after, misses_before + 1);
+}
