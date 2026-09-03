@@ -277,21 +277,36 @@ fn resizable_divider_horizontal(
 fn toolbar(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     ui.horizontal(|ui| {
-        tool_button(
+        tool_button_icon_font(
             app,
             ui,
             EditorTool::Select,
-            "↖",
+            crate::icons::MOUSE_POINTER_2_STR,
             Text::ToolSelect.tr(locale),
         );
-        if ui
-            .button(format!("✂ {}", Text::ToolCut.tr(locale)))
-            .on_hover_text("Ctrl+B")
-            .clicked()
-        {
+        let cut_job = components::icon_label_job(
+            crate::icons::SCISSORS_STR,
+            crate::icons::family(),
+            14.0,
+            theme::TEXT_PRIMARY,
+            Text::ToolCut.tr(locale),
+            14.0,
+            theme::TEXT_PRIMARY,
+        );
+        if ui.button(cut_job).on_hover_text("Ctrl+B").clicked() {
             app.split_at_playhead();
         }
-        tool_button(app, ui, EditorTool::Trim, "⇔", Text::ToolTrim.tr(locale));
+        // `fold-horizontal` is the mockup's resolved best-guess for the shared Trim/Ripple tool-
+        // rail slot (see `spec/architecture/editor-ui-visual-redesign.md`'s Icon set table) —
+        // applied to Trim only here since Ripple keeps its own distinct icon-less button below,
+        // not a second, unconfirmed reuse of the same glyph.
+        tool_button_icon_font(
+            app,
+            ui,
+            EditorTool::Trim,
+            crate::icons::FOLD_HORIZONTAL_STR,
+            Text::ToolTrim.tr(locale),
+        );
         tool_button(
             app,
             ui,
@@ -702,6 +717,52 @@ fn tool_button(app: &mut App, ui: &mut egui::Ui, tool: EditorTool, icon: &str, l
         theme::TEXT_SECONDARY
     });
     let button = egui::Button::new(text)
+        .fill(if active {
+            theme::ACCENT_TINT
+        } else {
+            egui::Color32::TRANSPARENT
+        })
+        .stroke(egui::Stroke::new(
+            1.0,
+            if active {
+                theme::ACCENT
+            } else {
+                egui::Color32::TRANSPARENT
+            },
+        ));
+    if ui.add(button).clicked() {
+        app.tool = tool;
+    }
+}
+
+/// Same active/inactive chip styling as [`tool_button`], for a tool that has a real vendored
+/// Lucide icon (see `spec/architecture/editor-ui-visual-redesign.md`'s Icon set section) instead
+/// of a plain-text/unicode glyph — `icon` is one of `crate::icons`' `_STR` constants, rendered
+/// through the icon font via a [`components::icon_label_job`] `LayoutJob` since `RichText` can't
+/// mix two fonts in one string.
+fn tool_button_icon_font(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    tool: EditorTool,
+    icon: &str,
+    label: &str,
+) {
+    let active = app.tool == tool;
+    let color = if active {
+        theme::ACCENT
+    } else {
+        theme::TEXT_SECONDARY
+    };
+    let job = components::icon_label_job(
+        icon,
+        crate::icons::family(),
+        14.0,
+        color,
+        label,
+        14.0,
+        color,
+    );
+    let button = egui::Button::new(job)
         .fill(if active {
             theme::ACCENT_TINT
         } else {
