@@ -37,26 +37,29 @@ regions as follows:
 | `chevron-left.svg` / `chevron-right.svg` | Timeline track header — `< >` collapse | matches existing collapse-arrow affordance |
 | `settings.svg` | Top bar — gear icon | matches `nav_rail.rs`'s existing ⚙ Prefs entry |
 | `camera.svg` | Preview transport row — snapshot | new capability per "Program monitor" section above |
-| `skip-forward.svg` | Preview transport row | matches existing seek-to-end affordance |
+| `skip-forward.svg` | Preview transport row — seek-to-end | matches existing seek-to-end affordance |
+| `mouse-pointer-2.svg` | Tool rail — Select | matches `EditorTool::Select` |
+| `fold-horizontal.svg` | Tool rail — Trim/Ripple | best-guess slot resolved by pixel-comparing the mockup's ~20px glyph against several Lucide candidates (`dumbbell`, `infinity`, `link-2`, `chevrons-left-right`, `move-horizontal`) cropped and upscaled with nearest-neighbor scaling — `fold-horizontal`'s two inward-pointing chevrons plus center gap was the closest match; `move-horizontal`'s arrows point outward (expand), which is the opposite direction from what the mockup shows |
+| `type.svg` | Tool rail — Text tool | matches `EditorTool` text entry |
+| `wand-sparkles.svg` | Tool rail — Effects | Lucide renamed `wand-2` → `wand-sparkles` upstream; confirmed via directory listing (`wand-2.svg` 404s, `wand-sparkles.svg` 200s) |
+| `hand.svg` | Tool rail — Pan | no current `EditorTool` equivalent, see "Left icon rail" section above |
+| `lock-open.svg` | Timeline track header — unlocked state | pairs with `lock.svg` for `track.locked`'s two states |
+| `eye.svg` / `eye-off.svg` | Timeline track header — visibility toggle | pairs for `track.visible`'s two states |
+| `ellipsis-vertical.svg` | Timeline track header — ⋮ menu | Lucide renamed `more-vertical` → `ellipsis-vertical` upstream; confirmed via directory listing the same way as `wand-sparkles` above |
+| `chevron-down.svg` | Top bar — "Sequence: Interview ▾" breadcrumb dropdown | |
+| `upload.svg` | Top bar — Export button | |
+| `skip-back.svg` / `rewind.svg` / `pause.svg` / `play.svg` / `fast-forward.svg` / `repeat.svg` | Preview transport row | rest of the transport row alongside the existing `skip-forward.svg` |
+| `music.svg` | Preview transport row — rightmost small icon | resolved the doc's earlier `share-2` guess: pixel-cropping this icon at native resolution shows two note-heads joined by a beam, i.e. Lucide's `music` (two circles + one connecting path), not a share icon — likely an "add/detach audio" affordance, not yet mapped to a real `App` action |
 
-**Not yet fetched** — GitHub's unauthenticated API rate limit was hit mid-session after the
-first ~7 requests (further calls to `api.github.com/repos/lucide-icons/lucide/contents/icons/
-<name>.svg` returned empty even for names known to exist, e.g. `play.svg` — confirmed against a
-deliberately-fake name returning the identical empty response, so this is a rate limit/abuse
-guard being silently swallowed by the fetch tool, not proof those names are wrong):
-`mouse-pointer-2` (Select), `move-horizontal` (Trim/Ripple — best-guess name, unconfirmed),
-`type` (Text tool), `wand-2` (Effects), `hand` (Pan — no current `EditorTool` equivalent, see
-"Left icon rail" section above), `lock-open`/`eye`/`eye-off` (the other three track-header
-states — only `lock`'s closed state got fetched), `more-vertical` (track ⋮ menu),
-`chevron-down` (breadcrumb dropdown), `upload` (Export button), `skip-back`/`rewind`/`pause`/
-`play`/`fast-forward`/`repeat` (rest of the transport row), `share-2` (uncertain guess for one
-transport-row icon whose meaning wasn't fully identified from the crop — verify against the
-image before fetching). Same fetch method, just needs pacing (a handful per request, not all
-~20 at once) — direct `.svg` URLs (unpkg, jsdelivr, raw.githubusercontent.com) don't work at all
-in this environment regardless of rate limits (the fetch tool returns them empty regardless of
-host, likely an `image/svg+xml` content-type handling gap) — the working path is
-`api.github.com/repos/lucide-icons/lucide/contents/icons/<name>.svg`, which wraps the file in a
-JSON envelope with `text/plain`-ish handling and a base64 `content` field to decode locally.
+All 24 mockup icon glyphs identified so far are now vendored. Fetch method used throughout:
+`api.github.com/repos/lucide-icons/lucide/contents/icons/<name>.svg` (JSON envelope, base64
+`content` field, works but has a low unauthenticated rate limit — hit it once this session
+after ~20 requests spent partly on identifying `fold-horizontal`/`music` above) and, once that
+limit was hit, `raw.githubusercontent.com/lucide-icons/lucide/main/icons/<name>.svg` directly
+via `curl` — which, contrary to this doc's earlier note, works fine from a shell `curl` call and
+isn't subject to the same rate limit; the earlier "direct .svg URLs don't work in this
+environment" finding was specific to whatever fetch tool produced that empty-response behavior,
+not a property of the URLs themselves.
 
 **Not addressed at all**: getting these into the actual running app. `egui` here has zero SVG
 rendering capability today (checked `crates/ui/Cargo.toml` — no `resvg`/`usvg`/`egui_extras`
