@@ -601,6 +601,11 @@ text_catalog! {
     TextDirectionAuto: pt_br = "Automática", en = "Auto";
     TextDirectionLtr: pt_br = "Esquerda para direita", en = "Left to right";
     TextDirectionRtl: pt_br = "Direita para esquerda", en = "Right to left";
+    PropTextAlign: pt_br = "Alinhamento", en = "Alignment";
+    TextAlignAuto: pt_br = "Automático", en = "Auto";
+    TextAlignLeft: pt_br = "Esquerda", en = "Left";
+    TextAlignCenter: pt_br = "Centro", en = "Center";
+    TextAlignRight: pt_br = "Direita", en = "Right";
     PropTextColor: pt_br = "Cor do texto", en = "Text color";
     PropTextBackgroundEnabled: pt_br = "Fundo", en = "Background";
     PropTextBackgroundColor: pt_br = "Cor do fundo", en = "Background color";

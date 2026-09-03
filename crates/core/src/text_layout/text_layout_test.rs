@@ -11,6 +11,7 @@ fn origin_shifts_every_glyph_by_exactly_that_offset() {
         None,
         (0.0, 0.0),
         TextDirection::Auto,
+        TextAlign::Auto,
     );
     let shifted = engine.shape(
         "Hi",
@@ -20,6 +21,7 @@ fn origin_shifts_every_glyph_by_exactly_that_offset() {
         None,
         (10.0, 5.0),
         TextDirection::Auto,
+        TextAlign::Auto,
     );
     let g0 = &at_zero.lines[0].glyphs[0];
     let g1 = &shifted.lines[0].glyphs[0];
@@ -60,6 +62,7 @@ fn every_bundled_family_shapes_ordinary_latin_text_without_missing_glyphs() {
             None,
             (0.0, 0.0),
             TextDirection::Auto,
+            TextAlign::Auto,
         );
         assert!(
             shaped.glyph_count() > 0,
@@ -90,6 +93,7 @@ fn fi_and_fl_ligatures_form_a_single_multi_character_cluster() {
         None,
         (0.0, 0.0),
         TextDirection::Auto,
+        TextAlign::Auto,
     );
     let has_multi_char_cluster = shaped
         .lines
@@ -122,6 +126,7 @@ fn bold_style_selects_a_different_font_face_than_regular_for_a_two_weight_family
         None,
         (0.0, 0.0),
         TextDirection::Auto,
+        TextAlign::Auto,
     );
     let bold = engine.shape(
         "Test",
@@ -131,6 +136,7 @@ fn bold_style_selects_a_different_font_face_than_regular_for_a_two_weight_family
         None,
         (0.0, 0.0),
         TextDirection::Auto,
+        TextAlign::Auto,
     );
     let regular_font_id = regular.lines[0].glyphs[0].font_id;
     let bold_font_id = bold.lines[0].glyphs[0].font_id;
@@ -154,6 +160,7 @@ fn single_weight_family_ignores_bold_request_without_producing_notdef() {
         None,
         (0.0, 0.0),
         TextDirection::Auto,
+        TextAlign::Auto,
     );
     assert!(shaped.glyph_count() > 0);
     assert!(shaped
@@ -201,6 +208,7 @@ fn wrapping_at_a_narrow_width_produces_more_than_one_line() {
         Some(120.0),
         (0.0, 0.0),
         TextDirection::Auto,
+        TextAlign::Auto,
     );
     assert!(
         shaped.lines.len() > 1,
@@ -227,6 +235,7 @@ fn unwrapped_shaping_produces_exactly_one_line_for_single_line_text() {
         None,
         (0.0, 0.0),
         TextDirection::Auto,
+        TextAlign::Auto,
     );
     assert_eq!(shaped.lines.len(), 1);
 }
@@ -254,6 +263,7 @@ fn forced_direction_never_leaks_the_bidi_mark_into_the_glyph_list_or_cluster_ran
         None,
         (0.0, 0.0),
         TextDirection::Auto,
+        TextAlign::Auto,
     );
     let ltr = engine.shape(
         text,
@@ -263,6 +273,7 @@ fn forced_direction_never_leaks_the_bidi_mark_into_the_glyph_list_or_cluster_ran
         None,
         (0.0, 0.0),
         TextDirection::Ltr,
+        TextAlign::Auto,
     );
     let rtl = engine.shape(
         text,
@@ -272,6 +283,7 @@ fn forced_direction_never_leaks_the_bidi_mark_into_the_glyph_list_or_cluster_ran
         None,
         (0.0, 0.0),
         TextDirection::Rtl,
+        TextAlign::Auto,
     );
     for shaped in [&auto, &ltr, &rtl] {
         assert_eq!(
@@ -338,6 +350,7 @@ fn forced_direction_does_not_panic_on_empty_text() {
             None,
             (0.0, 0.0),
             direction,
+            TextAlign::Auto,
         );
         assert_eq!(shaped.glyph_count(), 0);
     }
@@ -358,6 +371,7 @@ fn auto_detects_a_pure_hebrew_paragraph_as_rtl() {
         None,
         (0.0, 0.0),
         TextDirection::Auto,
+        TextAlign::Auto,
     );
     assert!(
         !auto.lines[0].glyphs.is_empty(),
@@ -390,6 +404,7 @@ fn forced_rtl_direction_flips_which_side_of_the_line_each_scripts_run_lands_on()
         None,
         (0.0, 0.0),
         TextDirection::Auto,
+        TextAlign::Auto,
     );
     let rtl = engine.shape(
         text,
@@ -399,6 +414,7 @@ fn forced_rtl_direction_flips_which_side_of_the_line_each_scripts_run_lands_on()
         None,
         (0.0, 0.0),
         TextDirection::Rtl,
+        TextAlign::Auto,
     );
 
     let mean_x = |shaped: &ShapedText, rtl: bool| -> f32 {

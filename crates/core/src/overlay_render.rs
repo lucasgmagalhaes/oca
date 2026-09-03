@@ -223,15 +223,43 @@ fn draw_rounded_background(
     }
 }
 
+/// Computes the `(origin_x, max_width_px)` box [`TextLayoutEngine::shape`]'s wrapping/alignment
+/// should use, given [`TextClip::pos_x`]'s anchor meaning under `align` — see
+/// [`crate::timeline::TextAlign`]'s own doc comment for why each variant anchors a different edge
+/// of the box instead of always the left edge:
+/// - `Auto`/`Left`: the box's left edge sits at `anchor_x`, extending to the canvas's right edge
+///   (this clip's exact pre-existing behavior).
+/// - `Center`: the box is centered on `anchor_x`, symmetric out to whichever canvas edge is
+///   closer — `cosmic-text`'s own per-line centering within that symmetric box then always lands
+///   each line's own center exactly on `anchor_x`, regardless of that line's width.
+/// - `Right`: the box's right edge sits at `anchor_x`, extending back to the canvas's left edge.
+///
+/// [`TextClip::pos_x`]: crate::timeline::TextClip::pos_x
+fn text_horizontal_box(
+    align: crate::timeline::TextAlign,
+    anchor_x: f32,
+    canvas_width: f32,
+) -> (f32, f32) {
+    use crate::timeline::TextAlign;
+    match align {
+        TextAlign::Auto | TextAlign::Left => (anchor_x, (canvas_width - anchor_x).max(1.0)),
+        TextAlign::Center => {
+            let half = anchor_x.min(canvas_width - anchor_x).max(0.5);
+            (anchor_x - half, half * 2.0)
+        }
+        TextAlign::Right => (0.0, anchor_x.max(1.0)),
+    }
+}
+
 fn draw_text_segment_onto(
     buf: &mut [u8],
     segment: &TextSegment,
     canvas_width: u32,
     canvas_height: u32,
 ) {
-    let x = segment.pos_x * canvas_width as f32;
+    let anchor_x = segment.pos_x * canvas_width as f32;
     let y = segment.pos_y * canvas_height as f32;
-    let max_width = (canvas_width as f32 - x).max(1.0);
+    let (x, max_width) = text_horizontal_box(segment.text_align, anchor_x, canvas_width as f32);
 
     text_layout::with_shared_engine(|engine, swash_cache| {
         let shaped = engine.shape(
@@ -242,6 +270,7 @@ fn draw_text_segment_onto(
             Some(max_width),
             (x, y),
             segment.direction,
+            segment.text_align,
         );
         if let Some(ink_bbox) =
             shaped_ink_bbox(&shaped, segment.glyph_byte_range, engine, swash_cache)
@@ -326,6 +355,7 @@ pub fn render_text_clip_rgba(
         rotation_keyframe_expr_x: String::new(),
         rotation_keyframe_expr_y: String::new(),
         direction: clip.direction,
+        text_align: clip.text_align,
     };
     let mut buf = render_text_segment_rgba(&base, canvas_width, canvas_height);
 

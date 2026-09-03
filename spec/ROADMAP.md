@@ -1030,17 +1030,51 @@ an item earlier:
   paragraph-direction override actually changes, not an individual strong character's intrinsic
   script-level resolution.
 
-  **Deliberately not done in this slice**: semantic alignment (Start/Center/End/Justified — no
-  `TextClip` alignment field exists at all yet, block position is always the plain `pos_x`/
-  `pos_y` top-left anchor, so this is a new feature, not just a direction-aware tweak to an
-  existing one) and the `language` hint's own consumption are both open, along with TEXT-01B's
-  own remaining steps (directional-control visibility/warnings, mixed-direction golden tests,
-  cluster/run-geometry replacing the approximate word-width helpers) and TEXT-01B's own original
-  cluster-safe-highlight note (the current `glyph_excluded` filter already only ever includes a
-  whole cluster, never splits one — real cluster-safety for RTL/conjunct scripts specifically
-  still needs TEXT-01C's international fonts to verify against real glyphs, not just bidi levels
-  against a font that can't render them). TEXT-01C (international fallback families, gated on
-  FONT-01B actually vendoring those fonts into the repo) and TEXT-01D (performance/caching/
+  **Deliberately not done in slice 1**: alignment and the `language` hint's own consumption were
+  both open — alignment now shipped as its own slice below; `language` remains open.
+
+  **TEXT-01B slice 2 (visual alignment) shipped.** `TextClip` gained `text_align: TextAlign`
+  (`Auto`/`Left`/`Center`/`Right`, `#[serde(default)]` = `Auto` — this clip's exact pre-existing
+  behavior). Scoped down from the doc's own "semantic alignment" (`Start`/`End`, direction-aware)
+  to plain visual Left/Center/Right for this slice — a `Start`/`End` mapping needs a resolved
+  paragraph direction to know which physical edge "start" even means, which for `TextDirection::
+  Auto` isn't knowable ahead of actually shaping the text; a real, separate follow-up.
+
+  The real design decision this slice turned on, confirmed with the user before writing code
+  (see `.claude/CLAUDE.md`'s own "design before code" rule for exactly this kind of anchor-
+  semantics ambiguity): once alignment isn't `Left`, what does `pos_x` mean? Two options —
+  always align within a fixed canvas-wide box (simple, but `pos_x` silently stops mattering the
+  moment alignment leaves `Left`) vs. redefine which edge `pos_x` anchors per alignment (matches
+  how most caption/design tools bind a position handle to the selected alignment, at the cost of
+  `pos_x`'s meaning depending on this field). The user picked the second, so: `Auto`/`Left` keep
+  `pos_x` as the block's left edge (unchanged); `Center` makes it the block's horizontal center;
+  `Right` makes it the block's right edge. `overlay_render.rs`'s new `text_horizontal_box`
+  computes the `(origin_x, max_width_px)` wrap/alignment box per anchor edge — symmetric around
+  the anchor for `Center` (so `cosmic-text`'s own per-line centering, given that symmetric box,
+  lands each line's center exactly on the anchor regardless of that line's own width), mirrored
+  around the anchor for `Right`. `TextLayoutEngine::shape` threads the resulting `TextAlign`
+  straight into `cosmic-text`'s own `Align` via `Buffer::set_text`, `Auto` passing `None` through
+  unchanged (`cosmic-text`'s existing direction-aware left/right default, zero behavior change).
+  `TextSegment` carries the field through the same way `direction` already does.
+
+  Verified for real against actual `cosmic-text` and the real bundled fonts (scratch-crate
+  technique): `text_horizontal_box`'s own geometry (5 pure-arithmetic tests — `Auto`/`Left`
+  unchanged, `Center` symmetric on either side of the canvas's midpoint, `Right` anchors the
+  right edge, no variant ever produces a non-positive width) plus two real end-to-end shaping
+  checks proving `cosmic-text`'s actual glyph output lands a line's center/right edge exactly on
+  the anchor pixel for `Center`/`Right` respectively — not just that the box arithmetic
+  type-checks. `cargo check --workspace --all-targets` (the documented temporary `filters.c`
+  shim, discarded before commit) and `cargo fmt --check` both stayed clean.
+
+  **Deliberately not done**: `Start`/`End` semantic alignment, the `language` hint's own
+  consumption, TEXT-01B's own remaining steps (directional-control visibility/warnings,
+  mixed-direction golden tests, cluster/run-geometry replacing the approximate word-width
+  helpers), and its original cluster-safe-highlight note (the current `glyph_excluded` filter
+  already only ever includes a whole cluster, never splits one — real cluster-safety for
+  RTL/conjunct scripts specifically still needs TEXT-01C's international fonts to verify against
+  real glyphs, not just bidi levels against a font that can't render them) all remain open.
+  TEXT-01C (international fallback families, gated on FONT-01B actually vendoring those fonts
+  into the repo) and TEXT-01D (performance/caching/
   optional packs) remain fully open. See `architecture/complex-text-shaping.md`'s own writeup for
   the full detail.
 - `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to

@@ -127,6 +127,7 @@ fn text_clip(id: u64, start_secs: f64, duration_secs: f64) -> TextClip {
         rotation_keyframes: vec![],
         direction: Default::default(),
         language: None,
+        text_align: Default::default(),
     }
 }
 

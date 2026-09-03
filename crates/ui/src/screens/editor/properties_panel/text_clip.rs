@@ -135,6 +135,27 @@ pub(super) fn text_clip_properties(
         changed = true;
     }
 
+    // Horizontal alignment (TEXT-01B) — Auto keeps pos_x as the block's plain left edge
+    // (this clip's exact pre-existing behavior); Left/Center/Right redefine what pos_x anchors.
+    components::property_row(ui, Text::PropTextAlign.tr(locale));
+    let previous_align = tc.text_align;
+    egui::ComboBox::from_id_salt(("text_align", tc_id))
+        .selected_text(text_align_label(tc.text_align, locale))
+        .width(ui.available_width())
+        .show_ui(ui, |ui| {
+            for align in [
+                avcore::TextAlign::Auto,
+                avcore::TextAlign::Left,
+                avcore::TextAlign::Center,
+                avcore::TextAlign::Right,
+            ] {
+                ui.selectable_value(&mut tc.text_align, align, text_align_label(align, locale));
+            }
+        });
+    if tc.text_align != previous_align {
+        changed = true;
+    }
+
     // Font size
     components::property_row(ui, Text::PropTextFontSize.tr(locale));
     if ui
@@ -480,5 +501,14 @@ fn text_direction_label(
         avcore::TextDirection::Auto => Text::TextDirectionAuto.tr(locale),
         avcore::TextDirection::Ltr => Text::TextDirectionLtr.tr(locale),
         avcore::TextDirection::Rtl => Text::TextDirectionRtl.tr(locale),
+    }
+}
+
+fn text_align_label(align: avcore::TextAlign, locale: crate::i18n::Locale) -> &'static str {
+    match align {
+        avcore::TextAlign::Auto => Text::TextAlignAuto.tr(locale),
+        avcore::TextAlign::Left => Text::TextAlignLeft.tr(locale),
+        avcore::TextAlign::Center => Text::TextAlignCenter.tr(locale),
+        avcore::TextAlign::Right => Text::TextAlignRight.tr(locale),
     }
 }

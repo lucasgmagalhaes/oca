@@ -112,6 +112,11 @@ pub struct TextSegment {
     /// `Auto`, the exact behavior every segment already had before this field existed.
     #[serde(default)]
     pub direction: crate::timeline::TextDirection,
+    /// Horizontal text alignment — see [`crate::timeline::TextAlign`]. `#[serde(default)]` so an
+    /// already-queued export job loads as `Auto`, the exact behavior every segment already had
+    /// before this field existed.
+    #[serde(default)]
+    pub text_align: crate::timeline::TextAlign,
 }
 
 #[derive(Debug)]
@@ -808,6 +813,7 @@ fn text_clip_to_segments(
         rotation_keyframe_expr_x: rotation_keyframe_expr_x.clone(),
         rotation_keyframe_expr_y: rotation_keyframe_expr_y.clone(),
         direction: clip.direction,
+        text_align: clip.text_align,
     };
     if !clip.highlight_enabled || clip.words.is_empty() || canvas_width == 0 {
         return vec![base];
@@ -847,6 +853,7 @@ fn text_clip_to_segments(
             rotation_keyframe_expr_x: rotation_keyframe_expr_x.clone(),
             rotation_keyframe_expr_y: rotation_keyframe_expr_y.clone(),
             direction: clip.direction,
+            text_align: clip.text_align,
         });
     }
     segments
