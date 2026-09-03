@@ -326,9 +326,13 @@ Mapping:
   flag, and there's no most-recently-used tracking over the media library (there _is_
   `recent_project_paths` on `Prefs`, but that's projects, not in-library assets). Real new
   feature if kept, not a restyle — flag rather than silently build.
-- **Grid/list view toggle** — no existing toggle; today's layout is always the one-column
-  list. Adding a 2-column grid mode is a real layout addition, low risk (pure UI, no new
-  `App`/`avcore` state beyond a `bool`/enum view-mode field).
+- **Grid/list view toggle — done.** `App::media_view_mode` (`MediaViewMode::{List, Grid}`, not
+  persisted — resets on launch like `tool`/`properties_tab`) toggled via two `▦`/`☰`
+  `selectable_label`s in the panel header. `List` is the existing one-column row layout
+  unchanged; `Grid` wraps assets into tiles (`ui.horizontal_wrapped`) with a bigger thumbnail
+  (`GRID_ASSET_THUMB_SIZE`, 120×72 vs. the list row's 48×28) and the filename beneath instead of
+  alongside. Click/double-click/drag-to-timeline behavior is identical in both layouts (shared
+  via one `handle_interaction` closure) — only the tile's own content differs.
 - **Real per-asset thumbnails** (the mockup's actual decoded video frames) — this is the
   single biggest "new capability, not styling" item in this whole panel. It's a deliberate,
   documented departure from the current placeholder design, and doing it right means reusing
@@ -593,6 +597,7 @@ principles, and this doc's own findings above:
    user's request — see the Inspector section's own bullet for what shipped and its documented
    scope limits (position/PIP ignored while a blend mode is active; a blend-mode layer always
    composites on top of the whole Normal-mode stack rather than interleaving into track order).
+9. **Media library grid/list view toggle — done.** See the Media library section's own bullet.
 
 ## Verification
 
