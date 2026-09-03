@@ -196,6 +196,28 @@ impl Project {
         true
     }
 
+    /// Every sequence in this project (`sequence_id` itself excluded — a sequence can't nest
+    /// itself, see `nested_sequence::materialize_nested_sequences`'s own cycle guard) containing
+    /// at least one clip whose `ClipInstance::nested_sequence_id` points at `sequence_id` —
+    /// i.e. every place `sequence_id` is used as a compound clip elsewhere in the project.
+    /// [`Project::remove_sequence`] itself doesn't check this: a dangling `nested_sequence_id`
+    /// left behind by a delete degrades gracefully at render time
+    /// (`RenderError::MissingNestedSequence`, clip skipped, not a crash) rather than erroring —
+    /// but a caller that wants to warn the user *before* deleting can call this first.
+    pub fn sequences_referencing_as_compound_clip(&self, sequence_id: u64) -> Vec<&Sequence> {
+        self.sequences
+            .iter()
+            .filter(|s| s.id != sequence_id)
+            .filter(|s| {
+                s.timeline.tracks.iter().any(|t| {
+                    t.clips
+                        .iter()
+                        .any(|c| c.nested_sequence_id == Some(sequence_id))
+                })
+            })
+            .collect()
+    }
+
     /// Moves one sequence to `target_index`, keeping the currently active sequence active even
     /// when indices shift around it. Returns `false` for invalid indices or a no-op move.
     pub fn move_sequence(&mut self, from_index: usize, target_index: usize) -> bool {
