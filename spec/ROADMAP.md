@@ -1690,6 +1690,37 @@ an item earlier:
   passing. `cargo check --workspace --all-targets`, `cargo clippy -p core --lib --no-deps` (via
   the documented temporary `filters.c` shim, discarded before commit), and `cargo fmt --check`
   all stayed clean.
+
+  **`ui`-side apply flow (part of slice 3) shipped too.** `App::apply_graphic_template`
+  instantiates a validated `GraphicTemplate` and places every resolved element onto the timeline
+  at the current playhead: every `Text` element on the first-or-created text track, every `Shape`
+  element on the first-or-created shape track — the same "first track of that kind" placement
+  `App::add_text_clip`/`App::add_shape_clip` already use for a manually inserted overlay.
+  Multiple template elements can share one track without conflict, since nothing in this app's
+  timeline model requires same-kind clips to avoid overlapping in time — only each element's own
+  template-defined position keeps them visually apart. One `push_undo_snapshot` for the whole
+  batch (Shorts Pack's own "one snapshot per batch, not per clip" precedent), never pushed at all
+  if instantiation fails or the template has no elements.
+
+  The toolbar's new "🖼 Load graphic template" button (`App::load_graphic_template_from_file`) is
+  this slice's real, reachable trigger — deliberately scoped to parameterless templates for now:
+  it applies with no supplied parameter values, so a template with any `Parameter`-bound field
+  surfaces `instantiate`'s own actionable "no value supplied for parameter ..." toast rather than
+  silently applying garbage. A real parameter-fill form (a dynamic modal, one row per declared
+  `TemplateParameter`) is a genuine, separate follow-up — this button is the honest, currently-
+  reachable slice of that flow, not a stand-in for it.
+
+  Verified: 6 new `App`-level tests in `app_test.rs` (a text element placed at the playhead with
+  its template-defined position, a shape element on its own track, text and shape elements
+  landing on separate tracks, a parameter-bound value correctly resolved, a missing parameter
+  value toasting with no timeline change, and exactly one undo snapshot pushed for a
+  multi-element batch — confirmed by undoing once and checking the timeline reverts to empty
+  *and* no further undo remains) — type-checked cleanly under `cargo check -p ui --tests`, same
+  "can't link this sandbox's `ui` test binary" caveat every other `ui`-side slice this session
+  has hit. `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets`
+  (via the documented temporary `filters.c` shim, discarded before commit) both stayed clean —
+  clippy's own `dead_code` lint confirmed the new `App` methods are actually reachable (via the
+  new toolbar button and the new tests), not orphaned. `cargo fmt --check` also stayed clean.
 - `[ ]` **CF-08: semantic transcript and visual search.** Build a bounded, versioned local index
   after exact transcript search ships in CF-01.
 - `[ ]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and
