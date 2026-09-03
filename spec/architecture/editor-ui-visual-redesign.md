@@ -134,15 +134,24 @@ resolved best-guess for the shared Trim/Ripple slot, applied to Trim only; Rippl
 distinct button). Ripple/Roll/Slip/Slide have no vendored icon and keep their unicode glyphs
 via the unchanged `tool_button`.
 
+**Preview transport row: done.** Seek-to-start/play-pause/seek-to-end in both the normal and
+fullscreen preview transport rows now render `skip-back`/`play`/`pause`/`skip-forward` through
+the icon font instead of their unicode glyphs — all map to existing `App` actions
+(`seek_preview`, `toggle_preview_playback`) unchanged, no new behavior. The icon-only seek
+buttons use `icon_button`'s `family` option; the hand-built play/pause `RichText` (not routed
+through `icon_button`) gets `.family(icons::family())` directly. Decorative, non-interactive
+"▶" placeholders elsewhere (media-library thumbnail kind glyph, empty-preview state) are left
+as-is — not transport controls, no confirmed mockup mapping of their own.
+
 Still not wired: `chevron-left`/`chevron-right` (no real "collapse a timeline track row"
 feature exists today to attach them to — the mockup mapping here may be aspirational, worth
 re-checking against the reference image before building), `ellipsis-vertical` (no track
 ⋮-menu exists), `chevron-down`/`upload` (top bar breadcrumb/Export — no top bar redesign done
-yet), the preview transport row icons (`camera`/`skip-back`/`rewind`/`pause`/`play`/
-`fast-forward`/`repeat`, alongside the already-wired-in-font-but-not-yet-in-a-screen
-`skip-forward`), `type`/`wand-sparkles`/`hand` (Text/Effects/Pan tool-rail slots — `hand` also
-has no `EditorTool` equivalent yet, see "Left icon rail" above), and `music` (unmapped to any
-real action).
+yet), the rest of the transport row (`camera`/`rewind`/`fast-forward`/`repeat` — camera has no
+snapshot-capture action yet, rewind/fast-forward/repeat have no scrub-speed/loop actions yet),
+`type`/`wand-sparkles`/`hand` (Text/Effects/Pan tool-rail slots — `hand` also has no
+`EditorTool` equivalent yet, see "Left icon rail" above), and `music` (unmapped to any real
+action).
 
 ## Headline finding: the structure is already ~80% there
 
