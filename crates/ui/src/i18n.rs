@@ -564,6 +564,7 @@ text_catalog! {
     ShortsPack: pt_br = "🎞 Pacote de shorts", en = "🎞 Shorts Pack";
     ShortsPackNoHighlights: pt_br = "Nenhum destaque detectado ainda -- use \"Detectar destaques\" primeiro.", en = "No highlights detected yet -- use \"Detect Highlights\" first.";
     ShortsPackQueued: pt_br = "{queued} shorts enfileirados ({skipped} ignorados).", en = "{queued} shorts queued ({skipped} skipped).";
+    ShortsPackReframing: pt_br = "Reenquadrando {n} clipe(s) antes de montar o pack...", en = "Reframing {n} clip(s) before building the pack...";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
     ExportLoudnessLabel: pt_br = "Loudness:", en = "Loudness:";
     ExportLoudnessCustom: pt_br = "{value} LUFS (personalizado)", en = "{value} LUFS (custom)";

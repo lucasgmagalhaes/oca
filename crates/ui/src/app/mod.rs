@@ -638,6 +638,7 @@ enum DynamicReframeEvent {
         subject_found: bool,
     },
     Failed {
+        clip_id: u64,
         message: String,
     },
 }
@@ -874,6 +875,11 @@ pub struct App {
     pub(crate) auto_reframe_state: AutoReframeState,
     /// Dynamic-reframe (CF-04) background-job channel/clip-tracking state — same pattern.
     pub(crate) dynamic_reframe_state: DynamicReframeState,
+    /// Shorts Pack's own sequential auto-reframe queue (CF-04's "Shorts Pack integration" slice)
+    /// — `Some` only while [`App::spawn_shorts_pack`] is waiting on un-reframed clips one at a
+    /// time before it queues the actual exports. See [`ShortsPackReframeState`]'s own doc
+    /// comment.
+    pub(crate) shorts_pack_reframe_state: Option<ShortsPackReframeState>,
     /// Motion-tracking background-job channel/clip-tracking state — same pattern.
     pub(crate) motion_tracking_state: MotionTrackingState,
     /// Scene-cut-detection background-job channel/clip-tracking state — same pattern.
@@ -1276,6 +1282,17 @@ pub(crate) struct DynamicReframeState {
     pub(crate) dynamic_reframing_clip_id: Option<u64>,
 }
 
+/// Tracks [`App::spawn_shorts_pack`]'s own sequential auto-reframe pre-pass — one background
+/// dynamic-reframe run per un-reframed video clip a highlight window touches, processed one at a
+/// time (reusing [`DynamicReframeState`]'s existing single-in-flight guard rather than a second
+/// one) before the actual per-short export queueing runs. `pending_clip_ids[0]` is always the
+/// clip currently in flight; `App::pump_dynamic_reframe` pops it on completion/failure and moves
+/// on to the next, or — once empty — proceeds straight to queueing the exports.
+pub(crate) struct ShortsPackReframeState {
+    pub(crate) pending_clip_ids: Vec<u64>,
+    pub(crate) output_dir: std::path::PathBuf,
+}
+
 /// Motion-tracking background-job state — same pattern as [`AutoReframeState`]. Distinct from
 /// `App`'s `motion_track_*`/`picking_motion_track_region` fields, which are the region-picker
 /// UI's own session state, not this one-shot background job's channel/clip-tracking state.
@@ -1532,6 +1549,7 @@ impl App {
                 dynamic_reframe_rx,
                 dynamic_reframing_clip_id: None,
             },
+            shorts_pack_reframe_state: None,
             motion_tracking_state: MotionTrackingState {
                 motion_tracking_tx,
                 motion_tracking_rx,
