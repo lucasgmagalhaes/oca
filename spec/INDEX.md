@@ -9,7 +9,7 @@ huge file.
 1. **[ROADMAP.md](ROADMAP.md)** — the actionable queue. Pick your next item here first.
 2. **[RULES.md](RULES.md)** — mandatory rules + definition of done. Short, read every time.
 3. The specific `matrix/*.md` (current status + file references) and/or `architecture/*.md`
-   (the *how*/*why*) file(s) ROADMAP.md points you to.
+   (the _how_/_why_) file(s) ROADMAP.md points you to.
 
 For the post-P4 product-growth queue, read
 **[architecture/competitive-feature-plan.md](architecture/competitive-feature-plan.md)** after
@@ -64,6 +64,7 @@ spec/
     ├── performance-and-caching.md    (dirty flags, versioned cache, hot-path rules — from nimble)
     ├── undo-redo.md                  (P0 item 1: what's done, what's left, why per-sequence)
     ├── mobile-support.md             (Android/iOS ADR: proposed, not started — decision only)
+    ├── editor-ui-visual-redesign.md  (OCA mockup → Editor screen mapping, sampled colors)
     └── rules-and-dod.md              (full text behind RULES.md's summary)
 ```
 
