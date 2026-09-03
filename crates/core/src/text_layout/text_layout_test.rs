@@ -514,3 +514,95 @@ fn scan_bidi_controls_left_to_right_and_right_to_left_marks_are_not_flagged() {
     let warning = scan_bidi_controls("plain\u{200E}text\u{200F}here");
     assert!(!warning.any());
 }
+
+#[test]
+fn resolve_paragraph_direction_detects_pure_latin_as_ltr() {
+    assert_eq!(
+        resolve_paragraph_direction("Hello world", TextDirection::Auto),
+        ResolvedDirection::Ltr
+    );
+}
+
+#[test]
+fn resolve_paragraph_direction_detects_pure_hebrew_as_rtl() {
+    assert_eq!(
+        resolve_paragraph_direction("שלום עולם", TextDirection::Auto),
+        ResolvedDirection::Rtl
+    );
+}
+
+#[test]
+fn resolve_paragraph_direction_defaults_all_neutral_text_to_ltr() {
+    // UAX #9 P3: no strong character at all (digits/punctuation only) defaults to LTR.
+    assert_eq!(
+        resolve_paragraph_direction("123 456!", TextDirection::Auto),
+        ResolvedDirection::Ltr
+    );
+}
+
+#[test]
+fn resolve_paragraph_direction_explicit_override_wins_over_script() {
+    assert_eq!(
+        resolve_paragraph_direction("Hello world", TextDirection::Rtl),
+        ResolvedDirection::Rtl
+    );
+    assert_eq!(
+        resolve_paragraph_direction("שלום עולם", TextDirection::Ltr),
+        ResolvedDirection::Ltr
+    );
+}
+
+#[test]
+fn resolve_paragraph_direction_first_strong_character_decides_mixed_script_text() {
+    assert_eq!(
+        resolve_paragraph_direction("שלום Hello", TextDirection::Auto),
+        ResolvedDirection::Rtl
+    );
+    assert_eq!(
+        resolve_paragraph_direction("Hello שלום", TextDirection::Auto),
+        ResolvedDirection::Ltr
+    );
+}
+
+#[test]
+fn resolve_text_align_start_end_flip_physical_edge_by_direction() {
+    assert_eq!(
+        resolve_text_align("Hello", TextDirection::Ltr, TextAlign::Start),
+        TextAlign::Left
+    );
+    assert_eq!(
+        resolve_text_align("Hello", TextDirection::Ltr, TextAlign::End),
+        TextAlign::Right
+    );
+    assert_eq!(
+        resolve_text_align("שלום", TextDirection::Rtl, TextAlign::Start),
+        TextAlign::Right
+    );
+    assert_eq!(
+        resolve_text_align("שלום", TextDirection::Rtl, TextAlign::End),
+        TextAlign::Left
+    );
+}
+
+#[test]
+fn resolve_text_align_start_follows_auto_detected_direction_too() {
+    assert_eq!(
+        resolve_text_align("שלום עולם", TextDirection::Auto, TextAlign::Start),
+        TextAlign::Right
+    );
+}
+
+#[test]
+fn resolve_text_align_passes_non_logical_variants_through_unchanged() {
+    for align in [
+        TextAlign::Auto,
+        TextAlign::Left,
+        TextAlign::Center,
+        TextAlign::Right,
+    ] {
+        assert_eq!(
+            resolve_text_align("Hello", TextDirection::Auto, align),
+            align
+        );
+    }
+}

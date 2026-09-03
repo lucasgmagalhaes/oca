@@ -147,6 +147,8 @@ pub(super) fn text_clip_properties(
 
     // Horizontal alignment (TEXT-01B) — Auto keeps pos_x as the block's plain left edge
     // (this clip's exact pre-existing behavior); Left/Center/Right redefine what pos_x anchors.
+    // Start/End are the direction-aware (CSS logical) equivalents of Left/Right, resolved per
+    // clip against `direction`/the text's own leading script — see `avcore::TextAlign`'s doc.
     components::property_row(ui, Text::PropTextAlign.tr(locale));
     let previous_align = tc.text_align;
     egui::ComboBox::from_id_salt(("text_align", tc_id))
@@ -158,6 +160,8 @@ pub(super) fn text_clip_properties(
                 avcore::TextAlign::Left,
                 avcore::TextAlign::Center,
                 avcore::TextAlign::Right,
+                avcore::TextAlign::Start,
+                avcore::TextAlign::End,
             ] {
                 ui.selectable_value(&mut tc.text_align, align, text_align_label(align, locale));
             }
@@ -520,5 +524,7 @@ fn text_align_label(align: avcore::TextAlign, locale: crate::i18n::Locale) -> &'
         avcore::TextAlign::Left => Text::TextAlignLeft.tr(locale),
         avcore::TextAlign::Center => Text::TextAlignCenter.tr(locale),
         avcore::TextAlign::Right => Text::TextAlignRight.tr(locale),
+        avcore::TextAlign::Start => Text::TextAlignStart.tr(locale),
+        avcore::TextAlign::End => Text::TextAlignEnd.tr(locale),
     }
 }
