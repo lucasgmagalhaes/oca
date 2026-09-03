@@ -427,7 +427,7 @@ Mapping:
   `crop_x`/`crop_y`/`crop_w`/`crop_h` (position+size), just a different parameterization
   (edge-insets: `left=x`, `top=y`, `right=1-(x+w)`, `bottom=1-(y+h)`). Purely a units/label
   choice for the widget, not a data-model change — convert on display, store the same fields.
-- **COMPOSITE → Blend Mode — data model + export done, preview in progress.**
+- **COMPOSITE → Blend Mode — done: data model, export, live preview, and UI wiring.**
   `avcore::timeline::BlendMode` (40 modes, matching FFmpeg's `blend` filter's `all_mode` option
   exactly — verified against a real `ffmpeg -h filter=blend` build) + `ClipInstance::
   blend_mode`/`ClipFormatting::blend_mode` exist now. Export wires it for real: `avbridge::
@@ -438,10 +438,28 @@ Mapping:
   modes for zero C code per mode, not a bounded subset. **Scope limit, not a bug**: `blend` has
   no x/y placement option, so `position_x_expr`/`position_y_expr` (PIP-style repositioning) are
   ignored for a layer with a non-`Normal` blend mode — it composites at full canvas size.
-  Combining positioning with a blend mode is a separate, not-yet-built follow-up. GStreamer's
-  `compositor` element (live preview) has no equivalent to FFmpeg's `blend` filter at all —
-  only Porter-Duff `source`/`over`/`add` (verified via `gst-inspect-1.0 compositor`) — so live
-  preview needs a different mechanism than export did; see below for that slice's own status.
+  Combining positioning with a blend mode is a separate, not-yet-built follow-up. `blend`'s two
+  inputs are labeled "top" (#0, the layer whose mode is set) and "bottom" (#1, the accumulated
+  stack beneath it) — verified against a real `ffmpeg -h filter=blend` build, not assumed; this
+  matters because operand order changes the result for every asymmetric mode (subtract, divide,
+  burn, dodge, overlay, ...).
+  **Live preview done, via a different mechanism than export**: GStreamer's `compositor`
+  element has no equivalent to FFmpeg's `blend` filter at all — only Porter-Duff
+  `source`/`over`/`add` (verified via `gst-inspect-1.0 compositor`) — so a blend-mode overlay
+  branch is instead diverted at pipeline-build time into its own dedicated `appsink` (forced to
+  the canvas's own size), and `Preview::current_frame` composites that branch's frame onto the
+  `compositor` output itself, on the CPU, via a new `avcore::blend_mode::blend_channel` — a
+  term-for-term Rust transcription of FFmpeg's own `libavfilter/blend_modes.c` formulas (not
+  reimplemented from documentation or memory), cross-checked against real `ffmpeg ...
+  blend=all_mode=<mode>` output on gradient test images for all 40 modes before being trusted
+  (max abs diff 0, except `interpolate` at 1 — float rounding), with those same reference values
+  embedded as exact-match assertions in `blend_mode_test.rs` (executed for real in an isolated
+  scratch crate — this sandbox's `core` test binary can't link, see CLAUDE.md's documented
+  FFmpeg/ONNX-Runtime gaps). Same documented scope limit as export (position/PIP ignored), plus
+  one preview-only limit: a blend-mode layer always composites on top of the *whole*
+  `compositor` stack, not correctly interleaved with Normal-mode overlay layers above it in
+  track order — combining the two needs a materially different pipeline shape, a separate
+  follow-up.
   **UI wiring done**: the properties panel's Inspector tab has a Composite section (Blend Mode
   dropdown, grouped with the existing Opacity keyframe editor per the mockup) backed by a new
   `App::set_selected_clip_blend_mode`. Mode names in the dropdown are kept in English regardless
@@ -451,7 +469,11 @@ Mapping:
   en` duplication, not real localization.
   Real, executable regression coverage: `avbridge/tests/encode_test.rs`'s
   `multi_track_export_with_a_blend_mode_set_produces_a_valid_file` runs a real two-track export
-  with `blend_mode: "multiply"` set and probes the result.
+  with `blend_mode: "multiply"` set and probes the result; `blend_mode_test.rs` exhaustively
+  covers the CPU preview math (312 exact-value cases across all 40 modes, executed for real).
+  GStreamer pipeline behavior itself (the `appsink` diversion, `current_frame`'s compositing
+  loop) is only compile-checked in this sandbox — no display/audio device or test video files
+  available to actually run the preview pipeline end-to-end.
 - **SPEED + "Add Effect" button**: the speed slider maps directly to `speed_factor` (plus the
   richer stepped/smooth speed-ramp system oca already has, which the mockup doesn't even show
   — oca is ahead here, not behind). "Add Effect" itself doesn't map to anything: oca's model is
@@ -566,10 +588,11 @@ principles, and this doc's own findings above:
    "implement the mockup" in one pass.
 7. **Per-channel audio metering — done**, picked out of item 6's list at the user's request —
    see the Inspector section's own bullet.
-8. **Blend Mode — data model + export done, preview in progress**, also picked out of item 6's
-   list at the user's request (confirmed: full FFmpeg mode set, live preview included, despite
-   the live-preview half needing a real compositing-pipeline restructure — see the Inspector
-   section's own bullet for what's shipped).
+8. **Blend Mode — done.** Data model, export, live preview (the full FFmpeg 40-mode set, per
+   the user's own request), and UI wiring all shipped, also picked out of item 6's list at the
+   user's request — see the Inspector section's own bullet for what shipped and its documented
+   scope limits (position/PIP ignored while a blend mode is active; a blend-mode layer always
+   composites on top of the whole Normal-mode stack rather than interleaving into track order).
 
 ## Verification
 
