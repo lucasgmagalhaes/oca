@@ -1224,8 +1224,50 @@ an item earlier:
   updated for the five new fields), `cargo clippy -p core --lib --no-deps` / `-p avbridge
   --all-targets --no-deps`, `cargo fmt --check`, and `clang-format --dry-run --Werror` on the
   touched C files all stayed clean.
-- `[ ]` **CF-04: dynamic auto-reframe.** Track a face/selected subject and generate reviewed,
+- `[~]` **CF-04: dynamic auto-reframe.** Track a face/selected subject and generate reviewed,
   smoothed crop/position keyframes for vertical exports and Shorts Pack.
+
+  **Slice 1 (trajectory-to-keyframes core + basic `ui` trigger) shipped.** `avcore::dynamic_reframe`
+  is the pure-logic half: `fill_reframe_gaps` holds a short (≤3 consecutive samples) detection gap
+  at the last-known center and falls back to `None` (centered framing) on a longer one or a
+  leading gap; `smooth_subject_centers` is a centered moving average over detected samples only
+  (`None` passes through unchanged); `sparse_crop_keyframes` converts the resulting per-sample
+  `CropRect` trajectory into the four `ClipInstance::crop_x/y/w/h_keyframes` lists, sparsified per
+  axis independently (only emits a point past a 0.01 epsilon change, always keeps first/last).
+  Detection is unchanged — reuses `avcore::detect_faces`/`main_subject_center`/
+  `compute_reframe_crop` exactly as the existing static auto-reframe does, one call per sample, no
+  second ONNX surface. Sampling itself reuses `avcore::FrameSampler::even_sample_times` (same
+  primitive motion tracking already uses) rather than a new cadence primitive — an initial
+  implementation duplicated it as `reframe_sample_times`/`MAX_REFRAME_SAMPLES`, caught and removed
+  before commit per `spec/RULES.md`'s reuse-before-building rule.
+
+  `ui`'s `App::spawn_dynamic_reframe_selected_clip` (`crates/ui/src/app/dynamic_reframe.rs`) opens
+  one `FrameSampler`, samples at 2/sec (bounded 4–30 samples — lower than motion tracking's 4/sec
+  since ONNX inference is costlier per-sample than block matching), decodes+downscales each frame
+  via a helper (`downscale_frame_rgba`) factored out of the static auto-reframe module rather than
+  duplicated, and pipes the result through the three `avcore` functions above into a single
+  `App::set_selected_clip_crop_keyframes` call (new — replaces all four crop keyframe lists in one
+  undo snapshot, unlike the properties panel's own four independent per-axis setters). Triggered by
+  a new "Reenquadramento dinâmico" button next to the existing static "Reenquadramento automático"
+  one in the properties panel's Crop section, disabled while a run (static or dynamic — separate
+  in-flight state, they don't share one) is active.
+
+  **Deliberately not done, matching the full spec's own harder asks**: cadence is bounded but not
+  content-adaptive (no scene-cut-aware sampling); subject selection has no cross-sample identity
+  tracking (two people trading highest-confidence would visibly re-target between samples, damped
+  but not corrected) and no optional user seed; there is no dedicated review/correction UI — the
+  emitted keyframes land directly in the properties panel's existing Crop X/Y/W/H Keyframes
+  sections (already editable there), the same "existing UI is the review step" precedent D4's
+  chapter-marker detection established, not a bespoke accept/reject modal; no Shorts Pack
+  integration yet. All real, separate follow-up slices.
+
+  Verified via `cargo check --workspace --all-targets` (the documented temporary local `filters.c`
+  shim, discarded afterward) and `cargo fmt --check`, both clean. `avcore::dynamic_reframe`'s own
+  11 pure-logic tests (gap-filling, smoothing, sparsification — no `avbridge`/GStreamer/ONNX
+  dependency) were run for real via the scratch-crate technique, not just type-checked, and pass.
+  Not run against a live GUI session or a real ONNX model (no display, no network to fetch the
+  bundled face-detector model in this sandbox) — the button's actual behavior and the smoothing
+  window's real-footage quality need a manual pass on a real dev machine.
 - `[ ]` **CF-05: OpenTimelineIO interchange.** Round-trip the supported editorial subset and
   emit an explicit compatibility report for unsupported effects.
 - `[ ]` **CF-06: live multicam monitor.** Show synchronized proxy-backed feeds and materialize
