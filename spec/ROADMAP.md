@@ -1450,8 +1450,8 @@ an item earlier:
   after exact transcript search ships in CF-01.
 - `[ ]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and
   privacy blur, reusing the existing matte/model/tracker infrastructure.
-- `[ ]` **CF-10: direct publishing and review collaboration.** Start with a secure YouTube upload
-  flow; keep OAuth credentials in the OS vault and cloud review separate from offline bundles.
+- `[ ]` **CF-10: direct publishing.** Add a secure YouTube upload flow; keep OAuth credentials
+  in the OS vault and separate from offline bundles.
 
 Quick wins that may be completed alongside CF-01:
 
@@ -1504,8 +1504,6 @@ and `matrix/competitor-parity.md`'s "deliberately not adopted" section.
 
 23. `[ ]` Voice-clone TTS beyond the single bundled Piper voice — still deferred until CF-01 and
     CF-03 ship, and must require explicit consent plus deletion of derived voice artifacts.
-24. `[ ]` Distributed/render-farm export.
-
 Motion-graphics templates and real-time AI object masking moved from this section to CF-07 and
 CF-09 respectively. The competitive refresh found concrete gameplay/channel use cases for both,
 but they remain behind the higher-impact CF-01-CF-06 workflow items.
