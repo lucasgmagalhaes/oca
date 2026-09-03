@@ -1234,8 +1234,29 @@ an item earlier:
   tool's own export format without a documented spec to verify against would mean guessing at a
   schema, which `CLAUDE.md`'s own "do not guess APIs" rule rules out; a sidecar today is
   hand-authored or produced by an external script directly against this module's own schema and
-  imported manually, the doc's own "user-provided sidecars" fallback path. Slice 5's per-game
-  event allowlists are also open.
+  imported manually, the doc's own "user-provided sidecars" fallback path.
+
+  **Slice 5 (per-game event allowlists) shipped too.** `EventSidecar` gained an optional
+  `game_id: Option<String>` (`#[serde(default)]`, so an already-authored sidecar still parses).
+  `avcore::gameplay_events::GameEventAllowlist` (`game_id`, `allowed_kinds`,
+  `default_pre_roll_secs`, `default_post_roll_secs`) is a persisted, app-wide profile (`ui`'s new
+  `PrefsState::game_event_allowlists`) a caller matches against a sidecar's own `game_id`; the new
+  `apply_game_event_allowlist` filters events down to the allowed kinds (an empty list is a
+  deliberate "import nothing from this game," distinct from leaving a game unconfigured — no
+  matching allowlist at all — which imports unrestricted, CF-02's own pre-slice-5 behavior) and
+  fills each passing event's own missing roll seconds from the profile's defaults, never
+  overriding an event's own explicit value. A new Preferences card lists each configured profile
+  — a `game_id` field, a checkbox per `GameplayEventKind`, and two optional roll-default rows (a
+  checkbox toggles between "no default" and an editable seconds value, since `Option<f32>` has no
+  natural blank-vs-explicit-zero widget of its own). `App::import_gameplay_events` looks up a
+  matching profile by the imported sidecar's `game_id` and applies it before the existing per-clip
+  range filtering.
+
+  Verified for real, not just type-checked: all 21 `gameplay_events` tests (6 new — filter/
+  empty-allowlist/roll-default-precedence cases, `game_id`'s JSON round-trip and back-compat
+  parsing) ran in a scratch crate (this module has zero heavy dependencies) and pass.
+  `cargo check --workspace --all-targets` (the documented temporary `filters.c` shim, discarded
+  before commit) and `cargo fmt --check` both stayed clean.
 
   Verified: 3 new `App`-level `app_test.rs` cases for `add_watched_file_to_project` (a `Done`
   row's output queued through `spawn_import` and marked added; toasts and queues nothing

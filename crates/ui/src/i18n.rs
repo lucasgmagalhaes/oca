@@ -549,6 +549,17 @@ text_catalog! {
     GameplayEventsImportNoMatchingClip: pt_br = "Nenhum clipe na timeline cobre os eventos deste arquivo (a gravação não é usada, ou todos os eventos ficam fora do trecho cortado dos clipes que a usam).", en = "No clip on the timeline covers this events file's events (the recording isn't used, or every event falls outside the trimmed range of the clips that use it).";
     GameplayEventsImportNothingNew: pt_br = "Nenhum evento novo para importar (já importados anteriormente).", en = "Nothing new to import (already imported earlier).";
     GameplayEventsImportSuccess: pt_br = "{n} marcador(es) de evento importado(s).", en = "{n} event marker(s) imported.";
+    PrefsGameEventAllowlists: pt_br = "Perfis de eventos por jogo", en = "Per-game event profiles";
+    PrefsGameEventAllowlistsHint: pt_br = "Restringe quais tipos de evento são importados e define pré/pós-roll padrão para arquivos de eventos cujo \"game_id\" corresponda.", en = "Restricts which event kinds import and sets default pre/post-roll for event files whose \"game_id\" matches.";
+    GameEventAllowlistGameIdHint: pt_br = "id do jogo", en = "game id";
+    AddGameEventAllowlist: pt_br = "+ Adicionar jogo", en = "+ Add game";
+    GameEventKindKill: pt_br = "Abate", en = "Kill";
+    GameEventKindDeath: pt_br = "Morte", en = "Death";
+    GameEventKindAssist: pt_br = "Assistência", en = "Assist";
+    GameEventKindObjective: pt_br = "Objetivo", en = "Objective";
+    GameEventKindBookmark: pt_br = "Marcador", en = "Bookmark";
+    GameEventAllowlistPreRoll: pt_br = "pré-roll padrão", en = "default pre-roll";
+    GameEventAllowlistPostRoll: pt_br = "pós-roll padrão", en = "default post-roll";
     ShortsPack: pt_br = "🎞 Pacote de shorts", en = "🎞 Shorts Pack";
     ShortsPackNoHighlights: pt_br = "Nenhum destaque detectado ainda -- use \"Detectar destaques\" primeiro.", en = "No highlights detected yet -- use \"Detect Highlights\" first.";
     ShortsPackQueued: pt_br = "{queued} shorts enfileirados ({skipped} ignorados).", en = "{queued} shorts queued ({skipped} skipped).";

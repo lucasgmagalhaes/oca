@@ -94,6 +94,12 @@ pub struct EventSidecar {
     /// The recording's filename (e.g. `"2026-08-29_ranked.mp4"`), never an absolute path — see
     /// this module's own doc comment.
     pub source_media_filename: String,
+    /// Optional free-text game identifier (e.g. `"valorant"`), matched exactly (case-sensitive)
+    /// against a configured [`GameEventAllowlist::game_id`] — CF-02 slice 5's own "expose
+    /// per-game event allowlists" hook. `#[serde(default)]` so a sidecar produced before this
+    /// field existed still parses, with no allowlist ever applying to it.
+    #[serde(default)]
+    pub game_id: Option<String>,
     pub events: Vec<GameplayEvent>,
 }
 
@@ -252,6 +258,52 @@ fn marker_label_for(kind: GameplayEventKind) -> &'static str {
         GameplayEventKind::Objective => "Objective",
         GameplayEventKind::Bookmark => "Bookmark",
     }
+}
+
+/// A user-configured per-game filter (CF-02 slice 5, "expose per-game event allowlists and
+/// pre/post-roll settings") restricting which [`GameplayEventKind`]s get imported from a sidecar
+/// whose [`EventSidecar::game_id`] matches [`Self::game_id`] exactly (case-sensitive, no fuzzy
+/// matching — a typo'd `game_id` should surface as "no profile applied," never silently misapply
+/// another game's roll defaults), plus default pre/post-roll seconds for events that don't
+/// specify their own. Persisted app-wide (`ui::PrefsState`), not per-project, since the whole
+/// point is reusing the same profile across every sidecar for the same game.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GameEventAllowlist {
+    pub game_id: String,
+    /// Which event kinds pass [`apply_game_event_allowlist`] — an empty list is a deliberate
+    /// "import nothing from this game" configuration, not "no restriction" (that's what leaving
+    /// a game unconfigured, i.e. no matching [`GameEventAllowlist`] at all, already means).
+    pub allowed_kinds: Vec<GameplayEventKind>,
+    pub default_pre_roll_secs: Option<f32>,
+    pub default_post_roll_secs: Option<f32>,
+}
+
+/// Filters `events` down to [`GameEventAllowlist::allowed_kinds`] and fills each passing event's
+/// `pre_roll_secs`/`post_roll_secs` from the allowlist's own defaults when the event didn't
+/// specify one — an event's own `Some(_)` override always wins. `allowlist: None` (no configured
+/// profile matched this sidecar's `game_id`) returns `events` unchanged, exactly CF-02's own
+/// pre-slice-5 behavior, so an unconfigured game is never silently restricted.
+pub fn apply_game_event_allowlist(
+    events: &[GameplayEvent],
+    allowlist: Option<&GameEventAllowlist>,
+) -> Vec<GameplayEvent> {
+    let Some(allowlist) = allowlist else {
+        return events.to_vec();
+    };
+    events
+        .iter()
+        .filter(|event| allowlist.allowed_kinds.contains(&event.kind))
+        .cloned()
+        .map(|mut event| {
+            if event.pre_roll_secs.is_none() {
+                event.pre_roll_secs = allowlist.default_pre_roll_secs;
+            }
+            if event.post_roll_secs.is_none() {
+                event.post_roll_secs = allowlist.default_post_roll_secs;
+            }
+            event
+        })
+        .collect()
 }
 
 /// Imports `events` (already validated — see [`EventSidecar::parse_and_validate`]) as

@@ -181,6 +181,19 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(14.0);
 
         components::card_frame().show(ui, |ui| {
+            prefs_section(ui, Text::PrefsGameEventAllowlists.tr(locale), false, |ui| {
+                ui.label(
+                    RichText::new(Text::PrefsGameEventAllowlistsHint.tr(locale))
+                        .size(11.0)
+                        .color(theme::TEXT_MUTED),
+                );
+                ui.add_space(8.0);
+                game_event_allowlists_editor(app, ui, locale);
+            });
+        });
+        ui.add_space(14.0);
+
+        components::card_frame().show(ui, |ui| {
             prefs_section(ui, Text::PrefsProject.tr(locale), true, |ui| {
                 ui.label(Text::PrefsAutosaveInterval.tr(locale));
                 ui.horizontal(|ui| {
@@ -489,4 +502,107 @@ fn model_path_row(ui: &mut egui::Ui, path: &mut String, extensions: &[&str], loc
             theme::ERROR
         }),
     );
+}
+
+fn game_event_kind_label(
+    kind: avcore::gameplay_events::GameplayEventKind,
+    locale: Locale,
+) -> &'static str {
+    use avcore::gameplay_events::GameplayEventKind;
+    match kind {
+        GameplayEventKind::Kill => Text::GameEventKindKill.tr(locale),
+        GameplayEventKind::Death => Text::GameEventKindDeath.tr(locale),
+        GameplayEventKind::Assist => Text::GameEventKindAssist.tr(locale),
+        GameplayEventKind::Objective => Text::GameEventKindObjective.tr(locale),
+        GameplayEventKind::Bookmark => Text::GameEventKindBookmark.tr(locale),
+    }
+}
+
+/// One optional roll-default row: a checkbox that toggles between "no default" (`None`, the
+/// field's own initial state) and an editable seconds value — `Option<f32>` has no natural
+/// "blank means unset, 0.0 means an explicit zero-second default" widget of its own, so the
+/// checkbox is what actually carries that distinction.
+fn optional_roll_seconds_row(ui: &mut egui::Ui, label: &str, value: &mut Option<f32>) {
+    ui.horizontal(|ui| {
+        let mut enabled = value.is_some();
+        if ui.checkbox(&mut enabled, label).changed() {
+            *value = if enabled { Some(0.0) } else { None };
+        }
+        if let Some(secs) = value.as_mut() {
+            ui.add(
+                egui::DragValue::new(secs)
+                    .speed(0.1)
+                    .range(0.0..=60.0)
+                    .suffix(" s"),
+            );
+        }
+    });
+}
+
+/// CF-02 slice 5's per-game event allowlist editor — a flat list of
+/// [`avcore::gameplay_events::GameEventAllowlist`] entries, each with a `game_id` text field, a
+/// checkbox per [`avcore::gameplay_events::GameplayEventKind`], and two optional roll-default
+/// rows. Applied by `App::import_gameplay_events` when a sidecar's own `game_id` matches one of
+/// these entries.
+fn game_event_allowlists_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
+    use avcore::gameplay_events::GameplayEventKind;
+
+    let mut remove_index = None;
+    for (index, allowlist) in app.prefs.game_event_allowlists.iter_mut().enumerate() {
+        ui.push_id(index, |ui| {
+            components::card_frame().show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut allowlist.game_id)
+                            .desired_width(180.0)
+                            .hint_text(Text::GameEventAllowlistGameIdHint.tr(locale)),
+                    );
+                    if ui.button("🗑").clicked() {
+                        remove_index = Some(index);
+                    }
+                });
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    for kind in GameplayEventKind::ALL {
+                        let mut enabled = allowlist.allowed_kinds.contains(&kind);
+                        if ui
+                            .checkbox(&mut enabled, game_event_kind_label(kind, locale))
+                            .changed()
+                        {
+                            if enabled {
+                                allowlist.allowed_kinds.push(kind);
+                            } else {
+                                allowlist.allowed_kinds.retain(|k| *k != kind);
+                            }
+                        }
+                    }
+                });
+                ui.add_space(4.0);
+                optional_roll_seconds_row(
+                    ui,
+                    Text::GameEventAllowlistPreRoll.tr(locale),
+                    &mut allowlist.default_pre_roll_secs,
+                );
+                optional_roll_seconds_row(
+                    ui,
+                    Text::GameEventAllowlistPostRoll.tr(locale),
+                    &mut allowlist.default_post_roll_secs,
+                );
+            });
+        });
+        ui.add_space(6.0);
+    }
+    if let Some(index) = remove_index {
+        app.prefs.game_event_allowlists.remove(index);
+    }
+    if ui.button(Text::AddGameEventAllowlist.tr(locale)).clicked() {
+        app.prefs
+            .game_event_allowlists
+            .push(avcore::gameplay_events::GameEventAllowlist {
+                game_id: String::new(),
+                allowed_kinds: Vec::new(),
+                default_pre_roll_secs: None,
+                default_post_roll_secs: None,
+            });
+    }
 }

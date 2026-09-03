@@ -284,6 +284,14 @@ pub struct PrefsState {
     /// (position/scale/crop/effects per layer) to fresh footage across different shorts.
     #[serde(default)]
     pub saved_layer_templates: Vec<avcore::timeline::LayerTemplate>,
+    /// CF-02 slice 5's per-game event allowlists — app-wide, not per-project, since the whole
+    /// point is reusing the same profile (which event kinds to import, default pre/post-roll
+    /// seconds) across every sidecar for the same game. Applied by
+    /// [`App::import_gameplay_events`] via [`avcore::gameplay_events::apply_game_event_allowlist`]
+    /// when a sidecar's own `game_id` matches one of these entries; an unconfigured game (no
+    /// match) is imported unrestricted, same as before this field existed.
+    #[serde(default)]
+    pub game_event_allowlists: Vec<avcore::gameplay_events::GameEventAllowlist>,
     /// Folder scanned for the Music & SFX screen's local catalog (see
     /// [`avcore::sound_library::scan_library_dir`]) — expects a `music/` and/or `sfx/`
     /// subfolder inside it. Empty when not configured yet; no bundled tracks ship with the app
@@ -387,6 +395,7 @@ impl Default for PrefsState {
             background_removal_model_path: String::new(),
             tts_model_path: String::new(),
             saved_layer_templates: Vec::new(),
+            game_event_allowlists: Vec::new(),
             sound_library_path: String::new(),
             preview_quality: avcore::PreviewQuality::default(),
             preview_hardware_decode: true,
