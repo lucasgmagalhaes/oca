@@ -231,35 +231,39 @@ Interview ▾"), a full desktop menu bar (File Edit View Sequence Clip Markers G
 Help), then timecode / FPS / resolution chips, an Export button, a settings gear.
 
 Current (`breadcrumb.rs`): app name, screen title, active project name + unsaved-changes dot,
-window controls (min/max/close), locale code. No File/Edit/... menu bar exists anywhere in
-the app today — every one of those menus' actions is currently reachable only from the
-Editor toolbar (`toolbar()` in `screens/editor/mod.rs`) or nowhere at all.
+window controls (min/max/close), locale code.
 
-Mapping (real functionality behind each menu, so this isn't a UI-only mockup-then-guess):
+**Menu bar — done, for the seven menus with a real feature behind them.**
+`screens/editor/menu_bar.rs` adds a real `egui::MenuBar` above the toolbar (confirmed with the
+user first: it **coexists** with the toolbar, nothing removed from it — the open question below
+is resolved, not left silently unaddressed). Pure UI wiring, no new `App`/`avcore` work — every
+item calls straight into a method the toolbar, a context menu, or a keyboard shortcut already
+exercised:
 
-- **File** → Save (`Ctrl+S`, already wired), Export (`Screen::Queue`), Export SRT, Export
-  Collaboration Bundle, Import Gameplay Events — all already exist as toolbar buttons.
-- **Edit** → Undo/Redo (`app.undo()`/`redo()`), Copy/Cut/Paste, Copy/Paste Formatting — all
-  already exist as toolbar buttons/shortcuts.
-- **View** → toggle Timeline Index panel, toggle Transcript panel, preview scopes toggle,
-  fullscreen preview — all exist, currently scattered across toolbar + preview transport row.
-- **Sequence** → the sequence-tab-bar's own context menu (rename/duplicate/move/delete/add) —
-  already fully implemented in `sequence_tab_bar()`, just not exposed as a top-level menu too.
-- **Clip** → split, trim-mode selection, merge-into-composite, save-as-template, detach audio,
-  speed ramp, color label — all exist (toolbar + clip context menu).
-- **Markers** → Timeline Index panel's add/search/seek — exists.
-- **Graphics** → Add Text Track/Clip, Add Shape Track/Clip, Draw Custom Shape — exist.
-- **Window** → no real equivalent today. `PanelLayout`/`LayoutScope` (resizable panel
-  save/restore) exists as data but isn't exposed as a menu; could live here.
-- **Help** → nothing exists (no About/docs dialog anywhere in the app).
+- **File** → Save (`Ctrl+S`), Export (`Screen::Queue`), Export SRT, Export Collaboration
+  Bundle, Import Gameplay Events.
+- **Edit** → Undo/Redo (`app.undo()`/`redo()`, hover text from the configurable `KeyCombo`),
+  Copy/Cut/Paste, Copy/Paste Formatting.
+- **View** → checkboxes for the Timeline Index panel, Transcript panel, and preview scopes,
+  plus a fullscreen-preview button.
+- **Sequence** → add tab, rename/duplicate/move-left/move-right/delete (same enablement rules
+  as `sequence_tab_bar()`'s own context menu — delete needs 2+ sequences, move needs room to
+  move), plus Add Video Track.
+- **Clip** → split, an edit-mode submenu (Select/Trim/Ripple/Roll/Slip/Slide, mirroring the
+  toolbar's tool buttons), merge-into-composite, save-as-template, the Templates browser,
+  detach audio, speed ramp (slow→fast/fast→slow presets — the custom-ramp modal isn't wired
+  here, only the two toolbar/context-menu presets are), and color label (reusing
+  `timeline_panel`'s own `CLIP_COLOR_LABEL_PALETTE`, now `pub(super)`, instead of a second
+  copy that could drift). Everything past split is gated on a clip actually being selected.
+- **Markers** → add Standard/To Do/Chapter (the same three kinds the Timeline Index panel's
+  own add buttons offer — no Highlight button exists there either, so none was invented here)
+  plus a Timeline Index panel checkbox. "Search/seek" stays inside that panel, same as before —
+  a live text filter isn't a menu command.
+- **Graphics** → Add Text Track/Clip, Add Shape Track/Clip, Draw Custom Shape.
 
-**This is a genuinely large addition, not a restyle** — a real `egui::menu::bar` with ~8 top-
-level menus is new surface area, even though nearly every individual action it would trigger
-already has an `App` method. Recommend building it as its own module
-(`screens/editor/menu_bar.rs`, following the "small cohesive modules" convention) that calls
-straight into the same `App` methods `toolbar()` already calls — no new business logic, pure
-UI wiring — and treating "does the toolbar become redundant once this exists" as an open
-question (below), not something to silently resolve by deleting toolbar buttons.
+**Window/Help — still not built**, exactly as this doc originally found: `PanelLayout`/
+`LayoutScope` exists as data but has no UI to expose as a "Window" menu yet, and there's no
+About/docs dialog anywhere in the app for "Help" to open. Neither is faked with an empty menu.
 
 Timecode/FPS/resolution chips: real data already exists (`format_timecode`, the preview's
 decoded texture size, the active sequence's frame rate) — currently displayed in the preview
@@ -535,8 +539,10 @@ principles, and this doc's own findings above:
    transport buttons, and a CAM chip wired to real `MulticamGroup` data (omitted when none
    applies) — see the Program monitor section's own bullets for what shipped vs. what's still
    genuinely new (zoom controls, snapshot capture, marker button).
-5. **Menu bar** — largest single addition; scope and confirm the "does the toolbar still exist
-   alongside it" question before building, per the open decision above.
+5. **Menu bar — done.** `screens/editor/menu_bar.rs`, coexisting with the toolbar (confirmed
+   with the user first, per the open decision this doc originally left). See the Top bar
+   section's own bullets for exactly which menu items are wired vs. which two menus (Window,
+   Help) still have no real feature behind them.
 6. Everything flagged as a genuine new feature above (real per-asset thumbnails, Blend Mode,
    Favorites/Recent, Anchor X/Y, snapshot capture, per-channel audio metering) — each is its
    own scoped follow-up item, not part of "implement the mockup" in one pass.
