@@ -34,6 +34,15 @@ impl App {
     /// per-frame helpers. A no-op when nothing was dropped this frame, or when the active screen
     /// has no project media library to import into (only `Editor`/`Library` do) — dropping a
     /// file onto, say, the export queue screen has nowhere sensible to land.
+    ///
+    /// Dropped onto the Editor specifically (where the timeline is actually visible), each file
+    /// is also placed on the timeline as soon as its probe lands, same as
+    /// [`App::add_sound_library_track_to_timeline`]'s own auto-add — dragging a video in is a
+    /// direct-manipulation "use this now" gesture, not just a library-stocking one, so it should
+    /// end up already in the timeline rather than requiring a second manual step (double-click
+    /// in the media panel) to get there. Dropped onto the Library screen instead, files land in
+    /// the media library only, matching that screen's own "Importar arquivos" button — there's
+    /// no timeline in view there for "add it now" to mean anything.
     pub(super) fn handle_dropped_files(&mut self, ctx: &egui::Context) {
         if !matches!(self.screen, Screen::Editor | Screen::Library) {
             return;
@@ -51,7 +60,11 @@ impl App {
             return;
         }
         self.ensure_active_project();
-        self.spawn_import(paths);
+        let add_to_timeline = self.screen == Screen::Editor;
+        let tokens = self.spawn_import(paths);
+        if add_to_timeline {
+            self.import_state.auto_add_to_timeline.extend(tokens);
+        }
     }
 
     /// Paints a full-window "Drop files here" overlay while the OS is hovering a file drag over
@@ -106,16 +119,23 @@ impl App {
     /// finish (see [`ImportEvent`]/[`App::pump_import_queue`]). One thread per file rather
     /// than one thread for the whole batch, so a multi-file import isn't serialized behind
     /// its slowest file either. Applied to the target project by id rather than the active
-    /// project index, which could change before a slow import finishes.
-    pub fn spawn_import(&mut self, paths: Vec<PathBuf>) {
+    /// project index, which could change before a slow import finishes. Returns each spawned
+    /// import's token, one per path in the same order — callers that want a file placed on the
+    /// timeline as soon as its probe lands (rather than just sitting in the media library, this
+    /// call's own default) mark the returned token(s) in
+    /// `import_state.auto_add_to_timeline`, same as [`App::add_sound_library_track_to_timeline`]
+    /// already does for its own manually-assigned token.
+    pub fn spawn_import(&mut self, paths: Vec<PathBuf>) -> Vec<u64> {
         let project_id = self.active_project().id;
         let proxy_dir = avcore::proxy::cache_dir_for_project(self.active_project());
         let preview_quality = self.prefs.preview_quality;
         self.import_state.pending_imports += paths.len();
+        let mut tokens = Vec::with_capacity(paths.len());
 
         for path in paths {
             let import_token = self.import_state.next_import_token;
             self.import_state.next_import_token += 1;
+            tokens.push(import_token);
             let tx = self.import_state.import_tx.clone();
             let proxy_dir = proxy_dir.clone();
             std::thread::spawn(move || {
@@ -129,6 +149,7 @@ impl App {
                 );
             });
         }
+        tokens
     }
 
     /// Applies import progress to its target project's media library as it arrives. Called
