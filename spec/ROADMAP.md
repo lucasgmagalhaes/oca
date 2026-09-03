@@ -1102,17 +1102,40 @@ an item earlier:
   and passed. `cargo check --workspace --all-targets` (the documented temporary `filters.c` shim,
   discarded before commit) and `cargo fmt --check` both stayed clean.
 
-  **Deliberately not done**: `Start`/`End` semantic alignment, the `language` hint's own
-  consumption, the "expose invisible directional controls on demand" editing feature (letting a
-  user insert/reveal these characters directly, as opposed to just being warned about them),
-  mixed-direction golden tests (TEXT-01B step 3's second half), and its original
-  cluster-safe-highlight note (the current `glyph_excluded` filter already only ever includes a
-  whole cluster, never splits one — real cluster-safety for RTL/conjunct scripts specifically
-  still needs TEXT-01C's international fonts to verify against real glyphs, not just bidi levels
-  against a font that can't render them) all remain open. TEXT-01C (international fallback
-  families, gated on FONT-01B actually vendoring those fonts into the repo) and TEXT-01D
-  (performance/caching/optional packs) remain fully open. See `architecture/complex-text-
-  shaping.md`'s own writeup for the full detail.
+  **`Start`/`End` semantic alignment now shipped too**, closing the gap this entry's own
+  "deliberately not done" note originally flagged as a separate follow-up. `TextAlign` gains
+  `Start`/`End`, the CSS-logical-property counterparts of `Left`/`Right`. `avcore::text_layout::
+  resolve_paragraph_direction(text, direction)` resolves `TextDirection::Auto`'s own UAX #9 P2/P3
+  first-strong-character detection via `unicode_bidi::get_base_direction` — already a transitive
+  dependency of `cosmic-text` at the exact same pinned version (0.3.18), now also a direct one, so
+  this added no new dependency tree — or the explicit `Ltr`/`Rtl` override when `direction` isn't
+  `Auto`. `resolve_text_align` maps `Start`/`End` onto the matching physical `Left`/`Right` edge
+  and is the single source of truth both `TextLayoutEngine::shape` (per-line `cosmic-text`
+  alignment) and `overlay_render.rs`'s `text_horizontal_box` wrap/alignment box computation call —
+  `draw_text_segment_onto` resolves once and passes the resolved value to both, so a clip's
+  `Start`/`End` alignment can never resolve to different physical edges between the box and the
+  actual shaping. The properties panel's alignment combo box gained the two new options next to
+  the existing four.
+
+  Verified for real against the actual `unicode-bidi` crate (scratch-crate technique, not just
+  type-checked): 7 new tests covering pure-Latin/pure-Hebrew auto-detection, UAX #9 P3's
+  all-neutral-text-defaults-to-LTR rule, an explicit override winning over the text's own script,
+  first-strong-character resolution deciding a mixed-script paragraph, `Start`/`End` flipping
+  physical edge under both an explicit direction and auto-detected RTL text, and the non-logical
+  variants (`Auto`/`Left`/`Center`/`Right`) passing through `resolve_text_align` unchanged.
+  `cargo check --workspace --all-targets` (the documented temporary `filters.c` shim, discarded
+  before commit) and `cargo fmt --all -- --check` both stayed clean.
+
+  **Deliberately not done**: the `language` hint's own consumption, the "expose invisible
+  directional controls on demand" editing feature (letting a user insert/reveal these characters
+  directly, as opposed to just being warned about them), mixed-direction golden tests (TEXT-01B
+  step 3's second half), and its original cluster-safe-highlight note (the current
+  `glyph_excluded` filter already only ever includes a whole cluster, never splits one — real
+  cluster-safety for RTL/conjunct scripts specifically still needs TEXT-01C's international fonts
+  to verify against real glyphs, not just bidi levels against a font that can't render them) all
+  remain open. TEXT-01C (international fallback families, gated on FONT-01B actually vendoring
+  those fonts into the repo) and TEXT-01D (performance/caching/optional packs) remain fully open.
+  See `architecture/complex-text-shaping.md`'s own writeup for the full detail.
 - `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:
