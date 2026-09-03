@@ -61,16 +61,46 @@ isn't subject to the same rate limit; the earlier "direct .svg URLs don't work i
 environment" finding was specific to whatever fetch tool produced that empty-response behavior,
 not a property of the URLs themselves.
 
-**Not addressed at all**: getting these into the actual running app. `egui` here has zero SVG
-rendering capability today (checked `crates/ui/Cargo.toml` — no `resvg`/`usvg`/`egui_extras`
-`svg` feature), so these files are a **design asset set for reference**, not yet wired into any
-screen. Wiring them in for real needs one of: (a) add an SVG-rasterization dependency and
-convert each to a texture at startup/on-demand — a real new capability, not currently present
-anywhere in this codebase; or (b) go the icon-font route instead (a crate that bundles Lucide's
-glyphs as a font with Unicode-private-use codepoints, rendered exactly like every existing
-single-glyph icon already is via `RichText`/`painter.text` — zero new rendering pipeline, but no
-standalone `.svg` files). This doc's own scope was "vendor the reference SVGs"; which of (a)/(b)
-to build is a separate, not-yet-made decision.
+**Decided, not yet implemented**: getting these into the actual running app. `egui` here has
+zero SVG rendering capability today (checked `crates/ui/Cargo.toml` — no `resvg`/`usvg`/
+`egui_extras` `svg` feature), so the vendored `.svg` files above are source assets, not yet
+wired into any screen. Two routes were considered — (a) add an SVG-rasterization dependency and
+convert each icon to a texture at startup, or (b) an **icon font**: bundle the Lucide glyphs as
+a font with Unicode-private-use-area codepoints, rendered exactly like every existing
+single-glyph icon already is via `RichText`/`painter.text`. **(b) is the chosen route** — same
+runtime cost as (a) (`epaint`'s glyph atlas caches a rasterized icon exactly like it caches any
+other font glyph, so cost is paid once per codepoint, not per frame), but zero new rendering
+pipeline or dependency, and it reuses the exact mechanism `theme.rs`/existing screens already use
+for single-glyph icons (⚙, 🔒, 👁, etc.) instead of introducing a second, image-based one
+alongside it.
+
+Mechanics of the chosen route, for whoever implements it:
+
+1. **Build a font from the vendored SVGs** — this does not need a new `Cargo.toml` dependency:
+   the conversion (SVG paths → TTF glyphs with PUA codepoints) is a one-off/regenerate-on-demand
+   step, not something the running app or its build (`cargo build`) needs to do. A small script
+   outside the Rust toolchain (e.g. `fantasticon`/`fonttools` via Node or Python, invoked
+   manually or from a `make` target like the existing `make fmt`/`make lint`) reads
+   `assets/icons/*.svg`, regenerates `lucide.ttf` + the name→codepoint mapping, and both get
+   checked in like any other asset — the same "generate once, commit the output" shape as, say,
+   a schema-generated file. Adding a new icon later means: fetch its SVG into `assets/icons/`
+   the same way this doc's fetch process did, add its name to the script's icon list, rerun the
+   script, commit the regenerated `.ttf` and the updated mapping — no Rust dependency added or
+   touched.
+2. **Register it with egui** — `egui::FontDefinitions::font_data` + a dedicated
+   `FontFamily::Name("icons")`, set once via `ctx.set_fonts(...)` at app startup, alongside
+   whatever `theme.rs`/font setup already runs there.
+3. **Render each icon** — `egui::RichText::new('\u{E0xx}').family(FontFamily::Name("icons".into())).size(..).color(theme::TOKEN)`,
+   the same call shape every other themed label in this codebase already uses. Color, size, and
+   opacity come from the existing text-rendering pipeline for free — no separate tint/blend code
+   path the way an image-texture icon would need.
+4. **Caveat carried over from the SVGs themselves**: this only works because every vendored
+   icon is a single-color `stroke="currentColor"` glyph (true for all 24 fetched above) — a
+   route that needs a two-color icon later would need texture-based rendering instead.
+
+Not yet done: the font-build step itself, the codepoint mapping, and the `ctx.set_fonts` wiring
+— this section records the decision and the mechanism, not an implementation. Scope for a
+follow-up change.
 
 ## Headline finding: the structure is already ~80% there
 
