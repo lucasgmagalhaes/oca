@@ -123,6 +123,18 @@ pub enum PropertiesTab {
     Audio,
 }
 
+/// How the media library panel lays out its asset list — a pure UI presentation toggle over
+/// the same [`avcore::media::MediaAsset`] entries (`spec/architecture/editor-ui-visual-
+/// redesign.md`'s Media library mapping: "Grid/list view toggle ... pure UI, no new `App`/
+/// `avcore` state beyond a `bool`/enum view-mode field"), not a new data model. Not persisted:
+/// resets to `List` on every app launch, same as `tool`/`properties_tab`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MediaViewMode {
+    #[default]
+    List,
+    Grid,
+}
+
 /// A key + modifier combination that can be assigned to a bindable action. `key_name` is
 /// the value returned by [`egui::Key::name`] (e.g. `"Space"`, `"B"`) and accepted by
 /// [`egui::Key::from_name`], making it stable across egui versions for common keys.
@@ -834,6 +846,9 @@ pub struct App {
     pub tool: EditorTool,
     /// The properties panel's active tab (Inspector/Effects/Audio) — see [`PropertiesTab`].
     pub properties_tab: PropertiesTab,
+    /// The media library panel's asset layout (list rows vs. a thumbnail grid) — see
+    /// [`MediaViewMode`].
+    pub media_view_mode: MediaViewMode,
     pub locale: Locale,
     pub projects: Vec<Project>,
     pub active_project: usize,
@@ -1547,6 +1562,7 @@ impl App {
             screen: Screen::Home,
             tool: EditorTool::Select,
             properties_tab: PropertiesTab::default(),
+            media_view_mode: MediaViewMode::default(),
             locale: prefs.locale,
             projects,
             active_project: 0,

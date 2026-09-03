@@ -168,6 +168,8 @@ text_catalog! {
     ExportSrtEmpty: pt_br = "Nenhuma legenda na timeline para exportar.", en = "No subtitles on the timeline to export.";
     MediaLibrary: pt_br = "Biblioteca de mídia", en = "Media library";
     SearchMediaPlaceholder: pt_br = "Buscar mídia…", en = "Search media…";
+    MediaViewList: pt_br = "Visualização em lista", en = "List view";
+    MediaViewGrid: pt_br = "Visualização em grade", en = "Grid view";
     TimelineZoom: pt_br = "Zoom", en = "Zoom";
     SelectedClip: pt_br = "Clipe selecionado", en = "Selected clip";
     NoClipSelected: pt_br = "Nenhum clipe selecionado", en = "No clip selected";

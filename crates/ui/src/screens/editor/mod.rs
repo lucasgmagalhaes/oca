@@ -20,7 +20,7 @@ mod timeline_panel;
 use avcore::media::format_timecode;
 use eframe::egui::{self, RichText};
 
-use crate::app::{App, EditorTool, MOTION_TRACK_SIZE_RANGE};
+use crate::app::{App, EditorTool, MediaViewMode, MOTION_TRACK_SIZE_RANGE};
 use crate::components;
 use crate::i18n::Text;
 use crate::theme;
@@ -789,9 +789,16 @@ fn tool_button_icon_font(
 /// frame (fetching/caching one here would duplicate `thumbnail_state`'s timeline-clip pipeline
 /// for a list row that's rarely more than a name lookup).
 const ASSET_THUMB_SIZE: egui::Vec2 = egui::vec2(48.0, 28.0);
+/// Thumbnail size for [`MediaViewMode::Grid`]'s tiles — bigger than [`ASSET_THUMB_SIZE`]'s list
+/// rows since a grid tile has no adjacent filename/metadata column competing for width.
+const GRID_ASSET_THUMB_SIZE: egui::Vec2 = egui::vec2(120.0, 72.0);
 
 fn asset_thumb(ui: &mut egui::Ui, asset: &avcore::media::MediaAsset) {
-    let (rect, _response) = ui.allocate_exact_size(ASSET_THUMB_SIZE, egui::Sense::hover());
+    asset_thumb_sized(ui, asset, ASSET_THUMB_SIZE);
+}
+
+fn asset_thumb_sized(ui: &mut egui::Ui, asset: &avcore::media::MediaAsset, size: egui::Vec2) {
+    let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
     if !ui.is_rect_visible(rect) {
         return;
     }
@@ -844,6 +851,21 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                             .size(11.0)
                             .color(theme::TEXT_MUTED),
                         );
+                        ui.add_space(theme::SPACE_SM);
+                        if ui
+                            .selectable_label(app.media_view_mode == MediaViewMode::Grid, "▦")
+                            .on_hover_text(Text::MediaViewGrid.tr(app.locale))
+                            .clicked()
+                        {
+                            app.media_view_mode = MediaViewMode::Grid;
+                        }
+                        if ui
+                            .selectable_label(app.media_view_mode == MediaViewMode::List, "☰")
+                            .on_hover_text(Text::MediaViewList.tr(app.locale))
+                            .clicked()
+                        {
+                            app.media_view_mode = MediaViewMode::List;
+                        }
                     });
                 });
                 ui.add_space(theme::SPACE_SM);
@@ -895,78 +917,131 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                             .cloned()
                     });
                     let search = app.media_search.to_lowercase();
-                    let assets = app.active_project().media_library.iter();
-                    for asset in assets.filter(|a| {
-                        bin.as_ref().is_none_or(|b| b.matches(a))
-                            && (search.is_empty() || a.file_name.to_lowercase().contains(&search))
-                    }) {
-                        let selected = app.selected_asset_id == Some(asset.id);
-                        let bg = if selected {
-                            theme::ACCENT.gamma_multiply(0.18)
-                        } else {
-                            theme::SURFACE
+                    let assets: Vec<_> = app
+                        .active_project()
+                        .media_library
+                        .iter()
+                        .filter(|a| {
+                            bin.as_ref().is_none_or(|b| b.matches(a))
+                                && (search.is_empty()
+                                    || a.file_name.to_lowercase().contains(&search))
+                        })
+                        .collect();
+
+                    // Shared across both layouts below: every asset's click/double-click/drag/
+                    // drop behavior is identical, only the Frame's own content (list row vs.
+                    // grid tile) differs.
+                    let mut handle_interaction =
+                        |ui: &egui::Ui,
+                         asset: &avcore::media::MediaAsset,
+                         response: egui::Response| {
+                            if response.clicked() {
+                                clicked_id = Some(asset.id);
+                            }
+                            if response.double_clicked() {
+                                add_to_timeline_id = Some(asset.id);
+                            }
+                            if response.dragged() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                                if let Some(pos) = response.interact_pointer_pos() {
+                                    egui::Area::new(ui.id().with(("asset_drag_ghost", asset.id)))
+                                        .fixed_pos(pos + egui::vec2(12.0, 12.0))
+                                        .order(egui::Order::Tooltip)
+                                        .interactable(false)
+                                        .show(ui.ctx(), |ui| {
+                                            egui::Frame::new()
+                                                .fill(theme::SURFACE_2)
+                                                .corner_radius(theme::RADIUS_SM)
+                                                .inner_margin(egui::Margin::symmetric(8, 4))
+                                                .show(ui, |ui| {
+                                                    ui.label(
+                                                        RichText::new(&asset.file_name).size(11.0),
+                                                    );
+                                                });
+                                        });
+                                }
+                            }
+                            if response.drag_stopped() {
+                                if let Some(pos) = response.interact_pointer_pos() {
+                                    dropped_asset = Some((asset.id, pos));
+                                }
+                            }
                         };
-                        let response = egui::Frame::new()
-                            .fill(bg)
-                            .corner_radius(theme::RADIUS_MD)
-                            .inner_margin(egui::Margin::same(6))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    asset_thumb(ui, asset);
-                                    ui.vertical(|ui| {
-                                        ui.label(RichText::new(&asset.file_name).size(12.0));
-                                        ui.label(
-                                            RichText::new(format!(
-                                                "{} · {}",
-                                                asset.duration_label(),
-                                                asset
-                                                    .resolution
-                                                    .map(|(w, h)| format!("{w}×{h}"))
-                                                    .unwrap_or_else(|| asset
-                                                        .sample_rate_khz
-                                                        .map(|k| format!("{k:.0}kHz"))
-                                                        .unwrap_or_default())
-                                            ))
-                                            .size(10.0)
-                                            .color(theme::TEXT_MUTED),
-                                        );
-                                    });
-                                });
-                            })
-                            .response
-                            .interact(egui::Sense::click_and_drag());
-                        if response.clicked() {
-                            clicked_id = Some(asset.id);
-                        }
-                        if response.double_clicked() {
-                            add_to_timeline_id = Some(asset.id);
-                        }
-                        if response.dragged() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                            if let Some(pos) = response.interact_pointer_pos() {
-                                egui::Area::new(ui.id().with(("asset_drag_ghost", asset.id)))
-                                    .fixed_pos(pos + egui::vec2(12.0, 12.0))
-                                    .order(egui::Order::Tooltip)
-                                    .interactable(false)
-                                    .show(ui.ctx(), |ui| {
-                                        egui::Frame::new()
-                                            .fill(theme::SURFACE_2)
-                                            .corner_radius(theme::RADIUS_SM)
-                                            .inner_margin(egui::Margin::symmetric(8, 4))
-                                            .show(ui, |ui| {
+
+                    match app.media_view_mode {
+                        MediaViewMode::List => {
+                            for asset in assets.iter().copied() {
+                                let selected = app.selected_asset_id == Some(asset.id);
+                                let bg = if selected {
+                                    theme::ACCENT.gamma_multiply(0.18)
+                                } else {
+                                    theme::SURFACE
+                                };
+                                let response = egui::Frame::new()
+                                    .fill(bg)
+                                    .corner_radius(theme::RADIUS_MD)
+                                    .inner_margin(egui::Margin::same(6))
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            asset_thumb(ui, asset);
+                                            ui.vertical(|ui| {
                                                 ui.label(
-                                                    RichText::new(&asset.file_name).size(11.0),
+                                                    RichText::new(&asset.file_name).size(12.0),
+                                                );
+                                                ui.label(
+                                                    RichText::new(format!(
+                                                        "{} · {}",
+                                                        asset.duration_label(),
+                                                        asset
+                                                            .resolution
+                                                            .map(|(w, h)| format!("{w}×{h}"))
+                                                            .unwrap_or_else(|| asset
+                                                                .sample_rate_khz
+                                                                .map(|k| format!("{k:.0}kHz"))
+                                                                .unwrap_or_default())
+                                                    ))
+                                                    .size(10.0)
+                                                    .color(theme::TEXT_MUTED),
                                                 );
                                             });
-                                    });
+                                        });
+                                    })
+                                    .response
+                                    .interact(egui::Sense::click_and_drag());
+                                handle_interaction(ui, asset, response);
+                                ui.add_space(6.0);
                             }
                         }
-                        if response.drag_stopped() {
-                            if let Some(pos) = response.interact_pointer_pos() {
-                                dropped_asset = Some((asset.id, pos));
-                            }
+                        MediaViewMode::Grid => {
+                            ui.horizontal_wrapped(|ui| {
+                                for asset in assets.iter().copied() {
+                                    let selected = app.selected_asset_id == Some(asset.id);
+                                    let bg = if selected {
+                                        theme::ACCENT.gamma_multiply(0.18)
+                                    } else {
+                                        theme::SURFACE
+                                    };
+                                    let response = egui::Frame::new()
+                                        .fill(bg)
+                                        .corner_radius(theme::RADIUS_MD)
+                                        .inner_margin(egui::Margin::same(6))
+                                        .show(ui, |ui| {
+                                            ui.set_max_width(GRID_ASSET_THUMB_SIZE.x);
+                                            ui.vertical(|ui| {
+                                                asset_thumb_sized(ui, asset, GRID_ASSET_THUMB_SIZE);
+                                                ui.label(
+                                                    RichText::new(&asset.file_name)
+                                                        .size(10.0)
+                                                        .color(theme::TEXT_PRIMARY),
+                                                );
+                                            });
+                                        })
+                                        .response
+                                        .interact(egui::Sense::click_and_drag());
+                                    handle_interaction(ui, asset, response);
+                                }
+                            });
                         }
-                        ui.add_space(6.0);
                     }
                 });
             });
