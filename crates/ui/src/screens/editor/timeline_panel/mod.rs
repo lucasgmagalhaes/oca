@@ -417,9 +417,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 (avcore::timeline::TrackKind::Audio, "A2") => {
                                     theme::ACCENT_2.gamma_multiply(0.6)
                                 }
-                                (avcore::timeline::TrackKind::Audio, _) => {
-                                    theme::ACCENT.gamma_multiply(0.5)
-                                }
+                                (avcore::timeline::TrackKind::Audio, _) => theme::AUDIO_TINT,
                                 // Text/Shape tracks carry text_clips/shape_clips, not clips —
                                 // these arms satisfy exhaustiveness but are never reached at
                                 // runtime.
