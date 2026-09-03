@@ -516,6 +516,7 @@ text_catalog! {
     ExportPlatformPresetLabel: pt_br = "Predefinição de plataforma:", en = "Platform preset:";
     PreviewScopesToggle: pt_br = "Waveform / Vetorscópio", en = "Waveform / Vectorscope";
     PreviewAudioLevelMeter: pt_br = "Nível de áudio (pico / RMS)", en = "Audio level (peak / RMS)";
+    PropStereoMeter: pt_br = "Medidor estéreo (L / R)", en = "Stereo meter (L / R)";
     TimelineIndexToggle: pt_br = "Marcadores", en = "Markers";
     TimelineIndexTitle: pt_br = "Índice da timeline", en = "Timeline Index";
     TimelineIndexSearchHint: pt_br = "Buscar marcadores...", en = "Search markers...";

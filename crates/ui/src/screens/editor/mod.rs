@@ -1239,16 +1239,13 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
 /// P4 item 30. Reads [`App::current_audio_level`] every frame the panel draws; stays visually
 /// flat at zero when no pipeline is open, playback is paused, or the current clip has no
 /// audio, same as any other VU meter idling on silence.
-fn audio_level_meter(app: &App, ui: &mut egui::Ui) {
-    let level = app.current_audio_level();
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(60.0, 14.0), egui::Sense::hover());
-    if !ui.is_rect_visible(rect) {
-        return;
-    }
-    let painter = ui.painter();
+/// One bar of [`audio_level_meter`] — filled to `rms`, plus a peak-hold tick at `peak` (red
+/// past 0.98, the same clip-warning threshold the single-channel meter used before the L/R
+/// split below existed).
+fn draw_meter_bar(painter: &egui::Painter, rect: egui::Rect, peak: f32, rms: f32) {
     painter.rect_filled(rect, 2.0, theme::SURFACE_2);
-    let peak = level.peak.clamp(0.0, 1.0);
-    let rms = level.rms.clamp(0.0, 1.0);
+    let peak = peak.clamp(0.0, 1.0);
+    let rms = rms.clamp(0.0, 1.0);
     if rms > 0.0 {
         let mut rms_rect = rect;
         rms_rect.set_width(rect.width() * rms);
@@ -1263,6 +1260,29 @@ fn audio_level_meter(app: &App, ui: &mut egui::Ui) {
         };
         painter.vline(peak_x, rect.y_range(), egui::Stroke::new(2.0, peak_color));
     }
+}
+
+/// Two thin stacked horizontal bars (L on top, R on bottom) — the preview transport row's
+/// compact stereo meter, per `avcore::AudioLevel`'s real per-channel peak/rms
+/// (`spec/architecture/editor-ui-visual-redesign.md`'s Inspector section: "build the real
+/// per-channel metering path first" — done in `avcore::preview`'s buffer probe — "or ship the
+/// honest single-channel meter restyled taller"; this does the former, so both bars are
+/// genuinely independent, not the same mono value drawn twice).
+fn audio_level_meter(app: &App, ui: &mut egui::Ui) {
+    let level = app.current_audio_level();
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(60.0, 14.0), egui::Sense::hover());
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    let bar_h = (rect.height() - 2.0) / 2.0;
+    let l_rect = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), bar_h));
+    let r_rect = egui::Rect::from_min_size(
+        rect.min + egui::vec2(0.0, bar_h + 2.0),
+        egui::vec2(rect.width(), bar_h),
+    );
+    let painter = ui.painter();
+    draw_meter_bar(painter, l_rect, level.peak_l, level.rms_l);
+    draw_meter_bar(painter, r_rect, level.peak_r, level.rms_r);
     response.on_hover_text(Text::PreviewAudioLevelMeter.tr(app.locale));
 }
 

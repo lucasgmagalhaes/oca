@@ -357,6 +357,11 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                             voice_cleanup_ceiling_linear,
                         );
                     }
+                    if tab == crate::app::PropertiesTab::Audio {
+                        ui.add_space(6.0);
+                        components::section_label(ui, Text::PropStereoMeter.tr(locale));
+                        stereo_db_meter(ui, app.current_audio_level());
+                    }
 
                     // Crop reframes the video frame itself — no meaning for an audio block.
                     if app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Video) {
@@ -1280,4 +1285,88 @@ pub(super) fn prop_row(ui: &mut egui::Ui, label: &str, value: &str) {
             ui.label(RichText::new(value).size(12.0));
         });
     });
+}
+
+/// The OCA mockup's "vertical stereo (L/R) audio meter with dB ticks"
+/// (`spec/architecture/editor-ui-visual-redesign.md`'s Inspector section) — a real per-channel
+/// meter now that `avcore::preview`'s buffer probe reports one (`AudioLevel::peak_l`/`rms_l`/
+/// `peak_r`/`rms_r`), not the same mono value drawn twice into two bars the doc explicitly
+/// called out as the thing not to do. `DB_TICKS`/`DB_FLOOR` set a fixed -60..0 dB display range,
+/// matching a small meter widget's scope rather than a full calibrated broadcast meter.
+fn stereo_db_meter(ui: &mut egui::Ui, level: avcore::AudioLevel) {
+    const METER_HEIGHT: f32 = 100.0;
+    const BAR_WIDTH: f32 = 16.0;
+    const BAR_GAP: f32 = 4.0;
+    const LABEL_WIDTH: f32 = 26.0;
+    const DB_FLOOR: f32 = -60.0;
+    const DB_TICKS: [f32; 5] = [0.0, -6.0, -12.0, -24.0, -48.0];
+
+    fn amplitude_to_unit(amplitude: f32) -> f32 {
+        if amplitude <= 0.0 {
+            return 0.0;
+        }
+        let db = 20.0 * amplitude.log10();
+        ((db - DB_FLOOR) / -DB_FLOOR).clamp(0.0, 1.0)
+    }
+
+    let (rect, _response) = ui.allocate_exact_size(
+        egui::vec2(LABEL_WIDTH + BAR_WIDTH * 2.0 + BAR_GAP, METER_HEIGHT),
+        egui::Sense::hover(),
+    );
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    let painter = ui.painter();
+    let bars_left = rect.left() + LABEL_WIDTH;
+    let l_rect = egui::Rect::from_min_size(
+        egui::pos2(bars_left, rect.top()),
+        egui::vec2(BAR_WIDTH, METER_HEIGHT),
+    );
+    let r_rect = egui::Rect::from_min_size(
+        egui::pos2(bars_left + BAR_WIDTH + BAR_GAP, rect.top()),
+        egui::vec2(BAR_WIDTH, METER_HEIGHT),
+    );
+
+    for db in DB_TICKS {
+        let unit = ((db - DB_FLOOR) / -DB_FLOOR).clamp(0.0, 1.0);
+        let y = rect.bottom() - unit * METER_HEIGHT;
+        painter.text(
+            egui::pos2(rect.left(), y),
+            egui::Align2::LEFT_CENTER,
+            format!("{db:.0}"),
+            egui::FontId::monospace(8.5),
+            theme::TEXT_MUTED,
+        );
+        painter.hline(
+            l_rect.left()..=r_rect.right(),
+            y,
+            egui::Stroke::new(1.0, theme::BORDER.gamma_multiply(0.6)),
+        );
+    }
+
+    for (bar_rect, peak, rms) in [
+        (l_rect, level.peak_l, level.rms_l),
+        (r_rect, level.peak_r, level.rms_r),
+    ] {
+        painter.rect_filled(bar_rect, 2.0, theme::SURFACE_2);
+        let rms_unit = amplitude_to_unit(rms);
+        if rms_unit > 0.0 {
+            let filled_h = rms_unit * bar_rect.height();
+            let filled_rect = egui::Rect::from_min_size(
+                egui::pos2(bar_rect.left(), bar_rect.bottom() - filled_h),
+                egui::vec2(bar_rect.width(), filled_h),
+            );
+            painter.rect_filled(filled_rect, 2.0, theme::ACCENT);
+        }
+        let peak_unit = amplitude_to_unit(peak);
+        if peak_unit > 0.0 {
+            let peak_y = bar_rect.bottom() - peak_unit * bar_rect.height();
+            let color = if peak > 0.98 {
+                theme::ERROR
+            } else {
+                theme::ACCENT_2
+            };
+            painter.hline(bar_rect.x_range(), peak_y, egui::Stroke::new(2.0, color));
+        }
+    }
 }
