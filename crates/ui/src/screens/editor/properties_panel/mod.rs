@@ -393,6 +393,25 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                     {
                                         app.spawn_auto_reframe_selected_clip();
                                     }
+                                    let dynamic_reframing = app
+                                        .dynamic_reframe_state
+                                        .dynamic_reframing_clip_id
+                                        .is_some();
+                                    let dynamic_label = if dynamic_reframing {
+                                        Text::DynamicReframeInProgress.tr(locale)
+                                    } else {
+                                        Text::DynamicReframeAction.tr(locale)
+                                    };
+                                    if ui
+                                        .add_enabled(
+                                            !dynamic_reframing,
+                                            egui::Button::new(dynamic_label),
+                                        )
+                                        .on_hover_text(Text::DynamicReframeHint.tr(locale))
+                                        .clicked()
+                                    {
+                                        app.spawn_dynamic_reframe_selected_clip();
+                                    }
                                 });
                                 crop_changed
                             },
