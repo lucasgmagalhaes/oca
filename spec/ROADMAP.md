@@ -1405,13 +1405,11 @@ an item earlier:
   in-flight state, they don't share one) is active.
 
   **Deliberately not done, matching the full spec's own harder asks**: cadence is bounded but not
-  content-adaptive (no scene-cut-aware sampling); subject selection has no cross-sample identity
-  tracking (two people trading highest-confidence would visibly re-target between samples, damped
-  but not corrected) and no optional user seed; there is no dedicated review/correction UI — the
-  emitted keyframes land directly in the properties panel's existing Crop X/Y/W/H Keyframes
-  sections (already editable there), the same "existing UI is the review step" precedent D4's
-  chapter-marker detection established, not a bespoke accept/reject modal; no Shorts Pack
-  integration yet. All real, separate follow-up slices.
+  content-adaptive (no scene-cut-aware sampling); no optional user seed; there is no dedicated
+  review/correction UI — the emitted keyframes land directly in the properties panel's existing
+  Crop X/Y/W/H Keyframes sections (already editable there), the same "existing UI is the review
+  step" precedent D4's chapter-marker detection established, not a bespoke accept/reject modal; no
+  Shorts Pack integration yet. All real, separate follow-up slices.
 
   Verified via `cargo check --workspace --all-targets` (the documented temporary local `filters.c`
   shim, discarded afterward) and `cargo fmt --check`, both clean. `avcore::dynamic_reframe`'s own
@@ -1420,6 +1418,28 @@ an item earlier:
   Not run against a live GUI session or a real ONNX model (no display, no network to fetch the
   bundled face-detector model in this sandbox) — the button's actual behavior and the smoothing
   window's real-footage quality need a manual pass on a real dev machine.
+
+  **Cross-sample subject continuity now shipped too.** The gap this entry's own "deliberately not
+  done" note flagged — "subject selection has no cross-sample identity tracking (two people
+  trading highest-confidence would visibly re-target between samples, damped but not corrected)"
+  — is closed. `avcore::dynamic_reframe::select_subject_center` prefers whichever detected face
+  continues the *previous* sample's own chosen subject (within
+  `DEFAULT_CONTINUITY_MAX_DISTANCE = 0.25`, a frame-fraction distance) over `main_subject_center`'s
+  single-sample "highest score always wins" rule, falling back to the plain highest-score face
+  when nothing continues (no previous center yet, the previous subject left frame, or a real
+  scene/subject change) — so a genuine change still gets picked up rather than clinging to a stale
+  position forever. Deliberately a new function, not a change to `main_subject_center` itself,
+  which the static (single-sample) auto-reframe path still uses unchanged — continuity across
+  samples is meaningless for a one-shot detection. `ui`'s `dynamic_reframe_one` threads a
+  `previous_center` accumulator across its sequential sample loop, updated only on an actual
+  detection (a gap-filled/centered sample carries no new evidence about where the subject is now).
+
+  Verified for real, not just type-checked: all 16 `dynamic_reframe` tests (5 new — continuity
+  preferred over a higher score elsewhere, fallback when nothing continues, a continuity tie still
+  breaking by score, the no-faces/no-previous-center edge cases) ran in a scratch crate (a
+  stripped `FaceBox`/`CropRect`/`Keyframe` stand-in, avoiding the real `auto_reframe.rs`'s
+  `ort`/ONNX dependency this module doesn't otherwise need) and pass. `cargo check --workspace
+  --all-targets`/`cargo fmt --check` (via the same documented temporary shim) both stayed clean.
 - `[ ]` **CF-05: OpenTimelineIO interchange.** Round-trip the supported editorial subset and
   emit an explicit compatibility report for unsupported effects.
 - `[ ]` **CF-06: live multicam monitor.** Show synchronized proxy-backed feeds and materialize

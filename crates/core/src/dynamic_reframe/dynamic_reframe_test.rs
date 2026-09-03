@@ -171,3 +171,64 @@ fn sparse_crop_keyframes_sparsifies_each_axis_independently() {
     assert_eq!(ys[0].time_fraction, 0.0);
     assert_eq!(ys[1].time_fraction, 1.0);
 }
+
+fn face(x: f32, y: f32, w: f32, h: f32, score: f32) -> FaceBox {
+    FaceBox { x, y, w, h, score }
+}
+
+#[test]
+fn select_subject_center_falls_back_to_highest_score_with_no_previous_center() {
+    let faces = vec![face(0.0, 0.0, 0.1, 0.1, 0.6), face(0.5, 0.5, 0.1, 0.1, 0.9)];
+    let center = select_subject_center(&faces, None, DEFAULT_CONTINUITY_MAX_DISTANCE);
+    assert_eq!(center, Some((0.55, 0.55)));
+}
+
+#[test]
+fn select_subject_center_prefers_continuity_over_a_higher_score_elsewhere() {
+    // The previous subject is near (0.1, 0.1). A new, higher-scoring face appears far away --
+    // a real second person, or momentary noise -- while a lower-scoring face still sits right
+    // where the tracked subject was. Continuity should win: it's the same person, not a re-target.
+    let previous_center = Some((0.1, 0.1));
+    let faces = vec![
+        face(0.05, 0.05, 0.1, 0.1, 0.72), // center (0.1, 0.1) -- continues the previous subject
+        face(0.8, 0.8, 0.1, 0.1, 0.95),   // center (0.85, 0.85) -- higher score, but far away
+    ];
+    let center = select_subject_center(&faces, previous_center, DEFAULT_CONTINUITY_MAX_DISTANCE);
+    assert_eq!(center, Some((0.1, 0.1)));
+}
+
+#[test]
+fn select_subject_center_falls_back_to_highest_score_when_nothing_continues() {
+    // The previously tracked subject left frame (or the shot cut) -- no candidate is within
+    // range of the previous center, so this must fall back to the plain highest-score rule
+    // rather than returning None or clinging to a stale position.
+    let previous_center = Some((0.0, 0.0));
+    let faces = vec![face(0.8, 0.8, 0.1, 0.1, 0.95)];
+    let center = select_subject_center(&faces, previous_center, DEFAULT_CONTINUITY_MAX_DISTANCE);
+    assert_eq!(center, Some((0.85, 0.85)));
+}
+
+#[test]
+fn select_subject_center_is_none_for_no_faces_regardless_of_previous_center() {
+    assert_eq!(
+        select_subject_center(&[], None, DEFAULT_CONTINUITY_MAX_DISTANCE),
+        None
+    );
+    assert_eq!(
+        select_subject_center(&[], Some((0.5, 0.5)), DEFAULT_CONTINUITY_MAX_DISTANCE),
+        None
+    );
+}
+
+#[test]
+fn select_subject_center_breaks_a_continuity_tie_by_score_too() {
+    // Two candidates both within range of the previous center -- the higher-scoring one still
+    // wins among them, continuity narrows the field but doesn't override confidence within it.
+    let previous_center = Some((0.5, 0.5));
+    let faces = vec![
+        face(0.45, 0.45, 0.1, 0.1, 0.7), // center (0.5, 0.5)
+        face(0.5, 0.45, 0.1, 0.1, 0.9),  // center (0.55, 0.5) -- also close, higher score
+    ];
+    let center = select_subject_center(&faces, previous_center, DEFAULT_CONTINUITY_MAX_DISTANCE);
+    assert_eq!(center, Some((0.55, 0.5)));
+}
