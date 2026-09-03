@@ -1740,8 +1740,59 @@ an item earlier:
   before commit) both stayed clean, confirming the new modal/methods are actually reachable.
   `cargo fmt --check` also stayed clean. CF-07 slice 3 is now considered complete; `Image`
   primitive, timing, and migration tests (slice 2's remainder and slice 4) remain open.
-- `[ ]` **CF-08: semantic transcript and visual search.** Build a bounded, versioned local index
-  after exact transcript search ships in CF-01.
+- `[~]` **CF-08: semantic transcript and visual search.** Build a bounded, versioned local index
+  after exact transcript search ships in CF-01. Slice 1 (exact transcript search) shipped as part
+  of CF-01 — `avcore::transcript_search`.
+
+  **Slice 2 (the versioned local index) shipped, plus the storage/scoring half of slice 4.**
+  `avcore::semantic_index::SemanticIndex` — one `MediaIndexEntry` per indexed asset, keyed by a
+  `MediaFingerprint` (a cheap `(file size, mtime, duration)` proxy for "this file's content is
+  unchanged," not a true content hash — hashing multi-gigabyte video files on every staleness
+  check would be far too slow) and a caller-defined `model_version` string. `needs_reindex`/
+  `upsert_entry`/`remove_entry` give the doc's own "index invalidation is deterministic when
+  media or model versions change" acceptance criterion as pure functions; `enforce_chunk_budget`
+  evicts whole oldest entries (never a partial one, so a search never sees an asset with an
+  inconsistent subset of its own spans) until the total indexed-chunk count is back under a
+  caller-supplied cap — the doc's own "bounded in CPU, memory, and disk usage" criterion.
+  `SemanticIndex::search` ranks stored `IndexedChunk`s by cosine similarity to a query embedding,
+  excluding any entry whose `model_version` doesn't match the query's own (a different model's
+  embedding space isn't comparable) — every result carries its own `start_secs`/`end_secs`, the
+  doc's own "search results seek to the matched moment, not only the containing asset" criterion.
+  `combine_search_results` merges same-moment hits from *different* sources (`Transcript`/
+  `Visual`/`Metadata`) into one `MatchSource::Combined` result with a boosted score — the doc's
+  own "...or a combined score" criterion, adapting `highlight_detection::
+  combine_highlight_candidates`'s own CF-02 "evidence from more than one signal deserves a boost"
+  idea from binary flags to a continuous score domain (mean of the pair plus a fixed `0.1` bonus,
+  clamped to `1.0` — a simple, documented heuristic, not a statistical claim).
+
+  `persistence.rs` gained a new `OCSI` magic/framing (`to_ocsi_bytes`/`from_ocsi_bytes`, same
+  compressed-MessagePack shape `OCTR` already established) — embeddings are opaque float vectors,
+  not human-inspectable content, so this reuses the compact binary `.ocproj`-style framing rather
+  than `motion_template`'s deliberate plain-JSON choice for a shareable asset.
+
+  **Deliberately not attempted: computing any real embedding.** A real semantic-search embedding
+  model (text and/or visual) needs network access to fetch model weights and `libonnxruntime` —
+  this sandbox has neither (the same `ORT_SKIP_DOWNLOAD=1`/no-network gap `CLAUDE.md` documents
+  for `background_removal`/`auto_reframe`). `IndexedChunk::embedding` is an opaque `Vec<f32>` this
+  module never produces itself. Real embedding computation, and the incremental representative-
+  frame/transcript-chunk sampling pass that would call it (slice 3), remain genuine, separate
+  follow-ups once a model can actually be verified against — same category of environment-limited
+  stopping point as CF-06 (live multicam monitor, needs real hardware/display) this session
+  already hit and documented.
+
+  Verified for real, not just type-checked: since `semantic_index.rs` depends only on `std` plus
+  `serde`, it was copied unmodified into a throwaway scratch crate alongside the real
+  `persistence.rs` (also unmodified, with a minimal stand-in `Project` type satisfying its own
+  `save_project_to_file`/`load_project_from_file` helpers' bounds) and real `flate2`/`rmp-serde`
+  dependencies, then `cargo test`ed there for real: 20/20 passing — fingerprint/model-version
+  invalidation in every direction, entry replace/remove, chunk-budget FIFO eviction (and its
+  no-op-within-budget case), cosine-similarity ranking/top-k/model-version exclusion/moment-level
+  seeking, `combine_search_results`' merge/no-merge cases (different source, same source left
+  unmerged, far-apart spans left unmerged, different media left unmerged, score clamped to `1.0`),
+  and a real gzip/MessagePack round-trip through the actual `OCSI` framing (plus confirming `OCSI`
+  bytes are correctly rejected by the `OCTR` decoder via its own magic-byte check). `cargo check
+  --workspace --all-targets` and `cargo clippy -p core --lib --no-deps` (via the documented
+  temporary `filters.c` shim, discarded before commit) and `cargo fmt --check` all stayed clean.
 - `[ ]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and
   privacy blur, reusing the existing matte/model/tracker infrastructure.
 - `[ ]` **CF-10: direct publishing and review collaboration.** Start with a secure YouTube upload
