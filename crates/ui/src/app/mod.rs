@@ -1478,6 +1478,7 @@ impl App {
     /// projeto"/"Abrir projeto" and real imports, not mock data.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::apply(&cc.egui_ctx);
+        crate::icons::install(&cc.egui_ctx);
         let sentinel = sentinel_path();
         let crash_detected = sentinel.exists();
         if let Some(dir) = sentinel.parent() {

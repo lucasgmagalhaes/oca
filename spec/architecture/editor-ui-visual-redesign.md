@@ -106,9 +106,20 @@ newly-added icon gets a new one, the next free PUA slot), and calls `fantasticon
 to emit `crates/ui/assets/fonts/lucide-oca.ttf` + `lucide-oca.json` (the name→codepoint
 mapping, both checked in). All 25 vendored icons are in the font as of this commit.
 
-Still open: the `ctx.set_fonts` wiring and the actual per-screen call sites that switch from
-the current emoji/text glyphs (🔒👁⚙, etc.) to this font — that's the next, separate slice of
-work, not done by generating the font file itself.
+**`ctx.set_fonts` wiring: done too.** `crates/ui/src/icons.rs` embeds the generated `.ttf`
+(`include_bytes!`) and JSON mapping (`include_str!`), registers the font under a dedicated
+`FontFamily::Name("lucide-oca")` via [`icons::install`], called once from `App::new` right
+after `theme::apply`, and exposes one `char` constant per icon (`icons::LOCK`, `icons::EYE`,
+etc.) for call sites to use with `RichText::new(icons::LOCK).family(icons::family())`. A unit
+test in that module cross-checks every constant against the embedded JSON mapping, so a
+`make icon-font` rerun that reassigns a codepoint fails a test instead of silently drawing the
+wrong glyph somewhere.
+
+Still open: the actual per-screen call sites that switch from the current emoji/text glyphs
+(🔒👁⚙, etc.) to this font. `components::icon_button`'s own doc comment deliberately keeps its
+options to two (`size`/`hover_color`), so wiring it up needs either a considered third option
+or a second, icon-font-specific call path — a real per-screen decision, left for the next
+slice rather than folded into standing up the font itself.
 
 ## Headline finding: the structure is already ~80% there
 
