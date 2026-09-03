@@ -597,6 +597,10 @@ text_catalog! {
     TextFontArchivoBlack: pt_br = "Archivo Black · Legenda bold", en = "Archivo Black · Bold caption";
     TextFontRegular: pt_br = "Regular", en = "Regular";
     TextFontBold: pt_br = "Negrito", en = "Bold";
+    PropTextDirection: pt_br = "Direção do texto", en = "Text direction";
+    TextDirectionAuto: pt_br = "Automática", en = "Auto";
+    TextDirectionLtr: pt_br = "Esquerda para direita", en = "Left to right";
+    TextDirectionRtl: pt_br = "Direita para esquerda", en = "Right to left";
     PropTextColor: pt_br = "Cor do texto", en = "Text color";
     PropTextBackgroundEnabled: pt_br = "Fundo", en = "Background";
     PropTextBackgroundColor: pt_br = "Cor do fundo", en = "Background color";
