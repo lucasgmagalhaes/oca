@@ -115,11 +115,29 @@ test in that module cross-checks every constant against the embedded JSON mappin
 `make icon-font` rerun that reassigns a codepoint fails a test instead of silently drawing the
 wrong glyph somewhere.
 
-Still open: the actual per-screen call sites that switch from the current emoji/text glyphs
-(🔒👁⚙, etc.) to this font. `components::icon_button`'s own doc comment deliberately keeps its
-options to two (`size`/`hover_color`), so wiring it up needs either a considered third option
-or a second, icon-font-specific call path — a real per-screen decision, left for the next
-slice rather than folded into standing up the font itself.
+**First per-screen call sites: done.** `components::icon_button` gained a third
+`family: Option<FontFamily>` option (applied to the `RichText` when set, `None` keeps today's
+default proportional font — every existing call site is unaffected) so an icon-font glyph
+renders through the same shared button component instead of a parallel one. Wired so far, only
+where a vendored icon has a confirmed mockup mapping *and* a real existing `App` action:
+timeline track header's visibility toggle (`eye`/`eye-off`, video tracks only — audio tracks
+keep the 🔊/🔇 emoji, no Lucide speaker icon is vendored) and lock toggle (`lock`/`lock-open`),
+and the nav rail's Prefs gear (`settings`). `icons.rs` also gained `_STR` twins of its `char`
+constants (egui's text APIs take `&str`, not `char`), kept in sync by a test.
+
+Still open: the toolbar buttons that combine an icon with a text label in one control (Select/
+Cut/Trim, `mouse-pointer-2`/`scissors`/`fold-horizontal`) — `RichText`/`icon_button` can only
+carry one font for their whole string, so mixing the icon font with the default label font
+needs an `egui::text::LayoutJob` (multiple sections, each with its own `TextFormat`), not just
+`family`. Also not yet wired: `chevron-left`/`chevron-right` (no real "collapse a timeline
+track row" feature exists today to attach them to — the mockup mapping here may be aspirational,
+worth re-checking against the reference image before building), `ellipsis-vertical` (no track
+⋮-menu exists), `chevron-down`/`upload` (top bar breadcrumb/Export — no top bar redesign done
+yet), the preview transport row icons (`camera`/`skip-back`/`rewind`/`pause`/`play`/
+`fast-forward`/`repeat`, alongside the already-wired-in-font-but-not-yet-in-a-screen
+`skip-forward`), `type`/`wand-sparkles`/`hand` (Text/Effects/Pan tool-rail slots — `hand` also
+has no `EditorTool` equivalent yet, see "Left icon rail" above), and `music` (unmapped to any
+real action).
 
 ## Headline finding: the structure is already ~80% there
 
