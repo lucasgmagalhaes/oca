@@ -21,7 +21,9 @@ use super::{
     CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, LAYER_SCALE_RANGE,
     MASK_CORNER_RADIUS_RANGE, PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SCALE_RANGE,
     SHAKE_INTENSITY_RANGE, SHARPEN_RANGE, SPEED_FACTOR_RANGE, STABILIZATION_INTENSITY_RANGE,
-    TRANSITION_DURATION_RANGE, VIGNETTE_INTENSITY_RANGE,
+    TRANSITION_DURATION_RANGE, VIGNETTE_INTENSITY_RANGE, VOICE_CLEANUP_CEILING_RANGE,
+    VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE, VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE,
+    VOICE_CLEANUP_NOISE_FLOOR_RANGE,
 };
 
 impl App {
@@ -203,6 +205,46 @@ impl App {
             clip.chroma_key_enabled = chroma_key_enabled;
             clip.chroma_key_color = chroma_key_color;
             clip.chroma_key_tolerance = chroma_key_tolerance;
+        });
+    }
+
+    /// Sets `selected_clip_id`'s CF-03 voice-cleanup toggle and its four adjustable parameters
+    /// ([`avcore::timeline::ClipInstance::voice_cleanup_enabled`]/`voice_cleanup_noise_floor_db`/
+    /// `voice_cleanup_compressor_threshold_db`/`voice_cleanup_compressor_ratio`/
+    /// `voice_cleanup_ceiling_linear`, each clamped to its own `VOICE_CLEANUP_*_RANGE`) — what
+    /// the properties panel's "Limpeza de voz" section does. Export-only (see that field's own
+    /// doc comment on `ClipInstance`) — this never touches the live preview pipeline, unlike
+    /// most of this file's other setters. A no-op if nothing is selected.
+    pub fn set_selected_clip_voice_cleanup(
+        &mut self,
+        voice_cleanup_enabled: bool,
+        voice_cleanup_noise_floor_db: f32,
+        voice_cleanup_compressor_threshold_db: f32,
+        voice_cleanup_compressor_ratio: f32,
+        voice_cleanup_ceiling_linear: f32,
+    ) {
+        let voice_cleanup_noise_floor_db = voice_cleanup_noise_floor_db.clamp(
+            *VOICE_CLEANUP_NOISE_FLOOR_RANGE.start(),
+            *VOICE_CLEANUP_NOISE_FLOOR_RANGE.end(),
+        );
+        let voice_cleanup_compressor_threshold_db = voice_cleanup_compressor_threshold_db.clamp(
+            *VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE.start(),
+            *VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE.end(),
+        );
+        let voice_cleanup_compressor_ratio = voice_cleanup_compressor_ratio.clamp(
+            *VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE.start(),
+            *VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE.end(),
+        );
+        let voice_cleanup_ceiling_linear = voice_cleanup_ceiling_linear.clamp(
+            *VOICE_CLEANUP_CEILING_RANGE.start(),
+            *VOICE_CLEANUP_CEILING_RANGE.end(),
+        );
+        self.with_selected_clip_mut(|clip| {
+            clip.voice_cleanup_enabled = voice_cleanup_enabled;
+            clip.voice_cleanup_noise_floor_db = voice_cleanup_noise_floor_db;
+            clip.voice_cleanup_compressor_threshold_db = voice_cleanup_compressor_threshold_db;
+            clip.voice_cleanup_compressor_ratio = voice_cleanup_compressor_ratio;
+            clip.voice_cleanup_ceiling_linear = voice_cleanup_ceiling_linear;
         });
     }
 

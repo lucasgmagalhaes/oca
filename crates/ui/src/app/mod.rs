@@ -496,6 +496,29 @@ pub const LAYER_SCALE_RANGE: std::ops::RangeInclusive<f32> = 0.1..=3.0;
 /// ([`avcore::timeline::ClipInstance::stabilization_intensity`]).
 pub const STABILIZATION_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 
+/// Slider bounds for the properties panel's CF-03 voice-cleanup "noise floor" control
+/// ([`avcore::timeline::ClipInstance::voice_cleanup_noise_floor_db`], `afftdn`'s `nf`) — wide
+/// enough either side of the proven `-30.0` script default to cover a noisier or cleaner mic
+/// input without reaching values `afftdn` itself would reject.
+pub const VOICE_CLEANUP_NOISE_FLOOR_RANGE: std::ops::RangeInclusive<f32> = -80.0..=-10.0;
+
+/// Slider bounds for the properties panel's voice-cleanup compressor threshold control
+/// ([`avcore::timeline::ClipInstance::voice_cleanup_compressor_threshold_db`], `acompressor`'s
+/// `threshold`) — dB, around the proven `-18.0` script default.
+pub const VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE: std::ops::RangeInclusive<f32> = -40.0..=0.0;
+
+/// Slider bounds for the properties panel's voice-cleanup compressor ratio control
+/// ([`avcore::timeline::ClipInstance::voice_cleanup_compressor_ratio`], `acompressor`'s `ratio`)
+/// — `1.0` is no compression, the proven script default is `3.0`, and `acompressor` itself caps
+/// at `20.0`.
+pub const VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE: std::ops::RangeInclusive<f32> = 1.0..=20.0;
+
+/// Slider bounds for the properties panel's voice-cleanup ceiling control
+/// ([`avcore::timeline::ClipInstance::voice_cleanup_ceiling_linear`], `alimiter`'s `limit`) —
+/// linear (not dB), matching that field's own `0.0..=1.0` convention; floored well above `0.0`
+/// since a limiter ceiling near silence isn't a meaningful setting.
+pub const VOICE_CLEANUP_CEILING_RANGE: std::ops::RangeInclusive<f32> = 0.5..=1.0;
+
 /// Slider bounds for the properties panel's motion-tracking region width/height controls
 /// (`App::motion_track_width`/`_height`, `avcore::track_region`'s `template_width_frac`/
 /// `template_height_frac`) — kept well under `1.0` so the template can always slide within the

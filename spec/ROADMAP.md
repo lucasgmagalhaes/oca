@@ -1187,10 +1187,20 @@ an item earlier:
   **Deliberately not done**: no live GStreamer preview effect (export-only, the same "export
   first" shape several other effect fields on `ClipInstance` started with — P4 item 32's own
   entry documents why: most effects' elements are only conditionally present in the running
-  pipeline at all), no `ui` wiring at all yet (no properties-panel toggle, no advanced-params
-  panel, no A/B preview, no measured before/after loudness display — this slice is `core`+
-  `avbridge` only), and no per-clip role-based default/suggestion UI. All real, separate
-  follow-up slices, not silently dropped.
+  pipeline at all), no A/B preview, no measured before/after loudness display, and no per-clip
+  role-based default/suggestion UI. All real, separate follow-up slices, not silently dropped.
+
+  **Follow-up: slice 2's `ui` wiring now ships.** A "🎤 Limpeza de voz" section in the properties
+  panel (`components::property_block`, same shape Chroma Key/Background Removal already use — a
+  checkbox plus the four sliders once enabled), gated to Audio-track clips —
+  `App::set_selected_clip_voice_cleanup` clamps each parameter to its own new
+  `VOICE_CLEANUP_*_RANGE` constant and goes through the shared `with_selected_clip_mut` dispatch
+  (undo coverage for free, no live-preview push since none exists for this effect yet). Still no
+  A/B preview or measured before/after display (slice 3) and no per-clip role-based default/
+  suggestion UI — both remain open. Verified via `cargo check --workspace --all-targets` (the
+  documented temporary local `filters.c` shim) and `cargo fmt --check`, both clean; not run
+  against a live GUI session (no display in this environment) — the properties-panel section's
+  actual appearance/behavior needs a manual pass on a real dev machine.
 
   Verified for real, not just type-checked: `crates/avbridge` has zero heavy dependencies (no
   ONNX/whisper/GStreamer), so `cargo test -p avbridge --test audio_mix_test` fully links and runs

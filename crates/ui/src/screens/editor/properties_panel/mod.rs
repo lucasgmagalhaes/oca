@@ -24,6 +24,8 @@ use crate::app::{
     CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, LAYER_SCALE_RANGE,
     MASK_CORNER_RADIUS_RANGE, PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SHAKE_INTENSITY_RANGE,
     SHARPEN_RANGE, SPEED_FACTOR_RANGE, STABILIZATION_INTENSITY_RANGE, VIGNETTE_INTENSITY_RANGE,
+    VOICE_CLEANUP_CEILING_RANGE, VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE,
+    VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE, VOICE_CLEANUP_NOISE_FLOOR_RANGE,
 };
 use crate::components;
 use crate::i18n::Text;
@@ -143,6 +145,12 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let mut chroma_key_color = clip.chroma_key_color;
                     let mut chroma_key_tolerance = clip.chroma_key_tolerance;
                     let mut background_removal_enabled = clip.background_removal_enabled;
+                    let mut voice_cleanup_enabled = clip.voice_cleanup_enabled;
+                    let mut voice_cleanup_noise_floor_db = clip.voice_cleanup_noise_floor_db;
+                    let mut voice_cleanup_compressor_threshold_db =
+                        clip.voice_cleanup_compressor_threshold_db;
+                    let mut voice_cleanup_compressor_ratio = clip.voice_cleanup_compressor_ratio;
+                    let mut voice_cleanup_ceiling_linear = clip.voice_cleanup_ceiling_linear;
                     let mut blur_intensity = clip.blur_intensity;
                     let mut shake_intensity = clip.shake_intensity;
                     let mut glitch_intensity = clip.glitch_intensity;
@@ -247,6 +255,76 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         },
                     ) {
                         app.set_selected_clip_speed(speed_factor);
+                    }
+
+                    // CF-03 voice cleanup (noise reduction + compressor + limiter, the proven
+                    // Watch-Gameplay.ps1 chain) only makes sense on an audio block — no meaning
+                    // for a video block's own embedded audio, same "clip-level toggle regardless
+                    // of AudioRole" scope this field's own doc comment on ClipInstance describes.
+                    if app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Audio)
+                        && components::property_block(
+                            ui,
+                            Text::VoiceCleanupExportNote.tr(locale),
+                            |ui| {
+                                let mut changed = ui
+                                    .checkbox(
+                                        &mut voice_cleanup_enabled,
+                                        Text::PropVoiceCleanup.tr(locale),
+                                    )
+                                    .changed();
+                                if voice_cleanup_enabled {
+                                    changed |= ui
+                                        .add(
+                                            egui::Slider::new(
+                                                &mut voice_cleanup_noise_floor_db,
+                                                VOICE_CLEANUP_NOISE_FLOOR_RANGE,
+                                            )
+                                            .suffix(" dB")
+                                            .text(Text::VoiceCleanupNoiseFloor.tr(locale)),
+                                        )
+                                        .changed();
+                                    changed |= ui
+                                        .add(
+                                            egui::Slider::new(
+                                                &mut voice_cleanup_compressor_threshold_db,
+                                                VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE,
+                                            )
+                                            .suffix(" dB")
+                                            .text(Text::VoiceCleanupCompressorThreshold.tr(locale)),
+                                        )
+                                        .changed();
+                                    changed |= ui
+                                        .add(
+                                            egui::Slider::new(
+                                                &mut voice_cleanup_compressor_ratio,
+                                                VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE,
+                                            )
+                                            .suffix(":1")
+                                            .text(Text::VoiceCleanupCompressorRatio.tr(locale)),
+                                        )
+                                        .changed();
+                                    changed |= ui
+                                        .add(
+                                            egui::Slider::new(
+                                                &mut voice_cleanup_ceiling_linear,
+                                                VOICE_CLEANUP_CEILING_RANGE,
+                                            )
+                                            .fixed_decimals(2)
+                                            .text(Text::VoiceCleanupCeiling.tr(locale)),
+                                        )
+                                        .changed();
+                                }
+                                changed
+                            },
+                        )
+                    {
+                        app.set_selected_clip_voice_cleanup(
+                            voice_cleanup_enabled,
+                            voice_cleanup_noise_floor_db,
+                            voice_cleanup_compressor_threshold_db,
+                            voice_cleanup_compressor_ratio,
+                            voice_cleanup_ceiling_linear,
+                        );
                     }
 
                     // Crop reframes the video frame itself — no meaning for an audio block.
