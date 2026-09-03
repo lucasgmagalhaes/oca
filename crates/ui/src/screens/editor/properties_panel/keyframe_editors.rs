@@ -221,6 +221,59 @@ pub(super) fn color_filter_label(
     }
 }
 
+/// Display name for one [`avcore::timeline::BlendMode`] variant, for the Composite section's
+/// dropdown. Kept in English regardless of locale, deliberately unlike `mask_shape_label`/
+/// `color_filter_label`/`transition_type_label` above (which go through the `Text` catalog for
+/// real pt-BR/en pairs) — every mainstream NLE/compositing app (Premiere, DaVinci, Photoshop)
+/// shows these exact English names untranslated even in a Portuguese UI, since they're the
+/// industry-standard vocabulary editors already know by these names; a `Text` catalog entry
+/// per mode (40 of them) would be pure `pt_br = en` duplication, not real localization work.
+pub(super) fn blend_mode_label(mode: avcore::timeline::BlendMode) -> &'static str {
+    use avcore::timeline::BlendMode;
+    match mode {
+        BlendMode::Normal => "Normal",
+        BlendMode::Addition => "Addition",
+        BlendMode::And => "And",
+        BlendMode::Average => "Average",
+        BlendMode::Burn => "Burn",
+        BlendMode::Darken => "Darken",
+        BlendMode::Difference => "Difference",
+        BlendMode::GrainExtract => "Grain Extract",
+        BlendMode::Divide => "Divide",
+        BlendMode::Dodge => "Dodge",
+        BlendMode::Exclusion => "Exclusion",
+        BlendMode::HardLight => "Hard Light",
+        BlendMode::Lighten => "Lighten",
+        BlendMode::Multiply => "Multiply",
+        BlendMode::Negation => "Negation",
+        BlendMode::Or => "Or",
+        BlendMode::Overlay => "Overlay",
+        BlendMode::Phoenix => "Phoenix",
+        BlendMode::PinLight => "Pin Light",
+        BlendMode::Reflect => "Reflect",
+        BlendMode::Screen => "Screen",
+        BlendMode::SoftLight => "Soft Light",
+        BlendMode::Subtract => "Subtract",
+        BlendMode::VividLight => "Vivid Light",
+        BlendMode::Xor => "Xor",
+        BlendMode::HardMix => "Hard Mix",
+        BlendMode::LinearLight => "Linear Light",
+        BlendMode::Glow => "Glow",
+        BlendMode::GrainMerge => "Grain Merge",
+        BlendMode::Multiply128 => "Multiply 128",
+        BlendMode::Heat => "Heat",
+        BlendMode::Freeze => "Freeze",
+        BlendMode::Extremity => "Extremity",
+        BlendMode::SoftDifference => "Soft Difference",
+        BlendMode::Geometric => "Geometric",
+        BlendMode::Harmonic => "Harmonic",
+        BlendMode::Bleach => "Bleach",
+        BlendMode::Stain => "Stain",
+        BlendMode::Interpolate => "Interpolate",
+        BlendMode::HardOverlay => "Hard Overlay",
+    }
+}
+
 pub(super) fn transition_type_label(
     transition: avcore::timeline::TransitionType,
     locale: crate::i18n::Locale,

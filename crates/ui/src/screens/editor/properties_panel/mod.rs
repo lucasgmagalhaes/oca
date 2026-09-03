@@ -31,8 +31,8 @@ use crate::components;
 use crate::i18n::Text;
 use crate::theme;
 use keyframe_editors::{
-    color_filter_label, f32_keyframe_editor, mask_shape_label, position_keyframe_editor,
-    transition_type_label,
+    blend_mode_label, color_filter_label, f32_keyframe_editor, mask_shape_label,
+    position_keyframe_editor, transition_type_label,
 };
 use shape_clip::shape_clip_properties;
 use text_clip::text_clip_properties;
@@ -133,6 +133,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let mut mask_shape = clip.mask_shape;
                     let mut mask_corner_radius = clip.mask_corner_radius;
                     let mut flipped_h = clip.flipped_h;
+                    let mut blend_mode = clip.blend_mode;
                     let mut color_filter = clip.color_filter;
                     let mut lut_path = clip.lut_path.clone();
                     let (mut layer_scale_x, mut layer_scale_y) =
@@ -589,6 +590,29 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                 &mut flipped_h,
                             ) {
                                 app.set_selected_clip_flip_h(flipped_h);
+                            }
+
+                            // Composite section (mockup: "COMPOSITE" groups Blend Mode with
+                            // Opacity — opacity_keyframes lives further down, alongside the
+                            // other keyframe editors, per this panel's existing grouping).
+                            let blend_mode_changed = components::property_section(
+                                ui,
+                                clip_id,
+                                Text::PropBlendMode.tr(locale),
+                                Text::BlendModeExportNote.tr(locale),
+                                blend_mode != avcore::timeline::BlendMode::Normal,
+                                |ui| {
+                                    components::enum_combo(
+                                        ui,
+                                        "blend_mode",
+                                        &avcore::timeline::BlendMode::ALL,
+                                        &mut blend_mode,
+                                        |mode| blend_mode_label(mode).to_string(),
+                                    )
+                                },
+                            );
+                            if blend_mode_changed {
+                                app.set_selected_clip_blend_mode(blend_mode);
                             }
                         }
 
