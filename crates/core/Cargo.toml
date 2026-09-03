@@ -34,18 +34,16 @@ flate2 = "1"
 # time (bindgen dependency) and outside a %TEMP%-rooted build dir on Windows (MSVC's FileTracker
 # refuses FTK1011 there) — see CLAUDE.md.
 whisper-rs = "0.16"
-# Pure-Rust font metrics (advance widths) for word-highlight subtitles — measures each word's
-# pixel width at the same font/size `avbridge_apply_text_overlays`'s drawtext filters render at,
-# so per-word highlight overlays can be positioned to land exactly on top of the word they
-# highlight. No C toolchain involved, unlike whisper-rs.
-fontdue = "0.9"
 # TEXT-01A (spec/architecture/complex-text-shaping.md): bundled-only OpenType shaping/bidi/
-# rasterization, replacing fontdue's per-character advance-width layout for `text_layout`.
-# `default-features = false` drops the default `fontconfig` feature (a system-font-discovery
-# helper this crate never wants — `text_layout::TextLayoutEngine` builds its own `fontdb::Database`
-# from `font_catalog`'s own locked bytes only, never `FontSystem::new()`/system fonts); `swash` is
-# needed for rasterization. Confirmed pure-Rust with this feature set (harfrust/skrifa/swash/
-# fontdb/unicode-bidi, no C toolchain) via the acceptance spike this module's doc comment records.
+# rasterization for `text_layout` — the sole glyph-measurement/placement path for word-highlight
+# subtitles since TEXT-01A shipped (TEXT-01B step 4 removed the `fontdue`-based per-character
+# advance-width predecessor once it had no remaining caller — see `text_metrics.rs`'s own doc
+# comment). `default-features = false` drops the default `fontconfig` feature (a system-font-
+# discovery helper this crate never wants — `text_layout::TextLayoutEngine` builds its own
+# `fontdb::Database` from `font_catalog`'s own locked bytes only, never `FontSystem::new()`/system
+# fonts); `swash` is needed for rasterization. Confirmed pure-Rust with this feature set (harfrust/
+# skrifa/swash/fontdb/unicode-bidi, no C toolchain) via the acceptance spike this module's doc
+# comment records.
 cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash"] }
 # Encodes the shared Rust text rasterizer's full-canvas RGBA buffers as temporary PNG overlays
 # for the native export post-pass. PNG is the only enabled codec; preview consumes the same
