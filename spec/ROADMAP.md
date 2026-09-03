@@ -1376,7 +1376,7 @@ an item earlier:
   updated for the five new fields), `cargo clippy -p core --lib --no-deps` / `-p avbridge
   --all-targets --no-deps`, `cargo fmt --check`, and `clang-format --dry-run --Werror` on the
   touched C files all stayed clean.
-- `[~]` **CF-04: dynamic auto-reframe.** Track a face/selected subject and generate reviewed,
+- `[x]` **CF-04: dynamic auto-reframe.** Track a face/selected subject and generate reviewed,
   smoothed crop/position keyframes for vertical exports and Shorts Pack.
 
   **Slice 1 (trajectory-to-keyframes core + basic `ui` trigger) shipped.** `avcore::dynamic_reframe`
@@ -1440,6 +1440,57 @@ an item earlier:
   stripped `FaceBox`/`CropRect`/`Keyframe` stand-in, avoiding the real `auto_reframe.rs`'s
   `ort`/ONNX dependency this module doesn't otherwise need) and pass. `cargo check --workspace
   --all-targets`/`cargo fmt --check` (via the same documented temporary shim) both stayed clean.
+
+  **Shorts Pack integration now shipped, closing this entry's last flagged gap.** Building a
+  Shorts Pack (`App::spawn_shorts_pack`, `crates/ui/src/app/shorts_pack.rs`) now runs an
+  auto-reframe pre-pass before queuing any vertical exports: `clips_needing_reframe` (new, pure
+  logic) scans every video-track clip overlapping any highlight-marker window (via
+  `sorted_highlight_positions`, itself new — sorted, deduplicated `MarkerKind::Highlight`
+  positions) and collects the ids of clips that don't already have crop keyframes
+  (`ClipInstance::has_crop_keyframes`, pre-existing), deduplicated across overlapping windows.
+  When that list is non-empty, `spawn_shorts_pack` pushes a single `push_undo_snapshot()` for the
+  whole batch up front (deliberately not `push_undo_snapshot_for_drag`'s pointer-release-gated
+  coalescing — that mechanism is built for continuous UI drags and would be a fragile fit for a
+  background-thread-driven, no-pointer batch), stores the pending clip ids in a new
+  `ShortsPackReframeState { pending_clip_ids, output_dir }` field on `App`, and starts the first
+  job via `spawn_next_shorts_pack_reframe`; the actual export queuing (`queue_shorts_pack_exports`,
+  the pre-existing logic, now a private helper) only runs once every clip in the pre-pass list has
+  a result, success or failure.
+
+  Reuses `DynamicReframeState`'s existing single-in-flight-job guard rather than adding a second
+  background-job mechanism: `App::spawn_dynamic_reframe_for_clip(&mut self, clip_id: u64)` (new,
+  factored out of the existing `spawn_dynamic_reframe_selected_clip` wrapper) can now target any
+  clip id, not just the selected one, and `pump_dynamic_reframe()` branches on
+  `is_shorts_pack_reframe_target(clip_id)` to route a finished job's result through
+  `apply_shorts_pack_reframe_result` (direct clip-id mutation, bypassing the selection-gated
+  `set_selected_clip_crop_keyframes` and its live-preview push — a shorts-pack target is
+  essentially never the currently selected/previewed clip) and `advance_shorts_pack_reframe_queue`
+  (pops the queue, starts the next pending clip via `spawn_next_shorts_pack_reframe`, or falls
+  through to `queue_shorts_pack_exports` once the queue is empty) instead of the ordinary
+  selected-clip path. Fixed a real, previously-latent gap surfaced while wiring queue advancement:
+  `DynamicReframeEvent::Failed` carried no `clip_id`, so a failure couldn't be attributed to a
+  specific clip — added the field and updated its one send site (`dynamic_reframe_one`); a failed
+  reframe still advances the queue (falls back to whatever crop the clip already had) rather than
+  aborting the whole Shorts Pack build.
+
+  **Deliberately not done**: no dedicated review/correction UI for the auto-triggered reframes
+  (same "existing UI is the review step" precedent as slice 1 — results land in the properties
+  panel's already-editable Crop Keyframes sections) and no optional user-provided seed point;
+  both remain open, separate follow-ups, matching the original spec's own harder asks.
+
+  Verified for real: 7 new pure-logic tests for `clips_needing_reframe`/`sorted_highlight_positions`
+  (overlap, exclusion by existing keyframes, exclusion by no overlap, non-video-track exclusion,
+  dedup across one clip spanning two windows, dedup across distinct clips, highlight-only
+  sort/filter) ran in a scratch crate and pass; 3 new `App`-level tests exercise the pre-pass
+  gating (`app_test.rs`). `cargo check --workspace --all-targets` (the documented temporary
+  `filters.c` shim, discarded afterward) and `cargo fmt --all -- --check` both stayed clean, no
+  new warnings beyond the established baseline. Not run against a live GUI session (no display in
+  this sandbox) — the end-to-end queue-advancement behavior on real footage needs a manual pass on
+  a dev machine.
+
+  CF-04 is now considered complete for this phase; remaining harder asks (content-adaptive
+  cadence, optional seed point, a dedicated review/correction UI) are tracked as open follow-ups
+  rather than blocking this item.
 - `[ ]` **CF-05: OpenTimelineIO interchange.** Round-trip the supported editorial subset and
   emit an explicit compatibility report for unsupported effects.
 - `[ ]` **CF-06: live multicam monitor.** Show synchronized proxy-backed feeds and materialize
