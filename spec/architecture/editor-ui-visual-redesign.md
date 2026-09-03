@@ -98,9 +98,17 @@ Mechanics of the chosen route, for whoever implements it:
    icon is a single-color `stroke="currentColor"` glyph (true for all 24 fetched above) — a
    route that needs a two-color icon later would need texture-based rendering instead.
 
-Not yet done: the font-build step itself, the codepoint mapping, and the `ctx.set_fonts` wiring
-— this section records the decision and the mechanism, not an implementation. Scope for a
-follow-up change.
+**Font-build step: done.** `tools/icon-font/` is a small standalone Node/TypeScript project
+(not a Cargo dependency — `make icon-font` or `npm run build` in that directory) whose
+`build-icon-font.ts` reads `assets/icons/*.svg`, assigns each icon a stable PUA codepoint
+(existing codepoints are read back from the previous output and never reassigned — only a
+newly-added icon gets a new one, the next free PUA slot), and calls `fantasticon`'s Node API
+to emit `crates/ui/assets/fonts/lucide-oca.ttf` + `lucide-oca.json` (the name→codepoint
+mapping, both checked in). All 25 vendored icons are in the font as of this commit.
+
+Still open: the `ctx.set_fonts` wiring and the actual per-screen call sites that switch from
+the current emoji/text glyphs (🔒👁⚙, etc.) to this font — that's the next, separate slice of
+work, not done by generating the font file itself.
 
 ## Headline finding: the structure is already ~80% there
 

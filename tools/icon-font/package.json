@@ -1,0 +1,16 @@
+{
+  "name": "oca-icon-font",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Converts the vendored Lucide SVGs (spec/architecture/assets/icons/*.svg) into an icon font (PUA codepoints) for egui, per spec/architecture/editor-ui-visual-redesign.md's \"Icon set\" section. Not part of the Rust build -- run manually or via `make icon-font` when icons/*.svg changes.",
+  "type": "module",
+  "scripts": {
+    "build": "tsx build-icon-font.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "fantasticon": "^4.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
