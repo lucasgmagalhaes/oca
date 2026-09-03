@@ -462,18 +462,19 @@ Mapping:
 
 - **Track headers, lock/eye, collapse** — already real, just verify the visual styling
   (icon glyphs, spacing) against the mockup rather than re-wiring anything functional.
-- **Filmstrip + transition wedges** — filmstrips are real (`draw_filmstrip`); the mockup's
-  purple wedge between adjacent clips maps to `ClipSegment::transition_in`
-  (fade/slide/zoom, already wired to export+preview per `matrix/effects-and-color.md`) — if
-  no visual "wedge" is currently painted for an active transition on the timeline strip
-  itself (vs. just applying at render time), that's a small, real drawing addition in
-  `draw.rs`, not a new transition feature — the data already exists.
-- **A1/A2 green waveforms with diamond keyframe volume envelope** — waveform rendering is
-  real (`draw_waveform`); the diamond markers-on-a-line look like `gain_keyframes` (already
-  real, `ROADMAP.md` P3 item 31) visualized directly on the audio clip rather than only in the
-  properties panel's keyframe editor. Confirm whether `draw_keyframe_markers` already draws
-  onto audio clips specifically, or only video-track keyframed fields — if the latter, wiring
-  gain-keyframe diamonds onto the audio waveform view is a real, scoped drawing addition.
+- **Filmstrip + transition wedges — done.** Filmstrips were already real (`draw_filmstrip`);
+  the mockup's purple wedge between adjacent clips is now painted too, by a new
+  `draw_transition_wedge` (a filled bowtie shape over the clip's incoming edge, sized by
+  `transition_duration_secs * px_per_sec`, drawn whenever `ClipInstance::has_transition()` —
+  `transition_in`, fade/slide/zoom — is set). `transition_in` itself already applied at
+  export+preview per `matrix/effects-and-color.md`; this was purely the missing on-strip
+  visual, not a new transition feature. No pixel-sampled color exists for this region in the
+  source mockup, so it reuses `theme::ACCENT_2` rather than inventing an unsampled token.
+- **A1/A2 green waveforms with diamond keyframe volume envelope — done.** `draw_waveform` was
+  already real; `draw_keyframe_markers` (previously position/scale/rotation/opacity only, all
+  video-transform fields) now also includes `gain_keyframes` — the one of those five lists
+  that's ever populated on an audio clip — so its diamonds now show directly on the waveform's
+  volume-envelope line, not only in the properties panel's keyframe editor.
 - **A dedicated "FX" track/lane** — **no `TrackKind::Fx` exists, and shouldn't be added to
   match this mockup literally**. oca's effects (color grade fields, vignette, etc.) are
   per-clip properties on ordinary Video-track clips, not separate overlay clips on their own
@@ -483,10 +484,9 @@ Mapping:
   wanted, a small badge/indicator drawn on the V1/V2 clip itself (which effects have non-
   default values) fits oca's existing model far better than a fake second timeline track that
   doesn't correspond to any real independently-movable object.
-- **Playhead** — already real and already red-ish (`draw_playhead`, uses `theme::ACCENT` or a
-  dedicated color — verify against the sampled `#e0574f`-family red once `ACCENT` moves to
-  violet, so the playhead doesn't accidentally go violet along with everything else that
-  currently borrows `ACCENT` for red-adjacent meaning).
+- **Playhead — done.** `draw_playhead` was switched from `theme::ACCENT` to `theme::ERROR`
+  before the `ACCENT` repoint landed, so it stayed red-adjacent instead of following the accent
+  from teal to violet.
 
 ## What NOT to change (explicit non-goals)
 
@@ -506,14 +506,23 @@ principles, and this doc's own findings above:
 
 ## Suggested implementation order
 
-1. **Color**: add `theme::AUDIO_TINT`, decouple `timeline_panel/mod.rs`'s two audio-clip-fill
-   call sites onto it, _then_ repoint `theme::ACCENT` to `#7058E4`. Screenshot-compare
-   Home/Library/Queue/Editor afterward — this is the step with the widest, least-predictable
-   blast radius.
-2. **Inspector tab split** (Inspector/Effects/Audio) — pure reorganization of existing
-   `property_section` calls, zero new `avcore` work, lowest risk, highest visual-parity payoff.
-3. **Timeline visual polish**: transition wedges, gain-keyframe diamonds on waveforms, verify
-   playhead color post-accent-change.
+1. **Color — done.** `theme::AUDIO_TINT` added, `timeline_panel/mod.rs`'s two audio-clip-fill
+   call sites decoupled onto it, `theme::ACCENT` repointed to `#7058E4`.
+2. **Inspector tab split (Inspector/Effects/Audio) — done.** Pure reorganization of existing
+   `property_section` calls behind a new `App::properties_tab` (`PropertiesTab`), zero new
+   `avcore` work.
+2.5. **Icon font — done.** `tools/icon-font/build-icon-font.ts` converts the vendored Lucide
+   SVGs to `crates/ui/assets/fonts/lucide-oca.ttf` + a codepoint mapping; `icons.rs` registers
+   it with egui and wires it into every call site that has both a confirmed icon *and* a real
+   existing `App` action: timeline track header (lock/eye), nav rail (settings), toolbar
+   (Select/Cut/Trim, via a new `icon_label_job`/`tool_button_icon_font` for the icon+label
+   combo), and the preview transport row (seek-to-start/play-pause/seek-to-end). Not wired:
+   anything needing a new feature (camera snapshot, loop toggle, scrub speed) or an unresolved
+   layout decision (menu bar, track collapse, tool rail restructuring) — see the Icon set
+   section's own "still not wired" list.
+3. **Timeline visual polish — done.** Transition wedges (`draw_transition_wedge`) and
+   gain-keyframe diamonds on waveforms (extended `draw_keyframe_markers`); playhead already
+   verified red (`theme::ERROR`) post-accent-change.
 4. **Preview panel**: relocate/add resolution+fps+timecode overlays, step-frame + loop
    transport buttons, CAM chip wired to real multicam-group data (omit when none applies).
 5. **Menu bar** — largest single addition; scope and confirm the "does the toolbar still exist
