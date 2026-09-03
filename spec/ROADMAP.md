@@ -1166,8 +1166,40 @@ an item earlier:
   cluster-safety for RTL/conjunct scripts specifically still needs TEXT-01C's international fonts
   to verify against real glyphs, not just bidi levels against a font that can't render them) all
   remain open. TEXT-01C (international fallback families, gated on FONT-01B actually vendoring
-  those fonts into the repo) and TEXT-01D (performance/caching/optional packs) remain fully open.
-  See `architecture/complex-text-shaping.md`'s own writeup for the full detail.
+  those fonts into the repo) remains fully open.
+
+  **TEXT-01D slice 1's "shaped/glyph caches" piece now shipped.** `TextLayoutEngine::shape`
+  memoizes through a new small bounded LRU `ShapeCache` (64 entries) keyed by every input that
+  can change its output — text, family, style, size, wrap width, origin, direction, alignment
+  (floats compared by exact bit pattern via `to_bits()`, never derived epsilon-smoothed
+  equality). Memoization is only correct because this engine's locked font catalog never changes
+  at runtime, so identical inputs always produce identical glyphs. Targets the real common
+  workload: `overlay_render.rs`'s `draw_text_segment_onto` re-shapes the same caption every
+  preview frame while the playhead moves within one clip's own steady on-screen duration — text,
+  styling, and position all unchanged frame to frame, so every frame after the first becomes a
+  cache hit instead of a full re-shape. A plain `Vec` with linear scan, not a `HashMap`: the four
+  `crate::timeline` enums making up the cache key don't derive `Hash`, and this crate's own
+  convention is to reuse shared types as-is rather than adding derives elsewhere for one caller's
+  convenience — a linear scan over a capacity this small is far cheaper than a text-shaping pass
+  regardless. `shape_cache_stats()` exposes `(hits, misses)` for tests and a future TEXT-01D
+  slice 2 benchmark.
+
+  **Deliberately not done**: "bounded background shaping" and "generation cancellation" (slice
+  1's other two pieces) — this crate's preview rendering shapes synchronously on the calling
+  thread today, with no existing async shaping pipeline for a cancellation token to hook into;
+  benchmarking, optional CJK/color-emoji packs, and the supported script/language matrix (slices
+  2-4) remain fully open.
+
+  Verified for real against actual `cosmic-text` and the real bundled fonts (scratch-crate
+  technique, same setup TEXT-01A's own verification established): 5 new tests — a repeated
+  identical call registers as a cache hit with matching glyph output to a fresh uncached shape,
+  any differing input (text, origin, or font size) each independently causes a miss, and pushing
+  the cache one entry past its capacity evicts the genuinely least-recently-used entry (confirmed
+  by re-shaping it and observing a fresh miss, not a hit) — 35/35 total passing alongside every
+  pre-existing `text_layout` test. `cargo check --workspace --all-targets` and `cargo clippy
+  --workspace --all-targets` (via the documented temporary `filters.c` shim, discarded before
+  commit) and `cargo fmt --check` all stayed clean. See `architecture/complex-text-shaping.md`'s
+  own writeup for the full detail.
 - `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:
