@@ -563,6 +563,7 @@ text_catalog! {
     RenameSequenceTitle: pt_br = "Renomear aba", en = "Rename tab";
     DeleteSequenceTitle: pt_br = "Excluir aba", en = "Delete tab";
     DeleteSequenceConfirm: pt_br = "Excluir", en = "Delete";
+    DeleteSequenceCompoundClipWarning: pt_br = "⚠ Esta sequência é usada como clipe composto em: {sequences}. Excluí-la vai deixar essas referências quebradas.", en = "⚠ This sequence is used as a compound clip in: {sequences}. Deleting it will leave those references broken.";
     RenameProjectTitle: pt_br = "Configurações do projeto", en = "Project settings";
     RenameProjectConfirm: pt_br = "Salvar", en = "Save";
     ProjectNameLabel: pt_br = "Nome", en = "Name";

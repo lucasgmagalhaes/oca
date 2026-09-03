@@ -572,6 +572,16 @@ impl App {
             return;
         };
         let locale = self.locale;
+        // Recomputed fresh every time this modal is open rather than cached alongside
+        // `deleting_sequence` — cheap (a linear scan over every other sequence's clips), and
+        // avoids the modal showing a stale answer if the referencing sequence changed while it
+        // was open (e.g. the compound clip itself got deleted from another tab in the meantime).
+        let referencing_names: Vec<String> = self
+            .active_project()
+            .sequences_referencing_as_compound_clip(sequence_id)
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
         let modal = egui::Modal::new(egui::Id::new("delete_sequence_modal"));
         let mut confirmed = false;
         let mut cancelled = false;
@@ -580,6 +590,17 @@ impl App {
             components::modal_title(ui, i18n::Text::DeleteSequenceTitle.tr(locale));
             ui.add_space(10.0);
             ui.label(i18n::delete_sequence_prompt(locale, &name));
+            if !referencing_names.is_empty() {
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(
+                        i18n::Text::DeleteSequenceCompoundClipWarning
+                            .tr(locale)
+                            .replace("{sequences}", &referencing_names.join(", ")),
+                    )
+                    .color(theme::WARNING),
+                );
+            }
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 cancelled = true;
             }
