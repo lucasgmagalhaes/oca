@@ -24,6 +24,12 @@ impl App {
     /// exists yet, right after whatever's already there
     /// ([`avcore::timeline::Track::duration_secs`] — `0.0` for an empty/new track). A no-op if
     /// `asset_id` isn't in the active project's media library.
+    ///
+    /// The new clip's [`ClipInstance::voice_cleanup_enabled`] defaults to the landing track's own
+    /// `audio_role == Mic` — CF-03's own "Mic by default, explicit override elsewhere" acceptance
+    /// criterion, applied only at this creation moment. Reassigning a track's role later never
+    /// retroactively flips already-placed clips; the toggle stays a plain, always-overridable
+    /// per-clip field either way.
     pub fn add_asset_to_timeline(&mut self, asset_id: u64) {
         let Some((kind, duration_secs)) = self.asset_kind_and_duration(asset_id) else {
             return;
@@ -33,6 +39,7 @@ impl App {
         let track_index = resolve_or_create_track(timeline, kind, None);
         let start_secs = timeline.tracks[track_index].duration_secs();
         let clip_id = next_clip_id(timeline);
+        let voice_cleanup_enabled = timeline.tracks[track_index].audio_role == AudioRole::Mic;
         timeline.tracks[track_index]
             .clips
             .push(default_clip_instance(
@@ -41,6 +48,7 @@ impl App {
                 start_secs,
                 0.0,
                 duration_secs,
+                voice_cleanup_enabled,
             ));
     }
 
@@ -66,6 +74,7 @@ impl App {
         let timeline = self.active_project_mut().timeline_mut();
         let track_index = resolve_or_create_track(timeline, kind, preferred_track_id);
         let clip_id = next_clip_id(timeline);
+        let voice_cleanup_enabled = timeline.tracks[track_index].audio_role == AudioRole::Mic;
         timeline.tracks[track_index]
             .clips
             .push(default_clip_instance(
@@ -74,6 +83,7 @@ impl App {
                 start_secs,
                 0.0,
                 duration_secs,
+                voice_cleanup_enabled,
             ));
     }
 
@@ -120,6 +130,7 @@ impl App {
         }
         let track_index = resolve_or_create_track(timeline, TrackKind::Audio, None);
         let new_clip_id = next_clip_id(timeline);
+        let voice_cleanup_enabled = timeline.tracks[track_index].audio_role == AudioRole::Mic;
         timeline.tracks[track_index]
             .clips
             .push(default_clip_instance(
@@ -128,6 +139,7 @@ impl App {
                 start_secs,
                 source_in_secs,
                 source_out_secs,
+                voice_cleanup_enabled,
             ));
     }
 
@@ -272,8 +284,14 @@ impl App {
         let timeline = project.timeline_mut();
         for track in &mut timeline.tracks {
             if let Some(clip) = track.clips.iter_mut().find(|c| c.id == clip_id) {
-                let mut wrapper =
-                    default_clip_instance(clip_id, 0, original.start_secs, 0.0, duration_secs);
+                let mut wrapper = default_clip_instance(
+                    clip_id,
+                    0,
+                    original.start_secs,
+                    0.0,
+                    duration_secs,
+                    false,
+                );
                 wrapper.nested_sequence_id = Some(new_sequence_id);
                 wrapper.composite_id = original.composite_id;
                 wrapper.color_label = original.color_label;
@@ -483,13 +501,18 @@ pub(super) fn create_new_track(
 /// `source_in_secs..source_out_secs` of `asset_id` — the shared literal [`App::
 /// add_asset_to_timeline`], [`App::add_asset_to_timeline_at`], and [`App::
 /// detach_audio_from_selected_clip`] all build a new clip from, differing only in which asset,
-/// trim range, and placement they start it at.
+/// trim range, and placement they start it at. `voice_cleanup_enabled` is the one field that
+/// isn't a flat default — see [`Self::add_asset_to_timeline`]'s own doc comment for why it's the
+/// caller's job to pass `track.audio_role == AudioRole::Mic` here (CF-03's own "Mic by default,
+/// explicit override elsewhere" acceptance criterion, applied only at clip *creation* time, never
+/// retroactively when a track's role is reassigned later).
 fn default_clip_instance(
     id: u64,
     asset_id: u64,
     start_secs: f64,
     source_in_secs: f64,
     source_out_secs: f64,
+    voice_cleanup_enabled: bool,
 ) -> ClipInstance {
     ClipInstance {
         id,
@@ -531,7 +554,7 @@ fn default_clip_instance(
         rotation_keyframes: vec![],
         opacity_keyframes: vec![],
         gain_keyframes: vec![],
-        voice_cleanup_enabled: false,
+        voice_cleanup_enabled,
         voice_cleanup_noise_floor_db: -30.0,
         voice_cleanup_compressor_threshold_db: -18.0,
         voice_cleanup_compressor_ratio: 3.0,

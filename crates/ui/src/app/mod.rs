@@ -24,7 +24,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use avcore::{
-    ClipInstance, ExportJob, ExportJobStatus, MediaAsset, Project, RenderOutcome, TrackKind,
+    AudioRole, ClipInstance, ExportJob, ExportJobStatus, MediaAsset, Project, RenderOutcome,
+    TrackKind,
 };
 use eframe::egui;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
@@ -1712,6 +1713,21 @@ impl App {
             .iter()
             .find(|t| t.clips.iter().any(|c| c.id == id))
             .map(|t| t.kind)
+    }
+
+    /// The [`AudioRole`] of the track `selected_clip_id` lives on, if any — lets the properties
+    /// panel suggest enabling CF-03 voice cleanup when a clip sits on a `Mic`-role track but
+    /// wasn't defaulted to it at creation time (e.g. the track's role was reassigned after the
+    /// clip already existed — `App::add_asset_to_timeline`'s own "Mic by default" only applies
+    /// at creation, never retroactively).
+    pub fn selected_clip_track_audio_role(&self) -> Option<AudioRole> {
+        let id = self.selected_clip_id?;
+        self.active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .find(|t| t.clips.iter().any(|c| c.id == id))
+            .map(|t| t.audio_role)
     }
 
     /// Selects a timeline clip and its backing asset together, so the properties panel's

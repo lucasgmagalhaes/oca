@@ -261,7 +261,24 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     // Watch-Gameplay.ps1 chain) only makes sense on an audio block — no meaning
                     // for a video block's own embedded audio, same "clip-level toggle regardless
                     // of AudioRole" scope this field's own doc comment on ClipInstance describes.
-                    if app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Audio)
+                    let is_audio_clip =
+                        app.selected_clip_track_kind() == Some(avcore::timeline::TrackKind::Audio);
+                    if is_audio_clip
+                        && !voice_cleanup_enabled
+                        && app.selected_clip_track_audio_role() == Some(avcore::AudioRole::Mic)
+                    {
+                        // A clip that predates its track's Mic role (or was moved there after
+                        // creation) never gets `App::add_asset_to_timeline`'s "Mic by default"
+                        // treatment — this is the non-blocking nudge for that case, never an
+                        // auto-toggle, since the field stays a plain always-overridable per-clip
+                        // setting either way.
+                        ui.label(
+                            RichText::new(Text::VoiceCleanupMicRoleSuggestion.tr(locale))
+                                .size(10.5)
+                                .color(theme::WARNING),
+                        );
+                    }
+                    if is_audio_clip
                         && components::property_block(
                             ui,
                             Text::VoiceCleanupExportNote.tr(locale),
