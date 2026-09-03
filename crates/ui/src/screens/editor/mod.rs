@@ -1062,6 +1062,25 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 &text,
             );
         }
+        // "CAM 01" chip in the top-right corner (the mockup's top-right slot is otherwise the
+        // "REC ●" chip, a documented non-goal — see the Program monitor mapping — freeing it
+        // for this instead), wired to real multicam-group data: only drawn when the previewed
+        // track is actually a multicam group's program track, never faked when it isn't.
+        if let Some(angle) = app.current_preview_multicam_angle() {
+            let text = format!("CAM {angle:02}");
+            let width = ui
+                .painter()
+                .layout_no_wrap(
+                    text.clone(),
+                    egui::FontId::monospace(10.5),
+                    theme::TEXT_SECONDARY,
+                )
+                .size()
+                .x
+                + 8.0;
+            let top_left = frame_response.rect.right_top() + egui::vec2(-8.0 - width, 8.0);
+            draw_preview_hud_chip(ui.painter(), top_left, &text);
+        }
         // Timecode+frame overlay in the preview's bottom-right corner, matching the mockup's
         // bottom-right overlay — a relocation of data already shown in the transport row's
         // timecode label below, plus a frame-within-second suffix when fps is known (omitted
