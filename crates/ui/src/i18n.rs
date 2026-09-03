@@ -329,6 +329,9 @@ text_catalog! {
     ApplyTemplateLayerLabel: pt_br = "Camada", en = "Layer";
     ApplyTemplatePickAsset: pt_br = "Escolha um arquivo…", en = "Pick a file…";
     ApplyTemplateConfirm: pt_br = "Criar camadas", en = "Create layers";
+    GraphicTemplateApplyInvalid: pt_br = "Não foi possível aplicar o template gráfico", en = "Could not apply the graphic template";
+    LoadGraphicTemplate: pt_br = "🖼 Carregar template gráfico", en = "🖼 Load graphic template";
+    GraphicTemplateReadFailed: pt_br = "Não foi possível ler o arquivo de template", en = "Could not read the template file";
     TrackKindVideo: pt_br = "Vídeo", en = "Video";
     TrackKindAudio: pt_br = "Áudio", en = "Audio";
     TrackKindText: pt_br = "Texto", en = "Text";
