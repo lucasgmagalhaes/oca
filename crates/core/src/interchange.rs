@@ -40,7 +40,10 @@
 //! serialization slice lands.
 
 use crate::project::{Project, Sequence};
-use crate::timeline::{ClipInstance, MarkerKind, Timeline, Track, TrackKind, TransitionType};
+use crate::timeline::{
+    ClipInstance, ColorFilter, Marker, MarkerKind, MaskShape, Timeline, Track, TrackKind,
+    TransitionType,
+};
 
 /// The fixed time rate [`sequence_to_interchange`] expresses every [`RationalTime`] in — see this
 /// module's own doc comment for why this isn't yet each clip's native frame rate.
@@ -138,6 +141,15 @@ impl InterchangeTransitionKind {
             TransitionType::HardCut => Some(Self::HardCut),
             TransitionType::Slide => Some(Self::Slide),
             TransitionType::Zoom => Some(Self::Zoom),
+        }
+    }
+
+    fn to_transition_type(self) -> TransitionType {
+        match self {
+            Self::Fade => TransitionType::Fade,
+            Self::HardCut => TransitionType::HardCut,
+            Self::Slide => TransitionType::Slide,
+            Self::Zoom => TransitionType::Zoom,
         }
     }
 }
@@ -282,6 +294,220 @@ pub fn sequence_to_interchange(sequence: &Sequence, project: &Project) -> Interc
         name: sequence.name.clone(),
         tracks,
         markers,
+    }
+}
+
+/// Resolves a [`MediaReference`] back to a project's own [`crate::media::MediaAsset::id`] by
+/// matching `target_url` against [`crate::media::MediaAsset::source_path`] — the reverse of
+/// [`resolve_media_reference`]. `None` for [`MediaReference::Missing`] or a path that no longer
+/// matches anything in `project`'s media library (offline media, same as a real NLE's own
+/// relink-required case).
+fn resolve_asset_id(project: &Project, media_reference: &MediaReference) -> Option<u64> {
+    let MediaReference::External { target_url } = media_reference else {
+        return None;
+    };
+    project
+        .media_library
+        .iter()
+        .find(|asset| asset.source_path.to_string_lossy() == *target_url)
+        .map(|asset| asset.id)
+}
+
+/// A freshly reconstructed [`ClipInstance`] carrying only what [`InterchangeClip`] itself
+/// carries — every other field (crop, color grading, masks, all other effects and keyframe
+/// animation) at its own untouched default, since none of them round-trip through this slice's
+/// interchange model yet (see [`interchange_compatibility_report`]).
+fn clip_instance_from_interchange(
+    id: u64,
+    asset_id: u64,
+    start_secs: f64,
+    ic: &InterchangeClip,
+) -> ClipInstance {
+    ClipInstance {
+        id,
+        asset_id,
+        start_secs,
+        source_in_secs: ic.source_range.start_time.to_seconds(),
+        source_out_secs: ic.source_range.start_time.to_seconds()
+            + ic.source_range.duration.to_seconds(),
+        composite_id: None,
+        color_label: None,
+        gain_db: 0.0,
+        frozen: false,
+        speed_factor: ic.speed_factor,
+        speed_ramp_end_factor: None,
+        nested_sequence_id: None,
+        crop_x: 0.0,
+        crop_y: 0.0,
+        crop_w: 1.0,
+        crop_h: 1.0,
+        mask_shape: MaskShape::None,
+        mask_corner_radius: 0.0,
+        flipped_h: false,
+        color_filter: ColorFilter::None,
+        vignette_intensity: 0.0,
+        brightness: 0.0,
+        contrast: 1.0,
+        saturation: 1.0,
+        sharpen: 0.0,
+        chroma_key_enabled: false,
+        chroma_key_color: [0, 255, 0],
+        chroma_key_tolerance: 0.4,
+        blur_intensity: 0.0,
+        shake_intensity: 0.0,
+        glitch_intensity: 0.0,
+        pixelize_intensity: 0.0,
+        transition_in: ic
+            .transition_in
+            .map(InterchangeTransitionKind::to_transition_type)
+            .unwrap_or(TransitionType::None),
+        transition_duration_secs: 0.5,
+        position_keyframes: vec![],
+        scale_keyframes: vec![],
+        rotation_keyframes: vec![],
+        opacity_keyframes: vec![],
+        gain_keyframes: vec![],
+        voice_cleanup_enabled: false,
+        voice_cleanup_noise_floor_db: -30.0,
+        voice_cleanup_compressor_threshold_db: -18.0,
+        voice_cleanup_compressor_ratio: 3.0,
+        voice_cleanup_ceiling_linear: 0.95,
+        brightness_keyframes: vec![],
+        contrast_keyframes: vec![],
+        saturation_keyframes: vec![],
+        crop_x_keyframes: vec![],
+        crop_y_keyframes: vec![],
+        crop_w_keyframes: vec![],
+        crop_h_keyframes: vec![],
+        deflicker_enabled: false,
+        lut_path: String::new(),
+        layer_scale_x: 1.0,
+        layer_scale_y: 1.0,
+        stabilization_intensity: 0.0,
+        background_removal_enabled: false,
+        background_removal_mask_path: String::new(),
+    }
+}
+
+/// One clip [`interchange_to_timeline`] couldn't reconstruct, and why — the doc's own "preserve
+/// unsupported fields as warnings, never silently approximate them" requirement, applied to
+/// import's own failure case (an offline [`MediaReference`] that doesn't resolve against the
+/// target project's media library) rather than inventing a placeholder asset.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportWarning {
+    pub track_name: String,
+    pub message: String,
+}
+
+/// [`interchange_to_timeline`]'s result: the reconstructed [`Timeline`] plus any clip that
+/// couldn't be placed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InterchangeImportResult {
+    pub timeline: Timeline,
+    pub warnings: Vec<ImportWarning>,
+}
+
+/// Reconstructs a [`Timeline`] from `interchange`, the reverse of [`sequence_to_interchange`] —
+/// CF-05's own slice 3 ("Import the same supported subset into a new sequence"), scoped for now
+/// to this module's own intermediate representation rather than a real parsed `.otio` file (see
+/// this module's own doc comment for why). `*next_id` is the first id to hand out; every
+/// allocated [`Track::id`]/[`ClipInstance::id`] increments it, so a caller can keep allocating
+/// unique ids afterward without recomputing a high-water mark itself. A clip whose
+/// [`MediaReference`] no longer resolves against `project`'s media library is skipped — not
+/// given a placeholder asset id — and reported in [`InterchangeImportResult::warnings`] instead,
+/// per the doc's own "unsupported fields as warnings, never silently approximate" rule (extended
+/// here to "unresolvable" as well as "unsupported").
+pub fn interchange_to_timeline(
+    interchange: &InterchangeTimeline,
+    project: &Project,
+    next_id: &mut u64,
+) -> InterchangeImportResult {
+    let mut warnings = Vec::new();
+    let mut tracks = Vec::with_capacity(interchange.tracks.len());
+
+    for itrack in &interchange.tracks {
+        let kind = match itrack.kind {
+            InterchangeTrackKind::Video => TrackKind::Video,
+            InterchangeTrackKind::Audio => TrackKind::Audio,
+        };
+        let track_id = *next_id;
+        *next_id += 1;
+
+        let mut clips = Vec::new();
+        let mut cursor_secs = 0.0f64;
+        for item in &itrack.items {
+            match item {
+                InterchangeTrackItem::Gap(gap) => {
+                    cursor_secs += gap.duration.to_seconds();
+                }
+                InterchangeTrackItem::Clip(ic) => {
+                    let start_secs = cursor_secs;
+                    let duration_secs = ic.source_range.duration.to_seconds()
+                        / if ic.speed_factor == 0.0 {
+                            1.0
+                        } else {
+                            ic.speed_factor as f64
+                        };
+                    match resolve_asset_id(project, &ic.media_reference) {
+                        Some(asset_id) => {
+                            let clip_id = *next_id;
+                            *next_id += 1;
+                            clips.push(clip_instance_from_interchange(
+                                clip_id, asset_id, start_secs, ic,
+                            ));
+                        }
+                        None => warnings.push(ImportWarning {
+                            track_name: itrack.name.clone(),
+                            message: format!(
+                                "clip {} (source id {}): media reference does not resolve in this project — skipped",
+                                clips.len() + 1,
+                                ic.source_id
+                            ),
+                        }),
+                    }
+                    cursor_secs += duration_secs;
+                }
+            }
+        }
+
+        tracks.push(Track {
+            id: track_id,
+            name: itrack.name.clone(),
+            kind,
+            clips,
+            text_clips: vec![],
+            shape_clips: vec![],
+            visible: true,
+            audio_role: crate::timeline::AudioRole::Unspecified,
+            locked: false,
+            color_label: None,
+        });
+    }
+
+    let markers = interchange
+        .markers
+        .iter()
+        .map(|im| {
+            let id = *next_id;
+            *next_id += 1;
+            Marker {
+                id,
+                position_secs: im.marked_range.start_time.to_seconds(),
+                label: im.name.clone(),
+                kind: im.kind,
+                completed: false,
+            }
+        })
+        .collect();
+
+    InterchangeImportResult {
+        timeline: Timeline {
+            tracks,
+            playhead_secs: 0.0,
+            markers,
+            multicam_groups: vec![],
+        },
+        warnings,
     }
 }
 
