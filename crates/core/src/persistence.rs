@@ -23,7 +23,9 @@
 //! same framing for its own `prefs.oc`, not just `Project`. Export queues use the same payload
 //! encoding with their own `OCQU` identity through [`to_ocqueue_bytes`]/
 //! [`from_ocqueue_bytes`]; transcript-document sidecars (`crate::transcript`, CF-01) use `OCTR`
-//! through [`to_octr_bytes`]/[`from_octr_bytes`]. [`save_project_to_file`]/
+//! through [`to_octr_bytes`]/[`from_octr_bytes`]; semantic-search index sidecars
+//! (`crate::semantic_index`, CF-08) use `OCSI` through [`to_ocsi_bytes`]/[`from_ocsi_bytes`].
+//! [`save_project_to_file`]/
 //! [`load_project_from_file`] are thin `Project`-specific file-touching shells around the
 //! project framing.
 
@@ -48,6 +50,8 @@ const PROJECT_MAGIC: &[u8; 4] = b"OCPJ";
 const QUEUE_MAGIC: &[u8; 4] = b"OCQU";
 /// Identifies a compressed transcript-document sidecar file (`crate::transcript`, CF-01).
 const TRANSCRIPT_MAGIC: &[u8; 4] = b"OCTR";
+/// Identifies a compressed semantic-search index sidecar file (`crate::semantic_index`, CF-08).
+const SEMANTIC_INDEX_MAGIC: &[u8; 4] = b"OCSI";
 /// Bumped only if the on-disk layout (header framing, not the `Project` schema itself —
 /// that's handled by `#[serde(default)]`) ever needs to change.
 const FORMAT_VERSION: u8 = 1;
@@ -157,6 +161,19 @@ pub fn to_octr_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, PersistError> {
 
 pub fn from_octr_bytes<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, PersistError> {
     from_framed_bytes(bytes, TRANSCRIPT_MAGIC)
+}
+
+/// Same framing (`OCSI` + version + compressed MessagePack) for a semantic-search index sidecar
+/// (`crate::semantic_index::SemanticIndex`, CF-08) — embeddings are opaque float vectors, not
+/// human-inspectable content, so this reuses the compact binary `.ocproj`-style framing rather
+/// than `motion_template`'s plain-JSON choice (that format is deliberately shareable/inspectable
+/// data; this one is internal cache state, closer in spirit to `.ocqueue`/`.octr`).
+pub fn to_ocsi_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, PersistError> {
+    to_framed_bytes(value, SEMANTIC_INDEX_MAGIC)
+}
+
+pub fn from_ocsi_bytes<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, PersistError> {
+    from_framed_bytes(bytes, SEMANTIC_INDEX_MAGIC)
 }
 
 /// Writes `project` to `path` as `.ocproj`, overwriting any existing file.
