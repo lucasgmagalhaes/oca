@@ -220,6 +220,12 @@ text_catalog! {
     ChromaKeyColor: pt_br = "Cor:", en = "Color:";
     ChromaKeyTolerance: pt_br = "Tolerância", en = "Tolerance";
     ChromaKeyExportNote: pt_br = "aplicado na exportação, mas só tem efeito em blocos de faixas de overlay — sem efeito no preview ao vivo.", en = "applied on export, but only has an effect on overlay-track blocks — no live preview effect.";
+    PropVoiceCleanup: pt_br = "🎤 Limpeza de voz", en = "🎤 Voice cleanup";
+    VoiceCleanupNoiseFloor: pt_br = "Piso de ruído", en = "Noise floor";
+    VoiceCleanupCompressorThreshold: pt_br = "Limiar do compressor", en = "Compressor threshold";
+    VoiceCleanupCompressorRatio: pt_br = "Proporção do compressor", en = "Compressor ratio";
+    VoiceCleanupCeiling: pt_br = "Teto do limitador", en = "Limiter ceiling";
+    VoiceCleanupExportNote: pt_br = "aplicado na exportação (cadeia de redução de ruído + compressor + limitador) — sem efeito no preview ao vivo.", en = "applied on export (noise-reduction + compressor + limiter chain) — no live preview effect.";
     PropBackgroundRemoval: pt_br = "🤖 Remoção de fundo (IA)", en = "🤖 Background removal (AI)";
     BackgroundRemovalExportNote: pt_br = "afeta a exportação só em blocos de faixas de overlay (não na faixa de fundo) — clique em \"Gerar máscara\" antes de exportar.", en = "only affects export on overlay-track blocks (not the background track) — click \"Generate matte\" before exporting.";
     BackgroundRemovalGenerateMatte: pt_br = "Gerar máscara", en = "Generate matte";
