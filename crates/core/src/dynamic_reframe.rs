@@ -44,8 +44,56 @@
 //!   precedent D4's chapter-marker detection already established instead of a bespoke
 //!   accept/reject modal.
 
-use crate::auto_reframe::CropRect;
+use crate::auto_reframe::{CropRect, FaceBox};
 use crate::keyframe::Keyframe;
+
+/// How far (as a fraction of frame size, matching [`FaceBox`]'s own `0.0..=1.0` coordinates) a
+/// candidate face's center may sit from the *previous* sample's chosen center and still count as
+/// "the same subject" in [`select_subject_center`]. Deliberately generous — two consecutive
+/// dynamic-reframe samples are up to half a second apart at the default sampling rate, and a
+/// person's head can genuinely move a real distance in that time — but still small enough that
+/// two people standing on opposite sides of frame don't get treated as the same subject.
+pub const DEFAULT_CONTINUITY_MAX_DISTANCE: f32 = 0.25;
+
+fn face_center(face: FaceBox) -> (f32, f32) {
+    (face.x + face.w / 2.0, face.y + face.h / 2.0)
+}
+
+fn distance((ax, ay): (f32, f32), (bx, by): (f32, f32)) -> f32 {
+    ((ax - bx).powi(2) + (ay - by).powi(2)).sqrt()
+}
+
+/// Picks which detected face is "the subject" for one sample, preferring continuity with
+/// `previous_center` (the previous sample's own chosen center, if any) over raw confidence —
+/// unlike [`crate::auto_reframe::main_subject_center`]'s single-sample "highest score always
+/// wins" rule, which lets two people trading the higher per-frame confidence visibly re-target
+/// the crop between samples even though neither actually moved.
+///
+/// Among faces within `max_distance` of `previous_center`, picks the highest-scoring one (still
+/// breaking ties by confidence, just within the continuity-eligible subset first). If none are
+/// within range — no `previous_center` yet, the previous subject left frame, or a scene cut
+/// really did change who's on screen — falls back to the single highest-scoring face overall,
+/// exactly [`crate::auto_reframe::main_subject_center`]'s own rule, so a genuine subject change
+/// still gets picked up rather than clinging to a stale position forever.
+pub fn select_subject_center(
+    faces: &[FaceBox],
+    previous_center: Option<(f32, f32)>,
+    max_distance: f32,
+) -> Option<(f32, f32)> {
+    if let Some(previous_center) = previous_center {
+        let continuity_pick = faces
+            .iter()
+            .filter(|f| distance(face_center(**f), previous_center) <= max_distance)
+            .max_by(|a, b| a.score.total_cmp(&b.score));
+        if let Some(face) = continuity_pick {
+            return Some(face_center(*face));
+        }
+    }
+    faces
+        .iter()
+        .max_by(|a, b| a.score.total_cmp(&b.score))
+        .map(|f| face_center(*f))
+}
 
 /// How many *consecutive* samples with no subject detected still hold the last-known center
 /// before falling back to a centered crop. Matches CF-04's own acceptance criteria: a run this

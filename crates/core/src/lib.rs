@@ -87,8 +87,8 @@ pub use bundle::{
 };
 pub use collab_bundle::{export_collab_bundle, import_collab_bundle, CollabBundleError};
 pub use dynamic_reframe::{
-    fill_reframe_gaps, smooth_subject_centers, sparse_crop_keyframes, ReframeSample,
-    DEFAULT_SPARSIFY_EPSILON, MAX_HOLD_GAP_SAMPLES,
+    fill_reframe_gaps, select_subject_center, smooth_subject_centers, sparse_crop_keyframes,
+    ReframeSample, DEFAULT_CONTINUITY_MAX_DISTANCE, DEFAULT_SPARSIFY_EPSILON, MAX_HOLD_GAP_SAMPLES,
 };
 pub use error_reporting::{
     contains_forbidden_content, sanitize_stack_trace, sanitize_text, validate_envelope,
