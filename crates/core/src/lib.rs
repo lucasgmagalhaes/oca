@@ -54,6 +54,7 @@ pub mod proxy;
 pub mod render;
 pub mod scene_detection;
 pub mod scopes;
+pub mod semantic_index;
 pub mod shape_render;
 pub mod silence_detection;
 pub mod smart_bins;
