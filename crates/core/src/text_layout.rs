@@ -54,6 +54,52 @@ use crate::timeline::{TextAlign, TextDirection, TextFontFamily, TextFontStyle};
 const LEFT_TO_RIGHT_MARK: char = '\u{200E}';
 const RIGHT_TO_LEFT_MARK: char = '\u{200F}';
 
+/// The paragraph base direction [`resolve_paragraph_direction`] resolved, for
+/// [`TextAlign::Start`]/[`TextAlign::End`]'s CSS-logical-property semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResolvedDirection {
+    Ltr,
+    Rtl,
+}
+
+/// Resolves [`TextDirection::Auto`]'s own UAX #9 P2/P3 first-strong-character detection (via
+/// `unicode_bidi::get_base_direction`, the same algorithm [`TextLayoutEngine::shape`]'s
+/// bidi-mark-prefix trick pins `cosmic-text`'s internal detection to) — or the explicit override
+/// when `direction` isn't `Auto`. `unicode_bidi::Direction::Mixed` (the crate's own name for "no
+/// strong character found at all," despite the name — see its doc comment) resolves to `Ltr`,
+/// matching UAX #9 P3's own default-to-LTR rule for an all-neutral paragraph.
+pub fn resolve_paragraph_direction(text: &str, direction: TextDirection) -> ResolvedDirection {
+    match direction {
+        TextDirection::Ltr => ResolvedDirection::Ltr,
+        TextDirection::Rtl => ResolvedDirection::Rtl,
+        TextDirection::Auto => match unicode_bidi::get_base_direction(text) {
+            unicode_bidi::Direction::Rtl => ResolvedDirection::Rtl,
+            unicode_bidi::Direction::Ltr | unicode_bidi::Direction::Mixed => ResolvedDirection::Ltr,
+        },
+    }
+}
+
+/// Resolves [`TextAlign::Start`]/[`TextAlign::End`] into the physical [`TextAlign::Left`]/
+/// [`TextAlign::Right`] edge their CSS-logical-property semantics mean for `text` under
+/// `direction` — see [`TextAlign`]'s own doc comment. `Auto`/`Left`/`Center`/`Right` pass through
+/// unchanged. The single source of truth both [`TextLayoutEngine::shape`] (per-line `cosmic-text`
+/// alignment) and `crate::overlay_render`'s wrap/alignment box computation call, so the two can
+/// never resolve a clip's `Start`/`End` to different physical edges.
+pub fn resolve_text_align(text: &str, direction: TextDirection, align: TextAlign) -> TextAlign {
+    match align {
+        TextAlign::Start | TextAlign::End => {
+            let is_rtl = resolve_paragraph_direction(text, direction) == ResolvedDirection::Rtl;
+            let is_start = align == TextAlign::Start;
+            if is_start != is_rtl {
+                TextAlign::Left
+            } else {
+                TextAlign::Right
+            }
+        }
+        other => other,
+    }
+}
+
 /// Explicit UAX #9 directional-formatting characters this module scans for in
 /// [`scan_bidi_controls`] — invisible codepoints a user's typed or pasted text can contain that
 /// change how later text renders, distinct from [`LEFT_TO_RIGHT_MARK`]/[`RIGHT_TO_LEFT_MARK`]
@@ -274,7 +320,10 @@ impl TextLayoutEngine {
     /// left edge at `origin.0`; `Center`/`Right` expect the caller to have already centered or
     /// right-anchored the box around its own intended position). `TextAlign::Auto` passes `None`
     /// through unchanged, keeping `cosmic-text`'s own direction-aware default (left for LTR,
-    /// right for RTL) exactly as before this parameter existed.
+    /// right for RTL) exactly as before this parameter existed. `Start`/`End` resolve to `Left`/
+    /// `Right` via [`resolve_text_align`] before reaching `cosmic-text` — a caller computing its
+    /// own wrap/alignment box (e.g. `crate::overlay_render`) must call the same function to pick
+    /// the matching physical edge, since this method never reports back which edge it resolved to.
     #[allow(clippy::too_many_arguments)]
     pub fn shape(
         &mut self,
@@ -297,11 +346,14 @@ impl TextLayoutEngine {
             Some(mark) => Cow::Owned(format!("{mark}{text}")),
             None => Cow::Borrowed(text),
         };
-        let cosmic_align = match align {
+        let cosmic_align = match resolve_text_align(text, direction, align) {
             TextAlign::Auto => None,
             TextAlign::Left => Some(Align::Left),
             TextAlign::Center => Some(Align::Center),
             TextAlign::Right => Some(Align::Right),
+            TextAlign::Start | TextAlign::End => {
+                unreachable!("resolve_text_align never returns Start/End")
+            }
         };
 
         let metrics = Metrics::new(font_size_px, font_size_px * 1.25);
