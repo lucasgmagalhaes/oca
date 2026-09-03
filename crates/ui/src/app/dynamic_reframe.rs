@@ -46,12 +46,28 @@ impl App {
     /// crop keyframes so a moving subject stays framed throughout. A no-op if nothing is
     /// selected, no model is configured, or a run (static or dynamic) is already in flight.
     pub fn spawn_dynamic_reframe_selected_clip(&mut self) {
+        let Some(clip_id) = self.selected_clip_id else {
+            return;
+        };
+        self.spawn_dynamic_reframe_for_clip(clip_id);
+    }
+
+    /// The clip-id-parametrized core [`App::spawn_dynamic_reframe_selected_clip`] delegates to —
+    /// also [`App::spawn_shorts_pack`]'s own sequential pre-pass calls this directly for a clip
+    /// that isn't necessarily `selected_clip_id` (batch-processing every un-reframed clip a
+    /// highlight window touches, one at a time, not just whatever's selected in the properties
+    /// panel). Returns whether a background run was actually spawned — `false` on any of the
+    /// same no-op conditions [`App::spawn_dynamic_reframe_selected_clip`] already had (already
+    /// in flight, no model configured, `clip_id` unknown, its asset missing/without a known
+    /// resolution), which [`App::spawn_next_shorts_pack_reframe`] uses to skip a clip it can't
+    /// actually process rather than getting stuck.
+    pub(super) fn spawn_dynamic_reframe_for_clip(&mut self, clip_id: u64) -> bool {
         if self
             .dynamic_reframe_state
             .dynamic_reframing_clip_id
             .is_some()
         {
-            return;
+            return false;
         }
         if self.prefs.reframe_model_path.trim().is_empty() {
             self.push_toast(
@@ -59,12 +75,18 @@ impl App {
                     .tr(self.locale)
                     .to_string(),
             );
-            return;
+            return false;
         }
-        let Some(clip) = self.selected_clip() else {
-            return;
+        let Some(clip) = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .find(|c| c.id == clip_id)
+        else {
+            return false;
         };
-        let clip_id = clip.id;
         let asset_id = clip.asset_id;
         let source_in_secs = clip.source_in_secs;
         let source_out_secs = clip.source_out_secs;
@@ -74,10 +96,10 @@ impl App {
             .iter()
             .find(|a| a.id == asset_id)
         else {
-            return;
+            return false;
         };
         let Some((source_w, source_h)) = asset.resolution else {
-            return;
+            return false;
         };
         let source_path = asset.source_path.clone();
         let (target_w, target_h) = self
@@ -102,10 +124,16 @@ impl App {
                 &tx,
             );
         });
+        true
     }
 
     /// Applies a finished dynamic-reframe run to the timeline. Called once per frame from
-    /// [`eframe::App::ui`], same as [`App::pump_auto_reframe`].
+    /// [`eframe::App::ui`], same as [`App::pump_auto_reframe`]. A run [`App::spawn_shorts_pack`]'s
+    /// own sequential pre-pass kicked off (`clip_id` is the head of `shorts_pack_reframe_state`'s
+    /// pending queue) is applied directly to that clip — regardless of the current
+    /// `selected_clip_id` — and advances the queue instead of going through the ordinary
+    /// selected-clip path; every other run still only applies when its clip is still selected,
+    /// same as before this queue existed.
     pub(super) fn pump_dynamic_reframe(&mut self) {
         while let Ok(event) = self.dynamic_reframe_state.dynamic_reframe_rx.try_recv() {
             match event {
@@ -118,26 +146,43 @@ impl App {
                     subject_found,
                 } => {
                     self.dynamic_reframe_state.dynamic_reframing_clip_id = None;
-                    if self.selected_clip_id == Some(clip_id) {
-                        self.set_selected_clip_crop_keyframes(
+                    if self.is_shorts_pack_reframe_target(clip_id) {
+                        self.apply_shorts_pack_reframe_result(
+                            clip_id,
                             crop_x_keyframes,
                             crop_y_keyframes,
                             crop_w_keyframes,
                             crop_h_keyframes,
                         );
-                    }
-                    if !subject_found {
-                        self.push_toast(
-                            crate::i18n::Text::AutoReframeNoSubjectFound
-                                .tr(self.locale)
-                                .to_string(),
-                        );
+                    } else {
+                        if self.selected_clip_id == Some(clip_id) {
+                            self.set_selected_clip_crop_keyframes(
+                                crop_x_keyframes,
+                                crop_y_keyframes,
+                                crop_w_keyframes,
+                                crop_h_keyframes,
+                            );
+                        }
+                        if !subject_found {
+                            self.push_toast(
+                                crate::i18n::Text::AutoReframeNoSubjectFound
+                                    .tr(self.locale)
+                                    .to_string(),
+                            );
+                        }
                     }
                 }
-                DynamicReframeEvent::Failed { message } => {
+                DynamicReframeEvent::Failed { clip_id, message } => {
                     self.dynamic_reframe_state.dynamic_reframing_clip_id = None;
-                    tracing::error!(error = %message, "dynamic auto-reframe failed");
-                    self.push_toast(format!("Dynamic auto-reframe failed: {message}"));
+                    tracing::error!(error = %message, clip_id, "dynamic auto-reframe failed");
+                    if self.is_shorts_pack_reframe_target(clip_id) {
+                        // Leave this clip without crop keyframes -- it exports centered, the
+                        // same documented fallback an un-reframed clip already had -- and move
+                        // on to the next pending one rather than aborting the whole pack.
+                        self.advance_shorts_pack_reframe_queue();
+                    } else {
+                        self.push_toast(format!("Dynamic auto-reframe failed: {message}"));
+                    }
                 }
             }
         }
@@ -171,6 +216,7 @@ fn dynamic_reframe_one(
     );
     let Ok(sampler) = avcore::FrameSampler::open(source_path, Duration::from_millis(20)) else {
         let _ = tx.send(DynamicReframeEvent::Failed {
+            clip_id,
             message: "could not open source video for sampling".to_string(),
         });
         return;

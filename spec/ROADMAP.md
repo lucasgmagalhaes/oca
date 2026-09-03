@@ -773,9 +773,41 @@ an item earlier:
   documented: one useful no-watermark Free edition and one R$39.90/month Pro edition focused on
   automation, local AI, batch workflows, premium content, and support. The workspace metadata,
   source notices, and root license are aligned to GPL-3.0-or-later so the commercial model does not
-  contradict the statically linked GPLv3 eSpeak dependency. Still not implemented: identity,
-  checkout, provider webhooks, server-authoritative entitlements, secure local token storage,
-  feature gates, downgrade UI, or subscription telemetry. Read
+  contradict the statically linked GPLv3 eSpeak dependency.
+
+  **MON-01B's own local policy engine (its "define stable feature IDs and one central Free/Pro
+  capability policy" step) now shipped.** `avcore::entitlement` adds `FeatureId` (one identifier
+  per Pro-only capability the doc's own "Oca Pro" feature list names — silence detection,
+  correlated highlight detection, auto chapters, Shorts Pack batch, Whisper transcription,
+  background removal, auto-reframe, motion tracking, text-to-speech, audio ducking, batch
+  loudness consistency, multicam editing, the persistent export queue, collaboration bundles,
+  premium content) and `EntitlementState`, mirroring the doc's own "Subscription lifecycle" table
+  exactly: `Free`/`Trialing`/`Active`/`Grace`/`PastDue`/`Canceled`/`Expired`/`Revoked`/
+  `OfflineExpired`/`Malformed`. `pro_actions_enabled`/`feature_allowed` are pure functions taking
+  `now_unix` explicitly rather than reading the system clock, so a caller controls exactly what
+  "now" means.
+
+  **Deliberately not wired to gate anything yet.** MON-01C (identity/entitlement service) hasn't
+  shipped — there is no real way for a user to become Pro, and no purchase flow to point an
+  upgrade prompt at. Wiring this into a real `ui` call site today would silently take
+  already-working functionality away from every current user with no way to unlock it back — a
+  real regression, not a feature (this exact risk is why the item was scoped this way rather than
+  gating anything on the spot). This is the local policy engine only, ready for a `ui`-side gate
+  once MON-01C exists to feed it an actual state instead of a hardcoded `EntitlementState::Free`.
+  The rest of MON-01B (gating real action call sites at their service boundary, preserving
+  project load/export independently of entitlement) remains open until then, as does the rest of
+  MON-01 (identity, checkout, provider webhooks, server-authoritative entitlements, secure local
+  token storage, downgrade UI, subscription telemetry).
+
+  Verified for real, not just type-checked: `entitlement.rs` depends only on `serde` (no
+  `avbridge`/GStreamer/ONNX), so it was copied unmodified into a throwaway scratch crate and
+  `cargo test`ed there for real: 15/15 passing — every state's own enabled/disabled behavior per
+  the doc's table (including both sides of `Trialing`/`Grace`/`Canceled`'s own time-bound
+  transitions), every `FeatureId` agreeing with `feature_allowed`, and a clock-rollback-adjacent
+  case confirming a deadline is never silently extended by anything inside the pure function
+  itself. `cargo check --workspace --all-targets` and `cargo clippy -p core --lib --no-deps` (via
+  the documented temporary `filters.c` shim, discarded before commit) and `cargo fmt --check` all
+  stayed clean. Read
   [architecture/monetization-and-licensing.md](architecture/monetization-and-licensing.md).
 - `[~]` **ER-01: client error reporting.** Add consent-based, sanitized, bounded remote reporting
   for handled errors and Rust panics, exact release/symbol management, and a separately validated
@@ -1102,17 +1134,72 @@ an item earlier:
   and passed. `cargo check --workspace --all-targets` (the documented temporary `filters.c` shim,
   discarded before commit) and `cargo fmt --check` both stayed clean.
 
-  **Deliberately not done**: `Start`/`End` semantic alignment, the `language` hint's own
-  consumption, the "expose invisible directional controls on demand" editing feature (letting a
-  user insert/reveal these characters directly, as opposed to just being warned about them),
-  mixed-direction golden tests (TEXT-01B step 3's second half), and its original
-  cluster-safe-highlight note (the current `glyph_excluded` filter already only ever includes a
-  whole cluster, never splits one — real cluster-safety for RTL/conjunct scripts specifically
-  still needs TEXT-01C's international fonts to verify against real glyphs, not just bidi levels
-  against a font that can't render them) all remain open. TEXT-01C (international fallback
-  families, gated on FONT-01B actually vendoring those fonts into the repo) and TEXT-01D
-  (performance/caching/optional packs) remain fully open. See `architecture/complex-text-
-  shaping.md`'s own writeup for the full detail.
+  **`Start`/`End` semantic alignment now shipped too**, closing the gap this entry's own
+  "deliberately not done" note originally flagged as a separate follow-up. `TextAlign` gains
+  `Start`/`End`, the CSS-logical-property counterparts of `Left`/`Right`. `avcore::text_layout::
+  resolve_paragraph_direction(text, direction)` resolves `TextDirection::Auto`'s own UAX #9 P2/P3
+  first-strong-character detection via `unicode_bidi::get_base_direction` — already a transitive
+  dependency of `cosmic-text` at the exact same pinned version (0.3.18), now also a direct one, so
+  this added no new dependency tree — or the explicit `Ltr`/`Rtl` override when `direction` isn't
+  `Auto`. `resolve_text_align` maps `Start`/`End` onto the matching physical `Left`/`Right` edge
+  and is the single source of truth both `TextLayoutEngine::shape` (per-line `cosmic-text`
+  alignment) and `overlay_render.rs`'s `text_horizontal_box` wrap/alignment box computation call —
+  `draw_text_segment_onto` resolves once and passes the resolved value to both, so a clip's
+  `Start`/`End` alignment can never resolve to different physical edges between the box and the
+  actual shaping. The properties panel's alignment combo box gained the two new options next to
+  the existing four.
+
+  Verified for real against the actual `unicode-bidi` crate (scratch-crate technique, not just
+  type-checked): 7 new tests covering pure-Latin/pure-Hebrew auto-detection, UAX #9 P3's
+  all-neutral-text-defaults-to-LTR rule, an explicit override winning over the text's own script,
+  first-strong-character resolution deciding a mixed-script paragraph, `Start`/`End` flipping
+  physical edge under both an explicit direction and auto-detected RTL text, and the non-logical
+  variants (`Auto`/`Left`/`Center`/`Right`) passing through `resolve_text_align` unchanged.
+  `cargo check --workspace --all-targets` (the documented temporary `filters.c` shim, discarded
+  before commit) and `cargo fmt --all -- --check` both stayed clean.
+
+  **Deliberately not done**: the `language` hint's own consumption, the "expose invisible
+  directional controls on demand" editing feature (letting a user insert/reveal these characters
+  directly, as opposed to just being warned about them), mixed-direction golden tests (TEXT-01B
+  step 3's second half), and its original cluster-safe-highlight note (the current
+  `glyph_excluded` filter already only ever includes a whole cluster, never splits one — real
+  cluster-safety for RTL/conjunct scripts specifically still needs TEXT-01C's international fonts
+  to verify against real glyphs, not just bidi levels against a font that can't render them) all
+  remain open. TEXT-01C (international fallback families, gated on FONT-01B actually vendoring
+  those fonts into the repo) remains fully open.
+
+  **TEXT-01D slice 1's "shaped/glyph caches" piece now shipped.** `TextLayoutEngine::shape`
+  memoizes through a new small bounded LRU `ShapeCache` (64 entries) keyed by every input that
+  can change its output — text, family, style, size, wrap width, origin, direction, alignment
+  (floats compared by exact bit pattern via `to_bits()`, never derived epsilon-smoothed
+  equality). Memoization is only correct because this engine's locked font catalog never changes
+  at runtime, so identical inputs always produce identical glyphs. Targets the real common
+  workload: `overlay_render.rs`'s `draw_text_segment_onto` re-shapes the same caption every
+  preview frame while the playhead moves within one clip's own steady on-screen duration — text,
+  styling, and position all unchanged frame to frame, so every frame after the first becomes a
+  cache hit instead of a full re-shape. A plain `Vec` with linear scan, not a `HashMap`: the four
+  `crate::timeline` enums making up the cache key don't derive `Hash`, and this crate's own
+  convention is to reuse shared types as-is rather than adding derives elsewhere for one caller's
+  convenience — a linear scan over a capacity this small is far cheaper than a text-shaping pass
+  regardless. `shape_cache_stats()` exposes `(hits, misses)` for tests and a future TEXT-01D
+  slice 2 benchmark.
+
+  **Deliberately not done**: "bounded background shaping" and "generation cancellation" (slice
+  1's other two pieces) — this crate's preview rendering shapes synchronously on the calling
+  thread today, with no existing async shaping pipeline for a cancellation token to hook into;
+  benchmarking, optional CJK/color-emoji packs, and the supported script/language matrix (slices
+  2-4) remain fully open.
+
+  Verified for real against actual `cosmic-text` and the real bundled fonts (scratch-crate
+  technique, same setup TEXT-01A's own verification established): 5 new tests — a repeated
+  identical call registers as a cache hit with matching glyph output to a fresh uncached shape,
+  any differing input (text, origin, or font size) each independently causes a miss, and pushing
+  the cache one entry past its capacity evicts the genuinely least-recently-used entry (confirmed
+  by re-shaping it and observing a fresh miss, not a hit) — 35/35 total passing alongside every
+  pre-existing `text_layout` test. `cargo check --workspace --all-targets` and `cargo clippy
+  --workspace --all-targets` (via the documented temporary `filters.c` shim, discarded before
+  commit) and `cargo fmt --check` all stayed clean. See `architecture/complex-text-shaping.md`'s
+  own writeup for the full detail.
 - `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:
@@ -1376,7 +1463,7 @@ an item earlier:
   updated for the five new fields), `cargo clippy -p core --lib --no-deps` / `-p avbridge
   --all-targets --no-deps`, `cargo fmt --check`, and `clang-format --dry-run --Werror` on the
   touched C files all stayed clean.
-- `[~]` **CF-04: dynamic auto-reframe.** Track a face/selected subject and generate reviewed,
+- `[x]` **CF-04: dynamic auto-reframe.** Track a face/selected subject and generate reviewed,
   smoothed crop/position keyframes for vertical exports and Shorts Pack.
 
   **Slice 1 (trajectory-to-keyframes core + basic `ui` trigger) shipped.** `avcore::dynamic_reframe`
@@ -1440,14 +1527,336 @@ an item earlier:
   stripped `FaceBox`/`CropRect`/`Keyframe` stand-in, avoiding the real `auto_reframe.rs`'s
   `ort`/ONNX dependency this module doesn't otherwise need) and pass. `cargo check --workspace
   --all-targets`/`cargo fmt --check` (via the same documented temporary shim) both stayed clean.
-- `[ ]` **CF-05: OpenTimelineIO interchange.** Round-trip the supported editorial subset and
+
+  **Shorts Pack integration now shipped, closing this entry's last flagged gap.** Building a
+  Shorts Pack (`App::spawn_shorts_pack`, `crates/ui/src/app/shorts_pack.rs`) now runs an
+  auto-reframe pre-pass before queuing any vertical exports: `clips_needing_reframe` (new, pure
+  logic) scans every video-track clip overlapping any highlight-marker window (via
+  `sorted_highlight_positions`, itself new — sorted, deduplicated `MarkerKind::Highlight`
+  positions) and collects the ids of clips that don't already have crop keyframes
+  (`ClipInstance::has_crop_keyframes`, pre-existing), deduplicated across overlapping windows.
+  When that list is non-empty, `spawn_shorts_pack` pushes a single `push_undo_snapshot()` for the
+  whole batch up front (deliberately not `push_undo_snapshot_for_drag`'s pointer-release-gated
+  coalescing — that mechanism is built for continuous UI drags and would be a fragile fit for a
+  background-thread-driven, no-pointer batch), stores the pending clip ids in a new
+  `ShortsPackReframeState { pending_clip_ids, output_dir }` field on `App`, and starts the first
+  job via `spawn_next_shorts_pack_reframe`; the actual export queuing (`queue_shorts_pack_exports`,
+  the pre-existing logic, now a private helper) only runs once every clip in the pre-pass list has
+  a result, success or failure.
+
+  Reuses `DynamicReframeState`'s existing single-in-flight-job guard rather than adding a second
+  background-job mechanism: `App::spawn_dynamic_reframe_for_clip(&mut self, clip_id: u64)` (new,
+  factored out of the existing `spawn_dynamic_reframe_selected_clip` wrapper) can now target any
+  clip id, not just the selected one, and `pump_dynamic_reframe()` branches on
+  `is_shorts_pack_reframe_target(clip_id)` to route a finished job's result through
+  `apply_shorts_pack_reframe_result` (direct clip-id mutation, bypassing the selection-gated
+  `set_selected_clip_crop_keyframes` and its live-preview push — a shorts-pack target is
+  essentially never the currently selected/previewed clip) and `advance_shorts_pack_reframe_queue`
+  (pops the queue, starts the next pending clip via `spawn_next_shorts_pack_reframe`, or falls
+  through to `queue_shorts_pack_exports` once the queue is empty) instead of the ordinary
+  selected-clip path. Fixed a real, previously-latent gap surfaced while wiring queue advancement:
+  `DynamicReframeEvent::Failed` carried no `clip_id`, so a failure couldn't be attributed to a
+  specific clip — added the field and updated its one send site (`dynamic_reframe_one`); a failed
+  reframe still advances the queue (falls back to whatever crop the clip already had) rather than
+  aborting the whole Shorts Pack build.
+
+  **Deliberately not done**: no dedicated review/correction UI for the auto-triggered reframes
+  (same "existing UI is the review step" precedent as slice 1 — results land in the properties
+  panel's already-editable Crop Keyframes sections) and no optional user-provided seed point;
+  both remain open, separate follow-ups, matching the original spec's own harder asks.
+
+  Verified for real: 7 new pure-logic tests for `clips_needing_reframe`/`sorted_highlight_positions`
+  (overlap, exclusion by existing keyframes, exclusion by no overlap, non-video-track exclusion,
+  dedup across one clip spanning two windows, dedup across distinct clips, highlight-only
+  sort/filter) ran in a scratch crate and pass; 3 new `App`-level tests exercise the pre-pass
+  gating (`app_test.rs`). `cargo check --workspace --all-targets` (the documented temporary
+  `filters.c` shim, discarded afterward) and `cargo fmt --all -- --check` both stayed clean, no
+  new warnings beyond the established baseline. Not run against a live GUI session (no display in
+  this sandbox) — the end-to-end queue-advancement behavior on real footage needs a manual pass on
+  a dev machine.
+
+  CF-04 is now considered complete for this phase; remaining harder asks (content-adaptive
+  cadence, optional seed point, a dedicated review/correction UI) are tracked as open follow-ups
+  rather than blocking this item.
+- `[~]` **CF-05: OpenTimelineIO interchange.** Round-trip the supported editorial subset and
   emit an explicit compatibility report for unsupported effects.
+
+  **Slice 1 (the `avcore::interchange` boundary, plus the structural half of slice 2 and an
+  early slice 4) shipped.** `avcore::interchange` adds a schema-neutral intermediate
+  representation — `RationalTime`/`TimeRange`/`InterchangeTimeline`/`InterchangeTrack`/
+  `InterchangeClip`/`InterchangeMarker` — and `sequence_to_interchange(sequence, project)` maps
+  a `Sequence`'s `Timeline` into it: video/audio track order (`Text`/`Shape` overlay tracks
+  omitted — not part of an editorial cut), each clip's speed-adjusted source range, an explicit
+  `InterchangeTrackItem::Gap` wherever there's on-timeline space before/between clips (most
+  interchange formats require contiguous track children, unlike `Track::clips`' own sparse
+  `start_secs`-addressed model), markers as zero-duration point ranges, transition kind, and a
+  resolved `MediaReference` — `External` when `ClipInstance::asset_id` still resolves in the
+  project's media library, `Missing` otherwise (a deleted asset, or a compound clip's
+  `nested_sequence_id`) — the doc's own "missing media produces offline references rather than
+  dropping clips" acceptance criterion.
+
+  **Deliberately not attempted: real OpenTimelineIO JSON serialization.** OTIO's actual wire
+  format (`OTIO_SCHEMA` name/version tags, exact field names for `Timeline`/`Stack`/`Track`/
+  `Clip`/`Gap`/`Transition`/`Marker`) is a real external spec this sandbox has no network path to
+  fetch or verify against — writing a byte-accurate serializer from memory alone would be exactly
+  the kind of guessing `CLAUDE.md`'s own "do not guess APIs, versions, flags, or package names"
+  rule forbids. So this slice's types are Oca's own intermediate representation, not OTIO's;
+  serializing them to/from a real, verified `.otio` schema version — and the reverse import
+  direction — are real, separate follow-up slices once that spec can actually be checked
+  against. `sequence_to_interchange` also uses a fixed microsecond-resolution time rate rather
+  than each clip's own native probed frame rate, a documented placeholder for the same "not yet
+  verified against a real target format" reason.
+
+  **Slice 4's compatibility report shipped early too** (before any real file gets written, since
+  the report only needs to know what *would* survive interchange): `interchange_compatibility_
+  report(sequence)` walks every clip and reports, with track/clip context per the doc's own
+  acceptance criterion, which of a curated list of in-use visual/audio effect fields (crop,
+  mask, flip, color grading, sharpen, chroma key, blur/shake/glitch/pixelize, vignette, 3D LUT,
+  stabilization, deflicker, background removal, voice cleanup, position/scale/rotation/opacity/
+  gain animation, nested sequences) are omitted, a transition present as approximated (kind
+  carried, not yet real in/out-offset semantics), and overlay tracks as omitted outright.
+
+  Verified for real, not just type-checked: since `interchange.rs` depends only on `crate::
+  project`/`crate::timeline` (no `avbridge`/GStreamer/ONNX), it was copied unmodified into a
+  throwaway scratch crate alongside stripped stand-in `Project`/`Sequence`/`MediaAsset`/
+  `Timeline`/`Track`/`ClipInstance`/`Marker` types (same "dynamic_reframe`'s own stripped
+  `FaceBox`/`CropRect`/`Keyframe` stand-in" technique this session has used before) and
+  `cargo test`ed there for real: 17/17 passing, covering track order/kind filtering, source-range
+  mapping, media-reference resolution (both present and missing-asset cases), leading/middle/
+  no-gap insertion, out-of-order-clip sorting, speed/transition carrying, marker mapping, and
+  every compatibility-report category. `cargo check --workspace --all-targets` and `cargo clippy
+  -p core --lib --no-deps` (via the documented temporary `filters.c` shim, discarded before
+  commit) and `cargo fmt --check` all stayed clean.
+
+  **Slice 3 (the import/reverse direction) shipped too, scoped to this module's own intermediate
+  representation.** `interchange_to_timeline(interchange, project, next_id)` reconstructs a
+  `Timeline` from an `InterchangeTimeline` — walking each track's items in order (a `Gap` just
+  advances the reconstruction cursor; a `Clip` gets placed at the cursor's current position),
+  resolving each clip's `MediaReference` back to an asset id by matching `target_url` against the
+  target project's own media library (`resolve_asset_id`, the reverse of
+  `resolve_media_reference`), and rebuilding a `ClipInstance` with only what `InterchangeClip`
+  itself carries (source range, speed, transition kind) — every other field (crop, color grading,
+  masks, every other effect/keyframe animation) at its own untouched default, matching what
+  `interchange_compatibility_report` already says doesn't round-trip. Takes `next_id: &mut u64`
+  so every allocated `Track`/`ClipInstance`/`Marker` id increments it in place, letting a caller
+  keep allocating unique ids afterward without recomputing a high-water mark.
+
+  A clip whose `MediaReference` doesn't resolve against the target project (an asset genuinely
+  offline, or importing into a different project than the one exported) is skipped — never given
+  a placeholder/sentinel asset id — and reported in `InterchangeImportResult::warnings` with
+  track context instead, extending the doc's own "preserve unsupported fields as warnings, never
+  silently approximate them" rule to unresolvable references as well as unsupported fields.
+
+  Verified for real, not just type-checked: 6 new tests (round-tripping `sequence_to_interchange`
+  through `interchange_to_timeline` and back) ran in the same scratch-crate setup slice 1 used,
+  25/25 total passing — no-timing-drift round-trip for a single clip, **no accumulated drift
+  across a 500-clip long sequence with gaps between every clip** (the doc's own "without timing
+  drift over long sequences" acceptance criterion, checked directly rather than assumed), speed/
+  transition carrying, a warning-and-skip for an unresolvable reference, strictly-increasing
+  unique id allocation across tracks/clips advancing the caller's counter, and marker round-trip.
+  `cargo check --workspace --all-targets`, `cargo clippy -p core --lib --no-deps` (via the
+  documented temporary `filters.c` shim, discarded before commit), and `cargo fmt --check` all
+  stayed clean.
+
+  Real OTIO JSON export/import once the schema can be verified, and the doc's own "imported paths
+  are normalized and cannot escape an explicitly selected media root" security requirement (only
+  meaningful once real file import exists) remain open.
 - `[ ]` **CF-06: live multicam monitor.** Show synchronized proxy-backed feeds and materialize
-  angle decisions through the existing ordinary clip-split representation.
-- `[ ]` **CF-07: parameterized motion-graphics templates.** Add a declarative, script-free,
+  angle decisions through the existing ordinary clip-split representation. **Deliberately skipped
+  for now** (user-confirmed): every one of its 4 implementation slices needs a live GStreamer
+  pipeline with real hardware/display to verify frame sync, preview/program distinction, and
+  decode-capacity degradation — this sandbox has neither, and writing that code with only a
+  type-check as verification would carry real risk of shipping subtly wrong pipeline code
+  untested. Revisit on a real dev machine, or once a display becomes available in this
+  environment.
+- `[~]` **CF-07: parameterized motion-graphics templates.** Add a declarative, script-free,
   versioned asset format for reusable channel graphics and aspect-ratio variants.
-- `[ ]` **CF-08: semantic transcript and visual search.** Build a bounded, versioned local index
-  after exact transcript search ships in CF-01.
+
+  **Slice 1 (the versioned JSON format itself) shipped.** `avcore::motion_template` adds
+  `GraphicTemplate` — `schema_version`, `name`, `canvas_width`/`canvas_height`, a
+  `Vec<TemplateParameter>` (named, typed editable slots: `Text`/`Color`, the two the doc's own
+  slice 1/2 split lists first), and a `Vec<TemplateElement>` of allowlisted primitives.
+  Deliberately just `TemplateElement::Text`/`::Shape` for this slice — the exact two overlay
+  kinds `crate::timeline`/`crate::overlay_render`/`crate::shape_render` already render, per
+  `spec/RULES.md`'s reuse-before-building rule; an `Image` primitive (the doc's own slice 2
+  scope) has no existing overlay-clip kind to reuse yet (`TrackKind` has no `Image` variant), so
+  it stays a real, separate follow-up rather than inventing new overlay-rendering infrastructure
+  this slice was never meant to cover. `TemplateElement` is a closed enum (no `#[serde(other)]`,
+  matching `GameplayEventKind`'s own CF-02 precedent) — an unrecognized primitive kind fails to
+  deserialize outright. `GraphicTemplate::validate` covers the rest of the doc's "unknown
+  primitives/parameters are rejected rather than executed or ignored" acceptance criterion:
+  schema version, positive canvas size, unique parameter/element ids, positive font
+  size/shape extent, and every `TextBinding::Parameter`/`ColorBinding::Parameter` reference
+  resolving to a declared parameter of the matching kind. Every field is a plain literal or a
+  named parameter reference — no scripts or executable expressions anywhere in the format, per
+  the doc's own explicit constraint for this whole feature. `GraphicTemplate::parse_and_validate`
+  is the one recommended untrusted-input entry point, mirroring `EventSidecar::parse_and_validate`'s
+  own established shape.
+
+  `instantiate(template, values)` makes "editable parameters" real, not just declared: resolves a
+  validated template's `Text`/`Color` bindings against caller-supplied `ParameterValue`s into
+  placement-ready `InstantiatedElement`s, failing on a missing or wrong-kind value. Deliberately
+  timeline/track-agnostic — building an actual `TextClip`/`ShapeClip` from an `InstantiatedElement`
+  and placing it on a track (assigning its own id/`start_secs`/`duration_secs`) is left to a
+  `ui`-side follow-up slice, the same "core stays UI-agnostic" boundary every other feature in
+  this crate keeps.
+
+  Templates serialize via plain `serde_json`, not this crate's usual gzip-MessagePack `.ocproj`
+  framing — deliberate, since a template is meant to be an inspectable, shareable asset file
+  (the doc's own slice 3 "package templates as data" goal), not just internal persisted state.
+
+  Verified for real, not just type-checked: since `motion_template.rs` depends only on
+  `crate::timeline`'s three plain enums (`ShapeKind`/`TextFontFamily`/`TextFontStyle`, no
+  `avbridge`/GStreamer/ONNX), it was copied unmodified into a throwaway scratch crate — this time
+  with the *real* `serde`/`serde_json` dependencies rather than stand-ins, since the format's own
+  JSON round-trip and closed-enum rejection are exactly what needed proving — and `cargo test`ed
+  there for real: 17/17 passing, covering every validation rule, a real JSON round-trip through
+  `serde_json::to_string`/`parse_and_validate`, an unrecognized primitive kind actually failing
+  JSON deserialization (not just asserted to), and `instantiate`'s fixed/parameter-bound
+  resolution, missing-value, wrong-kind-value, and validate-before-touching-values behavior.
+  `cargo check --workspace --all-targets` and `cargo clippy -p core --lib --no-deps` (via the
+  documented temporary `filters.c` shim, discarded before commit) and `cargo fmt --check` all
+  stayed clean.
+
+  **Slice 2 (two of its five pieces) shipped too.** `safe_area_violations` is a non-blocking
+  design-time check — never a `GraphicTemplate::validate` failure, since a template legitimately
+  wanting a full-bleed background or edge-anchored element is a real, valid design choice this
+  shouldn't forbid (same "warn, don't block" precedent `scan_bidi_controls` established for a
+  different feature) — flagging any `Text`/`Shape` element whose position/bounding box intrudes
+  into the new `GraphicTemplate::safe_area_margin` fraction of the canvas edge. A text element
+  has no baked width in this format (no shaping happens until a `ui`-side apply step), so this
+  only checks its anchor point clears the margin, not the full rendered extent — a real,
+  documented simplification. A shape's bounding box is conservatively approximated as a square of
+  side `max(width, height)`, which the true rotated extent can only shrink toward, never exceed —
+  cheap and rotation-safe at the cost of occasionally over-flagging. `#[serde(default)]` so a
+  template authored under slice 1 loads with the exact same never-flagged behavior it always had.
+
+  `TemplateFamily` is CF-07's own "aspect-ratio variants," modeled as sibling `GraphicTemplate`s
+  rather than one template auto-adapting its own layout across canvas shapes — a lower third
+  designed for 16:9 and one designed for 9:16 are, in practice, different layouts (different
+  element placement, not just a rescale). Reuses `crate::export::ExportAspectRatio` (already this
+  crate's own aspect-ratio vocabulary) to tag each variant rather than inventing a second
+  aspect-ratio type, per `spec/RULES.md`'s reuse-before-building rule.
+  `TemplateFamily::validate` checks every variant's own validity plus the family's own
+  constraints (at least one variant, no aspect ratio repeated); `variant_for` looks one up by
+  aspect ratio, matching a sequence's own `SequenceExportSettings::aspect_ratio`.
+
+  **Deliberately not done**: `Image` primitive and timing (animation-in/out), the rest of slice
+  2's own five-item list; packaging templates with their own validated media assets and the
+  `ui`-side apply/preview flow (slice 3); and migration tests for a second schema version, which
+  has no reason to exist yet (slice 4). All real, separate follow-ups.
+
+  Verified for real: 10 new tests (5 for `safe_area_violations` — no-op at zero margin, a text
+  anchor and a shape bounding box each flagged/accepted correctly; 5 for `TemplateFamily` — empty
+  rejected, duplicate aspect ratio rejected, a variant's own validation error propagated with
+  context, distinct-aspect-ratio variants accepted, and `variant_for` lookup) ran in the same
+  scratch-crate setup, this time also carrying a real stand-in `ExportAspectRatio` — 27/27 total
+  passing. `cargo check --workspace --all-targets`, `cargo clippy -p core --lib --no-deps` (via
+  the documented temporary `filters.c` shim, discarded before commit), and `cargo fmt --check`
+  all stayed clean.
+
+  **`ui`-side apply flow (part of slice 3) shipped too.** `App::apply_graphic_template`
+  instantiates a validated `GraphicTemplate` and places every resolved element onto the timeline
+  at the current playhead: every `Text` element on the first-or-created text track, every `Shape`
+  element on the first-or-created shape track — the same "first track of that kind" placement
+  `App::add_text_clip`/`App::add_shape_clip` already use for a manually inserted overlay.
+  Multiple template elements can share one track without conflict, since nothing in this app's
+  timeline model requires same-kind clips to avoid overlapping in time — only each element's own
+  template-defined position keeps them visually apart. One `push_undo_snapshot` for the whole
+  batch (Shorts Pack's own "one snapshot per batch, not per clip" precedent), never pushed at all
+  if instantiation fails or the template has no elements.
+
+  The toolbar's new "🖼 Load graphic template" button (`App::load_graphic_template_from_file`) is
+  this slice's real, reachable trigger. A parameterless template applies immediately; one that
+  surfaces `instantiate`'s own actionable "no value supplied for parameter ..." toast rather than
+  silently applying garbage.
+
+  Verified: 6 new `App`-level tests in `app_test.rs` (a text element placed at the playhead with
+  its template-defined position, a shape element on its own track, text and shape elements
+  landing on separate tracks, a parameter-bound value correctly resolved, a missing parameter
+  value toasting with no timeline change, and exactly one undo snapshot pushed for a
+  multi-element batch — confirmed by undoing once and checking the timeline reverts to empty
+  *and* no further undo remains) — type-checked cleanly under `cargo check -p ui --tests`, same
+  "can't link this sandbox's `ui` test binary" caveat every other `ui`-side slice this session
+  has hit. `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets`
+  (via the documented temporary `filters.c` shim, discarded before commit) both stayed clean —
+  clippy's own `dead_code` lint confirmed the new `App` methods are actually reachable (via the
+  new toolbar button and the new tests), not orphaned. `cargo fmt --check` also stayed clean.
+
+  **The parameter-fill modal (closing the gap the previous slice's own doc comment flagged) now
+  ships too.** Loading a template that declares one or more `TemplateParameter`s stages it in
+  `App::pending_graphic_template_apply` — `text_values`/`color_values` pre-seeded with one entry
+  per declared parameter (empty string / opaque white) — instead of applying it right away.
+  `App::show_apply_graphic_template_modal` (`app/modals.rs`, same modal shape/lifecycle
+  `show_apply_layer_template_modal` already established) shows one row per parameter: a plain
+  text field for `Text`, `egui::color_edit_button_srgba` (the same widget `shape_clip.rs`'s own
+  color row already uses) for `Color`. Confirming (`App::confirm_apply_graphic_template`) builds
+  the `ParameterValue` map from the staged values and hands it to `App::apply_graphic_template`;
+  cancelling or Escape (`App::cancel_apply_graphic_template`) discards the pending state without
+  applying anything.
+
+  Verified: 5 new `App`-level tests (a parameterless template still applies immediately; a
+  parameterized one stages instead of applying, pre-seeding `text_values` for every declared
+  parameter; an invalid-JSON file toasts with nothing staged; confirming applies with the filled
+  values; cancelling discards without touching the timeline) — type-checked cleanly under `cargo
+  check -p ui --tests`, same caveat as above. `cargo check --workspace --all-targets` and `cargo
+  clippy --workspace --all-targets` (via the documented temporary `filters.c` shim, discarded
+  before commit) both stayed clean, confirming the new modal/methods are actually reachable.
+  `cargo fmt --check` also stayed clean. CF-07 slice 3 is now considered complete; `Image`
+  primitive, timing, and migration tests (slice 2's remainder and slice 4) remain open.
+- `[~]` **CF-08: semantic transcript and visual search.** Build a bounded, versioned local index
+  after exact transcript search ships in CF-01. Slice 1 (exact transcript search) shipped as part
+  of CF-01 — `avcore::transcript_search`.
+
+  **Slice 2 (the versioned local index) shipped, plus the storage/scoring half of slice 4.**
+  `avcore::semantic_index::SemanticIndex` — one `MediaIndexEntry` per indexed asset, keyed by a
+  `MediaFingerprint` (a cheap `(file size, mtime, duration)` proxy for "this file's content is
+  unchanged," not a true content hash — hashing multi-gigabyte video files on every staleness
+  check would be far too slow) and a caller-defined `model_version` string. `needs_reindex`/
+  `upsert_entry`/`remove_entry` give the doc's own "index invalidation is deterministic when
+  media or model versions change" acceptance criterion as pure functions; `enforce_chunk_budget`
+  evicts whole oldest entries (never a partial one, so a search never sees an asset with an
+  inconsistent subset of its own spans) until the total indexed-chunk count is back under a
+  caller-supplied cap — the doc's own "bounded in CPU, memory, and disk usage" criterion.
+  `SemanticIndex::search` ranks stored `IndexedChunk`s by cosine similarity to a query embedding,
+  excluding any entry whose `model_version` doesn't match the query's own (a different model's
+  embedding space isn't comparable) — every result carries its own `start_secs`/`end_secs`, the
+  doc's own "search results seek to the matched moment, not only the containing asset" criterion.
+  `combine_search_results` merges same-moment hits from *different* sources (`Transcript`/
+  `Visual`/`Metadata`) into one `MatchSource::Combined` result with a boosted score — the doc's
+  own "...or a combined score" criterion, adapting `highlight_detection::
+  combine_highlight_candidates`'s own CF-02 "evidence from more than one signal deserves a boost"
+  idea from binary flags to a continuous score domain (mean of the pair plus a fixed `0.1` bonus,
+  clamped to `1.0` — a simple, documented heuristic, not a statistical claim).
+
+  `persistence.rs` gained a new `OCSI` magic/framing (`to_ocsi_bytes`/`from_ocsi_bytes`, same
+  compressed-MessagePack shape `OCTR` already established) — embeddings are opaque float vectors,
+  not human-inspectable content, so this reuses the compact binary `.ocproj`-style framing rather
+  than `motion_template`'s deliberate plain-JSON choice for a shareable asset.
+
+  **Deliberately not attempted: computing any real embedding.** A real semantic-search embedding
+  model (text and/or visual) needs network access to fetch model weights and `libonnxruntime` —
+  this sandbox has neither (the same `ORT_SKIP_DOWNLOAD=1`/no-network gap `CLAUDE.md` documents
+  for `background_removal`/`auto_reframe`). `IndexedChunk::embedding` is an opaque `Vec<f32>` this
+  module never produces itself. Real embedding computation, and the incremental representative-
+  frame/transcript-chunk sampling pass that would call it (slice 3), remain genuine, separate
+  follow-ups once a model can actually be verified against — same category of environment-limited
+  stopping point as CF-06 (live multicam monitor, needs real hardware/display) this session
+  already hit and documented.
+
+  Verified for real, not just type-checked: since `semantic_index.rs` depends only on `std` plus
+  `serde`, it was copied unmodified into a throwaway scratch crate alongside the real
+  `persistence.rs` (also unmodified, with a minimal stand-in `Project` type satisfying its own
+  `save_project_to_file`/`load_project_from_file` helpers' bounds) and real `flate2`/`rmp-serde`
+  dependencies, then `cargo test`ed there for real: 20/20 passing — fingerprint/model-version
+  invalidation in every direction, entry replace/remove, chunk-budget FIFO eviction (and its
+  no-op-within-budget case), cosine-similarity ranking/top-k/model-version exclusion/moment-level
+  seeking, `combine_search_results`' merge/no-merge cases (different source, same source left
+  unmerged, far-apart spans left unmerged, different media left unmerged, score clamped to `1.0`),
+  and a real gzip/MessagePack round-trip through the actual `OCSI` framing (plus confirming `OCSI`
+  bytes are correctly rejected by the `OCTR` decoder via its own magic-byte check). `cargo check
+  --workspace --all-targets` and `cargo clippy -p core --lib --no-deps` (via the documented
+  temporary `filters.c` shim, discarded before commit) and `cargo fmt --check` all stayed clean.
 - `[ ]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and
   privacy blur, reusing the existing matte/model/tracker infrastructure.
 - `[ ]` **CF-10: direct publishing.** Add a secure YouTube upload flow; keep OAuth credentials

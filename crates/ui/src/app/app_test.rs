@@ -14,9 +14,14 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use super::*;
-use avcore::timeline::{AudioRole, ClipInstance, Track, TrackKind};
+use avcore::motion_template::{
+    ColorBinding, GraphicTemplate, ParameterValue, TemplateElement, TemplateParameter,
+    TemplateParameterKind, TemplateShapeElement, TemplateTextElement, TextBinding,
+};
+use avcore::timeline::{AudioRole, ClipInstance, ShapeKind, Track, TrackKind};
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Recency, Sequence, Timeline};
 use eframe::egui;
+use std::collections::HashMap;
 
 fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
     Project {
@@ -265,6 +270,8 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
             dynamic_reframe_rx,
             dynamic_reframing_clip_id: None,
         },
+        shorts_pack_reframe_state: None,
+        pending_graphic_template_apply: None,
         motion_tracking_state: MotionTrackingState {
             motion_tracking_tx,
             motion_tracking_rx,
@@ -6492,6 +6499,59 @@ fn spawn_shorts_pack_skips_a_window_landing_entirely_in_a_gap() {
 }
 
 #[test]
+fn spawn_shorts_pack_defers_export_and_starts_reframing_an_un_reframed_clip() {
+    // CF-04's Shorts Pack integration slice: with a reframe model configured, an un-reframed
+    // clip a highlight window touches gets queued for dynamic reframe *before* any export --
+    // nothing should be queued yet, and the reframe queue/in-flight state should reflect it.
+    let dir = shorts_pack_scratch_dir("reframe_pending");
+    let mut app = test_app(vec![shorts_pack_test_project()], Vec::new());
+    app.prefs.reframe_model_path = "model.onnx".to_string();
+
+    app.spawn_shorts_pack(dir);
+
+    assert!(
+        app.export_jobs.is_empty(),
+        "nothing should be queued until the reframe pre-pass finishes"
+    );
+    assert!(app.shorts_pack_reframe_state.is_some());
+    assert_eq!(app.dynamic_reframe_state.dynamic_reframing_clip_id, Some(1));
+}
+
+#[test]
+fn spawn_shorts_pack_skips_the_reframe_pre_pass_when_the_clip_already_has_crop_keyframes() {
+    let dir = shorts_pack_scratch_dir("reframe_skip");
+    let mut project = shorts_pack_test_project();
+    project.timeline_mut().tracks[0].clips[0].crop_x_keyframes = vec![avcore::Keyframe {
+        time_fraction: 0.0,
+        value: 0.2,
+    }];
+    let mut app = test_app(vec![project], Vec::new());
+    app.prefs.reframe_model_path = "model.onnx".to_string();
+
+    app.spawn_shorts_pack(dir);
+
+    assert!(
+        app.shorts_pack_reframe_state.is_none(),
+        "the only clip already has crop keyframes -- nothing to reframe"
+    );
+    assert_eq!(app.export_jobs.len(), 2);
+}
+
+#[test]
+fn spawn_shorts_pack_skips_the_reframe_pre_pass_when_no_model_is_configured() {
+    // Matches the feature's pre-existing behavior: no model means every un-reframed clip just
+    // exports centered, exactly as before this slice.
+    let dir = shorts_pack_scratch_dir("reframe_no_model");
+    let mut app = test_app(vec![shorts_pack_test_project()], Vec::new());
+    assert!(app.prefs.reframe_model_path.trim().is_empty());
+
+    app.spawn_shorts_pack(dir);
+
+    assert!(app.shorts_pack_reframe_state.is_none());
+    assert_eq!(app.export_jobs.len(), 2);
+}
+
+#[test]
 fn start_watching_folder_is_a_no_op_with_no_path_set() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
 
@@ -6944,4 +7004,259 @@ fn crash_review_actions_are_a_noop_without_a_pending_crash() {
         app.prefs.last_reviewed_crash_unix, 5,
         "with nothing pending, none of the three actions should touch the reviewed marker"
     );
+}
+
+fn text_template_element(id: &str, text: TextBinding) -> TemplateElement {
+    TemplateElement::Text(TemplateTextElement {
+        id: id.to_string(),
+        text,
+        color_rgba: ColorBinding::Fixed([255, 255, 255, 255]),
+        font_family: Default::default(),
+        font_style: Default::default(),
+        font_size: 32.0,
+        pos_x: 0.2,
+        pos_y: 0.8,
+    })
+}
+
+fn shape_template_element(id: &str) -> TemplateElement {
+    TemplateElement::Shape(TemplateShapeElement {
+        id: id.to_string(),
+        shape_kind: ShapeKind::rectangle(),
+        color_rgba: ColorBinding::Fixed([0, 0, 0, 255]),
+        center_x: 0.5,
+        center_y: 0.5,
+        width: 0.3,
+        height: 0.1,
+        rotation_deg: 0.0,
+        stroke_thickness_px: 0.0,
+    })
+}
+
+fn minimal_graphic_template(elements: Vec<TemplateElement>) -> GraphicTemplate {
+    GraphicTemplate {
+        schema_version: avcore::motion_template::TEMPLATE_SCHEMA_VERSION,
+        name: "Test template".to_string(),
+        canvas_width: 1920,
+        canvas_height: 1080,
+        safe_area_margin: 0.0,
+        parameters: vec![TemplateParameter {
+            id: "player_name".to_string(),
+            label: "Player name".to_string(),
+            kind: TemplateParameterKind::Text,
+        }],
+        elements,
+    }
+}
+
+#[test]
+fn apply_graphic_template_places_a_text_element_at_the_playhead() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.active_project_mut().timeline_mut().playhead_secs = 5.0;
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Fixed("PacoPaçoca".to_string()),
+    )]);
+
+    app.apply_graphic_template(&template, &HashMap::new());
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].kind, TrackKind::Text);
+    assert_eq!(tracks[0].text_clips.len(), 1);
+    let clip = &tracks[0].text_clips[0];
+    assert_eq!(clip.start_secs, 5.0);
+    assert_eq!(clip.text, "PacoPaçoca");
+    assert_eq!(clip.pos_x, 0.2);
+    assert_eq!(clip.pos_y, 0.8);
+}
+
+#[test]
+fn apply_graphic_template_places_a_shape_element_on_its_own_track() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![shape_template_element("s1")]);
+
+    app.apply_graphic_template(&template, &HashMap::new());
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].kind, TrackKind::Shape);
+    assert_eq!(tracks[0].shape_clips.len(), 1);
+}
+
+#[test]
+fn apply_graphic_template_places_text_and_shape_elements_on_separate_tracks() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![
+        text_template_element("e1", TextBinding::Fixed("Hi".to_string())),
+        shape_template_element("s1"),
+    ]);
+
+    app.apply_graphic_template(&template, &HashMap::new());
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 2);
+    assert_eq!(tracks[0].kind, TrackKind::Text);
+    assert_eq!(tracks[1].kind, TrackKind::Shape);
+}
+
+#[test]
+fn apply_graphic_template_resolves_a_parameter_bound_text_value() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+    )]);
+    let mut values = HashMap::new();
+    values.insert(
+        "player_name".to_string(),
+        ParameterValue::Text("Zé".to_string()),
+    );
+
+    app.apply_graphic_template(&template, &values);
+
+    let clip = &app.active_project().timeline().tracks[0].text_clips[0];
+    assert_eq!(clip.text, "Zé");
+}
+
+#[test]
+fn apply_graphic_template_toasts_and_makes_no_change_on_a_missing_parameter_value() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+    )]);
+
+    app.apply_graphic_template(&template, &HashMap::new());
+
+    assert!(app.active_project().timeline().tracks.is_empty());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn apply_graphic_template_pushes_exactly_one_undo_snapshot_for_the_whole_batch() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.undo_stack.clear();
+    let template = minimal_graphic_template(vec![
+        text_template_element("e1", TextBinding::Fixed("Hi".to_string())),
+        shape_template_element("s1"),
+    ]);
+
+    app.apply_graphic_template(&template, &HashMap::new());
+    assert!(app.undo_stack.can_undo());
+
+    let sequence = app.active_project().sequences[app.active_project().active_sequence].clone();
+    let restored = app
+        .undo_stack
+        .undo(sequence)
+        .expect("one snapshot was pushed");
+    assert!(
+        restored.timeline.tracks.is_empty(),
+        "undoing the apply should restore the pre-apply (empty) timeline"
+    );
+    assert!(
+        !app.undo_stack.can_undo(),
+        "exactly one snapshot should have been pushed for the whole batch"
+    );
+}
+
+#[test]
+fn load_graphic_template_from_file_applies_a_parameterless_template_immediately() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Fixed("Hi".to_string()),
+    )]);
+    // No parameters at all this time -- overrides the fixture's default one.
+    let mut template = template;
+    template.parameters = vec![];
+    let json = serde_json::to_string(&template).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("template.json");
+    std::fs::write(&path, json).unwrap();
+
+    app.load_graphic_template_from_file(path);
+
+    assert!(app.pending_graphic_template_apply.is_none());
+    assert_eq!(
+        app.active_project().timeline().tracks[0].text_clips.len(),
+        1
+    );
+}
+
+#[test]
+fn load_graphic_template_from_file_stages_a_parameterized_template_instead_of_applying() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+    )]);
+    let json = serde_json::to_string(&template).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("template.json");
+    std::fs::write(&path, json).unwrap();
+
+    app.load_graphic_template_from_file(path);
+
+    assert!(app.active_project().timeline().tracks.is_empty());
+    let pending = app
+        .pending_graphic_template_apply
+        .as_ref()
+        .expect("a parameterized template should be staged, not applied");
+    assert!(pending.text_values.contains_key("player_name"));
+}
+
+#[test]
+fn load_graphic_template_from_file_toasts_on_invalid_json() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("template.json");
+    std::fs::write(&path, "not json").unwrap();
+
+    app.load_graphic_template_from_file(path);
+
+    assert!(app.pending_graphic_template_apply.is_none());
+    assert!(app.active_project().timeline().tracks.is_empty());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn confirm_apply_graphic_template_applies_the_staged_template_with_filled_values() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+    )]);
+    let mut text_values = HashMap::new();
+    text_values.insert("player_name".to_string(), "Zé".to_string());
+    app.pending_graphic_template_apply = Some(PendingGraphicTemplateApply {
+        template,
+        text_values,
+        color_values: HashMap::new(),
+    });
+
+    app.confirm_apply_graphic_template();
+
+    assert!(app.pending_graphic_template_apply.is_none());
+    let clip = &app.active_project().timeline().tracks[0].text_clips[0];
+    assert_eq!(clip.text, "Zé");
+}
+
+#[test]
+fn cancel_apply_graphic_template_discards_the_staged_template_without_applying() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+    )]);
+    app.pending_graphic_template_apply = Some(PendingGraphicTemplateApply {
+        template,
+        text_values: HashMap::new(),
+        color_values: HashMap::new(),
+    });
+
+    app.cancel_apply_graphic_template();
+
+    assert!(app.pending_graphic_template_apply.is_none());
+    assert!(app.active_project().timeline().tracks.is_empty());
 }

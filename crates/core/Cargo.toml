@@ -45,6 +45,10 @@ whisper-rs = "0.16"
 # skrifa/swash/fontdb/unicode-bidi, no C toolchain) via the acceptance spike this module's doc
 # comment records.
 cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash"] }
+# UAX #9 P2/P3 first-strong-character paragraph-direction detection for `TextAlign::Start`/`::End`
+# (TEXT-01B) — already a transitive dependency of `cosmic-text` itself (same version this pins),
+# so this adds no new dependency tree, just a direct name for `get_base_direction`.
+unicode-bidi = "0.3"
 # Encodes the shared Rust text rasterizer's full-canvas RGBA buffers as temporary PNG overlays
 # for the native export post-pass. PNG is the only enabled codec; preview consumes the same
 # buffers directly without encoding them.

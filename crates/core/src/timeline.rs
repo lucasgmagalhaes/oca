@@ -159,6 +159,16 @@ pub enum TextDirection {
 /// depending on this field (a real, deliberate trade-off, not an oversight — the alternative of
 /// always aligning within a fixed canvas-wide box was rejected because it would make `pos_x`
 /// silently stop mattering the moment alignment left `Auto`/`Left`).
+///
+/// `Start`/`End` are the doc's originally-scoped-down "semantic alignment" (CSS logical
+/// properties, not physical ones): the leading/trailing edge of the *resolved* paragraph
+/// direction — [`crate::text_layout::resolve_paragraph_direction`], the same UAX #9 P2/P3
+/// first-strong-character detection [`TextDirection::Auto`] uses, applied to [`TextDirection::
+/// Ltr`]/[`TextDirection::Rtl`] as the pinned direction when not `Auto`. `Start` anchors `pos_x`
+/// at the left edge for a resolved-LTR paragraph and the right edge for resolved-RTL (mirroring
+/// `Right`'s edge, not `Left`'s pixel position); `End` is the opposite. Deliberately resolved once
+/// per render, not persisted as a physical edge, so a clip's alignment stays semantically correct
+/// even if `direction` or the text's own leading script changes later.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum TextAlign {
     #[default]
@@ -166,6 +176,8 @@ pub enum TextAlign {
     Left,
     Center,
     Right,
+    Start,
+    End,
 }
 
 /// One placed text overlay on a [`Track`] whose [`TrackKind`] is [`TrackKind::Text`].

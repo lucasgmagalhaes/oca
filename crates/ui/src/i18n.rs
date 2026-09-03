@@ -329,6 +329,11 @@ text_catalog! {
     ApplyTemplateLayerLabel: pt_br = "Camada", en = "Layer";
     ApplyTemplatePickAsset: pt_br = "Escolha um arquivo…", en = "Pick a file…";
     ApplyTemplateConfirm: pt_br = "Criar camadas", en = "Create layers";
+    GraphicTemplateApplyInvalid: pt_br = "Não foi possível aplicar o template gráfico", en = "Could not apply the graphic template";
+    LoadGraphicTemplate: pt_br = "🖼 Carregar template gráfico", en = "🖼 Load graphic template";
+    GraphicTemplateReadFailed: pt_br = "Não foi possível ler o arquivo de template", en = "Could not read the template file";
+    GraphicTemplateApplyTitle: pt_br = "Preencher template", en = "Fill in template";
+    GraphicTemplateApplyConfirm: pt_br = "Aplicar", en = "Apply";
     TrackKindVideo: pt_br = "Vídeo", en = "Video";
     TrackKindAudio: pt_br = "Áudio", en = "Audio";
     TrackKindText: pt_br = "Texto", en = "Text";
@@ -564,6 +569,7 @@ text_catalog! {
     ShortsPack: pt_br = "🎞 Pacote de shorts", en = "🎞 Shorts Pack";
     ShortsPackNoHighlights: pt_br = "Nenhum destaque detectado ainda -- use \"Detectar destaques\" primeiro.", en = "No highlights detected yet -- use \"Detect Highlights\" first.";
     ShortsPackQueued: pt_br = "{queued} shorts enfileirados ({skipped} ignorados).", en = "{queued} shorts queued ({skipped} skipped).";
+    ShortsPackReframing: pt_br = "Reenquadrando {n} clipe(s) antes de montar o pack...", en = "Reframing {n} clip(s) before building the pack...";
     ExportAspectRatioLabel: pt_br = "Proporção:", en = "Aspect ratio:";
     ExportLoudnessLabel: pt_br = "Loudness:", en = "Loudness:";
     ExportLoudnessCustom: pt_br = "{value} LUFS (personalizado)", en = "{value} LUFS (custom)";
@@ -618,6 +624,8 @@ text_catalog! {
     TextAlignLeft: pt_br = "Esquerda", en = "Left";
     TextAlignCenter: pt_br = "Centro", en = "Center";
     TextAlignRight: pt_br = "Direita", en = "Right";
+    TextAlignStart: pt_br = "Início", en = "Start";
+    TextAlignEnd: pt_br = "Fim", en = "End";
     TextBidiControlWarning: pt_br = "⚠ Este texto contém caracteres invisíveis de controle de direção que podem alterar como ele é exibido.", en = "⚠ This text contains invisible directional-control characters that can change how it renders.";
     PropTextColor: pt_br = "Cor do texto", en = "Text color";
     PropTextBackgroundEnabled: pt_br = "Fundo", en = "Background";

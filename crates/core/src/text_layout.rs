@@ -31,6 +31,18 @@
 //! `PlatformFallback` fallback-name list can never resolve to anything outside that locked set
 //! for the same reason the acceptance spike relied on: it only ever matches families already
 //! present in the `fontdb::Database` it was built with.
+//!
+//! [`TextLayoutEngine::shape`] also carries TEXT-01D slice 1's own "shaped/glyph caches" piece —
+//! [`ShapeCache`], a small bounded LRU keyed by every input that can change `shape`'s output
+//! (memoization is only correct because this engine's locked font catalog never changes at
+//! runtime, so the same inputs always produce the same glyphs). The common real workload this
+//! targets: `overlay_render.rs`'s `draw_text_segment_onto` re-shapes the same caption every
+//! preview frame while the playhead moves within one clip's steady on-screen duration — the text,
+//! styling, and position are all unchanged frame to frame, so every frame after the first is a
+//! cache hit instead of a full re-shape. "Bounded background shaping" and "generation
+//! cancellation" (TEXT-01D slice 1's other two pieces) are a real, separate follow-up — this
+//! crate's preview rendering shapes synchronously on the calling thread today, with no existing
+//! async shaping pipeline for a cancellation token to hook into.
 
 use std::borrow::Cow;
 use std::ops::Range;
@@ -53,6 +65,52 @@ use crate::timeline::{TextAlign, TextDirection, TextFontFamily, TextFontStyle};
 /// comment. Both are 3 bytes in UTF-8.
 const LEFT_TO_RIGHT_MARK: char = '\u{200E}';
 const RIGHT_TO_LEFT_MARK: char = '\u{200F}';
+
+/// The paragraph base direction [`resolve_paragraph_direction`] resolved, for
+/// [`TextAlign::Start`]/[`TextAlign::End`]'s CSS-logical-property semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResolvedDirection {
+    Ltr,
+    Rtl,
+}
+
+/// Resolves [`TextDirection::Auto`]'s own UAX #9 P2/P3 first-strong-character detection (via
+/// `unicode_bidi::get_base_direction`, the same algorithm [`TextLayoutEngine::shape`]'s
+/// bidi-mark-prefix trick pins `cosmic-text`'s internal detection to) — or the explicit override
+/// when `direction` isn't `Auto`. `unicode_bidi::Direction::Mixed` (the crate's own name for "no
+/// strong character found at all," despite the name — see its doc comment) resolves to `Ltr`,
+/// matching UAX #9 P3's own default-to-LTR rule for an all-neutral paragraph.
+pub fn resolve_paragraph_direction(text: &str, direction: TextDirection) -> ResolvedDirection {
+    match direction {
+        TextDirection::Ltr => ResolvedDirection::Ltr,
+        TextDirection::Rtl => ResolvedDirection::Rtl,
+        TextDirection::Auto => match unicode_bidi::get_base_direction(text) {
+            unicode_bidi::Direction::Rtl => ResolvedDirection::Rtl,
+            unicode_bidi::Direction::Ltr | unicode_bidi::Direction::Mixed => ResolvedDirection::Ltr,
+        },
+    }
+}
+
+/// Resolves [`TextAlign::Start`]/[`TextAlign::End`] into the physical [`TextAlign::Left`]/
+/// [`TextAlign::Right`] edge their CSS-logical-property semantics mean for `text` under
+/// `direction` — see [`TextAlign`]'s own doc comment. `Auto`/`Left`/`Center`/`Right` pass through
+/// unchanged. The single source of truth both [`TextLayoutEngine::shape`] (per-line `cosmic-text`
+/// alignment) and `crate::overlay_render`'s wrap/alignment box computation call, so the two can
+/// never resolve a clip's `Start`/`End` to different physical edges.
+pub fn resolve_text_align(text: &str, direction: TextDirection, align: TextAlign) -> TextAlign {
+    match align {
+        TextAlign::Start | TextAlign::End => {
+            let is_rtl = resolve_paragraph_direction(text, direction) == ResolvedDirection::Rtl;
+            let is_start = align == TextAlign::Start;
+            if is_start != is_rtl {
+                TextAlign::Left
+            } else {
+                TextAlign::Right
+            }
+        }
+        other => other,
+    }
+}
 
 /// Explicit UAX #9 directional-formatting characters this module scans for in
 /// [`scan_bidi_controls`] — invisible codepoints a user's typed or pasted text can contain that
@@ -208,12 +266,125 @@ impl ShapedText {
     }
 }
 
+/// Every input that can change [`TextLayoutEngine::shape`]'s output, used as a [`ShapeCache`]
+/// key. Floats are compared by exact bit pattern (`to_bits`) rather than derived `PartialEq`
+/// smoothing over NaN/epsilon concerns — this only ever needs to recognize "the exact same call
+/// happened again," never a numerically-close-but-different one, so bitwise identity is the
+/// correct (and cheapest) comparison.
+#[derive(Debug, Clone, PartialEq)]
+struct ShapeCacheKey {
+    text: String,
+    family: TextFontFamily,
+    style: TextFontStyle,
+    font_size_bits: u32,
+    max_width_bits: Option<u32>,
+    origin_x_bits: u32,
+    origin_y_bits: u32,
+    direction: TextDirection,
+    align: TextAlign,
+}
+
+impl ShapeCacheKey {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        text: &str,
+        family: TextFontFamily,
+        style: TextFontStyle,
+        font_size_px: f32,
+        max_width_px: Option<f32>,
+        origin: (f32, f32),
+        direction: TextDirection,
+        align: TextAlign,
+    ) -> Self {
+        Self {
+            text: text.to_string(),
+            family,
+            style,
+            font_size_bits: font_size_px.to_bits(),
+            max_width_bits: max_width_px.map(f32::to_bits),
+            origin_x_bits: origin.0.to_bits(),
+            origin_y_bits: origin.1.to_bits(),
+            direction,
+            align,
+        }
+    }
+}
+
+/// A small bounded least-recently-used cache from [`ShapeCacheKey`] to a previously computed
+/// [`ShapedText`] — TEXT-01D slice 1's own "shaped/glyph caches" piece, see this module's own
+/// doc comment for the workload it targets. A plain `Vec` with linear scan rather than a
+/// `HashMap`: `ShapeCacheKey`'s own fields (`TextFontFamily`/`TextFontStyle`/`TextDirection`/
+/// `TextAlign`) don't derive `Hash` in `crate::timeline` and this crate's own convention is to
+/// reuse shared types as-is rather than adding derives elsewhere for one caller's convenience
+/// (the same reasoning `avcore::motion_template::TemplateFamily::validate` documents for
+/// `ExportAspectRatio`) — a linear scan over a capacity this small (tens of entries) is far
+/// cheaper than a full text-shaping pass regardless, so there's no real performance case for a
+/// hash map here either.
+struct ShapeCache {
+    entries: Vec<(ShapeCacheKey, ShapedText)>,
+    capacity: usize,
+    hits: u64,
+    misses: u64,
+}
+
+impl ShapeCache {
+    fn new(capacity: usize) -> Self {
+        Self {
+            entries: Vec::new(),
+            capacity,
+            hits: 0,
+            misses: 0,
+        }
+    }
+
+    /// Returns a clone of the cached value for `key`, moving it to the most-recently-used end on
+    /// a hit. `None` on a miss — the caller is expected to compute the real value and
+    /// [`Self::insert`] it.
+    fn get(&mut self, key: &ShapeCacheKey) -> Option<ShapedText> {
+        match self.entries.iter().position(|(k, _)| k == key) {
+            Some(pos) => {
+                self.hits += 1;
+                let entry = self.entries.remove(pos);
+                let value = entry.1.clone();
+                self.entries.push(entry);
+                Some(value)
+            }
+            None => {
+                self.misses += 1;
+                None
+            }
+        }
+    }
+
+    /// Inserts/overwrites `key`'s entry as most-recently-used, evicting the least-recently-used
+    /// entry (the front of [`Self::entries`]) while over [`Self::capacity`].
+    fn insert(&mut self, key: ShapeCacheKey, value: ShapedText) {
+        if let Some(pos) = self.entries.iter().position(|(k, _)| *k == key) {
+            self.entries.remove(pos);
+        }
+        self.entries.push((key, value));
+        while self.entries.len() > self.capacity {
+            self.entries.remove(0);
+        }
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+/// Default [`ShapeCache`] capacity — generous for a typical timeline's simultaneously visible
+/// text clips/highlight-word variants, small enough that the linear scan stays cheap.
+const SHAPE_CACHE_CAPACITY: usize = 64;
+
 /// Bundled-only text shaper. Owns one `cosmic_text::FontSystem` built from
 /// [`font_catalog::locked_face_bytes`] — construction parses every locked face's metadata up
 /// front (small: 9 files today), but glyph outlines are still only rasterized on demand by
 /// `cosmic-text` itself.
 pub struct TextLayoutEngine {
     font_system: FontSystem,
+    shape_cache: ShapeCache,
 }
 
 impl TextLayoutEngine {
@@ -226,7 +397,17 @@ impl TextLayoutEngine {
             db.load_font_data(bytes.to_vec());
         }
         let font_system = FontSystem::new_with_locale_and_db("en-US".to_string(), db);
-        Self { font_system }
+        Self {
+            font_system,
+            shape_cache: ShapeCache::new(SHAPE_CACHE_CAPACITY),
+        }
+    }
+
+    /// `(hits, misses)` since this engine was created — exposed for tests and future benchmarks
+    /// (TEXT-01D slice 2's own "benchmark caption editing, word highlights, many text clips, and
+    /// mixed scripts") to confirm the cache is actually doing something, not just present.
+    pub fn shape_cache_stats(&self) -> (u64, u64) {
+        (self.shape_cache.hits, self.shape_cache.misses)
     }
 
     /// Number of faces actually loaded into the underlying `fontdb::Database` — exposed for
@@ -274,9 +455,56 @@ impl TextLayoutEngine {
     /// left edge at `origin.0`; `Center`/`Right` expect the caller to have already centered or
     /// right-anchored the box around its own intended position). `TextAlign::Auto` passes `None`
     /// through unchanged, keeping `cosmic-text`'s own direction-aware default (left for LTR,
-    /// right for RTL) exactly as before this parameter existed.
+    /// right for RTL) exactly as before this parameter existed. `Start`/`End` resolve to `Left`/
+    /// `Right` via [`resolve_text_align`] before reaching `cosmic-text` — a caller computing its
+    /// own wrap/alignment box (e.g. `crate::overlay_render`) must call the same function to pick
+    /// the matching physical edge, since this method never reports back which edge it resolved to.
+    ///
+    /// Memoized through this engine's own [`ShapeCache`] — an identical call (same text, family,
+    /// style, size, wrap width, origin, direction, and alignment) returns a cloned cached result
+    /// instead of re-shaping. See this module's own doc comment for the real workload this
+    /// targets.
     #[allow(clippy::too_many_arguments)]
     pub fn shape(
+        &mut self,
+        text: &str,
+        family: TextFontFamily,
+        style: TextFontStyle,
+        font_size_px: f32,
+        max_width_px: Option<f32>,
+        origin: (f32, f32),
+        direction: TextDirection,
+        align: TextAlign,
+    ) -> ShapedText {
+        let key = ShapeCacheKey::new(
+            text,
+            family,
+            style,
+            font_size_px,
+            max_width_px,
+            origin,
+            direction,
+            align,
+        );
+        if let Some(cached) = self.shape_cache.get(&key) {
+            return cached;
+        }
+        let shaped = self.shape_uncached(
+            text,
+            family,
+            style,
+            font_size_px,
+            max_width_px,
+            origin,
+            direction,
+            align,
+        );
+        self.shape_cache.insert(key, shaped.clone());
+        shaped
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn shape_uncached(
         &mut self,
         text: &str,
         family: TextFontFamily,
@@ -297,11 +525,14 @@ impl TextLayoutEngine {
             Some(mark) => Cow::Owned(format!("{mark}{text}")),
             None => Cow::Borrowed(text),
         };
-        let cosmic_align = match align {
+        let cosmic_align = match resolve_text_align(text, direction, align) {
             TextAlign::Auto => None,
             TextAlign::Left => Some(Align::Left),
             TextAlign::Center => Some(Align::Center),
             TextAlign::Right => Some(Align::Right),
+            TextAlign::Start | TextAlign::End => {
+                unreachable!("resolve_text_align never returns Start/End")
+            }
         };
 
         let metrics = Metrics::new(font_size_px, font_size_px * 1.25);

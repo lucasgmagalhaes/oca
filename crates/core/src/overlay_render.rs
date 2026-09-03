@@ -235,6 +235,9 @@ fn draw_rounded_background(
 /// - `Right`: the box's right edge sits at `anchor_x`, extending back to the canvas's left edge.
 ///
 /// [`TextClip::pos_x`]: crate::timeline::TextClip::pos_x
+/// `align` must already be resolved (never `Start`/`End`) — see [`text_layout::
+/// resolve_text_align`], which the one caller ([`draw_text_segment_onto`]) applies before this
+/// box computation and before shaping, so both use the same physical edge.
 fn text_horizontal_box(
     align: crate::timeline::TextAlign,
     anchor_x: f32,
@@ -248,6 +251,9 @@ fn text_horizontal_box(
             (anchor_x - half, half * 2.0)
         }
         TextAlign::Right => (0.0, anchor_x.max(1.0)),
+        TextAlign::Start | TextAlign::End => {
+            unreachable!("caller resolves Start/End before calling text_horizontal_box")
+        }
     }
 }
 
@@ -259,7 +265,9 @@ fn draw_text_segment_onto(
 ) {
     let anchor_x = segment.pos_x * canvas_width as f32;
     let y = segment.pos_y * canvas_height as f32;
-    let (x, max_width) = text_horizontal_box(segment.text_align, anchor_x, canvas_width as f32);
+    let resolved_align =
+        text_layout::resolve_text_align(&segment.text, segment.direction, segment.text_align);
+    let (x, max_width) = text_horizontal_box(resolved_align, anchor_x, canvas_width as f32);
 
     text_layout::with_shared_engine(|engine, swash_cache| {
         let shaped = engine.shape(
@@ -270,7 +278,7 @@ fn draw_text_segment_onto(
             Some(max_width),
             (x, y),
             segment.direction,
-            segment.text_align,
+            resolved_align,
         );
         if let Some(ink_bbox) =
             shaped_ink_bbox(&shaped, segment.glyph_byte_range, engine, swash_cache)
