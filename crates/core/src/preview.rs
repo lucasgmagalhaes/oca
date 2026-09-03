@@ -29,7 +29,8 @@ use gstreamer_video as gst_video;
 
 use gst::prelude::*;
 
-use crate::timeline::{ClipInstance, ColorFilter, ShapeClip, TextClip, TransitionType};
+use crate::blend_mode::blend_channel;
+use crate::timeline::{BlendMode, ClipInstance, ColorFilter, ShapeClip, TextClip, TransitionType};
 
 /// Hardware video decoder factories whose rank has been raised above the usual software
 /// decoders. GStreamer's decoder ranks are process-global, so this happens at most once; a
@@ -1083,6 +1084,7 @@ fn build_composite_branch(
         Option<gst::Element>,
         Option<ShakeMarginHandle>,
         Option<gst_app::AppSrc>,
+        Option<gst_app::AppSink>,
     ),
     PreviewError,
 > {
@@ -1317,6 +1319,58 @@ fn build_composite_branch(
         (None, chain_tail.clone())
     };
 
+    // A blend-mode overlay bypasses `compositor` entirely (it only knows Porter-Duff
+    // `source`/`over`/`add` — verified via `gst-inspect-1.0 compositor` — not the 40
+    // Photoshop-style modes `BlendMode` models) and instead lands in its own dedicated
+    // `appsink`, forced to the canvas's own size (`ClipInstance::blend_mode`'s doc comment
+    // already documents that a blend-mode layer ignores position/PIP) — [`Preview::current_frame`]
+    // pulls this alongside the main `compositor` output and composites it in on the CPU via
+    // [`crate::blend_mode::blend_channel`], the same formulas export's `blend=all_mode=` uses.
+    if branch.is_overlay && branch.clip.is_some_and(|c| c.has_blend_mode()) {
+        let (width, height) = canvas;
+        let scale = gst::ElementFactory::make("videoscale")
+            .build()
+            .map_err(PreviewError::CreateElement)?;
+        let caps = gst::ElementFactory::make("capsfilter")
+            .property(
+                "caps",
+                gst::Caps::builder("video/x-raw")
+                    .field("format", "RGBA")
+                    .field("width", width as i32)
+                    .field("height", height as i32)
+                    .build(),
+            )
+            .build()
+            .map_err(PreviewError::CreateElement)?;
+        let appsink = gst_app::AppSink::builder()
+            .caps(
+                &gst::Caps::builder("video/x-raw")
+                    .field("format", "RGBA")
+                    .build(),
+            )
+            .sync(true)
+            .max_buffers(1)
+            .drop(true)
+            .build();
+        pipeline
+            .add_many([&scale, &caps, appsink.upcast_ref()])
+            .map_err(PreviewError::Compositing)?;
+        gst::Element::link_many([&scale, &caps, appsink.upcast_ref()])
+            .map_err(PreviewError::Compositing)?;
+
+        branch_output
+            .link(&scale)
+            .map_err(PreviewError::Compositing)?;
+
+        return Ok((
+            decodebin,
+            matte_decodebin,
+            shake_handle,
+            mask_appsrc,
+            Some(appsink),
+        ));
+    }
+
     let sink_pad = compositor
         .request_pad_simple("sink_%u")
         .ok_or(PreviewError::RequestPad)?;
@@ -1364,7 +1418,7 @@ fn build_composite_branch(
         .expect("branch_output is always a videoconvert, which always has a src pad");
     chain_out.link(&sink_pad).map_err(PreviewError::PadLink)?;
 
-    Ok((decodebin, matte_decodebin, shake_handle, mask_appsrc))
+    Ok((decodebin, matte_decodebin, shake_handle, mask_appsrc, None))
 }
 
 fn push_rgba_overlay_buffer(appsrc: &gst_app::AppSrc, rgba: Vec<u8>) -> Result<(), PreviewError> {
@@ -1669,6 +1723,16 @@ pub struct Preview {
     /// Live-updatable shake margins, one per clip with a non-neutral `shake_intensity` when its
     /// branch was built — see [`ShakeMarginHandle`]/[`Self::set_live_shake`].
     shake_handles: std::collections::HashMap<u64, ShakeMarginHandle>,
+    /// `(appsink, mode, zorder)` for every overlay branch with a non-[`BlendMode::Normal`]
+    /// `ClipInstance::blend_mode` — [`build_composite_branch`] diverts these away from the
+    /// shared `compositor` into their own dedicated `appsink` (`compositor` has no blend-mode
+    /// concept of its own), and [`Self::current_frame`] composites their frames onto the
+    /// `compositor` output itself, in ascending `zorder`, via [`crate::blend_mode::blend_channel`].
+    /// Always empty for a [`Self::open`]-opened single-clip pipeline. Documented scope limit
+    /// (same as export's own, see `ClipInstance::blend_mode`'s doc comment): these layers always
+    /// end up on top of the whole `compositor` stack, not correctly interleaved with Normal-mode
+    /// overlay layers above them in track order, and ignore position/PIP.
+    blend_branches: Vec<(gst_app::AppSink, BlendMode, u32)>,
 }
 
 impl Preview {
@@ -1808,6 +1872,7 @@ impl Preview {
             audio_level,
             clip_resolutions,
             shake_handles,
+            blend_branches: Vec::new(),
         })
     }
 
@@ -2000,7 +2065,7 @@ impl Preview {
         let mut shake_handles = std::collections::HashMap::new();
         let mut mask_shape_branches = Vec::new();
 
-        let (background_decodebin, background_matte, background_shake, background_mask) =
+        let (background_decodebin, background_matte, background_shake, background_mask, _) =
             build_composite_branch(
                 &pipeline,
                 &compositor,
@@ -2047,21 +2112,24 @@ impl Preview {
             // than silently dropping a matte decodebin if that gate ever changes.
             matte_branches.push((0, matte, background_clip.map_or(0.0, |c| c.source_in_secs)));
         }
+        let mut blend_branches: Vec<(gst_app::AppSink, BlendMode, u32)> = Vec::new();
         for (i, ((path, clip), info)) in overlays.iter().zip(&overlay_infos).enumerate() {
             let resolution = info.resolution;
-            let (decodebin, matte, shake_handle, mask_appsrc) = build_composite_branch(
-                &pipeline,
-                &compositor,
-                canvas,
-                CompositeBranch {
-                    path,
-                    clip: Some(clip),
-                    resolution,
-                    hardware_decode,
-                    is_overlay: true,
-                    zorder: (i + 1) as u32,
-                },
-            )?;
+            let zorder = (i + 1) as u32;
+            let (decodebin, matte, shake_handle, mask_appsrc, blend_appsink) =
+                build_composite_branch(
+                    &pipeline,
+                    &compositor,
+                    canvas,
+                    CompositeBranch {
+                        path,
+                        clip: Some(clip),
+                        resolution,
+                        hardware_decode,
+                        is_overlay: true,
+                        zorder,
+                    },
+                )?;
             if let Some(resolution) = resolution {
                 clip_resolutions.insert(clip.id, resolution);
             }
@@ -2076,6 +2144,9 @@ impl Preview {
                     width,
                     height,
                 });
+            }
+            if let Some(appsink) = blend_appsink {
+                blend_branches.push((appsink, clip.blend_mode, zorder));
             }
             if info.has_audio {
                 attach_audio_mix_branch(
@@ -2156,6 +2227,8 @@ impl Preview {
         // chain by this point — no cheap retry-with-fakesink available here, so a missing/broken
         // audio device fails this whole `open_composited` call, same as any other setup failure
         // in this function (a probe failing, a missing background video, etc.).
+        blend_branches.sort_by_key(|&(_, _, zorder)| zorder);
+
         let pipeline = pipeline.upcast::<gst::Element>();
         pipeline
             .set_state(gst::State::Paused)
@@ -2173,6 +2246,7 @@ impl Preview {
             audio_level,
             clip_resolutions,
             shake_handles,
+            blend_branches,
         })
     }
 
@@ -2655,10 +2729,57 @@ impl Preview {
         let frame = gst_video::VideoFrameRef::from_buffer_ref_readable(buffer, &info).ok()?;
         let plane = frame.plane_data(0).ok()?;
 
+        let width = info.width();
+        let height = info.height();
+        let mut rgba = plane.to_vec();
+
+        // Composites every blend-mode branch's own frame on top, in ascending zorder -- see
+        // `Self::blend_branches`' doc comment for the documented scope limit (always on top of
+        // the whole stack, ignores position). A branch with no frame ready yet, or whose decoded
+        // size doesn't match this frame's canvas (still settling right after a seek/open),
+        // contributes nothing this call rather than corrupting or panicking -- same "degrade
+        // rather than abort" posture the rest of this module uses.
+        for (appsink, mode, _zorder) in &self.blend_branches {
+            let Some(layer_sample) = appsink
+                .try_pull_preroll(timeout)
+                .or_else(|| appsink.try_pull_sample(timeout))
+            else {
+                continue;
+            };
+            let Some(layer_buffer) = layer_sample.buffer() else {
+                continue;
+            };
+            let Some(layer_caps) = layer_sample.caps() else {
+                continue;
+            };
+            let Ok(layer_info) = gst_video::VideoInfo::from_caps(layer_caps) else {
+                continue;
+            };
+            if layer_info.width() != width || layer_info.height() != height {
+                continue;
+            }
+            let Ok(layer_frame) =
+                gst_video::VideoFrameRef::from_buffer_ref_readable(layer_buffer, &layer_info)
+            else {
+                continue;
+            };
+            let Ok(layer_plane) = layer_frame.plane_data(0) else {
+                continue;
+            };
+            for (base_px, layer_px) in rgba.chunks_exact_mut(4).zip(layer_plane.chunks_exact(4)) {
+                if layer_px[3] == 0 {
+                    continue;
+                }
+                for channel in 0..3 {
+                    base_px[channel] = blend_channel(*mode, layer_px[channel], base_px[channel]);
+                }
+            }
+        }
+
         Some(VideoFrame {
-            width: info.width(),
-            height: info.height(),
-            rgba: plane.to_vec(),
+            width,
+            height,
+            rgba,
         })
     }
 }

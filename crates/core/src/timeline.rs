@@ -1136,10 +1136,11 @@ pub struct ClipInstance {
     /// repositioning) is not honored for that layer at the same time, since correctly combining
     /// arbitrary positioning with alpha-aware blend-mode math needs a materially more complex
     /// filter chain than either alone; that combination is a separate, not-yet-built follow-up.
-    /// Not yet wired into export or live preview — this commit is the data model only; see
-    /// `spec/architecture/editor-ui-visual-redesign.md`'s Inspector section for the planned
-    /// wiring (export via a `blend=all_mode=...` avfilter stage, preview via CPU-side blending
-    /// of a separate appsink branch). `#[serde(default)]` so older saved projects load with
+    /// Wired into both export (`render.rs` feeds [`BlendMode::ffmpeg_name`] into a
+    /// `blend=all_mode=...` avfilter stage, `avbridge`'s `timeline_export_multi.c`) and live
+    /// preview (`preview.rs`'s `Preview::current_frame` composites a dedicated `appsink` branch
+    /// onto the `compositor` output via [`crate::blend_mode::blend_channel`], the same formulas
+    /// export's own `blend` filter uses). `#[serde(default)]` so older saved projects load with
     /// `Normal`.
     #[serde(default)]
     pub blend_mode: BlendMode,
