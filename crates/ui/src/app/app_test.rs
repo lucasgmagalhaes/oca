@@ -271,6 +271,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
             dynamic_reframing_clip_id: None,
         },
         shorts_pack_reframe_state: None,
+        pending_graphic_template_apply: None,
         motion_tracking_state: MotionTrackingState {
             motion_tracking_tx,
             motion_tracking_rx,
@@ -7157,4 +7158,105 @@ fn apply_graphic_template_pushes_exactly_one_undo_snapshot_for_the_whole_batch()
         !app.undo_stack.can_undo(),
         "exactly one snapshot should have been pushed for the whole batch"
     );
+}
+
+#[test]
+fn load_graphic_template_from_file_applies_a_parameterless_template_immediately() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Fixed("Hi".to_string()),
+    )]);
+    // No parameters at all this time -- overrides the fixture's default one.
+    let mut template = template;
+    template.parameters = vec![];
+    let json = serde_json::to_string(&template).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("template.json");
+    std::fs::write(&path, json).unwrap();
+
+    app.load_graphic_template_from_file(path);
+
+    assert!(app.pending_graphic_template_apply.is_none());
+    assert_eq!(
+        app.active_project().timeline().tracks[0].text_clips.len(),
+        1
+    );
+}
+
+#[test]
+fn load_graphic_template_from_file_stages_a_parameterized_template_instead_of_applying() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+    )]);
+    let json = serde_json::to_string(&template).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("template.json");
+    std::fs::write(&path, json).unwrap();
+
+    app.load_graphic_template_from_file(path);
+
+    assert!(app.active_project().timeline().tracks.is_empty());
+    let pending = app
+        .pending_graphic_template_apply
+        .as_ref()
+        .expect("a parameterized template should be staged, not applied");
+    assert!(pending.text_values.contains_key("player_name"));
+}
+
+#[test]
+fn load_graphic_template_from_file_toasts_on_invalid_json() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("template.json");
+    std::fs::write(&path, "not json").unwrap();
+
+    app.load_graphic_template_from_file(path);
+
+    assert!(app.pending_graphic_template_apply.is_none());
+    assert!(app.active_project().timeline().tracks.is_empty());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn confirm_apply_graphic_template_applies_the_staged_template_with_filled_values() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+    )]);
+    let mut text_values = HashMap::new();
+    text_values.insert("player_name".to_string(), "Zé".to_string());
+    app.pending_graphic_template_apply = Some(PendingGraphicTemplateApply {
+        template,
+        text_values,
+        color_values: HashMap::new(),
+    });
+
+    app.confirm_apply_graphic_template();
+
+    assert!(app.pending_graphic_template_apply.is_none());
+    let clip = &app.active_project().timeline().tracks[0].text_clips[0];
+    assert_eq!(clip.text, "Zé");
+}
+
+#[test]
+fn cancel_apply_graphic_template_discards_the_staged_template_without_applying() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let template = minimal_graphic_template(vec![text_template_element(
+        "e1",
+        TextBinding::Parameter("player_name".to_string()),
+    )]);
+    app.pending_graphic_template_apply = Some(PendingGraphicTemplateApply {
+        template,
+        text_values: HashMap::new(),
+        color_values: HashMap::new(),
+    });
+
+    app.cancel_apply_graphic_template();
+
+    assert!(app.pending_graphic_template_apply.is_none());
+    assert!(app.active_project().timeline().tracks.is_empty());
 }

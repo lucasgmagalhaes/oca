@@ -1562,6 +1562,80 @@ impl App {
         }
     }
 
+    /// Shows the parameter fill-in modal when [`App::pending_graphic_template_apply`] is `Some`
+    /// (CF-07 slice 3) — one row per declared [`avcore::motion_template::TemplateParameter`], a
+    /// plain text field for `Text` and a color picker for `Color`. Confirming calls
+    /// [`App::confirm_apply_graphic_template`]; cancelling or Escape calls [`App::
+    /// cancel_apply_graphic_template`].
+    pub(super) fn show_apply_graphic_template_modal(&mut self, ctx: &egui::Context) {
+        let Some(pending) = self.pending_graphic_template_apply.as_ref() else {
+            return;
+        };
+        let locale = self.locale;
+        let template_name = pending.template.name.clone();
+        let parameters = pending.template.parameters.clone();
+        let modal = egui::Modal::new(egui::Id::new("apply_graphic_template_modal"));
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(340.0);
+            components::modal_title(
+                ui,
+                &format!(
+                    "{}: {}",
+                    Text::GraphicTemplateApplyTitle.tr(locale),
+                    template_name
+                ),
+            );
+            ui.add_space(10.0);
+            let pending = self.pending_graphic_template_apply.as_mut().unwrap();
+            for parameter in &parameters {
+                ui.label(&parameter.label);
+                match parameter.kind {
+                    avcore::motion_template::TemplateParameterKind::Text => {
+                        let value = pending.text_values.entry(parameter.id.clone()).or_default();
+                        ui.text_edit_singleline(value);
+                    }
+                    avcore::motion_template::TemplateParameterKind::Color => {
+                        let value = pending
+                            .color_values
+                            .entry(parameter.id.clone())
+                            .or_insert([255, 255, 255, 255]);
+                        let mut color = egui::Color32::from_rgba_premultiplied(
+                            value[0], value[1], value[2], value[3],
+                        );
+                        if ui.color_edit_button_srgba(&mut color).changed() {
+                            *value = [color.r(), color.g(), color.b(), color.a()];
+                        }
+                    }
+                }
+                ui.add_space(6.0);
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .button(Text::GraphicTemplateApplyConfirm.tr(locale))
+                    .clicked()
+                {
+                    confirmed = true;
+                }
+                if ui.button(Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if response.should_close() || cancelled {
+            self.cancel_apply_graphic_template();
+            return;
+        }
+        if confirmed {
+            self.confirm_apply_graphic_template();
+        }
+    }
+
     /// Shows the create/edit modal for `editing_smart_bin` (P4 item 22, "Smart bins") — name,
     /// kind filter (Any/Video/Audio), file-name-contains text, and a has-audio tri-state, plus
     /// Save/Cancel and, for an existing bin (`id != 0`), Delete. Committed via

@@ -21,28 +21,29 @@
 //! templates) — same "Template" word, unrelated data model.
 //!
 //! The toolbar's "🖼 Load graphic template" button (`App::load_graphic_template_from_file`) is
-//! this slice's own real trigger, deliberately scoped to parameterless templates for now: it
-//! applies with no supplied parameter values, so a template with any `Parameter`-bound field
-//! surfaces `instantiate`'s own actionable "no value supplied for parameter ..." toast rather
-//! than silently applying garbage. A real parameter-fill form (a dynamic modal, one row per
-//! declared [`avcore::motion_template::TemplateParameter`]) is a genuine, separate follow-up —
-//! this button is the honest, currently-reachable slice of that flow, not a stand-in for it.
+//! this slice's own real trigger. A parameterless template applies immediately. A template that
+//! declares one or more `TemplateParameter`s is staged in `App::pending_graphic_template_apply`
+//! instead, and `App::show_apply_graphic_template_modal` (`app/modals.rs`) shows one input row
+//! per declared parameter (a text field for `Text`, a color picker for `Color`) — confirming
+//! calls `App::confirm_apply_graphic_template`, which builds the `ParameterValue` map and hands
+//! it to `App::apply_graphic_template`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use avcore::motion_template::{self, GraphicTemplate, InstantiatedElement, ParameterValue};
+use avcore::motion_template::{
+    self, GraphicTemplate, InstantiatedElement, ParameterValue, TemplateParameterKind,
+};
 use avcore::timeline::{ShapeClip, TextClip, TrackKind};
 
 use super::timeline_ops::{next_clip_id, resolve_or_create_track};
-use super::App;
+use super::{App, PendingGraphicTemplateApply};
 
 impl App {
-    /// Reads `path`, parses and validates it as a [`GraphicTemplate`], and applies it with no
-    /// supplied parameter values — see this module's own doc comment for why that's the honest
-    /// scope of this button today. Toasts on a read failure, a parse/validation failure
-    /// ([`GraphicTemplate::parse_and_validate`]), or an instantiation failure (surfaced by
-    /// [`App::apply_graphic_template`] itself).
+    /// Reads `path`, parses and validates it as a [`GraphicTemplate`]. A parameterless template
+    /// applies immediately (see [`App::apply_graphic_template`]); one with parameters is staged
+    /// in [`App::pending_graphic_template_apply`] for the fill-in modal instead. Toasts on a
+    /// read failure or a parse/validation failure ([`GraphicTemplate::parse_and_validate`]).
     pub fn load_graphic_template_from_file(&mut self, path: PathBuf) {
         let locale = self.locale;
         let json = match std::fs::read_to_string(&path) {
@@ -65,7 +66,65 @@ impl App {
                 return;
             }
         };
-        self.apply_graphic_template(&template, &HashMap::new());
+
+        if template.parameters.is_empty() {
+            self.apply_graphic_template(&template, &HashMap::new());
+            return;
+        }
+
+        let mut text_values = HashMap::new();
+        let mut color_values = HashMap::new();
+        for parameter in &template.parameters {
+            match parameter.kind {
+                TemplateParameterKind::Text => {
+                    text_values.insert(parameter.id.clone(), String::new());
+                }
+                TemplateParameterKind::Color => {
+                    color_values.insert(parameter.id.clone(), [255, 255, 255, 255]);
+                }
+            }
+        }
+        self.pending_graphic_template_apply = Some(PendingGraphicTemplateApply {
+            template,
+            text_values,
+            color_values,
+        });
+    }
+
+    /// Applies [`App::pending_graphic_template_apply`] — what the fill-in modal's confirm button
+    /// does. Builds a `ParameterValue` per declared parameter from the staged `text_values`/
+    /// `color_values` maps and hands it to [`App::apply_graphic_template`]. A no-op if nothing is
+    /// pending (the modal shouldn't be able to call this otherwise, but this re-checks rather
+    /// than trust that).
+    pub fn confirm_apply_graphic_template(&mut self) {
+        let Some(pending) = self.pending_graphic_template_apply.take() else {
+            return;
+        };
+        let mut values = HashMap::new();
+        for parameter in &pending.template.parameters {
+            let value = match parameter.kind {
+                TemplateParameterKind::Text => pending
+                    .text_values
+                    .get(&parameter.id)
+                    .cloned()
+                    .map(ParameterValue::Text),
+                TemplateParameterKind::Color => pending
+                    .color_values
+                    .get(&parameter.id)
+                    .copied()
+                    .map(ParameterValue::Color),
+            };
+            if let Some(value) = value {
+                values.insert(parameter.id.clone(), value);
+            }
+        }
+        self.apply_graphic_template(&pending.template, &values);
+    }
+
+    /// Discards [`App::pending_graphic_template_apply`] without applying anything — what the
+    /// fill-in modal's cancel button (or Escape) does.
+    pub fn cancel_apply_graphic_template(&mut self) {
+        self.pending_graphic_template_apply = None;
     }
 
     /// Instantiates `template` against `values` and places every resolved element onto the

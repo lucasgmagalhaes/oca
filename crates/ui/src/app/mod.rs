@@ -881,6 +881,11 @@ pub struct App {
     /// time before it queues the actual exports. See [`ShortsPackReframeState`]'s own doc
     /// comment.
     pub(crate) shorts_pack_reframe_state: Option<ShortsPackReframeState>,
+    /// A loaded graphic template awaiting its parameter values — see
+    /// [`PendingGraphicTemplateApply`]'s own doc comment. `None` when no "🖼 Load graphic
+    /// template" flow is in progress, including the common case of a parameterless template,
+    /// which never sets this at all.
+    pub(crate) pending_graphic_template_apply: Option<PendingGraphicTemplateApply>,
     /// Motion-tracking background-job channel/clip-tracking state — same pattern.
     pub(crate) motion_tracking_state: MotionTrackingState,
     /// Scene-cut-detection background-job channel/clip-tracking state — same pattern.
@@ -1294,6 +1299,20 @@ pub(crate) struct ShortsPackReframeState {
     pub(crate) output_dir: std::path::PathBuf,
 }
 
+/// A [`avcore::motion_template::GraphicTemplate`] loaded via [`App::load_graphic_template_from_
+/// file`] that declares at least one [`avcore::motion_template::TemplateParameter`] — staged
+/// here for [`App::show_apply_graphic_template_modal`] instead of applying immediately (a
+/// parameterless template still applies right away, no modal involved). `text_values`/
+/// `color_values` are pre-seeded with one entry per declared parameter of the matching kind (an
+/// empty string / opaque white) so the modal always has something bound to edit; confirming
+/// builds a `HashMap<String, ParameterValue>` from these two maps for [`App::
+/// apply_graphic_template`].
+pub(crate) struct PendingGraphicTemplateApply {
+    pub(crate) template: avcore::motion_template::GraphicTemplate,
+    pub(crate) text_values: std::collections::HashMap<String, String>,
+    pub(crate) color_values: std::collections::HashMap<String, [u8; 4]>,
+}
+
 /// Motion-tracking background-job state — same pattern as [`AutoReframeState`]. Distinct from
 /// `App`'s `motion_track_*`/`picking_motion_track_region` fields, which are the region-picker
 /// UI's own session state, not this one-shot background job's channel/clip-tracking state.
@@ -1551,6 +1570,7 @@ impl App {
                 dynamic_reframing_clip_id: None,
             },
             shorts_pack_reframe_state: None,
+            pending_graphic_template_apply: None,
             motion_tracking_state: MotionTrackingState {
                 motion_tracking_tx,
                 motion_tracking_rx,
@@ -2396,6 +2416,7 @@ impl eframe::App for App {
         self.show_save_layer_template_modal(ui.ctx());
         self.show_layer_templates_menu(ui.ctx());
         self.show_apply_layer_template_modal(ui.ctx());
+        self.show_apply_graphic_template_modal(ui.ctx());
         self.show_tts_modal(ui.ctx());
         self.show_youtube_download_modal(ui.ctx());
         self.show_timeline_index_panel(ui.ctx());
