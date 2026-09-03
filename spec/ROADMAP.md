@@ -1080,16 +1080,39 @@ an item earlier:
   documented temporary `filters.c` shim, discarded before commit) and `cargo fmt --check` both
   stayed clean.
 
+  **Directional-control visibility/warnings (the first half of TEXT-01B step 3) now shipped
+  too.** `avcore::text_layout::scan_bidi_controls` flags two shapes the architecture doc calls out
+  for a non-blocking warning, never a strip (legitimate bidi content must round-trip exactly): a
+  well-formed LRO/RLO override anywhere in the text (forces every character between it and its
+  close — or the end of the paragraph, if never closed — to render in one direction regardless of
+  script, visually misleading by design even when correctly paired), and an unmatched explicit
+  directional control (LRE/RLE/LRO/RLO/LRI/RLI/FSI never closed by end of string, or a stray
+  PDF/PDI with nothing open to match). Matching uses a single combined open-control stack rather
+  than full UAX #9 isolate-run resolution, which this only needs to *flag*, not apply
+  (`TextLayoutEngine::shape`'s `cosmic-text`-backed `unicode-bidi` already does that) — `PDF`/`PDI`
+  only pop when the stack top is the matching kind, mirroring UAX #9 rule X7/X6a's own "if there
+  is no matching code, do nothing" so a stray close never incorrectly closes an unrelated open
+  control underneath it. The text-clip properties panel shows a non-blocking `theme::WARNING`
+  label under the text field when the current text trips either flag — same treatment
+  `DeleteSequenceCompoundClipWarning` already established.
+
+  Verified for real, not just type-checked: all 8 tests — including the "a stray PDF must not
+  incorrectly close an outer isolate" edge case — ran in a bare standalone scratch crate (this
+  function has zero dependencies, not even `cosmic-text`, so no font assets were needed either)
+  and passed. `cargo check --workspace --all-targets` (the documented temporary `filters.c` shim,
+  discarded before commit) and `cargo fmt --check` both stayed clean.
+
   **Deliberately not done**: `Start`/`End` semantic alignment, the `language` hint's own
-  consumption, TEXT-01B's own remaining steps (directional-control visibility/warnings,
-  mixed-direction golden tests), and its original cluster-safe-highlight note (the current
-  `glyph_excluded` filter already only ever includes a whole cluster, never splits one — real
-  cluster-safety for RTL/conjunct scripts specifically still needs TEXT-01C's international fonts
-  to verify against real glyphs, not just bidi levels against a font that can't render them) all
-  remain open. TEXT-01C (international fallback families, gated on FONT-01B actually vendoring
-  those fonts into the repo) and TEXT-01D (performance/caching/
-  optional packs) remain fully open. See `architecture/complex-text-shaping.md`'s own writeup for
-  the full detail.
+  consumption, the "expose invisible directional controls on demand" editing feature (letting a
+  user insert/reveal these characters directly, as opposed to just being warned about them),
+  mixed-direction golden tests (TEXT-01B step 3's second half), and its original
+  cluster-safe-highlight note (the current `glyph_excluded` filter already only ever includes a
+  whole cluster, never splits one — real cluster-safety for RTL/conjunct scripts specifically
+  still needs TEXT-01C's international fonts to verify against real glyphs, not just bidi levels
+  against a font that can't render them) all remain open. TEXT-01C (international fallback
+  families, gated on FONT-01B actually vendoring those fonts into the repo) and TEXT-01D
+  (performance/caching/optional packs) remain fully open. See `architecture/complex-text-
+  shaping.md`'s own writeup for the full detail.
 - `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:

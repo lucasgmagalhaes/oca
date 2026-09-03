@@ -63,6 +63,16 @@ pub(super) fn text_clip_properties(
     if text_resp.changed() {
         changed = true;
     }
+    // Non-blocking warning for invisible directional-formatting characters (TEXT-01B) — never
+    // strips anything, since legitimate bidi content must round-trip exactly, but a stray
+    // override/unmatched control in pasted text can make it render misleadingly.
+    if avcore::text_layout::scan_bidi_controls(&tc.text).any() {
+        ui.label(
+            RichText::new(Text::TextBidiControlWarning.tr(locale))
+                .size(10.5)
+                .color(theme::WARNING),
+        );
+    }
     ui.add_space(4.0);
 
     // Bundled family/style metadata is cheap; the font file itself is parsed lazily by core
