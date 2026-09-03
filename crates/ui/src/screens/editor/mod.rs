@@ -138,11 +138,27 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         app.lib_panel_width = app.lib_panel_width.clamp(min_col, max_col);
         app.props_panel_width = app.props_panel_width.clamp(min_col, max_col);
 
+        // Reported bug: the timeline strip would sometimes vanish outright. Root cause — the
+        // body row's own minimum height (used to be a hardcoded 160.0 floor below) and the
+        // timeline's minimum height were each enforced independently, with no check that the
+        // two together actually fit `available_height`. Once the Editor's vertical space got
+        // small enough (a short window, a small display, whatever), `body_height`'s floor plus
+        // `timeline_height`'s floor plus the divider between them could add up to more than
+        // `available_height` — egui doesn't shrink an overflowing `ui.vertical` to fit, so the
+        // timeline (painted last) just got pushed past the visible/clipped area and disappeared,
+        // with no error and no obvious trigger from the user's side beyond "the window got
+        // short enough at some point." Fixed by deriving both heights from the same
+        // `content_height` budget so `body_height + timeline_height` can never exceed what's
+        // actually available, with each floor scaled down (not dropped — still visible, just
+        // thinner) rather than held fixed when that budget itself is tight.
         let available_height = ui.available_height();
-        let min_timeline = 120.0_f32;
-        let max_timeline = (available_height - 200.0).max(min_timeline);
+        let divider_overhead = 4.0 + DIVIDER_HIT_WIDTH + 4.0; // the add_space(4.0) calls flanking resizable_divider_horizontal below
+        let content_height = (available_height - divider_overhead).max(0.0);
+        let min_timeline = 120.0_f32.min(content_height * 0.5);
+        let min_body = 160.0_f32.min(content_height - min_timeline).max(0.0);
+        let max_timeline = (content_height - min_body).max(min_timeline);
         app.timeline_height = app.timeline_height.clamp(min_timeline, max_timeline);
-        let body_height = (available_height - app.timeline_height - 24.0).max(160.0);
+        let body_height = (content_height - app.timeline_height).max(0.0);
 
         let gaps = ui.spacing().item_spacing.x * 2.0 + DIVIDER_HIT_WIDTH * 2.0;
         let preview_w =
