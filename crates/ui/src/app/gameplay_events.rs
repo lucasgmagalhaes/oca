@@ -73,6 +73,17 @@ impl App {
             }
         };
 
+        // CF-02 slice 5: a configured per-game profile restricts which event kinds import and
+        // supplies pre/post-roll defaults for events that don't specify their own — a no-op when
+        // no profile's game_id matches this sidecar's (including when the sidecar has none).
+        let allowlist = self
+            .prefs
+            .game_event_allowlists
+            .iter()
+            .find(|allowlist| Some(allowlist.game_id.as_str()) == sidecar.game_id.as_deref());
+        let events =
+            avcore::gameplay_events::apply_game_event_allowlist(&sidecar.events, allowlist);
+
         // (clip mapping, only the events that actually fall within that clip's trimmed range) —
         // computed up front so an all-empty result never pushes a no-op undo snapshot.
         let per_clip_events: Vec<(MatchingClip, Vec<GameplayEvent>)> = {
@@ -91,8 +102,7 @@ impl App {
                     if !matches_source {
                         return None;
                     }
-                    let events: Vec<GameplayEvent> = sidecar
-                        .events
+                    let events: Vec<GameplayEvent> = events
                         .iter()
                         .filter(|e| {
                             e.source_timestamp_secs >= clip.source_in_secs
