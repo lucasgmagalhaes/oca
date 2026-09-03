@@ -1234,10 +1234,16 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
 /// default) — dragging writes exactly what export reads, no separate UI-only representation.
 ///
 /// Layer *size* (`ClipInstance::layer_scale_x`/`_y`) is a multiplier on top of a fixed
-/// stand-in baseline footprint (40% of the canvas's shorter side) rather than a real pixel
-/// dimension — this panel doesn't know the clip's actual export-time decoded resolution (the
-/// preview texture may be a lower-res editing proxy), so it can't draw the box at its true
-/// composited size. Dragging the bottom-right handle still writes the real multiplier
+/// stand-in baseline footprint — the video fit to the *full* canvas, preserving its own aspect
+/// ratio (letterboxed/pillarboxed against `canvas_aspect` if it doesn't match) — rather than a
+/// real pixel dimension: this panel doesn't know the clip's actual export-time decoded
+/// resolution (the preview texture may be a lower-res editing proxy), so it can't draw the box
+/// at its true composited size. `layer_scale_x`/`_y` default to `1.0`
+/// ([`crate::app::LAYER_SCALE_RANGE`] is `0.1..=3.0`), so the baseline has to *be* "fills the
+/// canvas" for an untouched clip to preview at its expected full size instead of shrunk before
+/// the multiplier is even applied — this was previously a fixed 40%-of-canvas stand-in
+/// regardless of `layer_scale`, which made every clip preview as a small box even with no
+/// transform ever applied. Dragging the bottom-right handle still writes the real multiplier
 /// `set_selected_clip_layer_scale` reads at export, same "editable but visually approximate"
 /// shape as most of this panel. `Some(_)` in `preview_panel`'s match already guarantees
 /// `app.preview_state.preview_texture` is set, but this re-checks (and bails) rather than trust that
@@ -1277,10 +1283,10 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
 
-    // Fixed stand-in baseline (40% of the canvas's shorter side, clipped to the canvas width) —
-    // see this function's doc comment on why this is a multiplier applied to a stand-in size
-    // rather than a real pixel dimension.
-    let mut base_h = canvas_rect.height().min(canvas_rect.width()) * 0.4;
+    // Fixed stand-in baseline — the video fit to fill the canvas — see this function's doc
+    // comment on why `layer_scale` needs "fills the canvas" as its own baseline (1.0 = full
+    // size) rather than some smaller stand-in fraction of it.
+    let mut base_h = canvas_rect.height().min(canvas_rect.width());
     let mut base_w = base_h * tex_aspect;
     if base_w > canvas_rect.width() {
         base_w = canvas_rect.width();
