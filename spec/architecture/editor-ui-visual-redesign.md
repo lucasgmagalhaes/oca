@@ -427,12 +427,24 @@ Mapping:
   `crop_x`/`crop_y`/`crop_w`/`crop_h` (position+size), just a different parameterization
   (edge-insets: `left=x`, `top=y`, `right=1-(x+w)`, `bottom=1-(y+h)`). Purely a units/label
   choice for the widget, not a data-model change — convert on display, store the same fields.
-- **COMPOSITE → Blend Mode**: **does not exist**. Opacity does (`opacity_keyframes`), but
-  there is no blend-mode concept anywhere in the compositor (`Preview::open_composited`'s
-  `compositor` element, or the export-side avfilter overlay graph) — Normal is the only mode
-  that's ever been wired. A real new feature (needs both a `ClipInstance` field and either a
-  GStreamer `compositor` pad property or an avfilter blend-mode filter on export), not a
-  restyle. Flag, don't assume it's a dropdown-only change.
+- **COMPOSITE → Blend Mode — data model + export done, preview in progress.**
+  `avcore::timeline::BlendMode` (40 modes, matching FFmpeg's `blend` filter's `all_mode` option
+  exactly — verified against a real `ffmpeg -h filter=blend` build) + `ClipInstance::
+  blend_mode`/`ClipFormatting::blend_mode` exist now. Export wires it for real: `avbridge::
+  ClipSegment::blend_mode` (a plain mode-name string, avbridge doesn't depend on `core`) crosses
+  the FFI boundary into `timeline_export_multi.c`'s overlay filtergraph, where a non-`Normal`
+  mode builds a `blend=all_mode=<name>` stage in place of the usual `overlay=x=...:y=...` stage
+  for that layer — FFmpeg's own filter does the per-pixel math, so this is genuinely all 40
+  modes for zero C code per mode, not a bounded subset. **Scope limit, not a bug**: `blend` has
+  no x/y placement option, so `position_x_expr`/`position_y_expr` (PIP-style repositioning) are
+  ignored for a layer with a non-`Normal` blend mode — it composites at full canvas size.
+  Combining positioning with a blend mode is a separate, not-yet-built follow-up. GStreamer's
+  `compositor` element (live preview) has no equivalent to FFmpeg's `blend` filter at all —
+  only Porter-Duff `source`/`over`/`add` (verified via `gst-inspect-1.0 compositor`) — so live
+  preview needs a different mechanism than export did; see below for that slice's own status.
+  Real, executable regression coverage: `avbridge/tests/encode_test.rs`'s
+  `multi_track_export_with_a_blend_mode_set_produces_a_valid_file` runs a real two-track export
+  with `blend_mode: "multiply"` set and probes the result.
 - **SPEED + "Add Effect" button**: the speed slider maps directly to `speed_factor` (plus the
   richer stepped/smooth speed-ramp system oca already has, which the mockup doesn't even show
   — oca is ahead here, not behind). "Add Effect" itself doesn't map to anything: oca's model is
@@ -542,11 +554,15 @@ principles, and this doc's own findings above:
    with the user first, per the open decision this doc originally left). See the Top bar
    section's own bullets for exactly which menu items are wired vs. which two menus (Window,
    Help) still have no real feature behind them.
-6. Everything flagged as a genuine new feature above (real per-asset thumbnails, Blend Mode,
-   Favorites/Recent, Anchor X/Y, snapshot capture) — each is its own scoped follow-up item, not
-   part of "implement the mockup" in one pass.
-7. **Per-channel audio metering — done**, the first of item 6's list to actually get built
-   (picked out of order at the user's request) — see the Inspector section's own bullet.
+6. Everything flagged as a genuine new feature above (real per-asset thumbnails, Favorites/
+   Recent, Anchor X/Y, snapshot capture) — each is its own scoped follow-up item, not part of
+   "implement the mockup" in one pass.
+7. **Per-channel audio metering — done**, picked out of item 6's list at the user's request —
+   see the Inspector section's own bullet.
+8. **Blend Mode — data model + export done, preview in progress**, also picked out of item 6's
+   list at the user's request (confirmed: full FFmpeg mode set, live preview included, despite
+   the live-preview half needing a real compositing-pipeline restructure — see the Inspector
+   section's own bullet for what's shipped).
 
 ## Verification
 
