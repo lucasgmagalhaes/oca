@@ -177,29 +177,45 @@ fn dynamic_reframe_one(
     };
     let duration = (source_out_secs - source_in_secs).max(1e-6);
 
-    let samples: Vec<avcore::ReframeSample> = sample_times
-        .iter()
-        .map(|&t| {
-            let time_fraction = (((t - source_in_secs) / duration) as f32).clamp(0.0, 1.0);
-            let subject_center = sampler
-                .sample(t, Duration::from_millis(800))
-                .and_then(|frame| {
-                    let (w, h, rgba) =
-                        downscale_frame_rgba(frame.width, frame.height, frame.rgba, REFRAME_FRAME_MAX_DIM);
-                    match avcore::detect_faces(model_path, &rgba, w, h) {
-                        Ok(faces) => avcore::main_subject_center(&faces),
-                        Err(e) => {
-                            tracing::warn!(error = %e, "dynamic auto-reframe face detection failed");
-                            None
-                        }
+    // Threaded across samples (in time order, hence a plain loop rather than `.map()`) so
+    // `select_subject_center` can prefer whichever face continues the *previous* sample's own
+    // chosen subject over just whichever has the highest raw confidence this sample — otherwise
+    // two people trading the higher per-frame score would visibly re-target the crop between
+    // samples even though neither actually moved. Only updated on an actual detection: a
+    // gap-filled/centered sample carries no new evidence about where the subject is now.
+    let mut previous_center: Option<(f32, f32)> = None;
+    let mut samples: Vec<avcore::ReframeSample> = Vec::with_capacity(sample_times.len());
+    for &t in &sample_times {
+        let time_fraction = (((t - source_in_secs) / duration) as f32).clamp(0.0, 1.0);
+        let subject_center = sampler
+            .sample(t, Duration::from_millis(800))
+            .and_then(|frame| {
+                let (w, h, rgba) = downscale_frame_rgba(
+                    frame.width,
+                    frame.height,
+                    frame.rgba,
+                    REFRAME_FRAME_MAX_DIM,
+                );
+                match avcore::detect_faces(model_path, &rgba, w, h) {
+                    Ok(faces) => avcore::select_subject_center(
+                        &faces,
+                        previous_center,
+                        avcore::DEFAULT_CONTINUITY_MAX_DISTANCE,
+                    ),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "dynamic auto-reframe face detection failed");
+                        None
                     }
-                });
-            avcore::ReframeSample {
-                time_fraction,
-                subject_center,
-            }
-        })
-        .collect();
+                }
+            });
+        if subject_center.is_some() {
+            previous_center = subject_center;
+        }
+        samples.push(avcore::ReframeSample {
+            time_fraction,
+            subject_center,
+        });
+    }
 
     let subject_found = samples.iter().any(|s| s.subject_center.is_some());
     let filled = avcore::fill_reframe_gaps(&samples);
