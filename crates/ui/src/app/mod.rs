@@ -111,6 +111,18 @@ pub enum EditorTool {
     Slide,
 }
 
+/// Which group of clip properties the properties panel's tab strip is currently showing —
+/// a pure UI grouping of the same [`avcore::timeline::ClipInstance`] fields the panel already
+/// edits (`spec/architecture/editor-ui-visual-redesign.md`'s Inspector mapping), not a new
+/// data model. Not persisted: resets to `Inspector` on every app launch like `tool` does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PropertiesTab {
+    #[default]
+    Inspector,
+    Effects,
+    Audio,
+}
+
 /// A key + modifier combination that can be assigned to a bindable action. `key_name` is
 /// the value returned by [`egui::Key::name`] (e.g. `"Space"`, `"B"`) and accepted by
 /// [`egui::Key::from_name`], making it stable across egui versions for common keys.
@@ -820,6 +832,8 @@ use avcore::ClipFormatting;
 pub struct App {
     pub screen: Screen,
     pub tool: EditorTool,
+    /// The properties panel's active tab (Inspector/Effects/Audio) — see [`PropertiesTab`].
+    pub properties_tab: PropertiesTab,
     pub locale: Locale,
     pub projects: Vec<Project>,
     pub active_project: usize,
@@ -1525,6 +1539,7 @@ impl App {
         let mut app = Self {
             screen: Screen::Home,
             tool: EditorTool::Select,
+            properties_tab: PropertiesTab::default(),
             locale: prefs.locale,
             projects,
             active_project: 0,

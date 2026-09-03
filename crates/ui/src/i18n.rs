@@ -157,6 +157,9 @@ text_catalog! {
     TimelineZoom: pt_br = "Zoom", en = "Zoom";
     SelectedClip: pt_br = "Clipe selecionado", en = "Selected clip";
     NoClipSelected: pt_br = "Nenhum clipe selecionado", en = "No clip selected";
+    PropertiesTabInspector: pt_br = "Inspetor", en = "Inspector";
+    PropertiesTabEffects: pt_br = "Efeitos", en = "Effects";
+    PropertiesTabAudio: pt_br = "Áudio", en = "Audio";
     PropCodec: pt_br = "Codec", en = "Codec";
     PropSourceBitrate: pt_br = "Bitrate fonte", en = "Source bitrate";
     PropResolution: pt_br = "Resolução", en = "Resolution";

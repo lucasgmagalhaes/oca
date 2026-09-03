@@ -226,6 +226,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     App {
         screen: Screen::Home,
         tool: EditorTool::Select,
+        properties_tab: PropertiesTab::default(),
         locale: Locale::PtBr,
         projects,
         active_project: 0,
