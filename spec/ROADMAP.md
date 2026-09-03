@@ -1641,12 +1641,6 @@ an item earlier:
   framing — deliberate, since a template is meant to be an inspectable, shareable asset file
   (the doc's own slice 3 "package templates as data" goal), not just internal persisted state.
 
-  **Deliberately not done**: `Image` primitive, timing (animation-in/out), safe-area anchor
-  semantics, and aspect-ratio variants (all the doc's own slice 2 scope); packaging templates
-  with their own validated media assets and the `ui`-side apply/preview flow (slice 3); and
-  migration tests for a second schema version, which has no reason to exist yet (slice 4). All
-  real, separate follow-ups.
-
   Verified for real, not just type-checked: since `motion_template.rs` depends only on
   `crate::timeline`'s three plain enums (`ShapeKind`/`TextFontFamily`/`TextFontStyle`, no
   `avbridge`/GStreamer/ONNX), it was copied unmodified into a throwaway scratch crate — this time
@@ -1659,6 +1653,43 @@ an item earlier:
   `cargo check --workspace --all-targets` and `cargo clippy -p core --lib --no-deps` (via the
   documented temporary `filters.c` shim, discarded before commit) and `cargo fmt --check` all
   stayed clean.
+
+  **Slice 2 (two of its five pieces) shipped too.** `safe_area_violations` is a non-blocking
+  design-time check — never a `GraphicTemplate::validate` failure, since a template legitimately
+  wanting a full-bleed background or edge-anchored element is a real, valid design choice this
+  shouldn't forbid (same "warn, don't block" precedent `scan_bidi_controls` established for a
+  different feature) — flagging any `Text`/`Shape` element whose position/bounding box intrudes
+  into the new `GraphicTemplate::safe_area_margin` fraction of the canvas edge. A text element
+  has no baked width in this format (no shaping happens until a `ui`-side apply step), so this
+  only checks its anchor point clears the margin, not the full rendered extent — a real,
+  documented simplification. A shape's bounding box is conservatively approximated as a square of
+  side `max(width, height)`, which the true rotated extent can only shrink toward, never exceed —
+  cheap and rotation-safe at the cost of occasionally over-flagging. `#[serde(default)]` so a
+  template authored under slice 1 loads with the exact same never-flagged behavior it always had.
+
+  `TemplateFamily` is CF-07's own "aspect-ratio variants," modeled as sibling `GraphicTemplate`s
+  rather than one template auto-adapting its own layout across canvas shapes — a lower third
+  designed for 16:9 and one designed for 9:16 are, in practice, different layouts (different
+  element placement, not just a rescale). Reuses `crate::export::ExportAspectRatio` (already this
+  crate's own aspect-ratio vocabulary) to tag each variant rather than inventing a second
+  aspect-ratio type, per `spec/RULES.md`'s reuse-before-building rule.
+  `TemplateFamily::validate` checks every variant's own validity plus the family's own
+  constraints (at least one variant, no aspect ratio repeated); `variant_for` looks one up by
+  aspect ratio, matching a sequence's own `SequenceExportSettings::aspect_ratio`.
+
+  **Deliberately not done**: `Image` primitive and timing (animation-in/out), the rest of slice
+  2's own five-item list; packaging templates with their own validated media assets and the
+  `ui`-side apply/preview flow (slice 3); and migration tests for a second schema version, which
+  has no reason to exist yet (slice 4). All real, separate follow-ups.
+
+  Verified for real: 10 new tests (5 for `safe_area_violations` — no-op at zero margin, a text
+  anchor and a shape bounding box each flagged/accepted correctly; 5 for `TemplateFamily` — empty
+  rejected, duplicate aspect ratio rejected, a variant's own validation error propagated with
+  context, distinct-aspect-ratio variants accepted, and `variant_for` lookup) ran in the same
+  scratch-crate setup, this time also carrying a real stand-in `ExportAspectRatio` — 27/27 total
+  passing. `cargo check --workspace --all-targets`, `cargo clippy -p core --lib --no-deps` (via
+  the documented temporary `filters.c` shim, discarded before commit), and `cargo fmt --check`
+  all stayed clean.
 - `[ ]` **CF-08: semantic transcript and visual search.** Build a bounded, versioned local index
   after exact transcript search ships in CF-01.
 - `[ ]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and

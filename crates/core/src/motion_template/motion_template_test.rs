@@ -49,6 +49,7 @@ fn minimal_template() -> GraphicTemplate {
         name: "Scoreboard".to_string(),
         canvas_width: 1920,
         canvas_height: 1080,
+        safe_area_margin: 0.0,
         parameters: vec![],
         elements: vec![],
     }
@@ -384,4 +385,158 @@ fn instantiate_resolves_a_shape_element_with_a_fixed_color() {
         }
         InstantiatedElement::Text { .. } => panic!("expected a shape element"),
     }
+}
+
+#[test]
+fn safe_area_violations_is_a_no_op_when_margin_is_zero() {
+    let mut template = minimal_template();
+    let mut t = text_element(
+        "e1",
+        TextBinding::Fixed("Hi".to_string()),
+        ColorBinding::Fixed([255, 255, 255, 255]),
+    );
+    t.pos_x = 0.0;
+    t.pos_y = 0.0;
+    template.elements = vec![TemplateElement::Text(t)];
+    assert!(safe_area_violations(&template).is_empty());
+}
+
+#[test]
+fn safe_area_violations_flags_a_text_anchor_inside_the_margin() {
+    let mut template = minimal_template();
+    template.safe_area_margin = 0.1;
+    let mut t = text_element(
+        "e1",
+        TextBinding::Fixed("Hi".to_string()),
+        ColorBinding::Fixed([255, 255, 255, 255]),
+    );
+    t.pos_x = 0.02;
+    t.pos_y = 0.5;
+    template.elements = vec![TemplateElement::Text(t)];
+    let violations = safe_area_violations(&template);
+    assert_eq!(violations.len(), 1);
+    assert_eq!(violations[0].element_id, "e1");
+}
+
+#[test]
+fn safe_area_violations_accepts_a_text_anchor_clear_of_the_margin() {
+    let mut template = minimal_template();
+    template.safe_area_margin = 0.1;
+    let mut t = text_element(
+        "e1",
+        TextBinding::Fixed("Hi".to_string()),
+        ColorBinding::Fixed([255, 255, 255, 255]),
+    );
+    t.pos_x = 0.5;
+    t.pos_y = 0.5;
+    template.elements = vec![TemplateElement::Text(t)];
+    assert!(safe_area_violations(&template).is_empty());
+}
+
+#[test]
+fn safe_area_violations_flags_a_shape_bounding_box_crossing_the_margin() {
+    let mut template = minimal_template();
+    template.safe_area_margin = 0.1;
+    let mut s = shape_element("s1", ColorBinding::Fixed([0, 0, 0, 255]));
+    s.center_x = 0.05;
+    s.center_y = 0.5;
+    s.width = 0.05;
+    s.height = 0.05;
+    template.elements = vec![TemplateElement::Shape(s)];
+    let violations = safe_area_violations(&template);
+    assert_eq!(violations.len(), 1);
+    assert_eq!(violations[0].element_id, "s1");
+}
+
+#[test]
+fn safe_area_violations_accepts_a_shape_fully_clear_of_the_margin() {
+    let mut template = minimal_template();
+    template.safe_area_margin = 0.1;
+    let s = shape_element("s1", ColorBinding::Fixed([0, 0, 0, 255]));
+    template.elements = vec![TemplateElement::Shape(s)];
+    assert!(safe_area_violations(&template).is_empty());
+}
+
+fn family_with(variants: Vec<TemplateVariant>) -> TemplateFamily {
+    TemplateFamily {
+        name: "Scoreboard".to_string(),
+        variants,
+    }
+}
+
+#[test]
+fn template_family_rejects_an_empty_variant_list() {
+    let family = family_with(vec![]);
+    assert_eq!(family.validate(), Err(TemplateFamilyValidationError::Empty));
+}
+
+#[test]
+fn template_family_rejects_duplicate_aspect_ratios() {
+    let family = family_with(vec![
+        TemplateVariant {
+            aspect_ratio: ExportAspectRatio::Landscape,
+            template: minimal_template(),
+        },
+        TemplateVariant {
+            aspect_ratio: ExportAspectRatio::Landscape,
+            template: minimal_template(),
+        },
+    ]);
+    assert_eq!(
+        family.validate(),
+        Err(TemplateFamilyValidationError::DuplicateAspectRatio(
+            ExportAspectRatio::Landscape
+        ))
+    );
+}
+
+#[test]
+fn template_family_propagates_a_variants_own_validation_error() {
+    let mut invalid = minimal_template();
+    invalid.schema_version = 99;
+    let family = family_with(vec![TemplateVariant {
+        aspect_ratio: ExportAspectRatio::Portrait,
+        template: invalid,
+    }]);
+    assert_eq!(
+        family.validate(),
+        Err(TemplateFamilyValidationError::Variant {
+            aspect_ratio: ExportAspectRatio::Portrait,
+            error: TemplateValidationError::UnsupportedSchemaVersion { found: 99 },
+        })
+    );
+}
+
+#[test]
+fn template_family_accepts_distinct_aspect_ratios_and_valid_variants() {
+    let family = family_with(vec![
+        TemplateVariant {
+            aspect_ratio: ExportAspectRatio::Landscape,
+            template: minimal_template(),
+        },
+        TemplateVariant {
+            aspect_ratio: ExportAspectRatio::Portrait,
+            template: minimal_template(),
+        },
+    ]);
+    assert!(family.validate().is_ok());
+}
+
+#[test]
+fn template_family_variant_for_looks_up_by_aspect_ratio() {
+    let mut portrait = minimal_template();
+    portrait.name = "Portrait variant".to_string();
+    let family = family_with(vec![
+        TemplateVariant {
+            aspect_ratio: ExportAspectRatio::Landscape,
+            template: minimal_template(),
+        },
+        TemplateVariant {
+            aspect_ratio: ExportAspectRatio::Portrait,
+            template: portrait,
+        },
+    ]);
+    let found = family.variant_for(ExportAspectRatio::Portrait).unwrap();
+    assert_eq!(found.name, "Portrait variant");
+    assert!(family.variant_for(ExportAspectRatio::Square).is_none());
 }
