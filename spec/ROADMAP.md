@@ -1342,6 +1342,24 @@ an item earlier:
   against a live GUI session (no display in this environment) — the properties-panel section's
   actual appearance/behavior needs a manual pass on a real dev machine.
 
+  **Per-clip role-based default/suggestion UI now shipped too — CF-03's last still-open piece.**
+  `App::add_asset_to_timeline`/`add_asset_to_timeline_at`/`detach_audio_from_selected_clip` now
+  default a newly created clip's `voice_cleanup_enabled` to the landing track's own
+  `audio_role == Mic`, satisfying the item's own "Mic by default, explicit override elsewhere"
+  acceptance criterion — applied only at clip *creation* time; reassigning a track's role later
+  never retroactively flips already-placed clips, and the field stays a plain always-overridable
+  per-clip toggle either way. The remaining gap (a clip that predates its track's Mic role, or was
+  moved there after creation, never got the creation-time default) is covered by a new
+  `App::selected_clip_track_audio_role` plus a non-blocking suggestion label in the properties
+  panel — never an auto-toggle, just a nudge.
+
+  Verified via `cargo check --workspace --all-targets` (the documented temporary local
+  `filters.c` shim, discarded before commit) and `cargo fmt --check`, both clean. New `App`-level
+  tests (default-on for a Mic-role track, default-off for a non-Mic track,
+  `selected_clip_track_audio_role` reporting the right role/`None`) type-check cleanly under
+  `cargo check` — same "can't link this sandbox's `ui` test binary" caveat every other `App`-level
+  test addition this session has carried.
+
   Verified for real, not just type-checked: `crates/avbridge` has zero heavy dependencies (no
   ONNX/whisper/GStreamer), so `cargo test -p avbridge --test audio_mix_test` fully links and runs
   in this sandbox against real fixture audio (the pre-existing FFmpeg-too-old `filters.c` gap

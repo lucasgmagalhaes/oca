@@ -685,6 +685,37 @@ fn add_asset_to_timeline_appends_after_whatever_is_already_on_the_matching_track
 }
 
 #[test]
+fn add_asset_to_timeline_defaults_voice_cleanup_on_for_a_mic_role_track() {
+    // CF-03's "Mic by default, explicit override elsewhere" acceptance criterion.
+    let mut project = test_project(1, vec![test_asset_with_kind(2, MediaKind::Audio)]);
+    let mut mic_track = test_track(1, TrackKind::Audio, vec![]);
+    mic_track.audio_role = AudioRole::Mic;
+    project.timeline_mut().tracks = vec![mic_track];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.add_asset_to_timeline(2);
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert!(tracks[0].clips[0].voice_cleanup_enabled);
+}
+
+#[test]
+fn add_asset_to_timeline_leaves_voice_cleanup_off_for_a_non_mic_role_track() {
+    let mut app = test_app(
+        vec![test_project(
+            1,
+            vec![test_asset_with_kind(1, MediaKind::Audio)],
+        )],
+        Vec::new(),
+    );
+
+    app.add_asset_to_timeline(1);
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert!(!tracks[0].clips[0].voice_cleanup_enabled);
+}
+
+#[test]
 fn add_asset_to_timeline_is_a_no_op_for_an_unknown_asset_id() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
 
@@ -3975,6 +4006,34 @@ fn selected_clip_track_kind_reports_the_track_the_clip_lives_on() {
 
     app.selected_clip_id = None;
     assert_eq!(app.selected_clip_track_kind(), None);
+}
+
+#[test]
+fn selected_clip_track_audio_role_reports_the_track_the_clip_lives_on() {
+    let mut mic_track = test_track(1, TrackKind::Audio, vec![test_clip(1, 0.0, 0.0, 10.0)]);
+    mic_track.audio_role = AudioRole::Mic;
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![
+                mic_track,
+                test_track(2, TrackKind::Audio, vec![test_clip(2, 0.0, 0.0, 10.0)]),
+            ],
+        )],
+        Vec::new(),
+    );
+
+    app.selected_clip_id = Some(1);
+    assert_eq!(app.selected_clip_track_audio_role(), Some(AudioRole::Mic));
+
+    app.selected_clip_id = Some(2);
+    assert_eq!(
+        app.selected_clip_track_audio_role(),
+        Some(AudioRole::Unspecified)
+    );
+
+    app.selected_clip_id = None;
+    assert_eq!(app.selected_clip_track_audio_role(), None);
 }
 
 #[test]
