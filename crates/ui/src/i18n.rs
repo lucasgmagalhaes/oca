@@ -481,6 +481,9 @@ text_catalog! {
     ShortcutPlayPause: pt_br = "Play / Pause", en = "Play / Pause";
     SeekToStart: pt_br = "Ir para o início", en = "Seek to start";
     SeekToEnd: pt_br = "Ir para o fim", en = "Seek to end";
+    StepFrameBack: pt_br = "Quadro anterior", en = "Previous frame";
+    StepFrameForward: pt_br = "Próximo quadro", en = "Next frame";
+    PreviewLoopToggle: pt_br = "Repetir", en = "Loop";
     ShortcutCopyFormatting: pt_br = "Copiar formatação", en = "Copy formatting";
     ShortcutPasteFormatting: pt_br = "Colar formatação", en = "Paste formatting";
     ShortcutAddOpacityMarker: pt_br = "Adicionar marcador de opacidade", en = "Add opacity marker";

@@ -1229,6 +1229,12 @@ pub(crate) struct PreviewState {
     /// fade out [`FULLSCREEN_CONTROLS_IDLE_SECS`] after this and reappear immediately on the
     /// next pointer movement. `None` right after entering fullscreen so controls start visible.
     pub(crate) fullscreen_controls_last_moved: Option<std::time::Instant>,
+    /// Whether playback should restart from the beginning instead of stopping when it runs off
+    /// the end of the timeline — the OCA mockup's transport-row loop toggle
+    /// (`spec/architecture/editor-ui-visual-redesign.md`'s Program monitor mapping). `false` by
+    /// default, like every other transport setting here. Checked in
+    /// [`App::ensure_preview_loaded`]'s "nothing covers the new playhead" branch.
+    pub(crate) loop_enabled: bool,
 }
 
 /// Telemetry channel/flag/throttle state, extracted from `App`'s own field list — see

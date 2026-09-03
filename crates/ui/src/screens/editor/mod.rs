@@ -990,6 +990,24 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
     }
 }
 
+/// A small dark rounded chip with monospace text, anchored by its top-left corner — the
+/// preview panel's HUD overlay style (resolution/fps top-left, timecode/frame bottom-right).
+fn draw_preview_hud_chip(painter: &egui::Painter, top_left: egui::Pos2, text: &str) {
+    let text_pos = top_left + egui::vec2(4.0, 2.0);
+    let galley = painter.layout_no_wrap(
+        text.to_owned(),
+        egui::FontId::monospace(10.5),
+        theme::TEXT_SECONDARY,
+    );
+    let bg_rect = egui::Rect::from_min_size(top_left, galley.size() + egui::vec2(8.0, 4.0));
+    painter.rect_filled(
+        bg_rect,
+        egui::CornerRadius::same(theme::RADIUS_SM),
+        egui::Color32::from_black_alpha(160),
+    );
+    painter.galley(text_pos, galley, theme::TEXT_SECONDARY);
+}
+
 fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
     // Lazy: the pipeline for the current selection is opened here, on the first paint of this
     // panel after a selection change — not by `select_asset` itself — so opening a project or
@@ -1025,26 +1043,51 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 };
             })
             .response;
-        // A small resolution readout in the preview's top-left corner — matching
+        // A small resolution(+fps) readout in the preview's top-left corner — matching
         // oca-editor-mock.html's `.preview-hud-top` chip — from the actually decoded texture's
         // own size, not a fabricated/asset-declared value, so it never drifts from what's on
-        // screen (proxy playback, letterboxing, etc.).
+        // screen (proxy playback, letterboxing, etc.). fps comes from the previewed clip's own
+        // asset (oca has no per-sequence fps) and is omitted when unknown, per the OCA mockup's
+        // bottom-left overlay (`spec/architecture/editor-ui-visual-redesign.md`'s Program
+        // monitor mapping) — relocated here onto the existing resolution chip rather than a
+        // second overlay, since the two numbers read as one unit.
         if let Some([w, h]) = preview_texture_size {
-            let chip_pos = frame_response.rect.left_top() + egui::vec2(8.0, 8.0);
-            let painter = ui.painter();
-            let text_pos = chip_pos + egui::vec2(4.0, 2.0);
-            let galley = painter.layout_no_wrap(
-                format!("{w}×{h}"),
-                egui::FontId::monospace(10.5),
-                theme::TEXT_SECONDARY,
+            let text = match app.current_preview_fps() {
+                Some(fps) => format!("{w}×{h} · {fps:.2}fps"),
+                None => format!("{w}×{h}"),
+            };
+            draw_preview_hud_chip(
+                ui.painter(),
+                frame_response.rect.left_top() + egui::vec2(8.0, 8.0),
+                &text,
             );
-            let bg_rect = egui::Rect::from_min_size(chip_pos, galley.size() + egui::vec2(8.0, 4.0));
-            painter.rect_filled(
-                bg_rect,
-                egui::CornerRadius::same(theme::RADIUS_SM),
-                egui::Color32::from_black_alpha(160),
-            );
-            painter.galley(text_pos, galley, theme::TEXT_SECONDARY);
+        }
+        // Timecode+frame overlay in the preview's bottom-right corner, matching the mockup's
+        // bottom-right overlay — a relocation of data already shown in the transport row's
+        // timecode label below, plus a frame-within-second suffix when fps is known (omitted
+        // otherwise rather than guessed).
+        if preview_texture_size.is_some() {
+            let playhead = app.active_project().timeline().playhead_secs;
+            let mut text = format_timecode(playhead);
+            if let Some(fps) = app.current_preview_fps() {
+                let frame_count = fps.round().max(1.0) as i64;
+                let frame =
+                    ((playhead.fract() * fps as f64).round() as i64).clamp(0, frame_count - 1);
+                text.push_str(&format!(":{frame:02}"));
+            }
+            // Measure first (this chip is bottom-right-anchored, unlike the top-left one above)
+            // so its top-left corner can be derived from the frame's bottom-right corner.
+            let size = ui
+                .painter()
+                .layout_no_wrap(
+                    text.clone(),
+                    egui::FontId::monospace(10.5),
+                    theme::TEXT_SECONDARY,
+                )
+                .size()
+                + egui::vec2(8.0, 4.0);
+            let top_left = frame_response.rect.right_bottom() - egui::vec2(8.0, 8.0) - size;
+            draw_preview_hud_chip(ui.painter(), top_left, &text);
         }
         let timeline_duration = app.active_project().timeline().duration_secs();
         ui.horizontal(|ui| {
@@ -1060,6 +1103,16 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             .clicked()
             {
                 app.seek_preview(0.0);
+            }
+            // No vendored Lucide icon for single-frame step (`skip-back`/`skip-forward` are
+            // start/end, already used above/below) — thin outline triangles, distinct from the
+            // filled ones the icon font uses for start/end/play, in the default font.
+            if ui
+                .small_button(RichText::new("◁").color(theme::TEXT_SECONDARY))
+                .on_hover_text(Text::StepFrameBack.tr(locale))
+                .clicked()
+            {
+                app.step_preview_frame(-1);
             }
             let play_icon = if app.preview_state.preview_playing {
                 crate::icons::PAUSE_STR
@@ -1077,6 +1130,13 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             {
                 app.toggle_preview_playback();
             }
+            if ui
+                .small_button(RichText::new("▷").color(theme::TEXT_SECONDARY))
+                .on_hover_text(Text::StepFrameForward.tr(locale))
+                .clicked()
+            {
+                app.step_preview_frame(1);
+            }
             if components::icon_button(
                 ui,
                 crate::icons::SKIP_FORWARD_STR,
@@ -1089,6 +1149,18 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             .clicked()
             {
                 app.seek_preview(timeline_duration);
+            }
+            if ui
+                .selectable_label(
+                    app.preview_state.loop_enabled,
+                    RichText::new(crate::icons::REPEAT_STR)
+                        .family(crate::icons::family())
+                        .color(theme::TEXT_SECONDARY),
+                )
+                .on_hover_text(Text::PreviewLoopToggle.tr(locale))
+                .clicked()
+            {
+                app.preview_state.loop_enabled = !app.preview_state.loop_enabled;
             }
             let playhead = app.active_project().timeline().playhead_secs;
             ui.label(
