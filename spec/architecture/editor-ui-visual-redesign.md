@@ -441,15 +441,17 @@ Mapping:
   not invent a new visual pattern when one already exists" — recommend dropping this button
   rather than bolting on a second, parallel effects-list mental model alongside the one that's
   already implemented everywhere else in this panel.
-- **Stereo L/R audio meter with dB ticks**: oca already has a _real_ audio level meter
-  (`audio_level_meter()`, a horizontal peak/RMS bar reading `Preview::current_audio_level()`,
-  `ROADMAP.md` P4 item 30) — but it's explicitly documented as "a flat sequence, not
-  per-channel." **A true stereo L/R split is not currently measurable** — `AudioLevel` has no
-  per-channel breakdown. Restyling the existing single-channel meter into a taller vertical
-  bar with dB gridlines is real and doable; presenting it as two independent L/R channels
-  would require a metering-pipeline change first (the buffer probe would need to stop
-  collapsing channels before computing peak/RMS). Say which of the two is being built, don't
-  silently ship a fake second channel.
+- **Stereo L/R audio meter with dB ticks — done, the real way.** `AudioLevel` (`avcore::
+  preview`) gained `peak_l`/`rms_l`/`peak_r`/`rms_r` alongside its existing combined `peak`/
+  `rms` — `build_metering_audio_sink`'s buffer probe now reads the negotiated channel count off
+  the pad's own caps to de-interleave channel 0 ("L") from channel 1 ("R") instead of treating
+  every buffer as one flat sequence (mono still reports the same value on both, matching a real
+  hardware meter; a >2-channel source's extra channels still count toward the combined figures,
+  just not split further). Two consumers: the preview transport row's compact
+  `audio_level_meter()` is now two thin stacked bars (L/R) instead of one, and a new
+  `stereo_db_meter()` in the properties panel's Audio tab is the mockup's actual vertical,
+  dB-ticked (0/-6/-12/-24/-48, -60 dB floor) stereo meter. Neither renders the same mono value
+  twice — the thing this doc originally flagged not to do.
 
 ### Timeline
 
@@ -510,9 +512,6 @@ principles, and this doc's own findings above:
 - Don't add a Favorites/Recent media tab without first deciding whether "favorited asset" is
   a real feature worth a new `MediaAsset` field, versus just matching the mockup's chrome.
   Left as its own open question, not silently built.
-- Don't fake a stereo L/R meter by rendering the same mono value twice into two bars — either
-  build the real per-channel metering path first, or ship the honest single-channel meter
-  restyled taller.
 - Don't add "Add Effect" — see Inspector section above.
 - Don't reproduce the "REC" chip — no live-recording concept in this app.
 
@@ -544,8 +543,10 @@ principles, and this doc's own findings above:
    section's own bullets for exactly which menu items are wired vs. which two menus (Window,
    Help) still have no real feature behind them.
 6. Everything flagged as a genuine new feature above (real per-asset thumbnails, Blend Mode,
-   Favorites/Recent, Anchor X/Y, snapshot capture, per-channel audio metering) — each is its
-   own scoped follow-up item, not part of "implement the mockup" in one pass.
+   Favorites/Recent, Anchor X/Y, snapshot capture) — each is its own scoped follow-up item, not
+   part of "implement the mockup" in one pass.
+7. **Per-channel audio metering — done**, the first of item 6's list to actually get built
+   (picked out of order at the user's request) — see the Inspector section's own bullet.
 
 ## Verification
 
