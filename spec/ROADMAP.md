@@ -1514,8 +1514,59 @@ an item earlier:
   CF-04 is now considered complete for this phase; remaining harder asks (content-adaptive
   cadence, optional seed point, a dedicated review/correction UI) are tracked as open follow-ups
   rather than blocking this item.
-- `[ ]` **CF-05: OpenTimelineIO interchange.** Round-trip the supported editorial subset and
+- `[~]` **CF-05: OpenTimelineIO interchange.** Round-trip the supported editorial subset and
   emit an explicit compatibility report for unsupported effects.
+
+  **Slice 1 (the `avcore::interchange` boundary, plus the structural half of slice 2 and an
+  early slice 4) shipped.** `avcore::interchange` adds a schema-neutral intermediate
+  representation — `RationalTime`/`TimeRange`/`InterchangeTimeline`/`InterchangeTrack`/
+  `InterchangeClip`/`InterchangeMarker` — and `sequence_to_interchange(sequence, project)` maps
+  a `Sequence`'s `Timeline` into it: video/audio track order (`Text`/`Shape` overlay tracks
+  omitted — not part of an editorial cut), each clip's speed-adjusted source range, an explicit
+  `InterchangeTrackItem::Gap` wherever there's on-timeline space before/between clips (most
+  interchange formats require contiguous track children, unlike `Track::clips`' own sparse
+  `start_secs`-addressed model), markers as zero-duration point ranges, transition kind, and a
+  resolved `MediaReference` — `External` when `ClipInstance::asset_id` still resolves in the
+  project's media library, `Missing` otherwise (a deleted asset, or a compound clip's
+  `nested_sequence_id`) — the doc's own "missing media produces offline references rather than
+  dropping clips" acceptance criterion.
+
+  **Deliberately not attempted: real OpenTimelineIO JSON serialization.** OTIO's actual wire
+  format (`OTIO_SCHEMA` name/version tags, exact field names for `Timeline`/`Stack`/`Track`/
+  `Clip`/`Gap`/`Transition`/`Marker`) is a real external spec this sandbox has no network path to
+  fetch or verify against — writing a byte-accurate serializer from memory alone would be exactly
+  the kind of guessing `CLAUDE.md`'s own "do not guess APIs, versions, flags, or package names"
+  rule forbids. So this slice's types are Oca's own intermediate representation, not OTIO's;
+  serializing them to/from a real, verified `.otio` schema version — and the reverse import
+  direction — are real, separate follow-up slices once that spec can actually be checked
+  against. `sequence_to_interchange` also uses a fixed microsecond-resolution time rate rather
+  than each clip's own native probed frame rate, a documented placeholder for the same "not yet
+  verified against a real target format" reason.
+
+  **Slice 4's compatibility report shipped early too** (before any real file gets written, since
+  the report only needs to know what *would* survive interchange): `interchange_compatibility_
+  report(sequence)` walks every clip and reports, with track/clip context per the doc's own
+  acceptance criterion, which of a curated list of in-use visual/audio effect fields (crop,
+  mask, flip, color grading, sharpen, chroma key, blur/shake/glitch/pixelize, vignette, 3D LUT,
+  stabilization, deflicker, background removal, voice cleanup, position/scale/rotation/opacity/
+  gain animation, nested sequences) are omitted, a transition present as approximated (kind
+  carried, not yet real in/out-offset semantics), and overlay tracks as omitted outright.
+
+  Verified for real, not just type-checked: since `interchange.rs` depends only on `crate::
+  project`/`crate::timeline` (no `avbridge`/GStreamer/ONNX), it was copied unmodified into a
+  throwaway scratch crate alongside stripped stand-in `Project`/`Sequence`/`MediaAsset`/
+  `Timeline`/`Track`/`ClipInstance`/`Marker` types (same "dynamic_reframe`'s own stripped
+  `FaceBox`/`CropRect`/`Keyframe` stand-in" technique this session has used before) and
+  `cargo test`ed there for real: 17/17 passing, covering track order/kind filtering, source-range
+  mapping, media-reference resolution (both present and missing-asset cases), leading/middle/
+  no-gap insertion, out-of-order-clip sorting, speed/transition carrying, marker mapping, and
+  every compatibility-report category. `cargo check --workspace --all-targets` and `cargo clippy
+  -p core --lib --no-deps` (via the documented temporary `filters.c` shim, discarded before
+  commit) and `cargo fmt --check` all stayed clean.
+
+  Import (the reverse direction), real OTIO JSON export/import once the schema can be verified,
+  and the doc's own "imported paths are normalized and cannot escape an explicitly selected media
+  root" security requirement all remain open.
 - `[ ]` **CF-06: live multicam monitor.** Show synchronized proxy-backed feeds and materialize
   angle decisions through the existing ordinary clip-split representation.
 - `[ ]` **CF-07: parameterized motion-graphics templates.** Add a declarative, script-free,
