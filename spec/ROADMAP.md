@@ -994,12 +994,55 @@ an item earlier:
   **Still not done**: golden-image comparison against the pre-swap `fontdue` renderer's actual
   pixels (never the goal — different rasterizers, different hinting; the doc's bar is preserved
   *visual* output, satisfied by the inspected PNGs above) and any live-GUI/export-encode
-  confirmation, which needs a real windowed session this sandbox doesn't have. TEXT-01B
-  (cluster-safe highlights — the current filter is a direct port of the old byte-offset filter,
-  not yet cluster-aware for RTL/conjunct scripts), TEXT-01C (international fallback families,
-  gated on FONT-01B actually vendoring those fonts into the repo), and TEXT-01D (performance/
-  caching/optional packs) are all still open. See `architecture/complex-text-shaping.md`'s own
-  writeup for the full detail.
+  confirmation, which needs a real windowed session this sandbox doesn't have.
+
+  **TEXT-01B slice 1 (explicit paragraph direction) shipped.** `TextClip` gained
+  `direction: TextDirection` (`Auto`/`Ltr`/`Rtl`, `#[serde(default)]` = `Auto`, the exact behavior
+  every clip already had) plus a persisted-but-not-yet-consumed optional `language` hint (real,
+  deliberately deferred gap — `cosmic-text` 0.19's `Attrs` has no language field to feed it into;
+  kept now so an authored project doesn't need a second migration once TEXT-01C's shaping actually
+  reads it). `TextLayoutEngine::shape` forces UAX #9's own P2/P3 auto-detected paragraph level by
+  prepending an invisible LRM/RLM bidi mark before shaping — a real strong-directional character
+  for detection purposes, not a bidi *override*, so embedded opposite-script runs still resolve
+  normally within the pinned level (matching CSS's `direction` property, not `unicode-bidi:
+  bidi-override`) — then strips the mark back out of the returned glyph list and rebases every
+  cluster byte range to the caller's own original text, so the override is fully invisible to
+  every caller. `TextSegment` (`render.rs`) carries the same field through so preview and export
+  apply it identically. New "Direção do texto"/"Text direction" combo box in the properties
+  panel's text-clip section, next to the existing font style control.
+
+  Verified for real against actual `cosmic-text` and the real bundled fonts (scratch-crate
+  technique, not just type-checked): forcing a direction never drops/duplicates a glyph or leaks
+  the internal mark into a cluster range (proven both by comparing cluster *sets*, order-
+  independent, against `Auto`, and by every cluster staying within the caller's own text length);
+  a pure Latin string still renders left-to-right in final pixel position even when RTL-anchored;
+  and forcing `Rtl` on a mixed Latin/Hebrew string measurably flips which side of the line each
+  script's run lands on (the real, observed proof the override changes paragraph/run *ordering*,
+  TEXT-01's own goal 2). One real false start caught by running these tests for real rather than
+  trusting the type-check: an earlier draft asserted glyph *iteration order* stays unchanged
+  across directions, which is false — HarfBuzz-style RTL shaping legitimately emits glyphs in
+  reverse-of-visual (rightmost-pen-position-first) iteration order for an RTL-leveled run even
+  though final pixel positions are correct; fixed by comparing cluster *sets* and final `x`
+  positions instead of raw iteration order. A second false assumption (forcing `Ltr` on
+  already-strong-RTL Hebrew text should flip every glyph's individual resolved bidi level) was
+  also caught and corrected — UAX #9's own I1/I2 rules keep a strong-R character's level odd
+  regardless of the paragraph's base direction; only *run ordering/positioning* is what a
+  paragraph-direction override actually changes, not an individual strong character's intrinsic
+  script-level resolution.
+
+  **Deliberately not done in this slice**: semantic alignment (Start/Center/End/Justified — no
+  `TextClip` alignment field exists at all yet, block position is always the plain `pos_x`/
+  `pos_y` top-left anchor, so this is a new feature, not just a direction-aware tweak to an
+  existing one) and the `language` hint's own consumption are both open, along with TEXT-01B's
+  own remaining steps (directional-control visibility/warnings, mixed-direction golden tests,
+  cluster/run-geometry replacing the approximate word-width helpers) and TEXT-01B's own original
+  cluster-safe-highlight note (the current `glyph_excluded` filter already only ever includes a
+  whole cluster, never splits one — real cluster-safety for RTL/conjunct scripts specifically
+  still needs TEXT-01C's international fonts to verify against real glyphs, not just bidi levels
+  against a font that can't render them). TEXT-01C (international fallback families, gated on
+  FONT-01B actually vendoring those fonts into the repo) and TEXT-01D (performance/caching/
+  optional packs) remain fully open. See `architecture/complex-text-shaping.md`'s own writeup for
+  the full detail.
 - `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:
