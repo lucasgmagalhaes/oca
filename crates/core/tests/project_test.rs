@@ -14,8 +14,91 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use avcore::project::{Project, Sequence};
-use avcore::timeline::Timeline;
+use avcore::timeline::{
+    ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
+};
 use avcore::{ExportAspectRatio, MediaAsset, Recency};
+
+/// A minimal `ClipInstance` with everything but `id`/`nested_sequence_id` at its default value
+/// — only `sequences_referencing_as_compound_clip`'s own tests need a real clip at all, and only
+/// `nested_sequence_id` matters to that function.
+fn compound_clip(id: u64, nested_sequence_id: Option<u64>) -> ClipInstance {
+    ClipInstance {
+        id,
+        asset_id: 0,
+        start_secs: 0.0,
+        source_in_secs: 0.0,
+        source_out_secs: 1.0,
+        composite_id: None,
+        color_label: None,
+        gain_db: 0.0,
+        frozen: false,
+        speed_factor: 1.0,
+        speed_ramp_end_factor: None,
+        nested_sequence_id,
+        crop_x: 0.0,
+        crop_y: 0.0,
+        crop_w: 1.0,
+        crop_h: 1.0,
+        mask_shape: MaskShape::None,
+        mask_corner_radius: 0.0,
+        flipped_h: false,
+        color_filter: ColorFilter::None,
+        vignette_intensity: 0.0,
+        brightness: 0.0,
+        contrast: 1.0,
+        saturation: 1.0,
+        sharpen: 0.0,
+        chroma_key_enabled: false,
+        chroma_key_color: [0, 255, 0],
+        chroma_key_tolerance: 0.4,
+        blur_intensity: 0.0,
+        shake_intensity: 0.0,
+        glitch_intensity: 0.0,
+        pixelize_intensity: 0.0,
+        transition_in: TransitionType::None,
+        transition_duration_secs: 0.5,
+        position_keyframes: vec![],
+        scale_keyframes: vec![],
+        rotation_keyframes: vec![],
+        opacity_keyframes: vec![],
+        gain_keyframes: vec![],
+        voice_cleanup_enabled: false,
+        voice_cleanup_noise_floor_db: -30.0,
+        voice_cleanup_compressor_threshold_db: -18.0,
+        voice_cleanup_compressor_ratio: 3.0,
+        voice_cleanup_ceiling_linear: 0.95,
+        brightness_keyframes: vec![],
+        contrast_keyframes: vec![],
+        saturation_keyframes: vec![],
+        crop_x_keyframes: vec![],
+        crop_y_keyframes: vec![],
+        crop_w_keyframes: vec![],
+        crop_h_keyframes: vec![],
+        deflicker_enabled: false,
+        lut_path: String::new(),
+        layer_scale_x: 1.0,
+        layer_scale_y: 1.0,
+        stabilization_intensity: 0.0,
+        background_removal_enabled: false,
+        background_removal_mask_path: String::new(),
+    }
+}
+
+fn compound_video_track(id: u64, clips: Vec<ClipInstance>) -> Track {
+    Track {
+        id,
+        name: "V1".to_string(),
+        kind: TrackKind::Video,
+        clips,
+        text_clips: vec![],
+        shape_clips: vec![],
+        visible: true,
+        audio_role: avcore::AudioRole::Unspecified,
+        locked: false,
+        color_label: None,
+    }
+}
 
 fn test_project() -> Project {
     Project {
@@ -184,4 +267,71 @@ fn move_sequence_rejects_invalid_or_unchanged_positions() {
     assert!(!project.move_sequence(5, 0));
     assert_eq!(project.sequences[0].name, "Main");
     assert_eq!(project.sequences[1].name, "Second");
+}
+
+#[test]
+fn sequences_referencing_as_compound_clip_finds_the_referencing_sequence() {
+    let mut project = test_project();
+    let target_id = project.new_sequence("Nested".to_string());
+    let referencing_id = project.new_sequence("Uses the nested one".to_string());
+    project.sequences[2].timeline.tracks = vec![compound_video_track(
+        1,
+        vec![compound_clip(1, Some(target_id))],
+    )];
+
+    let referencing = project.sequences_referencing_as_compound_clip(target_id);
+
+    assert_eq!(referencing.len(), 1);
+    assert_eq!(referencing[0].id, referencing_id);
+}
+
+#[test]
+fn sequences_referencing_as_compound_clip_ignores_ordinary_clips() {
+    let mut project = test_project();
+    let target_id = project.new_sequence("Nested".to_string());
+    project.new_sequence("Unrelated".to_string());
+    project.sequences[2].timeline.tracks =
+        vec![compound_video_track(1, vec![compound_clip(1, None)])];
+
+    assert!(project
+        .sequences_referencing_as_compound_clip(target_id)
+        .is_empty());
+}
+
+#[test]
+fn sequences_referencing_as_compound_clip_excludes_the_sequence_itself() {
+    // A sequence can't nest itself (nested_sequence::materialize_nested_sequences enforces this
+    // via cycle detection at render time), but this function still shouldn't ever report a
+    // sequence as referencing itself even if such a dangling/malformed state existed.
+    let mut project = test_project();
+    let self_id = project.sequences[0].id;
+    project.sequences[0].timeline.tracks = vec![compound_video_track(
+        1,
+        vec![compound_clip(1, Some(self_id))],
+    )];
+
+    assert!(project
+        .sequences_referencing_as_compound_clip(self_id)
+        .is_empty());
+}
+
+#[test]
+fn sequences_referencing_as_compound_clip_finds_every_referencing_sequence() {
+    let mut project = test_project();
+    let target_id = project.new_sequence("Nested".to_string());
+    let first_id = project.new_sequence("First user".to_string());
+    let second_id = project.new_sequence("Second user".to_string());
+    project.sequences[2].timeline.tracks = vec![compound_video_track(
+        1,
+        vec![compound_clip(1, Some(target_id))],
+    )];
+    project.sequences[3].timeline.tracks = vec![compound_video_track(
+        1,
+        vec![compound_clip(1, Some(target_id))],
+    )];
+
+    let referencing = project.sequences_referencing_as_compound_clip(target_id);
+    let ids: Vec<u64> = referencing.iter().map(|s| s.id).collect();
+
+    assert_eq!(ids, vec![first_id, second_id]);
 }

@@ -741,10 +741,16 @@ not by default priority.
       `current_preview_video_clip` instead of threading `media_library` through them for no
       reason.
     - **Explicitly not done**: dragging an *existing* sequence tab onto another timeline as a
-      nested clip (only the "create compound from selection" direction ships); deleting a
-      `Sequence` still referenced by a compound clip elsewhere leaves a dangling
-      `nested_sequence_id` — `RenderError::MissingNestedSequence` degrades gracefully (logged,
-      clip skipped) rather than crashing, but there's no warning at delete time.
+      nested clip (only the "create compound from selection" direction ships).
+    - **Follow-up: delete-time warning now ships.** Deleting a `Sequence` still referenced by a
+      compound clip elsewhere used to leave a dangling `nested_sequence_id` with no warning at
+      all — `RenderError::MissingNestedSequence` degraded gracefully (logged, clip skipped)
+      rather than crashing, but only surfaced much later, at render time. `Project::
+      sequences_referencing_as_compound_clip` (new `core` method, 4 integration tests) scans
+      every other sequence's clips for a reference to the one being deleted; the delete-sequence
+      confirmation modal calls it fresh each time it's shown and, if any exist, adds a warning
+      line naming them. Deletion itself is unchanged — still allowed after the warning, not a
+      hard block.
     - **Verified for real**: `avcore::nested_sequence`'s own test module — cycle detection (both
       direct self-nesting and an indirect A→B→A cycle), a missing-sequence error, and, the
       strongest evidence, an actual end-to-end test that builds a two-sequence project, calls
