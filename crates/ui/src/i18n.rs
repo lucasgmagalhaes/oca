@@ -218,7 +218,7 @@ text_catalog! {
     ColorFilterSepia: pt_br = "Sépia", en = "Sepia";
     ColorFilterExportNote: pt_br = "aplicado na exportação — sem efeito no preview ao vivo.", en = "applied on export — no live preview effect.";
     PropBlendMode: pt_br = "Modo de mesclagem", en = "Blend mode";
-    BlendModeExportNote: pt_br = "aplicado na exportação — sem efeito no preview ao vivo ainda. Só afeta trilhas de overlay; ignora posicionamento (PIP) enquanto ativo.", en = "applied on export — no live preview effect yet. Only affects overlay tracks; ignores positioning (PIP) while active.";
+    BlendModeExportNote: pt_br = "só afeta trilhas de overlay; ignora posicionamento (PIP) enquanto ativo.", en = "only affects overlay tracks; ignores positioning (PIP) while active.";
     PropLut: pt_br = "LUT 3D", en = "3D LUT";
     LutExportNote: pt_br = "aplicado na exportação via lut3d — sem suporte no preview ao vivo (nenhum elemento de LUT disponível na instalação do GStreamer).", en = "applied on export via lut3d — no live preview support (no LUT element available in the GStreamer install).";
     ClearLut: pt_br = "Remover", en = "Clear";
