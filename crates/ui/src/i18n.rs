@@ -332,6 +332,8 @@ text_catalog! {
     GraphicTemplateApplyInvalid: pt_br = "Não foi possível aplicar o template gráfico", en = "Could not apply the graphic template";
     LoadGraphicTemplate: pt_br = "🖼 Carregar template gráfico", en = "🖼 Load graphic template";
     GraphicTemplateReadFailed: pt_br = "Não foi possível ler o arquivo de template", en = "Could not read the template file";
+    GraphicTemplateApplyTitle: pt_br = "Preencher template", en = "Fill in template";
+    GraphicTemplateApplyConfirm: pt_br = "Aplicar", en = "Apply";
     TrackKindVideo: pt_br = "Vídeo", en = "Video";
     TrackKindAudio: pt_br = "Áudio", en = "Audio";
     TrackKindText: pt_br = "Texto", en = "Text";

@@ -1703,12 +1703,9 @@ an item earlier:
   if instantiation fails or the template has no elements.
 
   The toolbar's new "🖼 Load graphic template" button (`App::load_graphic_template_from_file`) is
-  this slice's real, reachable trigger — deliberately scoped to parameterless templates for now:
-  it applies with no supplied parameter values, so a template with any `Parameter`-bound field
+  this slice's real, reachable trigger. A parameterless template applies immediately; one that
   surfaces `instantiate`'s own actionable "no value supplied for parameter ..." toast rather than
-  silently applying garbage. A real parameter-fill form (a dynamic modal, one row per declared
-  `TemplateParameter`) is a genuine, separate follow-up — this button is the honest, currently-
-  reachable slice of that flow, not a stand-in for it.
+  silently applying garbage.
 
   Verified: 6 new `App`-level tests in `app_test.rs` (a text element placed at the playhead with
   its template-defined position, a shape element on its own track, text and shape elements
@@ -1721,6 +1718,28 @@ an item earlier:
   (via the documented temporary `filters.c` shim, discarded before commit) both stayed clean —
   clippy's own `dead_code` lint confirmed the new `App` methods are actually reachable (via the
   new toolbar button and the new tests), not orphaned. `cargo fmt --check` also stayed clean.
+
+  **The parameter-fill modal (closing the gap the previous slice's own doc comment flagged) now
+  ships too.** Loading a template that declares one or more `TemplateParameter`s stages it in
+  `App::pending_graphic_template_apply` — `text_values`/`color_values` pre-seeded with one entry
+  per declared parameter (empty string / opaque white) — instead of applying it right away.
+  `App::show_apply_graphic_template_modal` (`app/modals.rs`, same modal shape/lifecycle
+  `show_apply_layer_template_modal` already established) shows one row per parameter: a plain
+  text field for `Text`, `egui::color_edit_button_srgba` (the same widget `shape_clip.rs`'s own
+  color row already uses) for `Color`. Confirming (`App::confirm_apply_graphic_template`) builds
+  the `ParameterValue` map from the staged values and hands it to `App::apply_graphic_template`;
+  cancelling or Escape (`App::cancel_apply_graphic_template`) discards the pending state without
+  applying anything.
+
+  Verified: 5 new `App`-level tests (a parameterless template still applies immediately; a
+  parameterized one stages instead of applying, pre-seeding `text_values` for every declared
+  parameter; an invalid-JSON file toasts with nothing staged; confirming applies with the filled
+  values; cancelling discards without touching the timeline) — type-checked cleanly under `cargo
+  check -p ui --tests`, same caveat as above. `cargo check --workspace --all-targets` and `cargo
+  clippy --workspace --all-targets` (via the documented temporary `filters.c` shim, discarded
+  before commit) both stayed clean, confirming the new modal/methods are actually reachable.
+  `cargo fmt --check` also stayed clean. CF-07 slice 3 is now considered complete; `Image`
+  primitive, timing, and migration tests (slice 2's remainder and slice 4) remain open.
 - `[ ]` **CF-08: semantic transcript and visual search.** Build a bounded, versioned local index
   after exact transcript search ships in CF-01.
 - `[ ]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and
