@@ -1050,21 +1050,28 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         ui.horizontal(|ui| {
             if components::icon_button(
                 ui,
-                "⏮",
+                crate::icons::SKIP_BACK_STR,
                 Text::SeekToStart.tr(locale),
-                components::IconButtonOpts::default(),
+                components::IconButtonOpts {
+                    family: Some(crate::icons::family()),
+                    ..Default::default()
+                },
             )
             .clicked()
             {
                 app.seek_preview(0.0);
             }
             let play_icon = if app.preview_state.preview_playing {
-                "⏸"
+                crate::icons::PAUSE_STR
             } else {
-                "▶"
+                crate::icons::PLAY_STR
             };
             if ui
-                .button(RichText::new(play_icon).color(theme::ACCENT))
+                .button(
+                    RichText::new(play_icon)
+                        .family(crate::icons::family())
+                        .color(theme::ACCENT),
+                )
                 .on_hover_text(Text::ShortcutPlayPause.tr(locale))
                 .clicked()
             {
@@ -1072,9 +1079,12 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             }
             if components::icon_button(
                 ui,
-                "⏭",
+                crate::icons::SKIP_FORWARD_STR,
                 Text::SeekToEnd.tr(locale),
-                components::IconButtonOpts::default(),
+                components::IconButtonOpts {
+                    family: Some(crate::icons::family()),
+                    ..Default::default()
+                },
             )
             .clicked()
             {
@@ -1256,20 +1266,24 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 if ui
-                                    .small_button("⏮")
+                                    .small_button(
+                                        RichText::new(crate::icons::SKIP_BACK_STR)
+                                            .family(crate::icons::family()),
+                                    )
                                     .on_hover_text(Text::SeekToStart.tr(locale))
                                     .clicked()
                                 {
                                     app.seek_preview(0.0);
                                 }
                                 let play_icon = if app.preview_state.preview_playing {
-                                    "⏸"
+                                    crate::icons::PAUSE_STR
                                 } else {
-                                    "▶"
+                                    crate::icons::PLAY_STR
                                 };
                                 if ui
                                     .button(
                                         RichText::new(play_icon)
+                                            .family(crate::icons::family())
                                             .color(theme::ACCENT.gamma_multiply(opacity)),
                                     )
                                     .on_hover_text(Text::ShortcutPlayPause.tr(locale))
@@ -1278,7 +1292,10 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                                     app.toggle_preview_playback();
                                 }
                                 if ui
-                                    .small_button("⏭")
+                                    .small_button(
+                                        RichText::new(crate::icons::SKIP_FORWARD_STR)
+                                            .family(crate::icons::family()),
+                                    )
                                     .on_hover_text(Text::SeekToEnd.tr(locale))
                                     .clicked()
                                 {
