@@ -125,13 +125,18 @@ keep the 🔊/🔇 emoji, no Lucide speaker icon is vendored) and lock toggle (`
 and the nav rail's Prefs gear (`settings`). `icons.rs` also gained `_STR` twins of its `char`
 constants (egui's text APIs take `&str`, not `char`), kept in sync by a test.
 
-Still open: the toolbar buttons that combine an icon with a text label in one control (Select/
-Cut/Trim, `mouse-pointer-2`/`scissors`/`fold-horizontal`) — `RichText`/`icon_button` can only
-carry one font for their whole string, so mixing the icon font with the default label font
-needs an `egui::text::LayoutJob` (multiple sections, each with its own `TextFormat`), not just
-`family`. Also not yet wired: `chevron-left`/`chevron-right` (no real "collapse a timeline
-track row" feature exists today to attach them to — the mockup mapping here may be aspirational,
-worth re-checking against the reference image before building), `ellipsis-vertical` (no track
+**Toolbar icon+label buttons: done.** `components::icon_label_job` builds a two-section
+`egui::text::LayoutJob` (icon-font glyph, then a space, then the plain-text label — each with
+its own `TextFormat`, since `RichText`/`icon_button` can only carry one font per string) and a
+new `tool_button_icon_font` (same active/inactive chip styling as `tool_button`) renders it.
+Wired: Select (`mouse-pointer-2`), Cut (`scissors`), Trim (`fold-horizontal` — the mockup's
+resolved best-guess for the shared Trim/Ripple slot, applied to Trim only; Ripple keeps its own
+distinct button). Ripple/Roll/Slip/Slide have no vendored icon and keep their unicode glyphs
+via the unchanged `tool_button`.
+
+Still not wired: `chevron-left`/`chevron-right` (no real "collapse a timeline track row"
+feature exists today to attach them to — the mockup mapping here may be aspirational, worth
+re-checking against the reference image before building), `ellipsis-vertical` (no track
 ⋮-menu exists), `chevron-down`/`upload` (top bar breadcrumb/Export — no top bar redesign done
 yet), the preview transport row icons (`camera`/`skip-back`/`rewind`/`pause`/`play`/
 `fast-forward`/`repeat`, alongside the already-wired-in-font-but-not-yet-in-a-screen
