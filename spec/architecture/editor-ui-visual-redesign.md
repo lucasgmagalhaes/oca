@@ -16,6 +16,59 @@ sections before implementing any part of it.
 — the actual source PNG the "Color system" measurements below were sampled from, and the only
 place to check any layout/icon/spacing detail this doc didn't call out in text.
 
+## Icon set
+
+The mockup's icon glyphs (tool rail, transport row, track headers, top bar) aren't custom art
+— cropping and zooming into each one (see below) shows they match **Lucide**
+(`lucide.dev`/`lucide-icons/lucide`, ISC-licensed overall, with a subset inherited from Feather
+under MIT — both permissive) glyph-for-glyph, not an approximation. That means the right source
+for these icons is Lucide's own vector files, not a hand-traced reconstruction from a ~40px
+raster crop — tracing pixels would only recreate what already exists cleanly as a vector.
+
+`assets/icons/*.svg` in this directory are the real, unmodified Lucide source files (24×24,
+`stroke="currentColor"`, 2px stroke — trivially recolorable to any `theme.rs` token by whatever
+renders them), fetched from `lucide-icons/lucide`'s `icons/` directory and matched to mockup
+regions as follows:
+
+| File | Mockup location | Note |
+|---|---|---|
+| `scissors.svg` | Tool rail — Cut | matches `EditorTool`'s cut action exactly |
+| `lock.svg` | Timeline track header — lock icon | matches `track.locked`'s existing 🔒 glyph |
+| `chevron-left.svg` / `chevron-right.svg` | Timeline track header — `< >` collapse | matches existing collapse-arrow affordance |
+| `settings.svg` | Top bar — gear icon | matches `nav_rail.rs`'s existing ⚙ Prefs entry |
+| `camera.svg` | Preview transport row — snapshot | new capability per "Program monitor" section above |
+| `skip-forward.svg` | Preview transport row | matches existing seek-to-end affordance |
+
+**Not yet fetched** — GitHub's unauthenticated API rate limit was hit mid-session after the
+first ~7 requests (further calls to `api.github.com/repos/lucide-icons/lucide/contents/icons/
+<name>.svg` returned empty even for names known to exist, e.g. `play.svg` — confirmed against a
+deliberately-fake name returning the identical empty response, so this is a rate limit/abuse
+guard being silently swallowed by the fetch tool, not proof those names are wrong):
+`mouse-pointer-2` (Select), `move-horizontal` (Trim/Ripple — best-guess name, unconfirmed),
+`type` (Text tool), `wand-2` (Effects), `hand` (Pan — no current `EditorTool` equivalent, see
+"Left icon rail" section above), `lock-open`/`eye`/`eye-off` (the other three track-header
+states — only `lock`'s closed state got fetched), `more-vertical` (track ⋮ menu),
+`chevron-down` (breadcrumb dropdown), `upload` (Export button), `skip-back`/`rewind`/`pause`/
+`play`/`fast-forward`/`repeat` (rest of the transport row), `share-2` (uncertain guess for one
+transport-row icon whose meaning wasn't fully identified from the crop — verify against the
+image before fetching). Same fetch method, just needs pacing (a handful per request, not all
+~20 at once) — direct `.svg` URLs (unpkg, jsdelivr, raw.githubusercontent.com) don't work at all
+in this environment regardless of rate limits (the fetch tool returns them empty regardless of
+host, likely an `image/svg+xml` content-type handling gap) — the working path is
+`api.github.com/repos/lucide-icons/lucide/contents/icons/<name>.svg`, which wraps the file in a
+JSON envelope with `text/plain`-ish handling and a base64 `content` field to decode locally.
+
+**Not addressed at all**: getting these into the actual running app. `egui` here has zero SVG
+rendering capability today (checked `crates/ui/Cargo.toml` — no `resvg`/`usvg`/`egui_extras`
+`svg` feature), so these files are a **design asset set for reference**, not yet wired into any
+screen. Wiring them in for real needs one of: (a) add an SVG-rasterization dependency and
+convert each to a texture at startup/on-demand — a real new capability, not currently present
+anywhere in this codebase; or (b) go the icon-font route instead (a crate that bundles Lucide's
+glyphs as a font with Unicode-private-use codepoints, rendered exactly like every existing
+single-glyph icon already is via `RichText`/`painter.text` — zero new rendering pipeline, but no
+standalone `.svg` files). This doc's own scope was "vendor the reference SVGs"; which of (a)/(b)
+to build is a separate, not-yet-made decision.
+
 ## Headline finding: the structure is already ~80% there
 
 `screens/editor/mod.rs` already implements the mockup's macro-layout almost exactly:
