@@ -49,7 +49,8 @@ const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
 
 use draw::{
     color_filter_tint, draw_filmstrip, draw_frozen_poster, draw_keyframe_markers,
-    draw_marker_ticks, draw_playhead, draw_waveform, shape_kind_glyph, ThumbnailDrawWork,
+    draw_marker_ticks, draw_playhead, draw_transition_wedge, draw_waveform, shape_kind_glyph,
+    ThumbnailDrawWork,
 };
 use snap::{snap_move_start, snap_to_nearest, waveform_snap_points_for_clip, ClipDrag};
 
@@ -827,6 +828,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             );
                         }
                         draw_keyframe_markers(painter, clip_rect, clip);
+                        draw_transition_wedge(painter, clip_rect, clip, px_per_sec);
                         if app.multi_selected_clip_ids.contains(&clip.id) {
                             painter.rect_stroke(
                                 clip_rect,

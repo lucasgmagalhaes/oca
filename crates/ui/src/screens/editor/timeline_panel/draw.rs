@@ -239,11 +239,17 @@ pub(super) fn draw_waveform(
     }
 }
 
-/// Small diamond marker for every distinct `time_fraction` used across `clip`'s four keyframe
-/// lists (position/scale/rotation/opacity — see [`avcore::keyframe`]), along the clip block's
-/// bottom edge. Read-only: this pass covers visibility only, not on-timeline add/drag/delete —
-/// editing keyframes still goes through the properties panel's list editor. A no-op if the clip
-/// has no keyframes on any property (the common case).
+/// Small diamond marker for every distinct `time_fraction` used across `clip`'s five keyframe
+/// lists (position/scale/rotation/opacity/gain — see [`avcore::keyframe`]), along the clip
+/// block's bottom edge. `gain_keyframes` is the one of these that's ever populated on an audio
+/// clip (the other four are video-transform fields) — drawing it here, on top of
+/// [`draw_waveform`]'s volume-envelope line, is what the OCA mockup's "white diamond keyframe
+/// markers on a volume envelope line" region maps to (`spec/architecture/
+/// editor-ui-visual-redesign.md`'s Timeline section) — the data already existed, this is the
+/// first place it's drawn directly on the timeline strip rather than only in the properties
+/// panel's keyframe editor. Read-only: this pass covers visibility only, not on-timeline add/
+/// drag/delete — editing keyframes still goes through the properties panel's list editor. A
+/// no-op if the clip has no keyframes on any of the five properties (the common case).
 pub(super) fn draw_keyframe_markers(
     painter: &egui::Painter,
     clip_rect: egui::Rect,
@@ -253,6 +259,7 @@ pub(super) fn draw_keyframe_markers(
         && !clip.has_scale_keyframes()
         && !clip.has_rotation_keyframes()
         && !clip.has_opacity_keyframes()
+        && !clip.has_gain_keyframes()
     {
         return;
     }
@@ -263,6 +270,7 @@ pub(super) fn draw_keyframe_markers(
         .chain(clip.scale_keyframes.iter().map(|k| k.time_fraction))
         .chain(clip.rotation_keyframes.iter().map(|k| k.time_fraction))
         .chain(clip.opacity_keyframes.iter().map(|k| k.time_fraction))
+        .chain(clip.gain_keyframes.iter().map(|k| k.time_fraction))
         .collect();
     fractions.sort_by(|a, b| a.total_cmp(b));
     fractions.dedup_by(|a, b| (*a - *b).abs() < 1e-3);
@@ -282,6 +290,43 @@ pub(super) fn draw_keyframe_markers(
             egui::Stroke::new(1.0, theme::TEXT_PRIMARY.gamma_multiply(0.6)),
         ));
     }
+}
+
+/// Draws a filled wedge over `clip_rect`'s incoming (left) edge when
+/// [`avcore::timeline::ClipInstance::has_transition`] is true — the OCA mockup's "purple
+/// transition wedges between adjacent clips" (`spec/architecture/editor-ui-visual-redesign.md`'s
+/// Timeline section). `ClipInstance::transition_in`/`transition_duration_secs` already apply at
+/// render/preview time (see `matrix/effects-and-color.md`); this is the first place the timeline
+/// strip itself paints anything for it, purely visual (no new interaction). No pixel-sampled
+/// color exists for this region in the source mockup (unlike `theme::ACCENT`/`AUDIO_TINT`), so
+/// this reuses `theme::ACCENT_2` (already this codebase's keyframe-diamond/composite-border
+/// color) rather than fabricating a new token for an unsampled color. A no-op for a clip whose
+/// transition duration doesn't cover any on-screen width (`px_per_sec` too small) or that has no
+/// transition configured.
+pub(super) fn draw_transition_wedge(
+    painter: &egui::Painter,
+    clip_rect: egui::Rect,
+    clip: &avcore::timeline::ClipInstance,
+    px_per_sec: f32,
+) {
+    if !clip.has_transition() {
+        return;
+    }
+    let wedge_w = (clip.transition_duration_secs as f32 * px_per_sec)
+        .min(clip_rect.width())
+        .max(1.0);
+    // Full clip height at the incoming edge, tapering to a point `wedge_w` in — the classic
+    // NLE "bowtie" transition wedge shape (each side of a cut draws its own half; this is the
+    // incoming clip's half).
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            clip_rect.left_top(),
+            clip_rect.left_bottom(),
+            egui::pos2(clip_rect.left() + wedge_w, clip_rect.center().y),
+        ],
+        theme::ACCENT_2.gamma_multiply(0.55),
+        egui::Stroke::NONE,
+    ));
 }
 
 /// Draws the playhead as a vertical line inside `rect`, if it falls within `rect`'s horizontal
