@@ -352,30 +352,38 @@ Mapping:
 
 - **Zoom controls (50%/Fit/100%)** — no existing zoom-level state for the preview (it always
   fits available space); new, small addition if wanted (a `PreviewZoom` enum + a bit of size
-  math), not currently present.
-- **"CAM 01" chip** — real functionality exists to back this: Multicam editing (`ROADMAP.md`
-  P2 item 10) already tracks a `MulticamGroup`'s active/program track. If the active clip's
-  track is part of a multicam group, showing that track/angle's name here is a real, wire-
-  able feature, not decoration. If no multicam group exists for the current selection, this
-  chip has nothing to show and should be omitted, not faked.
+  math), not currently present. Not part of implementation-order item 4's own checklist —
+  still not built.
+- **"CAM 01" chip — done.** `App::current_preview_multicam_angle()` checks whether the video
+  track behind the previewed clip is a `MulticamGroup`'s `program_track_id` (Multicam editing,
+  `ROADMAP.md` P2 item 10, was already real) and returns its 1-based angle number if so —
+  `None` (chip omitted, not faked) when no group applies. Drawn top-right (the mockup's "REC"
+  slot, freed up per the next bullet).
 - **"REC ●" chip** — no oca equivalent, and arguably shouldn't have one: this is a live-
   recording indicator, and oca edits already-captured footage; there is no "recording" state
   to reflect. Treat as a non-goal, not a gap — this is a mockup-generator artifact (it likely
   copied a generic NLE reference image's chrome verbatim) rather than a real requirement.
-- **Bottom overlays (resolution+fps, timecode+frame)** — mostly a relocation of data already
-  shown elsewhere (the resolution chip already exists top-left; fps isn't currently in that
-  chip but is available from the active sequence's export settings; timecode is already shown
-  in the transport row via `format_timecode`, just not overlaid on the video itself). Layout
-  change, not new data.
+- **Bottom overlays (resolution+fps, timecode+frame) — done, with a correction.** fps is *not*
+  available from "the active sequence's export settings" as this doc originally guessed — oca
+  has no per-sequence fps at all, only per-asset (`MediaAsset::fps`, the same field the
+  properties panel's own fps row reads); `App::current_preview_fps()` reads it off the
+  previewed clip's asset instead. Folded onto the existing top-left resolution chip (`{w}×{h} ·
+  {fps}fps`) rather than a second overlay, since the two numbers read as one unit; a new
+  bottom-right chip shows timecode (already available via `format_timecode`) plus a
+  frame-within-second suffix, omitted when fps is unknown rather than guessed.
 - **Scrub bar with round handle** — functionally identical to the existing `egui::Slider`;
   the round-handle look is `egui::Slider`'s own default rendering already, so this is likely
   already close — verify visually rather than assume a custom-painted widget is needed.
-- **Transport additions**: step-single-frame back/forward and a loop toggle don't exist today
-  (only seek-to-start/end + play/pause) — real, small additions (`App` would need a "step by
-  1/`fps`" method and a `loop_enabled: bool`). "Snapshot" (camera icon) has no equivalent —
-  likely a save-current-frame-as-image feature, genuinely new if wanted. "Marker" (clapper
-  icon) maps directly to the existing Timeline Index panel's add-marker action
-  (`Marker`/`MarkerKind`, already shipped) — just needs a shortcut button here too.
+- **Transport additions — step-frame and loop done, snapshot/marker not.** New
+  `App::step_preview_frame(delta_frames)` (one frame at the previewed clip's fps, 30.0
+  fallback) backs two new buttons (no vendored icon for single-frame step, so thin outline
+  triangles in the default font). New `PreviewState::loop_enabled` + a loop-toggle button (the
+  vendored `repeat` icon) restart playback from 0 instead of stopping at the timeline's end —
+  `ensure_preview_loaded`'s existing "nothing covers the new playhead" branch checks it,
+  gated on playback having actually been running. "Snapshot" (camera icon) still has no
+  equivalent — a save-current-frame-as-image feature, genuinely new, not built. "Marker"
+  (clapper icon) still maps to the existing add-marker action but has no vendored Lucide icon
+  and wasn't in item 4's own checklist — not built either.
 
 ### Inspector (properties panel)
 
@@ -523,8 +531,10 @@ principles, and this doc's own findings above:
 3. **Timeline visual polish — done.** Transition wedges (`draw_transition_wedge`) and
    gain-keyframe diamonds on waveforms (extended `draw_keyframe_markers`); playhead already
    verified red (`theme::ERROR`) post-accent-change.
-4. **Preview panel**: relocate/add resolution+fps+timecode overlays, step-frame + loop
-   transport buttons, CAM chip wired to real multicam-group data (omit when none applies).
+4. **Preview panel — done.** Resolution+fps/timecode+frame HUD overlays, step-frame + loop
+   transport buttons, and a CAM chip wired to real `MulticamGroup` data (omitted when none
+   applies) — see the Program monitor section's own bullets for what shipped vs. what's still
+   genuinely new (zoom controls, snapshot capture, marker button).
 5. **Menu bar** — largest single addition; scope and confirm the "does the toolbar still exist
    alongside it" question before building, per the open decision above.
 6. Everything flagged as a genuine new feature above (real per-asset thumbnails, Blend Mode,
