@@ -26,9 +26,22 @@ pub const BORDER: Color32 = Color32::from_rgb(0x2b, 0x33, 0x40);
 pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(0xee, 0xf1, 0xf4);
 pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(0xa9, 0xb2, 0xbd);
 pub const TEXT_MUTED: Color32 = Color32::from_rgb(0x6c, 0x76, 0x83);
-pub const ACCENT: Color32 = Color32::from_rgb(0x2e, 0xa3, 0x9e);
-pub const ACCENT_TINT: Color32 = Color32::from_rgba_premultiplied(0x0a, 0x28, 0x27, 0x80);
+/// Sampled from the OCA mockup's Export button fill / timecode readout — the largest
+/// saturated-color cluster in the reference image (see
+/// `spec/architecture/editor-ui-visual-redesign.md`'s Color system section). Replaces the
+/// prior teal (`#2ea39e`); this is a global, high-blast-radius constant — selection
+/// highlighting, hovered/active widget strokes, the active tool-button fill, tags, etc. all
+/// derive from it.
+pub const ACCENT: Color32 = Color32::from_rgb(0x70, 0x58, 0xe4);
+pub const ACCENT_TINT: Color32 = Color32::from_rgba_premultiplied(0x38, 0x2c, 0x72, 0x80);
 pub const ACCENT_2: Color32 = Color32::from_rgb(0x4f, 0x7c, 0xe0);
+/// Default (non-color-labeled) audio-clip fill on the timeline — sampled from the mockup's
+/// `Ambient_Score.wav` waveform lane. Deliberately its own token rather than derived from
+/// `ACCENT` (as it was before `ACCENT` moved from teal to violet): the mockup's audio-track
+/// color is a different hue family (dark teal-green), not a dimmed accent, so audio clips would
+/// otherwise silently go violet along with everything else `ACCENT` drives. See
+/// `spec/architecture/editor-ui-visual-redesign.md`'s Color system section.
+pub const AUDIO_TINT: Color32 = Color32::from_rgb(0x2d, 0x4a, 0x41);
 pub const ERROR: Color32 = Color32::from_rgb(0xe0, 0x57, 0x4f);
 pub const ERROR_TINT: Color32 = Color32::from_rgba_premultiplied(0x2a, 0x11, 0x10, 0x80);
 /// Non-error caution states (e.g. a paused job) — distinct from `ERROR` (failure) and `ACCENT`

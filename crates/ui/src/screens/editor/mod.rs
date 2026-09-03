@@ -13,13 +13,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+mod menu_bar;
 mod properties_panel;
 mod timeline_panel;
 
 use avcore::media::format_timecode;
 use eframe::egui::{self, RichText};
 
-use crate::app::{App, EditorTool, MOTION_TRACK_SIZE_RANGE};
+use crate::app::{App, EditorTool, MediaViewMode, MOTION_TRACK_SIZE_RANGE};
 use crate::components;
 use crate::i18n::Text;
 use crate::theme;
@@ -127,6 +128,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     }
 
     ui.vertical(|ui| {
+        menu_bar::menu_bar(app, ui);
         toolbar(app, ui);
         ui.add_space(4.0);
         sequence_tab_bar(app, ui);
@@ -277,21 +279,36 @@ fn resizable_divider_horizontal(
 fn toolbar(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     ui.horizontal(|ui| {
-        tool_button(
+        tool_button_icon_font(
             app,
             ui,
             EditorTool::Select,
-            "↖",
+            crate::icons::MOUSE_POINTER_2_STR,
             Text::ToolSelect.tr(locale),
         );
-        if ui
-            .button(format!("✂ {}", Text::ToolCut.tr(locale)))
-            .on_hover_text("Ctrl+B")
-            .clicked()
-        {
+        let cut_job = components::icon_label_job(
+            crate::icons::SCISSORS_STR,
+            crate::icons::family(),
+            14.0,
+            theme::TEXT_PRIMARY,
+            Text::ToolCut.tr(locale),
+            14.0,
+            theme::TEXT_PRIMARY,
+        );
+        if ui.button(cut_job).on_hover_text("Ctrl+B").clicked() {
             app.split_at_playhead();
         }
-        tool_button(app, ui, EditorTool::Trim, "⇔", Text::ToolTrim.tr(locale));
+        // `fold-horizontal` is the mockup's resolved best-guess for the shared Trim/Ripple tool-
+        // rail slot (see `spec/architecture/editor-ui-visual-redesign.md`'s Icon set table) —
+        // applied to Trim only here since Ripple keeps its own distinct icon-less button below,
+        // not a second, unconfirmed reuse of the same glyph.
+        tool_button_icon_font(
+            app,
+            ui,
+            EditorTool::Trim,
+            crate::icons::FOLD_HORIZONTAL_STR,
+            Text::ToolTrim.tr(locale),
+        );
         tool_button(
             app,
             ui,
@@ -720,15 +737,68 @@ fn tool_button(app: &mut App, ui: &mut egui::Ui, tool: EditorTool, icon: &str, l
     }
 }
 
+/// Same active/inactive chip styling as [`tool_button`], for a tool that has a real vendored
+/// Lucide icon (see `spec/architecture/editor-ui-visual-redesign.md`'s Icon set section) instead
+/// of a plain-text/unicode glyph — `icon` is one of `crate::icons`' `_STR` constants, rendered
+/// through the icon font via a [`components::icon_label_job`] `LayoutJob` since `RichText` can't
+/// mix two fonts in one string.
+fn tool_button_icon_font(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    tool: EditorTool,
+    icon: &str,
+    label: &str,
+) {
+    let active = app.tool == tool;
+    let color = if active {
+        theme::ACCENT
+    } else {
+        theme::TEXT_SECONDARY
+    };
+    let job = components::icon_label_job(
+        icon,
+        crate::icons::family(),
+        14.0,
+        color,
+        label,
+        14.0,
+        color,
+    );
+    let button = egui::Button::new(job)
+        .fill(if active {
+            theme::ACCENT_TINT
+        } else {
+            egui::Color32::TRANSPARENT
+        })
+        .stroke(egui::Stroke::new(
+            1.0,
+            if active {
+                theme::ACCENT
+            } else {
+                egui::Color32::TRANSPARENT
+            },
+        ));
+    if ui.add(button).clicked() {
+        app.tool = tool;
+    }
+}
+
 /// A small colored placeholder thumbnail with a duration badge in the bottom-right corner,
 /// matching the media-library asset row from `oca-editor-mock.html`'s `.asset-thumb` — video
 /// and audio assets get distinct fills so the kind reads at a glance without a real decoded
 /// frame (fetching/caching one here would duplicate `thumbnail_state`'s timeline-clip pipeline
 /// for a list row that's rarely more than a name lookup).
 const ASSET_THUMB_SIZE: egui::Vec2 = egui::vec2(48.0, 28.0);
+/// Thumbnail size for [`MediaViewMode::Grid`]'s tiles — bigger than [`ASSET_THUMB_SIZE`]'s list
+/// rows since a grid tile has no adjacent filename/metadata column competing for width.
+const GRID_ASSET_THUMB_SIZE: egui::Vec2 = egui::vec2(120.0, 72.0);
 
 fn asset_thumb(ui: &mut egui::Ui, asset: &avcore::media::MediaAsset) {
-    let (rect, _response) = ui.allocate_exact_size(ASSET_THUMB_SIZE, egui::Sense::hover());
+    asset_thumb_sized(ui, asset, ASSET_THUMB_SIZE);
+}
+
+fn asset_thumb_sized(ui: &mut egui::Ui, asset: &avcore::media::MediaAsset, size: egui::Vec2) {
+    let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
     if !ui.is_rect_visible(rect) {
         return;
     }
@@ -781,6 +851,21 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                             .size(11.0)
                             .color(theme::TEXT_MUTED),
                         );
+                        ui.add_space(theme::SPACE_SM);
+                        if ui
+                            .selectable_label(app.media_view_mode == MediaViewMode::Grid, "▦")
+                            .on_hover_text(Text::MediaViewGrid.tr(app.locale))
+                            .clicked()
+                        {
+                            app.media_view_mode = MediaViewMode::Grid;
+                        }
+                        if ui
+                            .selectable_label(app.media_view_mode == MediaViewMode::List, "☰")
+                            .on_hover_text(Text::MediaViewList.tr(app.locale))
+                            .clicked()
+                        {
+                            app.media_view_mode = MediaViewMode::List;
+                        }
                     });
                 });
                 ui.add_space(theme::SPACE_SM);
@@ -832,78 +917,131 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                             .cloned()
                     });
                     let search = app.media_search.to_lowercase();
-                    let assets = app.active_project().media_library.iter();
-                    for asset in assets.filter(|a| {
-                        bin.as_ref().is_none_or(|b| b.matches(a))
-                            && (search.is_empty() || a.file_name.to_lowercase().contains(&search))
-                    }) {
-                        let selected = app.selected_asset_id == Some(asset.id);
-                        let bg = if selected {
-                            theme::ACCENT.gamma_multiply(0.18)
-                        } else {
-                            theme::SURFACE
+                    let assets: Vec<_> = app
+                        .active_project()
+                        .media_library
+                        .iter()
+                        .filter(|a| {
+                            bin.as_ref().is_none_or(|b| b.matches(a))
+                                && (search.is_empty()
+                                    || a.file_name.to_lowercase().contains(&search))
+                        })
+                        .collect();
+
+                    // Shared across both layouts below: every asset's click/double-click/drag/
+                    // drop behavior is identical, only the Frame's own content (list row vs.
+                    // grid tile) differs.
+                    let mut handle_interaction =
+                        |ui: &egui::Ui,
+                         asset: &avcore::media::MediaAsset,
+                         response: egui::Response| {
+                            if response.clicked() {
+                                clicked_id = Some(asset.id);
+                            }
+                            if response.double_clicked() {
+                                add_to_timeline_id = Some(asset.id);
+                            }
+                            if response.dragged() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                                if let Some(pos) = response.interact_pointer_pos() {
+                                    egui::Area::new(ui.id().with(("asset_drag_ghost", asset.id)))
+                                        .fixed_pos(pos + egui::vec2(12.0, 12.0))
+                                        .order(egui::Order::Tooltip)
+                                        .interactable(false)
+                                        .show(ui.ctx(), |ui| {
+                                            egui::Frame::new()
+                                                .fill(theme::SURFACE_2)
+                                                .corner_radius(theme::RADIUS_SM)
+                                                .inner_margin(egui::Margin::symmetric(8, 4))
+                                                .show(ui, |ui| {
+                                                    ui.label(
+                                                        RichText::new(&asset.file_name).size(11.0),
+                                                    );
+                                                });
+                                        });
+                                }
+                            }
+                            if response.drag_stopped() {
+                                if let Some(pos) = response.interact_pointer_pos() {
+                                    dropped_asset = Some((asset.id, pos));
+                                }
+                            }
                         };
-                        let response = egui::Frame::new()
-                            .fill(bg)
-                            .corner_radius(theme::RADIUS_MD)
-                            .inner_margin(egui::Margin::same(6))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    asset_thumb(ui, asset);
-                                    ui.vertical(|ui| {
-                                        ui.label(RichText::new(&asset.file_name).size(12.0));
-                                        ui.label(
-                                            RichText::new(format!(
-                                                "{} · {}",
-                                                asset.duration_label(),
-                                                asset
-                                                    .resolution
-                                                    .map(|(w, h)| format!("{w}×{h}"))
-                                                    .unwrap_or_else(|| asset
-                                                        .sample_rate_khz
-                                                        .map(|k| format!("{k:.0}kHz"))
-                                                        .unwrap_or_default())
-                                            ))
-                                            .size(10.0)
-                                            .color(theme::TEXT_MUTED),
-                                        );
-                                    });
-                                });
-                            })
-                            .response
-                            .interact(egui::Sense::click_and_drag());
-                        if response.clicked() {
-                            clicked_id = Some(asset.id);
-                        }
-                        if response.double_clicked() {
-                            add_to_timeline_id = Some(asset.id);
-                        }
-                        if response.dragged() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                            if let Some(pos) = response.interact_pointer_pos() {
-                                egui::Area::new(ui.id().with(("asset_drag_ghost", asset.id)))
-                                    .fixed_pos(pos + egui::vec2(12.0, 12.0))
-                                    .order(egui::Order::Tooltip)
-                                    .interactable(false)
-                                    .show(ui.ctx(), |ui| {
-                                        egui::Frame::new()
-                                            .fill(theme::SURFACE_2)
-                                            .corner_radius(theme::RADIUS_SM)
-                                            .inner_margin(egui::Margin::symmetric(8, 4))
-                                            .show(ui, |ui| {
+
+                    match app.media_view_mode {
+                        MediaViewMode::List => {
+                            for asset in assets.iter().copied() {
+                                let selected = app.selected_asset_id == Some(asset.id);
+                                let bg = if selected {
+                                    theme::ACCENT.gamma_multiply(0.18)
+                                } else {
+                                    theme::SURFACE
+                                };
+                                let response = egui::Frame::new()
+                                    .fill(bg)
+                                    .corner_radius(theme::RADIUS_MD)
+                                    .inner_margin(egui::Margin::same(6))
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            asset_thumb(ui, asset);
+                                            ui.vertical(|ui| {
                                                 ui.label(
-                                                    RichText::new(&asset.file_name).size(11.0),
+                                                    RichText::new(&asset.file_name).size(12.0),
+                                                );
+                                                ui.label(
+                                                    RichText::new(format!(
+                                                        "{} · {}",
+                                                        asset.duration_label(),
+                                                        asset
+                                                            .resolution
+                                                            .map(|(w, h)| format!("{w}×{h}"))
+                                                            .unwrap_or_else(|| asset
+                                                                .sample_rate_khz
+                                                                .map(|k| format!("{k:.0}kHz"))
+                                                                .unwrap_or_default())
+                                                    ))
+                                                    .size(10.0)
+                                                    .color(theme::TEXT_MUTED),
                                                 );
                                             });
-                                    });
+                                        });
+                                    })
+                                    .response
+                                    .interact(egui::Sense::click_and_drag());
+                                handle_interaction(ui, asset, response);
+                                ui.add_space(6.0);
                             }
                         }
-                        if response.drag_stopped() {
-                            if let Some(pos) = response.interact_pointer_pos() {
-                                dropped_asset = Some((asset.id, pos));
-                            }
+                        MediaViewMode::Grid => {
+                            ui.horizontal_wrapped(|ui| {
+                                for asset in assets.iter().copied() {
+                                    let selected = app.selected_asset_id == Some(asset.id);
+                                    let bg = if selected {
+                                        theme::ACCENT.gamma_multiply(0.18)
+                                    } else {
+                                        theme::SURFACE
+                                    };
+                                    let response = egui::Frame::new()
+                                        .fill(bg)
+                                        .corner_radius(theme::RADIUS_MD)
+                                        .inner_margin(egui::Margin::same(6))
+                                        .show(ui, |ui| {
+                                            ui.set_max_width(GRID_ASSET_THUMB_SIZE.x);
+                                            ui.vertical(|ui| {
+                                                asset_thumb_sized(ui, asset, GRID_ASSET_THUMB_SIZE);
+                                                ui.label(
+                                                    RichText::new(&asset.file_name)
+                                                        .size(10.0)
+                                                        .color(theme::TEXT_PRIMARY),
+                                                );
+                                            });
+                                        })
+                                        .response
+                                        .interact(egui::Sense::click_and_drag());
+                                    handle_interaction(ui, asset, response);
+                                }
+                            });
                         }
-                        ui.add_space(6.0);
                     }
                 });
             });
@@ -927,6 +1065,24 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
     if new_bin_clicked {
         app.begin_new_smart_bin();
     }
+}
+
+/// A small dark rounded chip with monospace text, anchored by its top-left corner — the
+/// preview panel's HUD overlay style (resolution/fps top-left, timecode/frame bottom-right).
+fn draw_preview_hud_chip(painter: &egui::Painter, top_left: egui::Pos2, text: &str) {
+    let text_pos = top_left + egui::vec2(4.0, 2.0);
+    let galley = painter.layout_no_wrap(
+        text.to_owned(),
+        egui::FontId::monospace(10.5),
+        theme::TEXT_SECONDARY,
+    );
+    let bg_rect = egui::Rect::from_min_size(top_left, galley.size() + egui::vec2(8.0, 4.0));
+    painter.rect_filled(
+        bg_rect,
+        egui::CornerRadius::same(theme::RADIUS_SM),
+        egui::Color32::from_black_alpha(160),
+    );
+    painter.galley(text_pos, galley, theme::TEXT_SECONDARY);
 }
 
 fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
@@ -964,60 +1120,143 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 };
             })
             .response;
-        // A small resolution readout in the preview's top-left corner — matching
+        // A small resolution(+fps) readout in the preview's top-left corner — matching
         // oca-editor-mock.html's `.preview-hud-top` chip — from the actually decoded texture's
         // own size, not a fabricated/asset-declared value, so it never drifts from what's on
-        // screen (proxy playback, letterboxing, etc.).
+        // screen (proxy playback, letterboxing, etc.). fps comes from the previewed clip's own
+        // asset (oca has no per-sequence fps) and is omitted when unknown, per the OCA mockup's
+        // bottom-left overlay (`spec/architecture/editor-ui-visual-redesign.md`'s Program
+        // monitor mapping) — relocated here onto the existing resolution chip rather than a
+        // second overlay, since the two numbers read as one unit.
         if let Some([w, h]) = preview_texture_size {
-            let chip_pos = frame_response.rect.left_top() + egui::vec2(8.0, 8.0);
-            let painter = ui.painter();
-            let text_pos = chip_pos + egui::vec2(4.0, 2.0);
-            let galley = painter.layout_no_wrap(
-                format!("{w}×{h}"),
-                egui::FontId::monospace(10.5),
-                theme::TEXT_SECONDARY,
+            let text = match app.current_preview_fps() {
+                Some(fps) => format!("{w}×{h} · {fps:.2}fps"),
+                None => format!("{w}×{h}"),
+            };
+            draw_preview_hud_chip(
+                ui.painter(),
+                frame_response.rect.left_top() + egui::vec2(8.0, 8.0),
+                &text,
             );
-            let bg_rect = egui::Rect::from_min_size(chip_pos, galley.size() + egui::vec2(8.0, 4.0));
-            painter.rect_filled(
-                bg_rect,
-                egui::CornerRadius::same(theme::RADIUS_SM),
-                egui::Color32::from_black_alpha(160),
-            );
-            painter.galley(text_pos, galley, theme::TEXT_SECONDARY);
+        }
+        // "CAM 01" chip in the top-right corner (the mockup's top-right slot is otherwise the
+        // "REC ●" chip, a documented non-goal — see the Program monitor mapping — freeing it
+        // for this instead), wired to real multicam-group data: only drawn when the previewed
+        // track is actually a multicam group's program track, never faked when it isn't.
+        if let Some(angle) = app.current_preview_multicam_angle() {
+            let text = format!("CAM {angle:02}");
+            let width = ui
+                .painter()
+                .layout_no_wrap(
+                    text.clone(),
+                    egui::FontId::monospace(10.5),
+                    theme::TEXT_SECONDARY,
+                )
+                .size()
+                .x
+                + 8.0;
+            let top_left = frame_response.rect.right_top() + egui::vec2(-8.0 - width, 8.0);
+            draw_preview_hud_chip(ui.painter(), top_left, &text);
+        }
+        // Timecode+frame overlay in the preview's bottom-right corner, matching the mockup's
+        // bottom-right overlay — a relocation of data already shown in the transport row's
+        // timecode label below, plus a frame-within-second suffix when fps is known (omitted
+        // otherwise rather than guessed).
+        if preview_texture_size.is_some() {
+            let playhead = app.active_project().timeline().playhead_secs;
+            let mut text = format_timecode(playhead);
+            if let Some(fps) = app.current_preview_fps() {
+                let frame_count = fps.round().max(1.0) as i64;
+                let frame =
+                    ((playhead.fract() * fps as f64).round() as i64).clamp(0, frame_count - 1);
+                text.push_str(&format!(":{frame:02}"));
+            }
+            // Measure first (this chip is bottom-right-anchored, unlike the top-left one above)
+            // so its top-left corner can be derived from the frame's bottom-right corner.
+            let size = ui
+                .painter()
+                .layout_no_wrap(
+                    text.clone(),
+                    egui::FontId::monospace(10.5),
+                    theme::TEXT_SECONDARY,
+                )
+                .size()
+                + egui::vec2(8.0, 4.0);
+            let top_left = frame_response.rect.right_bottom() - egui::vec2(8.0, 8.0) - size;
+            draw_preview_hud_chip(ui.painter(), top_left, &text);
         }
         let timeline_duration = app.active_project().timeline().duration_secs();
         ui.horizontal(|ui| {
             if components::icon_button(
                 ui,
-                "⏮",
+                crate::icons::SKIP_BACK_STR,
                 Text::SeekToStart.tr(locale),
-                components::IconButtonOpts::default(),
+                components::IconButtonOpts {
+                    family: Some(crate::icons::family()),
+                    ..Default::default()
+                },
             )
             .clicked()
             {
                 app.seek_preview(0.0);
             }
+            // No vendored Lucide icon for single-frame step (`skip-back`/`skip-forward` are
+            // start/end, already used above/below) — thin outline triangles, distinct from the
+            // filled ones the icon font uses for start/end/play, in the default font.
+            if ui
+                .small_button(RichText::new("◁").color(theme::TEXT_SECONDARY))
+                .on_hover_text(Text::StepFrameBack.tr(locale))
+                .clicked()
+            {
+                app.step_preview_frame(-1);
+            }
             let play_icon = if app.preview_state.preview_playing {
-                "⏸"
+                crate::icons::PAUSE_STR
             } else {
-                "▶"
+                crate::icons::PLAY_STR
             };
             if ui
-                .button(RichText::new(play_icon).color(theme::ACCENT))
+                .button(
+                    RichText::new(play_icon)
+                        .family(crate::icons::family())
+                        .color(theme::ACCENT),
+                )
                 .on_hover_text(Text::ShortcutPlayPause.tr(locale))
                 .clicked()
             {
                 app.toggle_preview_playback();
             }
+            if ui
+                .small_button(RichText::new("▷").color(theme::TEXT_SECONDARY))
+                .on_hover_text(Text::StepFrameForward.tr(locale))
+                .clicked()
+            {
+                app.step_preview_frame(1);
+            }
             if components::icon_button(
                 ui,
-                "⏭",
+                crate::icons::SKIP_FORWARD_STR,
                 Text::SeekToEnd.tr(locale),
-                components::IconButtonOpts::default(),
+                components::IconButtonOpts {
+                    family: Some(crate::icons::family()),
+                    ..Default::default()
+                },
             )
             .clicked()
             {
                 app.seek_preview(timeline_duration);
+            }
+            if ui
+                .selectable_label(
+                    app.preview_state.loop_enabled,
+                    RichText::new(crate::icons::REPEAT_STR)
+                        .family(crate::icons::family())
+                        .color(theme::TEXT_SECONDARY),
+                )
+                .on_hover_text(Text::PreviewLoopToggle.tr(locale))
+                .clicked()
+            {
+                app.preview_state.loop_enabled = !app.preview_state.loop_enabled;
             }
             let playhead = app.active_project().timeline().playhead_secs;
             ui.label(
@@ -1075,16 +1314,13 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
 /// P4 item 30. Reads [`App::current_audio_level`] every frame the panel draws; stays visually
 /// flat at zero when no pipeline is open, playback is paused, or the current clip has no
 /// audio, same as any other VU meter idling on silence.
-fn audio_level_meter(app: &App, ui: &mut egui::Ui) {
-    let level = app.current_audio_level();
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(60.0, 14.0), egui::Sense::hover());
-    if !ui.is_rect_visible(rect) {
-        return;
-    }
-    let painter = ui.painter();
+/// One bar of [`audio_level_meter`] — filled to `rms`, plus a peak-hold tick at `peak` (red
+/// past 0.98, the same clip-warning threshold the single-channel meter used before the L/R
+/// split below existed).
+fn draw_meter_bar(painter: &egui::Painter, rect: egui::Rect, peak: f32, rms: f32) {
     painter.rect_filled(rect, 2.0, theme::SURFACE_2);
-    let peak = level.peak.clamp(0.0, 1.0);
-    let rms = level.rms.clamp(0.0, 1.0);
+    let peak = peak.clamp(0.0, 1.0);
+    let rms = rms.clamp(0.0, 1.0);
     if rms > 0.0 {
         let mut rms_rect = rect;
         rms_rect.set_width(rect.width() * rms);
@@ -1099,6 +1335,29 @@ fn audio_level_meter(app: &App, ui: &mut egui::Ui) {
         };
         painter.vline(peak_x, rect.y_range(), egui::Stroke::new(2.0, peak_color));
     }
+}
+
+/// Two thin stacked horizontal bars (L on top, R on bottom) — the preview transport row's
+/// compact stereo meter, per `avcore::AudioLevel`'s real per-channel peak/rms
+/// (`spec/architecture/editor-ui-visual-redesign.md`'s Inspector section: "build the real
+/// per-channel metering path first" — done in `avcore::preview`'s buffer probe — "or ship the
+/// honest single-channel meter restyled taller"; this does the former, so both bars are
+/// genuinely independent, not the same mono value drawn twice).
+fn audio_level_meter(app: &App, ui: &mut egui::Ui) {
+    let level = app.current_audio_level();
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(60.0, 14.0), egui::Sense::hover());
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    let bar_h = (rect.height() - 2.0) / 2.0;
+    let l_rect = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), bar_h));
+    let r_rect = egui::Rect::from_min_size(
+        rect.min + egui::vec2(0.0, bar_h + 2.0),
+        egui::vec2(rect.width(), bar_h),
+    );
+    let painter = ui.painter();
+    draw_meter_bar(painter, l_rect, level.peak_l, level.rms_l);
+    draw_meter_bar(painter, r_rect, level.peak_r, level.rms_r);
     response.on_hover_text(Text::PreviewAudioLevelMeter.tr(app.locale));
 }
 
@@ -1195,20 +1454,24 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 if ui
-                                    .small_button("⏮")
+                                    .small_button(
+                                        RichText::new(crate::icons::SKIP_BACK_STR)
+                                            .family(crate::icons::family()),
+                                    )
                                     .on_hover_text(Text::SeekToStart.tr(locale))
                                     .clicked()
                                 {
                                     app.seek_preview(0.0);
                                 }
                                 let play_icon = if app.preview_state.preview_playing {
-                                    "⏸"
+                                    crate::icons::PAUSE_STR
                                 } else {
-                                    "▶"
+                                    crate::icons::PLAY_STR
                                 };
                                 if ui
                                     .button(
                                         RichText::new(play_icon)
+                                            .family(crate::icons::family())
                                             .color(theme::ACCENT.gamma_multiply(opacity)),
                                     )
                                     .on_hover_text(Text::ShortcutPlayPause.tr(locale))
@@ -1217,7 +1480,10 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                                     app.toggle_preview_playback();
                                 }
                                 if ui
-                                    .small_button("⏭")
+                                    .small_button(
+                                        RichText::new(crate::icons::SKIP_FORWARD_STR)
+                                            .family(crate::icons::family()),
+                                    )
                                     .on_hover_text(Text::SeekToEnd.tr(locale))
                                     .clicked()
                                 {

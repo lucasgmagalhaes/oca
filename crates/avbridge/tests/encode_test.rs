@@ -17,8 +17,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use avbridge::{
-    encode_export, encode_timeline_export, probe, Canvas, ClipSegment, EncodeError, EncodeOutcome,
-    GpuEncoderPreference, StreamKind,
+    encode_export, encode_timeline_export, encode_timeline_export_multi, probe, Canvas,
+    ClipSegment, EncodeError, EncodeOutcome, GpuEncoderPreference, StreamKind,
 };
 
 const CANVAS: Canvas = Canvas {
@@ -127,6 +127,7 @@ fn clip(
         transition_duration_secs: 0.3,
         timeline_start_secs: 0.0,
         mask_video_path: String::new(),
+        blend_mode: String::new(),
     }
 }
 
@@ -156,6 +157,46 @@ fn concatenates_two_segments_with_different_filters_into_one_export() {
     assert_eq!(info.resolution, Some((320, 240)));
     // Trimmed to ~0.7s total (0.35 + 0.35) — loose bound since seek lands on the nearest
     // keyframe, not exactly at each segment's requested in-point.
+    assert!(info.duration_secs > 0.0 && info.duration_secs < 2.0);
+
+    let _ = std::fs::remove_file(&out);
+}
+
+/// Real, executable coverage for `ClipSegment::blend_mode` — no automated test exercised the
+/// multi-track overlay path with a blend mode set before this (only manually traced by
+/// reading `timeline_export_multi.c`). Two tracks, background + one overlay segment with
+/// `blend_mode: "multiply"` set: this is real proof the `blend=all_mode=multiply` filtergraph
+/// stage `init_overlay_graph` builds in place of `overlay` for that layer parses and encodes
+/// successfully against a real (if older-than-this-repo's-normal-minimum) FFmpeg build, not
+/// just something read off `ffmpeg -h filter=blend`'s docs.
+#[test]
+fn multi_track_export_with_a_blend_mode_set_produces_a_valid_file() {
+    let out = std::env::temp_dir().join("avbridge_test_timeline_multi_blend.mp4");
+    let cancel = AtomicBool::new(false);
+
+    let background = vec![clip(0.0, 0.5, 0.0, "")];
+    let overlay = vec![ClipSegment {
+        blend_mode: "multiply".to_string(),
+        ..clip(0.0, 0.5, 0.0, "")
+    }];
+    let tracks = [background, overlay];
+
+    let outcome = encode_timeline_export_multi(
+        &tracks,
+        CANVAS,
+        &out,
+        -14.0,
+        GpuEncoderPreference::Auto,
+        &cancel,
+        |_secs| {},
+    )
+    .unwrap();
+
+    assert_eq!(outcome, EncodeOutcome::Completed);
+
+    let info = probe(&out).unwrap();
+    assert_eq!(info.kind, StreamKind::Video);
+    assert_eq!(info.resolution, Some((320, 240)));
     assert!(info.duration_secs > 0.0 && info.duration_secs < 2.0);
 
     let _ = std::fs::remove_file(&out);

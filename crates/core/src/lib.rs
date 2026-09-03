@@ -27,6 +27,7 @@
 
 pub mod auto_reframe;
 pub mod background_removal;
+pub mod blend_mode;
 pub mod bundle;
 pub mod collab_bundle;
 pub mod dynamic_reframe;

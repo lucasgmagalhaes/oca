@@ -190,6 +190,18 @@ impl App {
         Some((clip.clone(), asset.clone()))
     }
 
+    /// The fps of the asset behind the clip currently covering the playhead, for the preview
+    /// panel's resolution+fps HUD chip (`spec/architecture/editor-ui-visual-redesign.md`'s
+    /// Program monitor mapping — "fps ... available from the active sequence", corrected here:
+    /// oca has no per-sequence fps, only per-asset, the same field the properties panel's own
+    /// fps row already reads). `None` when nothing resolves (empty/hidden video track, nothing
+    /// covers the playhead, missing asset, or the asset's own fps is unknown) — the chip omits
+    /// the fps suffix in that case rather than guessing one.
+    pub fn current_preview_fps(&self) -> Option<f32> {
+        let (_, asset) = self.current_preview_clip(&self.active_project().media_library)?;
+        asset.fps
+    }
+
     /// Just the [`ClipInstance`] covering the active sequence's timeline playhead on the first
     /// visible `Video` track, without resolving the asset it plays from — for callers
     /// ([`App::toggle_preview_playback`], [`App::seek_preview`]) that only ever read clip-level
@@ -477,6 +489,19 @@ impl App {
         self.preview_state.preview_shape_clip_ids = shape_ids;
 
         let Some((clip, asset)) = current else {
+            // Nothing covers the new playhead -- either the timeline just ran out (scrubbed/
+            // played past the last clip) or the user seeked into a gap. `loop_enabled` turns
+            // the former into "restart from 0 instead of stopping": only when playback was
+            // actually running (a paused seek into a gap should stay paused, not start
+            // playing), seek to the start and leave `preview_playing` as-is so the next call
+            // (next frame) resolves and opens the clip at 0.0 the same way any other playhead
+            // move does.
+            if self.preview_state.loop_enabled && self.preview_state.preview_playing {
+                self.projects[self.active_project]
+                    .timeline_mut()
+                    .playhead_secs = 0.0;
+                return;
+            }
             self.preview_state.preview_playing = false;
             return;
         };
@@ -839,6 +864,29 @@ impl App {
             }
         }
         self.refresh_preview_text_highlights(position_secs);
+    }
+
+    /// Fallback fps for [`App::step_preview_frame`] when the previewed clip's own asset has no
+    /// probed fps — matches [`avcore::render`]'s own `unwrap_or(30.0)` convention for the same
+    /// situation, rather than a second, different guess.
+    const STEP_FRAME_FALLBACK_FPS: f32 = 30.0;
+
+    /// Steps the playhead by exactly one frame (`delta_frames` of `1` or `-1`), at the fps of
+    /// the clip currently covering it (falling back to [`Self::STEP_FRAME_FALLBACK_FPS`] when
+    /// unknown) — the OCA mockup's transport-row step-back/step-forward buttons
+    /// (`spec/architecture/editor-ui-visual-redesign.md`'s Program monitor mapping), which had
+    /// no equivalent before this. Clamped to `[0, timeline duration]` and routed through
+    /// [`App::seek_preview`], same as any other playhead move — no separate frame-stepping
+    /// pipeline path.
+    pub fn step_preview_frame(&mut self, delta_frames: i64) {
+        let fps = self
+            .current_preview_fps()
+            .unwrap_or(Self::STEP_FRAME_FALLBACK_FPS)
+            .max(1.0) as f64;
+        let playhead = self.active_project().timeline().playhead_secs;
+        let duration = self.active_project().timeline().duration_secs();
+        let new_position = (playhead + delta_frames as f64 / fps).clamp(0.0, duration);
+        self.seek_preview(new_position);
     }
 
     /// Whether the clip at the timeline playhead has a live preview pipeline — `false` before

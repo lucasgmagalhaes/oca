@@ -166,6 +166,7 @@ impl App {
                     // halves, whose ranges change) is still valid to carry over.
                     background_removal_enabled: source.background_removal_enabled,
                     background_removal_mask_path: source.background_removal_mask_path,
+                    blend_mode: source.blend_mode,
                 });
         }
     }

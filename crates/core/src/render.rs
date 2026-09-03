@@ -411,6 +411,9 @@ pub fn resolve_timeline_segments(
             // there's no compositing stage for the alpha to survive into, same reasoning as
             // resolve_clip_filters' is_overlay gate above.
             mask_video_path: String::new(),
+            // Same reasoning as mask_video_path above — blend_mode is only meaningful on an
+            // overlay track, which this single-track path never has.
+            blend_mode: String::new(),
         });
     }
     let (width, height, fps) = dimensions_fps.ok_or(RenderError::EmptyTimeline)?;
@@ -982,6 +985,14 @@ pub fn resolve_timeline_segments_multi(
             } else {
                 String::new()
             };
+            // Blend mode is only meaningful on an overlay track (track 1+) — a background
+            // track's clip has no layer below it to blend against, same is_overlay gate
+            // resolve_clip_filters' layer-scale resize stage uses above.
+            let blend_mode = if is_overlay && clip.has_blend_mode() {
+                clip.blend_mode.ffmpeg_name().to_string()
+            } else {
+                String::new()
+            };
             segments.push(avbridge::ClipSegment {
                 source_path: asset.source_path.clone(),
                 source_in_secs: clip.source_in_secs,
@@ -997,6 +1008,7 @@ pub fn resolve_timeline_segments_multi(
                 transition_duration_secs: clip.transition_duration_secs,
                 timeline_start_secs: clip.start_secs,
                 mask_video_path,
+                blend_mode,
             });
         }
 

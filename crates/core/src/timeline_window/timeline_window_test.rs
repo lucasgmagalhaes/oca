@@ -15,7 +15,8 @@
 
 use super::*;
 use crate::timeline::{
-    ColorFilter, MarkerKind, MaskShape, ShapeClip, ShapeKind, TextClip, TrackKind, TransitionType,
+    BlendMode, ColorFilter, MarkerKind, MaskShape, ShapeClip, ShapeKind, TextClip, TrackKind,
+    TransitionType,
 };
 use crate::AudioRole;
 
@@ -84,6 +85,7 @@ fn clip(
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: BlendMode::Normal,
     }
 }
 

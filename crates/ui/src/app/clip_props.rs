@@ -133,6 +133,15 @@ impl App {
         self.with_selected_clip_mut(|clip| clip.color_filter = color_filter);
     }
 
+    /// Sets `selected_clip_id`'s compositing blend mode
+    /// ([`avcore::timeline::ClipInstance::blend_mode`]) — what picking a mode in the properties
+    /// panel's Composite section does. A no-op if nothing is selected. Only meaningful for a
+    /// clip on an overlay track — see that field's own doc comment for the position/PIP scope
+    /// limit while a non-`Normal` mode is active.
+    pub fn set_selected_clip_blend_mode(&mut self, blend_mode: avcore::timeline::BlendMode) {
+        self.with_selected_clip_mut(|clip| clip.blend_mode = blend_mode);
+    }
+
     /// Sets `selected_clip_id`'s 3D LUT path ([`avcore::timeline::ClipInstance::lut_path`]) —
     /// what browsing for a `.cube` file or picking a preset in the properties panel does. Empty
     /// string clears the LUT. A no-op if nothing is selected.

@@ -16,7 +16,7 @@
 use std::path::{Path, PathBuf};
 
 use avcore::preview::Preview;
-use avcore::timeline::{ClipInstance, ColorFilter, MaskShape, TransitionType};
+use avcore::timeline::{BlendMode, ClipInstance, ColorFilter, MaskShape, TransitionType};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -84,6 +84,7 @@ fn clip() -> ClipInstance {
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: BlendMode::Normal,
     }
 }
 
@@ -201,6 +202,12 @@ fn current_audio_level_reports_the_prerolled_audio_fixture() {
     let level = preview.current_audio_level();
     assert!(level.peak > 0.0 && level.peak <= 1.0);
     assert!(level.rms > 0.0 && level.rms <= level.peak);
+    // Per-channel L/R split (`AudioLevel::peak_l`/`rms_l`/`peak_r`/`rms_r`) -- mono or stereo,
+    // both channels should report a real, bounded reading, never left at their zero default.
+    assert!(level.peak_l > 0.0 && level.peak_l <= 1.0);
+    assert!(level.rms_l > 0.0 && level.rms_l <= level.peak_l);
+    assert!(level.peak_r > 0.0 && level.peak_r <= 1.0);
+    assert!(level.rms_r > 0.0 && level.rms_r <= level.peak_r);
 }
 
 #[test]
@@ -209,6 +216,10 @@ fn current_audio_level_reports_prerolled_embedded_audio_too() {
     let level = preview.current_audio_level();
     assert!(level.peak > 0.0 && level.peak <= 1.0);
     assert!(level.rms > 0.0 && level.rms <= level.peak);
+    assert!(level.peak_l > 0.0 && level.peak_l <= 1.0);
+    assert!(level.rms_l > 0.0 && level.rms_l <= level.peak_l);
+    assert!(level.peak_r > 0.0 && level.peak_r <= 1.0);
+    assert!(level.rms_r > 0.0 && level.rms_r <= level.peak_r);
 }
 
 #[test]

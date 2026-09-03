@@ -141,6 +141,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: avcore::timeline::BlendMode::Normal,
     }
 }
 
@@ -226,6 +227,8 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     App {
         screen: Screen::Home,
         tool: EditorTool::Select,
+        properties_tab: PropertiesTab::default(),
+        media_view_mode: MediaViewMode::default(),
         locale: Locale::PtBr,
         projects,
         active_project: 0,

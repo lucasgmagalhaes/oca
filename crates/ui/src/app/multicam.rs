@@ -175,4 +175,29 @@ impl App {
             );
         }
     }
+
+    /// The 1-based multicam angle number (position in [`avcore::timeline::MulticamGroup::
+    /// member_track_ids`]) of the video track behind the clip currently covering the playhead,
+    /// if that track is some group's `program_track_id` -- feeds the preview panel's "CAM 01"
+    /// chip (`spec/architecture/editor-ui-visual-redesign.md`'s Program monitor mapping).
+    /// `None` when the previewed track isn't part of any multicam group (the chip is omitted
+    /// entirely then, not faked) or nothing covers the playhead -- a group's non-program
+    /// members are always hidden, so the previewed (visible) track is never anything but the
+    /// program track when it does belong to a group.
+    pub fn current_preview_multicam_angle(&self) -> Option<usize> {
+        let timeline = self.active_project().timeline();
+        let track = timeline
+            .tracks
+            .iter()
+            .find(|t| t.kind == avcore::timeline::TrackKind::Video && t.visible)?;
+        let group = timeline
+            .multicam_groups
+            .iter()
+            .find(|g| g.program_track_id == track.id)?;
+        group
+            .member_track_ids
+            .iter()
+            .position(|&id| id == track.id)
+            .map(|i| i + 1)
+    }
 }

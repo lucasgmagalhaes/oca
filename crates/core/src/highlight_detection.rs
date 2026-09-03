@@ -295,7 +295,7 @@ pub fn combine_highlight_candidates(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::timeline::{ColorFilter, MaskShape, TransitionType};
+    use crate::timeline::{BlendMode, ColorFilter, MaskShape, TransitionType};
 
     fn test_clip(
         start_secs: f64,
@@ -362,6 +362,7 @@ mod tests {
             stabilization_intensity: 0.0,
             background_removal_enabled: false,
             background_removal_mask_path: String::new(),
+            blend_mode: BlendMode::Normal,
         }
     }
 

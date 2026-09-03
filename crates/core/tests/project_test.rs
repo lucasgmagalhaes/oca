@@ -15,7 +15,7 @@
 
 use avcore::project::{Project, Sequence};
 use avcore::timeline::{
-    ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
+    BlendMode, ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
 };
 use avcore::{ExportAspectRatio, MediaAsset, Recency};
 
@@ -82,6 +82,7 @@ fn compound_clip(id: u64, nested_sequence_id: Option<u64>) -> ClipInstance {
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: BlendMode::Normal,
     }
 }
 

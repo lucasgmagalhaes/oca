@@ -24,6 +24,7 @@
 mod app;
 mod components;
 mod i18n;
+mod icons;
 mod screens;
 mod theme;
 

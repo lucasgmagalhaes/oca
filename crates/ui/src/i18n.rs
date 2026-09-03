@@ -141,6 +141,20 @@ text_catalog! {
     ClipsUnit: pt_br = "clipes", en = "clips";
     ClipUnitSingular: pt_br = "clipe", en = "clip";
 
+    MenuFile: pt_br = "Arquivo", en = "File";
+    MenuEdit: pt_br = "Editar", en = "Edit";
+    MenuView: pt_br = "Ver", en = "View";
+    MenuSequence: pt_br = "Sequência", en = "Sequence";
+    MenuClip: pt_br = "Clipe", en = "Clip";
+    MenuMarkers: pt_br = "Marcadores", en = "Markers";
+    MenuGraphics: pt_br = "Gráficos", en = "Graphics";
+    MenuSequenceAddTab: pt_br = "Nova sequência", en = "New sequence";
+    MenuSequenceRename: pt_br = "Renomear...", en = "Rename...";
+    MenuSequenceDuplicate: pt_br = "Duplicar", en = "Duplicate";
+    MenuSequenceMoveLeft: pt_br = "Mover para esquerda", en = "Move left";
+    MenuSequenceMoveRight: pt_br = "Mover para direita", en = "Move right";
+    MenuSequenceDelete: pt_br = "Excluir...", en = "Delete...";
+    MenuClipMode: pt_br = "Modo de edição", en = "Edit mode";
     ToolSelect: pt_br = "Selecionar", en = "Select";
     ToolCut: pt_br = "Cortar / Split", en = "Cut / Split";
     ToolTrim: pt_br = "Aparar", en = "Trim";
@@ -154,9 +168,14 @@ text_catalog! {
     ExportSrtEmpty: pt_br = "Nenhuma legenda na timeline para exportar.", en = "No subtitles on the timeline to export.";
     MediaLibrary: pt_br = "Biblioteca de mídia", en = "Media library";
     SearchMediaPlaceholder: pt_br = "Buscar mídia…", en = "Search media…";
+    MediaViewList: pt_br = "Visualização em lista", en = "List view";
+    MediaViewGrid: pt_br = "Visualização em grade", en = "Grid view";
     TimelineZoom: pt_br = "Zoom", en = "Zoom";
     SelectedClip: pt_br = "Clipe selecionado", en = "Selected clip";
     NoClipSelected: pt_br = "Nenhum clipe selecionado", en = "No clip selected";
+    PropertiesTabInspector: pt_br = "Inspetor", en = "Inspector";
+    PropertiesTabEffects: pt_br = "Efeitos", en = "Effects";
+    PropertiesTabAudio: pt_br = "Áudio", en = "Audio";
     PropCodec: pt_br = "Codec", en = "Codec";
     PropSourceBitrate: pt_br = "Bitrate fonte", en = "Source bitrate";
     PropResolution: pt_br = "Resolução", en = "Resolution";
@@ -200,6 +219,8 @@ text_catalog! {
     ColorFilterBlackAndWhite: pt_br = "Preto e branco", en = "Black and white";
     ColorFilterSepia: pt_br = "Sépia", en = "Sepia";
     ColorFilterExportNote: pt_br = "aplicado na exportação — sem efeito no preview ao vivo.", en = "applied on export — no live preview effect.";
+    PropBlendMode: pt_br = "Modo de mesclagem", en = "Blend mode";
+    BlendModeExportNote: pt_br = "só afeta trilhas de overlay; ignora posicionamento (PIP) enquanto ativo.", en = "only affects overlay tracks; ignores positioning (PIP) while active.";
     PropLut: pt_br = "LUT 3D", en = "3D LUT";
     LutExportNote: pt_br = "aplicado na exportação via lut3d — sem suporte no preview ao vivo (nenhum elemento de LUT disponível na instalação do GStreamer).", en = "applied on export via lut3d — no live preview support (no LUT element available in the GStreamer install).";
     ClearLut: pt_br = "Remover", en = "Clear";
@@ -478,6 +499,9 @@ text_catalog! {
     ShortcutPlayPause: pt_br = "Play / Pause", en = "Play / Pause";
     SeekToStart: pt_br = "Ir para o início", en = "Seek to start";
     SeekToEnd: pt_br = "Ir para o fim", en = "Seek to end";
+    StepFrameBack: pt_br = "Quadro anterior", en = "Previous frame";
+    StepFrameForward: pt_br = "Próximo quadro", en = "Next frame";
+    PreviewLoopToggle: pt_br = "Repetir", en = "Loop";
     ShortcutCopyFormatting: pt_br = "Copiar formatação", en = "Copy formatting";
     ShortcutPasteFormatting: pt_br = "Colar formatação", en = "Paste formatting";
     ShortcutAddOpacityMarker: pt_br = "Adicionar marcador de opacidade", en = "Add opacity marker";
@@ -496,6 +520,7 @@ text_catalog! {
     ExportPlatformPresetLabel: pt_br = "Predefinição de plataforma:", en = "Platform preset:";
     PreviewScopesToggle: pt_br = "Waveform / Vetorscópio", en = "Waveform / Vectorscope";
     PreviewAudioLevelMeter: pt_br = "Nível de áudio (pico / RMS)", en = "Audio level (peak / RMS)";
+    PropStereoMeter: pt_br = "Medidor estéreo (L / R)", en = "Stereo meter (L / R)";
     TimelineIndexToggle: pt_br = "Marcadores", en = "Markers";
     TimelineIndexTitle: pt_br = "Índice da timeline", en = "Timeline Index";
     TimelineIndexSearchHint: pt_br = "Buscar marcadores...", en = "Search markers...";

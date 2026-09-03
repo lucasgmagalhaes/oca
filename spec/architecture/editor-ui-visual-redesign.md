@@ -98,9 +98,60 @@ Mechanics of the chosen route, for whoever implements it:
    icon is a single-color `stroke="currentColor"` glyph (true for all 24 fetched above) — a
    route that needs a two-color icon later would need texture-based rendering instead.
 
-Not yet done: the font-build step itself, the codepoint mapping, and the `ctx.set_fonts` wiring
-— this section records the decision and the mechanism, not an implementation. Scope for a
-follow-up change.
+**Font-build step: done.** `tools/icon-font/` is a small standalone Node/TypeScript project
+(not a Cargo dependency — `make icon-font` or `npm run build` in that directory) whose
+`build-icon-font.ts` reads `assets/icons/*.svg`, assigns each icon a stable PUA codepoint
+(existing codepoints are read back from the previous output and never reassigned — only a
+newly-added icon gets a new one, the next free PUA slot), and calls `fantasticon`'s Node API
+to emit `crates/ui/assets/fonts/lucide-oca.ttf` + `lucide-oca.json` (the name→codepoint
+mapping, both checked in). All 25 vendored icons are in the font as of this commit.
+
+**`ctx.set_fonts` wiring: done too.** `crates/ui/src/icons.rs` embeds the generated `.ttf`
+(`include_bytes!`) and JSON mapping (`include_str!`), registers the font under a dedicated
+`FontFamily::Name("lucide-oca")` via [`icons::install`], called once from `App::new` right
+after `theme::apply`, and exposes one `char` constant per icon (`icons::LOCK`, `icons::EYE`,
+etc.) for call sites to use with `RichText::new(icons::LOCK).family(icons::family())`. A unit
+test in that module cross-checks every constant against the embedded JSON mapping, so a
+`make icon-font` rerun that reassigns a codepoint fails a test instead of silently drawing the
+wrong glyph somewhere.
+
+**First per-screen call sites: done.** `components::icon_button` gained a third
+`family: Option<FontFamily>` option (applied to the `RichText` when set, `None` keeps today's
+default proportional font — every existing call site is unaffected) so an icon-font glyph
+renders through the same shared button component instead of a parallel one. Wired so far, only
+where a vendored icon has a confirmed mockup mapping *and* a real existing `App` action:
+timeline track header's visibility toggle (`eye`/`eye-off`, video tracks only — audio tracks
+keep the 🔊/🔇 emoji, no Lucide speaker icon is vendored) and lock toggle (`lock`/`lock-open`),
+and the nav rail's Prefs gear (`settings`). `icons.rs` also gained `_STR` twins of its `char`
+constants (egui's text APIs take `&str`, not `char`), kept in sync by a test.
+
+**Toolbar icon+label buttons: done.** `components::icon_label_job` builds a two-section
+`egui::text::LayoutJob` (icon-font glyph, then a space, then the plain-text label — each with
+its own `TextFormat`, since `RichText`/`icon_button` can only carry one font per string) and a
+new `tool_button_icon_font` (same active/inactive chip styling as `tool_button`) renders it.
+Wired: Select (`mouse-pointer-2`), Cut (`scissors`), Trim (`fold-horizontal` — the mockup's
+resolved best-guess for the shared Trim/Ripple slot, applied to Trim only; Ripple keeps its own
+distinct button). Ripple/Roll/Slip/Slide have no vendored icon and keep their unicode glyphs
+via the unchanged `tool_button`.
+
+**Preview transport row: done.** Seek-to-start/play-pause/seek-to-end in both the normal and
+fullscreen preview transport rows now render `skip-back`/`play`/`pause`/`skip-forward` through
+the icon font instead of their unicode glyphs — all map to existing `App` actions
+(`seek_preview`, `toggle_preview_playback`) unchanged, no new behavior. The icon-only seek
+buttons use `icon_button`'s `family` option; the hand-built play/pause `RichText` (not routed
+through `icon_button`) gets `.family(icons::family())` directly. Decorative, non-interactive
+"▶" placeholders elsewhere (media-library thumbnail kind glyph, empty-preview state) are left
+as-is — not transport controls, no confirmed mockup mapping of their own.
+
+Still not wired: `chevron-left`/`chevron-right` (no real "collapse a timeline track row"
+feature exists today to attach them to — the mockup mapping here may be aspirational, worth
+re-checking against the reference image before building), `ellipsis-vertical` (no track
+⋮-menu exists), `chevron-down`/`upload` (top bar breadcrumb/Export — no top bar redesign done
+yet), the rest of the transport row (`camera`/`rewind`/`fast-forward`/`repeat` — camera has no
+snapshot-capture action yet, rewind/fast-forward/repeat have no scrub-speed/loop actions yet),
+`type`/`wand-sparkles`/`hand` (Text/Effects/Pan tool-rail slots — `hand` also has no
+`EditorTool` equivalent yet, see "Left icon rail" above), and `music` (unmapped to any real
+action).
 
 ## Headline finding: the structure is already ~80% there
 
@@ -180,35 +231,39 @@ Interview ▾"), a full desktop menu bar (File Edit View Sequence Clip Markers G
 Help), then timecode / FPS / resolution chips, an Export button, a settings gear.
 
 Current (`breadcrumb.rs`): app name, screen title, active project name + unsaved-changes dot,
-window controls (min/max/close), locale code. No File/Edit/... menu bar exists anywhere in
-the app today — every one of those menus' actions is currently reachable only from the
-Editor toolbar (`toolbar()` in `screens/editor/mod.rs`) or nowhere at all.
+window controls (min/max/close), locale code.
 
-Mapping (real functionality behind each menu, so this isn't a UI-only mockup-then-guess):
+**Menu bar — done, for the seven menus with a real feature behind them.**
+`screens/editor/menu_bar.rs` adds a real `egui::MenuBar` above the toolbar (confirmed with the
+user first: it **coexists** with the toolbar, nothing removed from it — the open question below
+is resolved, not left silently unaddressed). Pure UI wiring, no new `App`/`avcore` work — every
+item calls straight into a method the toolbar, a context menu, or a keyboard shortcut already
+exercised:
 
-- **File** → Save (`Ctrl+S`, already wired), Export (`Screen::Queue`), Export SRT, Export
-  Collaboration Bundle, Import Gameplay Events — all already exist as toolbar buttons.
-- **Edit** → Undo/Redo (`app.undo()`/`redo()`), Copy/Cut/Paste, Copy/Paste Formatting — all
-  already exist as toolbar buttons/shortcuts.
-- **View** → toggle Timeline Index panel, toggle Transcript panel, preview scopes toggle,
-  fullscreen preview — all exist, currently scattered across toolbar + preview transport row.
-- **Sequence** → the sequence-tab-bar's own context menu (rename/duplicate/move/delete/add) —
-  already fully implemented in `sequence_tab_bar()`, just not exposed as a top-level menu too.
-- **Clip** → split, trim-mode selection, merge-into-composite, save-as-template, detach audio,
-  speed ramp, color label — all exist (toolbar + clip context menu).
-- **Markers** → Timeline Index panel's add/search/seek — exists.
-- **Graphics** → Add Text Track/Clip, Add Shape Track/Clip, Draw Custom Shape — exist.
-- **Window** → no real equivalent today. `PanelLayout`/`LayoutScope` (resizable panel
-  save/restore) exists as data but isn't exposed as a menu; could live here.
-- **Help** → nothing exists (no About/docs dialog anywhere in the app).
+- **File** → Save (`Ctrl+S`), Export (`Screen::Queue`), Export SRT, Export Collaboration
+  Bundle, Import Gameplay Events.
+- **Edit** → Undo/Redo (`app.undo()`/`redo()`, hover text from the configurable `KeyCombo`),
+  Copy/Cut/Paste, Copy/Paste Formatting.
+- **View** → checkboxes for the Timeline Index panel, Transcript panel, and preview scopes,
+  plus a fullscreen-preview button.
+- **Sequence** → add tab, rename/duplicate/move-left/move-right/delete (same enablement rules
+  as `sequence_tab_bar()`'s own context menu — delete needs 2+ sequences, move needs room to
+  move), plus Add Video Track.
+- **Clip** → split, an edit-mode submenu (Select/Trim/Ripple/Roll/Slip/Slide, mirroring the
+  toolbar's tool buttons), merge-into-composite, save-as-template, the Templates browser,
+  detach audio, speed ramp (slow→fast/fast→slow presets — the custom-ramp modal isn't wired
+  here, only the two toolbar/context-menu presets are), and color label (reusing
+  `timeline_panel`'s own `CLIP_COLOR_LABEL_PALETTE`, now `pub(super)`, instead of a second
+  copy that could drift). Everything past split is gated on a clip actually being selected.
+- **Markers** → add Standard/To Do/Chapter (the same three kinds the Timeline Index panel's
+  own add buttons offer — no Highlight button exists there either, so none was invented here)
+  plus a Timeline Index panel checkbox. "Search/seek" stays inside that panel, same as before —
+  a live text filter isn't a menu command.
+- **Graphics** → Add Text Track/Clip, Add Shape Track/Clip, Draw Custom Shape.
 
-**This is a genuinely large addition, not a restyle** — a real `egui::menu::bar` with ~8 top-
-level menus is new surface area, even though nearly every individual action it would trigger
-already has an `App` method. Recommend building it as its own module
-(`screens/editor/menu_bar.rs`, following the "small cohesive modules" convention) that calls
-straight into the same `App` methods `toolbar()` already calls — no new business logic, pure
-UI wiring — and treating "does the toolbar become redundant once this exists" as an open
-question (below), not something to silently resolve by deleting toolbar buttons.
+**Window/Help — still not built**, exactly as this doc originally found: `PanelLayout`/
+`LayoutScope` exists as data but has no UI to expose as a "Window" menu yet, and there's no
+About/docs dialog anywhere in the app for "Help" to open. Neither is faked with an empty menu.
 
 Timecode/FPS/resolution chips: real data already exists (`format_timecode`, the preview's
 decoded texture size, the active sequence's frame rate) — currently displayed in the preview
@@ -271,9 +326,13 @@ Mapping:
   flag, and there's no most-recently-used tracking over the media library (there _is_
   `recent_project_paths` on `Prefs`, but that's projects, not in-library assets). Real new
   feature if kept, not a restyle — flag rather than silently build.
-- **Grid/list view toggle** — no existing toggle; today's layout is always the one-column
-  list. Adding a 2-column grid mode is a real layout addition, low risk (pure UI, no new
-  `App`/`avcore` state beyond a `bool`/enum view-mode field).
+- **Grid/list view toggle — done.** `App::media_view_mode` (`MediaViewMode::{List, Grid}`, not
+  persisted — resets on launch like `tool`/`properties_tab`) toggled via two `▦`/`☰`
+  `selectable_label`s in the panel header. `List` is the existing one-column row layout
+  unchanged; `Grid` wraps assets into tiles (`ui.horizontal_wrapped`) with a bigger thumbnail
+  (`GRID_ASSET_THUMB_SIZE`, 120×72 vs. the list row's 48×28) and the filename beneath instead of
+  alongside. Click/double-click/drag-to-timeline behavior is identical in both layouts (shared
+  via one `handle_interaction` closure) — only the tile's own content differs.
 - **Real per-asset thumbnails** (the mockup's actual decoded video frames) — this is the
   single biggest "new capability, not styling" item in this whole panel. It's a deliberate,
   documented departure from the current placeholder design, and doing it right means reusing
@@ -301,30 +360,38 @@ Mapping:
 
 - **Zoom controls (50%/Fit/100%)** — no existing zoom-level state for the preview (it always
   fits available space); new, small addition if wanted (a `PreviewZoom` enum + a bit of size
-  math), not currently present.
-- **"CAM 01" chip** — real functionality exists to back this: Multicam editing (`ROADMAP.md`
-  P2 item 10) already tracks a `MulticamGroup`'s active/program track. If the active clip's
-  track is part of a multicam group, showing that track/angle's name here is a real, wire-
-  able feature, not decoration. If no multicam group exists for the current selection, this
-  chip has nothing to show and should be omitted, not faked.
+  math), not currently present. Not part of implementation-order item 4's own checklist —
+  still not built.
+- **"CAM 01" chip — done.** `App::current_preview_multicam_angle()` checks whether the video
+  track behind the previewed clip is a `MulticamGroup`'s `program_track_id` (Multicam editing,
+  `ROADMAP.md` P2 item 10, was already real) and returns its 1-based angle number if so —
+  `None` (chip omitted, not faked) when no group applies. Drawn top-right (the mockup's "REC"
+  slot, freed up per the next bullet).
 - **"REC ●" chip** — no oca equivalent, and arguably shouldn't have one: this is a live-
   recording indicator, and oca edits already-captured footage; there is no "recording" state
   to reflect. Treat as a non-goal, not a gap — this is a mockup-generator artifact (it likely
   copied a generic NLE reference image's chrome verbatim) rather than a real requirement.
-- **Bottom overlays (resolution+fps, timecode+frame)** — mostly a relocation of data already
-  shown elsewhere (the resolution chip already exists top-left; fps isn't currently in that
-  chip but is available from the active sequence's export settings; timecode is already shown
-  in the transport row via `format_timecode`, just not overlaid on the video itself). Layout
-  change, not new data.
+- **Bottom overlays (resolution+fps, timecode+frame) — done, with a correction.** fps is *not*
+  available from "the active sequence's export settings" as this doc originally guessed — oca
+  has no per-sequence fps at all, only per-asset (`MediaAsset::fps`, the same field the
+  properties panel's own fps row reads); `App::current_preview_fps()` reads it off the
+  previewed clip's asset instead. Folded onto the existing top-left resolution chip (`{w}×{h} ·
+  {fps}fps`) rather than a second overlay, since the two numbers read as one unit; a new
+  bottom-right chip shows timecode (already available via `format_timecode`) plus a
+  frame-within-second suffix, omitted when fps is unknown rather than guessed.
 - **Scrub bar with round handle** — functionally identical to the existing `egui::Slider`;
   the round-handle look is `egui::Slider`'s own default rendering already, so this is likely
   already close — verify visually rather than assume a custom-painted widget is needed.
-- **Transport additions**: step-single-frame back/forward and a loop toggle don't exist today
-  (only seek-to-start/end + play/pause) — real, small additions (`App` would need a "step by
-  1/`fps`" method and a `loop_enabled: bool`). "Snapshot" (camera icon) has no equivalent —
-  likely a save-current-frame-as-image feature, genuinely new if wanted. "Marker" (clapper
-  icon) maps directly to the existing Timeline Index panel's add-marker action
-  (`Marker`/`MarkerKind`, already shipped) — just needs a shortcut button here too.
+- **Transport additions — step-frame and loop done, snapshot/marker not.** New
+  `App::step_preview_frame(delta_frames)` (one frame at the previewed clip's fps, 30.0
+  fallback) backs two new buttons (no vendored icon for single-frame step, so thin outline
+  triangles in the default font). New `PreviewState::loop_enabled` + a loop-toggle button (the
+  vendored `repeat` icon) restart playback from 0 instead of stopping at the timeline's end —
+  `ensure_preview_loaded`'s existing "nothing covers the new playhead" branch checks it,
+  gated on playback having actually been running. "Snapshot" (camera icon) still has no
+  equivalent — a save-current-frame-as-image feature, genuinely new, not built. "Marker"
+  (clapper icon) still maps to the existing add-marker action but has no vendored Lucide icon
+  and wasn't in item 4's own checklist — not built either.
 
 ### Inspector (properties panel)
 
@@ -364,12 +431,53 @@ Mapping:
   `crop_x`/`crop_y`/`crop_w`/`crop_h` (position+size), just a different parameterization
   (edge-insets: `left=x`, `top=y`, `right=1-(x+w)`, `bottom=1-(y+h)`). Purely a units/label
   choice for the widget, not a data-model change — convert on display, store the same fields.
-- **COMPOSITE → Blend Mode**: **does not exist**. Opacity does (`opacity_keyframes`), but
-  there is no blend-mode concept anywhere in the compositor (`Preview::open_composited`'s
-  `compositor` element, or the export-side avfilter overlay graph) — Normal is the only mode
-  that's ever been wired. A real new feature (needs both a `ClipInstance` field and either a
-  GStreamer `compositor` pad property or an avfilter blend-mode filter on export), not a
-  restyle. Flag, don't assume it's a dropdown-only change.
+- **COMPOSITE → Blend Mode — done: data model, export, live preview, and UI wiring.**
+  `avcore::timeline::BlendMode` (40 modes, matching FFmpeg's `blend` filter's `all_mode` option
+  exactly — verified against a real `ffmpeg -h filter=blend` build) + `ClipInstance::
+  blend_mode`/`ClipFormatting::blend_mode` exist now. Export wires it for real: `avbridge::
+  ClipSegment::blend_mode` (a plain mode-name string, avbridge doesn't depend on `core`) crosses
+  the FFI boundary into `timeline_export_multi.c`'s overlay filtergraph, where a non-`Normal`
+  mode builds a `blend=all_mode=<name>` stage in place of the usual `overlay=x=...:y=...` stage
+  for that layer — FFmpeg's own filter does the per-pixel math, so this is genuinely all 40
+  modes for zero C code per mode, not a bounded subset. **Scope limit, not a bug**: `blend` has
+  no x/y placement option, so `position_x_expr`/`position_y_expr` (PIP-style repositioning) are
+  ignored for a layer with a non-`Normal` blend mode — it composites at full canvas size.
+  Combining positioning with a blend mode is a separate, not-yet-built follow-up. `blend`'s two
+  inputs are labeled "top" (#0, the layer whose mode is set) and "bottom" (#1, the accumulated
+  stack beneath it) — verified against a real `ffmpeg -h filter=blend` build, not assumed; this
+  matters because operand order changes the result for every asymmetric mode (subtract, divide,
+  burn, dodge, overlay, ...).
+  **Live preview done, via a different mechanism than export**: GStreamer's `compositor`
+  element has no equivalent to FFmpeg's `blend` filter at all — only Porter-Duff
+  `source`/`over`/`add` (verified via `gst-inspect-1.0 compositor`) — so a blend-mode overlay
+  branch is instead diverted at pipeline-build time into its own dedicated `appsink` (forced to
+  the canvas's own size), and `Preview::current_frame` composites that branch's frame onto the
+  `compositor` output itself, on the CPU, via a new `avcore::blend_mode::blend_channel` — a
+  term-for-term Rust transcription of FFmpeg's own `libavfilter/blend_modes.c` formulas (not
+  reimplemented from documentation or memory), cross-checked against real `ffmpeg ...
+  blend=all_mode=<mode>` output on gradient test images for all 40 modes before being trusted
+  (max abs diff 0, except `interpolate` at 1 — float rounding), with those same reference values
+  embedded as exact-match assertions in `blend_mode_test.rs` (executed for real in an isolated
+  scratch crate — this sandbox's `core` test binary can't link, see CLAUDE.md's documented
+  FFmpeg/ONNX-Runtime gaps). Same documented scope limit as export (position/PIP ignored), plus
+  one preview-only limit: a blend-mode layer always composites on top of the *whole*
+  `compositor` stack, not correctly interleaved with Normal-mode overlay layers above it in
+  track order — combining the two needs a materially different pipeline shape, a separate
+  follow-up.
+  **UI wiring done**: the properties panel's Inspector tab has a Composite section (Blend Mode
+  dropdown, grouped with the existing Opacity keyframe editor per the mockup) backed by a new
+  `App::set_selected_clip_blend_mode`. Mode names in the dropdown are kept in English regardless
+  of locale (`blend_mode_label`, not the `Text` i18n catalog `color_filter_label`/`mask_shape_
+  label` go through) — deliberate: these are industry-standard names shown untranslated in a
+  Portuguese UI by every mainstream NLE too, so a `Text` entry per mode would be pure `pt_br =
+  en` duplication, not real localization.
+  Real, executable regression coverage: `avbridge/tests/encode_test.rs`'s
+  `multi_track_export_with_a_blend_mode_set_produces_a_valid_file` runs a real two-track export
+  with `blend_mode: "multiply"` set and probes the result; `blend_mode_test.rs` exhaustively
+  covers the CPU preview math (312 exact-value cases across all 40 modes, executed for real).
+  GStreamer pipeline behavior itself (the `appsink` diversion, `current_frame`'s compositing
+  loop) is only compile-checked in this sandbox — no display/audio device or test video files
+  available to actually run the preview pipeline end-to-end.
 - **SPEED + "Add Effect" button**: the speed slider maps directly to `speed_factor` (plus the
   richer stepped/smooth speed-ramp system oca already has, which the mockup doesn't even show
   — oca is ahead here, not behind). "Add Effect" itself doesn't map to anything: oca's model is
@@ -378,15 +486,17 @@ Mapping:
   not invent a new visual pattern when one already exists" — recommend dropping this button
   rather than bolting on a second, parallel effects-list mental model alongside the one that's
   already implemented everywhere else in this panel.
-- **Stereo L/R audio meter with dB ticks**: oca already has a _real_ audio level meter
-  (`audio_level_meter()`, a horizontal peak/RMS bar reading `Preview::current_audio_level()`,
-  `ROADMAP.md` P4 item 30) — but it's explicitly documented as "a flat sequence, not
-  per-channel." **A true stereo L/R split is not currently measurable** — `AudioLevel` has no
-  per-channel breakdown. Restyling the existing single-channel meter into a taller vertical
-  bar with dB gridlines is real and doable; presenting it as two independent L/R channels
-  would require a metering-pipeline change first (the buffer probe would need to stop
-  collapsing channels before computing peak/RMS). Say which of the two is being built, don't
-  silently ship a fake second channel.
+- **Stereo L/R audio meter with dB ticks — done, the real way.** `AudioLevel` (`avcore::
+  preview`) gained `peak_l`/`rms_l`/`peak_r`/`rms_r` alongside its existing combined `peak`/
+  `rms` — `build_metering_audio_sink`'s buffer probe now reads the negotiated channel count off
+  the pad's own caps to de-interleave channel 0 ("L") from channel 1 ("R") instead of treating
+  every buffer as one flat sequence (mono still reports the same value on both, matching a real
+  hardware meter; a >2-channel source's extra channels still count toward the combined figures,
+  just not split further). Two consumers: the preview transport row's compact
+  `audio_level_meter()` is now two thin stacked bars (L/R) instead of one, and a new
+  `stereo_db_meter()` in the properties panel's Audio tab is the mockup's actual vertical,
+  dB-ticked (0/-6/-12/-24/-48, -60 dB floor) stereo meter. Neither renders the same mono value
+  twice — the thing this doc originally flagged not to do.
 
 ### Timeline
 
@@ -411,18 +521,19 @@ Mapping:
 
 - **Track headers, lock/eye, collapse** — already real, just verify the visual styling
   (icon glyphs, spacing) against the mockup rather than re-wiring anything functional.
-- **Filmstrip + transition wedges** — filmstrips are real (`draw_filmstrip`); the mockup's
-  purple wedge between adjacent clips maps to `ClipSegment::transition_in`
-  (fade/slide/zoom, already wired to export+preview per `matrix/effects-and-color.md`) — if
-  no visual "wedge" is currently painted for an active transition on the timeline strip
-  itself (vs. just applying at render time), that's a small, real drawing addition in
-  `draw.rs`, not a new transition feature — the data already exists.
-- **A1/A2 green waveforms with diamond keyframe volume envelope** — waveform rendering is
-  real (`draw_waveform`); the diamond markers-on-a-line look like `gain_keyframes` (already
-  real, `ROADMAP.md` P3 item 31) visualized directly on the audio clip rather than only in the
-  properties panel's keyframe editor. Confirm whether `draw_keyframe_markers` already draws
-  onto audio clips specifically, or only video-track keyframed fields — if the latter, wiring
-  gain-keyframe diamonds onto the audio waveform view is a real, scoped drawing addition.
+- **Filmstrip + transition wedges — done.** Filmstrips were already real (`draw_filmstrip`);
+  the mockup's purple wedge between adjacent clips is now painted too, by a new
+  `draw_transition_wedge` (a filled bowtie shape over the clip's incoming edge, sized by
+  `transition_duration_secs * px_per_sec`, drawn whenever `ClipInstance::has_transition()` —
+  `transition_in`, fade/slide/zoom — is set). `transition_in` itself already applied at
+  export+preview per `matrix/effects-and-color.md`; this was purely the missing on-strip
+  visual, not a new transition feature. No pixel-sampled color exists for this region in the
+  source mockup, so it reuses `theme::ACCENT_2` rather than inventing an unsampled token.
+- **A1/A2 green waveforms with diamond keyframe volume envelope — done.** `draw_waveform` was
+  already real; `draw_keyframe_markers` (previously position/scale/rotation/opacity only, all
+  video-transform fields) now also includes `gain_keyframes` — the one of those five lists
+  that's ever populated on an audio clip — so its diamonds now show directly on the waveform's
+  volume-envelope line, not only in the properties panel's keyframe editor.
 - **A dedicated "FX" track/lane** — **no `TrackKind::Fx` exists, and shouldn't be added to
   match this mockup literally**. oca's effects (color grade fields, vignette, etc.) are
   per-clip properties on ordinary Video-track clips, not separate overlay clips on their own
@@ -432,10 +543,9 @@ Mapping:
   wanted, a small badge/indicator drawn on the V1/V2 clip itself (which effects have non-
   default values) fits oca's existing model far better than a fake second timeline track that
   doesn't correspond to any real independently-movable object.
-- **Playhead** — already real and already red-ish (`draw_playhead`, uses `theme::ACCENT` or a
-  dedicated color — verify against the sampled `#e0574f`-family red once `ACCENT` moves to
-  violet, so the playhead doesn't accidentally go violet along with everything else that
-  currently borrows `ACCENT` for red-adjacent meaning).
+- **Playhead — done.** `draw_playhead` was switched from `theme::ACCENT` to `theme::ERROR`
+  before the `ACCENT` repoint landed, so it stayed red-adjacent instead of following the accent
+  from teal to violet.
 
 ## What NOT to change (explicit non-goals)
 
@@ -447,29 +557,47 @@ principles, and this doc's own findings above:
 - Don't add a Favorites/Recent media tab without first deciding whether "favorited asset" is
   a real feature worth a new `MediaAsset` field, versus just matching the mockup's chrome.
   Left as its own open question, not silently built.
-- Don't fake a stereo L/R meter by rendering the same mono value twice into two bars — either
-  build the real per-channel metering path first, or ship the honest single-channel meter
-  restyled taller.
 - Don't add "Add Effect" — see Inspector section above.
 - Don't reproduce the "REC" chip — no live-recording concept in this app.
 
 ## Suggested implementation order
 
-1. **Color**: add `theme::AUDIO_TINT`, decouple `timeline_panel/mod.rs`'s two audio-clip-fill
-   call sites onto it, _then_ repoint `theme::ACCENT` to `#7058E4`. Screenshot-compare
-   Home/Library/Queue/Editor afterward — this is the step with the widest, least-predictable
-   blast radius.
-2. **Inspector tab split** (Inspector/Effects/Audio) — pure reorganization of existing
-   `property_section` calls, zero new `avcore` work, lowest risk, highest visual-parity payoff.
-3. **Timeline visual polish**: transition wedges, gain-keyframe diamonds on waveforms, verify
-   playhead color post-accent-change.
-4. **Preview panel**: relocate/add resolution+fps+timecode overlays, step-frame + loop
-   transport buttons, CAM chip wired to real multicam-group data (omit when none applies).
-5. **Menu bar** — largest single addition; scope and confirm the "does the toolbar still exist
-   alongside it" question before building, per the open decision above.
-6. Everything flagged as a genuine new feature above (real per-asset thumbnails, Blend Mode,
-   Favorites/Recent, Anchor X/Y, snapshot capture, per-channel audio metering) — each is its
-   own scoped follow-up item, not part of "implement the mockup" in one pass.
+1. **Color — done.** `theme::AUDIO_TINT` added, `timeline_panel/mod.rs`'s two audio-clip-fill
+   call sites decoupled onto it, `theme::ACCENT` repointed to `#7058E4`.
+2. **Inspector tab split (Inspector/Effects/Audio) — done.** Pure reorganization of existing
+   `property_section` calls behind a new `App::properties_tab` (`PropertiesTab`), zero new
+   `avcore` work.
+2.5. **Icon font — done.** `tools/icon-font/build-icon-font.ts` converts the vendored Lucide
+   SVGs to `crates/ui/assets/fonts/lucide-oca.ttf` + a codepoint mapping; `icons.rs` registers
+   it with egui and wires it into every call site that has both a confirmed icon *and* a real
+   existing `App` action: timeline track header (lock/eye), nav rail (settings), toolbar
+   (Select/Cut/Trim, via a new `icon_label_job`/`tool_button_icon_font` for the icon+label
+   combo), and the preview transport row (seek-to-start/play-pause/seek-to-end). Not wired:
+   anything needing a new feature (camera snapshot, loop toggle, scrub speed) or an unresolved
+   layout decision (menu bar, track collapse, tool rail restructuring) — see the Icon set
+   section's own "still not wired" list.
+3. **Timeline visual polish — done.** Transition wedges (`draw_transition_wedge`) and
+   gain-keyframe diamonds on waveforms (extended `draw_keyframe_markers`); playhead already
+   verified red (`theme::ERROR`) post-accent-change.
+4. **Preview panel — done.** Resolution+fps/timecode+frame HUD overlays, step-frame + loop
+   transport buttons, and a CAM chip wired to real `MulticamGroup` data (omitted when none
+   applies) — see the Program monitor section's own bullets for what shipped vs. what's still
+   genuinely new (zoom controls, snapshot capture, marker button).
+5. **Menu bar — done.** `screens/editor/menu_bar.rs`, coexisting with the toolbar (confirmed
+   with the user first, per the open decision this doc originally left). See the Top bar
+   section's own bullets for exactly which menu items are wired vs. which two menus (Window,
+   Help) still have no real feature behind them.
+6. Everything flagged as a genuine new feature above (real per-asset thumbnails, Favorites/
+   Recent, Anchor X/Y, snapshot capture) — each is its own scoped follow-up item, not part of
+   "implement the mockup" in one pass.
+7. **Per-channel audio metering — done**, picked out of item 6's list at the user's request —
+   see the Inspector section's own bullet.
+8. **Blend Mode — done.** Data model, export, live preview (the full FFmpeg 40-mode set, per
+   the user's own request), and UI wiring all shipped, also picked out of item 6's list at the
+   user's request — see the Inspector section's own bullet for what shipped and its documented
+   scope limits (position/PIP ignored while a blend mode is active; a blend-mode layer always
+   composites on top of the whole Normal-mode stack rather than interleaving into track order).
+9. **Media library grid/list view toggle — done.** See the Media library section's own bullet.
 
 ## Verification
 

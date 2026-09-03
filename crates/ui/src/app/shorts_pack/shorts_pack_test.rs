@@ -15,7 +15,7 @@
 
 use super::*;
 use avcore::timeline::{
-    AudioRole, ClipInstance, ColorFilter, Marker, MaskShape, Track, TransitionType,
+    AudioRole, BlendMode, ClipInstance, ColorFilter, Marker, MaskShape, Track, TransitionType,
 };
 
 fn clip(id: u64, start_secs: f64, duration_secs: f64) -> ClipInstance {
@@ -78,6 +78,7 @@ fn clip(id: u64, start_secs: f64, duration_secs: f64) -> ClipInstance {
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: BlendMode::Normal,
     }
 }
 

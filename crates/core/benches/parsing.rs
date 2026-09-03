@@ -27,7 +27,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use avcore::loudness::parse_loudnorm_stderr;
 use avcore::persistence::{from_ocproj_bytes, to_ocproj_bytes};
 use avcore::timeline::{
-    AudioRole, ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind, TransitionType,
+    AudioRole, BlendMode, ClipInstance, ColorFilter, MaskShape, Timeline, Track, TrackKind,
+    TransitionType,
 };
 use avcore::{LoudnessMetrics, MediaAsset, MediaKind, Project, Recency, Sequence};
 
@@ -144,6 +145,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
                 stabilization_intensity: 0.0,
                 background_removal_enabled: false,
                 background_removal_mask_path: String::new(),
+                blend_mode: BlendMode::Normal,
             })
             .collect(),
         text_clips: vec![],

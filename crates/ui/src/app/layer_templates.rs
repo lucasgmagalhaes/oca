@@ -193,6 +193,7 @@ impl App {
                     stabilization_intensity: 0.0,
                     background_removal_enabled: false,
                     background_removal_mask_path: String::new(),
+                    blend_mode: avcore::timeline::BlendMode::Normal,
                 });
             timeline.tracks[track_index]
                 .clips

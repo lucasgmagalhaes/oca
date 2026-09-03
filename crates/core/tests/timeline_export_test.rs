@@ -19,8 +19,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use avcore::project::Sequence;
 use avcore::render::{render_timeline_export, RenderError, RenderOutcome};
 use avcore::timeline::{
-    AudioRole, ClipInstance, ColorFilter, MaskShape, TextClip, Timeline, Track, TrackKind,
-    TransitionType, WordTiming,
+    AudioRole, BlendMode, ClipInstance, ColorFilter, MaskShape, TextClip, Timeline, Track,
+    TrackKind, TransitionType, WordTiming,
 };
 use avcore::Keyframe;
 use avcore::{probe_media, MediaAsset, MediaKind};
@@ -97,6 +97,7 @@ fn clip(
         stabilization_intensity: 0.0,
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
+        blend_mode: BlendMode::Normal,
     }
 }
 
