@@ -138,6 +138,7 @@ impl App {
             rotation_keyframes: vec![],
             direction: Default::default(),
             language: None,
+            text_align: Default::default(),
         });
         self.selected_clip_id = None;
         self.selected_shape_clip_id = None;
