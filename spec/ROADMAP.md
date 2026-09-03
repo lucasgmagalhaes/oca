@@ -773,9 +773,41 @@ an item earlier:
   documented: one useful no-watermark Free edition and one R$39.90/month Pro edition focused on
   automation, local AI, batch workflows, premium content, and support. The workspace metadata,
   source notices, and root license are aligned to GPL-3.0-or-later so the commercial model does not
-  contradict the statically linked GPLv3 eSpeak dependency. Still not implemented: identity,
-  checkout, provider webhooks, server-authoritative entitlements, secure local token storage,
-  feature gates, downgrade UI, or subscription telemetry. Read
+  contradict the statically linked GPLv3 eSpeak dependency.
+
+  **MON-01B's own local policy engine (its "define stable feature IDs and one central Free/Pro
+  capability policy" step) now shipped.** `avcore::entitlement` adds `FeatureId` (one identifier
+  per Pro-only capability the doc's own "Oca Pro" feature list names — silence detection,
+  correlated highlight detection, auto chapters, Shorts Pack batch, Whisper transcription,
+  background removal, auto-reframe, motion tracking, text-to-speech, audio ducking, batch
+  loudness consistency, multicam editing, the persistent export queue, collaboration bundles,
+  premium content) and `EntitlementState`, mirroring the doc's own "Subscription lifecycle" table
+  exactly: `Free`/`Trialing`/`Active`/`Grace`/`PastDue`/`Canceled`/`Expired`/`Revoked`/
+  `OfflineExpired`/`Malformed`. `pro_actions_enabled`/`feature_allowed` are pure functions taking
+  `now_unix` explicitly rather than reading the system clock, so a caller controls exactly what
+  "now" means.
+
+  **Deliberately not wired to gate anything yet.** MON-01C (identity/entitlement service) hasn't
+  shipped — there is no real way for a user to become Pro, and no purchase flow to point an
+  upgrade prompt at. Wiring this into a real `ui` call site today would silently take
+  already-working functionality away from every current user with no way to unlock it back — a
+  real regression, not a feature (this exact risk is why the item was scoped this way rather than
+  gating anything on the spot). This is the local policy engine only, ready for a `ui`-side gate
+  once MON-01C exists to feed it an actual state instead of a hardcoded `EntitlementState::Free`.
+  The rest of MON-01B (gating real action call sites at their service boundary, preserving
+  project load/export independently of entitlement) remains open until then, as does the rest of
+  MON-01 (identity, checkout, provider webhooks, server-authoritative entitlements, secure local
+  token storage, downgrade UI, subscription telemetry).
+
+  Verified for real, not just type-checked: `entitlement.rs` depends only on `serde` (no
+  `avbridge`/GStreamer/ONNX), so it was copied unmodified into a throwaway scratch crate and
+  `cargo test`ed there for real: 15/15 passing — every state's own enabled/disabled behavior per
+  the doc's table (including both sides of `Trialing`/`Grace`/`Canceled`'s own time-bound
+  transitions), every `FeatureId` agreeing with `feature_allowed`, and a clock-rollback-adjacent
+  case confirming a deadline is never silently extended by anything inside the pure function
+  itself. `cargo check --workspace --all-targets` and `cargo clippy -p core --lib --no-deps` (via
+  the documented temporary `filters.c` shim, discarded before commit) and `cargo fmt --check` all
+  stayed clean. Read
   [architecture/monetization-and-licensing.md](architecture/monetization-and-licensing.md).
 - `[~]` **ER-01: client error reporting.** Add consent-based, sanitized, bounded remote reporting
   for handled errors and Rust panics, exact release/symbol management, and a separately validated
