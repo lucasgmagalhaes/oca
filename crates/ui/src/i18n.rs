@@ -148,6 +148,8 @@ text_catalog! {
     MenuClip: pt_br = "Clipe", en = "Clip";
     MenuMarkers: pt_br = "Marcadores", en = "Markers";
     MenuGraphics: pt_br = "Gráficos", en = "Graphics";
+    MenuHelp: pt_br = "Ajuda", en = "Help";
+    MenuHelpAbout: pt_br = "Sobre o oca...", en = "About oca...";
     MenuSequenceAddTab: pt_br = "Nova sequência", en = "New sequence";
     MenuSequenceRename: pt_br = "Renomear...", en = "Rename...";
     MenuSequenceDuplicate: pt_br = "Duplicar", en = "Duplicate";
