@@ -130,95 +130,104 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         }
     }
 
-    ui.vertical(|ui| {
-        toolbar(app, ui);
-        ui.add_space(4.0);
-        sequence_tab_bar(app, ui);
-        ui.add_space(4.0);
+    // `bg_workspace` — the Editor is the one screen with real nested structure below the
+    // app-wide `CentralPanel` (`app::mod`'s `show`, which fills with plain `BG`/`bg_canvas` for
+    // every screen): a three-column body plus the timeline strip, with panel gaps/preview
+    // backdrop/timeline canvas all showing through as background. Framing that whole area in
+    // `BG_WORKSPACE` gives it the doc's own separate "main workspace" layer, one step lighter
+    // than the outer canvas — every other screen (Home/Library/...) has no such nesting and
+    // keeps sitting directly on plain `BG`.
+    egui::Frame::new().fill(theme::BG_WORKSPACE).show(ui, |ui| {
+        ui.vertical(|ui| {
+            toolbar(app, ui);
+            ui.add_space(4.0);
+            sequence_tab_bar(app, ui);
+            ui.add_space(4.0);
 
-        let total_width = ui.available_width();
-        let min_col = 160.0_f32;
-        let max_col = (total_width * 0.4).max(min_col);
-        app.lib_panel_width = app.lib_panel_width.clamp(min_col, max_col);
-        app.props_panel_width = app.props_panel_width.clamp(min_col, max_col);
+            let total_width = ui.available_width();
+            let min_col = 160.0_f32;
+            let max_col = (total_width * 0.4).max(min_col);
+            app.lib_panel_width = app.lib_panel_width.clamp(min_col, max_col);
+            app.props_panel_width = app.props_panel_width.clamp(min_col, max_col);
 
-        // Reported bug: the timeline strip would sometimes vanish outright. Root cause — the
-        // body row's own minimum height (used to be a hardcoded 160.0 floor below) and the
-        // timeline's minimum height were each enforced independently, with no check that the
-        // two together actually fit `available_height`. Once the Editor's vertical space got
-        // small enough (a short window, a small display, whatever), `body_height`'s floor plus
-        // `timeline_height`'s floor plus the divider between them could add up to more than
-        // `available_height` — egui doesn't shrink an overflowing `ui.vertical` to fit, so the
-        // timeline (painted last) just got pushed past the visible/clipped area and disappeared,
-        // with no error and no obvious trigger from the user's side beyond "the window got
-        // short enough at some point." Fixed by deriving both heights from the same
-        // `content_height` budget so `body_height + timeline_height` can never exceed what's
-        // actually available, with each floor scaled down (not dropped — still visible, just
-        // thinner) rather than held fixed when that budget itself is tight.
-        let available_height = ui.available_height();
-        let divider_overhead = 4.0 + DIVIDER_HIT_WIDTH + 4.0; // the add_space(4.0) calls flanking resizable_divider_horizontal below
-        let content_height = (available_height - divider_overhead).max(0.0);
-        let min_timeline = 120.0_f32.min(content_height * 0.5);
-        let min_body = 160.0_f32.min(content_height - min_timeline).max(0.0);
-        let max_timeline = (content_height - min_body).max(min_timeline);
-        app.timeline_height = app.timeline_height.clamp(min_timeline, max_timeline);
-        let body_height = (content_height - app.timeline_height).max(0.0);
+            // Reported bug: the timeline strip would sometimes vanish outright. Root cause — the
+            // body row's own minimum height (used to be a hardcoded 160.0 floor below) and the
+            // timeline's minimum height were each enforced independently, with no check that the
+            // two together actually fit `available_height`. Once the Editor's vertical space got
+            // small enough (a short window, a small display, whatever), `body_height`'s floor plus
+            // `timeline_height`'s floor plus the divider between them could add up to more than
+            // `available_height` — egui doesn't shrink an overflowing `ui.vertical` to fit, so the
+            // timeline (painted last) just got pushed past the visible/clipped area and disappeared,
+            // with no error and no obvious trigger from the user's side beyond "the window got
+            // short enough at some point." Fixed by deriving both heights from the same
+            // `content_height` budget so `body_height + timeline_height` can never exceed what's
+            // actually available, with each floor scaled down (not dropped — still visible, just
+            // thinner) rather than held fixed when that budget itself is tight.
+            let available_height = ui.available_height();
+            let divider_overhead = 4.0 + DIVIDER_HIT_WIDTH + 4.0; // the add_space(4.0) calls flanking resizable_divider_horizontal below
+            let content_height = (available_height - divider_overhead).max(0.0);
+            let min_timeline = 120.0_f32.min(content_height * 0.5);
+            let min_body = 160.0_f32.min(content_height - min_timeline).max(0.0);
+            let max_timeline = (content_height - min_body).max(min_timeline);
+            app.timeline_height = app.timeline_height.clamp(min_timeline, max_timeline);
+            let body_height = (content_height - app.timeline_height).max(0.0);
 
-        let gaps = ui.spacing().item_spacing.x * 3.0 + DIVIDER_HIT_WIDTH * 2.0;
-        let preview_w = (total_width
-            - app.lib_panel_width
-            - app.props_panel_width
-            - AUDIO_METER_COLUMN_WIDTH
-            - gaps)
-            .max(200.0);
+            let gaps = ui.spacing().item_spacing.x * 3.0 + DIVIDER_HIT_WIDTH * 2.0;
+            let preview_w = (total_width
+                - app.lib_panel_width
+                - app.props_panel_width
+                - AUDIO_METER_COLUMN_WIDTH
+                - gaps)
+                .max(200.0);
 
-        ui.horizontal(|ui| {
-            ui.set_height(body_height);
+            ui.horizontal(|ui| {
+                ui.set_height(body_height);
 
-            // `allocate_ui` reserves the exact rect up front, so children (ScrollArea, Frame)
-            // see a properly bounded `max_rect` instead of the horizontal layout's full
-            // remaining width — a bare `ui.set_width()` inside the panel only affects how much
-            // space is reported *back* to this layout afterwards, not what the panel can paint.
-            ui.allocate_ui(egui::vec2(app.lib_panel_width, body_height), |ui| {
-                media_library_panel(app, ui, app.lib_panel_width, body_height);
+                // `allocate_ui` reserves the exact rect up front, so children (ScrollArea, Frame)
+                // see a properly bounded `max_rect` instead of the horizontal layout's full
+                // remaining width — a bare `ui.set_width()` inside the panel only affects how much
+                // space is reported *back* to this layout afterwards, not what the panel can paint.
+                ui.allocate_ui(egui::vec2(app.lib_panel_width, body_height), |ui| {
+                    media_library_panel(app, ui, app.lib_panel_width, body_height);
+                });
+                resizable_divider(
+                    ui,
+                    body_height,
+                    &mut app.lib_panel_width,
+                    min_col,
+                    max_col,
+                    1.0,
+                );
+                ui.allocate_ui(egui::vec2(preview_w, body_height), |ui| {
+                    preview_panel(app, ui, body_height);
+                });
+                resizable_divider(
+                    ui,
+                    body_height,
+                    &mut app.props_panel_width,
+                    min_col,
+                    max_col,
+                    -1.0,
+                );
+                ui.allocate_ui(egui::vec2(app.props_panel_width, body_height), |ui| {
+                    properties_panel::properties_panel(app, ui, app.props_panel_width, body_height);
+                });
+                ui.allocate_ui(egui::vec2(AUDIO_METER_COLUMN_WIDTH, body_height), |ui| {
+                    audio_meter_column(app, ui, body_height);
+                });
             });
-            resizable_divider(
+
+            ui.add_space(4.0);
+            resizable_divider_horizontal(
                 ui,
-                body_height,
-                &mut app.lib_panel_width,
-                min_col,
-                max_col,
-                1.0,
+                total_width,
+                &mut app.timeline_height,
+                min_timeline,
+                max_timeline,
             );
-            ui.allocate_ui(egui::vec2(preview_w, body_height), |ui| {
-                preview_panel(app, ui, body_height);
-            });
-            resizable_divider(
-                ui,
-                body_height,
-                &mut app.props_panel_width,
-                min_col,
-                max_col,
-                -1.0,
-            );
-            ui.allocate_ui(egui::vec2(app.props_panel_width, body_height), |ui| {
-                properties_panel::properties_panel(app, ui, app.props_panel_width, body_height);
-            });
-            ui.allocate_ui(egui::vec2(AUDIO_METER_COLUMN_WIDTH, body_height), |ui| {
-                audio_meter_column(app, ui, body_height);
-            });
+            ui.add_space(4.0);
+            timeline_panel::timeline_panel(app, ui, app.timeline_height);
         });
-
-        ui.add_space(4.0);
-        resizable_divider_horizontal(
-            ui,
-            total_width,
-            &mut app.timeline_height,
-            min_timeline,
-            max_timeline,
-        );
-        ui.add_space(4.0);
-        timeline_panel::timeline_panel(app, ui, app.timeline_height);
     });
 }
 
@@ -1238,7 +1247,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             ui.label(
                                 RichText::new(Text::PreviewUnavailable.tr(locale))
                                     .size(13.0)
-                                    .color(theme::TEXT_MUTED),
+                                    .color(theme::TEXT_DISABLED),
                             );
                         });
                     }
