@@ -906,19 +906,22 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                             theme::TEXT_PRIMARY,
                                         );
                                     }
+                                    // Plain ASCII badges rather than "⛶"/"●"/"▢"/"⇄" — same
+                                    // confirmed-tofu class (against this app's bundled default
+                                    // font) as everything else fixed this session.
                                     if clip.is_cropped() {
                                         painter.text(
                                             clip_rect.right_bottom() + egui::vec2(-3.0, -2.0),
                                             egui::Align2::RIGHT_BOTTOM,
-                                            "⛶",
+                                            "C",
                                             egui::FontId::proportional(11.0),
                                             theme::TEXT_PRIMARY,
                                         );
                                     }
                                     if clip.is_masked() {
                                         let glyph = match clip.mask_shape {
-                                            avcore::timeline::MaskShape::Circle => "●",
-                                            avcore::timeline::MaskShape::RoundedRect => "▢",
+                                            avcore::timeline::MaskShape::Circle => "O",
+                                            avcore::timeline::MaskShape::RoundedRect => "#",
                                             avcore::timeline::MaskShape::None => "",
                                         };
                                         painter.text(
@@ -933,7 +936,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         painter.text(
                                             clip_rect.center_top() + egui::vec2(0.0, 2.0),
                                             egui::Align2::CENTER_TOP,
-                                            "⇄",
+                                            "H",
                                             egui::FontId::proportional(11.0),
                                             theme::TEXT_PRIMARY,
                                         );
