@@ -25,23 +25,23 @@ def test_undo_redo_round_trips_an_added_video_track(oca_window):
     oca_window.child_window(title="Editor", control_type="Button").click_input()
 
     assert not poll_for_descendants(oca_window, "V1", timeout_secs=2.0)
-    assert not _toolbar_button(oca_window, "↺").is_enabled()
+    assert not _toolbar_button(oca_window, "Desfazer").is_enabled()
 
     oca_window.child_window(
         title=ADD_VIDEO_TRACK_LABEL, control_type="Button"
     ).click_input()
     assert poll_for_descendants(oca_window, "V1", timeout_secs=3.0)
-    assert _toolbar_button(oca_window, "↺").is_enabled()
-    assert not _toolbar_button(oca_window, "↻").is_enabled()
+    assert _toolbar_button(oca_window, "Desfazer").is_enabled()
+    assert not _toolbar_button(oca_window, "Refazer").is_enabled()
 
     oca_window.type_keys("^z")
     # poll_for_descendants only polls for *presence*; absence needs its own settle+recheck.
     time.sleep(0.5)
     assert not oca_window.descendants(title="V1", control_type="Text")
-    assert not _toolbar_button(oca_window, "↺").is_enabled()
-    assert _toolbar_button(oca_window, "↻").is_enabled()
+    assert not _toolbar_button(oca_window, "Desfazer").is_enabled()
+    assert _toolbar_button(oca_window, "Refazer").is_enabled()
 
     oca_window.type_keys("^y")
     assert poll_for_descendants(oca_window, "V1", timeout_secs=3.0)
-    assert _toolbar_button(oca_window, "↺").is_enabled()
-    assert not _toolbar_button(oca_window, "↻").is_enabled()
+    assert _toolbar_button(oca_window, "Desfazer").is_enabled()
+    assert not _toolbar_button(oca_window, "Refazer").is_enabled()
