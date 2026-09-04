@@ -1144,6 +1144,32 @@ pub struct ClipInstance {
     /// `Normal`.
     #[serde(default)]
     pub blend_mode: BlendMode,
+    /// Fraction (`0.0..=1.0`, `x` then `y`) of this clip's own frame that rotation
+    /// ([`ClipInstance::rotation_keyframes`]) and scale ([`ClipInstance::layer_scale_x`]/`_y`,
+    /// [`ClipInstance::scale_keyframes`]) pivot around, instead of always the frame's own
+    /// center. `(0.5, 0.5)` (the default — every clip before this field existed effectively
+    /// used this) means "center," matching current behavior exactly; `(0.0, 0.0)` is the
+    /// top-left corner, `(1.0, 1.0)` the bottom-right, etc. Wired into export
+    /// (`avbridge::ClipSegment::anchor_x`/`anchor_y`, both `encode_timeline_export` and
+    /// `encode_timeline_export_multi` — applies to every clip, not just overlay-track ones).
+    /// **Scope limit, not a bug**: live preview doesn't reflect a non-default anchor yet —
+    /// GStreamer's `rotate` element rotates around its own input frame's center with no anchor
+    /// concept, and export's own trick (shifting the canvas-conforming `pad` stage's offset so
+    /// the anchor lands at that buffer's center — verified against real `ffmpeg` output) has no
+    /// equivalent GStreamer element to build on; a real preview implementation would need a
+    /// GStreamer `videobox`-based restructuring, a separate follow-up. `#[serde(default)]`
+    /// falling back to `f32`'s own `0.0` default would silently put the pivot at the top-left
+    /// corner for a project saved before this field existed, not the actual old center-pivot
+    /// behavior — `#[serde(default = "default_anchor")]` is required here, not a bare
+    /// `#[serde(default)]`.
+    #[serde(default = "default_anchor")]
+    pub anchor_x: f32,
+    #[serde(default = "default_anchor")]
+    pub anchor_y: f32,
+}
+
+fn default_anchor() -> f32 {
+    0.5
 }
 
 /// The rendering/display settings of a [`ClipInstance`] that can be copied onto a different
@@ -1203,6 +1229,8 @@ pub struct ClipFormatting {
     pub layer_scale_y: f32,
     pub stabilization_intensity: f32,
     pub blend_mode: BlendMode,
+    pub anchor_x: f32,
+    pub anchor_y: f32,
 }
 
 /// A named, reusable group of layers (per `request.md`'s Fase 4 "Templates de grupo de
@@ -1308,6 +1336,12 @@ impl ClipInstance {
     /// `true` if a non-default compositing blend mode ([`ClipInstance::blend_mode`]) is set.
     pub fn has_blend_mode(&self) -> bool {
         self.blend_mode != BlendMode::Normal
+    }
+
+    /// `true` if a non-center rotation/scale pivot ([`ClipInstance::anchor_x`]/`anchor_y`) is
+    /// set.
+    pub fn has_anchor(&self) -> bool {
+        (self.anchor_x - 0.5).abs() > 1e-4 || (self.anchor_y - 0.5).abs() > 1e-4
     }
 
     /// `true` if a 3D LUT ([`ClipInstance::lut_path`]) is applied.
@@ -1707,6 +1741,8 @@ impl ClipInstance {
             layer_scale_y: self.layer_scale_y,
             stabilization_intensity: self.stabilization_intensity,
             blend_mode: self.blend_mode,
+            anchor_x: self.anchor_x,
+            anchor_y: self.anchor_y,
         }
     }
 
@@ -1762,6 +1798,8 @@ impl ClipInstance {
         self.layer_scale_y = f.layer_scale_y;
         self.stabilization_intensity = f.stabilization_intensity;
         self.blend_mode = f.blend_mode;
+        self.anchor_x = f.anchor_x;
+        self.anchor_y = f.anchor_y;
     }
 
     /// Drags the clip's right edge to `new_end_secs` (timeline-relative), keeping `start_secs`
@@ -2020,6 +2058,8 @@ impl Track {
             background_removal_enabled: false,
             background_removal_mask_path: String::new(),
             blend_mode: clip.blend_mode,
+            anchor_x: clip.anchor_x,
+            anchor_y: clip.anchor_y,
         };
         clip.source_out_secs = split_source_secs;
         // First half's own ramp rides from the original start speed to the split boundary's
