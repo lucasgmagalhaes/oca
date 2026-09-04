@@ -95,6 +95,52 @@ pub enum TextFontFamily {
     AnonymousPro,
     /// Heavy, high-contrast face intended for short-form captions.
     ArchivoBlack,
+    // FONT-01B's 37-family expansion (`crate::font_catalog::CATALOG`) — added directly as plain
+    // enum variants, the same shape the original six use, rather than the doc's own
+    // `family_id`-as-persisted-type structural swap (still deferred, see this enum's own doc
+    // comment above): every variant here still serializes as its own name string, and `Lato`'s
+    // `#[serde(other)]` below already gives forward-compatible fallback for any name an older
+    // build doesn't recognize -- the practical "these fonts are selectable and persist
+    // correctly" outcome doesn't need the full swap, only the *"unknown id keeps its exact
+    // string through a resave"* half still does. Grouped by `font_catalog::FontCategory` order,
+    // matching `CATALOG`'s own layout.
+    Inter,
+    Montserrat,
+    Roboto,
+    OpenSans,
+    Poppins,
+    Nunito,
+    SourceSans3,
+    Barlow,
+    Fredoka,
+    Oswald,
+    Anton,
+    BarlowCondensed,
+    LeagueSpartan,
+    Teko,
+    BlackOpsOne,
+    RussoOne,
+    Bangers,
+    Merriweather,
+    LibreBaskerville,
+    Lora,
+    Cinzel,
+    Bitter,
+    Caveat,
+    Pacifico,
+    DancingScript,
+    ComicNeue,
+    GloriaHallelujah,
+    JetBrainsMono,
+    RobotoMono,
+    SpaceMono,
+    NotoSansArabic,
+    NotoNaskhArabic,
+    NotoSansHebrew,
+    NotoSansDevanagari,
+    NotoSansBengali,
+    NotoSansTamil,
+    NotoSansThai,
     /// Modern sans-serif suitable for body text and general captions. Also the deterministic
     /// fallback for a font family this build doesn't recognize (see this enum's own doc comment).
     #[default]
@@ -103,22 +149,61 @@ pub enum TextFontFamily {
 }
 
 impl TextFontFamily {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 43] = [
         Self::Lato,
         Self::BebasNeue,
         Self::PlayfairDisplay,
         Self::PatrickHand,
         Self::AnonymousPro,
         Self::ArchivoBlack,
+        Self::Inter,
+        Self::Montserrat,
+        Self::Roboto,
+        Self::OpenSans,
+        Self::Poppins,
+        Self::Nunito,
+        Self::SourceSans3,
+        Self::Barlow,
+        Self::Fredoka,
+        Self::Oswald,
+        Self::Anton,
+        Self::BarlowCondensed,
+        Self::LeagueSpartan,
+        Self::Teko,
+        Self::BlackOpsOne,
+        Self::RussoOne,
+        Self::Bangers,
+        Self::Merriweather,
+        Self::LibreBaskerville,
+        Self::Lora,
+        Self::Cinzel,
+        Self::Bitter,
+        Self::Caveat,
+        Self::Pacifico,
+        Self::DancingScript,
+        Self::ComicNeue,
+        Self::GloriaHallelujah,
+        Self::JetBrainsMono,
+        Self::RobotoMono,
+        Self::SpaceMono,
+        Self::NotoSansArabic,
+        Self::NotoNaskhArabic,
+        Self::NotoSansHebrew,
+        Self::NotoSansDevanagari,
+        Self::NotoSansBengali,
+        Self::NotoSansTamil,
+        Self::NotoSansThai,
     ];
 
-    /// Whether this bundled family has a distinct bold file. Single-weight display faces keep
-    /// their own designed weight and therefore expose only [`TextFontStyle::Regular`].
-    pub const fn supports_bold(self) -> bool {
-        matches!(
-            self,
-            Self::Lato | Self::PlayfairDisplay | Self::AnonymousPro
-        )
+    /// Whether this bundled family has a distinct bold file — derived from
+    /// [`crate::font_catalog::CATALOG`] directly (does this family's own entry declare a weight
+    /// 700 face?) rather than a hand-maintained list, so a newly vendored family's bold support
+    /// is never forgotten. Every FONT-01B variable-font family currently locks only its default
+    /// (400) instance (see `font_catalog`'s own doc comment on why), so this returns `false` for
+    /// all of them today — not a missing case, an accurate reflection of what's actually locked.
+    pub fn supports_bold(self) -> bool {
+        crate::font_catalog::find_family(self.family_id())
+            .is_some_and(|entry| entry.faces.iter().any(|face| face.weight == 700))
     }
 }
 

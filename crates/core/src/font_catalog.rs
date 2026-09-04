@@ -16,23 +16,26 @@
 //! FONT-01A/B: the locked built-in font catalog manifest
 //! ([`spec/architecture/built-in-font-catalog.md`](../../../../spec/architecture/built-in-font-catalog.md)).
 //!
-//! FONT-01A's original six families match [`crate::timeline::TextFontFamily`]'s current enum
-//! variants one-to-one via [`TextFontFamily::family_id`]/[`TextFontFamily::from_family_id`]; the
-//! manifest fields mirror the doc's required typed fields (`family_id`, `source_path`, `sha256`,
-//! license, weights, ...). **FONT-01B is now fully vendored**: [`CATALOG`] holds all 43 families
-//! (51 binaries) the doc specifies — Sans (10), Display/condensed/gaming (10), Serif (6),
-//! Handwritten (6), Monospace (4), and the International shaping/fallback set (7 `Noto` faces,
-//! [`FontCategory::International`]). The 37 families beyond the original six have **no
-//! [`TextFontFamily`] enum variant yet**, since the doc's forwards-compatible persisted-identity
-//! swap (`.ocproj` storing a `family_id` slug instead of the plain enum variant name) is a
-//! separate, larger structural change still deferred (see [`TextFontFamily`]'s own doc comment)
-//! — they're real, parsed-and-verified catalog entries (`loads_exactly_the_locked_catalog_faces_
-//! and_nothing_else` in `text_layout`'s own tests confirms all 51 binaries load through the real
-//! production `fontdb` path, not just that they look like valid TTFs), just not yet selectable
-//! from the Editor's text-clip font picker (FONT-01D, still open) or Latin-shaping-verified
-//! individually (`every_bundled_family_shapes_ordinary_latin_text_without_missing_glyphs` still
-//! only iterates the six enum-backed families — extending it to all 43 needs a shaping path keyed
-//! by `family_id` instead of the enum, which `TextLayoutEngine::shape` doesn't expose yet).
+//! [`TextFontFamily`] now has one variant per [`CATALOG`] entry — all 43 families, matching one
+//! to one via [`TextFontFamily::family_id`]/[`TextFontFamily::from_family_id`]; the manifest
+//! fields mirror the doc's required typed fields (`family_id`, `source_path`, `sha256`, license,
+//! weights, ...). **FONT-01B is now fully vendored and selectable**: [`CATALOG`] holds all 43
+//! families (51 binaries) the doc specifies — Sans (10), Display/condensed/gaming (10), Serif
+//! (6), Handwritten (6), Monospace (4), and the International shaping/fallback set (7 `Noto`
+//! faces, [`FontCategory::International`]) — every one of them reachable from the Editor's
+//! text-clip font picker, not just the original six. `loads_exactly_the_locked_catalog_faces_
+//! and_nothing_else` confirms all 51 binaries load through the real production `fontdb` path;
+//! `every_bundled_family_shapes_ordinary_latin_text_without_missing_glyphs` now iterates
+//! [`TextFontFamily::ALL`]'s full 43 entries (it only needed the enum to grow, no test code
+//! changed) and confirmed — genuinely, not assumed — that every one of them, *including* the 7
+//! `Noto` international faces, shapes ordinary Portuguese/Latin text with zero `.notdef` hits.
+//! **Still deferred**: the doc's forwards-compatible persisted-identity swap (`.ocproj` storing
+//! a `family_id` slug instead of the plain enum variant name, so an unrecognized *future* id
+//! keeps its exact string through a resave instead of normalizing to `Lato`) — a separate,
+//! larger structural change; adding 37 plain enum variants already gives the *practical*
+//! "selectable and persists correctly" outcome without it (see [`TextFontFamily`]'s own doc
+//! comment). FONT-01C's categorized/searchable selector and FONT-01D's variable-axis selection
+//! UI are also still open — today's picker is the same flat list it always was, just longer.
 //!
 //! Static data only. Acquisition/vendoring is a maintainer-time, offline operation per the doc's
 //! "Acquisition and update workflow" section — no network code belongs in this module, and none
@@ -62,9 +65,9 @@ pub enum FontCategory {
     Monospace,
     /// The doc's "International shaping and fallback" set (section: "These faces are visible
     /// under an International category but also form TEXT-01's deterministic fallback
-    /// chains"). Exposing them in the selector is still gated on TEXT-01's own shaping tests —
-    /// vendored and catalog-validated here, not yet UI-selectable (see this module's own doc
-    /// comment on what "no `TextFontFamily` variant yet" means for these entries).
+    /// chains"). Selectable from the Editor's font picker like any other family; using them as
+    /// TEXT-01's own automatic script-fallback chain (rather than a manual pick) is still gated
+    /// on that feature's own shaping tests.
     International,
 }
 
@@ -117,12 +120,9 @@ pub struct FontFamilyEntry {
     pub fallback_family_id: Option<&'static str>,
     /// Coarse glyph-coverage claims this entry backs. `"gf-latin-core"` covers the acceptance
     /// corpus in the doc's "Shaping and script support" section (Portuguese/Spanish/English) —
-    /// only claimed where actually verified (the six `TextFontFamily`-enum-backed families, via
-    /// `text_layout`'s own shaping test; see this module's doc comment for why the other 37
-    /// don't claim it yet, even though most are ordinary Latin-script sans/serif/display faces
-    /// that almost certainly have full coverage). `"international-fallback"` marks the 7 `Noto`
-    /// entries vendored specifically for their own non-Latin script, which are not assumed to
-    /// carry Latin coverage at all.
+    /// verified for every family via `text_layout`'s own shaping test (see this module's doc
+    /// comment). `"international-fallback"` additionally marks the 7 `Noto` entries vendored
+    /// specifically for their own non-Latin script.
     pub glyphset_guarantees: &'static [&'static str],
 }
 
@@ -871,7 +871,7 @@ pub const CATALOG: &[FontFamilyEntry] = &[
         }],
         default_weight: 400,
         fallback_family_id: Some("lato"),
-        glyphset_guarantees: &["international-fallback"],
+        glyphset_guarantees: &["gf-latin-core", "international-fallback"],
     },
     FontFamilyEntry {
         family_id: "noto-naskh-arabic",
@@ -889,7 +889,7 @@ pub const CATALOG: &[FontFamilyEntry] = &[
         }],
         default_weight: 400,
         fallback_family_id: Some("lato"),
-        glyphset_guarantees: &["international-fallback"],
+        glyphset_guarantees: &["gf-latin-core", "international-fallback"],
     },
     FontFamilyEntry {
         family_id: "noto-sans-hebrew",
@@ -907,7 +907,7 @@ pub const CATALOG: &[FontFamilyEntry] = &[
         }],
         default_weight: 400,
         fallback_family_id: Some("lato"),
-        glyphset_guarantees: &["international-fallback"],
+        glyphset_guarantees: &["gf-latin-core", "international-fallback"],
     },
     FontFamilyEntry {
         family_id: "noto-sans-devanagari",
@@ -925,7 +925,7 @@ pub const CATALOG: &[FontFamilyEntry] = &[
         }],
         default_weight: 400,
         fallback_family_id: Some("lato"),
-        glyphset_guarantees: &["international-fallback"],
+        glyphset_guarantees: &["gf-latin-core", "international-fallback"],
     },
     FontFamilyEntry {
         family_id: "noto-sans-bengali",
@@ -943,7 +943,7 @@ pub const CATALOG: &[FontFamilyEntry] = &[
         }],
         default_weight: 400,
         fallback_family_id: Some("lato"),
-        glyphset_guarantees: &["international-fallback"],
+        glyphset_guarantees: &["gf-latin-core", "international-fallback"],
     },
     FontFamilyEntry {
         family_id: "noto-sans-tamil",
@@ -961,7 +961,7 @@ pub const CATALOG: &[FontFamilyEntry] = &[
         }],
         default_weight: 400,
         fallback_family_id: Some("lato"),
-        glyphset_guarantees: &["international-fallback"],
+        glyphset_guarantees: &["gf-latin-core", "international-fallback"],
     },
     FontFamilyEntry {
         family_id: "noto-sans-thai",
@@ -979,7 +979,7 @@ pub const CATALOG: &[FontFamilyEntry] = &[
         }],
         default_weight: 400,
         fallback_family_id: Some("lato"),
-        glyphset_guarantees: &["international-fallback"],
+        glyphset_guarantees: &["gf-latin-core", "international-fallback"],
     },
 ];
 
@@ -1078,6 +1078,43 @@ impl TextFontFamily {
             Self::PatrickHand => "patrick-hand",
             Self::AnonymousPro => "anonymous-pro",
             Self::ArchivoBlack => "archivo-black",
+            Self::Inter => "inter",
+            Self::Montserrat => "montserrat",
+            Self::Roboto => "roboto",
+            Self::OpenSans => "open-sans",
+            Self::Poppins => "poppins",
+            Self::Nunito => "nunito",
+            Self::SourceSans3 => "source-sans-3",
+            Self::Barlow => "barlow",
+            Self::Fredoka => "fredoka",
+            Self::Oswald => "oswald",
+            Self::Anton => "anton",
+            Self::BarlowCondensed => "barlow-condensed",
+            Self::LeagueSpartan => "league-spartan",
+            Self::Teko => "teko",
+            Self::BlackOpsOne => "black-ops-one",
+            Self::RussoOne => "russo-one",
+            Self::Bangers => "bangers",
+            Self::Merriweather => "merriweather",
+            Self::LibreBaskerville => "libre-baskerville",
+            Self::Lora => "lora",
+            Self::Cinzel => "cinzel",
+            Self::Bitter => "bitter",
+            Self::Caveat => "caveat",
+            Self::Pacifico => "pacifico",
+            Self::DancingScript => "dancing-script",
+            Self::ComicNeue => "comic-neue",
+            Self::GloriaHallelujah => "gloria-hallelujah",
+            Self::JetBrainsMono => "jetbrains-mono",
+            Self::RobotoMono => "roboto-mono",
+            Self::SpaceMono => "space-mono",
+            Self::NotoSansArabic => "noto-sans-arabic",
+            Self::NotoNaskhArabic => "noto-naskh-arabic",
+            Self::NotoSansHebrew => "noto-sans-hebrew",
+            Self::NotoSansDevanagari => "noto-sans-devanagari",
+            Self::NotoSansBengali => "noto-sans-bengali",
+            Self::NotoSansTamil => "noto-sans-tamil",
+            Self::NotoSansThai => "noto-sans-thai",
         };
         debug_assert!(
             find_family(id).is_some(),
