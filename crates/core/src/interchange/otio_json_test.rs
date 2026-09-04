@@ -131,9 +131,9 @@ fn an_empty_timeline_still_produces_a_well_formed_document() {
 
 #[test]
 fn the_document_round_trips_through_a_real_json_parser() {
-    // Not a claim of round-tripping *back* into an InterchangeTimeline (import is a separate,
-    // later slice) -- just confirms the emitted document is valid, parseable JSON, the way any
-    // real consumer (the OTIO Python library, another NLE) would first check it.
+    // Confirms the emitted document is valid, parseable JSON, the way any real consumer (the
+    // OTIO Python library, another NLE) would first check it -- `round_trips_through_parse_
+    // otio_json` below goes the rest of the way, back into an InterchangeTimeline.
     let pretty = serialize_interchange_timeline_pretty(&sample_timeline());
     let reparsed: Value = serde_json::from_str(&pretty).expect("valid JSON");
     assert_eq!(schema_of(&reparsed), "Timeline.1");
@@ -152,4 +152,278 @@ fn audio_tracks_carry_the_audio_kind() {
     };
     let doc = serialize_interchange_timeline(&timeline);
     assert_eq!(doc["tracks"]["children"][0]["kind"], "Audio");
+}
+
+// --- Import (parse_otio_json) ---
+
+fn fixture(name: &str) -> Value {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/otio")
+        .join(name);
+    let bytes = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("reading fixture {}: {e}", path.display()));
+    serde_json::from_str(&bytes).unwrap_or_else(|e| panic!("parsing fixture {name} as JSON: {e}"))
+}
+
+#[test]
+fn round_trips_through_parse_otio_json() {
+    let original = sample_timeline();
+    let doc = serialize_interchange_timeline(&original);
+    let result = parse_otio_json(&doc).expect("oca's own output must parse back cleanly");
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(result.timeline, original);
+}
+
+#[test]
+fn parses_a_real_simple_cut_otio_file() {
+    // From the OpenTimelineIO project's own tests/sample_data/simple_cut.otio -- fetched real,
+    // not hand-written -- one video track, four Clip.1 items, the last with a null
+    // source_range (OTIO's own "use the full available_range of the media" convention).
+    let doc = fixture("simple_cut.otio");
+    let result = parse_otio_json(&doc).expect("a real, well-formed OTIO file must parse");
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(result.timeline.name, "Figure 1 - Simple Cut List");
+    assert_eq!(result.timeline.tracks.len(), 1);
+    let track = &result.timeline.tracks[0];
+    assert_eq!(track.kind, InterchangeTrackKind::Video);
+    assert_eq!(track.items.len(), 4);
+    for item in &track.items {
+        assert!(
+            matches!(item, InterchangeTrackItem::Clip(_)),
+            "simple_cut.otio has no gaps -- every item should be a clip"
+        );
+    }
+    let InterchangeTrackItem::Clip(clip4) = &track.items[3] else {
+        unreachable!()
+    };
+    // Clip-004's own source_range is null; falls back to its media_reference's
+    // available_range (start 100/24s, duration 6/24s -- see this module's own doc comment).
+    assert!((clip4.source_range.start_time.to_seconds() - 100.0 / 24.0).abs() < 1e-9);
+    assert!((clip4.source_range.duration.to_seconds() - 6.0 / 24.0).abs() < 1e-9);
+    assert_eq!(
+        clip4.media_reference,
+        MediaReference::External {
+            target_url: "file:///folder/credits.mov".to_string()
+        }
+    );
+}
+
+#[test]
+fn parses_a_real_transition_otio_file() {
+    // From the OpenTimelineIO project's own tests/sample_data/transition.otio: Clip-001,
+    // Clip-002, a Transition.1 (SMPTE_Dissolve), Clip-003, Clip-004 (also a null source_range,
+    // like simple_cut.otio's own Clip-004).
+    let doc = fixture("transition.otio");
+    let result = parse_otio_json(&doc).expect("a real, well-formed OTIO file must parse");
+    let track = &result.timeline.tracks[0];
+    // The Transition.1 item consumes no track slot of its own -- 4 clips in, 4 items out, not 5.
+    assert_eq!(track.items.len(), 4);
+    assert_eq!(
+        result
+            .warnings
+            .iter()
+            .filter(|w| w.contains("Transition.1"))
+            .count(),
+        1,
+        "the Transition.1 item itself should be flagged exactly once: {:?}",
+        result.warnings
+    );
+    let InterchangeTrackItem::Clip(clip3) = &track.items[2] else {
+        panic!("expected the third item to be Clip-003, following the Transition.1");
+    };
+    assert_eq!(
+        clip3.transition_in,
+        Some(InterchangeTransitionKind::Fade),
+        "the Transition.1 between Clip-002 and Clip-003 should attach to Clip-003"
+    );
+    let InterchangeTrackItem::Clip(clip1) = &track.items[0] else {
+        panic!("expected the first item to be Clip-001");
+    };
+    assert_eq!(
+        clip1.transition_in, None,
+        "Clip-001 has no preceding Transition.1"
+    );
+}
+
+#[test]
+fn parses_a_real_multitrack_otio_file() {
+    // From the OpenTimelineIO project's own tests/sample_data/multitrack.otio: three video
+    // tracks, each a mix of real Clip.1 and Gap.1 ("Filler"/"ScopeReference") items.
+    let doc = fixture("multitrack.otio");
+    let result = parse_otio_json(&doc).expect("a real, well-formed OTIO file must parse");
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(result.timeline.tracks.len(), 3);
+    let expected_shapes: [&[bool]; 3] = [
+        // false = Gap, true = Clip, in document order.
+        &[true, false, true, false, true, false],
+        &[false, true, false],
+        &[false, true, false],
+    ];
+    for (track, expected) in result.timeline.tracks.iter().zip(expected_shapes) {
+        assert_eq!(track.kind, InterchangeTrackKind::Video);
+        let actual: Vec<bool> = track
+            .items
+            .iter()
+            .map(|item| matches!(item, InterchangeTrackItem::Clip(_)))
+            .collect();
+        assert_eq!(actual, expected, "track '{}'", track.name);
+    }
+}
+
+#[test]
+fn a_document_that_is_not_a_timeline_1_is_a_hard_parse_error() {
+    let not_a_timeline = json!({ "OTIO_SCHEMA": "Clip.1", "name": "not a timeline" });
+    let err = parse_otio_json(&not_a_timeline).unwrap_err();
+    assert_eq!(
+        err,
+        OtioParseError::UnrecognizedTopLevelSchema("Clip.1".to_string())
+    );
+}
+
+#[test]
+fn a_timeline_missing_its_tracks_field_is_a_hard_parse_error() {
+    let malformed = json!({ "OTIO_SCHEMA": "Timeline.1", "name": "no tracks" });
+    let err = parse_otio_json(&malformed).unwrap_err();
+    assert_eq!(
+        err,
+        OtioParseError::MissingField {
+            schema: "Timeline.1".to_string(),
+            field: "tracks"
+        }
+    );
+}
+
+#[test]
+fn an_unrecognized_media_reference_schema_is_treated_as_offline_with_a_warning() {
+    let doc = json!({
+        "OTIO_SCHEMA": "Timeline.1",
+        "name": "t",
+        "tracks": {
+            "OTIO_SCHEMA": "Stack.1",
+            "children": [{
+                "OTIO_SCHEMA": "Track.1",
+                "kind": "Video",
+                "name": "V1",
+                "children": [{
+                    "OTIO_SCHEMA": "Clip.1",
+                    "name": "Clip-1",
+                    "source_range": {
+                        "OTIO_SCHEMA": "TimeRange.1",
+                        "start_time": { "OTIO_SCHEMA": "RationalTime.1", "value": 0.0, "rate": 24.0 },
+                        "duration": { "OTIO_SCHEMA": "RationalTime.1", "value": 24.0, "rate": 24.0 },
+                    },
+                    "media_reference": { "OTIO_SCHEMA": "ImageSequenceReference.1" },
+                }],
+            }],
+            "markers": [],
+        },
+    });
+    let result = parse_otio_json(&doc).unwrap();
+    let InterchangeTrackItem::Clip(clip) = &result.timeline.tracks[0].items[0] else {
+        panic!("expected one clip");
+    };
+    assert_eq!(clip.media_reference, MediaReference::Missing);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("ImageSequenceReference.1")),
+        "{:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn an_unsupported_nested_item_becomes_an_equal_duration_gap_with_a_warning() {
+    // A nested Stack.1 (compound clip) sitting directly among a track's children, the real
+    // shape confirmed against the OpenTimelineIO project's own nested_example.otio -- not yet
+    // recursively imported (a separate, later slice), but its own on-timeline duration must
+    // still be preserved so a following clip keeps its correct start time.
+    let doc = json!({
+        "OTIO_SCHEMA": "Timeline.1",
+        "name": "t",
+        "tracks": {
+            "OTIO_SCHEMA": "Stack.1",
+            "children": [{
+                "OTIO_SCHEMA": "Track.1",
+                "kind": "Video",
+                "name": "V1",
+                "children": [{
+                    "OTIO_SCHEMA": "Stack.1",
+                    "name": "Nested",
+                    "source_range": {
+                        "OTIO_SCHEMA": "TimeRange.1",
+                        "start_time": { "OTIO_SCHEMA": "RationalTime.1", "value": 0.0, "rate": 24.0 },
+                        "duration": { "OTIO_SCHEMA": "RationalTime.1", "value": 48.0, "rate": 24.0 },
+                    },
+                    "children": [],
+                }],
+            }],
+            "markers": [],
+        },
+    });
+    let result = parse_otio_json(&doc).unwrap();
+    let items = &result.timeline.tracks[0].items;
+    assert_eq!(items.len(), 1);
+    let InterchangeTrackItem::Gap(range) = &items[0] else {
+        panic!("expected the nested Stack.1 to become a Gap");
+    };
+    assert!((range.duration.to_seconds() - 2.0).abs() < 1e-9);
+    assert!(
+        result.warnings.iter().any(|w| w.contains("Stack.1")),
+        "{:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn a_clip_2_with_multiple_media_references_keeps_only_the_active_one_and_warns() {
+    let doc = json!({
+        "OTIO_SCHEMA": "Timeline.1",
+        "name": "t",
+        "tracks": {
+            "OTIO_SCHEMA": "Stack.1",
+            "children": [{
+                "OTIO_SCHEMA": "Track.1",
+                "kind": "Video",
+                "name": "V1",
+                "children": [{
+                    "OTIO_SCHEMA": "Clip.2",
+                    "name": "Clip-1",
+                    "source_range": {
+                        "OTIO_SCHEMA": "TimeRange.1",
+                        "start_time": { "OTIO_SCHEMA": "RationalTime.1", "value": 0.0, "rate": 24.0 },
+                        "duration": { "OTIO_SCHEMA": "RationalTime.1", "value": 24.0, "rate": 24.0 },
+                    },
+                    "active_media_reference_key": "PROXY",
+                    "media_references": {
+                        "DEFAULT_MEDIA": {
+                            "OTIO_SCHEMA": "ExternalReference.1",
+                            "target_url": "file:///full-res.mov",
+                        },
+                        "PROXY": {
+                            "OTIO_SCHEMA": "ExternalReference.1",
+                            "target_url": "file:///proxy.mov",
+                        },
+                    },
+                }],
+            }],
+            "markers": [],
+        },
+    });
+    let result = parse_otio_json(&doc).unwrap();
+    let InterchangeTrackItem::Clip(clip) = &result.timeline.tracks[0].items[0] else {
+        panic!("expected one clip");
+    };
+    assert_eq!(
+        clip.media_reference,
+        MediaReference::External {
+            target_url: "file:///proxy.mov".to_string()
+        }
+    );
+    assert!(
+        result.warnings.iter().any(|w| w.contains("dropped")),
+        "{:?}",
+        result.warnings
+    );
 }
