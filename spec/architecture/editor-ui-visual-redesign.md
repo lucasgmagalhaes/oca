@@ -158,9 +158,8 @@ re-checking against the reference image before building), `ellipsis-vertical` (n
 ⋮-menu exists), `chevron-down`/`upload` (top bar breadcrumb/Export — no top bar redesign done
 yet), the rest of the transport row (`camera`/`rewind`/`fast-forward`/`repeat` — camera has no
 snapshot-capture action yet, rewind/fast-forward/repeat have no scrub-speed/loop actions yet),
-`type`/`wand-sparkles`/`hand` (Text/Effects/Pan tool-rail slots — `hand` also has no
-`EditorTool` equivalent yet, see "Left icon rail" above), and `music` (unmapped to any real
-action).
+`type`/`wand-sparkles` (Text/Effects tool-rail slots — no `EditorTool` equivalent yet; `hand`
+is wired now, see "Left icon rail" above), and `music` (unmapped to any real action).
 
 ## Headline finding: the structure is already ~80% there
 
@@ -307,8 +306,33 @@ doesn't depict — because it not once shows a non-Editor screen. Recommend (a) 
 a specific reason to want the vertical tool rail; this doc takes no side, per "confirm
 forks with the user before a big item" (`spec/ROADMAP.md`'s own convention).
 
-"Hand" (pan/pan-and-zoom tool) has no oca equivalent today — not a currently existing
-`EditorTool` variant. Real gap, not just a restyle, if kept.
+**"Hand" (pan tool) — done.** Before this, the timeline had zoom (`timeline_px_per_sec`,
+Ctrl+scroll or the slider) but genuinely no horizontal pan at all — the visible window always
+started at `0.0`, so content past the panel's right edge at high zoom was simply unreachable.
+Scope decision (confirmed with the user — the cheaper alternative was letting track labels/
+ruler scroll away with the canvas, a materially smaller change): track labels and the ruler
+stay fixed; only the clip canvas pans, matching Premiere/Resolve. Implementation avoids
+threading a manual pixel offset through every `secs * px_per_sec` call site in `draw.rs`/
+`mod.rs` (which would have touched most of the file): the ruler and *each track row* get their
+own small `egui::ScrollArea::horizontal()` wrapping just their canvas content (the
+`TRACK_LABEL_WIDTH` gutter is added *before* entering it, so it's never part of the scrolled
+region) — egui's own scroll transform then makes every existing `rect.left() + secs *
+px_per_sec` calculation correct for free, no changes needed to any of that math. All of these
+`ScrollArea`s are forced to the same `App::timeline_pan_px` at the start of each frame
+(`.horizontal_scroll_offset`); whichever one actually received this frame's wheel/drag input
+ends up with a different `state.offset.x`, which is read back into `App::timeline_pan_px` once
+the whole panel is done (deferred, like the panel's other per-frame mutations, since the
+per-track loop holds an immutable borrow of `app`) — so every row picks up the new offset next
+frame, one frame of lag that's imperceptible at normal rates. `EditorTool::Hand` (mapped to the
+already-vendored-but-previously-unused `hand` icon) is what makes a *plain drag* pan, not just
+scroll-wheel/trackpad: while it's active, the ruler's scrub-drag and every clip/trim-handle's
+`Sense` are gated down to `hover()`, so the drag falls through to each `ScrollArea`'s own
+background `Sense::DRAG` (`ScrollSource { drag: DragScroll::Always, .. }`) instead of being
+captured by the widget underneath. Scrollbars are hidden (`ScrollBarVisibility::AlwaysHidden`)
+to avoid a visual scrollbar under every track row — the zoom slider and Hand tool are the
+visible affordances instead. Content width is the project's `Timeline::duration_secs() *
+px_per_sec` plus a fixed margin, so there's always a little room to pan past the end of the
+edit rather than hard-stopping exactly at it.
 
 ### Media panel
 
@@ -645,10 +669,10 @@ principles, and this doc's own findings above:
    Help) still have no real feature behind them.
 6. Everything flagged as a genuine new feature above — its own scoped follow-up item, not part
    of "implement the mockup" in one pass. (Snapshot capture, the grid/list view toggle, zoom
-   controls, real per-asset thumbnails, Anchor X/Y, and Favorites/Recent were all picked out of
-   this list and shipped — see items 9-14 below.) The marker button was never in this list (it
-   maps to an already-real feature, just unwired) but shipped alongside snapshot capture in the
-   same slice.
+   controls, real per-asset thumbnails, Anchor X/Y, Favorites/Recent, and the Hand tool were all
+   picked out of this list and shipped — see items 9-15 below.) The marker button was never in
+   this list (it maps to an already-real feature, just unwired) but shipped alongside snapshot
+   capture in the same slice.
 7. **Per-channel audio metering — done**, picked out of item 6's list at the user's request —
    see the Inspector section's own bullet.
 8. **Blend Mode — done.** Data model, export, live preview (the full FFmpeg 40-mode set, per
@@ -668,6 +692,9 @@ principles, and this doc's own findings above:
 14. **Media library Favorites/Recent filters — done.** See the Media library section's own
     bullet for the scope decisions (manual favorite flag; "recent" = added to timeline) and
     what shipped.
+15. **Hand (pan) tool — done.** See the Left icon rail section's own bullet for the scope
+    decision (labels/ruler stay fixed, only the canvas pans) and how real horizontal pan was
+    added to the timeline without threading a manual offset through every draw call site.
 
 ## Verification
 
