@@ -600,6 +600,9 @@ text_catalog! {
     CollabBundleExported: pt_br = "Pacote de colaboração exportado.", en = "Collaboration bundle exported.";
     ExportOtio: pt_br = "Exportar OpenTimelineIO (.otio)...", en = "Export OpenTimelineIO (.otio)...";
     OtioExported: pt_br = "Arquivo .otio exportado.", en = ".otio file exported.";
+    ImportOtio: pt_br = "Importar OpenTimelineIO (.otio)...", en = "Import OpenTimelineIO (.otio)...";
+    OtioImported: pt_br = "Arquivo .otio importado em uma nova sequência.", en = ".otio file imported into a new sequence.";
+    OtioImportedWithWarnings: pt_br = "Arquivo .otio importado em uma nova sequência; {n} item(ns) não pôde(puderam) ser trazido(s) sem aproximação.", en = ".otio file imported into a new sequence; {n} item(s) could not be brought in without approximation.";
     DetectChapters: pt_br = "🎬 Detectar capítulos", en = "🎬 Detect Chapters";
     SceneCutDetectionNone: pt_br = "Nenhum corte de cena detectado.", en = "No scene cuts detected.";
     ChapterDefaultLabel: pt_br = "Capítulo {n}", en = "Chapter {n}";
