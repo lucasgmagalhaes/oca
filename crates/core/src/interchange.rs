@@ -21,15 +21,11 @@
 //! This module is CF-05's own slice 1 ("Create an `avcore::interchange` boundary independent of
 //! UI and render code") plus the structural half of slice 2 (mapping [`crate::timeline::Timeline`]
 //! into rational-time editorial concepts: track order, clip source ranges, gaps, markers,
-//! transitions, speed, and media references). **Deliberately not attempted in this slice: real
-//! OpenTimelineIO JSON serialization.** OTIO's actual wire format (`OTIO_SCHEMA` name/version
-//! tags, exact field names for `Timeline`/`Stack`/`Track`/`Clip`/`Gap`/`Transition`/`Marker`) is a
-//! real external spec this sandbox has no network path to fetch or verify against — writing a
-//! byte-accurate serializer from memory alone would be exactly the kind of guessing `CLAUDE.md`'s
-//! own "do not guess APIs, versions, flags, or package names" rule forbids. So the types below are
-//! Oca's own schema-neutral intermediate representation, not OTIO's — serializing them to/from a
-//! real, verified `.otio` JSON schema version is CF-05's own next slice, once that spec can
-//! actually be checked against.
+//! transitions, speed, and media references). The types below are Oca's own schema-neutral
+//! intermediate representation, not OTIO's own — [`otio_json`] serializes them to a real,
+//! verified OpenTimelineIO `.otio` JSON document (write direction only so far; see that
+//! submodule's own doc comment for exactly what's verified and why real `.otio` *import* is a
+//! separate, later slice).
 //!
 //! [`RationalTime`]/[`TimeRange`] mirror the *concept* every editorial interchange format uses
 //! (a time value counted in units of `1/rate` seconds), not any single format's exact field
@@ -38,6 +34,8 @@
 //! rate — a deliberate placeholder, not a claim of frame-accurate interchange; real OTIO export
 //! should use each clip's probed [`crate::media::MediaAsset::fps`] instead, once that
 //! serialization slice lands.
+
+pub mod otio_json;
 
 use crate::project::{Project, Sequence};
 use crate::timeline::{
