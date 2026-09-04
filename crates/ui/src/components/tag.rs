@@ -23,7 +23,7 @@ pub fn tag(ui: &mut Ui, text: &str, fg: Color32, bg: Color32) {
     egui::Frame::new()
         .fill(bg)
         .corner_radius(theme::RADIUS_PILL)
-        .inner_margin(egui::Margin::symmetric(8, 3))
+        .inner_margin(egui::Margin::symmetric(8, 4))
         .show(ui, |ui| {
             ui.label(RichText::new(text).size(11.0).color(fg).strong());
         });
