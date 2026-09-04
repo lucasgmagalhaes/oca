@@ -69,12 +69,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.add_space(theme::SPACE_SM);
             if app.watch_folder_state.running {
-                if ui.button(Text::WatchFolderStop.tr(locale)).clicked() {
+                if components::primary_button(ui, Text::WatchFolderStop.tr(locale)).clicked() {
                     app.stop_watching_folder();
                 }
             } else {
                 ui.add_enabled_ui(app.watch_folder_state.watch_path.is_some(), |ui| {
-                    if ui.button(Text::WatchFolderStart.tr(locale)).clicked() {
+                    if components::primary_button(ui, Text::WatchFolderStart.tr(locale)).clicked() {
                         app.start_watching_folder();
                     }
                 });
@@ -115,7 +115,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         WatchFolderFileStatus::Processing => {
                             components::tag_accent(ui, status_label)
                         }
-                        WatchFolderFileStatus::Done => components::tag_accent(ui, status_label),
+                        WatchFolderFileStatus::Done => components::tag_success(ui, status_label),
                         WatchFolderFileStatus::Error => components::tag_error(ui, status_label),
                     }
                     ui.label(
