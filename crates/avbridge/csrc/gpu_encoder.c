@@ -22,6 +22,7 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/hwcontext.h>
+#include <libavutil/log.h>
 
 #ifdef __linux__
 #include <unistd.h>
@@ -236,6 +237,14 @@ AVCodecContext *open_video_encoder(GpuEncoderPreference preference, int canvas_w
                                                      canvas_bit_rate_bps, global_header,
                                                      out_pix_fmt);
         if (ctx) {
+            /* No existing way to observe which encoder a call actually opened from outside this
+               function -- `out_used_gpu` is a plain bool every current caller passes NULL for
+               (avcodec_open2 itself is silent on success, unlike its very vocal failure paths for
+               qsv/amf), which made "did real GPU hardware verification ever happen" impossible to
+               answer definitively (ROADMAP.md P4 item 19). This one log line is the minimal fix:
+               purely additive, no signature/ABI change, safe to leave in permanently. */
+            av_log(NULL, AV_LOG_INFO, "oca: opened video encoder %s (hardware)\n",
+                   hw_candidates[i]);
             if (out_used_gpu) {
                 *out_used_gpu = 1;
             }
@@ -245,6 +254,9 @@ AVCodecContext *open_video_encoder(GpuEncoderPreference preference, int canvas_w
 
     AVCodecContext *ctx = try_open_encoder(cpu, canvas_width, canvas_height, canvas_fps,
                                             canvas_bit_rate_bps, global_header, out_pix_fmt);
+    if (ctx) {
+        av_log(NULL, AV_LOG_INFO, "oca: opened video encoder %s (cpu fallback)\n", cpu);
+    }
     if (out_used_gpu) {
         *out_used_gpu = 0;
     }
