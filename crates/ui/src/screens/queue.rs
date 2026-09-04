@@ -240,7 +240,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             let job = &app.export_jobs[i];
             components::card_frame().show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("⠿").color(theme::TEXT_MUTED));
+                    // "::" (ASCII), not the braille grip glyph "\u{283F}" -- same tofu class
+                    // as every other non-ASCII glyph this session already replaced.
+                    ui.label(RichText::new("::").color(theme::TEXT_MUTED));
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width() - 90.0);
                         ui.horizontal(|ui| {
