@@ -374,16 +374,21 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             crate::icons::FOLD_HORIZONTAL_STR,
             Text::ToolTrim.tr(locale),
         );
+        // Confirmed via a real screenshot: "⇥"/"⇄"/"⇉" are all tofu (blank boxes) against this
+        // app's bundled default font, unlike "↕" (Slip, below), which renders fine — swapped for
+        // the basic Arrows block (←→↑↓↔↕), the same block ↕ itself comes from and about as
+        // guaranteed as a non-Lucide glyph gets in this font. No vendored Lucide icon exists yet
+        // for ripple/roll/slide (see nav_rail.rs's identical note on this class of gap).
         tool_button(
             app,
             ui,
             EditorTool::Ripple,
-            "⇥",
+            "→",
             Text::ToolRipple.tr(locale),
         );
-        tool_button(app, ui, EditorTool::Roll, "⇄", Text::ToolRoll.tr(locale));
+        tool_button(app, ui, EditorTool::Roll, "↔", Text::ToolRoll.tr(locale));
         tool_button(app, ui, EditorTool::Slip, "↕", Text::ToolSlip.tr(locale));
-        tool_button(app, ui, EditorTool::Slide, "⇉", Text::ToolSlide.tr(locale));
+        tool_button(app, ui, EditorTool::Slide, ">>", Text::ToolSlide.tr(locale));
         tool_button_icon_font(
             app,
             ui,
@@ -839,11 +844,8 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
     let project_id = app.active_project().id;
 
     components::panel_frame().show(ui, |ui| {
-        // See properties_panel's identical fix: panel_frame()'s own inner_margin already
-        // shrinks this Frame's child ui, so the raw outer width/height overflows past the
-        // panel's now-visible border.
-        ui.set_width(width - theme::SPACE_MD * 2.0);
-        ui.set_height(height - theme::SPACE_MD * 2.0);
+        ui.set_width(width);
+        ui.set_height(height);
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 components::section_label(ui, Text::MediaLibrary.tr(app.locale));
