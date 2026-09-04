@@ -1095,6 +1095,40 @@ an item earlier:
   fallback for an unrecognized/empty name, 4/4 passing. `cargo check --workspace --all-targets`
   (including this new persistence test) and `cargo clippy -p core --lib --no-deps` both stayed
   clean via the same temporary shim.
+
+  **FONT-01A's persisted-identity swap shipped for real.** `TextFontFamily` now implements
+  `Serialize`/`Deserialize` by hand instead of deriving them: it serializes as its
+  `font_catalog` `family_id` slug (e.g. `"bebas-neue"`), deserializes that slug back, still
+  accepts the old bare variant name (`"BebasNeue"`) for backward compat with pre-swap saves,
+  and — the doc's forwards-compat half this slice previously deferred — preserves an
+  unrecognized id verbatim as a new `Unknown(String)` variant instead of collapsing it to
+  `Lato`. `Unknown` renders/behaves as `Lato` everywhere else (`family_id()` returns the
+  original string, `supports_bold()` returns `false`) but is never a member of `ALL`, so it
+  can't be selected — only arrived at by loading a save from a newer build. `Copy` had to be
+  dropped from the enum (`Unknown` owns a `String`); the resulting move errors were fixed with
+  `.clone()` at six real call sites (`motion_template.rs`, `overlay_render.rs` x2, `render.rs`
+  x2, `text_layout.rs`'s `shape()`), not by adding `Copy` back or cloning speculatively
+  elsewhere. The `ui` font picker (`text_clip.rs`) now shows `"Unknown font (<id>)"` for an
+  `Unknown` value instead of panicking or matching nothing.
+
+  Verified for real, fully linked (this session's sandbox links `core`'s test binaries): the
+  golden-file test this slice's docs named as still-needed
+  (`projects_with_an_unrecognized_font_family_name_load_with_the_lato_fallback`) is renamed to
+  `..._preserve_it_as_unknown` and rewritten to hand-edit a real saved project's MessagePack
+  bytes to reference a fictitious `"InterVariable"` family, then confirm it survives both the
+  initial load *and* a resave as `Unknown("InterVariable")` rather than falling back to `Lato`
+  — `cargo test -p core --test persistence_test`, 19/19 passing. Five new unit tests in
+  `crates/core/tests/timeline_test.rs` cover the slug serialization format, a full round-trip
+  over every `ALL` member, old-format backward-compat deserialization, and `Unknown`'s
+  preserve/render/behave contract — `cargo test -p core --test timeline_test`, 139/139 passing
+  including these. Full-suite regression check: `cargo test -p core`, 45 test binaries, every
+  one passing except the pre-existing (confirmed via `git stash` against a clean checkout,
+  unrelated to this change) `preview_test.rs` GStreamer refresh flake; `cargo test -p ui`,
+  424/424 passing. `cargo fmt -p core -p ui` clean.
+
+  **Still open**: variable-weight axis selection in the UI, the searchable/categorized
+  selector (FONT-01C), and TEXT-01's automatic script-fallback chain for the international
+  families.
 - `[~]` **TEXT-01: complex text shaping and bidirectional layout.** Replace per-character
   `fontdue` layout with one bundled-only shaping/layout/rasterization engine covering OpenType
   ligatures/contextual forms, UAX #9 bidi, UAX #14 wrapping, cluster-safe timed highlights,
