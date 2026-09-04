@@ -358,10 +358,17 @@ overlap is high.
 
 Mapping:
 
-- **Zoom controls (50%/Fit/100%)** — no existing zoom-level state for the preview (it always
-  fits available space); new, small addition if wanted (a `PreviewZoom` enum + a bit of size
-  math), not currently present. Not part of implementation-order item 4's own checklist —
-  still not built.
+- **Zoom controls (50%/Fit/100%) — done.** `PreviewState::zoom` (`PreviewZoom::{Fit, Percent50,
+  Percent100}`, not persisted — resets to `Fit` on launch) toggled via three `selectable_label`s
+  in a new header row above the preview frame. `Fit` is the original always-fill-available-space
+  behavior, unchanged; `Percent50`/`Percent100` instead size the canvas off the sequence's real
+  pixel dimensions. The actual size math (`preview_canvas_size`) is a pure function extracted out
+  of `layer_transform_preview` specifically so it's unit-testable without an `egui::Ui` — 8 real
+  tests (fit/letterbox/pillarbox, both zoom percentages, portrait aspect) executed for real via
+  an isolated scratch crate (only needs the `egui` crate itself, no `avcore`/GStreamer). **Scope
+  limit, not a bug**: this preview has no scrollable viewport, so a zoom level bigger than the
+  panel silently caps back down to whatever `Fit` would have produced — genuine 1:1-pixel
+  scrolling for a canvas resolution larger than the panel is a separate, not-yet-built follow-up.
 - **"CAM 01" chip — done.** `App::current_preview_multicam_angle()` checks whether the video
   track behind the previewed clip is a `MulticamGroup`'s `program_track_id` (Multicam editing,
   `ROADMAP.md` P2 item 10, was already real) and returns its 1-based angle number if so —
@@ -589,17 +596,17 @@ principles, and this doc's own findings above:
    gain-keyframe diamonds on waveforms (extended `draw_keyframe_markers`); playhead already
    verified red (`theme::ERROR`) post-accent-change.
 4. **Preview panel — done.** Resolution+fps/timecode+frame HUD overlays, step-frame + loop +
-   snapshot + marker transport buttons, and a CAM chip wired to real `MulticamGroup` data
-   (omitted when none applies) — see the Program monitor section's own bullets for what
-   shipped vs. what's still genuinely new (zoom controls only, at this point).
+   snapshot + marker transport buttons, zoom controls (50%/Fit/100%), and a CAM chip wired to
+   real `MulticamGroup` data (omitted when none applies) — see the Program monitor section's
+   own bullets for the full breakdown.
 5. **Menu bar — done.** `screens/editor/menu_bar.rs`, coexisting with the toolbar (confirmed
    with the user first, per the open decision this doc originally left). See the Top bar
    section's own bullets for exactly which menu items are wired vs. which two menus (Window,
    Help) still have no real feature behind them.
 6. Everything flagged as a genuine new feature above (real per-asset thumbnails, Favorites/
-   Recent, Anchor X/Y, zoom controls) — each is its own scoped follow-up item, not part of
-   "implement the mockup" in one pass. (Snapshot capture and the grid/list view toggle were
-   both picked out of this list and shipped — see items 9 and 10 below.) The marker button was
+   Recent, Anchor X/Y) — each is its own scoped follow-up item, not part of "implement the
+   mockup" in one pass. (Snapshot capture, the grid/list view toggle, and zoom controls were
+   all picked out of this list and shipped — see items 9-11 below.) The marker button was
    never in this list (it maps to an already-real feature, just unwired) but shipped alongside
    snapshot capture in the same slice.
 7. **Per-channel audio metering — done**, picked out of item 6's list at the user's request —
@@ -612,6 +619,8 @@ principles, and this doc's own findings above:
 9. **Media library grid/list view toggle — done.** See the Media library section's own bullet.
 10. **Preview transport snapshot capture + marker button — done.** See the Program monitor
     section's "Transport additions" bullet.
+11. **Preview zoom controls (50%/Fit/100%) — done.** See the Program monitor section's own
+    bullet.
 
 ## Verification
 
