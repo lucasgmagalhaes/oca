@@ -188,6 +188,10 @@ pub const SPACE_2XL: f32 = 24.0;
 #[allow(dead_code)]
 pub const SPACE_3XL: f32 = 32.0;
 
+/// Technical micro elements (Section 5) — meter/level-bar fills, small badges. Wired into
+/// `screens::editor::mod`'s `draw_meter_bar`/`stereo_db_meter`, replacing their own hardcoded
+/// `2.0`/`2` literals.
+pub const RADIUS_XS: u8 = 2;
 /// Standard controls/inputs/buttons/tooltips/timeline clips, per the doc's Geometry table.
 pub const RADIUS_SM: u8 = 3;
 /// Menus/dialogs, per the doc's Geometry table.

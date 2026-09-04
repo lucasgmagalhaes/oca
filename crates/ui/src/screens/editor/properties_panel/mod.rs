@@ -1450,7 +1450,7 @@ pub(super) fn stereo_db_meter(ui: &mut egui::Ui, level: avcore::AudioLevel, mete
         (l_rect, level.peak_l, level.rms_l),
         (r_rect, level.peak_r, level.rms_r),
     ] {
-        painter.rect_filled(bar_rect, 2.0, theme::SURFACE_2);
+        painter.rect_filled(bar_rect, theme::RADIUS_XS, theme::SURFACE_2);
         let rms_unit = amplitude_to_unit(rms);
         if rms_unit > 0.0 {
             let filled_h = rms_unit * bar_rect.height();
@@ -1470,7 +1470,7 @@ pub(super) fn stereo_db_meter(ui: &mut egui::Ui, level: avcore::AudioLevel, mete
             } else {
                 theme::SUCCESS
             };
-            painter.rect_filled(filled_rect, 2.0, fill_color);
+            painter.rect_filled(filled_rect, theme::RADIUS_XS, fill_color);
         }
         let peak_unit = amplitude_to_unit(peak);
         if peak_unit > 0.0 {
