@@ -36,7 +36,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 );
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button(Text::NewProject.tr(app.locale)).clicked() {
+                if components::primary_button(ui, Text::NewProject.tr(app.locale)).clicked() {
                     app.create_new_project(Text::UntitledProject.tr(app.locale).to_string());
                 }
                 if ui.button(Text::OpenProject.tr(app.locale)).clicked() {
@@ -73,7 +73,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         });
 
         if let crate::app::UpdateCheckStatus::Available(update) = &app.update_check_status {
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             components::card_frame().show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(format!(
@@ -174,7 +174,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                         }
                                     }
                                 });
-                            ui.add_space(10.0);
+                            ui.add_space(8.0);
                             ui.label(RichText::new(kicker).size(11.0).color(theme::TEXT_MUTED));
                             ui.label(RichText::new(name).strong());
                             ui.label(
@@ -182,7 +182,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                     .size(12.5)
                                     .color(theme::TEXT_SECONDARY),
                             );
-                            ui.add_space(6.0);
+                            ui.add_space(4.0);
                             ui.label(
                                 RichText::new(format!("🕐 {meta}"))
                                     .size(11.0)

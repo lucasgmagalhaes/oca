@@ -45,7 +45,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 });
             });
         });
-        ui.add_space(14.0);
+        ui.add_space(12.0);
 
         components::card_frame().show(ui, |ui| {
             prefs_section(ui, Text::PrefsAudio.tr(locale), true, |ui| {
@@ -60,14 +60,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         }
                     }
                 });
-                ui.add_space(6.0);
+                ui.add_space(4.0);
                 ui.checkbox(
                     &mut app.prefs.true_peak_limiter,
                     Text::PrefsTruePeakLimiter.tr(locale),
                 );
             });
         });
-        ui.add_space(14.0);
+        ui.add_space(12.0);
 
         components::card_frame().show(ui, |ui| {
             prefs_section(ui, Text::PrefsExport.tr(locale), false, |ui| {
@@ -82,7 +82,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         }
                     }
                 });
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.label(Text::PrefsGpuEncoder.tr(locale));
                 ui.horizontal_wrapped(|ui| {
                     use avcore::GpuEncoderPreference as Gpu;
@@ -102,7 +102,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         }
                     }
                 });
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.label(Text::PrefsPreviewQuality.tr(locale));
                 ui.horizontal(|ui| {
                     use avcore::PreviewQuality as Quality;
@@ -119,7 +119,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         }
                     }
                 });
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 let mut hardware_decode = app.prefs.preview_hardware_decode;
                 if ui
                     .checkbox(&mut hardware_decode, Text::PrefsHardwareDecode.tr(locale))
@@ -132,7 +132,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         .size(11.0)
                         .color(theme::TEXT_MUTED),
                 );
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.label(Text::PrefsOutputFolder.tr(locale));
                 ui.horizontal(|ui| {
                     ui.add(
@@ -145,10 +145,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         }
                     }
                 });
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.label(Text::PrefsWhisperModelPath.tr(locale));
                 model_path_row(ui, &mut app.prefs.whisper_model_path, &["bin"], locale);
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.label(Text::PrefsSoundLibraryPath.tr(locale));
                 ui.horizontal(|ui| {
                     ui.add(
@@ -162,10 +162,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         }
                     }
                 });
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.label(Text::PrefsReframeModelPath.tr(locale));
                 model_path_row(ui, &mut app.prefs.reframe_model_path, &["onnx"], locale);
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.label(Text::PrefsBackgroundRemovalModelPath.tr(locale));
                 model_path_row(
                     ui,
@@ -173,12 +173,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     &["onnx"],
                     locale,
                 );
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.label(Text::PrefsTtsModelPath.tr(locale));
                 model_path_row(ui, &mut app.prefs.tts_model_path, &["onnx"], locale);
             });
         });
-        ui.add_space(14.0);
+        ui.add_space(12.0);
 
         components::card_frame().show(ui, |ui| {
             prefs_section(ui, Text::PrefsGameEventAllowlists.tr(locale), false, |ui| {
@@ -191,7 +191,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 game_event_allowlists_editor(app, ui, locale);
             });
         });
-        ui.add_space(14.0);
+        ui.add_space(12.0);
 
         components::card_frame().show(ui, |ui| {
             prefs_section(ui, Text::PrefsProject.tr(locale), true, |ui| {
@@ -206,7 +206,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         }
                     }
                 });
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 if ui
                     .checkbox(
                         &mut app.prefs.telemetry_enabled,
@@ -219,7 +219,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         std::sync::atomic::Ordering::Relaxed,
                     );
                 }
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.label(Text::PrefsLayoutScope.tr(locale));
                 ui.horizontal(|ui| {
                     use crate::app::LayoutScope;
@@ -240,21 +240,21 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 });
             });
         });
-        ui.add_space(14.0);
+        ui.add_space(12.0);
 
         components::card_frame().show(ui, |ui| {
             prefs_section(ui, Text::PrefsErrorReporting.tr(locale), false, |ui| {
                 error_reporting_section(app, ui, locale);
             });
         });
-        ui.add_space(14.0);
+        ui.add_space(12.0);
 
         components::card_frame().show(ui, |ui| {
             prefs_section(ui, Text::PrefsShortcuts.tr(locale), false, |ui| {
                 shortcut_binding_editor(app, ui, locale);
             });
         });
-        ui.add_space(14.0);
+        ui.add_space(12.0);
 
         components::card_frame().show(ui, |ui| {
             prefs_section(ui, Text::AppName.tr(locale), false, |ui| {
@@ -438,7 +438,7 @@ fn error_reporting_section(app: &mut App, ui: &mut egui::Ui, locale: Locale) {
             ErrorReportingConsent::Disabled
         });
     }
-    ui.add_space(10.0);
+    ui.add_space(8.0);
     let queue_len = crate::app::error_reporting::queue_len();
     ui.horizontal(|ui| {
         ui.label(format!(
@@ -590,7 +590,7 @@ fn game_event_allowlists_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale
                 );
             });
         });
-        ui.add_space(6.0);
+        ui.add_space(4.0);
     }
     if let Some(index) = remove_index {
         app.prefs.game_event_allowlists.remove(index);

@@ -98,9 +98,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             );
                         });
                     });
-                ui.add_space(6.0);
+                ui.add_space(4.0);
             }
-            ui.add_space(10.0);
+            ui.add_space(8.0);
         }
     });
 

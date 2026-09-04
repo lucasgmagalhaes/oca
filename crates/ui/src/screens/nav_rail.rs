@@ -46,18 +46,18 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             egui::Frame::new()
                 .fill(theme::SURFACE)
                 .stroke(egui::Stroke::new(1.0, theme::BORDER))
-                .inner_margin(egui::Margin::symmetric(0, 14)),
+                .inner_margin(egui::Margin::symmetric(0, 12)),
         )
         .show(ui, |ui| {
             ui.vertical_centered(|ui| {
                 egui::Frame::new()
                     .fill(theme::ACCENT.gamma_multiply(0.4))
                     .corner_radius(theme::RADIUS_MD)
-                    .inner_margin(egui::Margin::same(6))
+                    .inner_margin(egui::Margin::same(4))
                     .show(ui, |ui| {
                         ui.label(RichText::new("P").strong().color(theme::TEXT_PRIMARY));
                     });
-                ui.add_space(14.0);
+                ui.add_space(12.0);
 
                 for (screen, icon) in ITEMS {
                     let label = i18n::nav_label(app.locale, screen);

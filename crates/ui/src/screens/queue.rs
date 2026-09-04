@@ -163,7 +163,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     app.set_active_sequence_target_lufs(target_lufs);
                 }
                 if let Some(size_label) = size_estimate_label {
-                    ui.add_space(6.0);
+                    ui.add_space(4.0);
                     ui.label(
                         eframe::egui::RichText::new(
                             Text::ExportSizeEstimate
@@ -187,7 +187,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         egui::Frame::new()
             .fill(theme::INFO_TINT)
             .corner_radius(theme::RADIUS_MD)
-            .inner_margin(egui::Margin::same(10))
+            .inner_margin(egui::Margin::same(8))
             .show(ui, |ui| {
                 ui.label(
                     RichText::new(Text::QueueTechNote.tr(locale))
