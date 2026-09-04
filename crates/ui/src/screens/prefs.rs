@@ -557,7 +557,9 @@ fn game_event_allowlists_editor(app: &mut App, ui: &mut egui::Ui, locale: Locale
                             .desired_width(180.0)
                             .hint_text(Text::GameEventAllowlistGameIdHint.tr(locale)),
                     );
-                    if ui.button("🗑").clicked() {
+                    // "X" (ASCII), not "\u{1F5D1}" -- same tofu class as every other emoji
+                    // glyph this session already replaced; egui's bundled font doesn't cover it.
+                    if ui.button("X").clicked() {
                         remove_index = Some(index);
                     }
                 });
