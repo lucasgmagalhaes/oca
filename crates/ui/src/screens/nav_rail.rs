@@ -46,6 +46,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             egui::Frame::new()
                 .fill(theme::SURFACE)
                 .stroke(egui::Stroke::new(1.0, theme::BORDER))
+                // Explicitly `RADIUS_NONE` per the doc's Geometry table ("Panels | 0px") — a
+                // no-op today (`Frame::new()` already defaults to zero), but named so this
+                // panel's squareness reads as a deliberate choice, not an unset default.
+                .corner_radius(theme::RADIUS_NONE)
                 .inner_margin(egui::Margin::symmetric(0, 12)),
         )
         .show(ui, |ui| {

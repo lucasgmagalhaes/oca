@@ -41,6 +41,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             egui::Frame::new()
                 .fill(theme::BG)
                 .stroke(egui::Stroke::new(1.0, theme::BORDER))
+                // See nav_rail.rs's identical note: explicit per the doc's "Panels | 0px", a
+                // no-op today since `Frame::new()` already defaults to zero radius.
+                .corner_radius(theme::RADIUS_NONE)
                 .inner_margin(egui::Margin::symmetric(18, 0)),
         )
         .show(ui, |ui| {
