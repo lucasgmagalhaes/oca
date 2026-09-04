@@ -1557,13 +1557,23 @@ fn transport_controls(
 /// past 0.98, the same clip-warning threshold the single-channel meter used before the L/R
 /// split below existed).
 fn draw_meter_bar(painter: &egui::Painter, rect: egui::Rect, peak: f32, rms: f32) {
-    painter.rect_filled(rect, 2.0, theme::SURFACE_2);
+    painter.rect_filled(rect, theme::RADIUS_XS, theme::SURFACE_2);
     let peak = peak.clamp(0.0, 1.0);
     let rms = rms.clamp(0.0, 1.0);
     if rms > 0.0 {
         let mut rms_rect = rect;
         rms_rect.set_width(rect.width() * rms);
-        painter.rect_filled(rms_rect, 2.0, theme::ACCENT);
+        // Standard green/yellow/red level convention, matching stereo_db_meter's own fix —
+        // Section 39's own rule: "Meters are informational and must not use Petroleum Blue as
+        // their signal color."
+        let fill_color = if rms > 0.9 {
+            theme::ERROR
+        } else if rms > 0.7 {
+            theme::WARNING
+        } else {
+            theme::SUCCESS
+        };
+        painter.rect_filled(rms_rect, theme::RADIUS_XS, fill_color);
     }
     if peak > 0.0 {
         let peak_x = rect.left() + rect.width() * peak;
