@@ -38,7 +38,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             components::page_title(ui, Text::LibraryTitle.tr(locale));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button(Text::ImportFiles.tr(locale)).clicked() {
+                if components::primary_button(ui, Text::ImportFiles.tr(locale)).clicked() {
                     if let Some(paths) = rfd::FileDialog::new().pick_files() {
                         app.spawn_import(paths);
                     }
@@ -144,7 +144,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                     );
                                 }
                                 if asset.proxy_path.is_some() {
-                                    components::tag_accent(ui, Text::ProxyReady.tr(locale));
+                                    components::tag_success(ui, Text::ProxyReady.tr(locale));
                                 }
                             });
                             ui.label(
