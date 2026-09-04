@@ -251,6 +251,16 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         export_job_started_at: HashMap::new(),
         export_preview_cache: None,
         nested_sequence_render_cache: std::collections::HashMap::new(),
+        nested_sequence_render_state: {
+            let (nested_sequence_tx, nested_sequence_rx) = mpsc::unbounded_channel();
+            NestedSequenceRenderState {
+                nested_sequence_tx,
+                nested_sequence_rx,
+                nested_sequence_rendering_ids: std::collections::HashSet::new(),
+                nested_sequence_last_result: std::collections::HashMap::new(),
+                nested_sequence_last_input: std::collections::HashMap::new(),
+            }
+        },
         preview_state: PreviewState::default(),
         import_state: ImportState {
             import_tx,
@@ -7454,4 +7464,148 @@ fn apply_effect_preset_is_a_no_op_when_nothing_is_selected() {
 
     let clips = &app.active_project().timeline().tracks[0].clips;
     assert_eq!(clips[0].blur_intensity, 0.0);
+}
+
+#[test]
+fn materialize_nested_sequences_for_active_sequence_is_a_no_op_without_any_nested_clips() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    let assets = app.materialize_nested_sequences_for_active_sequence();
+
+    assert!(assets.is_empty());
+    assert!(app
+        .nested_sequence_render_state
+        .nested_sequence_rendering_ids
+        .is_empty());
+}
+
+#[test]
+fn materialize_nested_sequences_for_active_sequence_returns_cached_result_when_input_unchanged() {
+    let mut clip = test_clip(1, 0.0, 0.0, 10.0);
+    clip.nested_sequence_id = Some(99);
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(1, TrackKind::Video, vec![clip])],
+        )],
+        Vec::new(),
+    );
+    let sequences_input = app.active_project().sequences.clone();
+    app.nested_sequence_render_state
+        .nested_sequence_last_input
+        .insert(1, sequences_input);
+    app.nested_sequence_render_state
+        .nested_sequence_last_result
+        .insert(1, vec![]);
+
+    let assets = app.materialize_nested_sequences_for_active_sequence();
+
+    assert!(assets.is_empty());
+    // Unchanged input -- must not have dispatched a fresh background render.
+    assert!(app
+        .nested_sequence_render_state
+        .nested_sequence_rendering_ids
+        .is_empty());
+}
+
+#[test]
+fn materialize_nested_sequences_for_active_sequence_dispatches_a_background_render_for_a_nested_clip(
+) {
+    let mut clip = test_clip(1, 0.0, 0.0, 10.0);
+    clip.nested_sequence_id = Some(99);
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(1, TrackKind::Video, vec![clip])],
+        )],
+        Vec::new(),
+    );
+
+    let assets = app.materialize_nested_sequences_for_active_sequence();
+
+    // No prior result cached -- returns empty immediately while the background render runs.
+    assert!(assets.is_empty());
+    assert!(app
+        .nested_sequence_render_state
+        .nested_sequence_rendering_ids
+        .contains(&1));
+}
+
+#[test]
+fn pump_nested_sequence_renders_applies_a_ready_event() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.nested_sequence_render_state
+        .nested_sequence_rendering_ids
+        .insert(1);
+    let asset = test_asset(1000);
+    app.nested_sequence_render_state
+        .nested_sequence_tx
+        .send(crate::app::NestedSequenceEvent::Ready {
+            sequence_id: 1,
+            cache: std::collections::HashMap::new(),
+            assets: vec![asset.clone()],
+            sequences_input: app.active_project().sequences.clone(),
+        })
+        .unwrap();
+
+    app.pump_nested_sequence_renders();
+
+    assert_eq!(
+        app.nested_sequence_render_state
+            .nested_sequence_last_result
+            .get(&1),
+        Some(&vec![asset])
+    );
+    assert!(app
+        .nested_sequence_render_state
+        .nested_sequence_last_input
+        .contains_key(&1));
+    assert!(!app
+        .nested_sequence_render_state
+        .nested_sequence_rendering_ids
+        .contains(&1));
+}
+
+#[test]
+fn pump_nested_sequence_renders_applies_a_failed_event_and_latches_the_input() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.nested_sequence_render_state
+        .nested_sequence_rendering_ids
+        .insert(1);
+    let sequences_input = app.active_project().sequences.clone();
+    app.nested_sequence_render_state
+        .nested_sequence_tx
+        .send(crate::app::NestedSequenceEvent::Failed {
+            sequence_id: 1,
+            error: "missing nested sequence".to_string(),
+            sequences_input: sequences_input.clone(),
+        })
+        .unwrap();
+
+    app.pump_nested_sequence_renders();
+
+    assert!(!app
+        .nested_sequence_render_state
+        .nested_sequence_last_result
+        .contains_key(&1));
+    assert_eq!(
+        app.nested_sequence_render_state
+            .nested_sequence_last_input
+            .get(&1),
+        Some(&sequences_input)
+    );
+    assert!(!app
+        .nested_sequence_render_state
+        .nested_sequence_rendering_ids
+        .contains(&1));
 }
