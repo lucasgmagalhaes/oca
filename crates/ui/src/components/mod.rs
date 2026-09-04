@@ -19,6 +19,7 @@
 //! own mutable state, which keeps every component free to move, reuse, or swap independent of
 //! app state and of each other.
 
+mod button;
 mod combo;
 mod frame;
 mod icon_button;
@@ -27,6 +28,7 @@ mod property;
 mod section;
 mod tag;
 
+pub use button::primary_button;
 pub use combo::enum_combo;
 pub use frame::card_frame;
 pub use icon_button::{icon_button, IconButtonOpts};
