@@ -168,6 +168,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                             ui.centered_and_justified(|ui| {
                                                 ui.label(
                                                     RichText::new(icons::PLAY_STR)
+                                                        .family(icons::family())
                                                         .size(26.0)
                                                         .color(theme::TEXT_MUTED),
                                                 );

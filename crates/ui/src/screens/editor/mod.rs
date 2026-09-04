@@ -463,25 +463,35 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             app.snap_enabled = !app.snap_enabled;
         }
         ui.separator();
+        // "↺"/"↻" read as tofu (same class already fixed elsewhere) -- no vendored undo/redo
+        // icon exists either, so these two buttons show the already-i18n'd action name instead.
         if ui
-            .add_enabled(app.can_undo(), egui::Button::new("↺"))
+            .add_enabled(
+                app.can_undo(),
+                egui::Button::new(Text::ShortcutUndo.tr(locale)),
+            )
             .on_hover_text(Text::ShortcutUndo.tr(locale))
             .clicked()
         {
             app.undo();
         }
         if ui
-            .add_enabled(app.can_redo(), egui::Button::new("↻"))
+            .add_enabled(
+                app.can_redo(),
+                egui::Button::new(Text::ShortcutRedo.tr(locale)),
+            )
             .on_hover_text(Text::ShortcutRedo.tr(locale))
             .clicked()
         {
             app.redo();
         }
         ui.separator();
+        // No "🏷"/"📝" prefix -- no vendored icon for either, and the raw emoji is the same
+        // tofu class already fixed elsewhere; the label text alone still conveys the toggle.
         if ui
             .selectable_label(
                 app.timeline_index_open,
-                format!("🏷 {}", Text::TimelineIndexToggle.tr(locale)),
+                Text::TimelineIndexToggle.tr(locale),
             )
             .clicked()
         {
@@ -490,7 +500,7 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         if ui
             .selectable_label(
                 app.transcript_panel_open,
-                format!("📝 {}", Text::TranscriptPanelToggle.tr(locale)),
+                Text::TranscriptPanelToggle.tr(locale),
             )
             .clicked()
         {
@@ -857,15 +867,17 @@ fn asset_thumb_sized(
         }
         None => {
             let (fill, glyph) = match asset.kind {
-                avcore::media::MediaKind::Video => (theme::SURFACE_2, "▶"),
-                avcore::media::MediaKind::Audio => (theme::ACCENT_2.gamma_multiply(0.25), "♪"),
+                avcore::media::MediaKind::Video => (theme::SURFACE_2, icons::PLAY_STR),
+                avcore::media::MediaKind::Audio => {
+                    (theme::ACCENT_2.gamma_multiply(0.25), icons::MUSIC_STR)
+                }
             };
             painter.rect_filled(rect, egui::CornerRadius::same(theme::RADIUS_SM), fill);
             painter.text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 glyph,
-                egui::FontId::proportional(11.0),
+                egui::FontId::new(11.0, icons::family()),
                 theme::TEXT_MUTED,
             );
         }
@@ -942,15 +954,17 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                         .color(theme::TEXT_MUTED),
                     );
                     ui.add_space(theme::SPACE_SM);
+                    // ASCII "#"/"=" -- no vendored grid/list icon exists, and the raw "▦"/"☰"
+                    // glyphs are the same tofu class already fixed elsewhere this session.
                     if ui
-                        .selectable_label(app.media_view_mode == MediaViewMode::Grid, "▦")
+                        .selectable_label(app.media_view_mode == MediaViewMode::Grid, "#")
                         .on_hover_text(Text::MediaViewGrid.tr(app.locale))
                         .clicked()
                     {
                         app.media_view_mode = MediaViewMode::Grid;
                     }
                     if ui
-                        .selectable_label(app.media_view_mode == MediaViewMode::List, "☰")
+                        .selectable_label(app.media_view_mode == MediaViewMode::List, "=")
                         .on_hover_text(Text::MediaViewList.tr(app.locale))
                         .clicked()
                     {
@@ -1161,11 +1175,11 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                                                 });
                                                 ui.label(
                                                     RichText::new(format!(
-                                                        "{} · {}",
+                                                        "{} | {}",
                                                         asset.duration_label(),
                                                         asset
                                                             .resolution
-                                                            .map(|(w, h)| format!("{w}×{h}"))
+                                                            .map(|(w, h)| format!("{w}x{h}"))
                                                             .unwrap_or_else(|| asset
                                                                 .sample_rate_khz
                                                                 .map(|k| format!("{k:.0}kHz"))
@@ -1354,6 +1368,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         ui.centered_and_justified(|ui| {
                             ui.label(
                                 RichText::new(icons::PLAY_STR)
+                                    .family(icons::family())
                                     .size(48.0)
                                     .color(theme::TEXT_MUTED),
                             );
@@ -1370,8 +1385,8 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         // clip's own asset (oca has no per-sequence fps) and is omitted when unknown.
         if let Some([w, h]) = preview_texture_size {
             let text = match app.current_preview_fps() {
-                Some(fps) => format!("{w}×{h} · {fps:.2}fps"),
-                None => format!("{w}×{h}"),
+                Some(fps) => format!("{w}x{h} | {fps:.2}fps"),
+                None => format!("{w}x{h}"),
             };
             let size = ui
                 .painter()
@@ -1753,6 +1768,7 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                 ui.centered_and_justified(|ui| {
                     ui.label(
                         RichText::new(icons::PLAY_STR)
+                            .family(icons::family())
                             .size(64.0)
                             .color(theme::TEXT_MUTED),
                     );
