@@ -1239,7 +1239,7 @@ impl App {
             if !model_configured {
                 ui.label(
                     egui::RichText::new(Text::TtsNoModelConfigured.tr(locale))
-                        .color(theme::TEXT_MUTED),
+                        .color(theme::TEXT_DISABLED),
                 );
                 ui.add_space(8.0);
             }

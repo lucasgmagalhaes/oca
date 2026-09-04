@@ -72,16 +72,18 @@ pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(0xe8, 0xe9, 0xed);
 pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(0x9a, 0x9d, 0xa8);
 /// `text_tertiary` — metadata / hints.
 pub const TEXT_MUTED: Color32 = Color32::from_rgb(0x62, 0x65, 0x71);
-/// `text_disabled` — disabled controls. Confirmed **not wirable** as a literal stroke color in
-/// this egui version: `ui.add_enabled(false, ...)` doesn't switch to a distinct `Widgets::
-/// disabled` visuals set (no such field exists on `egui::style::Widgets` in 0.36 — only
-/// `noninteractive`/`inactive`/`hovered`/`active`/`open`); a disabled widget is painted with the
-/// normal `inactive` visuals and then the whole painted output's *opacity* is multiplied by
-/// `Style::disabled_alpha` (`Painter::multiply_opacity`, see `Ui::disable()`) — an alpha fade,
-/// not a color swap, so this constant has no `Stroke`/`fg_color` field to plug into. Kept for
-/// callers that hand-paint a disabled-looking label outside `add_enabled` (e.g. via
-/// `RichText::color`) rather than force a fake wiring into `apply()`.
-#[allow(dead_code)]
+/// `text_disabled` — disabled controls. **Not wirable** through `apply()`'s global `Visuals`:
+/// `ui.add_enabled(false, ...)` doesn't switch to a distinct `Widgets::disabled` visuals set (no
+/// such field exists on `egui::style::Widgets` in 0.36 — only `noninteractive`/`inactive`/
+/// `hovered`/`active`/`open`); a disabled widget is painted with the normal `inactive` visuals
+/// and then the whole painted output's *opacity* is multiplied by `Style::disabled_alpha`
+/// (`Painter::multiply_opacity`, see `Ui::disable()`) — an alpha fade, not a color swap, so
+/// setting this color *inside* an `add_enabled(false)` block would double-dim it. Wired instead
+/// into two hand-painted labels that sit *outside* any `add_enabled` scope but still describe a
+/// genuinely unavailable state: the Editor preview pane's "Pré-visualização indisponível"
+/// placeholder (`screens::editor::mod`) and the TTS modal's "no model configured" notice
+/// (`app::modals`) — both previously read `TEXT_MUTED`/`text_tertiary`, which is really "less
+/// important info", a different role from "this is inactive."
 pub const TEXT_DISABLED: Color32 = Color32::from_rgb(0x3e, 0x40, 0x4a);
 /// `accent_primary` — primary interaction. Global, high-blast-radius constant: selection
 /// highlighting, hovered/active widget strokes, the active tool-button fill, tags, etc. all
