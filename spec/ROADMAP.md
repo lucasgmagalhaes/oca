@@ -1358,15 +1358,28 @@ an item earlier:
   `cargo check --workspace --all-targets` (the documented temporary `filters.c` shim, discarded
   before commit) and `cargo fmt --all -- --check` both stayed clean.
 
-  **Deliberately not done**: the `language` hint's own consumption, the "expose invisible
-  directional controls on demand" editing feature (letting a user insert/reveal these characters
-  directly, as opposed to just being warned about them), mixed-direction golden tests (TEXT-01B
-  step 3's second half), and its original cluster-safe-highlight note (the current
-  `glyph_excluded` filter already only ever includes a whole cluster, never splits one — real
-  cluster-safety for RTL/conjunct scripts specifically still needs TEXT-01C's international fonts
-  to verify against real glyphs, not just bidi levels against a font that can't render them) all
-  remain open. TEXT-01C (international fallback families, gated on FONT-01B actually vendoring
-  those fonts into the repo) remains fully open.
+  **Mixed-direction golden tests (TEXT-01B step 3's second half) now shipped, a later session.**
+  `overlay_render_test.rs` gained a real pixel-level render (not just `text_layout`'s own
+  shaping-level cluster-position checks) of mixed Latin+Hebrew content forced `Ltr` vs `Rtl`,
+  confirming forcing `Rtl` visibly shifts the block's own ink right of forcing `Ltr` — a real,
+  observed pixel difference from the actual `render_text_clip_rgba` pipeline, matching `Auto`
+  alignment's documented per-paragraph-direction default in `cosmic-text` (see
+  `text_horizontal_box`'s and the `TextAlign` mapping's own doc comments). `cargo test -p core
+  --lib` 528/528 passing (this session's environment fully links).
+
+  **Deliberately still not done**: the `language` hint's own consumption (still genuinely
+  blocked — re-confirmed this session against `cosmic-text` 0.19, still the crate's own newest
+  published version per a real `crates.io`/`docs.rs` check, and `Attrs` still has no language
+  field), and the "expose invisible directional controls on demand" editing feature (letting a
+  user insert/reveal these characters directly, as opposed to just being warned about them) — a
+  real UX design decision (where in the text-clip panel, which characters, cursor-position
+  insertion vs. append-only) not yet made, left open rather than guessed at. The original
+  cluster-safe-highlight note is now unblocked in principle — FONT-01B's international faces are
+  fully vendored and TEXT-01's own shaping test already confirms every one of them renders real
+  glyphs with zero `.notdef` hits — but verifying real cluster-safety specifically for a
+  highlighted word mid-conjunct/RTL-cluster hasn't been attempted yet; a real, separate follow-up
+  from the golden test above, which only checked whole-paragraph direction, not word-level
+  highlight-boundary safety.
 
   **TEXT-01D slice 1's "shaped/glyph caches" piece now shipped.** `TextLayoutEngine::shape`
   memoizes through a new small bounded LRU `ShapeCache` (64 entries) keyed by every input that
