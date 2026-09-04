@@ -313,7 +313,7 @@ pub(super) fn shape_clip_properties(
     // Rotation
     components::property_row(ui, Text::PropShapeRotation.tr(locale));
     if ui
-        .add(egui::Slider::new(&mut sc.rotation_deg, 0.0..=360.0).suffix("°"))
+        .add(egui::Slider::new(&mut sc.rotation_deg, 0.0..=360.0).suffix(" deg"))
         .changed()
     {
         changed = true;

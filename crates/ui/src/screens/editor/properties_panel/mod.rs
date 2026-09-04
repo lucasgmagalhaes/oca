@@ -102,7 +102,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         &format!("{:.0} Mbps", asset.source_bitrate_mbps),
                     );
                     if let Some((w, h)) = asset.resolution {
-                        prop_row(ui, Text::PropResolution.tr(locale), &format!("{w}×{h}"));
+                        prop_row(ui, Text::PropResolution.tr(locale), &format!("{w}x{h}"));
                     }
                     if let Some(fps) = asset.fps {
                         prop_row(ui, Text::PropFps.tr(locale), &format!("{fps:.0}"));
@@ -704,7 +704,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                                 .unwrap_or_default();
                                             ui.label(
                                                 RichText::new(if name.is_empty() {
-                                                    "—"
+                                                    "-"
                                                 } else {
                                                     &name
                                                 })
