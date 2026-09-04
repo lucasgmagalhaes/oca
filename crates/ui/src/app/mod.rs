@@ -1029,6 +1029,13 @@ pub struct App {
     /// to a specific project/sequence, so it just naturally resets if a collapsed track's id
     /// never recurs.
     pub collapsed_track_ids: std::collections::HashSet<u64>,
+    /// Timeline-level magnetic-snap toggle — Section 56's own Snapping spec ("a timeline-level
+    /// toggle... click magnet icon"). Defaults to `true` (matches this codebase's own
+    /// pre-existing default snap behavior). Alt still temporarily inverts whichever way this is
+    /// set (`screens::editor::timeline_panel`'s own `snap_enabled` computation) rather than
+    /// replacing this toggle outright. Transient, not serialized — same category as
+    /// `collapsed_track_ids` above.
+    pub snap_enabled: bool,
     /// Width, in points, of the Editor's media-library column — dragged via the divider
     /// between it and the preview column (`editor.rs::resizable_divider`). Clamped to the
     /// window's current size every frame (`editor.rs::show`). Seeded from
@@ -1731,6 +1738,7 @@ impl App {
             timeline_px_per_sec: 4.0,
             timeline_pan_px: 0.0,
             collapsed_track_ids: std::collections::HashSet::new(),
+            snap_enabled: true,
             lib_panel_width,
             props_panel_width,
             timeline_height,

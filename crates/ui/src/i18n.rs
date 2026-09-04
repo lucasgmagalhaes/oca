@@ -526,6 +526,8 @@ text_catalog! {
     AutosaveDiscard: pt_br = "Descartar", en = "Discard";
     ExportPlatformPresetLabel: pt_br = "Predefinição de plataforma:", en = "Platform preset:";
     PreviewScopesToggle: pt_br = "Waveform / Vetorscópio", en = "Waveform / Vectorscope";
+    SnapToggle: pt_br = "Snap", en = "Snap";
+    SnapToggleHint: pt_br = "Ativa/desativa o encaixe magnético na timeline (Alt inverte temporariamente)", en = "Toggles magnetic snapping in the timeline (Alt temporarily inverts it)";
     PreviewAudioLevelMeter: pt_br = "Nível de áudio (pico / RMS)", en = "Audio level (peak / RMS)";
     PropStereoMeter: pt_br = "Medidor estéreo (L / R)", en = "Stereo meter (L / R)";
     TimelineIndexToggle: pt_br = "Marcadores", en = "Markers";

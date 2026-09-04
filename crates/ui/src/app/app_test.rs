@@ -338,6 +338,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         timeline_px_per_sec: 4.0,
         timeline_pan_px: 0.0,
         collapsed_track_ids: std::collections::HashSet::new(),
+        snap_enabled: true,
         lib_panel_width: 220.0,
         props_panel_width: 240.0,
         timeline_height: 190.0,

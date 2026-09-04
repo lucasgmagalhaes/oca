@@ -396,6 +396,19 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             Text::ToolHand.tr(locale),
         );
         ui.separator();
+        // Section 56's Snapping spec: "a timeline-level toggle... click magnet icon". No
+        // vendored Lucide magnet icon exists, and this session's own tofu-glyph hunt already
+        // showed a plain Unicode magnet symbol isn't a safe bet against this app's bundled
+        // default font — a plain text toggle (matching this exact toolbar's own tool-button
+        // convention of a visible label) is the honest choice here, not a risky icon guess.
+        if ui
+            .selectable_label(app.snap_enabled, Text::SnapToggle.tr(locale))
+            .on_hover_text(Text::SnapToggleHint.tr(locale))
+            .clicked()
+        {
+            app.snap_enabled = !app.snap_enabled;
+        }
+        ui.separator();
         if ui
             .add_enabled(app.can_undo(), egui::Button::new("↺"))
             .on_hover_text(Text::ShortcutUndo.tr(locale))

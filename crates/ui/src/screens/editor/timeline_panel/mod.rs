@@ -142,9 +142,11 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         // Magnetic snap targets (ROADMAP.md P0 item 2): every clip's start/end edge, across
         // every track — collected once per frame up front so both the ruler's playhead drag
         // and the per-clip trim/move drags below can use the same set without re-borrowing
-        // `app` mid-loop. Held with a modifier (Alt) to temporarily disable snapping, the same
-        // convention most editors use.
-        let snap_enabled = !ui.input(|i| i.modifiers.alt);
+        // `app` mid-loop. Section 56's own Snapping spec: "a timeline-level toggle" via a magnet
+        // icon (`app.snap_enabled`, toolbar) — Alt still temporarily *inverts* whichever way
+        // that toggle is set, the same quick-override convention most editors layer on top of a
+        // persistent snap preference.
+        let snap_enabled = app.snap_enabled ^ ui.input(|i| i.modifiers.alt);
         let clip_edges: Vec<(u64, f64, f64)> = app
             .active_project()
             .timeline()
@@ -386,12 +388,16 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 } else {
                                     Text::TrackLock.tr(locale)
                                 };
+                                // Section 45's Track Lock spec: "Visual: lock icon becomes
+                                // active" — was glyph-only (open/closed padlock), same rest color
+                                // regardless of state, before this fix.
                                 if components::icon_button(
                                     ui,
                                     lock_glyph,
                                     lock_tooltip,
                                     components::IconButtonOpts {
                                         family: Some(icons::family()),
+                                        color: locked.then_some(theme::ACCENT),
                                         ..Default::default()
                                     },
                                 )
