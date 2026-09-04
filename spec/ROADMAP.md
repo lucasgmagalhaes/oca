@@ -1958,10 +1958,14 @@ resolved in favor of consolidating, see items 3 and 5).
     `keyframe_editors.rs`, 1 in `modals.rs`'s marker list), each gaining a real tooltip via two
     new `i18n.rs` keys (`RemoveKeyframe`/`RemoveVertex`/`RemoveMarker` — previously icon-only
     with no accessible name at all). Second batch: the timeline track-visibility toggle's
-    ambiguous "👁"→"—" hidden-state fallback fixed (now "👁"/"⊘"), routed through `icon_button()`,
-    and its tooltip — previously hardcoded English, never localized — moved to real
-    `Text::TrackHide`/`TrackShow` i18n keys. Note: the "⊘" glyph's rendering under egui's bundled
-    font set is unverified — no running-instance visual pass was possible in this session. Third
+    ambiguous "👁"→"—" hidden-state fallback fixed, routed through `icon_button()`, and its
+    tooltip — previously hardcoded English, never localized — moved to real `Text::TrackHide`/
+    `TrackShow` i18n keys. **Resolved**: a later session's systematic tofu-glyph sweep (real
+    `cargo build`/`cargo test` runs against a real compiled `ui.exe`, not just visual inspection)
+    replaced the originally-planned "⊘" with the vendored `icons::EYE_STR`/`EYE_OFF_STR` pair
+    instead — audio tracks now reuse the same eye/eye-off icon video tracks already used, rather
+    than a distinct glyph per track kind, closing this note's open rendering-verification
+    question by removing the unverified glyph entirely. Third
     batch: transport's seek-to-start/seek-to-end and play/pause buttons were icon-only with no
     tooltip at all (in both the normal and fullscreen-overlay preview) — fixed via two new
     `Text::SeekToStart`/`SeekToEnd` keys plus reusing `Text::ShortcutPlayPause`. The non-
