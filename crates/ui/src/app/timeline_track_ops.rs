@@ -70,6 +70,113 @@ impl App {
             track.color_label = color_label;
         }
     }
+
+    /// Renames `track_id` — Section 49's Track More Menu "Rename Track". A no-op if the track
+    /// isn't found or `name` is blank (mirrors `App::renaming_sequence`'s own confirm handling).
+    pub fn rename_track(&mut self, track_id: u64, name: String) {
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+        self.push_undo_snapshot();
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(track) = timeline.tracks.iter_mut().find(|t| t.id == track_id) {
+            track.name = name;
+        }
+    }
+
+    /// Duplicates `track_id` — Section 49's "Duplicate Track". The copy gets a fresh id (and
+    /// fresh ids for every clip/text-clip/shape-clip it carries, so dragging one copy never
+    /// mutates the other) and is inserted directly after the original. A no-op if the track
+    /// isn't found.
+    pub fn duplicate_track(&mut self, track_id: u64) {
+        self.push_undo_snapshot();
+        let timeline = self.active_project_mut().timeline_mut();
+        let Some(index) = timeline.tracks.iter().position(|t| t.id == track_id) else {
+            return;
+        };
+        let mut next_id = timeline
+            .tracks
+            .iter()
+            .flat_map(|t| {
+                std::iter::once(t.id)
+                    .chain(t.clips.iter().map(|c| c.id))
+                    .chain(t.text_clips.iter().map(|c| c.id))
+                    .chain(t.shape_clips.iter().map(|c| c.id))
+            })
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let mut copy = timeline.tracks[index].clone();
+        copy.id = next_id;
+        next_id += 1;
+        for clip in &mut copy.clips {
+            clip.id = next_id;
+            next_id += 1;
+        }
+        for clip in &mut copy.text_clips {
+            clip.id = next_id;
+            next_id += 1;
+        }
+        for clip in &mut copy.shape_clips {
+            clip.id = next_id;
+            next_id += 1;
+        }
+        timeline.tracks.insert(index + 1, copy);
+    }
+
+    /// Moves `track_id` one position earlier in the track list — Section 49's "Move Track Up".
+    /// A no-op if the track isn't found or already first.
+    pub fn move_track_up(&mut self, track_id: u64) {
+        self.push_undo_snapshot();
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(index) = timeline.tracks.iter().position(|t| t.id == track_id) {
+            if index > 0 {
+                timeline.tracks.swap(index, index - 1);
+            }
+        }
+    }
+
+    /// Moves `track_id` one position later in the track list — Section 49's "Move Track Down".
+    /// A no-op if the track isn't found or already last.
+    pub fn move_track_down(&mut self, track_id: u64) {
+        self.push_undo_snapshot();
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(index) = timeline.tracks.iter().position(|t| t.id == track_id) {
+            if index + 1 < timeline.tracks.len() {
+                timeline.tracks.swap(index, index + 1);
+            }
+        }
+    }
+
+    /// Deletes `track_id` outright — Section 49's "Delete Track". Confirmation for a track that
+    /// actually carries content is the caller's job (`App::deleting_track` + its modal), same
+    /// split `App::delete_sequence` already uses; this itself never asks. A no-op if the track
+    /// isn't found or it's the timeline's only remaining track (an editor with zero tracks has
+    /// nowhere for "+ Adicionar faixa" to make sense of).
+    pub fn delete_track(&mut self, track_id: u64) {
+        let timeline = self.active_project_mut().timeline_mut();
+        if timeline.tracks.len() <= 1 {
+            return;
+        }
+        let Some(index) = timeline.tracks.iter().position(|t| t.id == track_id) else {
+            return;
+        };
+        self.push_undo_snapshot();
+        let timeline = self.active_project_mut().timeline_mut();
+        timeline.tracks.remove(index);
+        if self.selected_clip_id.is_some()
+            && !self
+                .active_project()
+                .timeline()
+                .tracks
+                .iter()
+                .flat_map(|t| &t.clips)
+                .any(|c| Some(c.id) == self.selected_clip_id)
+        {
+            self.selected_clip_id = None;
+        }
+    }
 }
 
 impl App {
