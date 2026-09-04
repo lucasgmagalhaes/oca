@@ -951,9 +951,30 @@ an item earlier:
   the plain enum variant name, not `family_id` — the doc's "unknown future ID keeps its
   serialized value" requirement needs a data-carrying persisted type (not a plain enum), a
   real structural change with its own migration/golden-image risk deliberately deferred rather
-  than folded into this pass. Catalog expansion to 43 families (FONT-01B, needs a real
-  `google/fonts` vendoring pass this sandbox has no network path to run), variable-weight
-  support and the searchable selector (FONT-01C/D) are all still open.
+  than folded into this pass.
+
+  **FONT-01B slice 1 shipped**: the exact `google/fonts` vendoring pass this note originally
+  said needed network access this sandbox didn't have — a later session did. `CATALOG` grew
+  from 6 to 15 families: the doc's full Sans table (Inter, Montserrat, Roboto, Open Sans,
+  Poppins, Nunito, Source Sans 3, Barlow, Fredoka — Lato was already bundled). Every binary
+  downloaded for real from the pinned `GOOGLE_FONTS_REVISION` commit (not `main`, not a guess —
+  the same commit the original six were vendored from), SHA-256/size verified against the exact
+  committed bytes, real TTF `sfnt` signature checked. `FontSourceKind::Variable` (added in
+  FONT-01A but unused until now) covers the 7 families shipped as one upstream variable-axis
+  file each; Poppins/Barlow use the doc's chosen static Regular+Bold subset instead, matching
+  its "Do not generate static instances... Use official static files when they exist" rule.
+  Total bundled size: 6.6 MiB, well inside the doc's 20 MiB budget. 9 new families have **no
+  `TextFontFamily` enum variant yet** (that needs the persisted-identity swap above) but are
+  already real, loaded, and verified working: `text_layout.rs`'s cosmic-text engine iterates
+  `locked_face_bytes()` generically, not just the six enum-backed families, and
+  `every_bundled_family_shapes_ordinary_latin_text_without_missing_glyphs` (a real shaping run,
+  not just a manifest check) confirmed all 9 shape ordinary Latin text with no missing glyphs.
+  18 new `cargo test -p core --lib` cases (489/489 total passing, this environment's toolchain
+  fully links) cover per-family byte verification plus the catalog's existing generic self-
+  consistency/traversal/count checks, which needed no changes to already cover the new entries.
+  Catalog expansion to the remaining categories (Display/Condensed, Serif, Handwritten,
+  Monospace, international fallback — 28 more families), variable-weight axis *selection* in
+  the UI, and the searchable selector (FONT-01C/D) are all still open.
 
   Verified for real, not just type-checked: this session's sandbox turned out to have a
   working path to a fully-linked `core` test binary (`rustup update stable` past a
