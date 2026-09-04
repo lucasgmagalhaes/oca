@@ -97,6 +97,15 @@ pub const ACCENT_HOVER: Color32 = Color32::from_rgb(0xa1, 0x84, 0xff);
 /// `accent_active` — pressed. Wired into `components::primary_button`'s pressed state, same
 /// scoping as `ACCENT_HOVER` above.
 pub const ACCENT_ACTIVE: Color32 = Color32::from_rgb(0x7c, 0x5c, 0xe0);
+/// Section 9's Icon Buttons color table — deliberately its own scale, not `TEXT_SECONDARY`/
+/// `TEXT_PRIMARY`: an icon-only action (the vast majority of buttons in this app, via
+/// `components::icon_button`) should read quieter at rest than a labeled Secondary button's
+/// `text_primary` text. Wired into `icon_button`'s own scoped `Visuals` override.
+pub const ICON_DEFAULT: Color32 = Color32::from_rgb(0x77, 0x7a, 0x86);
+/// Icon Buttons "Hover" — see `ICON_DEFAULT`.
+pub const ICON_HOVER: Color32 = Color32::from_rgb(0xc5, 0xc7, 0xcf);
+/// Icon Buttons "Active" (pressed) — see `ICON_DEFAULT`.
+pub const ICON_ACTIVE: Color32 = Color32::from_rgb(0xff, 0xff, 0xff);
 /// `accent_muted` — selected background. Opaque per the doc's own hex (previously a
 /// semi-transparent premultiplied tint derived from the old teal/violet accent) — every existing
 /// call site uses this as a flat `.fill(...)` on a selected/active chip, so an opaque fill reads
@@ -195,7 +204,12 @@ pub fn apply(ctx: &egui::Context) {
     visuals.widgets.inactive.bg_fill = SURFACE_2;
     visuals.widgets.inactive.weak_bg_fill = SURFACE_2;
     visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, BORDER);
-    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, TEXT_SECONDARY);
+    // Section 8's "Secondary" button spec: `bg_control`/`border_default`/`text_primary` — this
+    // `inactive` slot already matched the first two; text was `TEXT_SECONDARY` (a dimmer, more
+    // "metadata"-reading gray) until this fix, which every plain `ui.button(...)` (the vast
+    // majority of buttons in this app — Secondary is the unstated default, `primary_button` the
+    // rare exception) inherits.
+    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
     visuals.widgets.inactive.corner_radius = CornerRadius::same(RADIUS_SM as u8);
 
     visuals.widgets.hovered.bg_fill = BG_HOVER;
