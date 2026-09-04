@@ -336,6 +336,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         selected_shape_clip_id: None,
         drawing_shape_points: None,
         timeline_px_per_sec: 4.0,
+        timeline_pan_px: 0.0,
         lib_panel_width: 220.0,
         props_panel_width: 240.0,
         timeline_height: 190.0,
