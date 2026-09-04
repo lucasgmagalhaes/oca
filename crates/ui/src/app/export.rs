@@ -346,6 +346,7 @@ impl App {
                         job.status = ExportJobStatus::Done;
                     }
                     self.active_renders.remove(&job_id);
+                    self.export_job_started_at.remove(&job_id);
                     save_queue(&self.export_jobs);
                     self.record_telemetry(avcore::TelemetryEvent::ExportCompleted {
                         duration_ms,
@@ -366,6 +367,7 @@ impl App {
                         };
                     }
                     self.active_renders.remove(&job_id);
+                    self.export_job_started_at.remove(&job_id);
                     save_queue(&self.export_jobs);
                     self.record_telemetry(avcore::TelemetryEvent::ExportCompleted {
                         duration_ms,
@@ -388,6 +390,7 @@ impl App {
                     debug!(job_id, "export job cancelled");
                     self.export_jobs.retain(|j| j.id != job_id);
                     self.active_renders.remove(&job_id);
+                    self.export_job_started_at.remove(&job_id);
                     save_queue(&self.export_jobs);
                 }
             }
@@ -420,6 +423,7 @@ impl App {
         let target_lufs = job.target_lufs;
         let gpu_encoder = self.prefs.gpu_encoder;
         job.status = ExportJobStatus::Rendering { percent: 0 };
+        self.export_job_started_at.insert(job_id, Instant::now());
 
         // The exported timeline's own length (footage time, not encode wall-clock time) —
         // track 0 defines a multi-track export's overall duration, same as
