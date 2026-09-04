@@ -248,6 +248,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         render_tx,
         render_rx,
         active_renders: HashMap::new(),
+        export_job_started_at: HashMap::new(),
         export_preview_cache: None,
         nested_sequence_render_cache: std::collections::HashMap::new(),
         preview_state: PreviewState::default(),
@@ -1305,10 +1306,14 @@ fn pump_export_queue_marks_a_job_done_and_frees_its_render_slot() {
         })
         .unwrap();
 
+    app.export_job_started_at
+        .insert(1, std::time::Instant::now());
+
     app.pump_export_queue();
 
     assert_eq!(app.export_jobs[0].status, ExportJobStatus::Done);
     assert!(!app.active_renders.contains_key(&1));
+    assert!(!app.export_job_started_at.contains_key(&1));
 }
 
 #[test]
@@ -1328,6 +1333,9 @@ fn pump_export_queue_records_a_failure_message() {
         })
         .unwrap();
 
+    app.export_job_started_at
+        .insert(1, std::time::Instant::now());
+
     app.pump_export_queue();
 
     assert_eq!(
@@ -1337,6 +1345,7 @@ fn pump_export_queue_records_a_failure_message() {
         }
     );
     assert!(!app.active_renders.contains_key(&1));
+    assert!(!app.export_job_started_at.contains_key(&1));
 }
 
 #[test]
@@ -1351,10 +1360,14 @@ fn pump_export_queue_removes_a_cancelled_job_entirely() {
         .send(RenderEvent::Cancelled { job_id: 1 })
         .unwrap();
 
+    app.export_job_started_at
+        .insert(1, std::time::Instant::now());
+
     app.pump_export_queue();
 
     assert!(app.export_jobs.is_empty());
     assert!(!app.active_renders.contains_key(&1));
+    assert!(!app.export_job_started_at.contains_key(&1));
 }
 
 #[test]

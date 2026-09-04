@@ -941,6 +941,12 @@ pub struct App {
     /// A job id present here is the source of truth for "how many workers are busy right
     /// now" — [`App::pump_export_queue`] uses its length against `prefs.export_workers`.
     active_renders: HashMap<u64, Arc<export::RenderControl>>,
+    /// Wall-clock start time of each currently-rendering job, keyed by job id — set when a job
+    /// dispatches to a worker ([`App::pump_export_queue`]), cleared alongside `active_renders`
+    /// at Done/Failed/Cancelled. Transient UI state, not persisted with the job queue. Used by
+    /// the Fila (export queue) screen to render "elapsed" (`CINECUT_PRODUCT_DECISIONS_v1.0.md`
+    /// section 17) — explicitly no ETA, per that doc's section 18.
+    pub export_job_started_at: HashMap<u64, std::time::Instant>,
     /// Cached result of resolving the active sequence's video tracks and media library into
     /// export segments — see [`App::resolved_active_sequence_export_preview`]. `None` before
     /// the Fila (export queue) screen's header has ever been drawn.
@@ -1692,6 +1698,7 @@ impl App {
             render_tx,
             render_rx,
             active_renders: HashMap::new(),
+            export_job_started_at: HashMap::new(),
             export_preview_cache: None,
             nested_sequence_render_cache: HashMap::new(),
             preview_state: PreviewState::default(),
