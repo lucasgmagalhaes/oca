@@ -316,6 +316,11 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut toggle_track_collapsed_requests: Vec<u64> = Vec::new();
         let mut track_audio_role_requests: Vec<(u64, avcore::AudioRole)> = Vec::new();
         let mut track_color_label_requests: Vec<(u64, Option<[u8; 3]>)> = Vec::new();
+        let mut track_rename_requests: Vec<(u64, String)> = Vec::new();
+        let mut track_duplicate_requests: Vec<u64> = Vec::new();
+        let mut track_move_up_requests: Vec<u64> = Vec::new();
+        let mut track_move_down_requests: Vec<u64> = Vec::new();
+        let mut track_delete_requests: Vec<(u64, String)> = Vec::new();
         // Set the first time a trim/move drag starts this frame — `app` is immutably borrowed
         // for the whole track/clip iteration below, so the undo snapshot itself is pushed once,
         // after that borrow ends, rather than inline at the drag_started() check.
@@ -441,6 +446,30 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     .sense(egui::Sense::click()),
                                 );
                                 name_response.context_menu(|ui| {
+                                    // Section 49's Track More Menu — Rename/Duplicate/Delete/
+                                    // Move Up/Move Down, added to this existing track-color
+                                    // context menu rather than a second right-click surface.
+                                    if ui.button(Text::TrackCtxRename.tr(locale)).clicked() {
+                                        track_rename_requests.push((track_id, track.name.clone()));
+                                        ui.close();
+                                    }
+                                    if ui.button(Text::TrackCtxDuplicate.tr(locale)).clicked() {
+                                        track_duplicate_requests.push(track_id);
+                                        ui.close();
+                                    }
+                                    if ui.button(Text::TrackCtxMoveUp.tr(locale)).clicked() {
+                                        track_move_up_requests.push(track_id);
+                                        ui.close();
+                                    }
+                                    if ui.button(Text::TrackCtxMoveDown.tr(locale)).clicked() {
+                                        track_move_down_requests.push(track_id);
+                                        ui.close();
+                                    }
+                                    if ui.button(Text::TrackCtxDelete.tr(locale)).clicked() {
+                                        track_delete_requests.push((track_id, track.name.clone()));
+                                        ui.close();
+                                    }
+                                    ui.separator();
                                     for &[r, g, b] in CLIP_COLOR_LABEL_PALETTE {
                                         let swatch = egui::Color32::from_rgb(r, g, b);
                                         if ui.add(egui::Button::new("  ").fill(swatch)).clicked() {
@@ -1285,6 +1314,33 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         for (track_id, color_label) in track_color_label_requests {
             app.set_track_color_label(track_id, color_label);
+        }
+        for (track_id, name) in track_rename_requests {
+            app.renaming_track = Some((track_id, name));
+        }
+        for track_id in track_duplicate_requests {
+            app.duplicate_track(track_id);
+        }
+        for track_id in track_move_up_requests {
+            app.move_track_up(track_id);
+        }
+        for track_id in track_move_down_requests {
+            app.move_track_down(track_id);
+        }
+        for (track_id, name) in track_delete_requests {
+            // Section 49's own rule: only a track that actually carries content needs
+            // confirmation before deleting — an empty track (no clips of any kind) just goes.
+            let has_content = app.active_project().timeline().tracks.iter().any(|t| {
+                t.id == track_id
+                    && (!t.clips.is_empty()
+                        || !t.text_clips.is_empty()
+                        || !t.shape_clips.is_empty())
+            });
+            if has_content {
+                app.deleting_track = Some((track_id, name));
+            } else {
+                app.delete_track(track_id);
+            }
         }
         for clip_id in delete_requests {
             app.selected_clip_id = Some(clip_id);
