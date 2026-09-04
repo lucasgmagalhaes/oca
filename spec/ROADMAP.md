@@ -1886,9 +1886,51 @@ an item earlier:
   documented temporary `filters.c` shim, discarded before commit), and `cargo fmt --check` all
   stayed clean.
 
-  Real OTIO JSON export/import once the schema can be verified, and the doc's own "imported paths
-  are normalized and cannot escape an explicitly selected media root" security requirement (only
-  meaningful once real file import exists) remain open.
+  **Real `.otio` import now shipped too**, closing this entry's own previously-open "reverse
+  direction" gap. `avcore::interchange::otio_json::parse_otio_json` reads a real OpenTimelineIO
+  JSON document into an `InterchangeTimeline` — verified against three real files fetched from
+  the OpenTimelineIO project's own `tests/sample_data/` (`simple_cut.otio`, `transition.otio`,
+  `multitrack.otio`, now vendored under `crates/core/tests/fixtures/otio/`), each one first
+  loaded through the real `opentimelineio` 0.18.1 Python library to confirm what it actually
+  contains before writing the parser against it. Two real-world shapes this module's own writer
+  never produces needed that verification specifically: a `Transition.1` item carries no
+  `source_range` of its own (confirmed against `transition.otio`'s real `in_offset`/`out_offset`
+  and its neighboring clips' own ranges — the overlap comes out of the two clips it sits between,
+  not extra timeline duration), so it attaches as `transition_in` on the following clip without
+  advancing the track's own timing cursor; and a `null` `Clip.source_range` means "use the media
+  reference's own `available_range`" (confirmed against a real `Clip-004` in `simple_cut.otio`
+  and `transition.otio` both), not a malformed clip. A nested compound clip (a `Stack.1`/
+  `Track.1` sitting directly among a track's own children, confirmed against the real
+  `nested_example.otio`) isn't recursively imported yet — a separate, later slice — but is
+  replaced with a same-duration `Gap` when its own `source_range` is explicit, so later siblings
+  on the same track still keep their correct start time. Anything else structurally unrecognized
+  (a `Clip.2` with multiple media references — only the active one is kept — an unrecognized
+  media-reference schema, a malformed individual clip/marker) completes import and lands in
+  `OtioImportResult::warnings` instead of failing the whole document, matching
+  `InterchangeImportResult::warnings`'s own convention; only a genuinely malformed top-level
+  document (not `Timeline.1`/`Stack.1` at all, or missing a structurally required field) is a
+  hard `OtioParseError`.
+
+  **UI wiring**: the Editor menu bar's File menu gained "Import OpenTimelineIO (.otio)..."
+  (`App::import_otio_into_new_sequence`) — places the imported content into a brand-new sequence
+  tab (`App::add_sequence`'s own "append and switch to it" shape), never overwriting an existing
+  one; every clip's media reference is resolved against the *active project's* own media library,
+  and an unresolvable one is skipped and counted in the resulting toast rather than silently
+  linked to the wrong asset.
+
+  Verified for real, fully linked: 17 new/updated tests in `otio_json_test.rs` (a round-trip
+  through oca's own writer, the three real fixture files above, and synthetic cases for a
+  malformed document, an unrecognized media-reference schema, an unsupported nested item, and a
+  multi-reference `Clip.2`) — `cargo test -p core --lib interchange::otio_json`, 17/17 passing;
+  full `cargo test -p core --lib`, 527/527 passing. 3 new `App`-level tests (successful import
+  creates and switches to a new sequence with the right clip/asset mapping, malformed JSON toasts
+  without adding a sequence, an unresolvable reference is skipped and counted in the toast) —
+  `cargo test -p ui`, 427/427 passing. `cargo fmt`/`cargo clippy -p core --lib --no-deps` both
+  clean, and a direct launch of the rebuilt `ui.exe` confirmed no startup crash.
+
+  The doc's own "imported paths are normalized and cannot escape an explicitly selected media
+  root" security requirement remains open — meaningful now that real file import exists, not yet
+  addressed.
 - `[ ]` **CF-06: live multicam monitor.** Show synchronized proxy-backed feeds and materialize
   angle decisions through the existing ordinary clip-split representation. **Deliberately skipped
   for now** (user-confirmed): every one of its 4 implementation slices needs a live GStreamer
