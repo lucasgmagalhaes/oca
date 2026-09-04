@@ -49,6 +49,7 @@ pub mod export;
 mod gameplay_events;
 mod highlight_detection;
 mod import;
+mod interchange_export;
 mod layer_templates;
 mod markers;
 mod modals;
