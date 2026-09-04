@@ -1126,9 +1126,22 @@ an item earlier:
   unrelated to this change) `preview_test.rs` GStreamer refresh flake; `cargo test -p ui`,
   424/424 passing. `cargo fmt -p core -p ui` clean.
 
-  **Still open**: variable-weight axis selection in the UI, the searchable/categorized
-  selector (FONT-01C), and TEXT-01's automatic script-fallback chain for the international
-  families.
+  **FONT-01C's categorized/searchable selector shipped too.** The flat 43-item `ComboBox` in
+  `text_clip.rs` is now a search box (filters by display name, `family_id`, and catalog tags —
+  typing "mono" surfaces every monospace family) followed by sections grouped under their
+  `font_catalog::FontCategory` heading (Sans/Display/Serif/Handwritten/Monospace/
+  International, the doc's fixed order), each section omitted when nothing in it matches. The
+  search string lives in egui's own per-widget temp storage keyed by the clip id, not a new
+  `App` field. `cargo build -p ui` clean, `cargo test -p ui` 424/424 passing (no dedicated
+  widget-level test — this codebase doesn't unit-test `ComboBox` popup bodies elsewhere
+  either), and a direct launch of the built `ui.exe` confirmed no startup crash
+  (`MainWindowTitle: "oca"`); interactive click-through of the new popup itself wasn't done
+  this session (`computer-use` can't grant access to an unregistered dev-build `.exe` — see
+  memory note — and `make test-e2e` has its own unrelated hang), so treat the picker's visual
+  layout as code-reviewed and compile/launch-verified, not click-tested.
+
+  **Still open**: variable-weight axis selection in the UI, and TEXT-01's automatic
+  script-fallback chain for the international families.
 - `[~]` **TEXT-01: complex text shaping and bidirectional layout.** Replace per-character
   `fontdue` layout with one bundled-only shaping/layout/rasterization engine covering OpenType
   ligatures/contextual forms, UAX #9 bidi, UAX #14 wrapping, cluster-safe timed highlights,
