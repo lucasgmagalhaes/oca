@@ -1551,6 +1551,13 @@ an item earlier:
   under `cargo check`, same "can't link this sandbox's `ui` test binary" caveat as the sidecar-
   import `ui` wiring below.
 
+  **Correction, a later session**: the "can't link this sandbox's `ui` test binary" caveat above
+  and below was specific to the sandboxed environment that wrote it — this session's own
+  environment fully links `cargo test -p ui`. Actually run for real, not just re-asserted: all 3
+  `add_watched_file_to_project` cases and all 6 `import_gameplay_events_*` cases below pass —
+  `cargo test -p ui add_watched_file_to_project` (3/3) and `cargo test -p ui
+  import_gameplay_events` (6/6).
+
   **`ui` wiring shipped too**: the Editor toolbar's new "🎮 Import Events" button (`ui`'s new
   `gameplay_events.rs`) opens a file picker, reads and validates the picked sidecar through
   `avcore::gameplay_events::EventSidecar::parse_and_validate`, then imports its events as
