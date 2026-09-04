@@ -974,7 +974,7 @@ impl App {
                             }
                             if components::icon_button(
                                 ui,
-                                "🗑",
+                                "X",
                                 Text::RemoveMarker.tr(locale),
                                 components::IconButtonOpts::default(),
                             )
@@ -1196,7 +1196,7 @@ impl App {
                             }
                             ui.vertical(|ui| {
                                 ui.label(
-                                    egui::RichText::new(format!("{kind_label} · {range}")).color(
+                                    egui::RichText::new(format!("{kind_label} | {range}")).color(
                                         if accepted {
                                             theme::TEXT_PRIMARY
                                         } else {
@@ -1837,13 +1837,14 @@ impl App {
 fn marker_kind_icon(kind: avcore::MarkerKind) -> &'static str {
     match kind {
         // "🔹"/"☐"/"📖" are all confirmed-tofu classes (emoji-presentation / Geometric Shapes)
-        // per this session's other fixes — plain ASCII instead. "⭐" is left as-is: not
-        // confirmed broken, and already reviewed/accepted elsewhere (`spec/ROADMAP.md`'s Stage 5
-        // note on the toolbar's "visible label, emoji prefix" convention).
+        // per this session's other fixes — plain ASCII instead. "⭐" swapped for "*": both call
+        // sites render this as a plain &str with no font-family override, so the vendored
+        // Lucide icon font (which STAR_STR needs) never gets applied here — using it would
+        // just trade one tofu glyph for another private-use-area one.
         avcore::MarkerKind::Standard => "M",
         avcore::MarkerKind::ToDo => "[]",
         avcore::MarkerKind::Chapter => "C",
-        avcore::MarkerKind::Highlight => "⭐",
+        avcore::MarkerKind::Highlight => "*",
     }
 }
 
