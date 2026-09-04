@@ -1070,8 +1070,11 @@ impl TextFontFamily {
     /// [`TextFontFamily::ALL`] member always resolves to a real [`CATALOG`] entry; a debug build
     /// panics if that invariant is ever broken (guarded by this module's own tests in release
     /// builds too, so the mismatch is caught long before it ships).
-    pub fn family_id(self) -> &'static str {
-        let id = match self {
+    pub fn family_id(&self) -> &str {
+        let id: &str = match self {
+            // Preserved verbatim -- never a real font_catalog slug, so skip the debug_assert
+            // below (which would fire on every unrecognized family otherwise).
+            Self::Unknown(id) => return id.as_str(),
             Self::Lato => "lato",
             Self::BebasNeue => "bebas-neue",
             Self::PlayfairDisplay => "playfair-display-sc",
