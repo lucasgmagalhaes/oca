@@ -1022,6 +1022,13 @@ pub struct App {
     /// scroll-wheel/trackpad) pan these areas — see [`EditorTool`]'s own doc comment. Not
     /// persisted, resets to `0.0` on project switch/launch, same as `timeline_px_per_sec`.
     pub timeline_pan_px: f32,
+    /// Track ids currently collapsed to `COLLAPSED_TRACK_ROW_HEIGHT` in the timeline strip —
+    /// toggled by the track header's own collapse/expand button (`screens::editor::
+    /// timeline_panel`). Transient UI presentation state, same category as `selected_clip_id`
+    /// (see `ARCHITECTURE.md`'s persistent-vs-transient split) — never serialized, and not tied
+    /// to a specific project/sequence, so it just naturally resets if a collapsed track's id
+    /// never recurs.
+    pub collapsed_track_ids: std::collections::HashSet<u64>,
     /// Width, in points, of the Editor's media-library column — dragged via the divider
     /// between it and the preview column (`editor.rs::resizable_divider`). Clamped to the
     /// window's current size every frame (`editor.rs::show`). Seeded from
@@ -1723,6 +1730,7 @@ impl App {
             drawing_shape_points: None,
             timeline_px_per_sec: 4.0,
             timeline_pan_px: 0.0,
+            collapsed_track_ids: std::collections::HashSet::new(),
             lib_panel_width,
             props_panel_width,
             timeline_height,

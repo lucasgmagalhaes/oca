@@ -445,6 +445,8 @@ text_catalog! {
     TrackUnlock: pt_br = "Desbloquear faixa", en = "Unlock track";
     TrackMute: pt_br = "Silenciar faixa", en = "Mute track";
     TrackUnmute: pt_br = "Reativar som da faixa", en = "Unmute track";
+    TrackCollapse: pt_br = "Recolher faixa", en = "Collapse track";
+    TrackExpand: pt_br = "Expandir faixa", en = "Expand track";
     QueueSubtitle: pt_br = "A edição continua responsiva enquanto os jobs renderizam em segundo plano. A fila persiste entre sessões.", en = "Editing stays responsive while jobs render in the background. The queue persists across sessions.";
     QueueTechNote: pt_br = "Nota técnica: cada job é um snapshot (bitrate/perfil/destino) tirado no momento em que entra na fila — mudanças no projeto ativo depois disso não afetam o job. Render roda em worker separado da UI (tokio::mpsc); 1 worker por padrão, configurável em Preferências.", en = "Technical note: each job is a snapshot (bitrate/profile/destination) taken the moment it enters the queue — later changes to the active project don't affect the job. Rendering runs in a worker separate from the UI (tokio::mpsc); 1 worker by default, configurable in Preferences.";
     QueueEmpty: pt_br = "Nenhum job de exportação. Use \"Adicionar exportação\" na tela do Editor.", en = "No export jobs yet. Use \"Add export\" on the Editor screen.";
