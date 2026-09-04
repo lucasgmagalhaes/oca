@@ -167,6 +167,8 @@ impl App {
                     background_removal_enabled: source.background_removal_enabled,
                     background_removal_mask_path: source.background_removal_mask_path,
                     blend_mode: source.blend_mode,
+                    anchor_x: source.anchor_x,
+                    anchor_y: source.anchor_y,
                 });
         }
     }

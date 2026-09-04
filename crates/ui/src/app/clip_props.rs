@@ -163,6 +163,20 @@ impl App {
         });
     }
 
+    /// Sets `selected_clip_id`'s rotation/scale pivot
+    /// ([`avcore::timeline::ClipInstance::anchor_x`]/`anchor_y`, each clamped to `0.0..=1.0`) —
+    /// what dragging the properties panel's Anchor Point sliders does. A no-op if nothing is
+    /// selected. See that field's own doc comment for the live-preview scope limit (export
+    /// only, for now).
+    pub fn set_selected_clip_anchor(&mut self, anchor_x: f32, anchor_y: f32) {
+        let anchor_x = anchor_x.clamp(0.0, 1.0);
+        let anchor_y = anchor_y.clamp(0.0, 1.0);
+        self.with_selected_clip_mut(|clip| {
+            clip.anchor_x = anchor_x;
+            clip.anchor_y = anchor_y;
+        });
+    }
+
     /// Sets `selected_clip_id`'s video-stabilization strength
     /// ([`avcore::timeline::ClipInstance::stabilization_intensity`], clamped to
     /// [`STABILIZATION_INTENSITY_RANGE`]) — what dragging the properties panel's stabilization

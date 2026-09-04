@@ -138,6 +138,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     let mut lut_path = clip.lut_path.clone();
                     let (mut layer_scale_x, mut layer_scale_y) =
                         (clip.layer_scale_x, clip.layer_scale_y);
+                    let (mut anchor_x, mut anchor_y) = (clip.anchor_x, clip.anchor_y);
                     let mut vignette_intensity = clip.vignette_intensity;
                     let (mut brightness, mut contrast, mut saturation) =
                         (clip.brightness, clip.contrast, clip.saturation);
@@ -1222,6 +1223,33 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                 if let Some(kfs) = new_rotation_keyframes {
                                     app.set_selected_clip_rotation_keyframes(kfs);
                                 }
+                            }
+
+                            let anchor_changed = components::property_section(
+                                ui,
+                                clip_id,
+                                Text::PropAnchor.tr(locale),
+                                Text::AnchorExportNote.tr(locale),
+                                (anchor_x - 0.5).abs() > 1e-4 || (anchor_y - 0.5).abs() > 1e-4,
+                                |ui| {
+                                    let mut changed = false;
+                                    changed |= ui
+                                        .add(
+                                            egui::Slider::new(&mut anchor_x, 0.0..=1.0)
+                                                .text(Text::KeyframeX.tr(locale)),
+                                        )
+                                        .changed();
+                                    changed |= ui
+                                        .add(
+                                            egui::Slider::new(&mut anchor_y, 0.0..=1.0)
+                                                .text(Text::KeyframeY.tr(locale)),
+                                        )
+                                        .changed();
+                                    changed
+                                },
+                            );
+                            if anchor_changed {
+                                app.set_selected_clip_anchor(anchor_x, anchor_y);
                             }
 
                             let mut new_opacity_keyframes = None;

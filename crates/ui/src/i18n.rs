@@ -291,6 +291,7 @@ text_catalog! {
     PropScaleKeyframes: pt_br = "Escala (keyframes / punch-in)", en = "Scale (keyframes / punch-in)";
     PropRotationKeyframes: pt_br = "Rotação (keyframes)", en = "Rotation (keyframes)";
     PropOpacityKeyframes: pt_br = "Opacidade (keyframes)", en = "Opacity (keyframes)";
+    PropAnchor: pt_br = "Ponto de ancoragem", en = "Anchor point";
     AddKeyframe: pt_br = "+ Adicionar keyframe", en = "+ Add keyframe";
     RemoveKeyframe: pt_br = "Remover keyframe", en = "Remove keyframe";
     RemoveVertex: pt_br = "Remover vértice", en = "Remove vertex";
@@ -304,6 +305,7 @@ text_catalog! {
     ScaleExportNote: pt_br = "aplicado na exportação e no preview ao vivo.", en = "applied on export and live preview.";
     RotationExportNote: pt_br = "aplicado na exportação; sem efeito no preview ao vivo ainda.", en = "applied on export; no live preview effect yet.";
     OpacityExportNote: pt_br = "aplicado na exportação apenas em clipes de faixa de sobreposição; sem efeito no preview ao vivo ainda.", en = "applied on export only for overlay-track clips; no live preview effect yet.";
+    AnchorExportNote: pt_br = "ponto ao redor do qual rotação e escala giram/crescem — aplicado na exportação; sem efeito no preview ao vivo ainda.", en = "point rotation and scale pivot/grow around — applied on export; no live preview effect yet.";
     OnExport: pt_br = "Ao exportar", en = "On export";
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";
