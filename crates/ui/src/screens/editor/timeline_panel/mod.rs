@@ -83,7 +83,7 @@ enum TrimEdge {
 }
 
 pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
-    crate::components::card_frame().show(ui, |ui| {
+    crate::components::panel_frame().show(ui, |ui| {
         ui.set_height(height - 20.0);
 
         // Ctrl+scroll zooms the timeline in/out (request.md's Fase 3 spec). egui's
