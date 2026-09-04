@@ -40,13 +40,8 @@ use text_clip::text_clip_properties;
 pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32) {
     let locale = app.locale;
     components::panel_frame().show(ui, |ui| {
-        // `width`/`height` are the *outer* size `editor::mod`'s `allocate_ui` reserved for this
-        // whole panel — `panel_frame()`'s own `inner_margin` (`SPACE_MD` each side) already
-        // shrinks this Frame's child `ui` accordingly, so re-asserting the raw outer size here
-        // pushed content back out past that margin, overflowing past the panel's own (now
-        // visible, since `panel_frame` paints a real border) right/bottom edge.
-        ui.set_width(width - theme::SPACE_MD * 2.0);
-        ui.set_height(height - theme::SPACE_MD * 2.0);
+        ui.set_width(width);
+        ui.set_height(height);
         // Real clip selections carry a long, non-collapsible stack of property sections
         // (Transform/Crop/Composite/Speed/Effects/Audio, each with its own keyframe editor)
         // that easily exceeds a typical body_height — without a ScrollArea, this content
@@ -1457,7 +1452,19 @@ pub(super) fn stereo_db_meter(ui: &mut egui::Ui, level: avcore::AudioLevel, mete
                 egui::pos2(bar_rect.left(), bar_rect.bottom() - filled_h),
                 egui::vec2(bar_rect.width(), filled_h),
             );
-            painter.rect_filled(filled_rect, 2.0, theme::ACCENT);
+            // Standard green/yellow/red audio-meter convention — was a flat `theme::ACCENT`
+            // regardless of level (confirmed via a real screenshot: a thick, unvarying purple
+            // bar, not a meter). `ACCENT`/Petroleum Blue means interaction, not a passive level
+            // readout, per the design doc's own "don't flood the interface with the accent"
+            // rule anyway.
+            let fill_color = if rms_unit > 0.9 {
+                theme::ERROR
+            } else if rms_unit > 0.7 {
+                theme::WARNING
+            } else {
+                theme::SUCCESS
+            };
+            painter.rect_filled(filled_rect, 2.0, fill_color);
         }
         let peak_unit = amplitude_to_unit(peak);
         if peak_unit > 0.0 {
