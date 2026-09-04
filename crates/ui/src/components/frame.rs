@@ -27,9 +27,10 @@ pub fn card_frame() -> egui::Frame {
         .inner_margin(egui::Margin::same(12))
 }
 
-/// A structural panel background — `OCA_Design_System_egui.md`'s Section 12 ("Panels:
-/// `bg_panel`, 1px `border_default`, 0px radius, no shadow... Avoid putting every panel inside a
-/// rounded card"). Distinct from [`card_frame`]: same fill/border color, but square-cornered —
+/// A structural panel background — `CINECUT_Design_System_v1.0.md`'s Section 23 ("Panels:
+/// `bg-panel`, 1px `border-default`, 0px radius, no shadow... workspace panels should visually
+/// read as parts of one workstation"). Distinct from [`card_frame`]: same fill/border color, but
+/// square-cornered —
 /// for the Editor's three real structural panels (media library, properties, timeline), not for
 /// individual list-item cards. `card_frame`'s `RADIUS_MD` rounding reads correctly on a project
 /// card or a queue row; it read as an anti-pattern on `timeline_panel`, which used to reuse

@@ -17,19 +17,19 @@ use egui::{Response, RichText, Ui};
 
 use crate::theme;
 
-/// The "Primary" button variant from `OCA_Design_System_egui.md`'s Section 8 — accent-filled,
-/// reserved for the one dominant action on a screen (Export, New Project, Confirm, Apply), not
-/// every button. Every other button stays a plain `ui.button(...)`, which already inherits the
-/// correct secondary/ghost look from `theme::apply`'s global `Visuals`.
+/// The "Primary" button variant from `CINECUT_Design_System_v1.0.md`'s Section 9 / `CINECUT_
+/// UI_UX_SPEC_v1.0.md`'s Section 18 (Export Button) — accent-filled, reserved for the one
+/// dominant action on a screen (Export, New Project, Confirm, Apply), not every button. Every
+/// other button stays a plain `ui.button(...)`, which already inherits the correct secondary/
+/// ghost look from `theme::apply`'s global `Visuals`.
 ///
-/// Hover/press use the doc's own `accent_hover`/`accent_active`, scoped to just this button
+/// Hover/press use the spec's own `accent-hover`/`accent-active`, scoped to just this button
 /// (`ui.scope`, same pattern `icon_button`'s `hover_color` option already uses) rather than
 /// through `theme::apply`'s global hovered/active `Visuals` — those drive every widget in the
 /// app, not just the one dominant accent-filled action this component is reserved for. Same
-/// scoping for Section 8's Primary-specific 12px horizontal padding (the app-wide default is a
-/// tighter 8px, correct for the Secondary/Ghost buttons that make up the rest of the app) and
-/// 28-32px height floor (`min_size`, robust regardless of font metrics — an explicit padding
-/// value alone doesn't reliably land in that range).
+/// scoping for the spec's own Primary Button geometry (height 32px, padding 12px/8px) — the
+/// app-wide default is a tighter 8px/4px, correct for the Secondary/Ghost buttons that make up
+/// the rest of the app.
 pub fn primary_button(ui: &mut Ui, text: &str) -> Response {
     ui.scope(|ui| {
         let style = ui.style_mut();
@@ -38,11 +38,11 @@ pub fn primary_button(ui: &mut Ui, text: &str) -> Response {
         widgets.hovered.bg_fill = theme::ACCENT_HOVER;
         widgets.active.weak_bg_fill = theme::ACCENT_ACTIVE;
         widgets.active.bg_fill = theme::ACCENT_ACTIVE;
-        style.spacing.button_padding.x = 12.0;
+        style.spacing.button_padding = egui::vec2(12.0, 8.0);
         ui.add(
             egui::Button::new(RichText::new(text).color(theme::TEXT_PRIMARY))
                 .fill(theme::ACCENT)
-                .min_size(egui::vec2(0.0, 30.0)),
+                .min_size(egui::vec2(0.0, 32.0)),
         )
     })
     .inner
