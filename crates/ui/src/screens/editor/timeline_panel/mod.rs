@@ -997,11 +997,19 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     }
                                     draw_keyframe_markers(painter, clip_rect, clip);
                                     draw_transition_wedge(painter, clip_rect, clip, px_per_sec);
+                                    // Section 51's Clip Selection: "1px petroleum-blue border...
+                                    // do not add glow." Was 2px `theme::ACCENT` for a single
+                                    // selection; multi-selection used a 2px `theme::ERROR` (red)
+                                    // border — confusable with a genuine error/problem indicator,
+                                    // not a real error state. Multi-selection now shares the same
+                                    // accent color ("shared selection treatment") but keeps a
+                                    // thicker 2px stroke as the one distinguishing cue, rather
+                                    // than borrowing red for a purely selection-related state.
                                     if app.multi_selected_clip_ids.contains(&clip.id) {
                                         painter.rect_stroke(
                                             clip_rect,
                                             egui::CornerRadius::same(theme::RADIUS_SM),
-                                            egui::Stroke::new(2.0, theme::ERROR),
+                                            egui::Stroke::new(2.0, theme::ACCENT),
                                             egui::StrokeKind::Inside,
                                         );
                                     }
@@ -1009,7 +1017,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         painter.rect_stroke(
                                             clip_rect,
                                             egui::CornerRadius::same(theme::RADIUS_SM),
-                                            egui::Stroke::new(2.0, theme::ACCENT),
+                                            egui::Stroke::new(1.0, theme::ACCENT),
                                             egui::StrokeKind::Inside,
                                         );
                                     }
