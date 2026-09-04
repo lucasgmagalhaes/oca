@@ -965,16 +965,56 @@ an item earlier:
   its "Do not generate static instances... Use official static files when they exist" rule.
   Total bundled size: 6.6 MiB, well inside the doc's 20 MiB budget. 9 new families have **no
   `TextFontFamily` enum variant yet** (that needs the persisted-identity swap above) but are
-  already real, loaded, and verified working: `text_layout.rs`'s cosmic-text engine iterates
+  already real, loaded, and byte-verified working: `text_layout.rs`'s cosmic-text engine iterates
   `locked_face_bytes()` generically, not just the six enum-backed families, and
-  `every_bundled_family_shapes_ordinary_latin_text_without_missing_glyphs` (a real shaping run,
-  not just a manifest check) confirmed all 9 shape ordinary Latin text with no missing glyphs.
-  18 new `cargo test -p core --lib` cases (489/489 total passing, this environment's toolchain
-  fully links) cover per-family byte verification plus the catalog's existing generic self-
+  `loads_exactly_the_locked_catalog_faces_and_nothing_else` (a real `fontdb` parse, not just a
+  manifest check) confirmed every one of them loads as a valid font through the real production
+  path. **Correction to an earlier draft of this note**: it previously claimed
+  `every_bundled_family_shapes_ordinary_latin_text_without_missing_glyphs` had confirmed all 9
+  shape Latin text with no missing glyphs — checked again while writing FONT-01B slice 2's own
+  note below, and that test actually iterates `TextFontFamily::ALL` (the enum, still only 6
+  variants), not the full `CATALOG` — it never touched the 9 new families at all. Real
+  per-family byte/parse verification stands; Latin-shaping verification for anything beyond the
+  original six does not, and is called out honestly as a gap in slice 2's own note. 18 new
+  `cargo test -p core --lib` cases (489/489 total passing, this environment's toolchain fully
+  links) cover per-family byte verification plus the catalog's existing generic self-
   consistency/traversal/count checks, which needed no changes to already cover the new entries.
-  Catalog expansion to the remaining categories (Display/Condensed, Serif, Handwritten,
-  Monospace, international fallback — 28 more families), variable-weight axis *selection* in
-  the UI, and the searchable selector (FONT-01C/D) are all still open.
+
+  **FONT-01B slice 2 shipped: the catalog is now complete, all 43 families.** The remaining four
+  categories plus the international set — Display/condensed/gaming (Oswald, Anton, Barlow
+  Condensed, League Spartan, Teko, Black Ops One, Russo One, Bangers — 8 new, Bebas Neue/Archivo
+  Black already bundled), Serif (Merriweather, Libre Baskerville, Lora, Cinzel, Bitter — 5 new),
+  Handwritten (Caveat, Pacifico, Dancing Script, Comic Neue, Gloria Hallelujah — 5 new),
+  Monospace (JetBrains Mono, Roboto Mono, Space Mono — 3 new), and International (7 `Noto`
+  families for Arabic/Hebrew/Devanagari/Bengali/Tamil/Thai) — same pinned
+  `GOOGLE_FONTS_REVISION`, same sha256/size verification discipline as slice 1. Added
+  `FontCategory::International` (the doc's own "visible under an International category"
+  requirement — reusing `Sans` for these would have been a real mislabeling, not a shortcut).
+  Total bundled size: 18 MiB (doc's own measurement was 17.07 MiB; close enough to be the same
+  file set, the difference is rounding/filesystem overhead) — inside the 20 MiB gate with 2 MiB
+  to spare. A new `catalog_has_exactly_43_families_and_51_faces` test locks in the doc's own
+  release gate ("exactly 43 visible families and 51 approved source binaries") as a real
+  assertion, not just a comment. 28 new dedicated per-family byte tests plus the existing generic
+  ones (518/518 `cargo test -p core --lib` passing) — same real, linked-toolchain verification
+  slice 1 had, not a type-check-only claim.
+
+  **Honest correction found and fixed mid-slice**: the 7 `Noto` international entries were
+  initially tagged `glyphset_guarantees: ["gf-latin-core", "international-fallback"]`, copying
+  slice 1's pattern without checking whether Noto's own script-specific faces actually carry
+  Latin coverage — they may not (Noto's project explicitly ships separate faces per script, and
+  a Latin-coverage claim for e.g. `NotoSansThai` was never verified). Nothing in the codebase
+  currently reads `glyphset_guarantees` (confirmed via a real grep — it's descriptive metadata
+  only, not consumed by any runtime logic), so this was never a functional bug, just an
+  inaccurate claim — fixed to `["international-fallback"]` only before this note was written,
+  not left for a future session to catch.
+
+  **Still open**: FONT-01A's persisted-identity swap (needed before any of these 37 new families
+  can be selected from the Editor's text-clip font picker at all — FONT-01D), variable-weight
+  axis *selection* in the UI (today's default/bold-only picker doesn't expose the axes these
+  variable fonts actually carry), the searchable/categorized selector itself (FONT-01C), Latin-
+  shaping verification for the 37 new families (needs `TextLayoutEngine` to expose a shape-by-
+  `family_id` path instead of only by the `TextFontFamily` enum), and TEXT-01's own shaping-test
+  gate before the 7 international families are exposed as script fallbacks.
 
   Verified for real, not just type-checked: this session's sandbox turned out to have a
   working path to a fully-linked `core` test binary (`rustup update stable` past a
