@@ -748,6 +748,25 @@ enum MotionTrackEvent {
     },
 }
 
+/// A message from a background nested-sequence-materialization worker thread (see
+/// [`App::materialize_nested_sequences_for_active_sequence`]) back to the UI thread.
+enum NestedSequenceEvent {
+    Ready {
+        sequence_id: u64,
+        cache: HashMap<u64, avcore::nested_sequence::NestedSequenceCache>,
+        assets: Vec<avcore::MediaAsset>,
+        /// `Project::sequences` snapshot the render was dispatched against — latched into
+        /// [`NestedSequenceRenderState::nested_sequence_last_input`] on completion so an
+        /// unrelated frame doesn't re-dispatch a render whose inputs haven't actually changed.
+        sequences_input: Vec<avcore::project::Sequence>,
+    },
+    Failed {
+        sequence_id: u64,
+        error: String,
+        sequences_input: Vec<avcore::project::Sequence>,
+    },
+}
+
 /// A message from a background scene-cut-detection worker thread (see
 /// [`App::spawn_detect_scene_cuts_for_selected_clip`]) back to the UI thread.
 enum SceneCutEvent {
@@ -958,6 +977,9 @@ pub struct App {
     /// nested sequence, not once per caller).
     pub(super) nested_sequence_render_cache:
         HashMap<u64, avcore::nested_sequence::NestedSequenceCache>,
+    /// Dispatch bookkeeping for the background thread(s) that actually populate
+    /// `nested_sequence_render_cache` — see [`NestedSequenceRenderState`]'s own doc comment.
+    pub(crate) nested_sequence_render_state: NestedSequenceRenderState,
     /// Every field around the live preview pipeline — GStreamer pipeline handle, loaded-clip-id
     /// tracking, uploaded textures, playback/fullscreen state — grouped into its own struct
     /// rather than left flat on `App` (an internal-audit finding: `App` had grown to 122 flat
@@ -1485,6 +1507,41 @@ pub(crate) struct MotionTrackingState {
     pub(crate) motion_tracking_clip_id: Option<u64>,
 }
 
+/// Background-job state for rendering compound clips (nested sequences) off the UI thread — see
+/// [`App::materialize_nested_sequences_for_active_sequence`]. Deliberately separate from
+/// `App::nested_sequence_render_cache` (the actual rendered-file cache, keyed by nested
+/// sequence id and shared by every recursive caller of
+/// [`avcore::nested_sequence::materialize_nested_sequences`]) — this struct only tracks the
+/// *dispatch* bookkeeping (what's in flight, what was last returned, what input produced it),
+/// same "one-shot background job state, not the underlying domain cache" split
+/// `MotionTrackingState` already keeps from `MotionTrackRegionState`. Closes ROADMAP.md P4 item
+/// 35's one remaining honest gap: materializing a nested sequence used to block the whole UI
+/// thread on the first hit after an edit (a real, if bounded, FFmpeg re-encode).
+pub(crate) struct NestedSequenceRenderState {
+    pub(crate) nested_sequence_tx: UnboundedSender<NestedSequenceEvent>,
+    pub(crate) nested_sequence_rx: UnboundedReceiver<NestedSequenceEvent>,
+    /// Active-sequence ids a background render is currently running for — a `HashSet`, not a
+    /// single `Option<u64>` like `MotionTrackingState::motion_tracking_clip_id`, because
+    /// switching Editor tabs mid-render is a real case here (motion-tracking has no equivalent:
+    /// it's always scoped to one already-selected clip, never "whichever sequence is active
+    /// right now").
+    pub(crate) nested_sequence_rendering_ids: HashSet<u64>,
+    /// The last successfully (or unsuccessfully) materialized synthetic asset list per active
+    /// sequence id — what [`App::materialize_nested_sequences_for_active_sequence`] returns
+    /// immediately while a fresh render (if one was just dispatched) is still in flight. Empty
+    /// for a sequence that failed to materialize, matching the old synchronous function's own
+    /// "failure degrades to no nested clips resolved" behavior.
+    pub(crate) nested_sequence_last_result: HashMap<u64, Vec<avcore::MediaAsset>>,
+    /// The `Project::sequences` snapshot that produced `nested_sequence_last_result`'s entry for
+    /// the same key — compared wholesale against the *current* `Project::sequences`, not just
+    /// the active sequence's own timeline, since a compound clip's rendered content depends on
+    /// whatever *other* `Sequence` it points at (the exact reasoning `ExportPreviewCache`'s own
+    /// doc comment already gives for the same "every sequence, not just the active one" choice).
+    /// Latched on both success *and* failure, so a persistently broken nested-sequence reference
+    /// doesn't get re-dispatched to a new background thread every single frame forever.
+    pub(crate) nested_sequence_last_input: HashMap<u64, Vec<avcore::project::Sequence>>,
+}
+
 /// Scene-cut-detection (D4) background-job state — same pattern as [`AutoReframeState`].
 pub(crate) struct SceneCutDetectionState {
     pub(crate) scene_cut_detection_tx: UnboundedSender<SceneCutEvent>,
@@ -1658,6 +1715,7 @@ impl App {
         let (transcribe_tx, transcribe_rx) = mpsc::unbounded_channel();
         let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
         let (dynamic_reframe_tx, dynamic_reframe_rx) = mpsc::unbounded_channel();
+        let (nested_sequence_tx, nested_sequence_rx) = mpsc::unbounded_channel();
         let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
         let (scene_cut_detection_tx, scene_cut_detection_rx) = mpsc::unbounded_channel();
         let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
@@ -1707,6 +1765,13 @@ impl App {
             export_job_started_at: HashMap::new(),
             export_preview_cache: None,
             nested_sequence_render_cache: HashMap::new(),
+            nested_sequence_render_state: NestedSequenceRenderState {
+                nested_sequence_tx,
+                nested_sequence_rx,
+                nested_sequence_rendering_ids: HashSet::new(),
+                nested_sequence_last_result: HashMap::new(),
+                nested_sequence_last_input: HashMap::new(),
+            },
             preview_state: PreviewState::default(),
             import_state: ImportState {
                 import_tx,
@@ -2526,6 +2591,7 @@ pub(crate) fn thumbnail_frame_time(frame_index: i64, fps: Option<f32>) -> f64 {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.pump_export_queue();
+        self.pump_nested_sequence_renders();
         self.pump_import_queue();
         self.pump_sound_library_queue();
         self.pump_transcribe();
