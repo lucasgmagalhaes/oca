@@ -32,15 +32,17 @@ for exact export-vs-preview wiring per effect).
 - [~] vignette, glitch, deflicker, LUTs (3D `.cube` specifically), stabilization preview
       (`deshake`/`opencvvideostab` all checked via real `gst-inspect-1.0`). Still true for a real
       GStreamer element for any of the five — a custom-coded one was never attempted (no way to
-      visually verify a GStreamer plugin in this sandbox). **Partial CPU-side fallback**:
+      visually verify a GStreamer plugin in this sandbox). **CPU-side fallback**:
       `avcore::preview_effects` post-processes the already-decoded preview frame (same pattern
       the waveform/vectorscope scopes above use) for LUT (precise, real trilinear interpolation
-      of the `.cube` data) and vignette (a simple radial-falloff *approximation*, not FFmpeg's
-      own cosine formula — see `ROADMAP.md` P4 item 21 for why matching that exactly wasn't
-      attempted). Glitch/deflicker/stabilization remain fully undone — glitch has no single
-      well-specified algorithm to approximate, and the other two need temporal state across
-      frames, a materially larger piece of work. See `ROADMAP.md` P4 item 21 for the full
-      writeup.
+      of the `.cube` data), vignette (a simple radial-falloff *approximation*, not FFmpeg's own
+      cosine formula), glitch (mirrors export's own `noise` avfilter shape — additive per-pixel
+      temporal noise, not a from-scratch algorithm choice), and deflicker (a caller-owned 5-frame
+      rolling mean-luma window, matching export's `deflicker=mode=am:size=5` window — an additive
+      brightness correction toward that rolling average). **Stabilization remains fully
+      undone** — it needs motion estimation between frames (optical flow or equivalent), a
+      fundamentally different and materially larger problem than the other four's per-frame or
+      simple-rolling-window shape. See `ROADMAP.md` P4 item 21 for the full writeup.
 
 ## Text, shapes
 

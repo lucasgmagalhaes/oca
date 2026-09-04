@@ -399,15 +399,35 @@ not by default priority.
     looks like temporal corruption frame to frame rather than a static grain overlay baked onto
     the image. Still a **preview approximation**, not a reproduction of
     `libavfilter/vf_noise.c`'s own PRNG — same "not bit-exact" caveat vignette already carries.
-    **Explicitly still not done**: deflicker and stabilization (both need *temporal* state across
-    multiple frames, a materially larger, stateful piece of work with its own seek/scrub edge
-    cases — not a natural extension of this per-frame-only module). Verified via a real-execution
-    scratch crate (`preview_effects.rs` has zero heavy deps) — 19 tests (12 original + 7 new for
-    glitch: no-op at zero intensity, empty-buffer no-op, alpha untouched, byte-bounds safety at
-    full intensity, determinism for a fixed seed, divergence across seeds, and an actual-
-    perturbation sanity check), one of which caught a real bug in a *test's own* expected value
-    (a coarse 2-point LUT interpolates rather than reproducing the exact original channel value)
-    before it could pass silently.
+
+    **Second follow-up**: deflicker is covered too now. `avcore::DeflickerHistory` keeps a
+    caller-owned 5-frame rolling window of mean luma (matching export's own
+    `deflicker=mode=am:size=5` window exactly), and `apply_deflicker_to_rgba` shifts each frame's
+    R/G/B uniformly by `(rolling average - current mean)` — an additive correction, not
+    multiplicative, so a near-black frame doesn't blow up the way a `target/current` gain would.
+    `App::pump_preview_frame` resets the history whenever the previewed clip id changes (a new
+    `preview_deflicker_history: (Option<u64>, DeflickerHistory)` field on `PreviewState`), the
+    same "one clip's temporal state must never leak into the next" concern a seek/clip-change
+    could otherwise create. Verified for real this time, not just type-checked: `core`'s test
+    binary links and runs fully on this dev machine (the ONNX/whisper-linking gap other notes in
+    this doc describe is specific to network-restricted Linux sandboxes, not this environment) —
+    `cargo test -p core --lib preview_effects` passes all 25 tests (18 original + 7 new for
+    deflicker: no-op on the first frame, darkens-a-brighter-than-history frame, brightens-a-
+    dimmer-than-history frame, the 5-frame window cap, byte-bounds safety, empty-buffer no-op).
+    `cargo test -p ui` (418/418) confirms the `PreviewState`/`pump_preview_frame` wiring compiles
+    and the rest of the suite is unaffected. **Explicitly still not done**: stabilization —
+    motion estimation between frames (optical flow or equivalent) is a fundamentally different,
+    materially larger problem than a rolling scalar average, with its own seek/scrub edge cases
+    (a jump-cut in scrub position shouldn't try to "stabilize" against a now-irrelevant previous
+    frame) — not a natural extension of this module's per-frame or simple-rolling-window shape.
+
+    Verified via a real-execution scratch crate for the earlier glitch follow-up
+    (`preview_effects.rs` has zero heavy deps) — 19 tests (12 original + 7 new for glitch: no-op
+    at zero intensity, empty-buffer no-op, alpha untouched, byte-bounds safety at full intensity,
+    determinism for a fixed seed, divergence across seeds, and an actual-perturbation sanity
+    check), one of which caught a real bug in a *test's own* expected value (a coarse 2-point LUT
+    interpolates rather than reproducing the exact original channel value) before it could pass
+    silently.
 22. `[x]` Smart bins (rule-based media-pool auto-organization) — real in DaVinci Resolve, but
     lower priority for a small/single-editor workflow than for a studio pipeline. The one P4 item
     tractable in this sandbox without special hardware or a missing GStreamer element (unlike 19-
