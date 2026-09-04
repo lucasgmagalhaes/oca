@@ -754,13 +754,24 @@ not by default priority.
       feature has. The timeline block itself shows the nested sequence's own name (📦 badge) in
       place of a filmstrip/waveform, since a compound clip has no `asset_id`/media-library entry
       to draw one from.
-    - **Known, deliberately-not-hidden cost**: unlike an imported asset, a nested sequence's
-      rendered file is produced by a real encode, not instant — `ui`'s callers (queueing an
-      export, the Fila screen's size-estimate preview, and now `ensure_preview_loaded` too) call
-      this synchronously and block until it's done, no background-thread/progress-reporting path
-      yet. Paid once per edit to that nested sequence (the cache), but the first hit after an
-      edit is a real, currently un-signposted UI hitch for a long nested sequence — the honest
-      reason this item is `[~]` not `[x]`.
+    - **Follow-up: the UI-thread-blocking cost is gone.** `App::materialize_nested_sequences_for_active_sequence`
+      no longer calls `avcore::nested_sequence::materialize_nested_sequences` synchronously —
+      the actual FFmpeg re-encode now runs on a background thread (`NestedSequenceRenderState`,
+      the same `std::thread::spawn` + channel + `pump_*` pattern every other background job in
+      this codebase already uses, e.g. `MotionTrackingState`), and the method always returns
+      immediately: the last successfully-materialized result for the active sequence (empty
+      before the first render ever completes), while dispatching a fresh render only when
+      `Project::sequences` has actually changed since the input that produced that cached result
+      (compared wholesale, not just the active sequence's own timeline — a compound clip's
+      rendered content depends on whatever *other* sequence it points at, same reasoning
+      `ExportPreviewCache` already uses) and no render for that sequence id is already in flight.
+      A persistently broken nested-sequence reference (a real cycle, a deleted sequence) latches
+      its failed input too, so it doesn't get redispatched to a fresh thread every single frame
+      forever. Verified with 5 new `cargo test -p ui` cases (423/423 passing) covering the
+      no-nested-clips fast path, the unchanged-input cache hit, dispatch-on-a-real-nested-clip,
+      and both `Ready`/`Failed` event merge paths — the underlying `avcore::nested_sequence`
+      module itself is untouched (already verified per this item's own earlier write-up above),
+      this only changes when/where it's called from.
     - **Follow-up: live preview now works too.** `App::current_preview_clip`/
       `current_preview_overlay_clips`/`current_preview_audio_clips` now take an explicit
       `media_library` slice instead of reading `Project::media_library` directly, so
