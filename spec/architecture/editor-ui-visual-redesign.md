@@ -440,12 +440,29 @@ Mapping:
   item in this whole doc.
 - **TRANSFORM → Position/Scale/Rotation**: maps directly to the existing
   `position_keyframes`/`layer_scale_x,y`/`rotation_keyframes` — already real fields, currently
-  edited via `keyframe_editors::position_keyframe_editor`/sliders. **Anchor X/Y does not
-  exist** — oca has no per-clip transform-anchor concept (the mockup's `960.0/540.0` is just
-  "canvas center" for a 1920×1080 sequence). Either omit it (transform is always
-  center-anchored, which matches current behavior) or treat it as a real new field if
-  off-center anchoring is wanted — don't fabricate a working anchor control that silently does
-  nothing.
+  edited via `keyframe_editors::position_keyframe_editor`/sliders.
+- **TRANSFORM → Anchor X/Y — done, real pivot (per explicit request, not just a position
+  offset).** `ClipInstance::anchor_x`/`anchor_y` (`0.0..=1.0`, default `0.5`/`0.5` = center —
+  every clip before this field existed effectively used this). Neither FFmpeg's `rotate`
+  filter nor GStreamer's `rotate` element has a native off-center pivot parameter — both always
+  rotate around their own input frame's center — so a real anchor needs to move *what's at that
+  center*, not add a pivot parameter that doesn't exist. Every segment already goes through a
+  canvas-conforming `scale=...,pad=cw:ch:(ow-iw)/2:(oh-ih)/2` stage before any per-clip filter
+  (rotation included) runs; replacing that fixed `(ow-iw)/2` centering offset with
+  `ow/2-(anchor_x)*iw` (and the `y` equivalent) moves *which point of the content* lands at the
+  padded buffer's center — the point rotation/scale then pivot around, since `rotate` pivots on
+  its own input's center. At anchor `0.5/0.5` this reduces to the exact original expression
+  (verified byte-identical against real `ffmpeg` output on synthetic test images), and the
+  anchor point empirically stays fixed under rotation (also verified against real `ffmpeg`
+  output) — not derived from documentation or memory. Applies uniformly to every clip (unlike
+  `blend_mode`/position, not overlay-only) in both `avbridge::encode_timeline_export` and
+  `encode_timeline_export_multi`. **Scope limit, not a bug**: live preview doesn't reflect a
+  non-default anchor yet — GStreamer has no element to build the equivalent "shift what's at
+  the rotate pivot" trick on (its `rotate` element has no generic dynamic-offset pad element
+  comparable to avfilter's `pad`); a real preview implementation needs a `videobox`-based
+  restructuring, a separate follow-up, same "editable but visually approximate" posture several
+  other effects in this panel already have (LUT/vignette CPU-approximated, `RotationExportNote`
+  itself already said "no live preview effect yet" before this field even existed).
 - **CROP → Left/Right/Top/Bottom %**: same underlying rectangle as oca's existing
   `crop_x`/`crop_y`/`crop_w`/`crop_h` (position+size), just a different parameterization
   (edge-insets: `left=x`, `top=y`, `right=1-(x+w)`, `bottom=1-(y+h)`). Purely a units/label
@@ -606,10 +623,10 @@ principles, and this doc's own findings above:
    with the user first, per the open decision this doc originally left). See the Top bar
    section's own bullets for exactly which menu items are wired vs. which two menus (Window,
    Help) still have no real feature behind them.
-6. Everything flagged as a genuine new feature above (Favorites/Recent, Anchor X/Y) — each is
-   its own scoped follow-up item, not part of "implement the mockup" in one pass. (Snapshot
-   capture, the grid/list view toggle, zoom controls, and real per-asset thumbnails were all
-   picked out of this list and shipped — see items 9-12 below.) The marker button was never in
+6. Everything flagged as a genuine new feature above (Favorites/Recent) — its own scoped
+   follow-up item, not part of "implement the mockup" in one pass. (Snapshot capture, the
+   grid/list view toggle, zoom controls, real per-asset thumbnails, and Anchor X/Y were all
+   picked out of this list and shipped — see items 9-13 below.) The marker button was never in
    this list (it maps to an already-real feature, just unwired) but shipped alongside snapshot
    capture in the same slice.
 7. **Per-channel audio metering — done**, picked out of item 6's list at the user's request —
@@ -626,6 +643,8 @@ principles, and this doc's own findings above:
     bullet.
 12. **Media library real per-asset thumbnails — done.** See the Media library section's own
     bullet.
+13. **Anchor X/Y — done, export only.** See the Inspector section's TRANSFORM bullet for what
+    shipped and its documented live-preview scope limit.
 
 ## Verification
 

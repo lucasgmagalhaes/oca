@@ -221,6 +221,20 @@ typedef struct {
        avbridge_encode_timeline_export_multi's overlay path -- ignored by
        avbridge_encode_timeline_export. */
     const char *blend_mode;
+    /* Fraction (0.0..=1.0) of this segment's own decoded frame that rotation/scale pivot
+       around, instead of the frame's own center. 0.5/0.5 (the default -- every previous
+       caller effectively used this) is exactly the old, hardcoded-center behavior: the
+       canvas-conforming "scale=...,pad=cw:ch:(ow-iw)/2:(oh-ih)/2" stage every segment already
+       goes through centers the decoded content within the canvas-sized buffer that a
+       "rotate=..." stage in video_filter (when scale/rotation keyframes are set) then pivots
+       around -- replacing that fixed "/2" offset with "ow/2-(anchor_x)*iw"/
+       "oh/2-(anchor_y)*ih" moves the pivot to an arbitrary point on the content instead, while
+       reducing to the identical expression at 0.5/0.5 (verified against real ffmpeg output,
+       byte-identical). Applies uniformly to every clip in both avbridge_encode_timeline_export
+       and avbridge_encode_timeline_export_multi -- unlike blend_mode/position_x_expr, this
+       isn't overlay-only. */
+    double anchor_x;
+    double anchor_y;
 } ClipSegment;
 
 /* Renders an ordered sequence of trimmed clips (`segments`, `segment_count` of them) as one

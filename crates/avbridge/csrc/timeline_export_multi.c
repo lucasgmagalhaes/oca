@@ -194,11 +194,23 @@ static int build_overlay_vfilter(const ClipSegment *seg, int cw, int ch, int fps
         if (post_written < 0 || (size_t)post_written >= sizeof(post)) return -1;
     }
 
+    /* pad's x/y offsets place this segment's own anchor point (a fraction of its decoded
+       content, not the padded canvas buffer) at the padded buffer's center (ow/2, oh/2) -- at
+       anchor 0.5/0.5 this reduces to the original "(ow-iw)/2" centering exactly (verified
+       against real ffmpeg output, byte-identical), so a segment with the default anchor
+       renders identically to before this field existed. Any rotate=... stage later in cf
+       (from scale/rotation keyframes) then pivots around this same buffer's own center -- i.e.
+       around whatever point anchor_x/anchor_y designated -- since rotate always rotates around
+       its own input frame's center. */
+    char pad_x[96], pad_y[96];
+    snprintf(pad_x, sizeof(pad_x), "ow/2-(%g)*iw", seg->anchor_x);
+    snprintf(pad_y, sizeof(pad_y), "oh/2-(%g)*ih", seg->anchor_y);
+
     int buf_written =
         snprintf(buf, cap,
-                 "%sscale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,"
+                 "%sscale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:%s:%s,"
                  "fps=%d/%d%s",
-                 setpts, cw, ch, cw, ch, fps_num, fps_den, post);
+                 setpts, cw, ch, cw, ch, pad_x, pad_y, fps_num, fps_den, post);
     if (buf_written < 0 || (size_t)buf_written >= cap) return -1;
     return 0;
 }

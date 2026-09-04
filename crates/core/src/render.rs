@@ -414,6 +414,8 @@ pub fn resolve_timeline_segments(
             // Same reasoning as mask_video_path above — blend_mode is only meaningful on an
             // overlay track, which this single-track path never has.
             blend_mode: String::new(),
+            anchor_x: clip.anchor_x,
+            anchor_y: clip.anchor_y,
         });
     }
     let (width, height, fps) = dimensions_fps.ok_or(RenderError::EmptyTimeline)?;
@@ -1009,6 +1011,8 @@ pub fn resolve_timeline_segments_multi(
                 timeline_start_secs: clip.start_secs,
                 mask_video_path,
                 blend_mode,
+                anchor_x: clip.anchor_x,
+                anchor_y: clip.anchor_y,
             });
         }
 

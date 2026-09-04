@@ -128,6 +128,8 @@ fn clip(
         timeline_start_secs: 0.0,
         mask_video_path: String::new(),
         blend_mode: String::new(),
+        anchor_x: 0.5,
+        anchor_y: 0.5,
     }
 }
 
@@ -183,6 +185,51 @@ fn multi_track_export_with_a_blend_mode_set_produces_a_valid_file() {
 
     let outcome = encode_timeline_export_multi(
         &tracks,
+        CANVAS,
+        &out,
+        -14.0,
+        GpuEncoderPreference::Auto,
+        &cancel,
+        |_secs| {},
+    )
+    .unwrap();
+
+    assert_eq!(outcome, EncodeOutcome::Completed);
+
+    let info = probe(&out).unwrap();
+    assert_eq!(info.kind, StreamKind::Video);
+    assert_eq!(info.resolution, Some((320, 240)));
+    assert!(info.duration_secs > 0.0 && info.duration_secs < 2.0);
+
+    let _ = std::fs::remove_file(&out);
+}
+
+/// A non-default anchor changes the `pad` stage's offset expression that
+/// `avbridge_encode_timeline_export`'s canvas-conforming step builds -- combined with a real
+/// `rotate=...` stage (the shape `core::keyframe::rotation_filter_angle_expr` actually emits),
+/// this exercises the exact filtergraph anchor is meant to support: rotation pivoting around a
+/// point other than the frame's own center. The specific pivot math (verified against real
+/// `ffmpeg` CLI output on synthetic test images: byte-identical to the old fixed `(ow-iw)/2`
+/// centering at anchor 0.5/0.5, and the anchor point staying fixed under rotation at other
+/// anchor values) lives in `core`; this test only confirms the resulting filtergraph string
+/// actually encodes without error, not the pivot's exact pixel position (probing that would
+/// need a fixture with a recognizable off-center feature, not the plain color-bars fixture
+/// this suite uses elsewhere).
+#[test]
+fn export_with_a_non_default_anchor_and_rotation_produces_a_valid_file() {
+    let out = std::env::temp_dir().join("avbridge_test_timeline_anchor_rotation.mp4");
+    let cancel = AtomicBool::new(false);
+
+    let segment = ClipSegment {
+        video_filter: "rotate=angle='0.3':ow=rotw('0.3'):oh=roth('0.3')".to_string(),
+        anchor_x: 0.2,
+        anchor_y: 0.8,
+        ..clip(0.0, 0.5, 0.0, "")
+    };
+    let segments = [segment];
+
+    let outcome = encode_timeline_export(
+        &segments,
         CANVAS,
         &out,
         -14.0,

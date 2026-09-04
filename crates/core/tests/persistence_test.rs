@@ -111,6 +111,8 @@ fn clip(id: u64, asset_id: u64) -> ClipInstance {
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
         blend_mode: BlendMode::Normal,
+        anchor_x: 0.5,
+        anchor_y: 0.5,
     }
 }
 

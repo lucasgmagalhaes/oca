@@ -54,6 +54,10 @@ struct RawClipSegment {
     /// "no blend mode, use plain `overlay` compositing" — see `ClipSegment::blend_mode`'s doc
     /// comment in `bridge.h`.
     blend_mode: *const c_char,
+    /// Fraction (`0.0..=1.0`) of this clip's own decoded frame that rotation/scale pivot
+    /// around — see `ClipSegment::anchor_x`/`anchor_y`'s doc comment in `bridge.h`.
+    anchor_x: f64,
+    anchor_y: f64,
 }
 
 #[repr(C)]
@@ -605,6 +609,27 @@ pub struct ClipSegment {
     /// deserialization of jobs saved before this field existed.
     #[serde(default)]
     pub blend_mode: String,
+    /// Fraction (`0.0..=1.0`, `x` then `y`) of this clip's own frame that rotation/scale pivot
+    /// around, instead of the frame's own center — `(0.5, 0.5)` (the default, and what every
+    /// pre-existing job deserializes to via `#[serde(default_anchor)]`) is exactly the previous,
+    /// hardcoded-center behavior: the `scale=...,pad=cw:ch:(ow-iw)/2:(oh-ih)/2` stage every
+    /// segment already goes through (canvas-conforming) centers the decoded content within the
+    /// canvas-sized buffer that `video_filter`'s own `rotate=...` stage (when scale/rotation
+    /// keyframes are set) then pivots around — replacing that fixed `/2` offset with
+    /// `ow/2-(anchor_x)*iw`/`oh/2-(anchor_y)*ih` moves the pivot to an arbitrary point on the
+    /// content instead, while reducing to the identical expression at `(0.5, 0.5)` (verified
+    /// against real `ffmpeg` output, byte-identical). Applies uniformly to every clip (unlike
+    /// `blend_mode`/`position_x_expr`, this isn't overlay-only — every segment goes through the
+    /// same canvas-conforming pad stage in both `encode_timeline_export` and
+    /// `encode_timeline_export_multi`).
+    #[serde(default = "default_anchor")]
+    pub anchor_x: f32,
+    #[serde(default = "default_anchor")]
+    pub anchor_y: f32,
+}
+
+fn default_anchor() -> f32 {
+    0.5
 }
 
 /// One independently placed audio contributor in a timeline mix. Unlike [`ClipSegment`], this
@@ -794,6 +819,8 @@ pub fn encode_timeline_export<F: FnMut(f64)>(
                 timeline_start_secs: seg.timeline_start_secs,
                 mask_video_path: mask_path.as_ptr(),
                 blend_mode: blend_mode.as_ptr(),
+                anchor_x: seg.anchor_x as f64,
+                anchor_y: seg.anchor_y as f64,
             },
         )
         .collect();
@@ -944,6 +971,8 @@ pub fn encode_timeline_export_multi<F: FnMut(f64)>(
                     timeline_start_secs: seg.timeline_start_secs,
                     mask_video_path: mask_path.as_ptr(),
                     blend_mode: blend_mode.as_ptr(),
+                    anchor_x: seg.anchor_x as f64,
+                    anchor_y: seg.anchor_y as f64,
                 },
             )
             .collect();
