@@ -141,8 +141,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
             toolbar(app, ui);
             ui.add_space(4.0);
-            sequence_tab_bar(app, ui);
-            ui.add_space(4.0);
 
             let total_width = ui.available_width();
             let min_col = 160.0_f32;

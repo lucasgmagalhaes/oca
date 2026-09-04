@@ -193,6 +193,11 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     .size(11.0)
                     .color(theme::TEXT_MUTED),
             );
+            ui.add_space(theme::SPACE_MD);
+            // Sequence tabs now live in the Timeline panel's own header row, matching the
+            // mockup's "TIMELINE  Interview ✕ +" single strip (confirmed via a real screenshot)
+            // — previously their own separate row above the whole three-column body.
+            super::sequence_tab_bar(app, ui);
             // A visible zoom affordance for `timeline_px_per_sec` — until now only reachable via
             // Ctrl+scroll, with no on-screen indicator of the current zoom level at all. Matches
             // `oca-editor-mock.html`'s `.tl-zoom` slider in the timeline toolbar's right corner.
