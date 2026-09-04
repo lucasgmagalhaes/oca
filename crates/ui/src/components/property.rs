@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use eframe::egui::{CollapsingHeader, RichText, Ui};
+use eframe::egui::{CollapsingHeader, RichText, Stroke, Ui};
 
 use crate::theme;
 
@@ -22,7 +22,16 @@ use crate::theme;
 /// whatever `content` reports (typically "did this block's value change").
 pub fn property_block(ui: &mut Ui, note: &str, content: impl FnOnce(&mut Ui) -> bool) -> bool {
     ui.add_space(theme::SPACE_SM);
-    ui.separator();
+    // `border_subtle` — a properties panel stacks a few dozen of these between-block dividers,
+    // the doc's own "very subtle separators" role, distinct from `border_default`'s standard
+    // panel/card structure. Scoped to just this separator (`ui.scope`, same pattern
+    // `primary_button`'s hover/press colors use) rather than through the global `Visuals`, which
+    // also drives every ordinary `border_default` separator elsewhere in the app.
+    ui.scope(|ui| {
+        ui.style_mut().visuals.widgets.noninteractive.bg_stroke =
+            Stroke::new(1.0, theme::BORDER_SUBTLE);
+        ui.separator();
+    });
     ui.add_space(theme::SPACE_SM);
     let changed = content(ui);
     ui.add_space(theme::SPACE_XS);
