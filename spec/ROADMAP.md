@@ -1005,16 +1005,50 @@ an item earlier:
   a Latin-coverage claim for e.g. `NotoSansThai` was never verified). Nothing in the codebase
   currently reads `glyphset_guarantees` (confirmed via a real grep — it's descriptive metadata
   only, not consumed by any runtime logic), so this was never a functional bug, just an
-  inaccurate claim — fixed to `["international-fallback"]` only before this note was written,
-  not left for a future session to catch.
+  inaccurate claim — fixed to `["international-fallback"]` only, pending real verification.
 
-  **Still open**: FONT-01A's persisted-identity swap (needed before any of these 37 new families
-  can be selected from the Editor's text-clip font picker at all — FONT-01D), variable-weight
-  axis *selection* in the UI (today's default/bold-only picker doesn't expose the axes these
-  variable fonts actually carry), the searchable/categorized selector itself (FONT-01C), Latin-
-  shaping verification for the 37 new families (needs `TextLayoutEngine` to expose a shape-by-
-  `family_id` path instead of only by the `TextFontFamily` enum), and TEXT-01's own shaping-test
-  gate before the 7 international families are exposed as script fallbacks.
+  **FONT-01B slice 3 shipped: all 37 new families are now selectable, not just vendored.**
+  `TextFontFamily` grew from 6 to 43 variants (plain enum variants, the same shape the original
+  six use — not the doc's own `family_id`-as-persisted-type structural swap, still deferred, see
+  below) and `TextFontFamily::ALL` now lists all 43. Two consequences fell out for free, since
+  both already iterate `ALL` generically:
+  - The Editor's text-clip font picker (`properties_panel/text_clip.rs`) now lists and lets a
+    user select every one of the 43 families — `text_font_family_label` reuses each new family's
+    `font_catalog::FontFamilyEntry::display_name` directly rather than a bespoke i18n key per
+    family (font names are proper nouns, not conventionally translated — no pt-BR equivalent for
+    "Montserrat" — a dedicated key would just repeat the same string in both locales). No
+    category grouping in the list yet — that's FONT-01C's own scope, not invented here.
+  - `every_bundled_family_shapes_ordinary_latin_text_without_missing_glyphs`, which iterates
+    `TextFontFamily::ALL`, now genuinely covers all 43 with zero code changes to the test itself.
+    **Retracts slice 2's own "Latin-shaping verification for the 37 new families" gap**: run for
+    real, it confirmed every one of them — *including* the 7 `Noto` international faces — shapes
+    ordinary Portuguese/Latin text with zero `.notdef` hits. Noto's own faces do carry Latin
+    coverage after all (a deliberate design choice by that project for mixed-script documents);
+    slice 2's defensive `glyphset_guarantees` downgrade was the right call at the time (no
+    verification existed yet) but is now upgraded back to `["gf-latin-core",
+    "international-fallback"]` for all 7, this time backed by a real passing test rather than a
+    copy-pasted assumption.
+
+  `TextFontFamily::supports_bold()` changed from a hardcoded 3-family match to a real derivation
+  from `font_catalog::CATALOG` (does this family's own entry declare a weight-700 face?) — every
+  FONT-01B variable-font family locks only its default 400 instance today (no separate Bold
+  entry, since one variable file already carries the whole weight axis), so `supports_bold()`
+  correctly returns `false` for all of them; only the static two-face families (Poppins, Barlow,
+  Barlow Condensed, Comic Neue, Space Mono, plus the original Lato/Playfair Display/Anonymous
+  Pro) return `true`. `cargo build -p ui` + a real launch of the compiled `ui.exe` (no crash,
+  clean startup) confirm this compiles and runs, on top of 518/518 `cargo test -p core --lib` +
+  423/423 `cargo test -p ui` passing.
+
+  **Still open**: FONT-01A's persisted-identity swap (`.ocproj` storing a `family_id` slug
+  instead of the plain enum variant name, so an unrecognized *future* id keeps its exact string
+  through a resave rather than normalizing to `Lato` — a real structural change; adding plain
+  enum variants already gives the *practical* "selectable and persists correctly" outcome
+  without it), variable-weight axis *selection* in the UI (today's default/bold-only picker
+  still doesn't expose the axes these variable fonts actually carry), the searchable/categorized
+  selector itself (FONT-01C, genuinely needed now more than ever — a 43-item flat list is a real
+  UX regression from 6), and TEXT-01's own shaping-test gate before the 7 international families
+  are used as an *automatic* script-fallback chain rather than a manual pick (they're manually
+  selectable today, same as everything else).
 
   Verified for real, not just type-checked: this session's sandbox turned out to have a
   working path to a fully-linked `core` test binary (`rustup update stable` past a

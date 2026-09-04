@@ -68,13 +68,13 @@ binary carries every weight/width axis in one file — `crates/core/src/font_cat
 selected at load time (FONT-01C's own "official axis-selection UI" is still open; today's
 Editor properties panel only offers the fixed default/bold weight either way).
 
-Only the original six families and the Sans/Display/Serif/Handwritten/Monospace families have
-a `TextFontFamily` enum variant and are selectable in the Editor's text-clip font picker today.
-The 7 International (`Noto`) families are vendored and catalog-validated but not yet exposed —
-the doc gates their visibility on `TEXT-01`'s own shaping tests, and separately, exposing *any*
-of the 37 non-original families needs FONT-01A's still-deferred persisted-identity swap
-(`.ocproj` storing a `family_id` slug instead of the enum variant name) and FONT-01D's selector
-UI, neither of which this vendoring pass includes.
+All 43 families have a `TextFontFamily` enum variant and are selectable in the Editor's
+text-clip font picker today, including the 7 International (`Noto`) families — real Latin-
+shaping verification (not just byte/parse checks) confirmed all 43 shape ordinary Portuguese
+text with zero missing glyphs, Noto included. What's still missing: FONT-01A's persisted-
+identity swap (`.ocproj` still stores the enum variant name, not a `family_id` slug — an
+unrecognized *future* family normalizes to Lato instead of round-tripping losslessly) and
+FONT-01C's categorized/searchable selector (today's picker is a flat 43-item list, no grouping).
 
 Vendored from `google/fonts` commit `ade3d1533e06b2b1462ffcde8e08b129627ca360` (the pinned
 `avcore::font_catalog::GOOGLE_FONTS_REVISION`), same as the original six. Total bundled size:
