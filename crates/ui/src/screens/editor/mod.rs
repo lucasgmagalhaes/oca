@@ -493,6 +493,23 @@ fn sequence_tab_bar(app: &mut App, ui: &mut egui::Ui) {
             if resp.clicked() && !active {
                 select_index = Some(index);
             }
+            // Section 41's Timeline Tab Bar: "Close X" per tab — previously only reachable via
+            // the tab's right-click context menu (still there, unchanged). No per-sequence
+            // "unsaved changes" tracking exists in this codebase to gate the spec's own "if
+            // unsaved, show save/discard/cancel confirmation" — this closes directly, same as
+            // the context menu's own "Excluir" already did with no such confirmation either;
+            // documented here rather than silently guessed at.
+            if count > 1
+                && components::icon_button(
+                    ui,
+                    "X",
+                    Text::SequenceTabCtxDelete.tr(locale),
+                    components::IconButtonOpts::default(),
+                )
+                .clicked()
+            {
+                delete_request = Some((sequence_id, name.clone()));
+            }
             resp.context_menu(|ui| {
                 if ui
                     .button(crate::i18n::Text::SequenceTabCtxRename.tr(locale))
