@@ -313,11 +313,15 @@ fn projects_saved_before_text_styles_load_with_safe_defaults() {
 }
 
 #[test]
-fn projects_with_an_unrecognized_font_family_name_load_with_the_lato_fallback() {
-    // FONT-01's forwards-compatibility rule (spec/architecture/built-in-font-catalog.md): a
-    // project saved by a future build with a font family this build doesn't know about must
-    // still load, not fail outright. TextFontFamily's `#[serde(other)]` on `Lato` is what makes
-    // this a safe fallback instead of a decode error.
+fn projects_with_an_unrecognized_font_family_name_preserve_it_as_unknown() {
+    // FONT-01's forwards-compatibility rule (spec/architecture/built-in-font-catalog.md), now in
+    // full: a project saved by a future build with a font family this build doesn't know about
+    // must still load, not fail outright -- and, since FONT-01A's persisted-identity swap, the
+    // unrecognized name is preserved (TextFontFamily::Unknown) rather than silently normalized
+    // away, so a resave from this build doesn't lose it for whichever future build *does*
+    // recognize "InterVariable". `family_id()`/`supports_bold()` still make it *behave* as Lato
+    // everywhere it's rendered -- covered by timeline_test.rs's own
+    // `text_font_family_unknown_renders_and_behaves_as_lato`.
     let bytes = to_ocproj_bytes(&project_with_styled_text()).unwrap();
     let header_len = 5;
     let mut msgpack = Vec::new();
@@ -350,10 +354,22 @@ fn projects_with_an_unrecognized_font_family_name_load_with_the_lato_fallback() 
 
     let restored: Project = from_ocproj_bytes(&edited_bytes).unwrap();
     let text = &restored.sequences[0].timeline.tracks[1].text_clips[0];
-    assert_eq!(text.font_family, TextFontFamily::Lato);
+    assert_eq!(
+        text.font_family,
+        TextFontFamily::Unknown("InterVariable".to_string())
+    );
     // The originally-saved family (PlayfairDisplay in project_with_styled_text()) was a
     // recognized name and must still round-trip untouched by an unrelated edit.
     assert_eq!(text.font_style, TextFontStyle::Bold);
+
+    // Resaving must keep the exact same unrecognized string, not silently drop it -- the whole
+    // point of preserving it in the first place.
+    let resaved = to_ocproj_bytes(&restored).unwrap();
+    let reloaded: Project = from_ocproj_bytes(&resaved).unwrap();
+    assert_eq!(
+        reloaded.sequences[0].timeline.tracks[1].text_clips[0].font_family,
+        TextFontFamily::Unknown("InterVariable".to_string())
+    );
 }
 
 #[test]
