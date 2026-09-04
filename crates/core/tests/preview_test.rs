@@ -15,7 +15,7 @@
 
 use std::path::{Path, PathBuf};
 
-use avcore::preview::Preview;
+use avcore::preview::{Preview, VideoFrame};
 use avcore::timeline::{BlendMode, ClipInstance, ColorFilter, MaskShape, TransitionType};
 
 fn fixture(name: &str) -> PathBuf {
@@ -1070,4 +1070,40 @@ fn set_live_mask_returns_false_for_mask_shape_none() {
     assert!(!preview
         .set_live_mask(overlay_clip.id, MaskShape::None, 0.2)
         .unwrap());
+}
+
+/// What the preview transport row's snapshot button does with `PreviewState::last_frame` --
+/// no `Preview`/GStreamer pipeline needed, `VideoFrame` is a plain data holder.
+#[test]
+fn video_frame_save_png_writes_a_real_decodable_png() {
+    let dir = std::env::temp_dir().join("oca_core_video_frame_save_png_test");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let output_path = dir.join("snapshot.png");
+
+    let width = 4u32;
+    let height = 2u32;
+    let mut rgba = vec![0u8; (width * height * 4) as usize];
+    // A distinctive, non-uniform pattern -- catches a row/column transposition bug that an
+    // all-one-color buffer wouldn't.
+    for (i, px) in rgba.chunks_exact_mut(4).enumerate() {
+        px[0] = (i * 17) as u8;
+        px[1] = (i * 31) as u8;
+        px[2] = (i * 53) as u8;
+        px[3] = 255;
+    }
+    let frame = VideoFrame {
+        width,
+        height,
+        rgba: rgba.clone(),
+    };
+
+    frame.save_png(&output_path).unwrap();
+
+    let decoded = image::open(&output_path).unwrap().to_rgba8();
+    assert_eq!(decoded.width(), width);
+    assert_eq!(decoded.height(), height);
+    assert_eq!(decoded.into_raw(), rgba);
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

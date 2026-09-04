@@ -5359,6 +5359,50 @@ fn add_marker_at_playhead_places_it_at_the_current_playhead() {
 }
 
 #[test]
+fn save_preview_snapshot_writes_the_last_decoded_frame_as_a_png() {
+    // The PNG bytes themselves (does the pixel data round-trip correctly) are covered for real
+    // by `core`'s own `video_frame_save_png_writes_a_real_decodable_png` test -- `image` isn't
+    // a `ui` dependency, so this only confirms `save_preview_snapshot` actually forwards to
+    // `VideoFrame::save_png` and lands a real file, via the fixed 8-byte signature every PNG
+    // decoder checks first.
+    let dir = std::env::temp_dir().join("oca_app_save_preview_snapshot_test");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let output_path = dir.join("snapshot.png");
+
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.preview_state.last_frame = Some(avcore::preview::VideoFrame {
+        width: 4,
+        height: 2,
+        rgba: vec![200u8; 4 * 2 * 4],
+    });
+
+    app.save_preview_snapshot(output_path.clone());
+
+    let written = std::fs::read(&output_path).unwrap();
+    assert_eq!(&written[..8], b"\x89PNG\r\n\x1a\n");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn save_preview_snapshot_toasts_instead_of_writing_when_no_frame_decoded_yet() {
+    let dir = std::env::temp_dir().join("oca_app_save_preview_snapshot_test_empty");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let output_path = dir.join("snapshot.png");
+
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.save_preview_snapshot(output_path.clone());
+
+    assert!(!output_path.exists());
+    assert_eq!(app.toasts.len(), 1);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn remove_marker_deletes_it() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
     let id = app.add_marker_at_playhead(avcore::MarkerKind::Standard);
