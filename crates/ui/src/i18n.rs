@@ -165,6 +165,10 @@ text_catalog! {
     ToolSlip: pt_br = "Slip", en = "Slip";
     ToolSlide: pt_br = "Slide", en = "Slide";
     ToolHand: pt_br = "Mão (pan)", en = "Hand (pan)";
+    ToolRazor: pt_br = "Navalha", en = "Razor";
+    ToolText: pt_br = "Texto", en = "Text";
+    ToolEffects: pt_br = "Efeitos", en = "Effects";
+    ToolZoomTool: pt_br = "Zoom", en = "Zoom";
     Export: pt_br = "⭳ Exportar", en = "⭳ Export";
     ExportSrt: pt_br = "Exportar .srt", en = "Export .srt";
     ExportSrtHint: pt_br = "Salva as legendas da timeline como um arquivo .srt separado.", en = "Saves the timeline's subtitles as a separate .srt file.";
