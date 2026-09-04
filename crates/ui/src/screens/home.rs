@@ -19,6 +19,7 @@ use eframe::egui::{self, RichText};
 use crate::app::App;
 use crate::components;
 use crate::i18n::Text;
+use crate::icons;
 use crate::theme;
 
 /// Renders the Início screen: a grid of recent-project cards. Clicking a card opens that
@@ -166,7 +167,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                             }
                                             ui.centered_and_justified(|ui| {
                                                 ui.label(
-                                                    RichText::new("▶")
+                                                    RichText::new(icons::PLAY_STR)
                                                         .size(26.0)
                                                         .color(theme::TEXT_MUTED),
                                                 );
@@ -183,11 +184,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                     .color(theme::TEXT_SECONDARY),
                             );
                             ui.add_space(4.0);
-                            ui.label(
-                                RichText::new(format!("🕐 {meta}"))
-                                    .size(11.0)
-                                    .color(theme::TEXT_MUTED),
-                            );
+                            // No clock glyph prefix -- no vendored Lucide icon for it, and a
+                            // bare Unicode clock symbol is exactly the class of tofu bug this
+                            // session already fixed in a dozen other places (egui's bundled
+                            // font only covers ASCII + a curated symbol subset).
+                            ui.label(RichText::new(meta).size(11.0).color(theme::TEXT_MUTED));
                         });
                     });
 
