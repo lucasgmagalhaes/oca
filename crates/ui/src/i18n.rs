@@ -696,6 +696,13 @@ text_catalog! {
     TextFontAnonymousPro: pt_br = "Anonymous Pro · Monoespaçada", en = "Anonymous Pro · Monospace";
     TextFontArchivoBlack: pt_br = "Archivo Black · Legenda bold", en = "Archivo Black · Bold caption";
     TextFontUnknown: pt_br = "Fonte desconhecida", en = "Unknown font";
+    TextFontSearchHint: pt_br = "Buscar fonte...", en = "Search font...";
+    FontCategorySans: pt_br = "Sem serifa", en = "Sans";
+    FontCategoryDisplay: pt_br = "Destaque", en = "Display";
+    FontCategorySerif: pt_br = "Serifada", en = "Serif";
+    FontCategoryHandwritten: pt_br = "Manuscrita", en = "Handwritten";
+    FontCategoryMonospace: pt_br = "Monoespaçada", en = "Monospace";
+    FontCategoryInternational: pt_br = "Internacional", en = "International";
     TextFontRegular: pt_br = "Regular", en = "Regular";
     TextFontBold: pt_br = "Negrito", en = "Bold";
     PropTextDirection: pt_br = "Direção do texto", en = "Text direction";
