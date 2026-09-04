@@ -13,19 +13,20 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! The dark/violet color palette and the egui `Visuals` it's applied through, per
-//! `OCA_Design_System_egui.md` (repo root) — this is Implementation Priority #1 from that doc
-//! ("theme tokens"), the highest-leverage single-file change every screen inherits for free
-//! through the existing `theme::TOKEN` references. Screens reference these constants directly
-//! rather than going through egui's default palette, so the whole app reads as one consistent
-//! theme. See that doc's own sections 2/3/5/6 for the exact source values; every constant below
-//! carries the doc's own token name in its doc comment for traceability.
+//! The CINECUT dark/Petroleum-Blue color palette and the egui `Visuals` it's applied through,
+//! per `CINECUT_UI_UX_SPEC_v1.0.md` (repo root, superseding `CINECUT_Design_System_v1.0.md`,
+//! which itself superseded the original `OCA_Design_System_egui.md`) — Section 76's own
+//! Definition of Done requires "Petroleum Blue is the only primary accent" and "purple is absent
+//! from the product UI", non-negotiable per Section 1's "explicitly avoid: purple as an accent".
+//! Screens reference these constants directly rather than going through egui's default palette,
+//! so the whole app reads as one consistent theme. See the spec's own Section 2 for the exact
+//! source values; every constant below carries the spec's own token name in its doc comment for
+//! traceability.
 //!
-//! Deliberately **not** done in this pass (see the doc's own Implementation Priority list and
-//! this repo's plan notes): typography (Inter/IBM Plex Mono aren't bundled yet), the `cine_*`
-//! component-catalog rename (this crate's existing `components::` module already covers the same
-//! ground under different names), and per-screen geometry (tool rail/track-header/timeline-
-//! header sizes) — each is its own separate, scoped follow-up.
+//! Deliberately **not** done in this pass: typography (Inter/IBM Plex Mono aren't bundled yet —
+//! Section 3), and per-screen geometry (tool rail/track-header/timeline-header sizes, most of
+//! Sections 7-58's actual pixel layout) — each is its own separate, scoped follow-up. This pass
+//! covers colors/spacing/radius tokens (Sections 2/4/5) only.
 
 use egui::{Color32, CornerRadius, Shadow, Stroke, Visuals};
 
@@ -43,35 +44,37 @@ pub const BG: Color32 = Color32::from_rgb(0x09, 0x0a, 0x0d);
 /// actually a distinct visual region yet.
 #[allow(dead_code)]
 pub const BG_WORKSPACE: Color32 = Color32::from_rgb(0x0d, 0x0e, 0x12);
-/// `bg_panel` — side panels.
-pub const SURFACE: Color32 = Color32::from_rgb(0x11, 0x12, 0x18);
-/// `bg_elevated` — menus, popovers, dialogs. Wired via `apply()`'s `window_fill`: every
-/// `egui::Window`/`Modal`/popup (menu dropdowns, `ComboBox` popups) in this app renders through
-/// that one shared fill, matching Section 8's File-menu spec exactly. Side panels/`card_frame()`
-/// set their own fill explicitly (`SURFACE`/`bg_panel`) and aren't affected.
-pub const BG_ELEVATED: Color32 = Color32::from_rgb(0x15, 0x16, 0x1d);
-/// `bg_control` — inputs and controls.
-pub const SURFACE_2: Color32 = Color32::from_rgb(0x19, 0x1a, 0x21);
-/// `bg_hover` — hovered controls. Wired via `apply()`'s `widgets.hovered.bg_fill`/
-/// `weak_bg_fill` — every ordinary hovered widget across the app, previously reusing
-/// `bg_control`/`SURFACE_2` (no visual distinction between "control fill" and "hovered fill").
-pub const BG_HOVER: Color32 = Color32::from_rgb(0x1d, 0x1e, 0x26);
-/// `border_subtle` — very subtle separators. Wired into `components::property_block`'s
-/// between-block divider (`ui.separator()`, scoped via `ui.scope`) — a properties panel stacks a
-/// few dozen of these, the doc's own "very subtle separators" role, distinct from
-/// `border_default`'s standard panel/card structure.
+/// `bg-panel` — major panels.
+pub const SURFACE: Color32 = Color32::from_rgb(0x10, 0x12, 0x16);
+/// `bg-elevated` — elevated controls, menus, popovers, dialogs. Wired via `apply()`'s
+/// `window_fill`: every `egui::Window`/`Modal`/popup (menu dropdowns, `ComboBox` popups) in this
+/// app renders through that one shared fill. Side panels/`card_frame()` set their own fill
+/// explicitly (`SURFACE`/`bg-panel`) and aren't affected.
+pub const BG_ELEVATED: Color32 = Color32::from_rgb(0x15, 0x18, 0x20);
+/// `bg-control` — hover/control surfaces.
+pub const SURFACE_2: Color32 = Color32::from_rgb(0x19, 0x1c, 0x23);
+/// Not a spec token (the spec's own `bg-control` already covers "hover/control surfaces" as one
+/// role) — kept as this codebase's own finer-grained addition, wired via `apply()`'s
+/// `widgets.hovered.bg_fill`/`weak_bg_fill` so a hovered widget still reads distinctly from a
+/// merely-idle control surface.
+pub const BG_HOVER: Color32 = Color32::from_rgb(0x1d, 0x20, 0x27);
+/// Not a spec token — this codebase's own addition for a divider even quieter than
+/// `border-default`. Wired into `components::property_block`'s between-block divider
+/// (`ui.separator()`, scoped via `ui.scope`) — a properties panel stacks a few dozen of these.
 pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(0x1b, 0x1c, 0x23);
-/// `border_default` — standard structure.
-pub const BORDER: Color32 = Color32::from_rgb(0x24, 0x26, 0x30);
-/// `border_strong` — active structure/dialogs. Wired via `apply()`'s `window_stroke`, alongside
-/// `BG_ELEVATED`'s `window_fill` — same File-menu spec pairing.
-pub const BORDER_STRONG: Color32 = Color32::from_rgb(0x30, 0x32, 0x3d);
-/// `text_primary` — main labels.
-pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(0xe8, 0xe9, 0xed);
-/// `text_secondary` — secondary information.
-pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(0x9a, 0x9d, 0xa8);
-/// `text_tertiary` — metadata / hints.
-pub const TEXT_MUTED: Color32 = Color32::from_rgb(0x62, 0x65, 0x71);
+/// `border-default` — normal separation.
+pub const BORDER: Color32 = Color32::from_rgb(0x25, 0x29, 0x32);
+/// `border-strong` — strong separation. Wired via `apply()`'s `window_stroke`, alongside
+/// `BG_ELEVATED`'s `window_fill`.
+pub const BORDER_STRONG: Color32 = Color32::from_rgb(0x34, 0x39, 0x45);
+/// `border-accent` — focus/open/active, 40% alpha over whatever sits behind it (`#159EAD66`).
+pub const BORDER_ACCENT: Color32 = Color32::from_rgba_premultiplied(0x08, 0x3f, 0x45, 0x66);
+/// `text-primary` — main text.
+pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(0xe5, 0xe7, 0xeb);
+/// `text-secondary` — secondary labels.
+pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(0x96, 0x9b, 0xa6);
+/// `text-tertiary` — metadata.
+pub const TEXT_MUTED: Color32 = Color32::from_rgb(0x62, 0x68, 0x74);
 /// `text_disabled` — disabled controls. **Not wirable** through `apply()`'s global `Visuals`:
 /// `ui.add_enabled(false, ...)` doesn't switch to a distinct `Widgets::disabled` visuals set (no
 /// such field exists on `egui::style::Widgets` in 0.36 — only `noninteractive`/`inactive`/
@@ -84,19 +87,24 @@ pub const TEXT_MUTED: Color32 = Color32::from_rgb(0x62, 0x65, 0x71);
 /// placeholder (`screens::editor::mod`) and the TTS modal's "no model configured" notice
 /// (`app::modals`) — both previously read `TEXT_MUTED`/`text_tertiary`, which is really "less
 /// important info", a different role from "this is inactive."
-pub const TEXT_DISABLED: Color32 = Color32::from_rgb(0x3e, 0x40, 0x4a);
-/// `accent_primary` — primary interaction. Global, high-blast-radius constant: selection
-/// highlighting, hovered/active widget strokes, the active tool-button fill, tags, etc. all
-/// derive from it.
-pub const ACCENT: Color32 = Color32::from_rgb(0x92, 0x70, 0xff);
-/// `accent_hover`. Wired into `components::primary_button`'s hover state — Section 8's Primary
-/// button spec pairs it with `accent_active` below, scoped to just that one dominant-action
+pub const TEXT_DISABLED: Color32 = Color32::from_rgb(0x41, 0x45, 0x4e);
+/// `accent-primary` — Petroleum Blue, the official CINECUT accent (Section 2.1). Global,
+/// high-blast-radius constant: selection highlighting, hovered/active widget strokes, the
+/// active tool-button fill, tags, etc. all derive from it. Communicates selection/focus/active-
+/// state/primary-action/current-tool — Section 74's own rule: "the interface should look mostly
+/// neutral at first glance... Petroleum Blue should become noticeable only after interaction."
+/// Must never be used decoratively (Section 1's "explicitly avoid: purple as an accent" — this
+/// was violet before this pass; Section 76's Definition of Done requires "purple is absent from
+/// the product UI").
+pub const ACCENT: Color32 = Color32::from_rgb(0x15, 0x9e, 0xad);
+/// `accent-hover`. Wired into `components::primary_button`'s hover state — Section 8's Primary
+/// button spec pairs it with `accent-active` below, scoped to just that one dominant-action
 /// button rather than every widget's global hover state (which stays `bg_hover`/`ACCENT`, see
 /// `apply()`).
-pub const ACCENT_HOVER: Color32 = Color32::from_rgb(0xa1, 0x84, 0xff);
-/// `accent_active` — pressed. Wired into `components::primary_button`'s pressed state, same
+pub const ACCENT_HOVER: Color32 = Color32::from_rgb(0x1b, 0xae, 0xbd);
+/// `accent-active` — pressed. Wired into `components::primary_button`'s pressed state, same
 /// scoping as `ACCENT_HOVER` above.
-pub const ACCENT_ACTIVE: Color32 = Color32::from_rgb(0x7c, 0x5c, 0xe0);
+pub const ACCENT_ACTIVE: Color32 = Color32::from_rgb(0x12, 0x8b, 0x99);
 /// Section 9's Icon Buttons color table — deliberately its own scale, not `TEXT_SECONDARY`/
 /// `TEXT_PRIMARY`: an icon-only action (the vast majority of buttons in this app, via
 /// `components::icon_button`) should read quieter at rest than a labeled Secondary button's
@@ -106,14 +114,23 @@ pub const ICON_DEFAULT: Color32 = Color32::from_rgb(0x77, 0x7a, 0x86);
 pub const ICON_HOVER: Color32 = Color32::from_rgb(0xc5, 0xc7, 0xcf);
 /// Icon Buttons "Active" (pressed) — see `ICON_DEFAULT`.
 pub const ICON_ACTIVE: Color32 = Color32::from_rgb(0xff, 0xff, 0xff);
-/// `accent_muted` — selected background. Opaque per the doc's own hex (previously a
-/// semi-transparent premultiplied tint derived from the old teal/violet accent) — every existing
-/// call site uses this as a flat `.fill(...)` on a selected/active chip, so an opaque fill reads
-/// the same or cleaner, not a regression.
-pub const ACCENT_TINT: Color32 = Color32::from_rgb(0x21, 0x1c, 0x31);
-/// Not covered by the design doc's own token table (no `accent_secondary`/equivalent listed) —
-/// kept at its prior value. Used for the timeline's transition-wedge fill and similar secondary
-/// accents that shouldn't compete with `ACCENT` itself.
+/// `accent-subtle` — 10% alpha over whatever sits behind it (`#159EAD1A`). Selected/active-chip
+/// backgrounds (e.g. `nav_rail`'s active rail button) and Section 71/15's own "selected"
+/// dropdown/menu-item background both use exactly this value, so this stays a translucent
+/// overlay rather than a flattened opaque color the way an earlier pass (pre-Petroleum-Blue)
+/// had it.
+pub const ACCENT_TINT: Color32 = Color32::from_rgba_premultiplied(0x02, 0x10, 0x12, 0x1a);
+/// `accent-strong` — 20% alpha over whatever sits behind it (`#159EAD33`). Not yet wired to a
+/// distinct call site (every existing "stronger selected" case so far reaches for `ACCENT_TINT`
+/// or a `gamma_multiply`'d `ACCENT` instead) — kept available since the spec names it as its own
+/// token.
+#[allow(dead_code)]
+pub const ACCENT_STRONG: Color32 = Color32::from_rgba_premultiplied(0x04, 0x20, 0x23, 0x33);
+/// Not covered by the spec's own token table (no `accent-secondary`/equivalent listed) — kept at
+/// its prior value. Used for the timeline's transition-wedge fill and similar secondary accents
+/// that shouldn't compete with `ACCENT` itself — Section 73's own state-hierarchy rule ("Petroleum
+/// Blue should not appear simultaneously on dozens of unrelated elements") is the reason this
+/// stays a separate color rather than a dimmed `ACCENT`.
 pub const ACCENT_2: Color32 = Color32::from_rgb(0x4f, 0x7c, 0xe0);
 /// `media_video` — default (non-color-labeled) video-clip fill on the timeline, mirroring
 /// `AUDIO_TINT`'s own role for audio clips. Wired into `timeline_panel::mod`'s clip-color match
@@ -182,8 +199,8 @@ pub const RADIUS_NONE: u8 = 0;
 /// 0/3/4px box that would visibly break every existing pill-shaped tag.
 pub const RADIUS_PILL: u8 = 200;
 
-/// Applies the dark/violet palette to the egui context, per `OCA_Design_System_egui.md`'s own
-/// Section 7 theme baseline.
+/// Applies the CINECUT dark/Petroleum-Blue palette to the egui context, per the spec's own
+/// Section 60 dialog-system baseline plus the widget states Section 6 describes generically.
 pub fn apply(ctx: &egui::Context) {
     ctx.set_theme(egui::ThemePreference::Dark);
 
@@ -223,6 +240,15 @@ pub fn apply(ctx: &egui::Context) {
     visuals.widgets.active.bg_stroke = Stroke::new(1.0, ACCENT);
     visuals.widgets.active.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
     visuals.widgets.active.corner_radius = CornerRadius::same(RADIUS_SM as u8);
+
+    // Section 72's Menu Behavior "Open" state (`#1B2028`, subtle accent border) — egui's
+    // `open` widget visuals are exactly this: a top-level `menu_button`'s own fill/stroke while
+    // its dropdown is showing, distinct from a plain `hovered` menu item.
+    visuals.widgets.open.bg_fill = Color32::from_rgb(0x1b, 0x20, 0x28);
+    visuals.widgets.open.weak_bg_fill = Color32::from_rgb(0x1b, 0x20, 0x28);
+    visuals.widgets.open.bg_stroke = Stroke::new(1.0, BORDER_ACCENT);
+    visuals.widgets.open.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
+    visuals.widgets.open.corner_radius = CornerRadius::same(RADIUS_SM as u8);
 
     // `bg_elevated`/`border_strong` — Section 8's File-menu spec ("Background: bg_elevated,
     // Border: border_strong"), which in egui terms is every `Window`/`Modal`/popup surface
