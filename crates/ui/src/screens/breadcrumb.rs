@@ -81,7 +81,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         .size(13.0)
                         .color(theme::TEXT_MUTED),
                 );
-                ui.label(RichText::new("›").color(theme::TEXT_MUTED));
+                // ">" (ASCII), not "\u{203A}" -- egui's bundled default font only covers a
+                // curated ASCII+symbol subset, not this glyph (same lesson as every other
+                // tofu fix this session -- confirmed via a real screenshot at least once, so
+                // this project treats non-ASCII as unsafe by default rather than re-testing
+                // every occurrence).
+                ui.label(RichText::new(">").color(theme::TEXT_MUTED));
                 let title = if app.prefs_open {
                     Text::ScreenTitlePrefs.tr(app.locale)
                 } else {
@@ -90,7 +95,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 ui.label(RichText::new(title).size(13.0).strong());
 
                 if app.screen == Screen::Editor {
-                    ui.label(RichText::new("›").color(theme::TEXT_MUTED));
+                    ui.label(RichText::new(">").color(theme::TEXT_MUTED));
                     ui.label(
                         RichText::new(&app.active_project().name)
                             .size(13.0)
@@ -168,7 +173,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             app.preview_state.preview_texture.as_ref().map(|t| t.size())
                         {
                             ui.label(
-                                RichText::new(format!("{w}×{h}"))
+                                RichText::new(format!("{w}x{h}"))
                                     .size(11.0)
                                     .color(theme::TEXT_SECONDARY)
                                     .monospace(),
