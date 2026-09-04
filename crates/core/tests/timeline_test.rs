@@ -2140,3 +2140,66 @@ fn switch_multicam_angle_is_a_no_op_when_the_target_angle_has_no_footage_at_that
     assert!(!timeline.switch_multicam_angle(group_id, 1, 8.0, 100));
     assert_eq!(timeline.tracks[0].clips.len(), 1, "nothing was split");
 }
+
+// FONT-01A's persisted-identity swap: TextFontFamily now serializes as font_catalog's stable
+// family_id slug (e.g. "bebas-neue"), with a hand-written Deserialize that also accepts the old
+// bare-variant-name format (e.g. "BebasNeue") every .ocproj saved before this migration
+// actually contains, and falls back to TextFontFamily::Unknown (preserving the exact string)
+// for anything matching neither -- never silently normalizing an unrecognized value away.
+use avcore::timeline::TextFontFamily;
+
+#[test]
+fn text_font_family_serializes_as_the_stable_family_id_slug() {
+    assert_eq!(
+        serde_json::to_string(&TextFontFamily::BebasNeue).unwrap(),
+        "\"bebas-neue\""
+    );
+    assert_eq!(
+        serde_json::to_string(&TextFontFamily::Lato).unwrap(),
+        "\"lato\""
+    );
+}
+
+#[test]
+fn text_font_family_round_trips_through_the_new_slug_format() {
+    for family in TextFontFamily::ALL {
+        let json = serde_json::to_string(&family).unwrap();
+        let back: TextFontFamily = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, family, "round-trip drifted for {json}");
+    }
+}
+
+#[test]
+fn text_font_family_deserializes_the_old_bare_variant_name_format() {
+    // What every .ocproj saved before this migration actually persisted -- serde's default
+    // unit-variant encoding, the plain PascalCase name.
+    let old: TextFontFamily = serde_json::from_str("\"BebasNeue\"").unwrap();
+    assert_eq!(old, TextFontFamily::BebasNeue);
+
+    let old_lato: TextFontFamily = serde_json::from_str("\"Lato\"").unwrap();
+    assert_eq!(old_lato, TextFontFamily::Lato);
+}
+
+#[test]
+fn text_font_family_preserves_an_unrecognized_id_instead_of_normalizing_to_lato() {
+    let unknown: TextFontFamily = serde_json::from_str("\"some-future-font\"").unwrap();
+    assert_eq!(
+        unknown,
+        TextFontFamily::Unknown("some-future-font".to_string())
+    );
+    // Round-tripping it back out keeps the exact same string -- the whole point of the swap.
+    assert_eq!(
+        serde_json::to_string(&unknown).unwrap(),
+        "\"some-future-font\""
+    );
+}
+
+#[test]
+fn text_font_family_unknown_renders_and_behaves_as_lato() {
+    let unknown = TextFontFamily::Unknown("some-future-font".to_string());
+    assert_eq!(unknown.family_id(), "some-future-font");
+    assert!(
+        !unknown.supports_bold(),
+        "an unrecognized id has no catalog entry to check a bold face against"
+    );
+}
