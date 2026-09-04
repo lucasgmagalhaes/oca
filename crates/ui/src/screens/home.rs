@@ -25,7 +25,7 @@ use crate::theme;
 /// project in the Editor via [`crate::app::App::open_project`].
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.add_space(24.0);
+        ui.add_space(theme::SPACE_2XL);
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 components::page_title(ui, Text::HomeTitle.tr(app.locale));
