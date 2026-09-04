@@ -142,6 +142,8 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
         blend_mode: avcore::timeline::BlendMode::Normal,
+        anchor_x: 0.5,
+        anchor_y: 0.5,
     }
 }
 

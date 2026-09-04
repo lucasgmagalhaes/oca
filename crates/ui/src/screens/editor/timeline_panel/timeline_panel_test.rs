@@ -171,6 +171,8 @@ fn test_clip(
         background_removal_enabled: false,
         background_removal_mask_path: String::new(),
         blend_mode: avcore::timeline::BlendMode::Normal,
+        anchor_x: 0.5,
+        anchor_y: 0.5,
     }
 }
 
