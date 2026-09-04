@@ -101,8 +101,19 @@ pub enum Screen {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorTool {
     Select,
+    /// Click a timeline clip to split it at that click's timeline position — `CINECUT_UI_UX_
+    /// SPEC_v1.0.md`'s product-decisions addendum, Section 4. Distinct from the existing
+    /// playhead-position `App::split_at_playhead` (still reachable via its own shortcut/menu
+    /// item unchanged); this one splits wherever the click landed, independent of the playhead.
+    Razor,
     Trim,
-    /// Trim without leaving a gap — later clips on the same track shift to fill it.
+    /// Trim without leaving a gap — later clips on the same track shift to fill it. Kept as a
+    /// real tool mode (not removed) even though the product-decisions addendum's "final toolbar"
+    /// list (Section 2) doesn't include it as a *button* — that section is about what the
+    /// toolbar exposes, not a mandate to delete working Ripple-trim behavior; there was no
+    /// separate keyboard/menu path to it before, so the mode itself stays reachable via
+    /// `App::tool` even without its own toolbar button. See `screens::editor::toolbar`'s own
+    /// note on why Ripple/Roll/Slip/Slide lost their buttons.
     Ripple,
     /// Move the cut point between two adjacent clips; their combined timeline span is
     /// unchanged, just reallocated between them.
@@ -113,9 +124,22 @@ pub enum EditorTool {
     /// Move a clip along the timeline; its immediate neighbors' in/out points adjust to absorb
     /// the move, nothing else shifts.
     Slide,
+    /// Click the Program Monitor to create a new Text Graphic at that position, immediately
+    /// selected and ready to type — Section 6 of the product-decisions addendum. Does not
+    /// require click-and-drag (explicitly out of scope for this pass).
+    Text,
+    /// Section 8's Effects Tool: activates Effects mode and focuses the Effects Panel
+    /// (`PropertiesTab::Effects`) — explicitly *not* a paint/place-in-monitor interaction
+    /// (Section 12's own non-goals).
+    Effects,
     /// Pans the timeline canvas horizontally by dragging anywhere in it — clips/ruler stop
     /// reacting to drags while this is active (see [`EditorTool`]'s own doc comment).
     Hand,
+    /// Section 13's Zoom Tool: controls the Program Monitor *viewport* zoom only (never clip
+    /// Transform/Scale — Section 13's own "critical distinction"). Click zooms in one step
+    /// around the cursor; Alt/Option+click zooms out; wheel zooms continuously; double-click
+    /// resets to Fit. Does not pan (the Hand tool's job).
+    Zoom,
 }
 
 /// Which group of clip properties the properties panel's tab strip is currently showing —
@@ -153,12 +177,17 @@ pub enum MediaViewMode {
 /// produced rather than overflowing the panel or needing scroll support (a real, separate
 /// follow-up if true 1:1-pixel scrolling is ever wanted). Not persisted: resets to `Fit` on
 /// every app launch, same as `tool`/`media_view_mode`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum PreviewZoom {
     #[default]
     Fit,
     Percent50,
     Percent100,
+    /// An arbitrary zoom multiplier (`1.0` = 100%) — what the Zoom Tool's click/wheel
+    /// interaction sets (`screens::editor::layer_transform_preview`), distinct from the three
+    /// fixed presets above the quick-select row still offers. No `Eq` derive here (a `f32`
+    /// field can't implement it); nothing in this codebase used `PreviewZoom` as a map/set key.
+    Custom(f32),
 }
 
 /// Which filter the Media library panel's asset list is currently showing — a single-selection
@@ -1153,6 +1182,12 @@ pub struct App {
     /// — Section 49's own "Deleting a track containing clips requires confirmation". Stored by
     /// id, same reasoning as `deleting_sequence`.
     pub deleting_track: Option<(u64, String)>,
+    /// Set to the clip id right after the Text Tool creates a new, still-empty Text Graphic
+    /// (`App::add_text_clip_at`) — an Escape press while this is `Some` and that clip's text is
+    /// still blank deletes it outright (`CINECUT_PRODUCT_DECISIONS_v1.0.md` Section 6's "empty
+    /// text" rule); any other case (text typed, different clip selected, tool switched) just
+    /// clears this without deleting anything. Not serialized — transient UI interaction state.
+    pub text_tool_pending_empty_clip_id: Option<u64>,
     /// `(clip_id, start_speed_buf, end_speed_buf, steps_buf, smooth)` staged while the custom
     /// speed-ramp dialog is open — the fixed-preset "Rampa de velocidade" submenu entries call
     /// [`App::apply_speed_ramp_to_selected_clip`] directly with no dialog, but a custom start/
@@ -1783,6 +1818,7 @@ impl App {
             deleting_sequence: None,
             renaming_track: None,
             deleting_track: None,
+            text_tool_pending_empty_clip_id: None,
             speed_ramp_dialog: None,
             saving_layer_template: None,
             applying_layer_template: None,

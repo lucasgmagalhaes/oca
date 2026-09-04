@@ -374,6 +374,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         deleting_sequence: None,
         renaming_track: None,
         deleting_track: None,
+        text_tool_pending_empty_clip_id: None,
         speed_ramp_dialog: None,
         saving_layer_template: None,
         applying_layer_template: None,
