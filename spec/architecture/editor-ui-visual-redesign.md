@@ -104,7 +104,7 @@ Mechanics of the chosen route, for whoever implements it:
 (existing codepoints are read back from the previous output and never reassigned — only a
 newly-added icon gets a new one, the next free PUA slot), and calls `fantasticon`'s Node API
 to emit `crates/ui/assets/fonts/lucide-oca.ttf` + `lucide-oca.json` (the name→codepoint
-mapping, both checked in). All 25 vendored icons are in the font as of this commit.
+mapping, both checked in). All 26 vendored icons are in the font as of this commit.
 
 **`ctx.set_fonts` wiring: done too.** `crates/ui/src/icons.rs` embeds the generated `.ttf`
 (`include_bytes!`) and JSON mapping (`include_str!`), registers the font under a dedicated
@@ -142,6 +142,15 @@ buttons use `icon_button`'s `family` option; the hand-built play/pause `RichText
 through `icon_button`) gets `.family(icons::family())` directly. Decorative, non-interactive
 "▶" placeholders elsewhere (media-library thumbnail kind glyph, empty-preview state) are left
 as-is — not transport controls, no confirmed mockup mapping of their own.
+
+**Media library favorite toggle: done.** `star` (Lucide's actual `star.svg`, fetched the same
+way as the other 25) is the 26th vendored icon, added after the original mockup survey
+specifically to back the Favorites filter's per-asset toggle button (`App::toggle_asset_favorite`)
+— not present in the mockup's own icon set, since the mockup never showed a per-asset favorite
+affordance up close. `IconButtonOpts` gained a fourth `color: Option<Color32>` field for this:
+the star's *resting* color (not just its hover color, which `hover_color` already covered)
+carries the favorited/unfavorited state — `theme::ACCENT` when on, `theme::TEXT_MUTED` when
+off — replacing what was originally shipped as a plain `"★"`/`"☆"` unicode-glyph toggle.
 
 Still not wired: `chevron-left`/`chevron-right` (no real "collapse a timeline track row"
 feature exists today to attach them to — the mockup mapping here may be aspirational, worth
@@ -323,7 +332,8 @@ Mapping:
   `ROADMAP.md` P4 item 22) — could become its own tab instead of an inline chip row, a layout
   choice, not a new feature.
 - **Favorites / Recent tabs — done.** `MediaAsset` gained a manual `#[serde(default)] favorited:
-  bool` flag, toggled by a `★`/`☆` button on each list row and grid tile
+  bool` flag, toggled by a vendored-icon-font `star` button (accent-colored when on, muted when
+  off — see the Icon set section's own bullet) on each list row and grid tile
   (`App::toggle_asset_favorite`) — purely user-driven, not derived from usage. "Recent" tracks
   assets added to the timeline: `Project` gained `#[serde(default)] recent_asset_ids: Vec<u64>`
   (an MRU list, most-recent-first, deduplicated, capped at `RECENT_ASSET_CAPACITY` = 20 — the
