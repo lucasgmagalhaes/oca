@@ -134,15 +134,17 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
+                    // "🗗"/"🗖"/"🗕" are the same tofu class as "✕" above (confirmed via that
+                    // same screenshot) -- plain ASCII instead.
                     let (icon, label) = if is_maximized {
-                        ("🗗", Text::WindowRestore.tr(locale))
+                        ("=", Text::WindowRestore.tr(locale))
                     } else {
-                        ("🗖", Text::WindowMaximize.tr(locale))
+                        ("+", Text::WindowMaximize.tr(locale))
                     };
                     if window_button(ui, icon, label, theme::SURFACE_2).clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!is_maximized));
                     }
-                    if window_button(ui, "🗕", Text::WindowMinimize.tr(locale), theme::SURFACE_2)
+                    if window_button(ui, "_", Text::WindowMinimize.tr(locale), theme::SURFACE_2)
                         .clicked()
                     {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
