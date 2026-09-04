@@ -1202,6 +1202,11 @@ pub(crate) struct PreviewState {
     /// [`App::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
     /// frame from the previous one never lingers.
     pub(crate) preview_texture: Option<egui::TextureHandle>,
+    /// A clone of the same decoded, effects-applied frame just uploaded into `preview_texture`
+    /// — kept around only because the texture upload doesn't hand the pixels back, and the
+    /// preview transport row's snapshot button (`App::save_preview_snapshot`) needs a real CPU
+    /// buffer to write out as a PNG. Reset alongside `preview_texture` for the same reasons.
+    pub(crate) last_frame: Option<avcore::preview::VideoFrame>,
     /// Cache for [`App::pump_preview_frame`]'s CPU-side 3D LUT preview approximation (P4 item
     /// 21, "Preview support for vignette/glitch/deflicker/3D-LUT/stabilization" —
     /// `avcore::preview_effects`): `Some((path, parsed))` once `path` has been attempted, so a

@@ -1258,6 +1258,33 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             {
                 app.preview_state.loop_enabled = !app.preview_state.loop_enabled;
             }
+            if components::icon_button(
+                ui,
+                crate::icons::CAMERA_STR,
+                Text::SnapshotButton.tr(locale),
+                components::IconButtonOpts {
+                    family: Some(crate::icons::family()),
+                    ..Default::default()
+                },
+            )
+            .clicked()
+            {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("png", &["png"])
+                    .set_file_name("snapshot.png")
+                    .save_file()
+                {
+                    app.save_preview_snapshot(path);
+                }
+            }
+            if ui
+                .small_button(RichText::new("🔹").color(theme::TEXT_SECONDARY))
+                .on_hover_text(Text::AddMarkerButton.tr(locale))
+                .clicked()
+            {
+                app.add_marker_at_playhead(avcore::MarkerKind::Standard);
+                app.push_toast(Text::MarkerAdded.tr(locale).to_string());
+            }
             let playhead = app.active_project().timeline().playhead_secs;
             ui.label(
                 RichText::new(format!(
