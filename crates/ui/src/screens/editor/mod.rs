@@ -1352,7 +1352,11 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     }
                     None => {
                         ui.centered_and_justified(|ui| {
-                            ui.label(RichText::new("▶").size(48.0).color(theme::TEXT_MUTED));
+                            ui.label(
+                                RichText::new(icons::PLAY_STR)
+                                    .size(48.0)
+                                    .color(theme::TEXT_MUTED),
+                            );
                         });
                     }
                 };
@@ -1747,7 +1751,11 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                 );
             } else {
                 ui.centered_and_justified(|ui| {
-                    ui.label(RichText::new("▶").size(64.0).color(theme::TEXT_MUTED));
+                    ui.label(
+                        RichText::new(icons::PLAY_STR)
+                            .size(64.0)
+                            .color(theme::TEXT_MUTED),
+                    );
                 });
             }
 
@@ -1762,7 +1770,7 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                     let clicked = ui
                         .add(
                             egui::Button::new(
-                                RichText::new("✕")
+                                RichText::new("X")
                                     .size(16.0)
                                     .color(theme::TEXT_SECONDARY.gamma_multiply(opacity)),
                             )
