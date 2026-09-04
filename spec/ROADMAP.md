@@ -1909,8 +1909,10 @@ Quick wins that may be completed alongside CF-01:
   target — no markers feature exists yet... revisit when it lands"), now that P2 item 9 shipped
   markers. Pure UI wiring reusing already-tested `snap_to_nearest`/`snap_move_start` — no new
   pure-function surface needed a unit test of its own.
-- `[ ]` Stabilization and deflicker preview parity.
-- `[ ]` Real-hardware GPU encoder validation.
+- `[~]` Stabilization and deflicker preview parity — deflicker done (P4 item 21), stabilization
+  still open (motion estimation, a materially different problem).
+- `[~]` Real-hardware GPU encoder validation — NVENC confirmed on a real RTX 4070 (P4 item 19),
+  Quick Sync/AMF/VAAPI still unverified (no such hardware on any dev machine checked so far).
 - `[x]` **Integrating the standalone watched-folder utility into the app.** New "Limpeza"
   screen (nav rail, 🧹) replaces `scripts/Watch-Gameplay.ps1` + its `ui.html` status page with a
   native egui equivalent. `avcore::watched_folder` (new `core` module) detects a video file in a
