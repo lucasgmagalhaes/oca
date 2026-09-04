@@ -695,6 +695,7 @@ text_catalog! {
     TextFontPatrickHand: pt_br = "Patrick Hand · Manuscrita", en = "Patrick Hand · Handwritten";
     TextFontAnonymousPro: pt_br = "Anonymous Pro · Monoespaçada", en = "Anonymous Pro · Monospace";
     TextFontArchivoBlack: pt_br = "Archivo Black · Legenda bold", en = "Archivo Black · Bold caption";
+    TextFontUnknown: pt_br = "Fonte desconhecida", en = "Unknown font";
     TextFontRegular: pt_br = "Regular", en = "Regular";
     TextFontBold: pt_br = "Negrito", en = "Bold";
     PropTextDirection: pt_br = "Direção do texto", en = "Text direction";

@@ -78,17 +78,14 @@ pub(super) fn text_clip_properties(
     // Bundled family/style metadata is cheap; the font file itself is parsed lazily by core
     // only when preview/export actually rasterizes this clip.
     components::property_row(ui, Text::PropTextFontFamily.tr(locale));
-    let previous_family = tc.font_family;
+    let previous_family = tc.font_family.clone();
     egui::ComboBox::from_id_salt(("text_font_family", tc_id))
-        .selected_text(text_font_family_label(tc.font_family, locale))
+        .selected_text(text_font_family_label(&tc.font_family, locale))
         .width(ui.available_width())
         .show_ui(ui, |ui| {
             for family in avcore::TextFontFamily::ALL {
-                ui.selectable_value(
-                    &mut tc.font_family,
-                    family,
-                    text_font_family_label(family, locale),
-                );
+                let label = text_font_family_label(&family, locale);
+                ui.selectable_value(&mut tc.font_family, family, label);
             }
         });
     if tc.font_family != previous_family {
@@ -483,17 +480,23 @@ fn text_color_button(ui: &mut egui::Ui, rgba: [u8; 4]) -> egui::Response {
     )
 }
 
-fn text_font_family_label(
-    family: avcore::TextFontFamily,
-    locale: crate::i18n::Locale,
-) -> &'static str {
+fn text_font_family_label(family: &avcore::TextFontFamily, locale: crate::i18n::Locale) -> String {
     match family {
-        avcore::TextFontFamily::Lato => Text::TextFontLato.tr(locale),
-        avcore::TextFontFamily::BebasNeue => Text::TextFontBebasNeue.tr(locale),
-        avcore::TextFontFamily::PlayfairDisplay => Text::TextFontPlayfairDisplay.tr(locale),
-        avcore::TextFontFamily::PatrickHand => Text::TextFontPatrickHand.tr(locale),
-        avcore::TextFontFamily::AnonymousPro => Text::TextFontAnonymousPro.tr(locale),
-        avcore::TextFontFamily::ArchivoBlack => Text::TextFontArchivoBlack.tr(locale),
+        avcore::TextFontFamily::Lato => Text::TextFontLato.tr(locale).to_string(),
+        avcore::TextFontFamily::BebasNeue => Text::TextFontBebasNeue.tr(locale).to_string(),
+        avcore::TextFontFamily::PlayfairDisplay => {
+            Text::TextFontPlayfairDisplay.tr(locale).to_string()
+        }
+        avcore::TextFontFamily::PatrickHand => Text::TextFontPatrickHand.tr(locale).to_string(),
+        avcore::TextFontFamily::AnonymousPro => Text::TextFontAnonymousPro.tr(locale).to_string(),
+        avcore::TextFontFamily::ArchivoBlack => Text::TextFontArchivoBlack.tr(locale).to_string(),
+        // FONT-01's own "unknown future ID... displays a missing-font warning" rule -- this
+        // clip's persisted family_id (or, reading an old save, variant name) isn't one this
+        // build recognizes; it renders as Lato (the fallback every unrecognized family gets)
+        // but the picker still names the original id so the loss is visible, not silent.
+        avcore::TextFontFamily::Unknown(id) => {
+            format!("{} ({id})", Text::TextFontUnknown.tr(locale))
+        }
         // FONT-01B's 37 new families reuse the catalog's own display_name directly rather than
         // a dedicated i18n key per family -- font family names are proper nouns, not
         // conventionally translated per-locale (there's no pt-BR equivalent for "Montserrat"),
@@ -502,8 +505,8 @@ fn text_font_family_label(
         // categorized/searchable selector (still open) is the real place a category grouping
         // belongs, not a string suffix on today's flat list.
         other => avcore::font_catalog::find_family(other.family_id())
-            .map(|entry| entry.display_name)
-            .unwrap_or("Lato"),
+            .map(|entry| entry.display_name.to_string())
+            .unwrap_or_else(|| "Lato".to_string()),
     }
 }
 
