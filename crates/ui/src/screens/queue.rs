@@ -269,6 +269,24 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             ui.add(
                                 egui::ProgressBar::new(*percent as f32 / 100.0).desired_height(5.0),
                             );
+                            // Section 17/20's "elapsed" line — deliberately no ETA (section 18
+                            // is explicit that estimating remaining time is out of scope for
+                            // this version, so this shows only what already happened, never a
+                            // remaining-time prediction).
+                            if let Some(started) = app.export_job_started_at.get(&job.id) {
+                                ui.label(
+                                    RichText::new(format!(
+                                        "{} {}",
+                                        avcore::media::format_timecode(
+                                            started.elapsed().as_secs_f64()
+                                        ),
+                                        Text::ExportElapsed.tr(locale)
+                                    ))
+                                    .size(10.5)
+                                    .color(theme::TEXT_MUTED)
+                                    .monospace(),
+                                );
+                            }
                         }
                         ui.label(
                             RichText::new(i18n::job_detail_line(locale, job))
