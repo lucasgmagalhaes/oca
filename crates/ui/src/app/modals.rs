@@ -1750,9 +1750,13 @@ impl App {
 /// always reads the same glyph whether it's the picked value or a dropdown option.
 fn marker_kind_icon(kind: avcore::MarkerKind) -> &'static str {
     match kind {
-        avcore::MarkerKind::Standard => "🔹",
-        avcore::MarkerKind::ToDo => "☐",
-        avcore::MarkerKind::Chapter => "📖",
+        // "🔹"/"☐"/"📖" are all confirmed-tofu classes (emoji-presentation / Geometric Shapes)
+        // per this session's other fixes — plain ASCII instead. "⭐" is left as-is: not
+        // confirmed broken, and already reviewed/accepted elsewhere (`spec/ROADMAP.md`'s Stage 5
+        // note on the toolbar's "visible label, emoji prefix" convention).
+        avcore::MarkerKind::Standard => "M",
+        avcore::MarkerKind::ToDo => "[]",
+        avcore::MarkerKind::Chapter => "C",
         avcore::MarkerKind::Highlight => "⭐",
     }
 }
