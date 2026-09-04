@@ -800,8 +800,8 @@
     "semantic_hash": ""
   },
   "crates/core/assets/fonts/README.md": {
-    "mtime": 1787927132.8064659,
-    "ast_hash": "0e251de98a9f57c7eddd356719f3c333",
+    "mtime": 1788556269.6585226,
+    "ast_hash": "3ac4045ed7cb10f55434f54c72906379",
     "semantic_hash": ""
   },
   "crates/core/assets/fonts/anonymous-pro/OFL.txt": {
@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "spec/ROADMAP.md": {
-    "mtime": 1788555559.2284093,
-    "ast_hash": "188575bf3544d5c983ab7ba03bf62e9d",
+    "mtime": 1788556400.9443345,
+    "ast_hash": "552991cf41b3ae57e9ea3ccc2e4d4f3b",
     "semantic_hash": ""
   },
   "spec/RULES.md": {
@@ -1505,13 +1505,13 @@
     "semantic_hash": ""
   },
   "crates/core/src/font_catalog.rs": {
-    "mtime": 1787972837.0154414,
-    "ast_hash": "d4f5ee137739a2505d5b6bb594090d2a",
+    "mtime": 1788556309.1513631,
+    "ast_hash": "b028e35557991c78a153a8513740d6bd",
     "semantic_hash": ""
   },
   "crates/core/src/font_catalog/font_catalog_test.rs": {
-    "mtime": 1787972837.0164561,
-    "ast_hash": "47f9c3aad25c7a6ab053d0ae3311381b",
+    "mtime": 1788556197.6111672,
+    "ast_hash": "8a05e2fed8c5f0d0f5acda235d67ae82",
     "semantic_hash": ""
   },
   "crates/core/src/gameplay_events.rs": {
@@ -2017,6 +2017,51 @@
   "crates/ui/src/app/interchange_export.rs": {
     "mtime": 1788555123.5175815,
     "ast_hash": "45c27cbcbf525a2b3ecb3fa4a2a43e32",
+    "semantic_hash": ""
+  },
+  "crates/core/assets/fonts/barlow/OFL.txt": {
+    "mtime": 1788556064.0267332,
+    "ast_hash": "46cbde1f44ff31807ec209f1b72acad2",
+    "semantic_hash": ""
+  },
+  "crates/core/assets/fonts/fredoka/OFL.txt": {
+    "mtime": 1788556056.3521585,
+    "ast_hash": "21f5400ba551814c8028ea26b498ef51",
+    "semantic_hash": ""
+  },
+  "crates/core/assets/fonts/inter/OFL.txt": {
+    "mtime": 1788556050.1691835,
+    "ast_hash": "5e95cb23ed621124015c5d23224ba2d3",
+    "semantic_hash": ""
+  },
+  "crates/core/assets/fonts/montserrat/OFL.txt": {
+    "mtime": 1788556051.2320108,
+    "ast_hash": "2fdec60339ef243dcaca42a0c7bce717",
+    "semantic_hash": ""
+  },
+  "crates/core/assets/fonts/nunito/OFL.txt": {
+    "mtime": 1788556054.400385,
+    "ast_hash": "1be2e7edc99bc4a3d9d56d68c48b5f39",
+    "semantic_hash": ""
+  },
+  "crates/core/assets/fonts/open-sans/OFL.txt": {
+    "mtime": 1788556053.2473953,
+    "ast_hash": "2f74ec5e0b1fbcd6869e9224d7b4d600",
+    "semantic_hash": ""
+  },
+  "crates/core/assets/fonts/poppins/OFL.txt": {
+    "mtime": 1788556062.9660473,
+    "ast_hash": "481fed197dac47775fb62cefafa2555e",
+    "semantic_hash": ""
+  },
+  "crates/core/assets/fonts/roboto/OFL.txt": {
+    "mtime": 1788556052.196388,
+    "ast_hash": "d0d30e4860cc10440e095be065c2b0e3",
+    "semantic_hash": ""
+  },
+  "crates/core/assets/fonts/source-sans-3/OFL.txt": {
+    "mtime": 1788556055.4526923,
+    "ast_hash": "b80846b87d2b15e26e95885e0a3d5fe7",
     "semantic_hash": ""
   }
 }
