@@ -243,22 +243,24 @@ impl App {
     /// these three scalar fields, so paying for the rest was pure waste on the hottest UI-thread
     /// path in the app. Defaults (`String::new()`, `0.0`, `0.0`) when nothing covers the
     /// playhead, same as the `unwrap_or_default()` the caller used to apply to the full clone.
-    fn current_preview_clip_lut_and_vignette(&self) -> (String, f32, f32) {
+    fn current_preview_clip_lut_and_vignette(&self) -> (String, f32, f32, bool, Option<u64>) {
         let timeline = self.active_project().timeline();
         let Some(track) = timeline
             .tracks
             .iter()
             .find(|t| t.kind == TrackKind::Video && t.visible)
         else {
-            return (String::new(), 0.0, 0.0);
+            return (String::new(), 0.0, 0.0, false, None);
         };
         let Some(clip) = track.clip_at(timeline.playhead_secs) else {
-            return (String::new(), 0.0, 0.0);
+            return (String::new(), 0.0, 0.0, false, None);
         };
         (
             clip.lut_path.clone(),
             clip.vignette_intensity,
             clip.glitch_intensity,
+            clip.deflicker_enabled,
+            Some(clip.id),
         )
     }
 
@@ -1105,8 +1107,12 @@ impl App {
         // Read before borrowing `self.preview_state.preview` below -- this is a method call, which needs an
         // unencumbered `&self` the borrow checker can't reconcile with an already-live
         // `&self.preview_state.preview` borrow, even though the two fields are disjoint.
-        let (lut_path, vignette_intensity, glitch_intensity) =
+        let (lut_path, vignette_intensity, glitch_intensity, deflicker_enabled, clip_id) =
             self.current_preview_clip_lut_and_vignette();
+        if self.preview_state.preview_deflicker_history.0 != clip_id {
+            self.preview_state.preview_deflicker_history =
+                (clip_id, avcore::DeflickerHistory::new());
+        }
 
         let Some(preview) = &self.preview_state.preview else {
             return;
@@ -1147,6 +1153,12 @@ impl App {
                 // rather than a static grain texture.
                 let seed = ctx.input(|i| i.time).to_bits();
                 avcore::apply_glitch_to_rgba(&mut frame.rgba, glitch_intensity, seed);
+            }
+            if deflicker_enabled {
+                avcore::apply_deflicker_to_rgba(
+                    &mut frame.rgba,
+                    &mut self.preview_state.preview_deflicker_history.1,
+                );
             }
 
             let image = egui::ColorImage::from_rgba_unmultiplied(

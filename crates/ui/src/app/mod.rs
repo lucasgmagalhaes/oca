@@ -1332,6 +1332,12 @@ pub(crate) struct PreviewState {
     /// retried every frame. `None` (the outer `Option`) before any clip with a LUT has been
     /// previewed yet.
     pub(crate) preview_lut_cache: Option<(String, Option<avcore::Lut3D>)>,
+    /// The currently previewed clip's id, plus its rolling [`avcore::DeflickerHistory`] — kept
+    /// separate from `preview_clip_id` (which tracks the pipeline's own open/reopen state, not
+    /// this effect specifically) so [`App::pump_preview_frame`] can reset the history to empty
+    /// the moment the previewed clip changes, the same "one clip's temporal state must never
+    /// leak into the next" reasoning [`avcore::DeflickerHistory`]'s own doc comment gives.
+    pub(crate) preview_deflicker_history: (Option<u64>, avcore::DeflickerHistory),
     /// Whether the Editor preview panel's waveform/vectorscope color scopes are shown — off by
     /// default, since computing both is a full pass over every pixel of every decoded frame
     /// (see [`App::pump_preview_frame`]) and most edits don't need it.
