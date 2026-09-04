@@ -19,13 +19,23 @@ use crate::app::{App, Screen};
 use crate::i18n;
 use crate::theme;
 
-const ITEMS: [(Screen, &str); 6] = [
-    (Screen::Home, "⌂"),
-    (Screen::Editor, "✂"),
-    (Screen::Library, "▤"),
-    (Screen::SoundLibrary, "♫"),
-    (Screen::Queue, "≡"),
-    (Screen::WatchFolder, "🧹"),
+// `None` = confirmed tofu (blank box) against this app's bundled default font — `⌂`/`▤`/`≡`/
+// `🧹` are obscure-enough codepoints (an old Unix "house" glyph, a geometric shape, a math
+// operator, and a 2018-vintage emoji) that this font doesn't cover them, found via a real
+// screenshot of the running app, not guessed. `✂`/`♫` are older, more broadly-supported dingbat
+// codepoints and render fine. No vendored Lucide icon exists yet for home/library/queue/folder
+// concepts (`icons.rs`'s 25-icon set is scissors/settings/eye/lock/transport/etc. only) — a real
+// fix needs new SVGs added to `spec/architecture/assets/icons/` and a `make icon-font` rerun,
+// which needs Node tooling and new icon assets this pass didn't have. `rail_button`'s `None` arm
+// falls back to a single-letter monogram (ASCII, always renders) rather than shipping an
+// invisible button in the meantime.
+const ITEMS: [(Screen, Option<&str>); 6] = [
+    (Screen::Home, None),
+    (Screen::Editor, Some("✂")),
+    (Screen::Library, None),
+    (Screen::SoundLibrary, Some("♫")),
+    (Screen::Queue, None),
+    (Screen::WatchFolder, None),
 ];
 
 /// Width of the compact icon-only rail — each button is a single centered glyph, tooltip-only
@@ -65,6 +75,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 
                 for (screen, icon) in ITEMS {
                     let label = i18n::nav_label(app.locale, screen);
+                    let monogram;
+                    let icon = match icon {
+                        Some(icon) => icon,
+                        None => {
+                            monogram = label.chars().next().map(String::from).unwrap_or_default();
+                            monogram.as_str()
+                        }
+                    };
                     rail_button(
                         ui,
                         app.screen == screen,
