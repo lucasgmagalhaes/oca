@@ -494,6 +494,16 @@ fn text_font_family_label(
         avcore::TextFontFamily::PatrickHand => Text::TextFontPatrickHand.tr(locale),
         avcore::TextFontFamily::AnonymousPro => Text::TextFontAnonymousPro.tr(locale),
         avcore::TextFontFamily::ArchivoBlack => Text::TextFontArchivoBlack.tr(locale),
+        // FONT-01B's 37 new families reuse the catalog's own display_name directly rather than
+        // a dedicated i18n key per family -- font family names are proper nouns, not
+        // conventionally translated per-locale (there's no pt-BR equivalent for "Montserrat"),
+        // so a per-locale key would just repeat the same string twice. No "· category" suffix
+        // the original six have either -- that's cosmetic, not required, and FONT-01C's own
+        // categorized/searchable selector (still open) is the real place a category grouping
+        // belongs, not a string suffix on today's flat list.
+        other => avcore::font_catalog::find_family(other.family_id())
+            .map(|entry| entry.display_name)
+            .unwrap_or("Lato"),
     }
 }
 
