@@ -512,9 +512,9 @@ impl Default for PrefsState {
 /// (`"YouTube"`/`"Podcast"`/`"Broadcast"`) that reads the same in both locales, so unlike
 /// most UI text it isn't routed through `i18n::Text`.
 pub const LUFS_PROFILES: [(&str, f32); 3] = [
-    ("-14 LUFS · YouTube", -14.0),
-    ("-16 LUFS · Podcast", -16.0),
-    ("-23 LUFS · Broadcast", -23.0),
+    ("-14 LUFS | YouTube", -14.0),
+    ("-16 LUFS | Podcast", -16.0),
+    ("-23 LUFS | Broadcast", -23.0),
 ];
 
 /// Slider bounds for the properties panel's per-block gain control (Fase 4's "ganho de volume

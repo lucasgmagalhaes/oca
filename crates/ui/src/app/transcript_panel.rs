@@ -177,7 +177,7 @@ impl App {
                                 for hit in project_hits.iter().filter(|h| h.asset_id == *asset_id) {
                                     let is_current = Some(hit.word.id) == current_word_id;
                                     let label = format!(
-                                        "{} — {}",
+                                        "{} - {}",
                                         avcore::media::format_timecode(hit.word.start_secs),
                                         hit.word.text
                                     );
