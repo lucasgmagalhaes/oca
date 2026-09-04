@@ -253,6 +253,53 @@ impl App {
         self.invalidate_preview_rendering();
     }
 
+    /// Creates a new Text Graphic at `(pos_x, pos_y)` (canvas-fraction coordinates, the same
+    /// space [`TextClip::pos_x`]/`pos_y` already use) — the Text Tool's own click-to-create
+    /// (`CINECUT_PRODUCT_DECISIONS_v1.0.md`, Section 6), distinct from [`Self::add_text_clip`]:
+    /// starts with genuinely empty `text` (not the placeholder default) and a fixed position
+    /// rather than the toolbar button's own `(0.1, 0.85)` default, since this one is placed by a
+    /// real click. Returns the new clip's id, recorded by the caller in
+    /// `App::text_tool_pending_empty_clip_id` so an Escape press with nothing typed yet can
+    /// discard it (Section 6's own "empty text" rule).
+    pub fn add_text_clip_at(&mut self, pos_x: f32, pos_y: f32) -> u64 {
+        self.push_undo_snapshot();
+        let playhead_secs = self.active_project().timeline().playhead_secs;
+        let timeline = self.active_project_mut().timeline_mut();
+        let track_index = resolve_or_create_track(timeline, TrackKind::Text, None);
+        let clip_id = next_clip_id(timeline);
+        timeline.tracks[track_index].text_clips.push(TextClip {
+            id: clip_id,
+            start_secs: playhead_secs,
+            duration_secs: 3.0,
+            text: String::new(),
+            font_size: 48.0,
+            font_family: Default::default(),
+            font_style: Default::default(),
+            color_rgba: [255, 255, 255, 255],
+            background_rgba: [0, 0, 0, 0],
+            background_padding: 8.0,
+            background_corner_radius: 8.0,
+            pos_x,
+            pos_y,
+            words: Vec::new(),
+            highlight_enabled: false,
+            highlight_color_rgba: [255, 220, 0, 255],
+            opacity_keyframes: vec![],
+            pos_x_keyframes: vec![],
+            pos_y_keyframes: vec![],
+            scale_keyframes: vec![],
+            rotation_keyframes: vec![],
+            direction: Default::default(),
+            language: None,
+            text_align: Default::default(),
+        });
+        self.selected_clip_id = None;
+        self.selected_shape_clip_id = None;
+        self.selected_text_clip_id = Some(clip_id);
+        self.invalidate_preview_rendering();
+        clip_id
+    }
+
     /// Appends a new shape track (`TrackKind::Shape`) to the active sequence's timeline. The
     /// track is named using [`crate::i18n::Text::DefaultShapeTrackName`]. Mirrors
     /// [`App::add_text_track`].

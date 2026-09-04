@@ -375,6 +375,29 @@ impl App {
         }
     }
 
+    /// Splits whichever clip covers `at_secs` on `track_id` alone — the Razor Tool's own
+    /// click-to-split (`CINECUT_UI_UX_SPEC_v1.0.md`'s product-decisions addendum, Section 4),
+    /// distinct from `split_at_playhead`'s "every track at the playhead" scope: a Razor click
+    /// only ever touches the one clip actually clicked. A no-op if `track_id` doesn't exist or
+    /// nothing on it covers `at_secs`.
+    pub fn split_track_clip_at(&mut self, track_id: u64, at_secs: f64) {
+        self.push_undo_snapshot();
+        let next_id = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .map(|c| c.id)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let timeline = self.active_project_mut().timeline_mut();
+        if let Some(track) = timeline.tracks.iter_mut().find(|t| t.id == track_id) {
+            track.split_clip_at(at_secs, next_id);
+        }
+    }
+
     /// Removes `selected_clip_id` from whichever track has it and clears the selection — what
     /// pressing `Delete` on the timeline does. Leaves a gap rather than rippling later clips
     /// left, matching `split_at_playhead`'s equally simple non-ripple editing model. If the
