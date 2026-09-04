@@ -26,6 +26,8 @@ Copy-Item (Join-Path $BuildDir "Lib") $OutputDir -Recurse
 # added to PATH by configure_bundled_runtime() for yt-dlp merging/audio extraction.
 Copy-Item (Join-Path $FfmpegDir "bin\*.dll") $OutputDir
 Copy-Item (Join-Path $FfmpegDir "bin\ffmpeg.exe") (Join-Path $Runtime "bin")
+python (Join-Path $PSScriptRoot "verify_ffmpeg_runtime.py") `
+    (Join-Path $FfmpegDir "bin\ffmpeg.exe") --platform windows
 
 $BundledGStreamer = Join-Path $Runtime "gstreamer"
 New-Item -ItemType Directory -Force -Path (Join-Path $BundledGStreamer "lib") | Out-Null
@@ -40,6 +42,10 @@ if (Test-Path (Join-Path $GStreamerDir "share")) {
     Copy-Item (Join-Path $GStreamerDir "share") $BundledGStreamer -Recurse
 }
 Copy-Item (Join-Path $GStreamerDir "bin\*.dll") $OutputDir
+
+$env:PATH = "$OutputDir;$env:PATH"
+python (Join-Path $PSScriptRoot "verify_ffmpeg_runtime.py") `
+    (Join-Path $Runtime "bin\ffmpeg.exe") --platform windows
 
 python (Join-Path $PSScriptRoot "fetch_models.py") $Resources
 Copy-Item (Join-Path $PSScriptRoot "bundle-manifest.json") $Resources
