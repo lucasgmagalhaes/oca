@@ -45,6 +45,7 @@ fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {
         file_path: None,
         panel_layout: None,
         smart_bins: Vec::new(),
+        recent_asset_ids: Vec::new(),
     }
 }
 
@@ -171,6 +172,7 @@ fn test_asset(id: u64) -> MediaAsset {
         loudness: None,
         proxy_path: None,
         waveform_peaks: None,
+        favorited: false,
     }
 }
 
@@ -352,7 +354,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         formatting_clipboard: None,
         multi_selected_clip_ids: HashSet::new(),
         active_multicam_group_id: None,
-        active_smart_bin_id: None,
+        media_filter: MediaLibraryFilter::All,
         editing_smart_bin: None,
         toasts: Vec::new(),
         prefs_open: false,
@@ -1410,6 +1412,32 @@ fn select_asset_only_updates_selected_asset_id() {
     assert_eq!(app.selected_asset_id, Some(2));
     assert!(app.preview_state.preview_playing);
     assert!(app.preview_state.preview_texture.is_some());
+}
+
+#[test]
+fn toggle_asset_favorite_flips_the_flag_on_the_matching_asset() {
+    let mut app = test_app(
+        vec![test_project(1, vec![test_asset(1), test_asset(2)])],
+        Vec::new(),
+    );
+
+    app.toggle_asset_favorite(1);
+
+    assert!(app.active_project().media_library[0].favorited);
+    assert!(!app.active_project().media_library[1].favorited);
+
+    app.toggle_asset_favorite(1);
+
+    assert!(!app.active_project().media_library[0].favorited);
+}
+
+#[test]
+fn toggle_asset_favorite_is_a_no_op_for_an_unknown_asset_id() {
+    let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
+
+    app.toggle_asset_favorite(999);
+
+    assert!(!app.active_project().media_library[0].favorited);
 }
 
 // test_asset()'s source_path is a relative, nonexistent file, so `ensure_preview_loaded`
@@ -5491,6 +5519,7 @@ fn silence_review_asset() -> MediaAsset {
     MediaAsset {
         duration_secs: 20.0,
         waveform_peaks: Some(peaks),
+        favorited: false,
         ..test_asset(1)
     }
 }
@@ -6262,12 +6291,14 @@ fn spiky_peaks(spike_range: std::ops::Range<usize>) -> Vec<(f32, f32)> {
 fn highlight_test_project() -> Project {
     let game_asset = MediaAsset {
         waveform_peaks: Some(spiky_peaks(6..12)),
+        favorited: false,
         duration_secs: 10.0,
         ..test_asset(1)
     };
     let mic_asset = MediaAsset {
         id: 2,
         waveform_peaks: Some(spiky_peaks(6..12)),
+        favorited: false,
         duration_secs: 10.0,
         ..test_asset(2)
     };
@@ -6306,6 +6337,7 @@ fn detect_highlights_toasts_when_a_role_is_missing() {
     };
     let asset = MediaAsset {
         waveform_peaks: Some(spiky_peaks(3..6)),
+        favorited: false,
         duration_secs: 10.0,
         ..test_asset(1)
     };

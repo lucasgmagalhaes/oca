@@ -103,6 +103,7 @@ fn test_asset_with_peaks(peaks: Vec<(f32, f32)>, duration_secs: f64) -> avcore::
         loudness: None,
         proxy_path: None,
         waveform_peaks: Some(peaks),
+        favorited: false,
     }
 }
 
@@ -212,6 +213,7 @@ fn waveform_snap_points_for_clip_catches_a_gap_shorter_than_d1s_own_cuttable_thr
 fn waveform_snap_points_for_clip_is_empty_without_a_cached_waveform() {
     let asset = avcore::MediaAsset {
         waveform_peaks: None,
+        favorited: false,
         ..test_asset_with_peaks(vec![], 10.0)
     };
     let clip = test_clip(0.0, 0.0, 10.0);
