@@ -414,11 +414,23 @@ EncodeStatus avbridge_encode_timeline_export(const ClipSegment *segments, int se
                 status = ENCODE_ERR_FILTER_GRAPH;
                 goto segment_cleanup;
             }
+            /* pad's x/y offsets place this segment's own anchor point (a fraction of its
+               decoded content, not the padded canvas buffer) at the padded buffer's center
+               (ow/2, oh/2) -- at anchor 0.5/0.5 this reduces to the original "(ow-iw)/2"
+               centering exactly (verified against real ffmpeg output, byte-identical), so a
+               segment with the default anchor renders identically to before this field
+               existed. Any rotate=... stage later in final_chain (from scale/rotation
+               keyframes) then pivots around this same buffer's own center -- i.e. around
+               whatever point anchor_x/anchor_y designated -- since rotate always rotates
+               around its own input frame's center. */
+            char pad_x[96], pad_y[96];
+            snprintf(pad_x, sizeof(pad_x), "ow/2-(%g)*iw", seg->anchor_x);
+            snprintf(pad_y, sizeof(pad_y), "oh/2-(%g)*ih", seg->anchor_y);
             int vf_written = snprintf(
                 vfilter_descr, sizeof(vfilter_descr),
-                "%sscale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-"
-                "ih)/2,fps=%d/%d%s%s,format=%s",
-                setpts_str, canvas_width, canvas_height, canvas_width, canvas_height,
+                "%sscale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:%s:%s,fps=%d/%d%s%s"
+                ",format=%s",
+                setpts_str, canvas_width, canvas_height, canvas_width, canvas_height, pad_x, pad_y,
                 canvas_fps.num, canvas_fps.den, final_chain[0] ? "," : "", final_chain,
                 venc_pix_fmt_name);
             if (vf_written < 0 || (size_t)vf_written >= sizeof(vfilter_descr)) {
