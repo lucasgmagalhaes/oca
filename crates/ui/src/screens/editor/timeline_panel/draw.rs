@@ -433,6 +433,64 @@ pub(super) fn draw_ruler_ticks(painter: &egui::Painter, rect: egui::Rect, px_per
     }
 }
 
+/// Trim Tool's live readout (`CINECUT_PRODUCT_DECISIONS_v1.0.md` section 5: "while trimming,
+/// show ... source timecode; sequence timecode; trim duration"). Drawn floating above-right of
+/// the drag pointer so it never sits under the finger/cursor doing the dragging.
+pub(super) fn draw_trim_info(
+    painter: &egui::Painter,
+    anchor: egui::Pos2,
+    locale: crate::i18n::Locale,
+    source_secs: f64,
+    sequence_secs: f64,
+    trim_duration_secs: f64,
+) {
+    use crate::i18n::Text;
+    let lines = [
+        format!(
+            "{}: {}",
+            Text::TrimInfoSource.tr(locale),
+            avcore::media::format_timecode(source_secs.max(0.0))
+        ),
+        format!(
+            "{}: {}",
+            Text::TrimInfoSequence.tr(locale),
+            avcore::media::format_timecode(sequence_secs.max(0.0))
+        ),
+        format!(
+            "{}: {}",
+            Text::TrimInfoDuration.tr(locale),
+            avcore::media::format_timecode(trim_duration_secs.max(0.0))
+        ),
+    ];
+    let font = egui::FontId::monospace(10.0);
+    const LINE_HEIGHT: f32 = 13.0;
+    const PADDING: f32 = 6.0;
+    let width = lines.iter().map(|l| l.len()).max().unwrap_or(0) as f32 * 5.5 + PADDING * 2.0;
+    let height = lines.len() as f32 * LINE_HEIGHT + PADDING * 2.0;
+    let pos = anchor + egui::vec2(12.0, -height - 12.0);
+    let rect = egui::Rect::from_min_size(pos, egui::vec2(width, height));
+    painter.rect_filled(
+        rect,
+        egui::CornerRadius::same(theme::RADIUS_SM),
+        theme::SURFACE_2,
+    );
+    painter.rect_stroke(
+        rect,
+        egui::CornerRadius::same(theme::RADIUS_SM),
+        egui::Stroke::new(1.0, theme::BORDER),
+        egui::StrokeKind::Outside,
+    );
+    for (i, line) in lines.iter().enumerate() {
+        painter.text(
+            rect.min + egui::vec2(PADDING, PADDING + i as f32 * LINE_HEIGHT),
+            egui::Align2::LEFT_TOP,
+            line,
+            font.clone(),
+            theme::TEXT_PRIMARY,
+        );
+    }
+}
+
 pub(super) fn draw_playhead(
     ui: &egui::Ui,
     rect: egui::Rect,
