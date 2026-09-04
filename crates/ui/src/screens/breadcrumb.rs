@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use avcore::media::format_timecode;
 use eframe::egui::{self, RichText};
 
 use crate::app::{App, Screen};
@@ -92,7 +93,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             .size(13.0)
                             .color(theme::TEXT_SECONDARY),
                     );
-                    ui.add_space(6.0);
+                    ui.add_space(4.0);
                     egui::Frame::new()
                         .fill(theme::ACCENT)
                         .corner_radius(theme::RADIUS_PILL)
@@ -105,6 +106,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             .size(11.0)
                             .color(theme::TEXT_MUTED),
                     );
+                    // Fused with the breadcrumb into one top strip, per the OCA mockup's single
+                    // dense top bar (`spec/architecture/editor-ui-visual-redesign.md`'s Top bar
+                    // section) — this used to be its own full-width row below the breadcrumb,
+                    // which read as two visually separate bars instead of one.
+                    ui.add_space(16.0);
+                    crate::screens::editor::menu_bar::menu_bar(app, ui);
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -137,6 +144,49 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             .color(theme::TEXT_MUTED)
                             .monospace(),
                     );
+
+                    // Editor-only: timecode/fps/resolution + Export, matching the OCA mockup's
+                    // top-bar cluster (`spec/architecture/editor-ui-visual-redesign.md`'s Top bar
+                    // section) — same data the preview panel's own HUD overlay already reads
+                    // (`app.current_preview_fps()`, `preview_state.preview_texture`), just
+                    // additionally surfaced here since the mockup puts a live readout in the top
+                    // bar itself, not only on the video frame.
+                    if app.screen == Screen::Editor {
+                        ui.add_space(12.0);
+                        if crate::components::primary_button(ui, Text::Export.tr(app.locale))
+                            .clicked()
+                        {
+                            app.screen = Screen::Queue;
+                        }
+                        ui.add_space(12.0);
+                        if let Some([w, h]) =
+                            app.preview_state.preview_texture.as_ref().map(|t| t.size())
+                        {
+                            ui.label(
+                                RichText::new(format!("{w}×{h}"))
+                                    .size(11.0)
+                                    .color(theme::TEXT_SECONDARY)
+                                    .monospace(),
+                            );
+                            ui.add_space(8.0);
+                        }
+                        if let Some(fps) = app.current_preview_fps() {
+                            ui.label(
+                                RichText::new(format!("{fps:.2} FPS"))
+                                    .size(11.0)
+                                    .color(theme::TEXT_SECONDARY)
+                                    .monospace(),
+                            );
+                            ui.add_space(8.0);
+                        }
+                        let playhead = app.active_project().timeline().playhead_secs;
+                        ui.label(
+                            RichText::new(format_timecode(playhead))
+                                .size(11.0)
+                                .color(theme::TEXT_PRIMARY)
+                                .monospace(),
+                        );
+                    }
                 });
             });
         });

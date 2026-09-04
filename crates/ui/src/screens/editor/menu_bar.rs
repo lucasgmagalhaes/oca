@@ -27,7 +27,7 @@ use eframe::egui;
 use crate::app::App;
 use crate::i18n::Text;
 
-pub(super) fn menu_bar(app: &mut App, ui: &mut egui::Ui) {
+pub(crate) fn menu_bar(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     egui::MenuBar::new().ui(ui, |ui| {
         file_menu(app, ui, locale);
@@ -37,6 +37,7 @@ pub(super) fn menu_bar(app: &mut App, ui: &mut egui::Ui) {
         clip_menu(app, ui, locale);
         markers_menu(app, ui, locale);
         graphics_menu(app, ui, locale);
+        analyze_menu(app, ui, locale);
     });
 }
 
@@ -247,6 +248,14 @@ fn sequence_menu(app: &mut App, ui: &mut egui::Ui, locale: crate::i18n::Locale) 
             app.add_video_track();
             ui.close();
         }
+        if ui
+            .button(Text::CreateMulticamGroup.tr(locale))
+            .on_hover_text("1-9")
+            .clicked()
+        {
+            app.create_multicam_group_from_video_tracks();
+            ui.close();
+        }
     });
 }
 
@@ -423,6 +432,73 @@ fn graphics_menu(app: &mut App, ui: &mut egui::Ui, locale: crate::i18n::Locale) 
                 app.start_drawing_custom_shape();
             } else {
                 app.push_toast(Text::ShapeDrawNeedsPreview.tr(locale).to_string());
+            }
+            ui.close();
+        }
+    });
+}
+
+/// Sequence-wide detection/analysis passes (silence, speech edits, chapters, highlights,
+/// gameplay events, shorts pack) — moved here from the Editor toolbar (`super::toolbar`) to fix
+/// a real overflow bug (the toolbar cut off past the visible window width at 1920px once every
+/// tool/track/analyze/export action was crammed into one row) and to match the OCA mockup's
+/// minimal tool rail, per `spec/architecture/editor-ui-visual-redesign.md`. Reach-for-
+/// occasionally passes over the whole sequence, not moment-to-moment editing tools, so a menu
+/// fits better than a permanent toolbar button anyway (progressive disclosure).
+fn analyze_menu(app: &mut App, ui: &mut egui::Ui, locale: crate::i18n::Locale) {
+    ui.menu_button(Text::AnalyzeMenu.tr(locale), |ui| {
+        if ui.button(Text::DetectSilence.tr(locale)).clicked() {
+            app.begin_silence_review();
+            ui.close();
+        }
+        if ui.button(Text::DetectSpeechEdits.tr(locale)).clicked() {
+            app.begin_transcript_proposals();
+            ui.close();
+        }
+        if ui.button(Text::DetectChapters.tr(locale)).clicked() {
+            app.spawn_detect_scene_cuts_for_selected_clip();
+            ui.close();
+        }
+        if ui.button(Text::ExportChapters.tr(locale)).clicked() {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("text", &["txt"])
+                .set_file_name("chapters.txt")
+                .save_file()
+            {
+                app.export_chapters_txt(path);
+            }
+            ui.close();
+        }
+        if ui.button(Text::DetectHighlights.tr(locale)).clicked() {
+            app.detect_highlights();
+            ui.close();
+        }
+        if ui.button(Text::ImportGameplayEvents.tr(locale)).clicked() {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("json", &["json"])
+                .pick_file()
+            {
+                app.import_gameplay_events(path);
+            }
+            ui.close();
+        }
+        if ui.button(Text::LoadGraphicTemplate.tr(locale)).clicked() {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("json", &["json"])
+                .pick_file()
+            {
+                app.load_graphic_template_from_file(path);
+            }
+            ui.close();
+        }
+        ui.separator();
+        if ui.button(Text::ShortsPack.tr(locale)).clicked() {
+            let mut dialog = rfd::FileDialog::new();
+            if !app.prefs.output_folder.is_empty() {
+                dialog = dialog.set_directory(&app.prefs.output_folder);
+            }
+            if let Some(output_dir) = dialog.pick_folder() {
+                app.spawn_shorts_pack(output_dir);
             }
             ui.close();
         }
