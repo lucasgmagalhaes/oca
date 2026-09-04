@@ -25,7 +25,7 @@ use avcore::{
 };
 use tracing::{debug, error, info};
 
-use super::{App, RenderEvent};
+use super::{App, NestedSequenceEvent, RenderEvent};
 
 /// Cooperative controls shared by the UI and one render worker. The native encoder already
 /// checks `cancel` between packets; pause is implemented at its per-frame progress callback,
@@ -189,30 +189,146 @@ impl App {
         result
     }
 
-    /// Renders every compound clip (nested sequence) reachable from the active sequence's
-    /// timeline to a cached temp file, returning one synthetic [`avcore::MediaAsset`] per
-    /// nested sequence to merge into a `media_library` clone before resolving export segments —
-    /// see `avcore::nested_sequence`'s own doc comment. A materialization failure (a missing or
-    /// cyclically-nested sequence) is logged and treated as "no nested clips resolved" rather
-    /// than failing the whole export/preview — the same clip will simply fail
-    /// `RenderError::MissingAsset` downstream instead, a clearer error for the eventual caller
-    /// than this method swallowing the whole resolution.
+    /// Returns the active sequence's compound-clip (nested sequence) synthetic assets — one
+    /// [`avcore::MediaAsset`] per nested sequence reachable from its timeline — to merge into a
+    /// `media_library` clone before resolving export segments, see `avcore::nested_sequence`'s
+    /// own doc comment.
+    ///
+    /// The actual rendering runs on a background thread (dispatched here, applied by
+    /// [`App::pump_nested_sequence_renders`]) rather than blocking this call — the one honest
+    /// gap ROADMAP.md P4 item 35 flagged: materializing a nested sequence is a real FFmpeg
+    /// re-encode, and doing it synchronously on the UI thread meant the first hit after any edit
+    /// to a nested sequence froze the whole app for however long that encode took. This method
+    /// instead always returns immediately: the last successfully-materialized result for the
+    /// active sequence (empty before the very first render completes), while dispatching a fresh
+    /// background render whenever the active sequence's `Project::sequences` snapshot has
+    /// changed since the input that produced that cached result (comparing every sequence, not
+    /// just the active one's own timeline, since a compound clip's rendered content depends on
+    /// whatever *other* sequence it points at — same reasoning `ExportPreviewCache` already
+    /// uses) and no render for this sequence id is already in flight. A materialization failure
+    /// (a missing or cyclically-nested sequence) is logged and treated as "no nested clips
+    /// resolved" — the same clip simply fails `RenderError::MissingAsset` downstream instead, a
+    /// clearer error for the eventual caller than this method swallowing the whole resolution.
     pub(super) fn materialize_nested_sequences_for_active_sequence(
         &mut self,
     ) -> Vec<avcore::MediaAsset> {
         let project = self.active_project().clone();
-        let cache_dir = avcore::nested_sequence::cache_dir_for_project(&project);
+        let sequence_id = project.active_sequence().id;
+        let cached = self
+            .nested_sequence_render_state
+            .nested_sequence_last_result
+            .get(&sequence_id)
+            .cloned()
+            .unwrap_or_default();
+
+        let unchanged = self
+            .nested_sequence_render_state
+            .nested_sequence_last_input
+            .get(&sequence_id)
+            == Some(&project.sequences);
+        if unchanged
+            || self
+                .nested_sequence_render_state
+                .nested_sequence_rendering_ids
+                .contains(&sequence_id)
+        {
+            return cached;
+        }
+
         let timeline = project.active_sequence().timeline.clone();
-        match avcore::nested_sequence::materialize_nested_sequences(
-            &project,
-            &timeline,
-            &cache_dir,
-            &mut self.nested_sequence_render_cache,
-        ) {
-            Ok(assets) => assets.into_values().collect(),
-            Err(error) => {
-                tracing::warn!(?error, "failed to materialize nested sequence(s)");
-                Vec::new()
+        let has_nested_clips = timeline
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .any(|c| c.nested_sequence_id.is_some());
+        if !has_nested_clips {
+            // Latch the input even in the trivial case, so this cheap scan doesn't repeat every
+            // single frame either.
+            self.nested_sequence_render_state
+                .nested_sequence_last_input
+                .insert(sequence_id, project.sequences.clone());
+            self.nested_sequence_render_state
+                .nested_sequence_last_result
+                .remove(&sequence_id);
+            return Vec::new();
+        }
+
+        self.nested_sequence_render_state
+            .nested_sequence_rendering_ids
+            .insert(sequence_id);
+        let cache_dir = avcore::nested_sequence::cache_dir_for_project(&project);
+        let mut cache_snapshot = self.nested_sequence_render_cache.clone();
+        let sequences_input = project.sequences.clone();
+        let tx = self.nested_sequence_render_state.nested_sequence_tx.clone();
+        std::thread::spawn(move || {
+            let event = match avcore::nested_sequence::materialize_nested_sequences(
+                &project,
+                &timeline,
+                &cache_dir,
+                &mut cache_snapshot,
+            ) {
+                Ok(assets) => NestedSequenceEvent::Ready {
+                    sequence_id,
+                    cache: cache_snapshot,
+                    assets: assets.into_values().collect(),
+                    sequences_input,
+                },
+                Err(error) => NestedSequenceEvent::Failed {
+                    sequence_id,
+                    error: error.to_string(),
+                    sequences_input,
+                },
+            };
+            let _ = tx.send(event);
+        });
+
+        cached
+    }
+
+    /// Applies finished background nested-sequence materializations to
+    /// `nested_sequence_render_cache`/`nested_sequence_render_state`. Called once per frame from
+    /// [`eframe::App::ui`], same as [`App::pump_motion_tracking`].
+    pub(super) fn pump_nested_sequence_renders(&mut self) {
+        while let Ok(event) = self
+            .nested_sequence_render_state
+            .nested_sequence_rx
+            .try_recv()
+        {
+            match event {
+                NestedSequenceEvent::Ready {
+                    sequence_id,
+                    cache,
+                    assets,
+                    sequences_input,
+                } => {
+                    self.nested_sequence_render_cache = cache;
+                    self.nested_sequence_render_state
+                        .nested_sequence_last_result
+                        .insert(sequence_id, assets);
+                    self.nested_sequence_render_state
+                        .nested_sequence_last_input
+                        .insert(sequence_id, sequences_input);
+                    self.nested_sequence_render_state
+                        .nested_sequence_rendering_ids
+                        .remove(&sequence_id);
+                }
+                NestedSequenceEvent::Failed {
+                    sequence_id,
+                    error,
+                    sequences_input,
+                } => {
+                    tracing::warn!(error = %error, "failed to materialize nested sequence(s)");
+                    // Latched on failure too (not just success) -- otherwise a persistently
+                    // broken nested-sequence reference (a real cycle, a deleted sequence) would
+                    // get redispatched to a fresh background thread every single frame forever,
+                    // since "unchanged since last input" would never become true.
+                    self.nested_sequence_render_state
+                        .nested_sequence_last_input
+                        .insert(sequence_id, sequences_input);
+                    self.nested_sequence_render_state
+                        .nested_sequence_rendering_ids
+                        .remove(&sequence_id);
+                }
             }
         }
     }
