@@ -780,8 +780,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/overlay_render/overlay_render_test.rs": {
-    "mtime": 1788488137.6488478,
-    "ast_hash": "779364839fa7e47a84df647f381ae26a",
+    "mtime": 1788565611.7066092,
+    "ast_hash": "e06513d43ea786515acfef4bac8c2ce6",
     "semantic_hash": ""
   },
   ".claude/settings.local.json": {
@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "spec/ROADMAP.md": {
-    "mtime": 1788562909.895314,
-    "ast_hash": "bc9c55037591cbb69e81bbb6772b5de6",
+    "mtime": 1788565673.7181935,
+    "ast_hash": "a0c329aecd3db6854c92801a89964508",
     "semantic_hash": ""
   },
   "spec/RULES.md": {
