@@ -127,7 +127,8 @@ pub use persistence::{
 };
 pub use preview::{AudioLevel, Preview, PreviewError};
 pub use preview_effects::{
-    apply_glitch_to_rgba, apply_lut_to_rgba, apply_vignette_to_rgba, Lut3D, LutParseError,
+    apply_deflicker_to_rgba, apply_glitch_to_rgba, apply_lut_to_rgba, apply_vignette_to_rgba,
+    DeflickerHistory, Lut3D, LutParseError,
 };
 pub use probe::{probe_media, ProbeError, ProbedMedia};
 pub use project::{PanelLayout, Project, Recency, Sequence, SequenceExportSettings};

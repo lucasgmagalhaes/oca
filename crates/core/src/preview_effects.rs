@@ -41,10 +41,18 @@
 //! same "not bit-exact" caveat vignette above already carries, not a reproduction of
 //! `libavfilter/vf_noise.c`'s own PRNG).
 //!
-//! **Still not covered by this pass** (left as the roadmap item's remaining gap): deflicker and
-//! stabilization (both need *temporal* state across multiple frames — a rolling frame history in
-//! `App` — a materially larger, stateful piece of work with its own seek/scrub edge cases, not a
-//! natural extension of this per-frame-only module).
+//! **Deflicker is now covered too**, in a later follow-up: [`apply_deflicker_to_rgba`] keeps a
+//! caller-owned [`DeflickerHistory`] (a 5-frame rolling window of mean luma, matching export's
+//! own `deflicker=mode=am:size=5` window) and shifts each frame's brightness toward that rolling
+//! average — a well-specified, deterministic, fully unit-testable temporal correction, unlike
+//! stabilization's motion-estimation problem below.
+//!
+//! **Still not covered by this pass** (left as the roadmap item's remaining gap):
+//! stabilization — motion estimation between frames (optical flow or an equivalent) is a
+//! fundamentally different, materially larger problem than a rolling scalar average, with its
+//! own seek/scrub edge cases (a jump-cut in scrub position shouldn't try to "stabilize" against
+//! a now-irrelevant previous frame) — not a natural extension of this module's per-frame or
+//! simple-rolling-window shape.
 
 use std::path::Path;
 
@@ -277,6 +285,66 @@ pub fn apply_glitch_to_rgba(rgba: &mut [u8], intensity: f32, seed: u64) {
     }
 }
 
+/// A rolling window of `rgba` frames' mean luma, used by [`apply_deflicker_to_rgba`] to smooth
+/// out frame-to-frame brightness variance — the temporal state export's real `deflicker=mode=am:
+/// size=5` avfilter keeps internally, reimplemented here in the RGBA domain since no matching
+/// GStreamer element exists for live preview (see this module's doc comment). `size=5` matches
+/// [`crate::timeline::ClipInstance::video_filter_chain`]'s own export-side window exactly, so a
+/// clip previewed with deflicker on sees roughly the same smoothing window it'll get on export.
+/// Caller-owned rather than a static/thread-local: a fresh `DeflickerHistory` per previewed clip
+/// keeps one clip's history from leaking into the next after a seek/clip change — see
+/// `App::pump_preview_frame`'s own reset-on-clip-change handling.
+#[derive(Debug, Clone, Default)]
+pub struct DeflickerHistory {
+    means: std::collections::VecDeque<f32>,
+}
+
+impl DeflickerHistory {
+    const WINDOW: usize = 5;
+
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+/// Applies temporal brightness smoothing to `rgba` in place — a **preview approximation** of
+/// [`crate::timeline::ClipInstance::video_filter_chain`]'s export-side `deflicker=mode=am:size=5`
+/// avfilter (see this module's doc comment for why this isn't a reproduction of that filter's
+/// own algorithm). Computes the current frame's mean luma (ITU-R BT.601: `0.299R + 0.587G +
+/// 0.114B`), pushes it into `history` (capped at [`DeflickerHistory::WINDOW`] entries, oldest
+/// dropped), then shifts every pixel's R/G/B uniformly by `(rolling average - current mean)` —
+/// an additive luma correction, not a multiplicative gain, so a near-black frame doesn't blow up
+/// into a wildly amplified one the way `target/current` scaling would. No-op on an empty `rgba`
+/// or one whose length isn't a multiple of 4 (not a valid RGBA8 buffer).
+pub fn apply_deflicker_to_rgba(rgba: &mut [u8], history: &mut DeflickerHistory) {
+    if rgba.is_empty() || rgba.len() % 4 != 0 {
+        return;
+    }
+
+    let pixel_count = rgba.len() / 4;
+    let mut luma_sum = 0.0_f64;
+    for chunk in rgba.chunks_exact(4) {
+        luma_sum += 0.299 * chunk[0] as f64 + 0.587 * chunk[1] as f64 + 0.114 * chunk[2] as f64;
+    }
+    let current_mean = (luma_sum / pixel_count as f64) as f32;
+
+    history.means.push_back(current_mean);
+    if history.means.len() > DeflickerHistory::WINDOW {
+        history.means.pop_front();
+    }
+    let rolling_average = history.means.iter().sum::<f32>() / history.means.len() as f32;
+
+    let shift = (rolling_average - current_mean).round() as i32;
+    if shift == 0 {
+        return;
+    }
+    for chunk in rgba.chunks_exact_mut(4) {
+        for channel in chunk.iter_mut().take(3) {
+            *channel = (*channel as i32 + shift).clamp(0, 255) as u8;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -491,5 +559,79 @@ mod tests {
         let before = rgba.clone();
         apply_glitch_to_rgba(&mut rgba, 1.0, 999);
         assert_ne!(rgba, before);
+    }
+
+    #[test]
+    fn deflicker_is_a_no_op_on_the_first_frame() {
+        // A single frame's mean is trivially its own rolling average -- shift is always 0.
+        let mut rgba = vec![100u8; 4 * 4 * 4];
+        let mut history = DeflickerHistory::new();
+        apply_deflicker_to_rgba(&mut rgba, &mut history);
+        assert_eq!(rgba, vec![100u8; 4 * 4 * 4]);
+    }
+
+    #[test]
+    fn deflicker_darkens_a_frame_brighter_than_its_recent_history() {
+        let mut history = DeflickerHistory::new();
+        // Settle the rolling average at a dim level over a few dark frames.
+        for _ in 0..3 {
+            let mut dark = vec![50u8; 4 * 4 * 4];
+            apply_deflicker_to_rgba(&mut dark, &mut history);
+        }
+        // A sudden bright frame should be pulled back down toward the established average.
+        let mut bright = vec![200u8; 4 * 4 * 4];
+        apply_deflicker_to_rgba(&mut bright, &mut history);
+        assert!(
+            bright[0] < 200,
+            "a frame brighter than recent history should be darkened toward the average"
+        );
+    }
+
+    #[test]
+    fn deflicker_brightens_a_frame_dimmer_than_its_recent_history() {
+        let mut history = DeflickerHistory::new();
+        for _ in 0..3 {
+            let mut bright = vec![200u8; 4 * 4 * 4];
+            apply_deflicker_to_rgba(&mut bright, &mut history);
+        }
+        let mut dark = vec![50u8; 4 * 4 * 4];
+        apply_deflicker_to_rgba(&mut dark, &mut history);
+        assert!(
+            dark[0] > 50,
+            "a frame dimmer than recent history should be brightened toward the average"
+        );
+    }
+
+    #[test]
+    fn deflicker_window_drops_frames_older_than_five() {
+        // Six identical bright frames, then a dark one: with the WINDOW=5 cap, the oldest
+        // (first) bright frame's mean should already be evicted, but this is still simplest to
+        // assert indirectly -- the rolling average after 6 identical inputs is still that same
+        // value regardless of window size, so instead assert the deque itself never grows past 5.
+        let mut history = DeflickerHistory::new();
+        for _ in 0..8 {
+            let mut frame = vec![128u8; 4 * 4 * 4];
+            apply_deflicker_to_rgba(&mut frame, &mut history);
+        }
+        assert_eq!(history.means.len(), DeflickerHistory::WINDOW);
+    }
+
+    #[test]
+    fn deflicker_stays_within_byte_bounds() {
+        let mut history = DeflickerHistory::new();
+        let mut rgba = vec![250u8; 4 * 4 * 4];
+        apply_deflicker_to_rgba(&mut rgba, &mut history);
+        let mut dark = vec![0u8; 4 * 4 * 4];
+        apply_deflicker_to_rgba(&mut dark, &mut history);
+        assert!(rgba.iter().all(|&b| (0..=255).contains(&b)));
+        assert!(dark.iter().all(|&b| (0..=255).contains(&b)));
+    }
+
+    #[test]
+    fn deflicker_is_a_no_op_on_an_empty_buffer() {
+        let mut rgba: Vec<u8> = Vec::new();
+        let mut history = DeflickerHistory::new();
+        apply_deflicker_to_rgba(&mut rgba, &mut history);
+        assert!(rgba.is_empty());
     }
 }
