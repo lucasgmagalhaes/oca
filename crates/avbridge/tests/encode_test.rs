@@ -427,3 +427,29 @@ fn every_gpu_encoder_preference_falls_back_to_a_working_export() {
         let _ = std::fs::remove_file(&out);
     }
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn videotoolbox_encodes_a_real_timeline_on_macos() {
+    let out = std::env::temp_dir().join("avbridge_test_videotoolbox_timeline.mp4");
+    let cancel = AtomicBool::new(false);
+    let segments = [clip(0.0, 0.35, 0.0, "")];
+
+    let outcome = encode_timeline_export(
+        &segments,
+        CANVAS,
+        &out,
+        -14.0,
+        GpuEncoderPreference::VideoToolbox,
+        &cancel,
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(outcome, EncodeOutcome::Completed);
+    let info = probe(&out).unwrap();
+    assert_eq!(info.kind, StreamKind::Video);
+    assert_eq!(info.codec_name, "h264");
+
+    let _ = std::fs::remove_file(&out);
+}

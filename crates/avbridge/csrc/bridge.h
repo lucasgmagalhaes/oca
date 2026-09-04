@@ -259,10 +259,11 @@ typedef struct {
 
    gpu_encoder_preference selects the video encoder (one of the GPU_ENCODER_* values —
    see bridge_internal.h's GpuEncoderPreference; passed as plain int across the FFI
-   boundary): AUTO/0 tries hardware encoders (NVENC, Quick Sync, VAAPI, then AMF) and falls back
-   to the CPU (libopenh264) encoder if none open; CPU/1 forces libopenh264; NVENC/2,
-   QUICKSYNC/3, AMF/4, VAAPI/5 force that specific hardware encoder, still falling back to CPU
-   if it can't open (no compatible GPU/driver present). */
+   boundary): AUTO/0 tries hardware encoders (NVENC, Quick Sync, VAAPI, then AMF, plus
+   VideoToolbox on macOS) and falls back to the CPU (libopenh264) encoder if none open; CPU/1
+   forces libopenh264; NVENC/2, QUICKSYNC/3, AMF/4, VAAPI/5, and VIDEOTOOLBOX/6 force that
+   specific hardware encoder, still falling back to CPU if it can't open (no compatible
+   GPU/driver present). */
 EncodeStatus avbridge_encode_timeline_export(const ClipSegment *segments, int segment_count,
                                              int canvas_width, int canvas_height,
                                              int canvas_fps_num, int canvas_fps_den,

@@ -199,9 +199,10 @@ AVCodecContext *open_video_encoder(GpuEncoderPreference preference, int canvas_w
     static const char *const quicksync = "h264_qsv";
     static const char *const amf = "h264_amf";
     static const char *const vaapi = "h264_vaapi";
+    static const char *const videotoolbox = "h264_videotoolbox";
     static const char *const cpu = "libopenh264";
 
-    const char *hw_candidates[4] = {NULL, NULL, NULL, NULL};
+    const char *hw_candidates[5] = {NULL, NULL, NULL, NULL, NULL};
     int hw_candidate_count = 0;
     switch (preference) {
         case GPU_ENCODER_NVENC:
@@ -216,11 +217,17 @@ AVCodecContext *open_video_encoder(GpuEncoderPreference preference, int canvas_w
         case GPU_ENCODER_VAAPI:
             hw_candidates[hw_candidate_count++] = vaapi;
             break;
+        case GPU_ENCODER_VIDEOTOOLBOX:
+            hw_candidates[hw_candidate_count++] = videotoolbox;
+            break;
         case GPU_ENCODER_AUTO:
             hw_candidates[hw_candidate_count++] = nvenc;
             hw_candidates[hw_candidate_count++] = quicksync;
             hw_candidates[hw_candidate_count++] = vaapi;
             hw_candidates[hw_candidate_count++] = amf;
+#ifdef __APPLE__
+            hw_candidates[hw_candidate_count++] = videotoolbox;
+#endif
             break;
         case GPU_ENCODER_CPU:
         default:

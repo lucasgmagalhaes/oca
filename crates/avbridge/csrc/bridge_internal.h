@@ -27,8 +27,9 @@
 #include "bridge.h"
 
 typedef enum {
-    /* Try hardware encoders in a fixed order (NVENC, Quick Sync, VAAPI, then AMF), falling
-       back to the CPU (libopenh264) encoder if none of them open successfully. */
+    /* Try platform-available hardware encoders in a fixed order (NVENC, Quick Sync, VAAPI,
+       AMF, then VideoToolbox on macOS), falling back to the CPU (libopenh264) encoder if none
+       of them open successfully. */
     GPU_ENCODER_AUTO = 0,
     /* Force the CPU (libopenh264) encoder — no hardware attempt. */
     GPU_ENCODER_CPU = 1,
@@ -40,11 +41,13 @@ typedef enum {
     GPU_ENCODER_AMF = 4,
     /* Force Linux VAAPI (h264_vaapi), falling back to CPU if it can't open. */
     GPU_ENCODER_VAAPI = 5,
+    /* Force Apple VideoToolbox (h264_videotoolbox), falling back to CPU if it can't open. */
+    GPU_ENCODER_VIDEOTOOLBOX = 6,
 } GpuEncoderPreference;
 
 /* Opens a video H.264 encoder AVCodecContext sized for canvas_width/canvas_height/canvas_fps
    at canvas_bit_rate_bps, honoring `preference`. Tries the requested hardware encoder(s) first
-   (AUTO tries all four in a fixed order). Each software-frame candidate's requested pixel
+   (AUTO tries all four cross-platform candidates and VideoToolbox on macOS). Each software-frame candidate's requested pixel
    format comes from
    gpu_encoder.c's pix_fmt_for_encoder_name(): AV_PIX_FMT_YUV420P for every encoder except
    h264_qsv, which gets AV_PIX_FMT_NV12 — the same format the existing filter chains already

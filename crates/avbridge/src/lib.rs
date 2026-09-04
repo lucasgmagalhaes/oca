@@ -714,11 +714,11 @@ pub struct Canvas {
 /// Which video encoder [`encode_timeline_export`]/[`encode_timeline_export_multi`] should use,
 /// mirroring `bridge_internal.h`'s `GpuEncoderPreference` (passed across the FFI boundary as
 /// the same plain `int` values). `Auto` tries hardware encoders (NVENC, Quick Sync, VAAPI, then
-/// AMF) in order and falls back to the CPU (libopenh264) encoder if none open; the specific
-/// hardware variants force that one encoder, still falling back to CPU if it can't open (no
-/// compatible GPU/driver present) — the C side has no way to report back which one actually got
-/// used, so a caller can't currently distinguish "used the GPU I asked for" from "silently fell
-/// back to CPU" short of noticing render speed/CPU usage.
+/// AMF, plus VideoToolbox on macOS) in order and falls back to the CPU (libopenh264) encoder if
+/// none open; the specific hardware variants force that one encoder, still falling back to CPU
+/// if it can't open (no compatible GPU/driver present) — the C side has no way to report back
+/// which one actually got used, so a caller can't currently distinguish "used the GPU I asked
+/// for" from "silently fell back to CPU" short of noticing render speed/CPU usage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GpuEncoderPreference {
@@ -729,6 +729,7 @@ pub enum GpuEncoderPreference {
     QuickSync,
     Amf,
     Vaapi,
+    VideoToolbox,
 }
 
 impl GpuEncoderPreference {
@@ -740,6 +741,7 @@ impl GpuEncoderPreference {
             GpuEncoderPreference::QuickSync => 3,
             GpuEncoderPreference::Amf => 4,
             GpuEncoderPreference::Vaapi => 5,
+            GpuEncoderPreference::VideoToolbox => 6,
         }
     }
 }

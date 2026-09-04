@@ -93,6 +93,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         (Gpu::QuickSync, Text::GpuEncoderQuickSync),
                         (Gpu::Amf, Text::GpuEncoderAmf),
                         (Gpu::Vaapi, Text::GpuEncoderVaapi),
+                        (Gpu::VideoToolbox, Text::GpuEncoderVideoToolbox),
                     ] {
                         if ui
                             .selectable_label(app.prefs.gpu_encoder == choice, label.tr(locale))
