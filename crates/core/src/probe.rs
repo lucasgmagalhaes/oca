@@ -95,6 +95,7 @@ impl ProbedMedia {
             proxy_path: None,
             // Computed by a separate pass — see `crate::waveform::generate_waveform`.
             waveform_peaks: None,
+            favorited: false,
         }
     }
 }
