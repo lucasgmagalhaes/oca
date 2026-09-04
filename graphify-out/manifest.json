@@ -145,8 +145,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1788550045.7689786,
-    "ast_hash": "e514ed3eb1670f6fa2bd3cc80660d29b",
+    "mtime": 1788555149.0487847,
+    "ast_hash": "4def0cbd90cb0e079d221daa5c89bcf9",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -515,8 +515,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1788554299.4217215,
-    "ast_hash": "a701ab456302b9dc7dc0b9b918dd122f",
+    "mtime": 1788555127.9535198,
+    "ast_hash": "d75a86aea8901dd2d5bf7167d94a4e95",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "spec/ROADMAP.md": {
-    "mtime": 1788554511.4040241,
-    "ast_hash": "ba8de651a2869bd473cff0c4567cd7bd",
+    "mtime": 1788555559.2284093,
+    "ast_hash": "188575bf3544d5c983ab7ba03bf62e9d",
     "semantic_hash": ""
   },
   "spec/RULES.md": {
@@ -1735,8 +1735,8 @@
     "semantic_hash": ""
   },
   "crates/core/src/interchange.rs": {
-    "mtime": 1788488137.627743,
-    "ast_hash": "51f76921edab4c7ce3b913973748b659",
+    "mtime": 1788554944.2946405,
+    "ast_hash": "e1abbb31e0543e7dc6d86426739e20b2",
     "semantic_hash": ""
   },
   "crates/core/src/interchange/interchange_test.rs": {
@@ -1800,8 +1800,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/menu_bar.rs": {
-    "mtime": 1788533446.9837725,
-    "ast_hash": "e6050bfe2e2bd53ad983040f9a774e5c",
+    "mtime": 1788555155.0151262,
+    "ast_hash": "89fca080a334b604f66372e947d66670",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/mod_test.rs": {
@@ -2002,6 +2002,21 @@
   "spec/architecture/assets/image.png": {
     "mtime": 1788543577.9863071,
     "ast_hash": "68254ccb6a7bf64e2392ddc9391c85f4",
+    "semantic_hash": ""
+  },
+  "crates/core/src/interchange/otio_json.rs": {
+    "mtime": 1788555396.241501,
+    "ast_hash": "07868a5465758a859851da57fb525a09",
+    "semantic_hash": ""
+  },
+  "crates/core/src/interchange/otio_json_test.rs": {
+    "mtime": 1788555453.6224854,
+    "ast_hash": "7b5ddc502e19ecd76319e8039d08e574",
+    "semantic_hash": ""
+  },
+  "crates/ui/src/app/interchange_export.rs": {
+    "mtime": 1788555123.5175815,
+    "ast_hash": "45c27cbcbf525a2b3ecb3fa4a2a43e32",
     "semantic_hash": ""
   }
 }
