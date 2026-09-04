@@ -566,6 +566,11 @@ text_catalog! {
     ExportChapters: pt_br = "Exportar capítulos (.txt)", en = "Export chapters (.txt)";
     ExportChaptersNone: pt_br = "Nenhum marcador de capítulo para exportar.", en = "No chapter markers to export.";
     ExportChaptersDone: pt_br = "Capítulos exportados.", en = "Chapters exported.";
+    SnapshotButton: pt_br = "Capturar quadro", en = "Capture frame";
+    SnapshotNoFrame: pt_br = "Nenhum quadro para capturar ainda.", en = "No frame to capture yet.";
+    SnapshotSaved: pt_br = "Captura de tela salva.", en = "Snapshot saved.";
+    AddMarkerButton: pt_br = "Adicionar marcador", en = "Add marker";
+    MarkerAdded: pt_br = "Marcador adicionado.", en = "Marker added.";
     AudioRoleUnspecified: pt_br = "Papel de áudio: não definido", en = "Audio role: unspecified";
     AudioRoleGameAudio: pt_br = "Papel de áudio: áudio do jogo", en = "Audio role: game audio";
     AudioRoleMic: pt_br = "Papel de áudio: microfone", en = "Audio role: mic";

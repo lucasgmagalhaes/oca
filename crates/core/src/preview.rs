@@ -165,10 +165,28 @@ impl std::error::Error for PreviewError {}
 /// One decoded video frame, pixels in tightly-packed row-major RGBA (no stride padding —
 /// [`Self::rgba`] is exactly `width * height * 4` bytes, ready to hand to an egui
 /// `ColorImage`/texture without extra copying logic).
+#[derive(Clone)]
 pub struct VideoFrame {
     pub width: u32,
     pub height: u32,
     pub rgba: Vec<u8>,
+}
+
+impl VideoFrame {
+    /// Writes this frame to `path` as a PNG — what the preview transport row's snapshot button
+    /// does with the most recently displayed frame (`ui`'s `PreviewState::last_frame` holds a
+    /// clone of it, since the decoded pixels this struct wraps are otherwise dropped right after
+    /// upload to the egui texture).
+    pub fn save_png(&self, path: &std::path::Path) -> image::ImageResult<()> {
+        image::save_buffer_with_format(
+            path,
+            &self.rgba,
+            self.width,
+            self.height,
+            image::ColorType::Rgba8,
+            image::ImageFormat::Png,
+        )
+    }
 }
 
 /// Builds a `gst::Bin` chaining the subset of `clip`'s effects GStreamer can apply live,
