@@ -40,8 +40,13 @@ use text_clip::text_clip_properties;
 pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32) {
     let locale = app.locale;
     components::panel_frame().show(ui, |ui| {
-        ui.set_width(width);
-        ui.set_height(height);
+        // `width`/`height` are the *outer* size `editor::mod`'s `allocate_ui` reserved for this
+        // whole panel — `panel_frame()`'s own `inner_margin` (`SPACE_MD` each side) already
+        // shrinks this Frame's child `ui` accordingly, so re-asserting the raw outer size here
+        // pushed content back out past that margin, overflowing past the panel's own (now
+        // visible, since `panel_frame` paints a real border) right/bottom edge.
+        ui.set_width(width - theme::SPACE_MD * 2.0);
+        ui.set_height(height - theme::SPACE_MD * 2.0);
         // Real clip selections carry a long, non-collapsible stack of property sections
         // (Transform/Crop/Composite/Speed/Effects/Audio, each with its own keyframe editor)
         // that easily exceeds a typical body_height — without a ScrollArea, this content

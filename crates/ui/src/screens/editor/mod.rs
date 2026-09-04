@@ -146,7 +146,23 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 
             let total_width = ui.available_width();
             let min_col = 160.0_f32;
-            let max_col = (total_width * 0.4).max(min_col);
+            // Reported bug: the properties panel would visibly overflow past its own border, and
+            // the audio-meter column at the body row's far right would vanish entirely. Root
+            // cause — `max_col` (each resizable column's own independent width cap) was a flat
+            // `total_width * 0.4`, with no check that *both* columns landing near that cap at
+            // once still leaves room for `AUDIO_METER_COLUMN_WIDTH`, the dividers/gaps, and
+            // `preview_w`'s own floor below. `lib_panel_width`/`props_panel_width` persist across
+            // sessions (dragged wide once, saved), so this wasn't hypothetical — `preview_w`'s
+            // `.max(MIN_PREVIEW_W)` floor could push the row's total reserved width past
+            // `total_width`, and egui doesn't wrap/shrink an overflowing `ui.horizontal` to fit —
+            // it just runs the last item (the audio meter) off the visible edge. Fixed the same
+            // way the body/timeline height budget below already is: derive `max_col` from the
+            // same fixed-cost budget (`AUDIO_METER_COLUMN_WIDTH` + `gaps` + `MIN_PREVIEW_W`)
+            // `preview_w` itself is computed from, split evenly between the two resizable
+            // columns, so their sum can never eat into what the meter/preview floor need.
+            let gaps = ui.spacing().item_spacing.x * 3.0 + DIVIDER_HIT_WIDTH * 2.0;
+            let max_col = ((total_width - AUDIO_METER_COLUMN_WIDTH - gaps - MIN_PREVIEW_W) / 2.0)
+                .max(min_col);
             app.lib_panel_width = app.lib_panel_width.clamp(min_col, max_col);
             app.props_panel_width = app.props_panel_width.clamp(min_col, max_col);
 
@@ -172,13 +188,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             app.timeline_height = app.timeline_height.clamp(min_timeline, max_timeline);
             let body_height = (content_height - app.timeline_height).max(0.0);
 
-            let gaps = ui.spacing().item_spacing.x * 3.0 + DIVIDER_HIT_WIDTH * 2.0;
             let preview_w = (total_width
                 - app.lib_panel_width
                 - app.props_panel_width
                 - AUDIO_METER_COLUMN_WIDTH
                 - gaps)
-                .max(200.0);
+                .max(MIN_PREVIEW_W);
 
             ui.horizontal(|ui| {
                 ui.set_height(body_height);
@@ -238,6 +253,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 /// little breathing room, not resizable like the other columns since there's nothing to resize
 /// (fixed content, no scrollable/collapsible substance).
 const AUDIO_METER_COLUMN_WIDTH: f32 = 70.0;
+
+/// Floor for `preview_w` (the center preview column) — also the fixed-cost budget `max_col`
+/// derives from, so the two resizable side columns can never claim so much width that this
+/// floor (plus `AUDIO_METER_COLUMN_WIDTH` plus the divider/spacing gaps) no longer fits.
+const MIN_PREVIEW_W: f32 = 200.0;
 
 /// The persistent stereo dB meter at the editor body's far right edge — unlike the properties
 /// panel next to it, this is *not* gated on a clip being selected or which Inspector/Effects/
@@ -819,8 +839,11 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
     let project_id = app.active_project().id;
 
     components::panel_frame().show(ui, |ui| {
-        ui.set_width(width);
-        ui.set_height(height);
+        // See properties_panel's identical fix: panel_frame()'s own inner_margin already
+        // shrinks this Frame's child ui, so the raw outer width/height overflows past the
+        // panel's now-visible border.
+        ui.set_width(width - theme::SPACE_MD * 2.0);
+        ui.set_height(height - theme::SPACE_MD * 2.0);
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 components::section_label(ui, Text::MediaLibrary.tr(app.locale));
