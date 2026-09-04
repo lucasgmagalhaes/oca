@@ -140,8 +140,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1788549561.5866735,
-    "ast_hash": "e24a3daef93921f0cbedd70f5d70a4ab",
+    "mtime": 1788554452.7779245,
+    "ast_hash": "06f3d229e8f4f40a9b7cb65c2cc21d64",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
@@ -505,8 +505,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/export.rs": {
-    "mtime": 1788549383.4419813,
-    "ast_hash": "b353e4e08b98a0577ab6d881fd7cf3f7",
+    "mtime": 1788554306.0385962,
+    "ast_hash": "770e89790635b8ebfdc113243a401d8c",
     "semantic_hash": ""
   },
   "crates/ui/src/app/import.rs": {
@@ -515,8 +515,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1788552404.1248367,
-    "ast_hash": "dc063ed4e2b7007885075f9c5c9f7cb5",
+    "mtime": 1788554299.4217215,
+    "ast_hash": "a701ab456302b9dc7dc0b9b918dd122f",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "spec/ROADMAP.md": {
-    "mtime": 1788553488.541626,
-    "ast_hash": "9f30311224c8235b4bfd0a4d4f341a1b",
+    "mtime": 1788554511.4040241,
+    "ast_hash": "ba8de651a2869bd473cff0c4567cd7bd",
     "semantic_hash": ""
   },
   "spec/RULES.md": {

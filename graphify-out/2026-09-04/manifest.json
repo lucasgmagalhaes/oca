@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "crates/avbridge/csrc/gpu_encoder.c": {
-    "mtime": 1787951514.8795292,
-    "ast_hash": "6ee1f385537f37a58a23d010f62e0248",
+    "mtime": 1788553452.199939,
+    "ast_hash": "820b640c881cc902633998f6f3342cc4",
     "semantic_hash": ""
   },
   "crates/avbridge/csrc/loudness.c": {
@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "spec/ROADMAP.md": {
-    "mtime": 1788552782.576589,
-    "ast_hash": "3cd4c2d6dca2d80d569c7c48a07426ae",
+    "mtime": 1788553488.541626,
+    "ast_hash": "9f30311224c8235b4bfd0a4d4f341a1b",
     "semantic_hash": ""
   },
   "spec/RULES.md": {
@@ -1030,8 +1030,8 @@
     "semantic_hash": ""
   },
   "spec/matrix/engine.md": {
-    "mtime": 1787875513.8396606,
-    "ast_hash": "582bb5319fa84980589f7842184b1048",
+    "mtime": 1788553496.6637273,
+    "ast_hash": "bdf8bc1e57f2d73e93a72c25d10aad45",
     "semantic_hash": ""
   },
   "spec/matrix/packaging.md": {
