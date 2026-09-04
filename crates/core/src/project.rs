@@ -103,7 +103,21 @@ pub struct Project {
     /// project saved before this field existed still loads (empty bin list).
     #[serde(default)]
     pub smart_bins: Vec<SmartBin>,
+    /// Media-library asset ids most recently added to this project's timeline, most-recent
+    /// first, deduplicated (re-adding an already-present id moves it back to the front rather
+    /// than appearing twice) and capped at [`RECENT_ASSET_CAPACITY`] — the Media library
+    /// panel's Recent filter's backing data. Deliberately tracks *timeline usage*, not import
+    /// time or library-browsing: an asset just sitting in the library isn't "recent" until it's
+    /// actually been edited with. `#[serde(default)]` so a project saved before this field
+    /// existed loads with an empty recent list rather than failing to deserialize.
+    #[serde(default)]
+    pub recent_asset_ids: Vec<u64>,
 }
+
+/// Cap on [`Project::recent_asset_ids`] — same order of magnitude as `ui::PrefsState::
+/// recent_project_paths`' own cap (10), a little larger since library assets are used more
+/// often per session than whole projects are opened.
+pub const RECENT_ASSET_CAPACITY: usize = 20;
 
 /// See [`Project::panel_layout`]. A plain value type — `core` has no opinion on layout scope
 /// itself (that's `ui::LayoutScope`), it just knows how to carry these three numbers along
@@ -256,5 +270,15 @@ impl Project {
     /// Mutable access to the smart bin with `bin_id`, if it exists.
     pub fn smart_bin_mut(&mut self, bin_id: u64) -> Option<&mut SmartBin> {
         self.smart_bins.iter_mut().find(|b| b.id == bin_id)
+    }
+
+    /// Moves `asset_id` to the front of [`Self::recent_asset_ids`] (inserting it if not
+    /// already present), then truncates to [`RECENT_ASSET_CAPACITY`] — what `ui`'s
+    /// `App::add_asset_to_timeline`/`add_asset_to_timeline_at` call every time an asset lands
+    /// on the timeline.
+    pub fn record_recent_asset(&mut self, asset_id: u64) {
+        self.recent_asset_ids.retain(|&id| id != asset_id);
+        self.recent_asset_ids.insert(0, asset_id);
+        self.recent_asset_ids.truncate(RECENT_ASSET_CAPACITY);
     }
 }

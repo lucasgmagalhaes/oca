@@ -48,6 +48,7 @@ fn asset(id: u64, source_path: PathBuf) -> MediaAsset {
         loudness: None,
         proxy_path: None,
         waveform_peaks: None,
+        favorited: false,
     }
 }
 
@@ -84,6 +85,7 @@ fn project_at(project_path: &PathBuf, assets: Vec<MediaAsset>) -> Project {
         file_path: Some(project_path.clone()),
         panel_layout: None,
         smart_bins: Vec::new(),
+        recent_asset_ids: Vec::new(),
     }
 }
 

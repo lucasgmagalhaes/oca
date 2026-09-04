@@ -104,7 +104,7 @@ Mechanics of the chosen route, for whoever implements it:
 (existing codepoints are read back from the previous output and never reassigned — only a
 newly-added icon gets a new one, the next free PUA slot), and calls `fantasticon`'s Node API
 to emit `crates/ui/assets/fonts/lucide-oca.ttf` + `lucide-oca.json` (the name→codepoint
-mapping, both checked in). All 25 vendored icons are in the font as of this commit.
+mapping, both checked in). All 26 vendored icons are in the font as of this commit.
 
 **`ctx.set_fonts` wiring: done too.** `crates/ui/src/icons.rs` embeds the generated `.ttf`
 (`include_bytes!`) and JSON mapping (`include_str!`), registers the font under a dedicated
@@ -142,6 +142,15 @@ buttons use `icon_button`'s `family` option; the hand-built play/pause `RichText
 through `icon_button`) gets `.family(icons::family())` directly. Decorative, non-interactive
 "▶" placeholders elsewhere (media-library thumbnail kind glyph, empty-preview state) are left
 as-is — not transport controls, no confirmed mockup mapping of their own.
+
+**Media library favorite toggle: done.** `star` (Lucide's actual `star.svg`, fetched the same
+way as the other 25) is the 26th vendored icon, added after the original mockup survey
+specifically to back the Favorites filter's per-asset toggle button (`App::toggle_asset_favorite`)
+— not present in the mockup's own icon set, since the mockup never showed a per-asset favorite
+affordance up close. `IconButtonOpts` gained a fourth `color: Option<Color32>` field for this:
+the star's *resting* color (not just its hover color, which `hover_color` already covered)
+carries the favorited/unfavorited state — `theme::ACCENT` when on, `theme::TEXT_MUTED` when
+off — replacing what was originally shipped as a plain `"★"`/`"☆"` unicode-glyph toggle.
 
 Still not wired: `chevron-left`/`chevron-right` (no real "collapse a timeline track row"
 feature exists today to attach them to — the mockup mapping here may be aspirational, worth
@@ -309,12 +318,12 @@ thumbnails (an actual decoded frame per asset, not a placeholder), duration/reso
 caption per card, a bottom bar with count + view controls.
 
 Current (`media_library_panel()` in `screens/editor/mod.rs`): a single-column list, search box
-(`app.media_search`, already wired), a smart-bin filter-chip row (`app.active_smart_bin_id`,
-already wired — this _is_ "Bins", just rendered as chips instead of a tab), each row using a
-tiny 48×28 flat-color placeholder thumbnail (`asset_thumb()` — video=grey block with "▶",
-audio=blue-tinted block with "♪"), by explicit design ("fetching/caching one here would
-duplicate `thumbnail_state`'s timeline-clip pipeline for a list row that's rarely more than a
-name lookup" — `mod.rs`'s own doc comment on `ASSET_THUMB_SIZE`).
+(`app.media_search`, already wired), a smart-bin/Favorites/Recent filter-chip row
+(`app.media_filter`, a `MediaLibraryFilter` enum — see below), each row using a real per-asset
+thumbnail once decoded (`resolve_thumbnail`, reusing the pre-existing `request_thumbnail`/
+`pump_thumbnail_queue`/LRU pipeline also used by `screens::library`/`screens::home`; falls back
+to the flat-color placeholder — video=grey block with "▶", audio=blue-tinted block with "♪" —
+until the real frame arrives).
 
 Mapping:
 
@@ -322,10 +331,24 @@ Mapping:
 - **Bins tab** ↔ the existing smart-bin chip row (`SmartBin`, already fully implemented per
   `ROADMAP.md` P4 item 22) — could become its own tab instead of an inline chip row, a layout
   choice, not a new feature.
-- **Favorites / Recent tabs** — **no existing data model**. `MediaAsset` has no "favorited"
-  flag, and there's no most-recently-used tracking over the media library (there _is_
-  `recent_project_paths` on `Prefs`, but that's projects, not in-library assets). Real new
-  feature if kept, not a restyle — flag rather than silently build.
+- **Favorites / Recent tabs — done.** `MediaAsset` gained a manual `#[serde(default)] favorited:
+  bool` flag, toggled by a vendored-icon-font `star` button (accent-colored when on, muted when
+  off — see the Icon set section's own bullet) on each list row and grid tile
+  (`App::toggle_asset_favorite`) — purely user-driven, not derived from usage. "Recent" tracks
+  assets added to the timeline: `Project` gained `#[serde(default)] recent_asset_ids: Vec<u64>`
+  (an MRU list, most-recent-first, deduplicated, capped at `RECENT_ASSET_CAPACITY` = 20 — the
+  same MRU-`Vec` shape as `Prefs::recent_project_paths`, not a timestamp scheme), updated via
+  `Project::record_recent_asset` from both `App::add_asset_to_timeline`/`add_asset_to_timeline_at`
+  every time a clip is dropped onto the timeline. Both scope decisions ("manual flag" over
+  "auto-favorite on repeated use"; "added to timeline" over "imported" or "browsed") were made
+  explicitly, not guessed.
+
+  The panel's filter state is unified into one `App::media_filter: MediaLibraryFilter` enum
+  (`All | SmartBin(u64) | Favorites | Recent`, replacing the old single-purpose
+  `active_smart_bin_id: Option<u64>`) so the four filters stay mutually exclusive by
+  construction. `Recent`'s asset list is additionally sorted by MRU position rather than the
+  library's natural order. Like `MediaViewMode`/`PreviewZoom`, `media_filter` is transient
+  `App` state, not persisted — resets to `All` on project switch/launch.
 - **Grid/list view toggle — done.** `App::media_view_mode` (`MediaViewMode::{List, Grid}`, not
   persisted — resets on launch like `tool`/`properties_tab`) toggled via two `▦`/`☰`
   `selectable_label`s in the panel header. `List` is the existing one-column row layout
@@ -590,9 +613,6 @@ principles, and this doc's own findings above:
 
 - Don't add `TrackKind::Fx` / adjustment-layer clips — no real editing-model equivalent, see
   Timeline section above.
-- Don't add a Favorites/Recent media tab without first deciding whether "favorited asset" is
-  a real feature worth a new `MediaAsset` field, versus just matching the mockup's chrome.
-  Left as its own open question, not silently built.
 - Don't add "Add Effect" — see Inspector section above.
 - Don't reproduce the "REC" chip — no live-recording concept in this app.
 
@@ -623,12 +643,12 @@ principles, and this doc's own findings above:
    with the user first, per the open decision this doc originally left). See the Top bar
    section's own bullets for exactly which menu items are wired vs. which two menus (Window,
    Help) still have no real feature behind them.
-6. Everything flagged as a genuine new feature above (Favorites/Recent) — its own scoped
-   follow-up item, not part of "implement the mockup" in one pass. (Snapshot capture, the
-   grid/list view toggle, zoom controls, real per-asset thumbnails, and Anchor X/Y were all
-   picked out of this list and shipped — see items 9-13 below.) The marker button was never in
-   this list (it maps to an already-real feature, just unwired) but shipped alongside snapshot
-   capture in the same slice.
+6. Everything flagged as a genuine new feature above — its own scoped follow-up item, not part
+   of "implement the mockup" in one pass. (Snapshot capture, the grid/list view toggle, zoom
+   controls, real per-asset thumbnails, Anchor X/Y, and Favorites/Recent were all picked out of
+   this list and shipped — see items 9-14 below.) The marker button was never in this list (it
+   maps to an already-real feature, just unwired) but shipped alongside snapshot capture in the
+   same slice.
 7. **Per-channel audio metering — done**, picked out of item 6's list at the user's request —
    see the Inspector section's own bullet.
 8. **Blend Mode — done.** Data model, export, live preview (the full FFmpeg 40-mode set, per
@@ -645,6 +665,9 @@ principles, and this doc's own findings above:
     bullet.
 13. **Anchor X/Y — done, export only.** See the Inspector section's TRANSFORM bullet for what
     shipped and its documented live-preview scope limit.
+14. **Media library Favorites/Recent filters — done.** See the Media library section's own
+    bullet for the scope decisions (manual favorite flag; "recent" = added to timeline) and
+    what shipped.
 
 ## Verification
 

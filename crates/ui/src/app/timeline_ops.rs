@@ -50,6 +50,7 @@ impl App {
                 duration_secs,
                 voice_cleanup_enabled,
             ));
+        self.active_project_mut().record_recent_asset(asset_id);
     }
 
     /// Inserts `asset_id` onto the timeline at `start_secs` — what dropping an asset dragged
@@ -85,6 +86,7 @@ impl App {
                 duration_secs,
                 voice_cleanup_enabled,
             ));
+        self.active_project_mut().record_recent_asset(asset_id);
     }
 
     /// Detaches this block's embedded audio onto a synced clip on its own Audio track — the

@@ -20,9 +20,12 @@ mod timeline_panel;
 use avcore::media::format_timecode;
 use eframe::egui::{self, RichText};
 
-use crate::app::{App, EditorTool, MediaViewMode, PreviewZoom, MOTION_TRACK_SIZE_RANGE};
+use crate::app::{
+    App, EditorTool, MediaLibraryFilter, MediaViewMode, PreviewZoom, MOTION_TRACK_SIZE_RANGE,
+};
 use crate::components;
 use crate::i18n::Text;
+use crate::icons;
 use crate::theme;
 
 /// Renders the Editor screen: toolbar, then a three-column row (media library / preview /
@@ -863,9 +866,10 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
     let mut clicked_id = None;
     let mut add_to_timeline_id = None;
     let mut dropped_asset = None;
-    let mut selected_bin_id = None;
+    let mut selected_filter = None;
     let mut edited_bin_id = None;
     let mut new_bin_clicked = false;
+    let mut toggled_favorite_id = None;
     // Collected during the asset-list closure below, applied after it ends -- same
     // "collect-during-loop, apply-after" shape `screens::library`/`timeline_panel` use for
     // their own poster-frame requests, needed here because `App::request_thumbnail`/
@@ -916,25 +920,46 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                         .desired_width(f32::INFINITY),
                 );
                 ui.add_space(6.0);
-                // Smart bins (P4 item 22) -- a row of filter chips above the asset list. "All"
-                // clears the filter; each bin is click-to-select, double-click-to-edit (the
-                // rules, not the assets themselves -- there's nothing else to double-click a
-                // filter chip for).
+                // Smart bins (P4 item 22) plus the Favorites/Recent filters -- a row of filter
+                // chips above the asset list, single-selection (see MediaLibraryFilter's own
+                // doc comment). "All" clears the filter; each bin is click-to-select,
+                // double-click-to-edit (the rules, not the assets themselves -- there's nothing
+                // else to double-click a filter chip for).
                 ui.horizontal_wrapped(|ui| {
                     if ui
                         .selectable_label(
-                            app.active_smart_bin_id.is_none(),
+                            app.media_filter == MediaLibraryFilter::All,
                             Text::SmartBinAll.tr(app.locale),
                         )
                         .clicked()
                     {
-                        selected_bin_id = Some(None);
+                        selected_filter = Some(MediaLibraryFilter::All);
+                    }
+                    if ui
+                        .selectable_label(
+                            app.media_filter == MediaLibraryFilter::Favorites,
+                            Text::MediaFilterFavorites.tr(app.locale),
+                        )
+                        .clicked()
+                    {
+                        selected_filter = Some(MediaLibraryFilter::Favorites);
+                    }
+                    if ui
+                        .selectable_label(
+                            app.media_filter == MediaLibraryFilter::Recent,
+                            Text::MediaFilterRecent.tr(app.locale),
+                        )
+                        .clicked()
+                    {
+                        selected_filter = Some(MediaLibraryFilter::Recent);
                     }
                     for bin in &app.active_project().smart_bins {
-                        let response =
-                            ui.selectable_label(app.active_smart_bin_id == Some(bin.id), &bin.name);
+                        let response = ui.selectable_label(
+                            app.media_filter == MediaLibraryFilter::SmartBin(bin.id),
+                            &bin.name,
+                        );
                         if response.clicked() {
-                            selected_bin_id = Some(Some(bin.id));
+                            selected_filter = Some(MediaLibraryFilter::SmartBin(bin.id));
                         }
                         if response.double_clicked() {
                             edited_bin_id = Some(bin.id);
@@ -950,24 +975,46 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                     // Only the (small) bin rule is cloned here, not the assets it filters --
                     // `active_project()` is borrowed again right below for the actual iteration,
                     // which is fine since both borrows are immutable.
-                    let bin = app.active_smart_bin_id.and_then(|id| {
-                        app.active_project()
+                    let bin = match app.media_filter {
+                        MediaLibraryFilter::SmartBin(id) => app
+                            .active_project()
                             .smart_bins
                             .iter()
                             .find(|b| b.id == id)
-                            .cloned()
-                    });
+                            .cloned(),
+                        _ => None,
+                    };
+                    let recent_asset_ids = app.active_project().recent_asset_ids.clone();
+                    let media_filter = app.media_filter;
                     let search = app.media_search.to_lowercase();
-                    let assets: Vec<_> = app
+                    let mut assets: Vec<_> = app
                         .active_project()
                         .media_library
                         .iter()
                         .filter(|a| {
-                            bin.as_ref().is_none_or(|b| b.matches(a))
+                            let matches_filter = match media_filter {
+                                MediaLibraryFilter::All => true,
+                                MediaLibraryFilter::SmartBin(_) => {
+                                    bin.as_ref().is_none_or(|b| b.matches(a))
+                                }
+                                MediaLibraryFilter::Favorites => a.favorited,
+                                MediaLibraryFilter::Recent => recent_asset_ids.contains(&a.id),
+                            };
+                            matches_filter
                                 && (search.is_empty()
                                     || a.file_name.to_lowercase().contains(&search))
                         })
                         .collect();
+                    // Recent is most-recently-used-first, not the library's own insertion
+                    // order -- everything else keeps that default order unchanged.
+                    if media_filter == MediaLibraryFilter::Recent {
+                        assets.sort_by_key(|a| {
+                            recent_asset_ids
+                                .iter()
+                                .position(|&id| id == a.id)
+                                .unwrap_or(usize::MAX)
+                        });
+                    }
 
                     // Shared across both layouts below: every asset's click/double-click/drag/
                     // drop behavior is identical, only the Frame's own content (list row vs.
@@ -1048,9 +1095,29 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                                         ui.horizontal(|ui| {
                                             asset_thumb(ui, asset, thumbnail);
                                             ui.vertical(|ui| {
-                                                ui.label(
-                                                    RichText::new(&asset.file_name).size(12.0),
-                                                );
+                                                ui.horizontal(|ui| {
+                                                    ui.label(
+                                                        RichText::new(&asset.file_name).size(12.0),
+                                                    );
+                                                    if components::icon_button(
+                                                        ui,
+                                                        icons::STAR_STR,
+                                                        Text::ToggleFavorite.tr(app.locale),
+                                                        components::IconButtonOpts {
+                                                            family: Some(icons::family()),
+                                                            color: Some(if asset.favorited {
+                                                                theme::ACCENT
+                                                            } else {
+                                                                theme::TEXT_MUTED
+                                                            }),
+                                                            ..Default::default()
+                                                        },
+                                                    )
+                                                    .clicked()
+                                                    {
+                                                        toggled_favorite_id = Some(asset.id);
+                                                    }
+                                                });
                                                 ui.label(
                                                     RichText::new(format!(
                                                         "{} · {}",
@@ -1098,11 +1165,31 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                                                     GRID_ASSET_THUMB_SIZE,
                                                     thumbnail,
                                                 );
-                                                ui.label(
-                                                    RichText::new(&asset.file_name)
-                                                        .size(10.0)
-                                                        .color(theme::TEXT_PRIMARY),
-                                                );
+                                                ui.horizontal(|ui| {
+                                                    ui.label(
+                                                        RichText::new(&asset.file_name)
+                                                            .size(10.0)
+                                                            .color(theme::TEXT_PRIMARY),
+                                                    );
+                                                    if components::icon_button(
+                                                        ui,
+                                                        icons::STAR_STR,
+                                                        Text::ToggleFavorite.tr(app.locale),
+                                                        components::IconButtonOpts {
+                                                            family: Some(icons::family()),
+                                                            color: Some(if asset.favorited {
+                                                                theme::ACCENT
+                                                            } else {
+                                                                theme::TEXT_MUTED
+                                                            }),
+                                                            ..Default::default()
+                                                        },
+                                                    )
+                                                    .clicked()
+                                                    {
+                                                        toggled_favorite_id = Some(asset.id);
+                                                    }
+                                                });
                                             });
                                         })
                                         .response
@@ -1130,14 +1217,17 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
     if let Some(id) = add_to_timeline_id {
         app.add_asset_to_timeline(id);
     }
-    if let Some(bin_id) = selected_bin_id {
-        app.active_smart_bin_id = bin_id;
+    if let Some(filter) = selected_filter {
+        app.media_filter = filter;
     }
     if let Some(bin_id) = edited_bin_id {
         app.begin_edit_smart_bin(bin_id);
     }
     if new_bin_clicked {
         app.begin_new_smart_bin();
+    }
+    if let Some(asset_id) = toggled_favorite_id {
+        app.toggle_asset_favorite(asset_id);
     }
 }
 

@@ -105,6 +105,7 @@ mod tests {
             loudness: None,
             proxy_path: None,
             waveform_peaks: None,
+            favorited: false,
         }
     }
 

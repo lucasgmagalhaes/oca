@@ -18,15 +18,18 @@ use eframe::egui::{self, Color32, FontFamily, Response, RichText, Ui};
 /// Escape hatches for [`icon_button`] — deliberately kept small, not open-ended configurability,
 /// so this stays one canonical component instead of becoming a fifth convention with extra
 /// steps. `size` covers the transport controls' enlarged (48-64pt) glyphs; `hover_color` covers
-/// window-chrome's close-button-red-on-hover convention; `family` selects a non-default font —
-/// today only the vendored Lucide icon font (`crate::icons::family()`) for a glyph that has a
-/// real vendored icon (see `spec/architecture/editor-ui-visual-redesign.md`'s Icon set section),
-/// left `None` (the default proportional font) for every emoji/text glyph that doesn't. Leave
-/// all three `None` for the default, small-button-styled icon action (delete/utility buttons).
+/// window-chrome's close-button-red-on-hover convention; `color` covers a glyph whose resting
+/// (not just hovered) color carries meaning — e.g. the Media library's favorite star, accent-
+/// colored while on, muted while off; `family` selects a non-default font — today only the
+/// vendored Lucide icon font (`crate::icons::family()`) for a glyph that has a real vendored
+/// icon (see `spec/architecture/editor-ui-visual-redesign.md`'s Icon set section), left `None`
+/// (the default proportional font) for every emoji/text glyph that doesn't. Leave all fields
+/// `None` for the default, small-button-styled icon action (delete/utility buttons).
 #[derive(Default, Clone)]
 pub struct IconButtonOpts {
     pub size: Option<f32>,
     pub hover_color: Option<Color32>,
+    pub color: Option<Color32>,
     pub family: Option<FontFamily>,
 }
 
@@ -43,6 +46,10 @@ pub fn icon_button(ui: &mut Ui, glyph: &str, tooltip: &str, opts: IconButtonOpts
     };
     let text = match opts.family {
         Some(family) => text.family(family),
+        None => text,
+    };
+    let text = match opts.color {
+        Some(color) => text.color(color),
         None => text,
     };
     let button = if opts.size.is_none() {

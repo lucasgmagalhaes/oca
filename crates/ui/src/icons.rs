@@ -83,6 +83,7 @@ pub const SCISSORS: char = '\u{E012}';
 pub const SETTINGS: char = '\u{E013}';
 pub const SKIP_BACK: char = '\u{E014}';
 pub const SKIP_FORWARD: char = '\u{E015}';
+pub const STAR: char = '\u{E019}';
 pub const TYPE: char = '\u{E016}';
 pub const UPLOAD: char = '\u{E017}';
 pub const WAND_SPARKLES: char = '\u{E018}';
@@ -112,6 +113,7 @@ pub const SCISSORS_STR: &str = "\u{E012}";
 pub const SETTINGS_STR: &str = "\u{E013}";
 pub const SKIP_BACK_STR: &str = "\u{E014}";
 pub const SKIP_FORWARD_STR: &str = "\u{E015}";
+pub const STAR_STR: &str = "\u{E019}";
 pub const TYPE_STR: &str = "\u{E016}";
 pub const UPLOAD_STR: &str = "\u{E017}";
 pub const WAND_SPARKLES_STR: &str = "\u{E018}";
@@ -153,6 +155,7 @@ mod tests {
             ("settings", SETTINGS),
             ("skip-back", SKIP_BACK),
             ("skip-forward", SKIP_FORWARD),
+            ("star", STAR),
             ("type", TYPE),
             ("upload", UPLOAD),
             ("wand-sparkles", WAND_SPARKLES),
@@ -205,6 +208,7 @@ mod tests {
             (SETTINGS, SETTINGS_STR),
             (SKIP_BACK, SKIP_BACK_STR),
             (SKIP_FORWARD, SKIP_FORWARD_STR),
+            (STAR, STAR_STR),
             (TYPE, TYPE_STR),
             (UPLOAD, UPLOAD_STR),
             (WAND_SPARKLES, WAND_SPARKLES_STR),

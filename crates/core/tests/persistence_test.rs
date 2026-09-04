@@ -141,6 +141,7 @@ fn fixture_project() -> Project {
             }),
             proxy_path: None,
             waveform_peaks: None,
+            favorited: false,
         }],
         sequences: vec![Sequence {
             id: 1,
@@ -170,6 +171,7 @@ fn fixture_project() -> Project {
         file_path: None,
         panel_layout: None,
         smart_bins: Vec::new(),
+        recent_asset_ids: Vec::new(),
     }
 }
 
@@ -195,6 +197,7 @@ fn empty_project() -> Project {
         file_path: None,
         panel_layout: None,
         smart_bins: Vec::new(),
+        recent_asset_ids: Vec::new(),
     }
 }
 

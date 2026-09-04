@@ -44,6 +44,7 @@ fn asset(id: u64, file_name: &str) -> MediaAsset {
         loudness: None,
         proxy_path: None,
         waveform_peaks: None,
+        favorited: false,
     }
 }
 

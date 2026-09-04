@@ -737,6 +737,9 @@ text_catalog! {
     MulticamSwitchFailed: pt_br = "Não foi possível trocar para o ângulo {n} nesta posição -- talvez essa fonte não tenha imagem aqui.", en = "Couldn't switch to angle {n} at this position -- that source may have no footage here.";
     SmartBinAll: pt_br = "Tudo", en = "All";
     SmartBinNew: pt_br = "+ Nova pasta", en = "+ New Bin";
+    MediaFilterFavorites: pt_br = "★ Favoritos", en = "★ Favorites";
+    MediaFilterRecent: pt_br = "Recentes", en = "Recent";
+    ToggleFavorite: pt_br = "Marcar/desmarcar como favorito", en = "Toggle favorite";
     SmartBinEditTitle: pt_br = "Pasta inteligente", en = "Smart bin";
     SmartBinNameLabel: pt_br = "Nome", en = "Name";
     SmartBinKindLabel: pt_br = "Tipo", en = "Type";

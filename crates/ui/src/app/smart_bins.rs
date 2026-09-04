@@ -19,7 +19,7 @@
 
 use avcore::SmartBin;
 
-use super::App;
+use super::{App, MediaLibraryFilter};
 
 impl App {
     /// Opens the smart-bin modal with a fresh, unnamed draft (`id == 0`) — what the Library
@@ -63,7 +63,7 @@ impl App {
                 bin.name_contains = draft.name_contains;
                 bin.requires_audio = draft.requires_audio;
             }
-            self.active_smart_bin_id = Some(id);
+            self.media_filter = MediaLibraryFilter::SmartBin(id);
         } else if let Some(bin) = self.active_project_mut().smart_bin_mut(draft.id) {
             *bin = draft;
         }
@@ -78,8 +78,8 @@ impl App {
     /// (a deleted bin can't stay "selected").
     pub fn delete_smart_bin(&mut self, bin_id: u64) {
         self.active_project_mut().remove_smart_bin(bin_id);
-        if self.active_smart_bin_id == Some(bin_id) {
-            self.active_smart_bin_id = None;
+        if self.media_filter == MediaLibraryFilter::SmartBin(bin_id) {
+            self.media_filter = MediaLibraryFilter::All;
         }
     }
 }

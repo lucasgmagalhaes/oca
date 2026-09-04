@@ -145,6 +145,7 @@ fn project(sequences: Vec<Sequence>, media_library: Vec<MediaAsset>) -> Project 
         file_path: None,
         panel_layout: None,
         smart_bins: Vec::new(),
+        recent_asset_ids: Vec::new(),
     }
 }
 

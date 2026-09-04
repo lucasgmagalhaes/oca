@@ -68,6 +68,13 @@ pub struct MediaAsset {
     /// Serialized (unlike `proxy_path`) — recomputing it means a full audio decode pass, so a
     /// reopened project keeps it rather than paying that cost again.
     pub waveform_peaks: Option<Vec<(f32, f32)>>,
+    /// User-marked favorite — the Media library panel's Favorites filter shows only assets with
+    /// this set. Purely a manual flag (not derived from usage — see [`crate::project::Project::
+    /// recent_asset_ids`] for that), toggled by a star button on each asset row/tile.
+    /// `#[serde(default)]` so a project saved before this field existed loads with every asset
+    /// unfavorited.
+    #[serde(default)]
+    pub favorited: bool,
 }
 
 fn default_has_audio() -> bool {

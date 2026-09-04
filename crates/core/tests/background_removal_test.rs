@@ -42,6 +42,7 @@ fn test_project(file_path: Option<PathBuf>) -> Project {
         file_path,
         panel_layout: None,
         smart_bins: Vec::new(),
+        recent_asset_ids: Vec::new(),
     }
 }
 
