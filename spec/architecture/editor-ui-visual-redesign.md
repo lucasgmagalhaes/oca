@@ -296,15 +296,20 @@ The mockup's icon set (arrow=Select, scissors=Cut, a trim-like glyph=Trim/Ripple
 wand=effects, hand=pan) lines up much better with (2) than (1) — but drawn vertically, at the
 window's left edge, in the position `nav_rail` currently occupies.
 
-**Open decision, not silently resolved**: either (a) keep the toolbar tools horizontal (as
-now) and leave `nav_rail` doing screen-switching in that left-edge slot — smaller change,
-matches "reuse existing primitives" — or (b) move the Editor's tool buttons into a new
-vertical rail in that position, and relocate `nav_rail`'s screen-switching elsewhere (a menu?
-a slimmer strip above it?) for when the user isn't in the Editor screen. (b) is a materially
-bigger layout change and displaces a working, real navigation affordance the mockup simply
-doesn't depict — because it not once shows a non-Editor screen. Recommend (a) unless there's
-a specific reason to want the vertical tool rail; this doc takes no side, per "confirm
-forks with the user before a big item" (`spec/ROADMAP.md`'s own convention).
+**Decision — resolved: (a).** Two options were on the table: (a) keep the toolbar tools
+horizontal (as now) and leave `nav_rail` doing screen-switching in that left-edge slot —
+smaller change, matches "reuse existing primitives" — or (b) move the Editor's tool buttons
+into a new vertical rail in that position, and relocate `nav_rail`'s screen-switching elsewhere
+(a menu? a slimmer strip above it?) for when the user isn't in the Editor screen. (b) is a
+materially bigger layout change and displaces a working, real navigation affordance the mockup
+simply doesn't depict — because it not once shows a non-Editor screen. Going with (a), this
+doc's own recommendation from when the fork was first raised: no specific reason for the
+vertical rail surfaced, and (b)'s cost (relocating cross-screen navigation for every non-Editor
+screen) buys only a closer mockup match, not a new capability. No code change — the toolbar and
+`nav_rail` stay exactly as they are today. This was the last open decision in this doc; every
+item flagged above as "genuine new feature, needs a decision" is now either shipped (Blend
+Mode, Anchor X/Y, Favorites/Recent, the Hand tool) or resolved without a change (this one,
+`TrackKind::Fx`, the "REC" chip — both explicit non-goals, see "What NOT to change" below).
 
 **"Hand" (pan tool) — done.** Before this, the timeline had zoom (`timeline_px_per_sec`,
 Ctrl+scroll or the slider) but genuinely no horizontal pan at all — the visible window always
