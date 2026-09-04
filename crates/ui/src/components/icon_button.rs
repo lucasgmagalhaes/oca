@@ -15,6 +15,8 @@
 
 use eframe::egui::{self, Color32, FontFamily, Response, RichText, Ui};
 
+use crate::theme;
+
 /// Escape hatches for [`icon_button`] — deliberately kept small, not open-ended configurability,
 /// so this stays one canonical component instead of becoming a fifth convention with extra
 /// steps. `size` covers the transport controls' enlarged (48-64pt) glyphs; `hover_color` covers
@@ -58,16 +60,25 @@ pub fn icon_button(ui: &mut Ui, glyph: &str, tooltip: &str, opts: IconButtonOpts
         egui::Button::new(text).frame(false)
     };
 
-    let response = if let Some(color) = opts.hover_color {
-        ui.scope(|ui| {
-            let hovered = &mut ui.style_mut().visuals.widgets.hovered;
-            hovered.fg_stroke.color = color;
-            hovered.bg_stroke.color = color;
+    // Section 9's Icon Buttons color table, scoped to just this button (`ui.scope`) — the
+    // global `Visuals` (`theme::apply`) tune Secondary buttons' labeled text, a different,
+    // brighter role than an icon-only glyph's own quieter default/hover/active scale.
+    // `opts.hover_color` (the window-chrome close-button-red-on-hover convention) still wins
+    // over `ICON_HOVER` when given; `opts.color` (set directly on the `RichText` above) already
+    // takes priority over any of these `fg_stroke` colors regardless.
+    let response = ui
+        .scope(|ui| {
+            let widgets = &mut ui.style_mut().visuals.widgets;
+            widgets.inactive.fg_stroke.color = theme::ICON_DEFAULT;
+            widgets.active.fg_stroke.color = theme::ICON_ACTIVE;
+            if let Some(color) = opts.hover_color {
+                widgets.hovered.fg_stroke.color = color;
+                widgets.hovered.bg_stroke.color = color;
+            } else {
+                widgets.hovered.fg_stroke.color = theme::ICON_HOVER;
+            }
             ui.add(button)
         })
-        .inner
-    } else {
-        ui.add(button)
-    };
+        .inner;
     response.on_hover_text(tooltip)
 }
