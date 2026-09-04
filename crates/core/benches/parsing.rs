@@ -78,6 +78,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
             }),
             proxy_path: None,
             waveform_peaks: None,
+            favorited: false,
         })
         .collect();
 
@@ -183,6 +184,7 @@ fn large_project(asset_count: usize, clips_per_track: usize) -> Project {
         file_path: None,
         panel_layout: None,
         smart_bins: Vec::new(),
+        recent_asset_ids: Vec::new(),
     }
 }
 

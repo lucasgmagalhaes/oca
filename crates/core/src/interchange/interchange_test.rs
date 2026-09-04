@@ -136,6 +136,7 @@ fn asset(id: u64, file_name: &str) -> MediaAsset {
         loudness: None,
         proxy_path: None,
         waveform_peaks: None,
+        favorited: false,
     }
 }
 
@@ -151,6 +152,7 @@ fn project(media_library: Vec<MediaAsset>, sequences: Vec<Sequence>) -> Project 
         file_path: None,
         panel_layout: None,
         smart_bins: vec![],
+        recent_asset_ids: vec![],
     }
 }
 

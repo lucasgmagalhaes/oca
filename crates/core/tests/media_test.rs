@@ -63,6 +63,7 @@ fn duration_label_delegates_to_format_timecode() {
         loudness: None,
         proxy_path: None,
         waveform_peaks: None,
+        favorited: false,
     };
     assert_eq!(asset.duration_label(), "02:14");
 }

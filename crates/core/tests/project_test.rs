@@ -125,6 +125,7 @@ fn test_project() -> Project {
         file_path: None,
         panel_layout: None,
         smart_bins: Vec::new(),
+        recent_asset_ids: Vec::new(),
     }
 }
 
@@ -337,4 +338,42 @@ fn sequences_referencing_as_compound_clip_finds_every_referencing_sequence() {
     let ids: Vec<u64> = referencing.iter().map(|s| s.id).collect();
 
     assert_eq!(ids, vec![first_id, second_id]);
+}
+
+#[test]
+fn record_recent_asset_inserts_new_ids_at_the_front() {
+    let mut project = test_project();
+
+    project.record_recent_asset(1);
+    project.record_recent_asset(2);
+
+    assert_eq!(project.recent_asset_ids, vec![2, 1]);
+}
+
+#[test]
+fn record_recent_asset_moves_an_existing_id_to_the_front_without_duplicating_it() {
+    let mut project = test_project();
+    project.record_recent_asset(1);
+    project.record_recent_asset(2);
+    project.record_recent_asset(3);
+
+    project.record_recent_asset(1);
+
+    assert_eq!(project.recent_asset_ids, vec![1, 3, 2]);
+}
+
+#[test]
+fn record_recent_asset_caps_the_list_at_recent_asset_capacity() {
+    let mut project = test_project();
+
+    for id in 0..(avcore::project::RECENT_ASSET_CAPACITY as u64 + 5) {
+        project.record_recent_asset(id);
+    }
+
+    assert_eq!(
+        project.recent_asset_ids.len(),
+        avcore::project::RECENT_ASSET_CAPACITY
+    );
+    let expected_most_recent = avcore::project::RECENT_ASSET_CAPACITY as u64 + 4;
+    assert_eq!(project.recent_asset_ids[0], expected_most_recent);
 }
