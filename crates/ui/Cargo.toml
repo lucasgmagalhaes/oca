@@ -25,3 +25,8 @@ tempfile = "3.27.0"
 # for update-check HTTPS already. No provider SDK: raw envelope POST, so the reporter boundary
 # stays provider-neutral in error_reporting.rs.
 ureq = "3"
+
+[dev-dependencies]
+# Headless AccessKit harness for deterministic egui interaction tests. Keep this in lockstep
+# with the workspace's egui/eframe 0.36.x series.
+egui_kittest = "0.36.1"

@@ -148,3 +148,6 @@ fn rail_button(
     ui.add_space(4.0);
     response.on_hover_text(label)
 }
+
+#[cfg(test)]
+mod nav_rail_test;
