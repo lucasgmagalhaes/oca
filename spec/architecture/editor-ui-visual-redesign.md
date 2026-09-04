@@ -382,16 +382,25 @@ Mapping:
 - **Scrub bar with round handle** — functionally identical to the existing `egui::Slider`;
   the round-handle look is `egui::Slider`'s own default rendering already, so this is likely
   already close — verify visually rather than assume a custom-painted widget is needed.
-- **Transport additions — step-frame and loop done, snapshot/marker not.** New
+- **Transport additions — done: step-frame, loop, snapshot, and marker.** New
   `App::step_preview_frame(delta_frames)` (one frame at the previewed clip's fps, 30.0
   fallback) backs two new buttons (no vendored icon for single-frame step, so thin outline
   triangles in the default font). New `PreviewState::loop_enabled` + a loop-toggle button (the
   vendored `repeat` icon) restart playback from 0 instead of stopping at the timeline's end —
   `ensure_preview_loaded`'s existing "nothing covers the new playhead" branch checks it,
-  gated on playback having actually been running. "Snapshot" (camera icon) still has no
-  equivalent — a save-current-frame-as-image feature, genuinely new, not built. "Marker"
-  (clapper icon) still maps to the existing add-marker action but has no vendored Lucide icon
-  and wasn't in item 4's own checklist — not built either.
+  gated on playback having actually been running. **Snapshot** — the vendored `camera` icon
+  (present since the icon-vendoring pass but unwired until now) opens a save-file dialog
+  (`rfd`, matching every other export flow's own pattern) and writes the most recently
+  displayed frame as a PNG via a new `avcore::preview::VideoFrame::save_png`; `PreviewState::
+  last_frame` holds a clone of the same decoded, effects-applied frame `pump_preview_frame`
+  just uploaded to the egui texture (the texture upload doesn't hand pixels back, so a plain
+  reference isn't enough), reset alongside the texture whenever the pipeline reopens. Toasts
+  instead of writing anything when no frame has decoded yet. **Marker** — reuses the existing,
+  already-real `App::add_marker_at_playhead(MarkerKind::Standard)` (the Timeline Index panel's
+  own "Add" action) behind a small button using `MarkerKind::Standard`'s own icon (🔹, matching
+  `modals.rs`'s `marker_kind_icon`) rather than a newly vendored one — the doc's original "no
+  vendored Lucide icon" note was about a dedicated glyph, not a blocker for wiring the button
+  to real behavior.
 
 ### Inspector (properties panel)
 
@@ -579,17 +588,20 @@ principles, and this doc's own findings above:
 3. **Timeline visual polish — done.** Transition wedges (`draw_transition_wedge`) and
    gain-keyframe diamonds on waveforms (extended `draw_keyframe_markers`); playhead already
    verified red (`theme::ERROR`) post-accent-change.
-4. **Preview panel — done.** Resolution+fps/timecode+frame HUD overlays, step-frame + loop
-   transport buttons, and a CAM chip wired to real `MulticamGroup` data (omitted when none
-   applies) — see the Program monitor section's own bullets for what shipped vs. what's still
-   genuinely new (zoom controls, snapshot capture, marker button).
+4. **Preview panel — done.** Resolution+fps/timecode+frame HUD overlays, step-frame + loop +
+   snapshot + marker transport buttons, and a CAM chip wired to real `MulticamGroup` data
+   (omitted when none applies) — see the Program monitor section's own bullets for what
+   shipped vs. what's still genuinely new (zoom controls only, at this point).
 5. **Menu bar — done.** `screens/editor/menu_bar.rs`, coexisting with the toolbar (confirmed
    with the user first, per the open decision this doc originally left). See the Top bar
    section's own bullets for exactly which menu items are wired vs. which two menus (Window,
    Help) still have no real feature behind them.
 6. Everything flagged as a genuine new feature above (real per-asset thumbnails, Favorites/
-   Recent, Anchor X/Y, snapshot capture) — each is its own scoped follow-up item, not part of
-   "implement the mockup" in one pass.
+   Recent, Anchor X/Y, zoom controls) — each is its own scoped follow-up item, not part of
+   "implement the mockup" in one pass. (Snapshot capture and the grid/list view toggle were
+   both picked out of this list and shipped — see items 9 and 10 below.) The marker button was
+   never in this list (it maps to an already-real feature, just unwired) but shipped alongside
+   snapshot capture in the same slice.
 7. **Per-channel audio metering — done**, picked out of item 6's list at the user's request —
    see the Inspector section's own bullet.
 8. **Blend Mode — done.** Data model, export, live preview (the full FFmpeg 40-mode set, per
@@ -598,6 +610,8 @@ principles, and this doc's own findings above:
    scope limits (position/PIP ignored while a blend mode is active; a blend-mode layer always
    composites on top of the whole Normal-mode stack rather than interleaving into track order).
 9. **Media library grid/list view toggle — done.** See the Media library section's own bullet.
+10. **Preview transport snapshot capture + marker button — done.** See the Program monitor
+    section's "Transport additions" bullet.
 
 ## Verification
 
