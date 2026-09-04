@@ -19,9 +19,12 @@ Native FFI bridge over libavformat/libavcodec/libavfilter/libavutil (`crates/avb
 - [x] Text/shape overlay compositing (native mux pass) — `text_overlay.c`, `shape_overlay.c`.
 - [x] Native audio mix/mux (multi-branch `amix`, stream-copy final mux) — `audio_mix.c`.
 - [~] GPU-accelerated encode (NVENC/Quick Sync/AMF/VAAPI, CPU fallback) — `gpu_encoder.c`.
-      **Hardware success unverified** — no dev machine has NVENC/AMF/VAAPI hardware; this dev
-      machine's FFmpeg build also lacks `libopenh264`/`h264_qsv` entirely, so every test that
-      reaches `avcodec_open2` fails here specifically (pre-existing build gap, not a regression).
+      **NVENC hardware success now confirmed** on a real NVIDIA RTX 4070 — see `ROADMAP.md` P4
+      item 19 for the full verification writeup (direct `ffmpeg` CLI ground-truth + a new
+      additive `av_log` line in `open_video_encoder` proving oca's own code path opened
+      `h264_nvenc`, not just that a file happened to come out). Quick Sync/AMF still unverified
+      on the positive path (no such hardware on any dev machine checked so far); VAAPI unverified
+      at all (Linux-only, `#ifdef __linux__`, no Linux+VAAPI dev machine available yet).
 - [x] Python runtime + yt-dlp bridge (`crates/ytbridge`) for YouTube download — fully bundled
       (Windows confirmed working end-to-end with `PATH` stripped; Linux branch written,
       unverified on a real Linux build).

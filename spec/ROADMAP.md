@@ -364,8 +364,25 @@ Not blocked on design decisions — blocked on hardware/tooling this dev environ
 have, or genuinely lower value for a small/single-editor channel. Pick up opportunistically,
 not by default priority.
 
-19. `[ ]` GPU encode real-hardware verification (NVENC/Quick Sync/AMF/VAAPI) —
-    `matrix/engine.md`. Code path exists, never run against real hardware.
+19. `[~]` GPU encode real-hardware verification (NVENC/Quick Sync/AMF/VAAPI) —
+    `matrix/engine.md`. **NVENC confirmed working on real hardware** this session, against a
+    real NVIDIA GeForce RTX 4070 (driver 610.74) — ground-truthed two ways: (1) a direct
+    `ffmpeg -c:v h264_nvenc` CLI smoke test, bypassing oca entirely, confirms this exact
+    `FFMPEG_DIR` build's `h264_nvenc` opens and encodes on this hardware at all; (2) added one
+    purely-additive `av_log` line to `open_video_encoder` (`gpu_encoder.c`) — no signature/ABI
+    change, since `avcodec_open2` was previously silent on success, making it genuinely
+    impossible to tell "opened real GPU hardware" from "silently degraded to CPU" from outside
+    the function. With that log line in place, `cargo test -p avbridge --test encode_test
+    every_gpu_encoder_preference_falls_back_to_a_working_export` (the test built specifically to
+    exercise every `GpuEncoderPreference` variant) now prints `oca: opened video encoder
+    h264_nvenc (hardware)` for both the `Auto` and explicit `Nvenc` cases — direct proof oca's
+    own code path opened real NVENC, not just that a valid file happened to come out the other
+    end. Quick Sync and AMF still correctly fall back to CPU on this machine (no Intel iGPU/AMD
+    GPU present) — their own failure paths log clear driver errors (`Error creating a MFX
+    session`, `DLL amfrt64.dll failed to open`), consistent with past sessions' findings. VAAPI
+    is Linux-only (`#ifdef __linux__` in `gpu_encoder.c`) and stays unverified — no Linux
+    machine with a VAAPI-capable GPU available in any session so far. **Still not verified**:
+    Quick Sync/AMF's *positive* path (this machine genuinely has neither), and VAAPI at all.
 20. `[x]` GPU usage telemetry — `matrix/performance.md`. No cross-platform reader exists, so
     this went vendor-specific: `avcore::GpuSampler` via `nvml-wrapper` (NVML), which dynamically
     loads `libnvidia-ml.so`/`nvml.dll` at runtime rather than link-time linking against it — a
