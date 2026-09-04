@@ -219,11 +219,16 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut ruler_top = 0.0_f32;
         ui.horizontal(|ui| {
             ui.add_space(TRACK_LABEL_WIDTH);
+            // Confirmed gap: the only way to pan a zoomed-in timeline was the Hand tool's
+            // drag-to-scroll — no visible scrollbar existed anywhere to grab directly. Wired
+            // onto the ruler's own ScrollArea (shows/hides itself based on whether the timeline
+            // is actually wider than the visible viewport); every per-track ScrollArea stays
+            // hidden below, since `new_pan_px` already keeps them all in lockstep with this one.
             let ruler_scroll = egui::ScrollArea::horizontal()
                 .id_salt("timeline_ruler_hscroll")
                 .scroll_source(hscroll_source)
                 .scroll_bar_visibility(
-                    egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden,
+                    egui::containers::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
                 )
                 .horizontal_scroll_offset(app.timeline_pan_px)
                 .show(ui, |ui| {
