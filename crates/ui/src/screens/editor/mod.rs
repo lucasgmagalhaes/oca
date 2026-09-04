@@ -21,7 +21,8 @@ use avcore::media::format_timecode;
 use eframe::egui::{self, RichText};
 
 use crate::app::{
-    App, EditorTool, MediaLibraryFilter, MediaViewMode, PreviewZoom, MOTION_TRACK_SIZE_RANGE,
+    App, EditorTool, MediaLibraryFilter, MediaViewMode, PreviewZoom, PropertiesTab,
+    MOTION_TRACK_SIZE_RANGE,
 };
 use crate::components;
 use crate::i18n::Text;
@@ -69,6 +70,49 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let delete_pressed = ui.input(|i| i.key_pressed(egui::Key::Delete));
     if delete_pressed {
         app.delete_selected_clip();
+    }
+    // Section 3/4/6's own tool shortcuts (V/C/T) — bare letter keys, so gated on
+    // `!wants_keyboard_input()` and "no modifier held" or they'd misfire while typing in any
+    // text field (renaming a clip, a text graphic's own content, media search, ...) and would
+    // double-fire alongside modifier combos that happen to share the same letter (Ctrl+C copy).
+    if !ui.ctx().egui_wants_keyboard_input() && !ui.input(|i| i.modifiers.ctrl || i.modifiers.alt) {
+        if ui.input(|i| i.key_pressed(egui::Key::V)) {
+            app.tool = EditorTool::Select;
+        }
+        if ui.input(|i| i.key_pressed(egui::Key::C)) {
+            app.tool = EditorTool::Razor;
+        }
+        if ui.input(|i| i.key_pressed(egui::Key::T)) {
+            app.tool = EditorTool::Text;
+        }
+    }
+    // Text Tool, Section 6's "empty text" rule: Escape before typing anything discards the
+    // graphic the tool just created; Escape after real content is typed leaves it (checked
+    // against the clip's *current* text, not a stale flag, so this stays correct regardless of
+    // what else happened in between — no separate invalidation bookkeeping needed).
+    if let Some(pending_id) = app.text_tool_pending_empty_clip_id.take() {
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            let is_empty = app
+                .active_project()
+                .timeline()
+                .tracks
+                .iter()
+                .flat_map(|t| &t.text_clips)
+                .find(|c| c.id == pending_id)
+                .is_some_and(|c| c.text.trim().is_empty());
+            if is_empty {
+                let timeline = app.active_project_mut().timeline_mut();
+                for track in &mut timeline.tracks {
+                    track.text_clips.retain(|c| c.id != pending_id);
+                }
+                if app.selected_text_clip_id == Some(pending_id) {
+                    app.selected_text_clip_id = None;
+                }
+            }
+        } else {
+            // Not consumed this frame — put it back so a later frame's Escape still sees it.
+            app.text_tool_pending_empty_clip_id = Some(pending_id);
+        }
     }
     let ctrl_c_pressed =
         ui.input(|i| i.modifiers.ctrl && !i.modifiers.shift && i.key_pressed(egui::Key::C));
@@ -361,10 +405,16 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         if ui.button(cut_job).on_hover_text("Ctrl+B").clicked() {
             app.split_at_playhead();
         }
-        // `fold-horizontal` is the mockup's resolved best-guess for the shared Trim/Ripple tool-
-        // rail slot (see `spec/architecture/editor-ui-visual-redesign.md`'s Icon set table) —
-        // applied to Trim only here since Ripple keeps its own distinct icon-less button below,
-        // not a second, unconfirmed reuse of the same glyph.
+        // `CINECUT_UI_UX_SPEC_v1.0.md`'s product-decisions addendum, Section 2: "final toolbar
+        // for the current version is: Selection, Razor, Trim, Text, Effects, Hand, Zoom" — this
+        // replaces the previous Trim/Ripple/Roll/Slip/Slide five-button row. Ripple/Roll/Slip/
+        // Slide stay real `EditorTool` variants (see that enum's own doc comment) — the spec's
+        // instruction is about the toolbar's exposed buttons, not a mandate to delete working
+        // trim behavior that has no other entry point — just no longer have a toolbar button of
+        // their own.
+        tool_button(app, ui, EditorTool::Razor, "C", Text::ToolRazor.tr(locale));
+        // `fold-horizontal` is the mockup's resolved best-guess for the Trim tool-rail slot (see
+        // `spec/architecture/editor-ui-visual-redesign.md`'s Icon set table).
         tool_button_icon_font(
             app,
             ui,
@@ -372,28 +422,32 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             crate::icons::FOLD_HORIZONTAL_STR,
             Text::ToolTrim.tr(locale),
         );
-        // Confirmed via real screenshots: "⇥"/"⇄"/"⇉" AND, in a second round, even the very
-        // basic "→" (used elsewhere in a LUFS tag) are all tofu against this app's bundled
-        // default font. Only "↕" (Slip, below) is confirmed actually rendering — egui's default
-        // font covers a curated symbol subset, not a whole Unicode block just because one glyph
-        // from it happens to work, so ASCII is the only genuinely safe choice here. No vendored
-        // Lucide icon exists yet for ripple/roll/slide (see nav_rail.rs's identical note).
+        tool_button(app, ui, EditorTool::Text, "T", Text::ToolText.tr(locale));
         tool_button(
             app,
             ui,
-            EditorTool::Ripple,
-            ">",
-            Text::ToolRipple.tr(locale),
+            EditorTool::Effects,
+            "FX",
+            Text::ToolEffects.tr(locale),
         );
-        tool_button(app, ui, EditorTool::Roll, "<>", Text::ToolRoll.tr(locale));
-        tool_button(app, ui, EditorTool::Slip, "↕", Text::ToolSlip.tr(locale));
-        tool_button(app, ui, EditorTool::Slide, ">>", Text::ToolSlide.tr(locale));
+        // Section 8: activating Effects mode also focuses the Effects Panel — no separate
+        // click-to-open step. Idempotent (harmless to re-set every frame the tool stays active).
+        if app.tool == EditorTool::Effects {
+            app.properties_tab = PropertiesTab::Effects;
+        }
         tool_button_icon_font(
             app,
             ui,
             EditorTool::Hand,
             crate::icons::HAND_STR,
             Text::ToolHand.tr(locale),
+        );
+        tool_button(
+            app,
+            ui,
+            EditorTool::Zoom,
+            "Z",
+            Text::ToolZoomTool.tr(locale),
         );
         ui.separator();
         // Section 56's Snapping spec: "a timeline-level toggle... click magnet icon". No
@@ -1811,6 +1865,9 @@ fn preview_canvas_size(
         PreviewZoom::Fit => avail,
         PreviewZoom::Percent50 => egui::vec2(canvas_w as f32 * 0.5, canvas_h as f32 * 0.5),
         PreviewZoom::Percent100 => egui::vec2(canvas_w as f32, canvas_h as f32),
+        PreviewZoom::Custom(factor) => {
+            egui::vec2(canvas_w as f32 * factor, canvas_h as f32 * factor)
+        }
     };
     size.x = size.x.min(avail.x);
     size.y = size.y.min(avail.y);
@@ -1861,6 +1918,43 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
     let canvas_aspect = canvas_w as f32 / canvas_h.max(1) as f32;
 
     let avail_rect = ui.available_rect_before_wrap();
+    // Zoom Tool (product-decisions addendum, Section 13/14): controls the Program Monitor
+    // *viewport* zoom only — never clip Transform/Scale (that's `PropertiesTab::Inspector`'s
+    // own Scale field, untouched here). Click zooms in one step, Alt+click zooms out, wheel
+    // zooms continuously, double-click resets to Fit. No cursor-anchored pan exists (this
+    // preview's canvas always centers — `PreviewZoom`'s own doc comment already documents "no
+    // scrollable viewport" as a known gap), so this zooms centered rather than literally
+    // keeping the point under the cursor fixed; a real follow-up if 1:1 pixel panning is wanted.
+    if app.tool == EditorTool::Zoom {
+        let zoom_resp = ui.interact(
+            avail_rect,
+            ui.id().with("preview_zoom_tool"),
+            egui::Sense::click(),
+        );
+        let current = match app.preview_state.zoom {
+            PreviewZoom::Fit | PreviewZoom::Percent100 => 1.0,
+            PreviewZoom::Percent50 => 0.5,
+            PreviewZoom::Custom(f) => f,
+        };
+        if zoom_resp.double_clicked() {
+            app.preview_state.zoom = PreviewZoom::Fit;
+        } else if zoom_resp.clicked() {
+            let factor = if ui.input(|i| i.modifiers.alt) {
+                0.8
+            } else {
+                1.25
+            };
+            app.preview_state.zoom = PreviewZoom::Custom((current * factor).clamp(0.1, 8.0));
+        }
+        if zoom_resp.hovered() {
+            let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+            if scroll != 0.0 {
+                let factor = (1.0 + scroll * 0.001).clamp(0.5, 2.0);
+                app.preview_state.zoom = PreviewZoom::Custom((current * factor).clamp(0.1, 8.0));
+            }
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ZoomIn);
+        }
+    }
     // The layer-position drag below had no bound on how far the layer could be dragged, and
     // nothing clipped its paint to this panel — confirmed via a real report: drag far enough
     // and the layer image paints straight over the media library/properties panels next door.
@@ -1884,6 +1978,36 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
         egui::Stroke::new(1.0, theme::BORDER),
         egui::StrokeKind::Inside,
     );
+
+    // Text Tool (product-decisions addendum, Section 6): a single click anywhere in the
+    // Program Monitor creates a new Text Graphic at that position, immediately selected — no
+    // click-and-drag required (explicitly out of scope for this pass). Clicking an *existing*
+    // text graphic to select/reposition it isn't wired here: text/shape overlays aren't
+    // rendered as separate interactive objects in this canvas today (they're already baked into
+    // the decoded `texture` by the preview pipeline), so that half of Section 6 needs real
+    // per-overlay hit-testing infrastructure this pass doesn't add — a real, separate follow-up,
+    // not silently skipped.
+    if app.tool == EditorTool::Text {
+        let text_resp = ui.interact(
+            canvas_rect,
+            ui.id().with("preview_text_tool"),
+            egui::Sense::click(),
+        );
+        if text_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+        }
+        if let Some(pointer) = text_resp.interact_pointer_pos() {
+            if text_resp.clicked() {
+                let pos_x =
+                    ((pointer.x - canvas_rect.left()) / canvas_rect.width()).clamp(0.0, 1.0);
+                let pos_y =
+                    ((pointer.y - canvas_rect.top()) / canvas_rect.height()).clamp(0.0, 1.0);
+                let new_id = app.add_text_clip_at(pos_x, pos_y);
+                app.text_tool_pending_empty_clip_id = Some(new_id);
+            }
+        }
+        return;
+    }
 
     if app.drawing_shape_points.is_some() {
         draw_custom_shape_surface(app, ui, canvas_rect, &texture);

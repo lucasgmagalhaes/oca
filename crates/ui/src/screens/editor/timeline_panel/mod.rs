@@ -321,6 +321,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut track_move_up_requests: Vec<u64> = Vec::new();
         let mut track_move_down_requests: Vec<u64> = Vec::new();
         let mut track_delete_requests: Vec<(u64, String)> = Vec::new();
+        let mut razor_split_requests: Vec<(u64, f64)> = Vec::new();
         // Set the first time a trim/move drag starts this frame — `app` is immutably borrowed
         // for the whole track/clip iteration below, so the undo snapshot itself is pushed once,
         // after that borrow ends, rather than inline at the drag_started() check.
@@ -804,7 +805,20 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         drag_started_this_frame = true;
                                     }
                                     if body_response.clicked() {
-                                        if ui.input(|i| i.modifiers.ctrl) {
+                                        // Razor Tool (product-decisions addendum, Section 4):
+                                        // click a clip to split it at that click's position,
+                                        // instead of the normal select-on-click.
+                                        if app.tool == EditorTool::Razor {
+                                            if let Some(pointer) =
+                                                body_response.interact_pointer_pos()
+                                            {
+                                                let at_secs = ((pointer.x - track_rect.left())
+                                                    / px_per_sec)
+                                                    .max(0.0)
+                                                    as f64;
+                                                razor_split_requests.push((track.id, at_secs));
+                                            }
+                                        } else if ui.input(|i| i.modifiers.ctrl) {
                                             multi_select_requests.push(clip.id);
                                         } else {
                                             clicked_clip_id = Some(clip.id);
@@ -1326,6 +1340,9 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         for track_id in track_move_down_requests {
             app.move_track_down(track_id);
+        }
+        for (track_id, at_secs) in razor_split_requests {
+            app.split_track_clip_at(track_id, at_secs);
         }
         for (track_id, name) in track_delete_requests {
             // Section 49's own rule: only a track that actually carries content needs
