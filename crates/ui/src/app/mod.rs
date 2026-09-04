@@ -1145,6 +1145,14 @@ pub struct App {
     /// is open. Stored by id rather than index so a reordered tab cannot make confirmation
     /// delete a different sequence.
     pub deleting_sequence: Option<(u64, String)>,
+    /// When `Some((track_id, buf))`, a rename modal is shown for that timeline track — Section
+    /// 49's Track More Menu "Rename Track". Committed on Enter/confirm, discarded on Escape/
+    /// cancel. Same shape as `renaming_sequence`/`renaming_project`.
+    pub renaming_track: Option<(u64, String)>,
+    /// `(track_id, name)` staged while the destructive track-delete confirmation modal is open
+    /// — Section 49's own "Deleting a track containing clips requires confirmation". Stored by
+    /// id, same reasoning as `deleting_sequence`.
+    pub deleting_track: Option<(u64, String)>,
     /// `(clip_id, start_speed_buf, end_speed_buf, steps_buf, smooth)` staged while the custom
     /// speed-ramp dialog is open — the fixed-preset "Rampa de velocidade" submenu entries call
     /// [`App::apply_speed_ramp_to_selected_clip`] directly with no dialog, but a custom start/
@@ -1773,6 +1781,8 @@ impl App {
             renaming_project: None,
             renaming_sequence: None,
             deleting_sequence: None,
+            renaming_track: None,
+            deleting_track: None,
             speed_ramp_dialog: None,
             saving_layer_template: None,
             applying_layer_template: None,
@@ -2534,6 +2544,8 @@ impl eframe::App for App {
         self.show_about_modal(ui.ctx());
         self.show_rename_project_modal(ui.ctx());
         self.show_rename_sequence_modal(ui.ctx());
+        self.show_rename_track_modal(ui.ctx());
+        self.show_delete_track_modal(ui.ctx());
         self.show_speed_ramp_modal(ui.ctx());
         self.show_delete_sequence_modal(ui.ctx());
         self.show_text_color_modal(ui.ctx());
