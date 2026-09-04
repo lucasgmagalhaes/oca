@@ -77,6 +77,17 @@ fn file_menu(app: &mut App, ui: &mut egui::Ui, locale: crate::i18n::Locale) {
             }
             ui.close();
         }
+        if ui.button(Text::ExportOtio.tr(locale)).clicked() {
+            let sequence_name = app.active_project().active_sequence().name.clone();
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("OpenTimelineIO", &["otio"])
+                .set_file_name(format!("{sequence_name}.otio"))
+                .save_file()
+            {
+                app.export_otio_for_active_sequence(path);
+            }
+            ui.close();
+        }
         ui.separator();
         if ui.button(Text::ImportGameplayEvents.tr(locale)).clicked() {
             if let Some(path) = rfd::FileDialog::new()
