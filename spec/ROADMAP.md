@@ -364,7 +364,7 @@ Not blocked on design decisions — blocked on hardware/tooling this dev environ
 have, or genuinely lower value for a small/single-editor channel. Pick up opportunistically,
 not by default priority.
 
-19. `[~]` GPU encode real-hardware verification (NVENC/Quick Sync/AMF/VAAPI) —
+19. `[~]` GPU encode real-hardware verification (NVENC/Quick Sync/AMF/VAAPI/VideoToolbox) —
     `matrix/engine.md`. **NVENC confirmed working on real hardware** this session, against a
     real NVIDIA GeForce RTX 4070 (driver 610.74) — ground-truthed two ways: (1) a direct
     `ffmpeg -c:v h264_nvenc` CLI smoke test, bypassing oca entirely, confirms this exact
@@ -383,6 +383,16 @@ not by default priority.
     is Linux-only (`#ifdef __linux__` in `gpu_encoder.c`) and stays unverified — no Linux
     machine with a VAAPI-capable GPU available in any session so far. **Still not verified**:
     Quick Sync/AMF's *positive* path (this machine genuinely has neither), and VAAPI at all.
+    **VideoToolbox confirmed working on real Apple hardware** this session: a MacBook Pro with
+    Apple M4 on macOS 26.6.2, using Homebrew FFmpeg 9.0 with `--enable-videotoolbox`. A direct
+    `ffmpeg -c:v h264_videotoolbox` encode produced a probeable H.264 MP4, then oca gained the
+    persisted `VideoToolbox` preference and macOS-only automatic candidate. The focused native
+    integration test, `cargo test -p avbridge --test encode_test
+    videotoolbox_encodes_a_real_timeline_on_macos -- --nocapture`, completed a timeline export
+    and printed `oca: opened video encoder h264_videotoolbox (hardware)`. This proves the
+    application's own FFI/filter/mux path used Apple hardware acceleration, not merely the
+    standalone CLI. The Homebrew build lacks `libopenh264`, so CPU-fallback testing is not
+    meaningful on this machine; distribution builds must still supply it for the CPU fallback.
 20. `[x]` GPU usage telemetry — `matrix/performance.md`. No cross-platform reader exists, so
     this went vendor-specific: `avcore::GpuSampler` via `nvml-wrapper` (NVML), which dynamically
     loads `libnvidia-ml.so`/`nvml.dll` at runtime rather than link-time linking against it — a

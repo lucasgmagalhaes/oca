@@ -11,11 +11,7 @@ FFMPEG_DIR="$(cd "$2" && pwd)"
 OUTPUT_DIR="$3"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if ! "$FFMPEG_DIR/bin/ffmpeg" -hide_banner -encoders 2>/dev/null \
-    | grep '[[:space:]]h264_vaapi[[:space:]]' >/dev/null; then
-    echo "FFmpeg runtime does not include the required h264_vaapi encoder" >&2
-    exit 1
-fi
+python3 "$SCRIPT_DIR/verify_ffmpeg_runtime.py" "$FFMPEG_DIR/bin/ffmpeg" --platform linux
 
 rm -rf -- "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/resources/runtime/bin" "$OUTPUT_DIR/resources/runtime/lib"
@@ -24,6 +20,9 @@ cp -a "$BUILD_DIR/espeak-ng-data" "$OUTPUT_DIR/"
 cp -a "$BUILD_DIR/lib" "$OUTPUT_DIR/"
 cp "$FFMPEG_DIR/bin/ffmpeg" "$OUTPUT_DIR/resources/runtime/bin/"
 cp -a "$FFMPEG_DIR/lib/"*.so* "$OUTPUT_DIR/resources/runtime/lib/"
+LD_LIBRARY_PATH="$OUTPUT_DIR/resources/runtime/lib" \
+    python3 "$SCRIPT_DIR/verify_ffmpeg_runtime.py" \
+        "$OUTPUT_DIR/resources/runtime/bin/ffmpeg" --platform linux
 
 GST_ROOT="$OUTPUT_DIR/resources/runtime/gstreamer"
 GST_PLUGINS="$GST_ROOT/lib/gstreamer-1.0"

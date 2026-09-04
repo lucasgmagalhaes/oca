@@ -1540,6 +1540,22 @@ fn vaapi_gpu_encoder_preference_roundtrips_through_preferences() {
 }
 
 #[test]
+fn videotoolbox_gpu_encoder_preference_roundtrips_through_preferences() {
+    let prefs = PrefsState {
+        gpu_encoder: avcore::GpuEncoderPreference::VideoToolbox,
+        ..PrefsState::default()
+    };
+
+    let encoded = serde_json::to_vec(&prefs).unwrap();
+    let decoded: PrefsState = serde_json::from_slice(&encoded).unwrap();
+
+    assert_eq!(
+        decoded.gpu_encoder,
+        avcore::GpuEncoderPreference::VideoToolbox
+    );
+}
+
+#[test]
 fn prefs_without_preview_hardware_decode_migrate_to_enabled() {
     let mut legacy = serde_json::to_value(PrefsState::default()).unwrap();
     legacy

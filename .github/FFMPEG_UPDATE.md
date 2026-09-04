@@ -56,7 +56,9 @@ env:
 ```
 
 Update the FFmpeg entry in `packaging/bundle-manifest.json` with the same version, immutable
-URLs and checksums so regular CI and release packaging cannot drift.
+URLs and checksums so regular CI and release packaging cannot drift. macOS builds FFmpeg from
+the pinned official source archive declared there, verifies its SHA-256, and links it with
+OpenH264 and VideoToolbox; update `macos_source_url` and `macos_source_sha256` together.
 
 **Important:** All three values must be updated together. The checksums must match the specific release tag.
 
@@ -68,8 +70,8 @@ The cache keys in the workflow automatically include the release tag and checksu
 
 1. Commit your changes to a branch
 2. Open a pull request
-3. Verify that both Windows and Linux CI jobs pass
-4. Check the job logs to confirm checksum verification succeeded
+3. Verify Windows, Linux, and both macOS architecture jobs pass
+4. Check the job logs to confirm checksum verification and the required encoder contract succeeded
 
 ## Troubleshooting
 

@@ -37,6 +37,7 @@ install -m 0755 "$PYTHON_RUNTIME/tools/deno" "$MACOS/deno"
 cp -a "$BUILD_DIR/espeak-ng-data" "$RESOURCES/"
 cp -a "$PYTHON_RUNTIME/lib" "$RESOURCES/python/"
 install -m 0755 "$FFMPEG_DIR/bin/ffmpeg" "$RUNTIME/bin/ffmpeg"
+python3 "$SCRIPT_DIR/verify_ffmpeg_runtime.py" "$FFMPEG_DIR/bin/ffmpeg" --platform macos
 python3 "$SCRIPT_DIR/collect_gstreamer_plugins.py" \
     "$GSTREAMER_DIR/lib/gstreamer-1.0" "$GST_ROOT/lib/gstreamer-1.0" --platform macos
 install -m 0755 "$GSTREAMER_DIR/libexec/gstreamer-1.0/gst-plugin-scanner" \
@@ -80,13 +81,17 @@ find "$REPO_ROOT/crates/core/assets/fonts" -name OFL.txt -print0 \
 chmod -R u+w "$OUTPUT_APP"
 
 BREW_PREFIX="$(brew --prefix)"
+OPENH264_DIR="$(brew --prefix openh264)"
 python3 "$SCRIPT_DIR/bundle_macos_dylibs.py" "$OUTPUT_APP" \
     --architecture "$ARCH" \
     --search-root "$BUILD_DIR" \
     --search-root "$FFMPEG_DIR/lib" \
     --search-root "$GSTREAMER_DIR/lib" \
     --search-root "$PYTHON_RUNTIME/lib" \
-    --search-root "$BREW_PREFIX/lib"
+    --search-root "$BREW_PREFIX/lib" \
+    --search-root "$OPENH264_DIR/lib"
+
+python3 "$SCRIPT_DIR/verify_ffmpeg_runtime.py" "$RUNTIME/bin/ffmpeg" --platform macos
 
 bash "$SCRIPT_DIR/sign_macos_app.sh" "$OUTPUT_APP"
 python3 "$SCRIPT_DIR/generate_dependency_inventory.py" "$INVENTORY" \

@@ -351,8 +351,8 @@ pub struct PrefsState {
     #[serde(default)]
     pub key_bindings: KeyBindings,
     /// Preferred video encoder for exports — hardware-accelerated
-    /// (NVENC/Quick Sync/AMF/VAAPI) with an automatic CPU (libopenh264) fallback, or a specific
-    /// choice. See
+    /// (NVENC/Quick Sync/AMF/VAAPI/VideoToolbox) with an automatic CPU (libopenh264) fallback,
+    /// or a specific choice. See
     /// [`avcore::GpuEncoderPreference`].
     #[serde(default)]
     pub gpu_encoder: avcore::GpuEncoderPreference,

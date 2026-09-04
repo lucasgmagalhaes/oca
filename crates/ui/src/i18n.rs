@@ -509,6 +509,7 @@ text_catalog! {
     GpuEncoderQuickSync: pt_br = "Intel (Quick Sync)", en = "Intel (Quick Sync)";
     GpuEncoderAmf: pt_br = "AMD (AMF)", en = "AMD (AMF)";
     GpuEncoderVaapi: pt_br = "Linux (VAAPI Intel/AMD)", en = "Linux (VAAPI Intel/AMD)";
+    GpuEncoderVideoToolbox: pt_br = "Apple (VideoToolbox)", en = "Apple (VideoToolbox)";
     PrefsPreviewQuality: pt_br = "Qualidade do preview", en = "Preview quality";
     PreviewQualityLow: pt_br = "360p", en = "360p";
     PreviewQualityMedium: pt_br = "480p", en = "480p";
