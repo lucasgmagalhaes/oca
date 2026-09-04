@@ -623,6 +623,14 @@ text_catalog! {
     SequenceTabCtxMoveLeft: pt_br = "Mover para esquerda", en = "Move left";
     SequenceTabCtxMoveRight: pt_br = "Mover para direita", en = "Move right";
     SequenceTabCtxDelete: pt_br = "Excluir aba...", en = "Delete tab...";
+    TrackCtxRename: pt_br = "Renomear faixa...", en = "Rename track...";
+    TrackCtxDuplicate: pt_br = "Duplicar faixa", en = "Duplicate track";
+    TrackCtxMoveUp: pt_br = "Mover faixa para cima", en = "Move track up";
+    TrackCtxMoveDown: pt_br = "Mover faixa para baixo", en = "Move track down";
+    TrackCtxDelete: pt_br = "Excluir faixa...", en = "Delete track...";
+    RenameTrackTitle: pt_br = "Renomear faixa", en = "Rename track";
+    DeleteTrackTitle: pt_br = "Excluir faixa", en = "Delete track";
+    DeleteTrackConfirm: pt_br = "Excluir", en = "Delete";
     SequenceTabDragHint: pt_br = "Arraste para reordenar", en = "Drag to reorder";
     RenameSequenceTitle: pt_br = "Renomear aba", en = "Rename tab";
     DeleteSequenceTitle: pt_br = "Excluir aba", en = "Delete tab";
@@ -842,6 +850,19 @@ pub fn delete_sequence_prompt(locale: Locale, name: &str) -> String {
         Locale::En => format!(
             "Delete the \"{name}\" tab? This sequence's timeline and settings will be removed."
         ),
+    }
+}
+
+/// Section 49's own "Deleting a track containing clips requires confirmation" — the prompt text
+/// for `App::deleting_track`'s modal.
+pub fn delete_track_prompt(locale: Locale, name: &str) -> String {
+    match locale {
+        Locale::PtBr => {
+            format!("Excluir a faixa \"{name}\"? Todos os clipes nela contidos serão removidos.")
+        }
+        Locale::En => {
+            format!("Delete the \"{name}\" track? Every clip on it will be removed.")
+        }
     }
 }
 
