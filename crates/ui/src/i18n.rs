@@ -597,6 +597,8 @@ text_catalog! {
     ExportCollabBundle: pt_br = "📦 Exportar pacote de colaboração...", en = "📦 Export Collaboration Bundle...";
     ImportCollabBundle: pt_br = "📦 Importar pacote de colaboração...", en = "📦 Import Collaboration Bundle...";
     CollabBundleExported: pt_br = "Pacote de colaboração exportado.", en = "Collaboration bundle exported.";
+    ExportOtio: pt_br = "Exportar OpenTimelineIO (.otio)...", en = "Export OpenTimelineIO (.otio)...";
+    OtioExported: pt_br = "Arquivo .otio exportado.", en = ".otio file exported.";
     DetectChapters: pt_br = "🎬 Detectar capítulos", en = "🎬 Detect Chapters";
     SceneCutDetectionNone: pt_br = "Nenhum corte de cena detectado.", en = "No scene cuts detected.";
     ChapterDefaultLabel: pt_br = "Capítulo {n}", en = "Chapter {n}";
