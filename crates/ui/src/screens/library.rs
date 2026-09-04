@@ -19,6 +19,7 @@ use eframe::egui::{self, RichText};
 use crate::app::App;
 use crate::components;
 use crate::i18n::Text;
+use crate::icons;
 use crate::theme;
 
 /// Renders the Mídia screen: a grid of every asset in the active project's media library.
@@ -113,11 +114,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                             }
                                             ui.centered_and_justified(|ui| {
                                                 let icon = match asset.kind {
-                                                    MediaKind::Video => "▶",
-                                                    MediaKind::Audio => "♪",
+                                                    MediaKind::Video => icons::PLAY_STR,
+                                                    MediaKind::Audio => icons::MUSIC_STR,
                                                 };
                                                 ui.label(
                                                     RichText::new(icon)
+                                                        .family(icons::family())
                                                         .size(22.0)
                                                         .color(theme::TEXT_MUTED),
                                                 );
