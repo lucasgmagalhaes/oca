@@ -1988,8 +1988,18 @@ resolved in favor of consolidating, see items 3 and 5).
       well-formed component with its own accessible label — not a bypass.
     - Nav rail: already resolved as a non-issue (Stage 1).
 
-    The confirmed `✂`/`✂️` duplicate-glyph inconsistency is still open — genuinely cosmetic
-    (both render as recognizable "cut" glyphs), tied to the toolbar convention decision above.
+    Re-checked the `✂`/`✂️` duplicate-glyph note: no longer accurate as written. The toolbar's
+    Cut tool itself was migrated to the vendored icon font (`icons::SCISSORS_STR`, via
+    `icon_label_job`) as part of the Stage 2.5 icon-font work, so it no longer renders either
+    emoji at all. The one remaining `✂️` is `Text::DetectSpeechEdits`'s label — an emoji prefix
+    consistent with every other AI-detection cluster button in the same toolbar group
+    (`DetectSilence`'s 🔇, `DetectChapters`'s 🎬, `DetectHighlights`'s ⭐, `ShortsPack`'s 🎞), all
+    following the accepted "visible label, emoji prefix" convention this stage's own note above
+    already carves out as different from (not a defect relative to) icon-only buttons. Changing
+    just this one emoji to avoid a passing resemblance to the Cut tool's icon would break that
+    convention for one button out of five; routing all five through vendored icons instead would
+    need five new icons fetched for a purely cosmetic concern. Not a confirmed defect — closing
+    this note without a change.
 30. `[x]` **Feedback tokens.** Added `WARNING`/`WARNING_TINT`/`INFO_TINT` to `theme.rs` and
     `components::tag_warning()`. Queue's `ACCENT.gamma_multiply(0.10)` info banner → `INFO_TINT`;
     its "Paused" pill (previously `tag_outline`, indistinguishable from "Queued") → `tag_warning`.
