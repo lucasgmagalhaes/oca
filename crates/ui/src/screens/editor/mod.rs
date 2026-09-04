@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-mod menu_bar;
+pub(crate) mod menu_bar;
 mod properties_panel;
 mod timeline_panel;
 
@@ -131,7 +131,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     }
 
     ui.vertical(|ui| {
-        menu_bar::menu_bar(app, ui);
         toolbar(app, ui);
         ui.add_space(4.0);
         sequence_tab_bar(app, ui);
@@ -165,9 +164,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         app.timeline_height = app.timeline_height.clamp(min_timeline, max_timeline);
         let body_height = (content_height - app.timeline_height).max(0.0);
 
-        let gaps = ui.spacing().item_spacing.x * 2.0 + DIVIDER_HIT_WIDTH * 2.0;
-        let preview_w =
-            (total_width - app.lib_panel_width - app.props_panel_width - gaps).max(200.0);
+        let gaps = ui.spacing().item_spacing.x * 3.0 + DIVIDER_HIT_WIDTH * 2.0;
+        let preview_w = (total_width
+            - app.lib_panel_width
+            - app.props_panel_width
+            - AUDIO_METER_COLUMN_WIDTH
+            - gaps)
+            .max(200.0);
 
         ui.horizontal(|ui| {
             ui.set_height(body_height);
@@ -201,6 +204,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui.allocate_ui(egui::vec2(app.props_panel_width, body_height), |ui| {
                 properties_panel::properties_panel(app, ui, app.props_panel_width, body_height);
             });
+            ui.allocate_ui(egui::vec2(AUDIO_METER_COLUMN_WIDTH, body_height), |ui| {
+                audio_meter_column(app, ui, body_height);
+            });
         });
 
         ui.add_space(4.0);
@@ -214,6 +220,33 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(4.0);
         timeline_panel::timeline_panel(app, ui, app.timeline_height);
     });
+}
+
+/// Fixed width of the persistent stereo-meter strip at the body row's far right edge, matching
+/// the OCA mockup's own always-visible vertical L/R meter (`spec/architecture/
+/// editor-ui-visual-redesign.md`'s Inspector section) — sized to fit
+/// `properties_panel::stereo_db_meter`'s own label+two-bar width (26 + 16*2 + 4 = 62) plus a
+/// little breathing room, not resizable like the other columns since there's nothing to resize
+/// (fixed content, no scrollable/collapsible substance).
+const AUDIO_METER_COLUMN_WIDTH: f32 = 70.0;
+
+/// The persistent stereo dB meter at the editor body's far right edge — unlike the properties
+/// panel next to it, this is *not* gated on a clip being selected or which Inspector/Effects/
+/// Audio tab is active, matching the OCA mockup's own always-visible meter. Reads the same
+/// [`App::current_audio_level`] the preview transport row's compact meter already does.
+fn audio_meter_column(app: &App, ui: &mut egui::Ui, height: f32) {
+    egui::Frame::new()
+        .inner_margin(egui::Margin::symmetric(4, 12))
+        .show(ui, |ui| {
+            ui.set_height(height);
+            ui.vertical_centered(|ui| {
+                properties_panel::stereo_db_meter(
+                    ui,
+                    app.current_audio_level(),
+                    (height - 24.0).max(40.0),
+                );
+            });
+        });
 }
 
 /// Hit-testable width of a [`resizable_divider`]/[`resizable_divider_horizontal`] handle — wider
@@ -331,55 +364,6 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         );
         ui.separator();
         if ui
-            .add_enabled(
-                app.multi_selected_clip_ids.len() >= 2,
-                egui::Button::new(Text::MergeIntoComposite.tr(locale)),
-            )
-            .on_hover_text(Text::MergeIntoCompositeHint.tr(locale))
-            .clicked()
-        {
-            app.merge_into_composite();
-        }
-        if ui
-            .add_enabled(
-                !app.multi_selected_clip_ids.is_empty(),
-                egui::Button::new(Text::SaveAsTemplate.tr(locale)),
-            )
-            .on_hover_text(Text::SaveAsTemplateHint.tr(locale))
-            .clicked()
-        {
-            app.begin_save_layer_template();
-        }
-        if ui.button(Text::Templates.tr(locale)).clicked() {
-            app.layer_templates_menu_open = true;
-        }
-        ui.separator();
-        if ui.button(Text::AddVideoTrack.tr(locale)).clicked() {
-            app.add_video_track();
-        }
-        ui.separator();
-        if ui.button(Text::AddTextTrack.tr(locale)).clicked() {
-            app.add_text_track();
-        }
-        if ui.button(Text::AddTextClip.tr(locale)).clicked() {
-            app.add_text_clip();
-        }
-        ui.separator();
-        if ui.button(Text::AddShapeTrack.tr(locale)).clicked() {
-            app.add_shape_track();
-        }
-        if ui.button(Text::AddShapeClip.tr(locale)).clicked() {
-            app.add_shape_clip();
-        }
-        if ui.button(Text::DrawCustomShape.tr(locale)).clicked() {
-            if app.preview_state.preview_texture.is_some() {
-                app.start_drawing_custom_shape();
-            } else {
-                app.push_toast(Text::ShapeDrawNeedsPreview.tr(locale).to_string());
-            }
-        }
-        ui.separator();
-        if ui
             .add_enabled(app.can_undo(), egui::Button::new("↺"))
             .on_hover_text(Text::ShortcutUndo.tr(locale))
             .clicked()
@@ -412,105 +396,6 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         {
             app.toggle_transcript_panel();
         }
-        ui.separator();
-        // Detection/analysis actions (silence, speech edits, chapters, highlights, gameplay
-        // events, shorts pack) are reach-for-occasionally passes over the whole sequence, not
-        // moment-to-moment editing tools — grouped behind one menu instead of seven permanent
-        // toolbar buttons sitting alongside Select/Trim/Cut, per UX_PRINCIPLES.md's progressive
-        // disclosure ("advanced operations should not permanently clutter the workspace").
-        ui.menu_button(Text::AnalyzeMenu.tr(locale), |ui| {
-            if ui.button(Text::DetectSilence.tr(locale)).clicked() {
-                app.begin_silence_review();
-                ui.close();
-            }
-            if ui.button(Text::DetectSpeechEdits.tr(locale)).clicked() {
-                app.begin_transcript_proposals();
-                ui.close();
-            }
-            if ui.button(Text::DetectChapters.tr(locale)).clicked() {
-                app.spawn_detect_scene_cuts_for_selected_clip();
-                ui.close();
-            }
-            if ui.button(Text::ExportChapters.tr(locale)).clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("text", &["txt"])
-                    .set_file_name("chapters.txt")
-                    .save_file()
-                {
-                    app.export_chapters_txt(path);
-                }
-                ui.close();
-            }
-            if ui.button(Text::DetectHighlights.tr(locale)).clicked() {
-                app.detect_highlights();
-                ui.close();
-            }
-            if ui.button(Text::ImportGameplayEvents.tr(locale)).clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("json", &["json"])
-                    .pick_file()
-                {
-                    app.import_gameplay_events(path);
-                }
-                ui.close();
-            }
-            if ui.button(Text::LoadGraphicTemplate.tr(locale)).clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("json", &["json"])
-                    .pick_file()
-                {
-                    app.load_graphic_template_from_file(path);
-                }
-                ui.close();
-            }
-            ui.separator();
-            if ui.button(Text::ShortsPack.tr(locale)).clicked() {
-                let mut dialog = rfd::FileDialog::new();
-                if !app.prefs.output_folder.is_empty() {
-                    dialog = dialog.set_directory(&app.prefs.output_folder);
-                }
-                if let Some(output_dir) = dialog.pick_folder() {
-                    app.spawn_shorts_pack(output_dir);
-                }
-                ui.close();
-            }
-        });
-        ui.separator();
-        if ui
-            .button(Text::CreateMulticamGroup.tr(locale))
-            .on_hover_text("1-9")
-            .clicked()
-        {
-            app.create_multicam_group_from_video_tracks();
-        }
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button(Text::Export.tr(locale)).clicked() {
-                app.screen = crate::app::Screen::Queue;
-            }
-            if ui
-                .button(Text::Save.tr(locale))
-                .on_hover_text("Ctrl+S")
-                .clicked()
-            {
-                save_active_project(app);
-            }
-            if ui
-                .button(Text::ExportSrt.tr(locale))
-                .on_hover_text(Text::ExportSrtHint.tr(locale))
-                .clicked()
-            {
-                export_srt_for_active_sequence(app);
-            }
-            if ui.button(Text::ExportCollabBundle.tr(locale)).clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("oca collaboration bundle", &["zip"])
-                    .set_file_name(format!("{}.zip", app.active_project().name))
-                    .save_file()
-                {
-                    app.export_collab_bundle(path);
-                }
-            }
-        });
     });
 }
 
@@ -802,6 +687,16 @@ fn tool_button_icon_font(
 /// library`, `screens::home`). Extraction/caching reuses `App::thumbnail_state`'s existing
 /// timeline-filmstrip pipeline at frame 0 rather than inventing a second one — see
 /// [`media_library_panel`]'s own request/touch bookkeeping.
+/// Shared glyph size for every icon in the preview transport row (skip/step/loop/camera/marker)
+/// — see the row's own comment for why this matters: without it, the two plain-Unicode glyphs
+/// (no vendored Lucide icon exists for single-frame step or "add marker") fall back to their
+/// font's own default metrics and read as a visibly different icon style from the Lucide glyphs
+/// around them.
+const TRANSPORT_ICON_SIZE: f32 = 14.0;
+/// The play/pause button is the row's primary action (matches the OCA mockup's own slightly
+/// larger, accent-colored play glyph) — deliberately bigger than [`TRANSPORT_ICON_SIZE`].
+const TRANSPORT_PLAY_ICON_SIZE: f32 = 18.0;
+
 const ASSET_THUMB_SIZE: egui::Vec2 = egui::vec2(48.0, 28.0);
 /// Thumbnail size for [`MediaViewMode::Grid`]'s tiles — bigger than [`ASSET_THUMB_SIZE`]'s list
 /// rows since a grid tile has no adjacent filename/metadata column competing for width.
@@ -869,6 +764,34 @@ fn asset_thumb_sized(
     );
 }
 
+/// One tab-style filter chip in the media library's header row — the OCA mockup's "MEDIA / Bins
+/// / Favorites / Recent" tab strip, not the plain `selectable_label` pill this used to be.
+/// Reuses `properties_panel::properties_tab_bar`'s own accent-tint-fill/accent-stroke-when-active
+/// convention (this codebase's one established "tab" look) instead of inventing a second one.
+/// Returns whether it was clicked.
+fn media_filter_tab(ui: &mut egui::Ui, active: bool, label: &str) -> bool {
+    let text = RichText::new(label).color(if active {
+        theme::ACCENT
+    } else {
+        theme::TEXT_SECONDARY
+    });
+    let button = egui::Button::new(text)
+        .fill(if active {
+            theme::ACCENT_TINT
+        } else {
+            egui::Color32::TRANSPARENT
+        })
+        .stroke(egui::Stroke::new(
+            1.0,
+            if active {
+                theme::ACCENT
+            } else {
+                egui::Color32::TRANSPARENT
+            },
+        ));
+    ui.add(button).clicked()
+}
+
 fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32) {
     let mut clicked_id = None;
     let mut add_to_timeline_id = None;
@@ -926,38 +849,32 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                         .hint_text(Text::SearchMediaPlaceholder.tr(app.locale))
                         .desired_width(f32::INFINITY),
                 );
-                ui.add_space(6.0);
+                ui.add_space(4.0);
                 // Smart bins (P4 item 22) plus the Favorites/Recent filters -- a row of filter
                 // chips above the asset list, single-selection (see MediaLibraryFilter's own
                 // doc comment). "All" clears the filter; each bin is click-to-select,
                 // double-click-to-edit (the rules, not the assets themselves -- there's nothing
                 // else to double-click a filter chip for).
                 ui.horizontal_wrapped(|ui| {
-                    if ui
-                        .selectable_label(
-                            app.media_filter == MediaLibraryFilter::All,
-                            Text::SmartBinAll.tr(app.locale),
-                        )
-                        .clicked()
-                    {
+                    if media_filter_tab(
+                        ui,
+                        app.media_filter == MediaLibraryFilter::All,
+                        Text::SmartBinAll.tr(app.locale),
+                    ) {
                         selected_filter = Some(MediaLibraryFilter::All);
                     }
-                    if ui
-                        .selectable_label(
-                            app.media_filter == MediaLibraryFilter::Favorites,
-                            Text::MediaFilterFavorites.tr(app.locale),
-                        )
-                        .clicked()
-                    {
+                    if media_filter_tab(
+                        ui,
+                        app.media_filter == MediaLibraryFilter::Favorites,
+                        Text::MediaFilterFavorites.tr(app.locale),
+                    ) {
                         selected_filter = Some(MediaLibraryFilter::Favorites);
                     }
-                    if ui
-                        .selectable_label(
-                            app.media_filter == MediaLibraryFilter::Recent,
-                            Text::MediaFilterRecent.tr(app.locale),
-                        )
-                        .clicked()
-                    {
+                    if media_filter_tab(
+                        ui,
+                        app.media_filter == MediaLibraryFilter::Recent,
+                        Text::MediaFilterRecent.tr(app.locale),
+                    ) {
                         selected_filter = Some(MediaLibraryFilter::Recent);
                     }
                     for bin in &app.active_project().smart_bins {
@@ -976,181 +893,124 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                         new_bin_clicked = true;
                     }
                 });
-                ui.add_space(6.0);
+                ui.add_space(4.0);
 
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    // Only the (small) bin rule is cloned here, not the assets it filters --
-                    // `active_project()` is borrowed again right below for the actual iteration,
-                    // which is fine since both borrows are immutable.
-                    let bin = match app.media_filter {
-                        MediaLibraryFilter::SmartBin(id) => app
-                            .active_project()
-                            .smart_bins
-                            .iter()
-                            .find(|b| b.id == id)
-                            .cloned(),
-                        _ => None,
-                    };
-                    let recent_asset_ids = app.active_project().recent_asset_ids.clone();
-                    let media_filter = app.media_filter;
-                    let search = app.media_search.to_lowercase();
-                    let mut assets: Vec<_> = app
-                        .active_project()
-                        .media_library
-                        .iter()
-                        .filter(|a| {
-                            let matches_filter = match media_filter {
-                                MediaLibraryFilter::All => true,
-                                MediaLibraryFilter::SmartBin(_) => {
-                                    bin.as_ref().is_none_or(|b| b.matches(a))
-                                }
-                                MediaLibraryFilter::Favorites => a.favorited,
-                                MediaLibraryFilter::Recent => recent_asset_ids.contains(&a.id),
-                            };
-                            matches_filter
-                                && (search.is_empty()
-                                    || a.file_name.to_lowercase().contains(&search))
-                        })
-                        .collect();
-                    // Recent is most-recently-used-first, not the library's own insertion
-                    // order -- everything else keeps that default order unchanged.
-                    if media_filter == MediaLibraryFilter::Recent {
-                        assets.sort_by_key(|a| {
-                            recent_asset_ids
+                egui::ScrollArea::vertical()
+                    .id_salt("media_library_scroll")
+                    .show(ui, |ui| {
+                        // Only the (small) bin rule is cloned here, not the assets it filters --
+                        // `active_project()` is borrowed again right below for the actual iteration,
+                        // which is fine since both borrows are immutable.
+                        let bin = match app.media_filter {
+                            MediaLibraryFilter::SmartBin(id) => app
+                                .active_project()
+                                .smart_bins
                                 .iter()
-                                .position(|&id| id == a.id)
-                                .unwrap_or(usize::MAX)
-                        });
-                    }
+                                .find(|b| b.id == id)
+                                .cloned(),
+                            _ => None,
+                        };
+                        let recent_asset_ids = app.active_project().recent_asset_ids.clone();
+                        let media_filter = app.media_filter;
+                        let search = app.media_search.to_lowercase();
+                        let mut assets: Vec<_> = app
+                            .active_project()
+                            .media_library
+                            .iter()
+                            .filter(|a| {
+                                let matches_filter = match media_filter {
+                                    MediaLibraryFilter::All => true,
+                                    MediaLibraryFilter::SmartBin(_) => {
+                                        bin.as_ref().is_none_or(|b| b.matches(a))
+                                    }
+                                    MediaLibraryFilter::Favorites => a.favorited,
+                                    MediaLibraryFilter::Recent => recent_asset_ids.contains(&a.id),
+                                };
+                                matches_filter
+                                    && (search.is_empty()
+                                        || a.file_name.to_lowercase().contains(&search))
+                            })
+                            .collect();
+                        // Recent is most-recently-used-first, not the library's own insertion
+                        // order -- everything else keeps that default order unchanged.
+                        if media_filter == MediaLibraryFilter::Recent {
+                            assets.sort_by_key(|a| {
+                                recent_asset_ids
+                                    .iter()
+                                    .position(|&id| id == a.id)
+                                    .unwrap_or(usize::MAX)
+                            });
+                        }
 
-                    // Shared across both layouts below: every asset's click/double-click/drag/
-                    // drop behavior is identical, only the Frame's own content (list row vs.
-                    // grid tile) differs.
-                    let mut handle_interaction =
-                        |ui: &egui::Ui,
-                         asset: &avcore::media::MediaAsset,
-                         response: egui::Response| {
-                            if response.clicked() {
-                                clicked_id = Some(asset.id);
-                            }
-                            if response.double_clicked() {
-                                add_to_timeline_id = Some(asset.id);
-                            }
-                            if response.dragged() {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                                if let Some(pos) = response.interact_pointer_pos() {
-                                    egui::Area::new(ui.id().with(("asset_drag_ghost", asset.id)))
+                        // Shared across both layouts below: every asset's click/double-click/drag/
+                        // drop behavior is identical, only the Frame's own content (list row vs.
+                        // grid tile) differs.
+                        let mut handle_interaction =
+                            |ui: &egui::Ui,
+                             asset: &avcore::media::MediaAsset,
+                             response: egui::Response| {
+                                if response.clicked() {
+                                    clicked_id = Some(asset.id);
+                                }
+                                if response.double_clicked() {
+                                    add_to_timeline_id = Some(asset.id);
+                                }
+                                if response.dragged() {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                                    if let Some(pos) = response.interact_pointer_pos() {
+                                        egui::Area::new(
+                                            ui.id().with(("asset_drag_ghost", asset.id)),
+                                        )
                                         .fixed_pos(pos + egui::vec2(12.0, 12.0))
                                         .order(egui::Order::Tooltip)
                                         .interactable(false)
-                                        .show(ui.ctx(), |ui| {
-                                            egui::Frame::new()
-                                                .fill(theme::SURFACE_2)
-                                                .corner_radius(theme::RADIUS_SM)
-                                                .inner_margin(egui::Margin::symmetric(8, 4))
-                                                .show(ui, |ui| {
-                                                    ui.label(
-                                                        RichText::new(&asset.file_name).size(11.0),
-                                                    );
-                                                });
-                                        });
+                                        .show(
+                                            ui.ctx(),
+                                            |ui| {
+                                                egui::Frame::new()
+                                                    .fill(theme::SURFACE_2)
+                                                    .corner_radius(theme::RADIUS_SM)
+                                                    .inner_margin(egui::Margin::symmetric(8, 4))
+                                                    .show(ui, |ui| {
+                                                        ui.label(
+                                                            RichText::new(&asset.file_name)
+                                                                .size(11.0),
+                                                        );
+                                                    });
+                                            },
+                                        );
+                                    }
                                 }
+                                if response.drag_stopped() {
+                                    if let Some(pos) = response.interact_pointer_pos() {
+                                        dropped_asset = Some((asset.id, pos));
+                                    }
+                                }
+                            };
+
+                        // Same poster-frame lookup for both layouts below: a cached texture is
+                        // touched (keeps it alive in the LRU), a missing one for a video asset is
+                        // queued for extraction -- both applied after this closure returns, since
+                        // `App::touch_thumbnails`/`App::request_thumbnail` need `&mut app`.
+                        let mut resolve_thumbnail = |asset: &avcore::media::MediaAsset| {
+                            if asset.kind != avcore::media::MediaKind::Video {
+                                return None;
                             }
-                            if response.drag_stopped() {
-                                if let Some(pos) = response.interact_pointer_pos() {
-                                    dropped_asset = Some((asset.id, pos));
+                            let key = (project_id, asset.id, 0);
+                            match app.thumbnail_state.thumbnail_textures.get(&key) {
+                                Some(texture) => {
+                                    thumbnail_touches.push(key);
+                                    Some(texture)
+                                }
+                                None => {
+                                    thumbnail_requests.push(asset.id);
+                                    None
                                 }
                             }
                         };
 
-                    // Same poster-frame lookup for both layouts below: a cached texture is
-                    // touched (keeps it alive in the LRU), a missing one for a video asset is
-                    // queued for extraction -- both applied after this closure returns, since
-                    // `App::touch_thumbnails`/`App::request_thumbnail` need `&mut app`.
-                    let mut resolve_thumbnail = |asset: &avcore::media::MediaAsset| {
-                        if asset.kind != avcore::media::MediaKind::Video {
-                            return None;
-                        }
-                        let key = (project_id, asset.id, 0);
-                        match app.thumbnail_state.thumbnail_textures.get(&key) {
-                            Some(texture) => {
-                                thumbnail_touches.push(key);
-                                Some(texture)
-                            }
-                            None => {
-                                thumbnail_requests.push(asset.id);
-                                None
-                            }
-                        }
-                    };
-
-                    match app.media_view_mode {
-                        MediaViewMode::List => {
-                            for asset in assets.iter().copied() {
-                                let selected = app.selected_asset_id == Some(asset.id);
-                                let bg = if selected {
-                                    theme::ACCENT.gamma_multiply(0.18)
-                                } else {
-                                    theme::SURFACE
-                                };
-                                let thumbnail = resolve_thumbnail(asset);
-                                let response = egui::Frame::new()
-                                    .fill(bg)
-                                    .corner_radius(theme::RADIUS_MD)
-                                    .inner_margin(egui::Margin::same(6))
-                                    .show(ui, |ui| {
-                                        ui.horizontal(|ui| {
-                                            asset_thumb(ui, asset, thumbnail);
-                                            ui.vertical(|ui| {
-                                                ui.horizontal(|ui| {
-                                                    ui.label(
-                                                        RichText::new(&asset.file_name).size(12.0),
-                                                    );
-                                                    if components::icon_button(
-                                                        ui,
-                                                        icons::STAR_STR,
-                                                        Text::ToggleFavorite.tr(app.locale),
-                                                        components::IconButtonOpts {
-                                                            family: Some(icons::family()),
-                                                            color: Some(if asset.favorited {
-                                                                theme::ACCENT
-                                                            } else {
-                                                                theme::TEXT_MUTED
-                                                            }),
-                                                            ..Default::default()
-                                                        },
-                                                    )
-                                                    .clicked()
-                                                    {
-                                                        toggled_favorite_id = Some(asset.id);
-                                                    }
-                                                });
-                                                ui.label(
-                                                    RichText::new(format!(
-                                                        "{} · {}",
-                                                        asset.duration_label(),
-                                                        asset
-                                                            .resolution
-                                                            .map(|(w, h)| format!("{w}×{h}"))
-                                                            .unwrap_or_else(|| asset
-                                                                .sample_rate_khz
-                                                                .map(|k| format!("{k:.0}kHz"))
-                                                                .unwrap_or_default())
-                                                    ))
-                                                    .size(10.0)
-                                                    .color(theme::TEXT_MUTED),
-                                                );
-                                            });
-                                        });
-                                    })
-                                    .response
-                                    .interact(egui::Sense::click_and_drag());
-                                handle_interaction(ui, asset, response);
-                                ui.add_space(6.0);
-                            }
-                        }
-                        MediaViewMode::Grid => {
-                            ui.horizontal_wrapped(|ui| {
+                        match app.media_view_mode {
+                            MediaViewMode::List => {
                                 for asset in assets.iter().copied() {
                                     let selected = app.selected_asset_id == Some(asset.id);
                                     let bg = if selected {
@@ -1162,51 +1022,117 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                                     let response = egui::Frame::new()
                                         .fill(bg)
                                         .corner_radius(theme::RADIUS_MD)
-                                        .inner_margin(egui::Margin::same(6))
+                                        .inner_margin(egui::Margin::same(4))
                                         .show(ui, |ui| {
-                                            ui.set_max_width(GRID_ASSET_THUMB_SIZE.x);
-                                            ui.vertical(|ui| {
-                                                asset_thumb_sized(
-                                                    ui,
-                                                    asset,
-                                                    GRID_ASSET_THUMB_SIZE,
-                                                    thumbnail,
-                                                );
-                                                ui.horizontal(|ui| {
+                                            ui.horizontal(|ui| {
+                                                asset_thumb(ui, asset, thumbnail);
+                                                ui.vertical(|ui| {
+                                                    ui.horizontal(|ui| {
+                                                        ui.label(
+                                                            RichText::new(&asset.file_name)
+                                                                .size(12.0),
+                                                        );
+                                                        if components::icon_button(
+                                                            ui,
+                                                            icons::STAR_STR,
+                                                            Text::ToggleFavorite.tr(app.locale),
+                                                            components::IconButtonOpts {
+                                                                family: Some(icons::family()),
+                                                                color: Some(if asset.favorited {
+                                                                    theme::ACCENT
+                                                                } else {
+                                                                    theme::TEXT_MUTED
+                                                                }),
+                                                                ..Default::default()
+                                                            },
+                                                        )
+                                                        .clicked()
+                                                        {
+                                                            toggled_favorite_id = Some(asset.id);
+                                                        }
+                                                    });
                                                     ui.label(
-                                                        RichText::new(&asset.file_name)
-                                                            .size(10.0)
-                                                            .color(theme::TEXT_PRIMARY),
+                                                        RichText::new(format!(
+                                                            "{} · {}",
+                                                            asset.duration_label(),
+                                                            asset
+                                                                .resolution
+                                                                .map(|(w, h)| format!("{w}×{h}"))
+                                                                .unwrap_or_else(|| asset
+                                                                    .sample_rate_khz
+                                                                    .map(|k| format!("{k:.0}kHz"))
+                                                                    .unwrap_or_default())
+                                                        ))
+                                                        .size(10.0)
+                                                        .color(theme::TEXT_MUTED),
                                                     );
-                                                    if components::icon_button(
-                                                        ui,
-                                                        icons::STAR_STR,
-                                                        Text::ToggleFavorite.tr(app.locale),
-                                                        components::IconButtonOpts {
-                                                            family: Some(icons::family()),
-                                                            color: Some(if asset.favorited {
-                                                                theme::ACCENT
-                                                            } else {
-                                                                theme::TEXT_MUTED
-                                                            }),
-                                                            ..Default::default()
-                                                        },
-                                                    )
-                                                    .clicked()
-                                                    {
-                                                        toggled_favorite_id = Some(asset.id);
-                                                    }
                                                 });
                                             });
                                         })
                                         .response
                                         .interact(egui::Sense::click_and_drag());
                                     handle_interaction(ui, asset, response);
+                                    ui.add_space(4.0);
                                 }
-                            });
+                            }
+                            MediaViewMode::Grid => {
+                                ui.horizontal_wrapped(|ui| {
+                                    for asset in assets.iter().copied() {
+                                        let selected = app.selected_asset_id == Some(asset.id);
+                                        let bg = if selected {
+                                            theme::ACCENT.gamma_multiply(0.18)
+                                        } else {
+                                            theme::SURFACE
+                                        };
+                                        let thumbnail = resolve_thumbnail(asset);
+                                        let response = egui::Frame::new()
+                                            .fill(bg)
+                                            .corner_radius(theme::RADIUS_MD)
+                                            .inner_margin(egui::Margin::same(4))
+                                            .show(ui, |ui| {
+                                                ui.set_max_width(GRID_ASSET_THUMB_SIZE.x);
+                                                ui.vertical(|ui| {
+                                                    asset_thumb_sized(
+                                                        ui,
+                                                        asset,
+                                                        GRID_ASSET_THUMB_SIZE,
+                                                        thumbnail,
+                                                    );
+                                                    ui.horizontal(|ui| {
+                                                        ui.label(
+                                                            RichText::new(&asset.file_name)
+                                                                .size(10.0)
+                                                                .color(theme::TEXT_PRIMARY),
+                                                        );
+                                                        if components::icon_button(
+                                                            ui,
+                                                            icons::STAR_STR,
+                                                            Text::ToggleFavorite.tr(app.locale),
+                                                            components::IconButtonOpts {
+                                                                family: Some(icons::family()),
+                                                                color: Some(if asset.favorited {
+                                                                    theme::ACCENT
+                                                                } else {
+                                                                    theme::TEXT_MUTED
+                                                                }),
+                                                                ..Default::default()
+                                                            },
+                                                        )
+                                                        .clicked()
+                                                        {
+                                                            toggled_favorite_id = Some(asset.id);
+                                                        }
+                                                    });
+                                                });
+                                            })
+                                            .response
+                                            .interact(egui::Sense::click_and_drag());
+                                        handle_interaction(ui, asset, response);
+                                    }
+                                });
+                            }
                         }
-                    }
-                });
+                    });
             });
         });
 
@@ -1391,12 +1317,18 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         let timeline_duration = app.active_project().timeline().duration_secs();
         ui.horizontal(|ui| {
+            // Every glyph in this row shares one explicit size (`TRANSPORT_ICON_SIZE`) so the
+            // two plain-Unicode step-frame/marker glyphs (no vendored Lucide icon exists for
+            // either — see their own comments below) read at the same visual weight as the
+            // Lucide icon-font glyphs around them, instead of each falling back to its own
+            // font's default metrics and reading as an inconsistent mix of icon styles.
             if components::icon_button(
                 ui,
                 crate::icons::SKIP_BACK_STR,
                 Text::SeekToStart.tr(locale),
                 components::IconButtonOpts {
                     family: Some(crate::icons::family()),
+                    size: Some(TRANSPORT_ICON_SIZE),
                     ..Default::default()
                 },
             )
@@ -1408,7 +1340,11 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             // start/end, already used above/below) — thin outline triangles, distinct from the
             // filled ones the icon font uses for start/end/play, in the default font.
             if ui
-                .small_button(RichText::new("◁").color(theme::TEXT_SECONDARY))
+                .small_button(
+                    RichText::new("◁")
+                        .size(TRANSPORT_ICON_SIZE)
+                        .color(theme::TEXT_SECONDARY),
+                )
                 .on_hover_text(Text::StepFrameBack.tr(locale))
                 .clicked()
             {
@@ -1423,6 +1359,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 .button(
                     RichText::new(play_icon)
                         .family(crate::icons::family())
+                        .size(TRANSPORT_PLAY_ICON_SIZE)
                         .color(theme::ACCENT),
                 )
                 .on_hover_text(Text::ShortcutPlayPause.tr(locale))
@@ -1431,7 +1368,11 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 app.toggle_preview_playback();
             }
             if ui
-                .small_button(RichText::new("▷").color(theme::TEXT_SECONDARY))
+                .small_button(
+                    RichText::new("▷")
+                        .size(TRANSPORT_ICON_SIZE)
+                        .color(theme::TEXT_SECONDARY),
+                )
                 .on_hover_text(Text::StepFrameForward.tr(locale))
                 .clicked()
             {
@@ -1443,6 +1384,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 Text::SeekToEnd.tr(locale),
                 components::IconButtonOpts {
                     family: Some(crate::icons::family()),
+                    size: Some(TRANSPORT_ICON_SIZE),
                     ..Default::default()
                 },
             )
@@ -1455,6 +1397,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     app.preview_state.loop_enabled,
                     RichText::new(crate::icons::REPEAT_STR)
                         .family(crate::icons::family())
+                        .size(TRANSPORT_ICON_SIZE)
                         .color(theme::TEXT_SECONDARY),
                 )
                 .on_hover_text(Text::PreviewLoopToggle.tr(locale))
@@ -1468,6 +1411,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 Text::SnapshotButton.tr(locale),
                 components::IconButtonOpts {
                     family: Some(crate::icons::family()),
+                    size: Some(TRANSPORT_ICON_SIZE),
                     ..Default::default()
                 },
             )
@@ -1482,7 +1426,11 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 }
             }
             if ui
-                .small_button(RichText::new("🔹").color(theme::TEXT_SECONDARY))
+                .small_button(
+                    RichText::new("🔹")
+                        .size(TRANSPORT_ICON_SIZE)
+                        .color(theme::TEXT_SECONDARY),
+                )
                 .on_hover_text(Text::AddMarkerButton.tr(locale))
                 .clicked()
             {
@@ -1680,7 +1628,7 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
                     ui.set_width(avail.width() - 48.0);
                     egui::Frame::new()
                         .fill(theme::SURFACE.gamma_multiply(0.85 * opacity))
-                        .corner_radius(8)
+                        .corner_radius(theme::RADIUS_MD)
                         .inner_margin(egui::Margin::symmetric(12, 8))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
