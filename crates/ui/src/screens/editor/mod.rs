@@ -1823,6 +1823,14 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
     let canvas_aspect = canvas_w as f32 / canvas_h.max(1) as f32;
 
     let avail_rect = ui.available_rect_before_wrap();
+    // The layer-position drag below had no bound on how far the layer could be dragged, and
+    // nothing clipped its paint to this panel — confirmed via a real report: drag far enough
+    // and the layer image paints straight over the media library/properties panels next door.
+    // A clipped painter (scoped to this panel's own rect) fixes the *visual* leak regardless of
+    // how far the underlying position value goes; the drag clamp below additionally keeps the
+    // value itself from wandering off to where the layer becomes unreachable to drag back.
+    let clip_rect = ui.max_rect();
+    let painter = ui.painter().with_clip_rect(clip_rect);
     let canvas_size = preview_canvas_size(
         app.preview_state.zoom,
         avail_rect.size(),
@@ -1832,7 +1840,7 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
     );
     let canvas_rect = egui::Rect::from_center_size(avail_rect.center(), canvas_size);
     ui.allocate_rect(canvas_rect, egui::Sense::hover());
-    ui.painter().rect_stroke(
+    painter.rect_stroke(
         canvas_rect,
         0,
         egui::Stroke::new(1.0, theme::BORDER),
@@ -1878,7 +1886,7 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
         );
     let layer_rect = egui::Rect::from_min_size(layer_min, egui::vec2(layer_w, layer_h));
 
-    ui.painter().image(
+    painter.image(
         texture.id(),
         layer_rect,
         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
@@ -1890,7 +1898,7 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
     } else {
         theme::TEXT_MUTED
     };
-    ui.painter().rect_stroke(
+    painter.rect_stroke(
         layer_rect,
         0,
         egui::Stroke::new(1.5, border_color),
@@ -1910,9 +1918,13 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
         );
         if resp.dragged() {
             let delta = resp.drag_delta();
+            // Clamped to one full canvas width/height of overflow on either side (generous
+            // enough for a slide-in/out animation's endpoints) — previously unbounded, so a
+            // fast/long drag could push the layer's position value far enough that it became
+            // impossible to find/drag back at all, on top of the paint-clipping fix above.
             let new_pos = avcore::Position {
-                x: current.x + delta.x / canvas_rect.width().max(1.0),
-                y: current.y + delta.y / canvas_rect.height().max(1.0),
+                x: (current.x + delta.x / canvas_rect.width().max(1.0)).clamp(-1.0, 2.0),
+                y: (current.y + delta.y / canvas_rect.height().max(1.0)).clamp(-1.0, 2.0),
             };
             app.set_selected_clip_position_keyframes(vec![avcore::Keyframe {
                 time_fraction: 0.0,
@@ -1924,7 +1936,7 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
         }
         resp.on_hover_text(Text::LayerTransformDragHint.tr(locale));
     } else {
-        ui.painter().text(
+        painter.text(
             layer_rect.center_bottom() + egui::vec2(0.0, 4.0),
             egui::Align2::CENTER_TOP,
             Text::LayerTransformAnimatedHint.tr(locale),
@@ -1942,7 +1954,7 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
             ui.id().with("preview_layer_resize"),
             egui::Sense::drag(),
         );
-        ui.painter().rect_filled(handle_rect, 2, theme::ACCENT_2);
+        painter.rect_filled(handle_rect, 2, theme::ACCENT_2);
         if resize_resp.dragged() {
             let delta = resize_resp.drag_delta();
             let new_layer_w = (layer_w + delta.x).max(4.0);
