@@ -783,38 +783,71 @@ fn tool_button_icon_font(
     }
 }
 
-/// A small colored placeholder thumbnail with a duration badge in the bottom-right corner,
-/// matching the media-library asset row from `oca-editor-mock.html`'s `.asset-thumb` — video
-/// and audio assets get distinct fills so the kind reads at a glance without a real decoded
-/// frame (fetching/caching one here would duplicate `thumbnail_state`'s timeline-clip pipeline
-/// for a list row that's rarely more than a name lookup).
+/// A real decoded poster frame when one's cached, falling back to a small colored placeholder
+/// (matching the media-library asset row from `oca-editor-mock.html`'s `.asset-thumb`) —
+/// either way, with a duration badge in the bottom-right corner. Video and audio assets get
+/// distinct placeholder fills so the kind reads at a glance while no frame has decoded yet
+/// (audio never gets a real frame at all — [`App::request_thumbnail`] is only ever asked for
+/// video assets, matching every other caller of the same poster-frame pipeline: `screens::
+/// library`, `screens::home`). Extraction/caching reuses `App::thumbnail_state`'s existing
+/// timeline-filmstrip pipeline at frame 0 rather than inventing a second one — see
+/// [`media_library_panel`]'s own request/touch bookkeeping.
 const ASSET_THUMB_SIZE: egui::Vec2 = egui::vec2(48.0, 28.0);
 /// Thumbnail size for [`MediaViewMode::Grid`]'s tiles — bigger than [`ASSET_THUMB_SIZE`]'s list
 /// rows since a grid tile has no adjacent filename/metadata column competing for width.
 const GRID_ASSET_THUMB_SIZE: egui::Vec2 = egui::vec2(120.0, 72.0);
 
-fn asset_thumb(ui: &mut egui::Ui, asset: &avcore::media::MediaAsset) {
-    asset_thumb_sized(ui, asset, ASSET_THUMB_SIZE);
+fn asset_thumb(
+    ui: &mut egui::Ui,
+    asset: &avcore::media::MediaAsset,
+    thumbnail: Option<&egui::TextureHandle>,
+) {
+    asset_thumb_sized(ui, asset, ASSET_THUMB_SIZE, thumbnail);
 }
 
-fn asset_thumb_sized(ui: &mut egui::Ui, asset: &avcore::media::MediaAsset, size: egui::Vec2) {
+fn asset_thumb_sized(
+    ui: &mut egui::Ui,
+    asset: &avcore::media::MediaAsset,
+    size: egui::Vec2,
+    thumbnail: Option<&egui::TextureHandle>,
+) {
     let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
     if !ui.is_rect_visible(rect) {
         return;
     }
-    let (fill, glyph) = match asset.kind {
-        avcore::media::MediaKind::Video => (theme::SURFACE_2, "▶"),
-        avcore::media::MediaKind::Audio => (theme::ACCENT_2.gamma_multiply(0.25), "♪"),
-    };
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, egui::CornerRadius::same(theme::RADIUS_SM), fill);
-    painter.text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        glyph,
-        egui::FontId::proportional(11.0),
-        theme::TEXT_MUTED,
-    );
+    match thumbnail {
+        Some(texture) => {
+            // The image fully covers `rect` below, so the rounded fill underneath never
+            // actually shows through -- kept anyway so a texture with any transparency (none
+            // today, but poster frames are plain RGBA) doesn't reveal square corners.
+            painter.rect_filled(
+                rect,
+                egui::CornerRadius::same(theme::RADIUS_SM),
+                theme::SURFACE_2,
+            );
+            painter.image(
+                texture.id(),
+                rect,
+                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                egui::Color32::WHITE,
+            );
+        }
+        None => {
+            let (fill, glyph) = match asset.kind {
+                avcore::media::MediaKind::Video => (theme::SURFACE_2, "▶"),
+                avcore::media::MediaKind::Audio => (theme::ACCENT_2.gamma_multiply(0.25), "♪"),
+            };
+            painter.rect_filled(rect, egui::CornerRadius::same(theme::RADIUS_SM), fill);
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                glyph,
+                egui::FontId::proportional(11.0),
+                theme::TEXT_MUTED,
+            );
+        }
+    }
     let badge_text = asset.duration_label();
     let badge_pos = rect.right_bottom() - egui::vec2(2.0, 2.0);
     painter.text(
@@ -833,6 +866,14 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
     let mut selected_bin_id = None;
     let mut edited_bin_id = None;
     let mut new_bin_clicked = false;
+    // Collected during the asset-list closure below, applied after it ends -- same
+    // "collect-during-loop, apply-after" shape `screens::library`/`timeline_panel` use for
+    // their own poster-frame requests, needed here because `App::request_thumbnail`/
+    // `App::touch_thumbnails` take `&mut self` while the loop below iterates a shared borrow
+    // of `app.active_project().media_library`.
+    let mut thumbnail_requests: Vec<u64> = Vec::new();
+    let mut thumbnail_touches: Vec<(u64, u64, i64)> = Vec::new();
+    let project_id = app.active_project().id;
 
     egui::Frame::new()
         .inner_margin(egui::Margin::same(12))
@@ -968,6 +1009,27 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                             }
                         };
 
+                    // Same poster-frame lookup for both layouts below: a cached texture is
+                    // touched (keeps it alive in the LRU), a missing one for a video asset is
+                    // queued for extraction -- both applied after this closure returns, since
+                    // `App::touch_thumbnails`/`App::request_thumbnail` need `&mut app`.
+                    let mut resolve_thumbnail = |asset: &avcore::media::MediaAsset| {
+                        if asset.kind != avcore::media::MediaKind::Video {
+                            return None;
+                        }
+                        let key = (project_id, asset.id, 0);
+                        match app.thumbnail_state.thumbnail_textures.get(&key) {
+                            Some(texture) => {
+                                thumbnail_touches.push(key);
+                                Some(texture)
+                            }
+                            None => {
+                                thumbnail_requests.push(asset.id);
+                                None
+                            }
+                        }
+                    };
+
                     match app.media_view_mode {
                         MediaViewMode::List => {
                             for asset in assets.iter().copied() {
@@ -977,13 +1039,14 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                                 } else {
                                     theme::SURFACE
                                 };
+                                let thumbnail = resolve_thumbnail(asset);
                                 let response = egui::Frame::new()
                                     .fill(bg)
                                     .corner_radius(theme::RADIUS_MD)
                                     .inner_margin(egui::Margin::same(6))
                                     .show(ui, |ui| {
                                         ui.horizontal(|ui| {
-                                            asset_thumb(ui, asset);
+                                            asset_thumb(ui, asset, thumbnail);
                                             ui.vertical(|ui| {
                                                 ui.label(
                                                     RichText::new(&asset.file_name).size(12.0),
@@ -1021,6 +1084,7 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                                     } else {
                                         theme::SURFACE
                                     };
+                                    let thumbnail = resolve_thumbnail(asset);
                                     let response = egui::Frame::new()
                                         .fill(bg)
                                         .corner_radius(theme::RADIUS_MD)
@@ -1028,7 +1092,12 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                                         .show(ui, |ui| {
                                             ui.set_max_width(GRID_ASSET_THUMB_SIZE.x);
                                             ui.vertical(|ui| {
-                                                asset_thumb_sized(ui, asset, GRID_ASSET_THUMB_SIZE);
+                                                asset_thumb_sized(
+                                                    ui,
+                                                    asset,
+                                                    GRID_ASSET_THUMB_SIZE,
+                                                    thumbnail,
+                                                );
                                                 ui.label(
                                                     RichText::new(&asset.file_name)
                                                         .size(10.0)
@@ -1046,6 +1115,11 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                 });
             });
         });
+
+    app.touch_thumbnails(&thumbnail_touches);
+    for asset_id in thumbnail_requests {
+        app.request_thumbnail(project_id, asset_id, 0);
+    }
 
     if let Some(id) = clicked_id {
         app.select_asset(Some(id));
