@@ -21,6 +21,21 @@ use crate::theme;
 /// reserved for the one dominant action on a screen (Export, New Project, Confirm, Apply), not
 /// every button. Every other button stays a plain `ui.button(...)`, which already inherits the
 /// correct secondary/ghost look from `theme::apply`'s global `Visuals`.
+///
+/// Hover/press use the doc's own `accent_hover`/`accent_active`, scoped to just this button
+/// (`ui.scope`, same pattern `icon_button`'s `hover_color` option already uses) rather than
+/// through `theme::apply`'s global hovered/active `Visuals` — those drive every widget in the
+/// app, not just the one dominant accent-filled action this component is reserved for.
 pub fn primary_button(ui: &mut Ui, text: &str) -> Response {
-    ui.add(egui::Button::new(RichText::new(text).color(theme::TEXT_PRIMARY)).fill(theme::ACCENT))
+    ui.scope(|ui| {
+        let widgets = &mut ui.style_mut().visuals.widgets;
+        widgets.hovered.weak_bg_fill = theme::ACCENT_HOVER;
+        widgets.hovered.bg_fill = theme::ACCENT_HOVER;
+        widgets.active.weak_bg_fill = theme::ACCENT_ACTIVE;
+        widgets.active.bg_fill = theme::ACCENT_ACTIVE;
+        ui.add(
+            egui::Button::new(RichText::new(text).color(theme::TEXT_PRIMARY)).fill(theme::ACCENT),
+        )
+    })
+    .inner
 }
