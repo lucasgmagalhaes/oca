@@ -94,6 +94,10 @@ pub enum Screen {
 /// *do* change what a drag does — `screens::editor::timeline_panel` branches on `app.tool` when
 /// committing a trim-edge or clip-body drag. Splitting ("Cortar") isn't a persistent mode like
 /// any of these — it's a one-shot action, performed directly by [`App::split_at_playhead`].
+/// `Hand` also changes drag behavior: `timeline_panel` gates the ruler's scrub-drag and every
+/// clip's click/drag `Sense` down to `hover()` while it's active, so a drag anywhere in the
+/// timeline canvas falls through to the horizontal-pan `ScrollArea`s instead
+/// (`spec/architecture/editor-ui-visual-redesign.md`'s Left icon rail section).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorTool {
     Select,
@@ -109,6 +113,9 @@ pub enum EditorTool {
     /// Move a clip along the timeline; its immediate neighbors' in/out points adjust to absorb
     /// the move, nothing else shifts.
     Slide,
+    /// Pans the timeline canvas horizontally by dragging anywhere in it — clips/ruler stop
+    /// reacting to drags while this is active (see [`EditorTool`]'s own doc comment).
+    Hand,
 }
 
 /// Which group of clip properties the properties panel's tab strip is currently showing —
@@ -1005,6 +1012,16 @@ pub struct App {
     /// `Ctrl` + scroll over the timeline (per `request.md`'s Fase 3 spec) — more zoom for
     /// frame-accurate edits, less to see the whole project at once.
     pub timeline_px_per_sec: f32,
+    /// Horizontal pan of the timeline canvas (ruler + clip area, not the track-label gutter),
+    /// in pixels — how far the shared content origin has scrolled right. Mirrored every frame
+    /// across the ruler's and every track's own small `ScrollArea::horizontal()` (forced via
+    /// `.horizontal_scroll_offset`, then read back from whichever one the user actually
+    /// scrolled/dragged this frame — see `screens::editor::timeline_panel`'s own comment on the
+    /// mechanism) so they all stay in lockstep one frame behind the interacted one, imperceptible
+    /// at normal frame rates. The [`EditorTool::Hand`] tool is what makes a plain drag (not just
+    /// scroll-wheel/trackpad) pan these areas — see [`EditorTool`]'s own doc comment. Not
+    /// persisted, resets to `0.0` on project switch/launch, same as `timeline_px_per_sec`.
+    pub timeline_pan_px: f32,
     /// Width, in points, of the Editor's media-library column — dragged via the divider
     /// between it and the preview column (`editor.rs::resizable_divider`). Clamped to the
     /// window's current size every frame (`editor.rs::show`). Seeded from
@@ -1705,6 +1722,7 @@ impl App {
             selected_shape_clip_id: None,
             drawing_shape_points: None,
             timeline_px_per_sec: 4.0,
+            timeline_pan_px: 0.0,
             lib_panel_width,
             props_panel_width,
             timeline_height,
