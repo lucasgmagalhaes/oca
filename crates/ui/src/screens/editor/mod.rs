@@ -322,6 +322,13 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
         tool_button(app, ui, EditorTool::Roll, "⇄", Text::ToolRoll.tr(locale));
         tool_button(app, ui, EditorTool::Slip, "↕", Text::ToolSlip.tr(locale));
         tool_button(app, ui, EditorTool::Slide, "⇉", Text::ToolSlide.tr(locale));
+        tool_button_icon_font(
+            app,
+            ui,
+            EditorTool::Hand,
+            crate::icons::HAND_STR,
+            Text::ToolHand.tr(locale),
+        );
         ui.separator();
         if ui
             .add_enabled(
