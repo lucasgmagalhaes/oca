@@ -26,3 +26,18 @@ pub fn card_frame() -> egui::Frame {
         .corner_radius(theme::RADIUS_MD)
         .inner_margin(egui::Margin::same(12))
 }
+
+/// A structural panel background — `OCA_Design_System_egui.md`'s Section 12 ("Panels:
+/// `bg_panel`, 1px `border_default`, 0px radius, no shadow... Avoid putting every panel inside a
+/// rounded card"). Distinct from [`card_frame`]: same fill/border color, but square-cornered —
+/// for the Editor's three real structural panels (media library, properties, timeline), not for
+/// individual list-item cards. `card_frame`'s `RADIUS_MD` rounding reads correctly on a project
+/// card or a queue row; it read as an anti-pattern on `timeline_panel`, which used to reuse
+/// `card_frame` for exactly this and is this function's original motivating fix.
+pub fn panel_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(theme::SURFACE)
+        .stroke(egui::Stroke::new(1.0, theme::BORDER))
+        .corner_radius(theme::RADIUS_NONE)
+        .inner_margin(egui::Margin::same(theme::SPACE_MD as i8))
+}

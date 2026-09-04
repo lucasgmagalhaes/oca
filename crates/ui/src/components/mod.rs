@@ -30,7 +30,7 @@ mod tag;
 
 pub use button::primary_button;
 pub use combo::enum_combo;
-pub use frame::card_frame;
+pub use frame::{card_frame, panel_frame};
 pub use icon_button::{icon_button, IconButtonOpts};
 pub use icon_label::icon_label_job;
 pub use property::{property_block, property_row, property_section, property_toggle};
