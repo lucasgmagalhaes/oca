@@ -123,7 +123,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     // holds if there's no gap between them eating into that reserved strip.
                     ui.spacing_mut().item_spacing.x = 0.0;
                     let locale = app.locale;
-                    if window_button(ui, "✕", Text::WindowClose.tr(locale), theme::ERROR).clicked()
+                    // "✕" (U+2715) read as blank/tofu in a real screenshot of this app's
+                    // titlebar — swapped for a plain ASCII "X", guaranteed to render in any font.
+                    if window_button(ui, "X", Text::WindowClose.tr(locale), theme::ERROR).clicked()
                     {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
