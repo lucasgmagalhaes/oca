@@ -54,8 +54,8 @@ pub(super) const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
 
 use draw::{
     color_filter_tint, draw_filmstrip, draw_frozen_poster, draw_keyframe_markers,
-    draw_marker_ticks, draw_playhead, draw_ruler_ticks, draw_transition_wedge, draw_waveform,
-    shape_kind_glyph, ThumbnailDrawWork,
+    draw_marker_ticks, draw_playhead, draw_ruler_ticks, draw_transition_wedge, draw_trim_info,
+    draw_waveform, shape_kind_glyph, ThumbnailDrawWork,
 };
 use snap::{snap_move_start, snap_to_nearest, waveform_snap_points_for_clip, ClipDrag};
 
@@ -1069,6 +1069,70 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                             egui::Stroke::new(1.0, theme::ACCENT),
                                             egui::StrokeKind::Inside,
                                         );
+                                    }
+
+                                    // Trim Tool (Section 5): highlight the editable edge on
+                                    // hover/drag — a color cue on top of the cursor-icon change
+                                    // set earlier, since the cursor itself isn't always visible
+                                    // in a screenshot/recording.
+                                    if left_response.hovered() || left_response.dragged() {
+                                        painter.rect_filled(
+                                            left_edge_rect,
+                                            egui::CornerRadius::ZERO,
+                                            theme::ACCENT,
+                                        );
+                                    }
+                                    if right_response.hovered() || right_response.dragged() {
+                                        painter.rect_filled(
+                                            right_edge_rect,
+                                            egui::CornerRadius::ZERO,
+                                            theme::ACCENT,
+                                        );
+                                    }
+
+                                    // Section 5: "while trimming, show ... source timecode;
+                                    // sequence timecode; trim duration." Only while actively
+                                    // dragging (not on a mere hover) — `interact_pointer_pos`
+                                    // already returns `None` outside a drag/press, but the
+                                    // explicit `dragged()` check keeps the two edges from ever
+                                    // showing this simultaneously off a stale click.
+                                    if left_response.dragged() {
+                                        if let Some(pos) = left_response.interact_pointer_pos() {
+                                            let sequence_secs =
+                                                ((pos.x - track_rect.left()) / px_per_sec).max(0.0)
+                                                    as f64;
+                                            let source_secs = clip.source_in_secs
+                                                + (sequence_secs - clip.start_secs);
+                                            let trim_duration = (clip.start_secs
+                                                + clip.duration_secs())
+                                                - sequence_secs;
+                                            draw_trim_info(
+                                                painter,
+                                                pos,
+                                                locale,
+                                                source_secs,
+                                                sequence_secs,
+                                                trim_duration,
+                                            );
+                                        }
+                                    } else if right_response.dragged() {
+                                        if let Some(pos) = right_response.interact_pointer_pos() {
+                                            let sequence_secs =
+                                                ((pos.x - track_rect.left()) / px_per_sec).max(0.0)
+                                                    as f64;
+                                            let source_secs = clip.source_out_secs
+                                                + (sequence_secs
+                                                    - (clip.start_secs + clip.duration_secs()));
+                                            let trim_duration = sequence_secs - clip.start_secs;
+                                            draw_trim_info(
+                                                painter,
+                                                pos,
+                                                locale,
+                                                source_secs,
+                                                sequence_secs,
+                                                trim_duration,
+                                            );
+                                        }
                                     }
                                 }
                                 // Render text clips for text tracks as solid-color blocks with text label.
