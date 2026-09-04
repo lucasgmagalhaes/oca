@@ -125,7 +125,7 @@ impl App {
             ui.horizontal(|ui| {
                 components::modal_title(ui, Text::TranscriptPanelTitle.tr(locale));
             });
-            ui.add_space(6.0);
+            ui.add_space(4.0);
             ui.add(
                 egui::TextEdit::singleline(&mut search)
                     .desired_width(f32::INFINITY)
@@ -249,7 +249,7 @@ impl App {
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 close = true;
             }
-            ui.add_space(6.0);
+            ui.add_space(4.0);
             if ui.button(Text::WindowClose.tr(locale)).clicked() {
                 close = true;
             }

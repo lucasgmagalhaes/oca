@@ -66,7 +66,7 @@ impl App {
                                         .color(egui::Color32::WHITE.linear_multiply(alpha)),
                                 );
                             });
-                        ui.add_space(6.0);
+                        ui.add_space(4.0);
                     }
                 });
             });
@@ -174,7 +174,7 @@ impl App {
             if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                 cancelled = true;
             }
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.button(Text::TextColorPickerApply.tr(locale)).clicked() {
                     match parse_color_value(&edit.manual_input) {
@@ -259,7 +259,7 @@ impl App {
             });
             ui.add_space(16.0);
             ui.separator();
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.label(Text::AboutInstalledVersion.tr(locale));
                 ui.label(egui::RichText::new(env!("CARGO_PKG_VERSION")).strong());
@@ -372,7 +372,7 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(380.0);
             components::modal_title(ui, i18n::Text::RenameProjectTitle.tr(locale));
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             let (_, name_buf, summary_buf) = self.renaming_project.as_mut().unwrap();
             ui.label(i18n::Text::ProjectNameLabel.tr(locale));
             let name_edit =
@@ -381,7 +381,7 @@ impl App {
             if name_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 confirmed = true;
             }
-            ui.add_space(6.0);
+            ui.add_space(4.0);
             ui.label(i18n::Text::ProjectSummaryLabel.tr(locale));
             ui.add(
                 egui::TextEdit::multiline(summary_buf)
@@ -391,7 +391,7 @@ impl App {
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 cancelled = true;
             }
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui
                     .button(i18n::Text::RenameProjectConfirm.tr(locale))
@@ -445,7 +445,7 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(320.0);
             components::modal_title(ui, Text::SpeedRampCustomTitle.tr(locale));
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             let (_, start_speed, end_speed, steps_buf, smooth) =
                 self.speed_ramp_dialog.as_mut().unwrap();
             ui.label(Text::SpeedRampStartSpeedLabel.tr(locale));
@@ -454,19 +454,19 @@ impl App {
                     .range(0.1..=20.0)
                     .speed(0.01),
             );
-            ui.add_space(6.0);
+            ui.add_space(4.0);
             ui.label(Text::SpeedRampEndSpeedLabel.tr(locale));
             ui.add(
                 egui::DragValue::new(end_speed)
                     .range(0.1..=20.0)
                     .speed(0.01),
             );
-            ui.add_space(6.0);
+            ui.add_space(4.0);
             ui.checkbox(smooth, Text::SpeedRampSmoothToggle.tr(locale));
             let smooth = *smooth;
             let mut steps_edit_lost_focus_enter = false;
             if !smooth {
-                ui.add_space(6.0);
+                ui.add_space(4.0);
                 ui.label(Text::SpeedRampStepsLabel.tr(locale));
                 let steps_edit = ui.add(
                     egui::TextEdit::singleline(steps_buf)
@@ -482,7 +482,7 @@ impl App {
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 cancelled = true;
             }
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.button(Text::SpeedRampApply.tr(locale)).clicked() {
                     confirmed = true;
@@ -526,7 +526,7 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(320.0);
             components::modal_title(ui, i18n::Text::RenameSequenceTitle.tr(locale));
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             let buf = &mut self.renaming_sequence.as_mut().unwrap().1;
             let text_edit = ui.add(egui::TextEdit::singleline(buf).desired_width(f32::INFINITY));
             text_edit.request_focus();
@@ -536,7 +536,7 @@ impl App {
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 cancelled = true;
             }
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui
                     .button(i18n::Text::RenameProjectConfirm.tr(locale))
@@ -588,7 +588,7 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
             components::modal_title(ui, i18n::Text::DeleteSequenceTitle.tr(locale));
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.label(i18n::delete_sequence_prompt(locale, &name));
             if !referencing_names.is_empty() {
                 ui.add_space(8.0);
@@ -604,7 +604,7 @@ impl App {
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 cancelled = true;
             }
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui
                     .button(i18n::Text::DeleteSequenceConfirm.tr(locale))
@@ -751,7 +751,7 @@ impl App {
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 cancelled = true;
             }
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui
                     .button(Text::ExportFileExistsOverwrite.tr(locale))
@@ -823,7 +823,7 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(420.0);
             components::modal_title(ui, Text::TimelineIndexTitle.tr(locale));
-            ui.add_space(6.0);
+            ui.add_space(4.0);
             ui.add(
                 egui::TextEdit::singleline(&mut search)
                     .desired_width(f32::INFINITY)
@@ -920,7 +920,7 @@ impl App {
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 close = true;
             }
-            ui.add_space(6.0);
+            ui.add_space(4.0);
             if ui.button(Text::WindowClose.tr(locale)).clicked() {
                 close = true;
             }
@@ -970,7 +970,7 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
             components::modal_title(ui, Text::SilenceReviewTitle.tr(locale));
-            ui.add_space(6.0);
+            ui.add_space(4.0);
 
             let Some(review) = &self.silence_review else {
                 return;
@@ -1057,7 +1057,7 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
             components::modal_title(ui, Text::TranscriptProposalsTitle.tr(locale));
-            ui.add_space(6.0);
+            ui.add_space(4.0);
 
             let Some(review) = &self.transcript_review else {
                 return;
@@ -1179,7 +1179,7 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(320.0);
             components::modal_title(ui, Text::SaveTemplateTitle.tr(locale));
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.label(Text::TemplateNameLabel.tr(locale));
             let buf = &mut self.saving_layer_template.as_mut().unwrap().1;
             let name_edit = ui.add(egui::TextEdit::singleline(buf).desired_width(f32::INFINITY));
@@ -1190,7 +1190,7 @@ impl App {
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 cancelled = true;
             }
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 let name_blank = self
                     .saving_layer_template
@@ -1235,13 +1235,13 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(420.0);
             components::modal_title(ui, Text::TtsModalTitle.tr(locale));
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             if !model_configured {
                 ui.label(
                     egui::RichText::new(Text::TtsNoModelConfigured.tr(locale))
                         .color(theme::TEXT_MUTED),
                 );
-                ui.add_space(10.0);
+                ui.add_space(8.0);
             }
             let buf = self.tts_state.tts_modal_text.as_mut().unwrap();
             ui.add(
@@ -1252,7 +1252,7 @@ impl App {
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 cancelled = true;
             }
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 let text_blank = self
                     .tts_state
@@ -1300,7 +1300,7 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(420.0);
             components::modal_title(ui, Text::YoutubeDownloadModalTitle.tr(locale));
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.add_enabled_ui(!downloading, |ui| {
                 let buf = self
                     .youtube_download_state
@@ -1312,7 +1312,7 @@ impl App {
                         .hint_text(Text::YoutubeDownloadUrlHint.tr(locale))
                         .desired_width(f32::INFINITY),
                 );
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     ui.selectable_value(
                         &mut self.youtube_download_state.youtube_modal_format,
@@ -1369,17 +1369,17 @@ impl App {
                     }
                 });
             });
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             if downloading {
                 ui.add(
                     egui::ProgressBar::new(self.youtube_download_state.youtube_download_progress)
                         .text(Text::YoutubeDownloadInProgress.tr(locale)),
                 );
-                ui.add_space(10.0);
+                ui.add_space(8.0);
             }
             if let Some(err) = &self.youtube_download_state.youtube_download_error {
                 ui.label(egui::RichText::new(err.as_str()).color(theme::ERROR));
-                ui.add_space(10.0);
+                ui.add_space(8.0);
             }
             if !downloading && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 close = true;
@@ -1436,7 +1436,7 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(320.0);
             components::modal_title(ui, Text::Templates.tr(locale));
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             if self.prefs.saved_layer_templates.is_empty() {
                 ui.label(
                     egui::RichText::new(Text::NoSavedTemplates.tr(locale)).color(theme::TEXT_MUTED),
@@ -1455,7 +1455,7 @@ impl App {
                     });
                 });
             }
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             if ui.button(Text::CancelJob.tr(locale)).clicked() {
                 self.layer_templates_menu_open = false;
             }
@@ -1499,7 +1499,7 @@ impl App {
                 ui,
                 &format!("{}: {}", Text::ApplyTemplateTitle.tr(locale), template.name),
             );
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             let layer_asset_ids = &mut self.applying_layer_template.as_mut().unwrap().1;
             for (index, (kind, _formatting)) in template.layers.iter().enumerate() {
                 let kind_label = match kind {
@@ -1531,12 +1531,12 @@ impl App {
                             );
                         }
                     });
-                ui.add_space(6.0);
+                ui.add_space(4.0);
             }
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 cancelled = true;
             }
-            ui.add_space(6.0);
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
                 let all_picked = layer_asset_ids.iter().all(|a| a.is_some());
                 if ui
@@ -1587,7 +1587,7 @@ impl App {
                     template_name
                 ),
             );
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             let pending = self.pending_graphic_template_apply.as_mut().unwrap();
             for parameter in &parameters {
                 ui.label(&parameter.label);
@@ -1609,12 +1609,12 @@ impl App {
                         }
                     }
                 }
-                ui.add_space(6.0);
+                ui.add_space(4.0);
             }
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 cancelled = true;
             }
-            ui.add_space(6.0);
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
                 if ui
                     .button(Text::GraphicTemplateApplyConfirm.tr(locale))
@@ -1654,7 +1654,7 @@ impl App {
         let response = modal.show(ctx, |ui| {
             ui.set_width(360.0);
             components::modal_title(ui, Text::SmartBinEditTitle.tr(locale));
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             let draft = self.editing_smart_bin.as_mut().unwrap();
 
             ui.label(Text::SmartBinNameLabel.tr(locale));
@@ -1707,7 +1707,7 @@ impl App {
                     Text::SmartBinAudioNo.tr(locale),
                 );
             });
-            ui.add_space(10.0);
+            ui.add_space(8.0);
 
             if name_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 confirmed = true;
