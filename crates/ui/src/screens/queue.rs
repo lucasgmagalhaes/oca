@@ -19,6 +19,7 @@ use eframe::egui::{self, RichText};
 use crate::app::{App, LUFS_PROFILES};
 use crate::components;
 use crate::i18n::{self, Text};
+use crate::icons;
 use crate::theme;
 
 /// Renders the Fila screen: the export queue's job list (reorder, pause/resume, cancel, retry)
@@ -303,14 +304,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         |ui| match &job.status {
                             ExportJobStatus::Rendering { .. } => {
                                 if ui
-                                    .button("✕")
+                                    .button("X")
                                     .on_hover_text(Text::CancelJob.tr(locale))
                                     .clicked()
                                 {
                                     cancel = Some(job.id);
                                 }
                                 if ui
-                                    .button("⏸")
+                                    .button(RichText::new(icons::PAUSE_STR).family(icons::family()))
                                     .on_hover_text(Text::PauseJob.tr(locale))
                                     .clicked()
                                 {
@@ -319,28 +320,30 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             }
                             ExportJobStatus::Queued => {
                                 if ui
-                                    .button("✕")
+                                    .button("X")
                                     .on_hover_text(Text::RemoveJob.tr(locale))
                                     .clicked()
                                 {
                                     cancel = Some(job.id);
                                 }
+                                // ASCII "v"/"^" -- not "▼"/"▲" (same tofu class already fixed
+                                // elsewhere this session).
                                 if ui
-                                    .button("▼")
+                                    .button("v")
                                     .on_hover_text(Text::MoveJobDown.tr(locale))
                                     .clicked()
                                 {
                                     move_down = Some(i);
                                 }
                                 if ui
-                                    .button("▲")
+                                    .button("^")
                                     .on_hover_text(Text::MoveJobUp.tr(locale))
                                     .clicked()
                                 {
                                     move_up = Some(i);
                                 }
                                 if ui
-                                    .button("⏸")
+                                    .button(RichText::new(icons::PAUSE_STR).family(icons::family()))
                                     .on_hover_text(Text::PauseJob.tr(locale))
                                     .clicked()
                                 {
@@ -349,14 +352,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             }
                             ExportJobStatus::Paused { .. } => {
                                 if ui
-                                    .button("✕")
+                                    .button("X")
                                     .on_hover_text(Text::RemoveJob.tr(locale))
                                     .clicked()
                                 {
                                     cancel = Some(job.id);
                                 }
                                 if ui
-                                    .button("▶")
+                                    .button(RichText::new(icons::PLAY_STR).family(icons::family()))
                                     .on_hover_text(Text::Resume.tr(locale))
                                     .clicked()
                                 {
@@ -364,8 +367,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                 }
                             }
                             ExportJobStatus::Done => {
+                                // Text label, not an icon -- no vendored Lucide "folder" glyph
+                                // exists, and the raw "📂" emoji is the same tofu class already
+                                // fixed elsewhere this session.
                                 if ui
-                                    .button("📂")
+                                    .button(Text::OpenFolder.tr(locale))
                                     .on_hover_text(Text::OpenFolder.tr(locale))
                                     .clicked()
                                 {
