@@ -135,6 +135,25 @@ pub enum MediaViewMode {
     Grid,
 }
 
+/// The Editor preview panel's zoom level (`spec/architecture/editor-ui-visual-redesign.md`'s
+/// Program monitor mapping: "50%/Fit/100%" controls) — a pure display-size choice, not a new
+/// `avcore` concept. `Fit` (the default, and the only behavior that existed before this field)
+/// always fills the available panel space at the sequence's own aspect ratio, exactly as
+/// `layer_transform_preview` always has. `Percent50`/`Percent100` instead size the canvas off
+/// the sequence's real pixel dimensions, clamped back down to the available panel space when
+/// the canvas is bigger than the panel — this preview has no scrollable viewport, so an
+/// oversized zoom for a large canvas resolution silently caps back to whatever `Fit` would have
+/// produced rather than overflowing the panel or needing scroll support (a real, separate
+/// follow-up if true 1:1-pixel scrolling is ever wanted). Not persisted: resets to `Fit` on
+/// every app launch, same as `tool`/`media_view_mode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PreviewZoom {
+    #[default]
+    Fit,
+    Percent50,
+    Percent100,
+}
+
 /// A key + modifier combination that can be assigned to a bindable action. `key_name` is
 /// the value returned by [`egui::Key::name`] (e.g. `"Space"`, `"B"`) and accepted by
 /// [`egui::Key::from_name`], making it stable across egui versions for common keys.
@@ -1207,6 +1226,8 @@ pub(crate) struct PreviewState {
     /// preview transport row's snapshot button (`App::save_preview_snapshot`) needs a real CPU
     /// buffer to write out as a PNG. Reset alongside `preview_texture` for the same reasons.
     pub(crate) last_frame: Option<avcore::preview::VideoFrame>,
+    /// The preview panel's zoom level — see [`PreviewZoom`].
+    pub(crate) zoom: PreviewZoom,
     /// Cache for [`App::pump_preview_frame`]'s CPU-side 3D LUT preview approximation (P4 item
     /// 21, "Preview support for vignette/glitch/deflicker/3D-LUT/stabilization" —
     /// `avcore::preview_effects`): `Some((path, parsed))` once `path` has been attempted, so a
