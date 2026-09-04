@@ -182,10 +182,12 @@ pub(super) fn draw_frozen_poster(
         None => thumbnail_work.requests.push(key),
     }
 
+    // "F" (ASCII), not "❄" -- same tofu class as this file's other single-letter clip badges
+    // (C/O/#/H for cropped/masked/flipped/etc.).
     painter.text(
         clip_rect.left_top() + egui::vec2(3.0, 2.0),
         egui::Align2::LEFT_TOP,
-        "❄",
+        "F",
         egui::FontId::proportional(12.0),
         egui::Color32::WHITE,
     );
@@ -532,12 +534,13 @@ pub(super) fn draw_playhead(
 /// full-fidelity render (which only happens on export, same preview gap as [`avcore::timeline::
 /// TextClip`]'s).
 pub(super) fn shape_kind_glyph(kind: &avcore::timeline::ShapeKind) -> &'static str {
+    // ASCII stand-ins -- "●"/"▲"/"■"/"⬠" are the same tofu class as this module's other fixes.
     match kind {
-        avcore::timeline::ShapeKind::Ellipse => "●",
+        avcore::timeline::ShapeKind::Ellipse => "O",
         avcore::timeline::ShapeKind::Polygon(vertices) => match vertices.len() {
-            3 => "▲",
-            4 => "■",
-            _ => "⬠",
+            3 => "^",
+            4 => "#",
+            _ => "P",
         },
     }
 }

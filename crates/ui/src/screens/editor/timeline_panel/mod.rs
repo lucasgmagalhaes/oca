@@ -62,11 +62,14 @@ use snap::{snap_move_start, snap_to_nearest, waveform_snap_points_for_clip, Clip
 /// Icon for a track's [`avcore::AudioRole`] (D2, `spec/architecture/differentiators.md`) — the
 /// track header's role picker, and its own collapsed `ComboBox` display.
 fn audio_role_icon(role: avcore::AudioRole) -> &'static str {
+    // ASCII letters -- this function's callers render the result as a plain &str with no
+    // font-family override, so a vendored Lucide icon (which needs one) or a raw emoji (same
+    // tofu class already fixed elsewhere) would both just be a different blank box here.
     match role {
-        avcore::AudioRole::Unspecified => "–",
-        avcore::AudioRole::GameAudio => "🎮",
-        avcore::AudioRole::Mic => "🎤",
-        avcore::AudioRole::Music => "🎵",
+        avcore::AudioRole::Unspecified => "-",
+        avcore::AudioRole::GameAudio => "G",
+        avcore::AudioRole::Mic => "V",
+        avcore::AudioRole::Music => "N",
     }
 }
 
@@ -351,18 +354,17 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 // Audio tracks read as "muted/unmuted" (a speaker glyph) rather than
                                 // "hidden/shown" (an eye) — same `visible` flag underneath, since an
                                 // invisible video track and a muted audio track are the same "doesn't
-                                // contribute to preview/export" concept, just named per the mock's
-                                // own per-kind icon convention (`.tl-track-tool` 👁 vs 🔊).
-                                // No Lucide speaker icon is vendored (`spec/architecture/
-                                // editor-ui-visual-redesign.md`'s Icon set section only covers
-                                // `eye`/`eye-off`, matched to the video-track states below) — audio
-                                // tracks keep the emoji glyph, in the default font.
+                                // contribute to preview/export" concept. No Lucide speaker icon is
+                                // vendored (`spec/architecture/editor-ui-visual-redesign.md`'s Icon
+                                // set section only covers `eye`/`eye-off`) — and the raw "🔊"/"🔇"
+                                // emoji this used to fall back to is the same tofu class already
+                                // fixed elsewhere this session, so audio tracks now reuse the same
+                                // eye/eye-off icon as video tracks rather than a distinct glyph.
                                 let is_audio = track.kind == avcore::timeline::TrackKind::Audio;
-                                let (eye, eye_family) = match (is_audio, visible) {
-                                    (true, true) => ("🔊", None),
-                                    (true, false) => ("🔇", None),
-                                    (false, true) => (icons::EYE_STR, Some(icons::family())),
-                                    (false, false) => (icons::EYE_OFF_STR, Some(icons::family())),
+                                let (eye, eye_family) = if visible {
+                                    (icons::EYE_STR, Some(icons::family()))
+                                } else {
+                                    (icons::EYE_OFF_STR, Some(icons::family()))
                                 };
                                 let tooltip = match (is_audio, visible) {
                                     (true, true) => Text::TrackMute.tr(locale),
@@ -986,7 +988,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         painter.text(
                                             clip_rect.left_top() + egui::vec2(4.0, 2.0),
                                             egui::Align2::LEFT_TOP,
-                                            format!("📦 {nested_name}"),
+                                            format!("N: {nested_name}"),
                                             egui::FontId::proportional(11.0),
                                             theme::TEXT_PRIMARY,
                                         );
@@ -1036,10 +1038,12 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         );
                                     }
                                     if clip.is_chroma_keyed() {
+                                        // "K" (ASCII), not "🟩" -- same tofu class as this
+                                        // module's other single-letter clip badges.
                                         painter.text(
                                             clip_rect.center_bottom() + egui::vec2(0.0, -2.0),
                                             egui::Align2::CENTER_BOTTOM,
-                                            "🟩",
+                                            "K",
                                             egui::FontId::proportional(11.0),
                                             theme::TEXT_PRIMARY,
                                         );
