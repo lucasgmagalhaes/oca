@@ -190,6 +190,9 @@ text_catalog! {
     EffectFreeze: pt_br = "Congelar", en = "Freeze";
     EffectDeflicker: pt_br = "Deflicker", en = "Deflicker";
     ExportElapsed: pt_br = "decorrido", en = "elapsed";
+    TrimInfoSource: pt_br = "Fonte", en = "Source";
+    TrimInfoSequence: pt_br = "Sequência", en = "Sequence";
+    TrimInfoDuration: pt_br = "Duração", en = "Duration";
     Export: pt_br = "⭳ Exportar", en = "⭳ Export";
     ExportSrt: pt_br = "Exportar .srt", en = "Export .srt";
     ExportSrtHint: pt_br = "Salva as legendas da timeline como um arquivo .srt separado.", en = "Saves the timeline's subtitles as a separate .srt file.";
