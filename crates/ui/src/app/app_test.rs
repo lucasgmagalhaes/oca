@@ -5995,6 +5995,104 @@ fn import_collab_bundle_toasts_on_failure_instead_of_panicking() {
     assert_eq!(app.toasts.len(), 1);
 }
 
+fn otio_fixture(target_url: &str, source_secs: f64, duration_secs: f64, rate: f64) -> String {
+    serde_json::json!({
+        "OTIO_SCHEMA": "Timeline.1",
+        "name": "Imported Sequence",
+        "tracks": {
+            "OTIO_SCHEMA": "Stack.1",
+            "children": [{
+                "OTIO_SCHEMA": "Track.1",
+                "kind": "Video",
+                "name": "V1",
+                "children": [{
+                    "OTIO_SCHEMA": "Clip.1",
+                    "name": "Clip-1",
+                    "source_range": {
+                        "OTIO_SCHEMA": "TimeRange.1",
+                        "start_time": { "OTIO_SCHEMA": "RationalTime.1", "value": source_secs * rate, "rate": rate },
+                        "duration": { "OTIO_SCHEMA": "RationalTime.1", "value": duration_secs * rate, "rate": rate },
+                    },
+                    "media_reference": {
+                        "OTIO_SCHEMA": "ExternalReference.1",
+                        "target_url": target_url,
+                    },
+                }],
+            }],
+            "markers": [],
+        },
+    })
+    .to_string()
+}
+
+#[test]
+fn import_otio_into_new_sequence_creates_a_new_sequence_with_the_imported_content() {
+    let dir = tempfile::tempdir().unwrap();
+    let otio_path = dir.path().join("imported.otio");
+    std::fs::write(&otio_path, otio_fixture("clip.mp4", 2.0, 5.0, 24.0)).unwrap();
+
+    let mut asset = test_asset(7);
+    asset.source_path = PathBuf::from("clip.mp4");
+    let mut app = test_app(vec![test_project(1, vec![asset])], Vec::new());
+    assert_eq!(app.active_project().sequences.len(), 1);
+
+    app.import_otio_into_new_sequence(otio_path);
+
+    let project = app.active_project();
+    assert_eq!(project.sequences.len(), 2, "appended, not replaced");
+    assert_eq!(project.active_sequence, 1, "switched to the new sequence");
+    assert_eq!(project.active_sequence().name, "Imported Sequence");
+    let timeline = &project.active_sequence().timeline;
+    assert_eq!(timeline.tracks.len(), 1);
+    assert_eq!(timeline.tracks[0].kind, TrackKind::Video);
+    assert_eq!(timeline.tracks[0].clips.len(), 1);
+    let clip = &timeline.tracks[0].clips[0];
+    assert_eq!(clip.asset_id, 7);
+    assert!((clip.source_in_secs - 2.0).abs() < 1e-6);
+    assert!((clip.source_out_secs - 7.0).abs() < 1e-6);
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn import_otio_into_new_sequence_toasts_on_malformed_json_without_adding_a_sequence() {
+    let dir = tempfile::tempdir().unwrap();
+    let otio_path = dir.path().join("garbage.otio");
+    std::fs::write(&otio_path, "not json at all").unwrap();
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.import_otio_into_new_sequence(otio_path);
+
+    assert_eq!(app.active_project().sequences.len(), 1);
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
+fn import_otio_into_new_sequence_counts_a_warning_for_an_unresolvable_media_reference() {
+    let dir = tempfile::tempdir().unwrap();
+    let otio_path = dir.path().join("offline.otio");
+    // No asset in the project has this target_url -- the clip should be skipped and counted
+    // as a warning, not silently linked to the wrong media.
+    std::fs::write(&otio_path, otio_fixture("nonexistent.mp4", 0.0, 3.0, 24.0)).unwrap();
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.import_otio_into_new_sequence(otio_path);
+
+    let project = app.active_project();
+    assert_eq!(project.sequences.len(), 2);
+    assert!(
+        project.active_sequence().timeline.tracks[0]
+            .clips
+            .is_empty(),
+        "the unresolvable clip must be skipped, not placed with a wrong asset"
+    );
+    assert_eq!(app.toasts.len(), 1);
+    assert!(
+        app.toasts[0].0.contains('1'),
+        "toast should mention the one warning: {}",
+        app.toasts[0].0
+    );
+}
+
 #[test]
 fn apply_detected_scene_cuts_adds_numbered_chapter_markers_at_timeline_coordinates() {
     let track = test_track(1, TrackKind::Video, vec![test_clip(1, 100.0, 5.0, 15.0)]);
