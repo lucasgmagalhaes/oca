@@ -25,16 +25,24 @@ use crate::theme;
 /// Hover/press use the doc's own `accent_hover`/`accent_active`, scoped to just this button
 /// (`ui.scope`, same pattern `icon_button`'s `hover_color` option already uses) rather than
 /// through `theme::apply`'s global hovered/active `Visuals` — those drive every widget in the
-/// app, not just the one dominant accent-filled action this component is reserved for.
+/// app, not just the one dominant accent-filled action this component is reserved for. Same
+/// scoping for Section 8's Primary-specific 12px horizontal padding (the app-wide default is a
+/// tighter 8px, correct for the Secondary/Ghost buttons that make up the rest of the app) and
+/// 28-32px height floor (`min_size`, robust regardless of font metrics — an explicit padding
+/// value alone doesn't reliably land in that range).
 pub fn primary_button(ui: &mut Ui, text: &str) -> Response {
     ui.scope(|ui| {
-        let widgets = &mut ui.style_mut().visuals.widgets;
+        let style = ui.style_mut();
+        let widgets = &mut style.visuals.widgets;
         widgets.hovered.weak_bg_fill = theme::ACCENT_HOVER;
         widgets.hovered.bg_fill = theme::ACCENT_HOVER;
         widgets.active.weak_bg_fill = theme::ACCENT_ACTIVE;
         widgets.active.bg_fill = theme::ACCENT_ACTIVE;
+        style.spacing.button_padding.x = 12.0;
         ui.add(
-            egui::Button::new(RichText::new(text).color(theme::TEXT_PRIMARY)).fill(theme::ACCENT),
+            egui::Button::new(RichText::new(text).color(theme::TEXT_PRIMARY))
+                .fill(theme::ACCENT)
+                .min_size(egui::vec2(0.0, 30.0)),
         )
     })
     .inner
