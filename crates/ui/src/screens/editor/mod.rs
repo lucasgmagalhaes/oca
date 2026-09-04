@@ -818,208 +818,265 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
     let mut thumbnail_touches: Vec<(u64, u64, i64)> = Vec::new();
     let project_id = app.active_project().id;
 
-    egui::Frame::new()
-        .inner_margin(egui::Margin::same(12))
-        .show(ui, |ui| {
-            ui.set_width(width);
-            ui.set_height(height);
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    components::section_label(ui, Text::MediaLibrary.tr(app.locale));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(
-                            RichText::new(crate::i18n::media_item_count_label(
-                                app.locale,
-                                app.active_project().media_library.len(),
-                            ))
-                            .size(11.0)
-                            .color(theme::TEXT_MUTED),
-                        );
-                        ui.add_space(theme::SPACE_SM);
-                        if ui
-                            .selectable_label(app.media_view_mode == MediaViewMode::Grid, "▦")
-                            .on_hover_text(Text::MediaViewGrid.tr(app.locale))
-                            .clicked()
-                        {
-                            app.media_view_mode = MediaViewMode::Grid;
-                        }
-                        if ui
-                            .selectable_label(app.media_view_mode == MediaViewMode::List, "☰")
-                            .on_hover_text(Text::MediaViewList.tr(app.locale))
-                            .clicked()
-                        {
-                            app.media_view_mode = MediaViewMode::List;
-                        }
-                    });
-                });
-                ui.add_space(theme::SPACE_SM);
-                ui.add(
-                    egui::TextEdit::singleline(&mut app.media_search)
-                        .hint_text(Text::SearchMediaPlaceholder.tr(app.locale))
-                        .desired_width(f32::INFINITY),
-                );
-                ui.add_space(4.0);
-                // Smart bins (P4 item 22) plus the Favorites/Recent filters -- a row of filter
-                // chips above the asset list, single-selection (see MediaLibraryFilter's own
-                // doc comment). "All" clears the filter; each bin is click-to-select,
-                // double-click-to-edit (the rules, not the assets themselves -- there's nothing
-                // else to double-click a filter chip for).
-                ui.horizontal_wrapped(|ui| {
-                    if media_filter_tab(
-                        ui,
-                        app.media_filter == MediaLibraryFilter::All,
-                        Text::SmartBinAll.tr(app.locale),
-                    ) {
-                        selected_filter = Some(MediaLibraryFilter::All);
+    components::panel_frame().show(ui, |ui| {
+        ui.set_width(width);
+        ui.set_height(height);
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                components::section_label(ui, Text::MediaLibrary.tr(app.locale));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(
+                        RichText::new(crate::i18n::media_item_count_label(
+                            app.locale,
+                            app.active_project().media_library.len(),
+                        ))
+                        .size(11.0)
+                        .color(theme::TEXT_MUTED),
+                    );
+                    ui.add_space(theme::SPACE_SM);
+                    if ui
+                        .selectable_label(app.media_view_mode == MediaViewMode::Grid, "▦")
+                        .on_hover_text(Text::MediaViewGrid.tr(app.locale))
+                        .clicked()
+                    {
+                        app.media_view_mode = MediaViewMode::Grid;
                     }
-                    if media_filter_tab(
-                        ui,
-                        app.media_filter == MediaLibraryFilter::Favorites,
-                        Text::MediaFilterFavorites.tr(app.locale),
-                    ) {
-                        selected_filter = Some(MediaLibraryFilter::Favorites);
-                    }
-                    if media_filter_tab(
-                        ui,
-                        app.media_filter == MediaLibraryFilter::Recent,
-                        Text::MediaFilterRecent.tr(app.locale),
-                    ) {
-                        selected_filter = Some(MediaLibraryFilter::Recent);
-                    }
-                    for bin in &app.active_project().smart_bins {
-                        let response = ui.selectable_label(
-                            app.media_filter == MediaLibraryFilter::SmartBin(bin.id),
-                            &bin.name,
-                        );
-                        if response.clicked() {
-                            selected_filter = Some(MediaLibraryFilter::SmartBin(bin.id));
-                        }
-                        if response.double_clicked() {
-                            edited_bin_id = Some(bin.id);
-                        }
-                    }
-                    if ui.button(Text::SmartBinNew.tr(app.locale)).clicked() {
-                        new_bin_clicked = true;
+                    if ui
+                        .selectable_label(app.media_view_mode == MediaViewMode::List, "☰")
+                        .on_hover_text(Text::MediaViewList.tr(app.locale))
+                        .clicked()
+                    {
+                        app.media_view_mode = MediaViewMode::List;
                     }
                 });
-                ui.add_space(4.0);
+            });
+            ui.add_space(theme::SPACE_SM);
+            ui.add(
+                egui::TextEdit::singleline(&mut app.media_search)
+                    .hint_text(Text::SearchMediaPlaceholder.tr(app.locale))
+                    .desired_width(f32::INFINITY),
+            );
+            ui.add_space(4.0);
+            // Smart bins (P4 item 22) plus the Favorites/Recent filters -- a row of filter
+            // chips above the asset list, single-selection (see MediaLibraryFilter's own
+            // doc comment). "All" clears the filter; each bin is click-to-select,
+            // double-click-to-edit (the rules, not the assets themselves -- there's nothing
+            // else to double-click a filter chip for).
+            ui.horizontal_wrapped(|ui| {
+                if media_filter_tab(
+                    ui,
+                    app.media_filter == MediaLibraryFilter::All,
+                    Text::SmartBinAll.tr(app.locale),
+                ) {
+                    selected_filter = Some(MediaLibraryFilter::All);
+                }
+                if media_filter_tab(
+                    ui,
+                    app.media_filter == MediaLibraryFilter::Favorites,
+                    Text::MediaFilterFavorites.tr(app.locale),
+                ) {
+                    selected_filter = Some(MediaLibraryFilter::Favorites);
+                }
+                if media_filter_tab(
+                    ui,
+                    app.media_filter == MediaLibraryFilter::Recent,
+                    Text::MediaFilterRecent.tr(app.locale),
+                ) {
+                    selected_filter = Some(MediaLibraryFilter::Recent);
+                }
+                for bin in &app.active_project().smart_bins {
+                    let response = ui.selectable_label(
+                        app.media_filter == MediaLibraryFilter::SmartBin(bin.id),
+                        &bin.name,
+                    );
+                    if response.clicked() {
+                        selected_filter = Some(MediaLibraryFilter::SmartBin(bin.id));
+                    }
+                    if response.double_clicked() {
+                        edited_bin_id = Some(bin.id);
+                    }
+                }
+                if ui.button(Text::SmartBinNew.tr(app.locale)).clicked() {
+                    new_bin_clicked = true;
+                }
+            });
+            ui.add_space(4.0);
 
-                egui::ScrollArea::vertical()
-                    .id_salt("media_library_scroll")
-                    .show(ui, |ui| {
-                        // Only the (small) bin rule is cloned here, not the assets it filters --
-                        // `active_project()` is borrowed again right below for the actual iteration,
-                        // which is fine since both borrows are immutable.
-                        let bin = match app.media_filter {
-                            MediaLibraryFilter::SmartBin(id) => app
-                                .active_project()
-                                .smart_bins
-                                .iter()
-                                .find(|b| b.id == id)
-                                .cloned(),
-                            _ => None,
-                        };
-                        let recent_asset_ids = app.active_project().recent_asset_ids.clone();
-                        let media_filter = app.media_filter;
-                        let search = app.media_search.to_lowercase();
-                        let mut assets: Vec<_> = app
+            egui::ScrollArea::vertical()
+                .id_salt("media_library_scroll")
+                .show(ui, |ui| {
+                    // Only the (small) bin rule is cloned here, not the assets it filters --
+                    // `active_project()` is borrowed again right below for the actual iteration,
+                    // which is fine since both borrows are immutable.
+                    let bin = match app.media_filter {
+                        MediaLibraryFilter::SmartBin(id) => app
                             .active_project()
-                            .media_library
+                            .smart_bins
                             .iter()
-                            .filter(|a| {
-                                let matches_filter = match media_filter {
-                                    MediaLibraryFilter::All => true,
-                                    MediaLibraryFilter::SmartBin(_) => {
-                                        bin.as_ref().is_none_or(|b| b.matches(a))
-                                    }
-                                    MediaLibraryFilter::Favorites => a.favorited,
-                                    MediaLibraryFilter::Recent => recent_asset_ids.contains(&a.id),
-                                };
-                                matches_filter
-                                    && (search.is_empty()
-                                        || a.file_name.to_lowercase().contains(&search))
-                            })
-                            .collect();
-                        // Recent is most-recently-used-first, not the library's own insertion
-                        // order -- everything else keeps that default order unchanged.
-                        if media_filter == MediaLibraryFilter::Recent {
-                            assets.sort_by_key(|a| {
-                                recent_asset_ids
-                                    .iter()
-                                    .position(|&id| id == a.id)
-                                    .unwrap_or(usize::MAX)
-                            });
-                        }
+                            .find(|b| b.id == id)
+                            .cloned(),
+                        _ => None,
+                    };
+                    let recent_asset_ids = app.active_project().recent_asset_ids.clone();
+                    let media_filter = app.media_filter;
+                    let search = app.media_search.to_lowercase();
+                    let mut assets: Vec<_> = app
+                        .active_project()
+                        .media_library
+                        .iter()
+                        .filter(|a| {
+                            let matches_filter = match media_filter {
+                                MediaLibraryFilter::All => true,
+                                MediaLibraryFilter::SmartBin(_) => {
+                                    bin.as_ref().is_none_or(|b| b.matches(a))
+                                }
+                                MediaLibraryFilter::Favorites => a.favorited,
+                                MediaLibraryFilter::Recent => recent_asset_ids.contains(&a.id),
+                            };
+                            matches_filter
+                                && (search.is_empty()
+                                    || a.file_name.to_lowercase().contains(&search))
+                        })
+                        .collect();
+                    // Recent is most-recently-used-first, not the library's own insertion
+                    // order -- everything else keeps that default order unchanged.
+                    if media_filter == MediaLibraryFilter::Recent {
+                        assets.sort_by_key(|a| {
+                            recent_asset_ids
+                                .iter()
+                                .position(|&id| id == a.id)
+                                .unwrap_or(usize::MAX)
+                        });
+                    }
 
-                        // Shared across both layouts below: every asset's click/double-click/drag/
-                        // drop behavior is identical, only the Frame's own content (list row vs.
-                        // grid tile) differs.
-                        let mut handle_interaction =
-                            |ui: &egui::Ui,
-                             asset: &avcore::media::MediaAsset,
-                             response: egui::Response| {
-                                if response.clicked() {
-                                    clicked_id = Some(asset.id);
-                                }
-                                if response.double_clicked() {
-                                    add_to_timeline_id = Some(asset.id);
-                                }
-                                if response.dragged() {
-                                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                                    if let Some(pos) = response.interact_pointer_pos() {
-                                        egui::Area::new(
-                                            ui.id().with(("asset_drag_ghost", asset.id)),
-                                        )
+                    // Shared across both layouts below: every asset's click/double-click/drag/
+                    // drop behavior is identical, only the Frame's own content (list row vs.
+                    // grid tile) differs.
+                    let mut handle_interaction =
+                        |ui: &egui::Ui,
+                         asset: &avcore::media::MediaAsset,
+                         response: egui::Response| {
+                            if response.clicked() {
+                                clicked_id = Some(asset.id);
+                            }
+                            if response.double_clicked() {
+                                add_to_timeline_id = Some(asset.id);
+                            }
+                            if response.dragged() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                                if let Some(pos) = response.interact_pointer_pos() {
+                                    egui::Area::new(ui.id().with(("asset_drag_ghost", asset.id)))
                                         .fixed_pos(pos + egui::vec2(12.0, 12.0))
                                         .order(egui::Order::Tooltip)
                                         .interactable(false)
-                                        .show(
-                                            ui.ctx(),
-                                            |ui| {
-                                                egui::Frame::new()
-                                                    .fill(theme::SURFACE_2)
-                                                    .corner_radius(theme::RADIUS_SM)
-                                                    .inner_margin(egui::Margin::symmetric(8, 4))
-                                                    .show(ui, |ui| {
-                                                        ui.label(
-                                                            RichText::new(&asset.file_name)
-                                                                .size(11.0),
-                                                        );
-                                                    });
-                                            },
-                                        );
-                                    }
+                                        .show(ui.ctx(), |ui| {
+                                            egui::Frame::new()
+                                                .fill(theme::SURFACE_2)
+                                                .corner_radius(theme::RADIUS_SM)
+                                                .inner_margin(egui::Margin::symmetric(8, 4))
+                                                .show(ui, |ui| {
+                                                    ui.label(
+                                                        RichText::new(&asset.file_name).size(11.0),
+                                                    );
+                                                });
+                                        });
                                 }
-                                if response.drag_stopped() {
-                                    if let Some(pos) = response.interact_pointer_pos() {
-                                        dropped_asset = Some((asset.id, pos));
-                                    }
-                                }
-                            };
-
-                        // Same poster-frame lookup for both layouts below: a cached texture is
-                        // touched (keeps it alive in the LRU), a missing one for a video asset is
-                        // queued for extraction -- both applied after this closure returns, since
-                        // `App::touch_thumbnails`/`App::request_thumbnail` need `&mut app`.
-                        let mut resolve_thumbnail = |asset: &avcore::media::MediaAsset| {
-                            if asset.kind != avcore::media::MediaKind::Video {
-                                return None;
                             }
-                            let key = (project_id, asset.id, 0);
-                            match app.thumbnail_state.thumbnail_textures.get(&key) {
-                                Some(texture) => {
-                                    thumbnail_touches.push(key);
-                                    Some(texture)
-                                }
-                                None => {
-                                    thumbnail_requests.push(asset.id);
-                                    None
+                            if response.drag_stopped() {
+                                if let Some(pos) = response.interact_pointer_pos() {
+                                    dropped_asset = Some((asset.id, pos));
                                 }
                             }
                         };
 
-                        match app.media_view_mode {
-                            MediaViewMode::List => {
+                    // Same poster-frame lookup for both layouts below: a cached texture is
+                    // touched (keeps it alive in the LRU), a missing one for a video asset is
+                    // queued for extraction -- both applied after this closure returns, since
+                    // `App::touch_thumbnails`/`App::request_thumbnail` need `&mut app`.
+                    let mut resolve_thumbnail = |asset: &avcore::media::MediaAsset| {
+                        if asset.kind != avcore::media::MediaKind::Video {
+                            return None;
+                        }
+                        let key = (project_id, asset.id, 0);
+                        match app.thumbnail_state.thumbnail_textures.get(&key) {
+                            Some(texture) => {
+                                thumbnail_touches.push(key);
+                                Some(texture)
+                            }
+                            None => {
+                                thumbnail_requests.push(asset.id);
+                                None
+                            }
+                        }
+                    };
+
+                    match app.media_view_mode {
+                        MediaViewMode::List => {
+                            for asset in assets.iter().copied() {
+                                let selected = app.selected_asset_id == Some(asset.id);
+                                let bg = if selected {
+                                    theme::ACCENT.gamma_multiply(0.18)
+                                } else {
+                                    theme::SURFACE
+                                };
+                                let thumbnail = resolve_thumbnail(asset);
+                                let response = egui::Frame::new()
+                                    .fill(bg)
+                                    .corner_radius(theme::RADIUS_MD)
+                                    .inner_margin(egui::Margin::same(4))
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            asset_thumb(ui, asset, thumbnail);
+                                            ui.vertical(|ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.label(
+                                                        RichText::new(&asset.file_name).size(12.0),
+                                                    );
+                                                    if components::icon_button(
+                                                        ui,
+                                                        icons::STAR_STR,
+                                                        Text::ToggleFavorite.tr(app.locale),
+                                                        components::IconButtonOpts {
+                                                            family: Some(icons::family()),
+                                                            color: Some(if asset.favorited {
+                                                                theme::ACCENT
+                                                            } else {
+                                                                theme::TEXT_MUTED
+                                                            }),
+                                                            ..Default::default()
+                                                        },
+                                                    )
+                                                    .clicked()
+                                                    {
+                                                        toggled_favorite_id = Some(asset.id);
+                                                    }
+                                                });
+                                                ui.label(
+                                                    RichText::new(format!(
+                                                        "{} · {}",
+                                                        asset.duration_label(),
+                                                        asset
+                                                            .resolution
+                                                            .map(|(w, h)| format!("{w}×{h}"))
+                                                            .unwrap_or_else(|| asset
+                                                                .sample_rate_khz
+                                                                .map(|k| format!("{k:.0}kHz"))
+                                                                .unwrap_or_default())
+                                                    ))
+                                                    .size(10.0)
+                                                    .color(theme::TEXT_MUTED),
+                                                );
+                                            });
+                                        });
+                                    })
+                                    .response
+                                    .interact(egui::Sense::click_and_drag());
+                                handle_interaction(ui, asset, response);
+                                ui.add_space(4.0);
+                            }
+                        }
+                        MediaViewMode::Grid => {
+                            ui.horizontal_wrapped(|ui| {
                                 for asset in assets.iter().copied() {
                                     let selected = app.selected_asset_id == Some(asset.id);
                                     let bg = if selected {
@@ -1033,117 +1090,51 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                                         .corner_radius(theme::RADIUS_MD)
                                         .inner_margin(egui::Margin::same(4))
                                         .show(ui, |ui| {
-                                            ui.horizontal(|ui| {
-                                                asset_thumb(ui, asset, thumbnail);
-                                                ui.vertical(|ui| {
-                                                    ui.horizontal(|ui| {
-                                                        ui.label(
-                                                            RichText::new(&asset.file_name)
-                                                                .size(12.0),
-                                                        );
-                                                        if components::icon_button(
-                                                            ui,
-                                                            icons::STAR_STR,
-                                                            Text::ToggleFavorite.tr(app.locale),
-                                                            components::IconButtonOpts {
-                                                                family: Some(icons::family()),
-                                                                color: Some(if asset.favorited {
-                                                                    theme::ACCENT
-                                                                } else {
-                                                                    theme::TEXT_MUTED
-                                                                }),
-                                                                ..Default::default()
-                                                            },
-                                                        )
-                                                        .clicked()
-                                                        {
-                                                            toggled_favorite_id = Some(asset.id);
-                                                        }
-                                                    });
+                                            ui.set_max_width(GRID_ASSET_THUMB_SIZE.x);
+                                            ui.vertical(|ui| {
+                                                asset_thumb_sized(
+                                                    ui,
+                                                    asset,
+                                                    GRID_ASSET_THUMB_SIZE,
+                                                    thumbnail,
+                                                );
+                                                ui.horizontal(|ui| {
                                                     ui.label(
-                                                        RichText::new(format!(
-                                                            "{} · {}",
-                                                            asset.duration_label(),
-                                                            asset
-                                                                .resolution
-                                                                .map(|(w, h)| format!("{w}×{h}"))
-                                                                .unwrap_or_else(|| asset
-                                                                    .sample_rate_khz
-                                                                    .map(|k| format!("{k:.0}kHz"))
-                                                                    .unwrap_or_default())
-                                                        ))
-                                                        .size(10.0)
-                                                        .color(theme::TEXT_MUTED),
+                                                        RichText::new(&asset.file_name)
+                                                            .size(10.0)
+                                                            .color(theme::TEXT_PRIMARY),
                                                     );
+                                                    if components::icon_button(
+                                                        ui,
+                                                        icons::STAR_STR,
+                                                        Text::ToggleFavorite.tr(app.locale),
+                                                        components::IconButtonOpts {
+                                                            family: Some(icons::family()),
+                                                            color: Some(if asset.favorited {
+                                                                theme::ACCENT
+                                                            } else {
+                                                                theme::TEXT_MUTED
+                                                            }),
+                                                            ..Default::default()
+                                                        },
+                                                    )
+                                                    .clicked()
+                                                    {
+                                                        toggled_favorite_id = Some(asset.id);
+                                                    }
                                                 });
                                             });
                                         })
                                         .response
                                         .interact(egui::Sense::click_and_drag());
                                     handle_interaction(ui, asset, response);
-                                    ui.add_space(4.0);
                                 }
-                            }
-                            MediaViewMode::Grid => {
-                                ui.horizontal_wrapped(|ui| {
-                                    for asset in assets.iter().copied() {
-                                        let selected = app.selected_asset_id == Some(asset.id);
-                                        let bg = if selected {
-                                            theme::ACCENT.gamma_multiply(0.18)
-                                        } else {
-                                            theme::SURFACE
-                                        };
-                                        let thumbnail = resolve_thumbnail(asset);
-                                        let response = egui::Frame::new()
-                                            .fill(bg)
-                                            .corner_radius(theme::RADIUS_MD)
-                                            .inner_margin(egui::Margin::same(4))
-                                            .show(ui, |ui| {
-                                                ui.set_max_width(GRID_ASSET_THUMB_SIZE.x);
-                                                ui.vertical(|ui| {
-                                                    asset_thumb_sized(
-                                                        ui,
-                                                        asset,
-                                                        GRID_ASSET_THUMB_SIZE,
-                                                        thumbnail,
-                                                    );
-                                                    ui.horizontal(|ui| {
-                                                        ui.label(
-                                                            RichText::new(&asset.file_name)
-                                                                .size(10.0)
-                                                                .color(theme::TEXT_PRIMARY),
-                                                        );
-                                                        if components::icon_button(
-                                                            ui,
-                                                            icons::STAR_STR,
-                                                            Text::ToggleFavorite.tr(app.locale),
-                                                            components::IconButtonOpts {
-                                                                family: Some(icons::family()),
-                                                                color: Some(if asset.favorited {
-                                                                    theme::ACCENT
-                                                                } else {
-                                                                    theme::TEXT_MUTED
-                                                                }),
-                                                                ..Default::default()
-                                                            },
-                                                        )
-                                                        .clicked()
-                                                        {
-                                                            toggled_favorite_id = Some(asset.id);
-                                                        }
-                                                    });
-                                                });
-                                            })
-                                            .response
-                                            .interact(egui::Sense::click_and_drag());
-                                        handle_interaction(ui, asset, response);
-                                    }
-                                });
-                            }
+                            });
                         }
-                    });
-            });
+                    }
+                });
         });
+    });
 
     app.touch_thumbnails(&thumbnail_touches);
     for asset_id in thumbnail_requests {
