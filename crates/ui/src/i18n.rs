@@ -313,7 +313,7 @@ text_catalog! {
     NormalizeTo: pt_br = "Normalizar", en = "Normalize";
     BitrateFromSource: pt_br = "Bitrate = fonte", en = "Bitrate = source";
     ExportAutoNote: pt_br = "redução de ruído + loudnorm 2-pass + true peak limiter, aplicado automático no export — sem ajuste manual por clipe.", en = "noise reduction + loudnorm 2-pass + true peak limiter, applied automatically on export — no per-clip manual adjustment.";
-    Timeline: pt_br = "🔍 Timeline", en = "🔍 Timeline";
+    Timeline: pt_br = "TIMELINE", en = "TIMELINE";
     TimelineEmpty: pt_br = "Este projeto ainda não tem clipes na timeline.", en = "This project doesn't have any clips on the timeline yet.";
     ContextMenuSplit: pt_br = "✂ Dividir no playhead", en = "✂ Split at playhead";
     ContextMenuDelete: pt_br = "🗑 Excluir", en = "🗑 Delete";

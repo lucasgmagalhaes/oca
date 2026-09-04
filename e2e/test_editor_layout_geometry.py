@@ -35,7 +35,7 @@ from test_layer_transform import (
 
 # Rendered text, pt_br (this app's default locale) — same hardcode-the-rendered-string
 # convention `test_properties_panel_disclosure.py`'s own GAIN_SECTION_LABEL comment documents.
-TIMELINE_LABEL = "🔍 Timeline"  # Text::Timeline.tr(pt_br), plain ui.label (not uppercased)
+TIMELINE_LABEL = "TIMELINE"  # Text::Timeline.tr(pt_br), plain ui.label (not uppercased)
 PROGRAM_MONITOR_LABEL = "MONITOR DE PROGRAMA"  # Text::ProgramMonitor.tr(pt_br), via section_label (uppercased)
 CODEC_ROW_LABEL = "Codec"  # Text::PropCodec.tr(pt_br), via prop_row
 FILE_MENU_LABEL = "Arquivo"  # Text::MenuFile.tr(pt_br)
