@@ -173,6 +173,97 @@ fn bundled_archivo_black_bytes_match_the_locked_manifest() {
 }
 
 #[test]
+fn bundled_inter_bytes_match_the_locked_manifest() {
+    assert_face_matches(
+        "inter",
+        "inter/Inter[opsz,wght].ttf",
+        include_bytes!("../../assets/fonts/inter/Inter[opsz,wght].ttf"),
+    );
+}
+
+#[test]
+fn bundled_montserrat_bytes_match_the_locked_manifest() {
+    assert_face_matches(
+        "montserrat",
+        "montserrat/Montserrat[wght].ttf",
+        include_bytes!("../../assets/fonts/montserrat/Montserrat[wght].ttf"),
+    );
+}
+
+#[test]
+fn bundled_roboto_bytes_match_the_locked_manifest() {
+    assert_face_matches(
+        "roboto",
+        "roboto/Roboto[wdth,wght].ttf",
+        include_bytes!("../../assets/fonts/roboto/Roboto[wdth,wght].ttf"),
+    );
+}
+
+#[test]
+fn bundled_open_sans_bytes_match_the_locked_manifest() {
+    assert_face_matches(
+        "open-sans",
+        "open-sans/OpenSans[wdth,wght].ttf",
+        include_bytes!("../../assets/fonts/open-sans/OpenSans[wdth,wght].ttf"),
+    );
+}
+
+#[test]
+fn bundled_poppins_bytes_match_the_locked_manifest() {
+    assert_face_matches(
+        "poppins",
+        "poppins/Poppins-Regular.ttf",
+        include_bytes!("../../assets/fonts/poppins/Poppins-Regular.ttf"),
+    );
+    assert_face_matches(
+        "poppins",
+        "poppins/Poppins-Bold.ttf",
+        include_bytes!("../../assets/fonts/poppins/Poppins-Bold.ttf"),
+    );
+}
+
+#[test]
+fn bundled_nunito_bytes_match_the_locked_manifest() {
+    assert_face_matches(
+        "nunito",
+        "nunito/Nunito[wght].ttf",
+        include_bytes!("../../assets/fonts/nunito/Nunito[wght].ttf"),
+    );
+}
+
+#[test]
+fn bundled_source_sans_3_bytes_match_the_locked_manifest() {
+    assert_face_matches(
+        "source-sans-3",
+        "source-sans-3/SourceSans3[wght].ttf",
+        include_bytes!("../../assets/fonts/source-sans-3/SourceSans3[wght].ttf"),
+    );
+}
+
+#[test]
+fn bundled_barlow_bytes_match_the_locked_manifest() {
+    assert_face_matches(
+        "barlow",
+        "barlow/Barlow-Regular.ttf",
+        include_bytes!("../../assets/fonts/barlow/Barlow-Regular.ttf"),
+    );
+    assert_face_matches(
+        "barlow",
+        "barlow/Barlow-Bold.ttf",
+        include_bytes!("../../assets/fonts/barlow/Barlow-Bold.ttf"),
+    );
+}
+
+#[test]
+fn bundled_fredoka_bytes_match_the_locked_manifest() {
+    assert_face_matches(
+        "fredoka",
+        "fredoka/Fredoka[wdth,wght].ttf",
+        include_bytes!("../../assets/fonts/fredoka/Fredoka[wdth,wght].ttf"),
+    );
+}
+
+#[test]
 fn license_and_source_paths_exist_on_disk_and_never_traverse() {
     // Doc's "static destination allowlist" concern: every path is a plain relative filename
     // under the fonts asset root, never `..` or absolute — and it actually resolves to a real

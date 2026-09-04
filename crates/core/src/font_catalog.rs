@@ -13,22 +13,26 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! FONT-01A: the locked built-in font catalog manifest
+//! FONT-01A/B: the locked built-in font catalog manifest
 //! ([`spec/architecture/built-in-font-catalog.md`](../../../../spec/architecture/built-in-font-catalog.md)).
 //!
-//! Six families today, matching [`crate::timeline::TextFontFamily`]'s current enum variants
-//! one-to-one via [`TextFontFamily::family_id`]/[`TextFontFamily::from_family_id`]. The manifest
-//! fields mirror the doc's required typed fields (`family_id`, `source_path`, `sha256`, license,
-//! weights, ...) so a later slice (FONT-01B) can grow this to the full 43-family/51-file catalog
-//! without a new format migration — this slice is the manifest, its self-consistency validation,
-//! and [`TextFontFamily`]'s `#[serde(other)]` corrupt-load guard, not the catalog expansion or
-//! the full persisted-identity swap on `TextClip` (`.ocproj` still stores the plain enum variant
-//! name rather than a `family_id` slug, so an unrecognized future family still normalizes to
-//! `Lato` on load instead of round-tripping losslessly; see that enum's own doc comment).
+//! FONT-01A's original six families match [`crate::timeline::TextFontFamily`]'s current enum
+//! variants one-to-one via [`TextFontFamily::family_id`]/[`TextFontFamily::from_family_id`]; the
+//! manifest fields mirror the doc's required typed fields (`family_id`, `source_path`, `sha256`,
+//! license, weights, ...). FONT-01B slice 1 grew [`CATALOG`] to 15 families (the doc's full Sans
+//! table) — these new entries have **no [`TextFontFamily`] enum variant yet**, since the doc's
+//! forwards-compatible persisted-identity swap (`.ocproj` storing a `family_id` slug instead of
+//! the plain enum variant name) is a separate, larger structural change this slice still defers
+//! (see [`TextFontFamily`]'s own doc comment) — they're real, usable, shipped-and-tested catalog
+//! entries (already loaded and shaping real text through [`crate::text_layout`], which iterates
+//! [`locked_face_bytes`] generically, not just the six enum-backed families), just not yet
+//! selectable from the Editor's text-clip font picker (FONT-01D, still open).
 //!
 //! Static data only. Acquisition/vendoring is a maintainer-time, offline operation per the doc's
 //! "Acquisition and update workflow" section — no network code belongs in this module, and none
-//! exists here.
+//! exists here. Every binary under `crates/core/assets/fonts/` is vendored from the pinned
+//! [`GOOGLE_FONTS_REVISION`], downloaded and SHA-256/size-verified against the real upstream
+//! files at that exact commit, never a later or different revision.
 
 use crate::timeline::TextFontFamily;
 
@@ -52,13 +56,12 @@ pub enum FontCategory {
 }
 
 /// Whether a family's upstream binaries are static per-weight files or one variable-axis file.
-/// Every family in this initial six-family manifest is static; `Variable` exists so FONT-01B's
-/// variable families (`Inter[opsz,wght].ttf` and friends) slot into the same shape without a
+/// FONT-01A's original six families are all `Static`; FONT-01B's own variable families
+/// (`Inter[opsz,wght].ttf` and friends) use `Variable`, slotting into the same shape without a
 /// breaking change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FontSourceKind {
     Static,
-    #[allow(dead_code)]
     Variable,
 }
 
@@ -106,8 +109,9 @@ pub struct FontFamilyEntry {
 
 const GF_LATIN_CORE: &[&str] = &["gf-latin-core"];
 
-/// The locked catalog: today's six bundled families, one entry each. Order matches
-/// [`TextFontFamily::ALL`] and the asset README's table.
+/// The locked catalog: 15 bundled families, one entry each — FONT-01A's original six (order
+/// matching [`TextFontFamily::ALL`]) followed by FONT-01B slice 1's nine-family Sans expansion.
+/// Matches the asset README's own table.
 pub const CATALOG: &[FontFamilyEntry] = &[
     FontFamilyEntry {
         family_id: "lato",
@@ -236,6 +240,190 @@ pub const CATALOG: &[FontFamilyEntry] = &[
             source_path: "archivo-black/ArchivoBlack-Regular.ttf",
             sha256: "dd9a89a019b4849f66ab75455fe7bdf931311042cbb0f0f97acc061539703180",
             size_bytes: 90_988,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    // FONT-01B slice 1 (`architecture/built-in-font-catalog.md`'s Sans table, minus Lato which
+    // was already bundled) — vendored from the same pinned `GOOGLE_FONTS_REVISION` the doc's
+    // README table names, sha256/size verified against the exact bytes committed under
+    // `crates/core/assets/fonts/`. The remaining categories (Display/Condensed, Serif,
+    // Handwritten, Monospace, international fallback) are still open — see `ROADMAP.md`'s own
+    // FONT-01 entry.
+    FontFamilyEntry {
+        family_id: "inter",
+        display_name: "Inter",
+        category: FontCategory::Sans,
+        tags: &["ui", "editorial"],
+        license_path: "inter/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "inter/Inter[opsz,wght].ttf",
+            sha256: "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+            size_bytes: 876_576,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "montserrat",
+        display_name: "Montserrat",
+        category: FontCategory::Sans,
+        tags: &["geometric", "title"],
+        license_path: "montserrat/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "montserrat/Montserrat[wght].ttf",
+            sha256: "0f7b311b2f3279e4eef9b2f968bcdbab6e28f4daeb1f049f4f278a902bcd82f7",
+            size_bytes: 744_936,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "roboto",
+        display_name: "Roboto",
+        category: FontCategory::Sans,
+        tags: &["dense", "overlay"],
+        license_path: "roboto/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "roboto/Roboto[wdth,wght].ttf",
+            sha256: "d7598e12c5dbef095ff8272cfc55da0250bd07fbdecbac8a530b9b277872a134",
+            size_bytes: 488_584,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "open-sans",
+        display_name: "Open Sans",
+        category: FontCategory::Sans,
+        tags: &["readable", "caption"],
+        license_path: "open-sans/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "open-sans/OpenSans[wdth,wght].ttf",
+            sha256: "36643644f318a812aab2d2ed3bb98f8cf0872527f835fe9398d95fe6b9adb878",
+            size_bytes: 532_636,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "poppins",
+        display_name: "Poppins",
+        category: FontCategory::Sans,
+        tags: &["geometric", "social"],
+        license_path: "poppins/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Static,
+        faces: &[
+            FontFace {
+                weight: 400,
+                source_path: "poppins/Poppins-Regular.ttf",
+                sha256: "7e65201e9b79159e2300267cc885e16c8dcef2424cdfa09a29bfb0980a94a7ba",
+                size_bytes: 160_316,
+            },
+            FontFace {
+                weight: 700,
+                source_path: "poppins/Poppins-Bold.ttf",
+                sha256: "983676516167748b74de6f4771fb384c664fd913acb8b471122ecacf5da5ea6c",
+                size_bytes: 155_996,
+            },
+        ],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "nunito",
+        display_name: "Nunito",
+        category: FontCategory::Sans,
+        tags: &["rounded", "friendly"],
+        license_path: "nunito/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "nunito/Nunito[wght].ttf",
+            sha256: "bb55a5ca5c2042335b3991af27c4d0705d0ef41cac6164ac737fd8f2a1e85207",
+            size_bytes: 276_932,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "source-sans-3",
+        display_name: "Source Sans 3",
+        category: FontCategory::Sans,
+        tags: &["editorial", "tutorial"],
+        license_path: "source-sans-3/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "source-sans-3/SourceSans3[wght].ttf",
+            sha256: "042fe2cc0b933e328410d7acbd0aa6a1873dca5aef81875f4bc214b08825c7b9",
+            size_bytes: 646_340,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "barlow",
+        display_name: "Barlow",
+        category: FontCategory::Sans,
+        tags: &["compact", "overlay"],
+        license_path: "barlow/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Static,
+        faces: &[
+            FontFace {
+                weight: 400,
+                source_path: "barlow/Barlow-Regular.ttf",
+                sha256: "95aa02c7c43096e0dd44d787ba6216864a67157e402adab59b35572e0c1577ea",
+                size_bytes: 104_068,
+            },
+            FontFace {
+                weight: 700,
+                source_path: "barlow/Barlow-Bold.ttf",
+                sha256: "84e6a4d61e7c3e21f3c50ea6a4f7e5303a3467864c038be6ea3759bab8d547f9",
+                size_bytes: 108_220,
+            },
+        ],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "fredoka",
+        display_name: "Fredoka",
+        category: FontCategory::Sans,
+        tags: &["rounded", "playful"],
+        license_path: "fredoka/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "fredoka/Fredoka[wdth,wght].ttf",
+            sha256: "2ba02e68b152868aef9ba28e24b3648c7d457fe6f25c761f2c2c53fb61a73fc8",
+            size_bytes: 159_184,
         }],
         default_weight: 400,
         fallback_family_id: Some("lato"),
@@ -407,6 +595,61 @@ pub fn locked_face_bytes() -> &'static [(&'static str, u16, &'static [u8])] {
             "archivo-black",
             400,
             include_bytes!("../assets/fonts/archivo-black/ArchivoBlack-Regular.ttf"),
+        ),
+        (
+            "inter",
+            400,
+            include_bytes!("../assets/fonts/inter/Inter[opsz,wght].ttf"),
+        ),
+        (
+            "montserrat",
+            400,
+            include_bytes!("../assets/fonts/montserrat/Montserrat[wght].ttf"),
+        ),
+        (
+            "roboto",
+            400,
+            include_bytes!("../assets/fonts/roboto/Roboto[wdth,wght].ttf"),
+        ),
+        (
+            "open-sans",
+            400,
+            include_bytes!("../assets/fonts/open-sans/OpenSans[wdth,wght].ttf"),
+        ),
+        (
+            "poppins",
+            400,
+            include_bytes!("../assets/fonts/poppins/Poppins-Regular.ttf"),
+        ),
+        (
+            "poppins",
+            700,
+            include_bytes!("../assets/fonts/poppins/Poppins-Bold.ttf"),
+        ),
+        (
+            "nunito",
+            400,
+            include_bytes!("../assets/fonts/nunito/Nunito[wght].ttf"),
+        ),
+        (
+            "source-sans-3",
+            400,
+            include_bytes!("../assets/fonts/source-sans-3/SourceSans3[wght].ttf"),
+        ),
+        (
+            "barlow",
+            400,
+            include_bytes!("../assets/fonts/barlow/Barlow-Regular.ttf"),
+        ),
+        (
+            "barlow",
+            700,
+            include_bytes!("../assets/fonts/barlow/Barlow-Bold.ttf"),
+        ),
+        (
+            "fredoka",
+            400,
+            include_bytes!("../assets/fonts/fredoka/Fredoka[wdth,wght].ttf"),
         ),
     ]
 }
