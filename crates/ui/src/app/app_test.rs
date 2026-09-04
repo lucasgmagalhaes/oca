@@ -7347,3 +7347,98 @@ fn cancel_apply_graphic_template_discards_the_staged_template_without_applying()
     assert!(app.pending_graphic_template_apply.is_none());
     assert!(app.active_project().timeline().tracks.is_empty());
 }
+
+#[test]
+fn apply_effect_preset_blur_sets_the_default_intensity() {
+    use crate::app::effects_panel::{EffectPreset, EFFECT_DEFAULT_INTENSITY};
+
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.apply_effect_preset(EffectPreset::Blur);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].blur_intensity, EFFECT_DEFAULT_INTENSITY);
+}
+
+#[test]
+fn apply_effect_preset_black_and_white_sets_the_color_filter() {
+    use crate::app::effects_panel::EffectPreset;
+    use avcore::timeline::ColorFilter;
+
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.apply_effect_preset(EffectPreset::BlackAndWhite);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].color_filter, ColorFilter::BlackAndWhite);
+}
+
+#[test]
+fn apply_effect_preset_chroma_key_enables_it_without_touching_existing_color_or_tolerance() {
+    use crate::app::effects_panel::EffectPreset;
+
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.set_selected_clip_chroma_key(false, [10, 20, 30], 0.42);
+
+    app.apply_effect_preset(EffectPreset::ChromaKey);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert!(clips[0].chroma_key_enabled);
+    assert_eq!(clips[0].chroma_key_color, [10, 20, 30]);
+    assert_eq!(clips[0].chroma_key_tolerance, 0.42);
+}
+
+#[test]
+fn apply_effect_preset_is_a_no_op_when_nothing_is_selected() {
+    use crate::app::effects_panel::EffectPreset;
+
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.apply_effect_preset(EffectPreset::Blur);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].blur_intensity, 0.0);
+}

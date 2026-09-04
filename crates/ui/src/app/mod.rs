@@ -43,6 +43,7 @@ mod collab_bundle;
 mod color;
 mod crash_review;
 mod dynamic_reframe;
+pub mod effects_panel;
 pub(crate) mod error_reporting;
 pub mod export;
 mod gameplay_events;
