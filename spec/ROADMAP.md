@@ -1643,17 +1643,45 @@ an item earlier:
   `nested_sequence_id`) — the doc's own "missing media produces offline references rather than
   dropping clips" acceptance criterion.
 
-  **Deliberately not attempted: real OpenTimelineIO JSON serialization.** OTIO's actual wire
-  format (`OTIO_SCHEMA` name/version tags, exact field names for `Timeline`/`Stack`/`Track`/
-  `Clip`/`Gap`/`Transition`/`Marker`) is a real external spec this sandbox has no network path to
-  fetch or verify against — writing a byte-accurate serializer from memory alone would be exactly
-  the kind of guessing `CLAUDE.md`'s own "do not guess APIs, versions, flags, or package names"
-  rule forbids. So this slice's types are Oca's own intermediate representation, not OTIO's;
-  serializing them to/from a real, verified `.otio` schema version — and the reverse import
-  direction — are real, separate follow-up slices once that spec can actually be checked
-  against. `sequence_to_interchange` also uses a fixed microsecond-resolution time rate rather
-  than each clip's own native probed frame rate, a documented placeholder for the same "not yet
-  verified against a real target format" reason.
+  **Follow-up: real OpenTimelineIO JSON serialization now shipped**, the exact gap this slice
+  originally deferred for lack of network access to verify OTIO's real wire format against. A
+  later session had real network access, so `avcore::interchange::otio_json` writes an actual
+  `.otio` document — and, critically, verified it against the **real reference implementation**,
+  not just sample files eyeballed off GitHub: `pip install opentimelineio` (0.18.1, the current
+  stable release) and `read_from_file` on oca's own generated output, for real, in this
+  environment. This caught a genuine mismatch a docs-only check would have missed: an initial
+  attempt used `Marker.3` (a nested `Color.1` object), matching a sample fetched from the
+  OpenTimelineIO GitHub repo's `main` branch — but 0.18.1's own `otio.schema.Marker()`
+  constructor emits `Marker.2` (a plain string `color` field, plus a `comment` field) and
+  rejected the `Marker.3` file outright with `UnsupportedSchemaError` when loaded back through
+  the real library. `main`'s own sample data was ahead of what's actually released/installable —
+  fixed to `Marker.2`, then re-verified clean: every object type oca emits (`Timeline.1`/
+  `Stack.1`/`Track.1`/`Clip.1`/`Gap.1`/`ExternalReference.1`/`MissingReference.1`/`Marker.2`/
+  `TimeRange.1`/`RationalTime.1`) loads through `opentimelineio.adapters.read_from_file` with the
+  correct track order, clip timing, media reference resolution (both `ExternalReference` and
+  `MissingReference` cases), and marker color/timing intact, and the loaded timeline
+  round-trips cleanly back through OTIO's *own* JSON writer. `Clip.1` (a single `media_reference`
+  field, matching `MediaReference`'s own single-reference shape) was deliberately kept over the
+  newer `Clip.2` (a multi-reference map) even though 0.18.1 constructs `Clip.2` by default —
+  confirmed for real that 0.18.1's reader still accepts `Clip.1` (backward compatibility, not an
+  assumption; tested directly against the OTIO project's own `simple_cut.otio` fixture). 9 new
+  `cargo test -p core --lib` cases (480/480 total passing, this environment's FFmpeg/GStreamer/
+  ONNX toolchain fully links here) cover every schema tag, both media-reference variants, marker
+  color mapping, an empty timeline, and JSON well-formedness — on top of the real-library
+  end-to-end check above, which isn't (and can't be) part of the Rust test suite itself.
+
+  **Still not attempted: the reverse import direction** (reading an arbitrary real-world `.otio`
+  file from Resolve/Premiere/the reference implementation) — a genuinely larger, riskier scope
+  than verifying export against known-good samples: unknown schema versions, `Clip.2`'s
+  multi-reference form, nested `Stack`s, vendor-specific metadata. Left as CF-05's next slice.
+  `sequence_to_interchange` also still uses a fixed microsecond-resolution time rate rather than
+  each clip's own native probed frame rate — unrelated to the serialization gap this follow-up
+  closed, a separate remaining placeholder.
+
+  **UI wiring**: the Editor menu bar's File menu gained "Export OpenTimelineIO (.otio)..."
+  (`App::export_otio_for_active_sequence`, mirroring `export_collab_bundle`'s own "build the
+  payload in `core`, this method just turns the `Result` into a toast or a written file" shape)
+  — a real save-file dialog, not just a library function nothing in the app can reach yet.
 
   **Slice 4's compatibility report shipped early too** (before any real file gets written, since
   the report only needs to know what *would* survive interchange): `interchange_compatibility_
