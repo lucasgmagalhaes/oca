@@ -86,7 +86,7 @@ sysinfo = "0.39"
 # it (confirmed in a throwaway scratch crate: builds and runs cleanly on a machine with no
 # NVIDIA GPU/driver at all, `Nvml::init()` just returns an `Err` there), so this never turns
 # into a build-time hard requirement the way a statically-linked vendor SDK would.
-nvml-wrapper = "0.12"
+nvml-wrapper = "0.13"
 # D7's collaboration-bundle archive format (`collab_bundle`). `default-features = false` since
 # every entry this crate ever writes (already-gzip-compressed `.ocproj` bytes, already-encoded
 # proxy `.mp4`s) is incompressible in practice -- `CompressionMethod::Stored` is used explicitly,
