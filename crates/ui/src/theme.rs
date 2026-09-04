@@ -13,66 +13,127 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! The dark/teal color palette (matching `ui.html` / the design comp) and the egui `Visuals`
-//! it's applied through. Screens reference these constants directly rather than going
-//! through egui's default palette, so the whole app reads as one consistent theme.
+//! The dark/violet color palette and the egui `Visuals` it's applied through, per
+//! `OCA_Design_System_egui.md` (repo root) — this is Implementation Priority #1 from that doc
+//! ("theme tokens"), the highest-leverage single-file change every screen inherits for free
+//! through the existing `theme::TOKEN` references. Screens reference these constants directly
+//! rather than going through egui's default palette, so the whole app reads as one consistent
+//! theme. See that doc's own sections 2/3/5/6 for the exact source values; every constant below
+//! carries the doc's own token name in its doc comment for traceability.
+//!
+//! Deliberately **not** done in this pass (see the doc's own Implementation Priority list and
+//! this repo's plan notes): typography (Inter/IBM Plex Mono aren't bundled yet), the `cine_*`
+//! component-catalog rename (this crate's existing `components::` module already covers the same
+//! ground under different names), and per-screen geometry (tool rail/track-header/timeline-
+//! header sizes) — each is its own separate, scoped follow-up.
 
-use egui::{Color32, CornerRadius, Stroke, Visuals};
+use egui::{Color32, CornerRadius, Shadow, Stroke, Visuals};
 
-pub const BG: Color32 = Color32::from_rgb(0x12, 0x16, 0x1c);
-pub const SURFACE: Color32 = Color32::from_rgb(0x1a, 0x20, 0x29);
-pub const SURFACE_2: Color32 = Color32::from_rgb(0x21, 0x28, 0x36);
-pub const BORDER: Color32 = Color32::from_rgb(0x2b, 0x33, 0x40);
-pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(0xee, 0xf1, 0xf4);
-pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(0xa9, 0xb2, 0xbd);
-pub const TEXT_MUTED: Color32 = Color32::from_rgb(0x6c, 0x76, 0x83);
-/// Sampled from the OCA mockup's Export button fill / timecode readout — the largest
-/// saturated-color cluster in the reference image (see
-/// `spec/architecture/editor-ui-visual-redesign.md`'s Color system section). Replaces the
-/// prior teal (`#2ea39e`); this is a global, high-blast-radius constant — selection
+/// `bg_canvas` — application background.
+pub const BG: Color32 = Color32::from_rgb(0x09, 0x0a, 0x0d);
+/// `bg_workspace` — main workspace. Not yet wired to a distinct call site (every screen today
+/// reads `BG` or `SURFACE`); kept available as its own token since the doc's palette treats it
+/// as a real, separate step between `BG`/`SURFACE`.
+pub const BG_WORKSPACE: Color32 = Color32::from_rgb(0x0d, 0x0e, 0x12);
+/// `bg_panel` — side panels.
+pub const SURFACE: Color32 = Color32::from_rgb(0x11, 0x12, 0x18);
+/// `bg_elevated` — menus, popovers, dialogs. Not yet wired to a distinct call site (menus/
+/// dialogs currently read `SURFACE`/`window_fill`); kept available for a future pass that gives
+/// elevated surfaces their own fill.
+pub const BG_ELEVATED: Color32 = Color32::from_rgb(0x15, 0x16, 0x1d);
+/// `bg_control` — inputs and controls.
+pub const SURFACE_2: Color32 = Color32::from_rgb(0x19, 0x1a, 0x21);
+/// `bg_hover` — hovered controls. Not yet wired to a distinct call site (hover currently reuses
+/// `SURFACE_2`); kept available for a future pass that separates control-fill from hover-fill.
+pub const BG_HOVER: Color32 = Color32::from_rgb(0x1d, 0x1e, 0x26);
+/// `border_subtle` — very subtle separators. Not yet wired to a distinct call site.
+pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(0x1b, 0x1c, 0x23);
+/// `border_default` — standard structure.
+pub const BORDER: Color32 = Color32::from_rgb(0x24, 0x26, 0x30);
+/// `border_strong` — active structure/dialogs. Not yet wired to a distinct call site.
+pub const BORDER_STRONG: Color32 = Color32::from_rgb(0x30, 0x32, 0x3d);
+/// `text_primary` — main labels.
+pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(0xe8, 0xe9, 0xed);
+/// `text_secondary` — secondary information.
+pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(0x9a, 0x9d, 0xa8);
+/// `text_tertiary` — metadata / hints.
+pub const TEXT_MUTED: Color32 = Color32::from_rgb(0x62, 0x65, 0x71);
+/// `text_disabled` — disabled controls. Not yet wired to a distinct call site (disabled widgets
+/// currently fall back to egui's own default disabled styling).
+pub const TEXT_DISABLED: Color32 = Color32::from_rgb(0x3e, 0x40, 0x4a);
+/// `accent_primary` — primary interaction. Global, high-blast-radius constant: selection
 /// highlighting, hovered/active widget strokes, the active tool-button fill, tags, etc. all
 /// derive from it.
-pub const ACCENT: Color32 = Color32::from_rgb(0x70, 0x58, 0xe4);
-pub const ACCENT_TINT: Color32 = Color32::from_rgba_premultiplied(0x38, 0x2c, 0x72, 0x80);
+pub const ACCENT: Color32 = Color32::from_rgb(0x92, 0x70, 0xff);
+/// `accent_hover`. Not yet wired to a distinct call site (hovered widgets currently derive their
+/// stroke from `ACCENT` directly via `apply()`'s `Visuals` setup).
+pub const ACCENT_HOVER: Color32 = Color32::from_rgb(0xa1, 0x84, 0xff);
+/// `accent_active` — pressed. Not yet wired to a distinct call site (active/pressed widgets
+/// currently derive their fill from `ACCENT.gamma_multiply(..)` via `apply()`).
+pub const ACCENT_ACTIVE: Color32 = Color32::from_rgb(0x7c, 0x5c, 0xe0);
+/// `accent_muted` — selected background. Opaque per the doc's own hex (previously a
+/// semi-transparent premultiplied tint derived from the old teal/violet accent) — every existing
+/// call site uses this as a flat `.fill(...)` on a selected/active chip, so an opaque fill reads
+/// the same or cleaner, not a regression.
+pub const ACCENT_TINT: Color32 = Color32::from_rgb(0x21, 0x1c, 0x31);
+/// Not covered by the design doc's own token table (no `accent_secondary`/equivalent listed) —
+/// kept at its prior value. Used for the timeline's transition-wedge fill and similar secondary
+/// accents that shouldn't compete with `ACCENT` itself.
 pub const ACCENT_2: Color32 = Color32::from_rgb(0x4f, 0x7c, 0xe0);
-/// Default (non-color-labeled) audio-clip fill on the timeline — sampled from the mockup's
-/// `Ambient_Score.wav` waveform lane. Deliberately its own token rather than derived from
-/// `ACCENT` (as it was before `ACCENT` moved from teal to violet): the mockup's audio-track
-/// color is a different hue family (dark teal-green), not a dimmed accent, so audio clips would
-/// otherwise silently go violet along with everything else `ACCENT` drives. See
-/// `spec/architecture/editor-ui-visual-redesign.md`'s Color system section.
-pub const AUDIO_TINT: Color32 = Color32::from_rgb(0x2d, 0x4a, 0x41);
-pub const ERROR: Color32 = Color32::from_rgb(0xe0, 0x57, 0x4f);
+/// `media_video`. Not yet wired to a distinct call site (video clips currently render via
+/// `SURFACE_2`); kept available for a future timeline-color pass.
+pub const MEDIA_VIDEO: Color32 = Color32::from_rgb(0x3d, 0x5f, 0x91);
+/// `media_audio` — default (non-color-labeled) audio-clip fill on the timeline. Deliberately its
+/// own token rather than derived from `ACCENT` — a dimmed accent would silently follow `ACCENT`'s
+/// own hue, which this doc's audio color explicitly isn't.
+pub const AUDIO_TINT: Color32 = Color32::from_rgb(0x3d, 0x8a, 0x62);
+/// `state_error`.
+pub const ERROR: Color32 = Color32::from_rgb(0xd9, 0x5c, 0x5c);
 pub const ERROR_TINT: Color32 = Color32::from_rgba_premultiplied(0x2a, 0x11, 0x10, 0x80);
-/// Non-error caution states (e.g. a paused job) — distinct from `ERROR` (failure) and `ACCENT`
-/// (selection/brand), so a warning doesn't have to borrow either's meaning.
-pub const WARNING: Color32 = Color32::from_rgb(0xe0, 0xa8, 0x3d);
+/// `state_warning` — non-error caution states (e.g. a paused job) — distinct from `ERROR`
+/// (failure) and `ACCENT` (selection/brand), so a warning doesn't have to borrow either's
+/// meaning.
+pub const WARNING: Color32 = Color32::from_rgb(0xd5, 0xa8, 0x4a);
 pub const WARNING_TINT: Color32 = Color32::from_rgba_premultiplied(0x2a, 0x20, 0x0a, 0x80);
+/// `state_success`. Not yet wired to a distinct call site.
+pub const SUCCESS: Color32 = Color32::from_rgb(0x62, 0xb9, 0x82);
+/// `state_playhead` — the timeline's playhead line. A dedicated token rather than reusing
+/// `ERROR`: the doc explicitly lists them as separate roles (failure vs. a scrub/edit indicator)
+/// even though they happened to share a value in this app's own prior teal/violet palette.
+pub const PLAYHEAD: Color32 = Color32::from_rgb(0xff, 0x5b, 0x67);
 /// Neutral informational callout background (e.g. Queue's tech-note banner) — named so a
-/// second consumer doesn't reinvent `ACCENT.gamma_multiply(0.10)`. Foreground text on it keeps
-/// using `TEXT_SECONDARY`/`TEXT_PRIMARY` as normal — informational callouts don't need a
-/// separate foreground token the way a status tag's fg/bg pair does.
+/// second consumer doesn't reinvent `ACCENT.gamma_multiply(0.10)`. Not part of the design doc's
+/// own token table; kept as this codebase's own addition.
 pub const INFO_TINT: Color32 = Color32::from_rgba_premultiplied(0x0a, 0x20, 0x1f, 0x40);
 
-/// Tight inline gaps — glyph-to-label, dense chip rows.
+/// `space_xs` — icon/text gap.
 pub const SPACE_XS: f32 = 4.0;
-/// The default gap between adjacent controls — matches `apply()`'s global `item_spacing`.
+/// `space_sm` — control padding. Matches `apply()`'s global `item_spacing`.
 pub const SPACE_SM: f32 = 8.0;
-/// Section-to-section gaps within a panel.
+/// `space_md` — component spacing.
 pub const SPACE_MD: f32 = 12.0;
-/// Page-level top/bottom padding.
-pub const SPACE_LG: f32 = 20.0;
+/// `space_lg` — panel content.
+pub const SPACE_LG: f32 = 16.0;
+/// `space_xl` — major groups. Not yet wired to a distinct call site.
+pub const SPACE_XL: f32 = 20.0;
+/// `space_2xl` — section separation. Not yet wired to a distinct call site.
+pub const SPACE_2XL: f32 = 24.0;
+/// `space_3xl` — major layout separation. Not yet wired to a distinct call site.
+pub const SPACE_3XL: f32 = 32.0;
 
-/// Dense inline surfaces: timeline clips at close zoom, small badges.
-pub const RADIUS_SM: u8 = 4;
-/// The default for card-like surfaces: panels, buttons, modals, media/project cards. Matches
-/// the global widget default `apply()` already sets.
-pub const RADIUS_MD: u8 = 8;
-/// Full pill shape — status tags, circular avatars. Semantically distinct from `RADIUS_MD`, not
-/// a fourth arbitrary radius.
+/// Standard controls/inputs/buttons/tooltips/timeline clips, per the doc's Geometry table.
+pub const RADIUS_SM: u8 = 3;
+/// Menus/dialogs, per the doc's Geometry table.
+pub const RADIUS_MD: u8 = 4;
+/// Panels — explicitly square-cornered per the doc ("Panels | 0px").
+pub const RADIUS_NONE: u8 = 0;
+/// Full pill shape — status tags, circular avatars. Not covered by the doc's radius table (no
+/// tag/badge geometry listed); kept as this codebase's own addition rather than forced into a
+/// 0/3/4px box that would visibly break every existing pill-shaped tag.
 pub const RADIUS_PILL: u8 = 200;
 
-/// Applies the dark/teal palette used throughout the HTML mockups to the egui context.
+/// Applies the dark/violet palette to the egui context, per `OCA_Design_System_egui.md`'s own
+/// Section 7 theme baseline.
 pub fn apply(ctx: &egui::Context) {
     ctx.set_theme(egui::ThemePreference::Dark);
 
@@ -95,27 +156,33 @@ pub fn apply(ctx: &egui::Context) {
     visuals.widgets.inactive.weak_bg_fill = SURFACE_2;
     visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, BORDER);
     visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, TEXT_SECONDARY);
-    visuals.widgets.inactive.corner_radius = CornerRadius::same(8);
+    visuals.widgets.inactive.corner_radius = CornerRadius::same(RADIUS_SM as u8);
 
     visuals.widgets.hovered.bg_fill = SURFACE_2;
     visuals.widgets.hovered.weak_bg_fill = SURFACE_2;
     visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, ACCENT);
     visuals.widgets.hovered.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
-    visuals.widgets.hovered.corner_radius = CornerRadius::same(8);
+    visuals.widgets.hovered.corner_radius = CornerRadius::same(RADIUS_SM as u8);
 
     visuals.widgets.active.bg_fill = ACCENT.gamma_multiply(0.3);
     visuals.widgets.active.weak_bg_fill = ACCENT.gamma_multiply(0.3);
     visuals.widgets.active.bg_stroke = Stroke::new(1.0, ACCENT);
     visuals.widgets.active.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
-    visuals.widgets.active.corner_radius = CornerRadius::same(8);
+    visuals.widgets.active.corner_radius = CornerRadius::same(RADIUS_SM as u8);
 
-    visuals.window_corner_radius = CornerRadius::same(10);
+    visuals.window_corner_radius = CornerRadius::same(RADIUS_MD as u8);
     visuals.window_stroke = Stroke::new(1.0, BORDER);
+    visuals.menu_corner_radius = CornerRadius::same(RADIUS_MD as u8);
+    // Doc's Section 6 "Shadows: default none" — menus/dialogs may keep a very subtle one, but
+    // this app's existing borderless/flat look already reads as "none", so this just makes it
+    // explicit rather than relying on egui's own default shadow.
+    visuals.window_shadow = Shadow::NONE;
+    visuals.popup_shadow = Shadow::NONE;
 
     ctx.set_visuals(visuals);
 
     ctx.all_styles_mut(|style| {
-        style.spacing.item_spacing = egui::vec2(8.0, 8.0);
-        style.spacing.button_padding = egui::vec2(10.0, 6.0);
+        style.spacing.item_spacing = egui::vec2(8.0, 4.0);
+        style.spacing.button_padding = egui::vec2(8.0, 4.0);
     });
 }
