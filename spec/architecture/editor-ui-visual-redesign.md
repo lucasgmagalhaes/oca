@@ -333,15 +333,18 @@ Mapping:
   (`GRID_ASSET_THUMB_SIZE`, 120×72 vs. the list row's 48×28) and the filename beneath instead of
   alongside. Click/double-click/drag-to-timeline behavior is identical in both layouts (shared
   via one `handle_interaction` closure) — only the tile's own content differs.
-- **Real per-asset thumbnails** (the mockup's actual decoded video frames) — this is the
-  single biggest "new capability, not styling" item in this whole panel. It's a deliberate,
-  documented departure from the current placeholder design, and doing it right means reusing
-  `avcore::FrameSampler` (already shared by auto-reframe/motion-tracking/background-removal/
-  thumbnail extraction per `ROADMAP.md` P1 item 5) to grab one representative frame per asset,
-  decode it once, and cache the result (texture, keyed by asset id) — not a per-frame
-  re-decode, and not the timeline clip filmstrip's own per-tile pipeline repurposed as-is
-  (different cadence: one thumbnail per asset in a list vs. many tiles per visible timeline
-  clip). Worth scoping as its own item, not folded silently into "restyle the media panel."
+- **Real per-asset thumbnails — done**, and turned out cheaper than this doc originally scoped
+  it: `App::request_thumbnail`/`pump_thumbnail_queue` (the bounded-LRU poster-frame pipeline
+  built for the timeline filmstrip, `avcore::FrameSampler`-backed) already explicitly supports
+  "one media library/project card poster frame" at `frame_index: 0` — `screens::library`
+  (Mídia screen) and `screens::home` (project cards) already reused it exactly this way. The
+  Editor's own media library panel was the one caller still on the placeholder-only path; wiring
+  it in was a matter of reusing the existing pattern, not building a second thumbnailing system.
+  `asset_thumb`/`asset_thumb_sized` now take an `Option<&egui::TextureHandle>` and paint the
+  real poster frame when cached (`painter.image`), falling back to the placeholder glyph
+  otherwise — the duration badge still overlays either way. Audio assets never request a frame
+  (nothing to decode), same "kind reads at a glance" placeholder as before. Works in both List
+  and Grid layouts, sharing one `resolve_thumbnail` lookup closure.
 
 ### Program monitor (preview panel)
 
@@ -603,12 +606,12 @@ principles, and this doc's own findings above:
    with the user first, per the open decision this doc originally left). See the Top bar
    section's own bullets for exactly which menu items are wired vs. which two menus (Window,
    Help) still have no real feature behind them.
-6. Everything flagged as a genuine new feature above (real per-asset thumbnails, Favorites/
-   Recent, Anchor X/Y) — each is its own scoped follow-up item, not part of "implement the
-   mockup" in one pass. (Snapshot capture, the grid/list view toggle, and zoom controls were
-   all picked out of this list and shipped — see items 9-11 below.) The marker button was
-   never in this list (it maps to an already-real feature, just unwired) but shipped alongside
-   snapshot capture in the same slice.
+6. Everything flagged as a genuine new feature above (Favorites/Recent, Anchor X/Y) — each is
+   its own scoped follow-up item, not part of "implement the mockup" in one pass. (Snapshot
+   capture, the grid/list view toggle, zoom controls, and real per-asset thumbnails were all
+   picked out of this list and shipped — see items 9-12 below.) The marker button was never in
+   this list (it maps to an already-real feature, just unwired) but shipped alongside snapshot
+   capture in the same slice.
 7. **Per-channel audio metering — done**, picked out of item 6's list at the user's request —
    see the Inspector section's own bullet.
 8. **Blend Mode — done.** Data model, export, live preview (the full FFmpeg 40-mode set, per
@@ -620,6 +623,8 @@ principles, and this doc's own findings above:
 10. **Preview transport snapshot capture + marker button — done.** See the Program monitor
     section's "Transport additions" bullet.
 11. **Preview zoom controls (50%/Fit/100%) — done.** See the Program monitor section's own
+    bullet.
+12. **Media library real per-asset thumbnails — done.** See the Media library section's own
     bullet.
 
 ## Verification
