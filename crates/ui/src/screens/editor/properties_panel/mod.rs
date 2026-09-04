@@ -74,6 +74,17 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         return;
                     }
 
+                    // Section 11: the Effects Panel stays browsable with no clip selected —
+                    // unlike every other tab, which requires a selection to show anything —
+                    // so this short-circuits before the `NoClipSelected` early-return below.
+                    if app.properties_tab == crate::app::PropertiesTab::Effects
+                        && app.selected_clip_id.is_none()
+                    {
+                        properties_tab_bar(app, ui, locale);
+                        effects_panel_browser(app, ui, locale, false, None);
+                        return;
+                    }
+
                     components::section_label(ui, Text::SelectedClip.tr(locale));
                     let Some(asset) = app.selected_asset() else {
                         ui.label(
@@ -648,6 +659,12 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                             }
 
                             if tab == crate::app::PropertiesTab::Effects {
+                                let effects_track_kind = app.selected_clip_track_kind();
+                                effects_panel_browser(app, ui, locale, true, effects_track_kind);
+                                ui.add_space(8.0);
+                                ui.separator();
+                                ui.add_space(4.0);
+
                                 let color_filter_changed = components::property_section(
                                     ui,
                                     clip_id,
@@ -1323,6 +1340,62 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                 });
         });
     });
+}
+
+/// Effects Panel (`CINECUT_PRODUCT_DECISIONS_v1.0.md` sections 9-12): a categorized list of
+/// [`crate::app::effects_panel::EffectPreset`] entries. Double-click applies the effect to the
+/// selected clip (Method A) — Method B (drag-and-drop onto a timeline clip) is not implemented;
+/// this panel only covers the double-click path, honestly, rather than half-wiring a drag
+/// source with no working drop target. `has_selection` gates whether double-click actually
+/// applies anything or just shows the "select a clip" hint (Section 11); `track_kind` filters
+/// out video-only presets (Freeze/Deflicker) when it's known to be an audio clip.
+fn effects_panel_browser(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    locale: crate::i18n::Locale,
+    has_selection: bool,
+    track_kind: Option<avcore::timeline::TrackKind>,
+) {
+    use crate::app::effects_panel::EffectPreset;
+
+    components::section_label(ui, Text::EffectsPanelTitle.tr(locale));
+    if !has_selection {
+        ui.label(
+            RichText::new(Text::EffectsPanelNoSelectionHint.tr(locale))
+                .size(11.0)
+                .color(theme::TEXT_MUTED),
+        );
+    }
+    ui.add_space(4.0);
+
+    let mut applied: Option<EffectPreset> = None;
+    let mut current_category = None;
+    for preset in EffectPreset::ALL {
+        if preset.video_only() && track_kind == Some(avcore::timeline::TrackKind::Audio) {
+            continue;
+        }
+        if current_category != Some(preset.category()) {
+            current_category = Some(preset.category());
+            ui.add_space(if current_category.is_some() { 6.0 } else { 0.0 });
+            ui.label(
+                RichText::new(preset.category().label(locale))
+                    .size(10.5)
+                    .color(theme::TEXT_SECONDARY),
+            );
+        }
+        let resp = ui.add(
+            egui::Button::new(RichText::new(preset.label(locale)).size(12.0))
+                .min_size(egui::vec2(ui.available_width(), 22.0))
+                .fill(egui::Color32::TRANSPARENT),
+        );
+        if resp.double_clicked() && has_selection {
+            applied = Some(preset);
+        }
+    }
+
+    if let Some(preset) = applied {
+        app.apply_effect_preset(preset);
+    }
 }
 
 /// Inspector/Effects/Audio tab strip (`editor-ui-visual-redesign.md`'s Inspector mapping) —
