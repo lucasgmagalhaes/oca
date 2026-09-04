@@ -390,6 +390,49 @@ pub(super) fn draw_marker_ticks(
     seek_to
 }
 
+/// Periodic timecode labels along the ruler ("00:00, 00:30, 01:00, ..."), confirmed missing
+/// against the Timeline mockup via a real screenshot — the ruler previously painted nothing but
+/// its background fill, marker ticks, and the playhead, no actual time grid at all. Picks a
+/// "nice" interval from a fixed candidate list so labels land at least `MIN_LABEL_SPACING_PX`
+/// apart regardless of zoom, rather than a fixed-seconds interval that's either unreadably dense
+/// zoomed out or wastefully sparse zoomed in. `rect` is the ruler's full (un-scrolled) content
+/// rect — `rect.left()` is timeline `t=0` — so tick x-positions need no separate pan offset;
+/// egui's own `ScrollArea` clipping already limits what actually paints to the visible viewport.
+pub(super) fn draw_ruler_ticks(painter: &egui::Painter, rect: egui::Rect, px_per_sec: f32) {
+    const MIN_LABEL_SPACING_PX: f32 = 70.0;
+    const CANDIDATE_INTERVALS_SECS: &[f64] = &[
+        1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 900.0, 1800.0, 3600.0,
+    ];
+    if px_per_sec <= 0.0 {
+        return;
+    }
+    let interval = CANDIDATE_INTERVALS_SECS
+        .iter()
+        .copied()
+        .find(|secs| *secs as f32 * px_per_sec >= MIN_LABEL_SPACING_PX)
+        .unwrap_or(3600.0);
+    let last_tick = ((rect.width() / px_per_sec) as f64 / interval).ceil() as i64 + 1;
+    for i in 0..=last_tick {
+        let secs = i as f64 * interval;
+        let x = rect.left() + (secs * px_per_sec as f64) as f32;
+        if x > rect.right() + 40.0 {
+            break;
+        }
+        painter.vline(
+            x,
+            rect.bottom() - 4.0..=rect.bottom(),
+            egui::Stroke::new(1.0, theme::BORDER),
+        );
+        painter.text(
+            egui::pos2(x + 3.0, rect.top()),
+            egui::Align2::LEFT_TOP,
+            avcore::media::format_timecode(secs),
+            egui::FontId::monospace(9.0),
+            theme::TEXT_MUTED,
+        );
+    }
+}
+
 pub(super) fn draw_playhead(
     ui: &egui::Ui,
     rect: egui::Rect,
@@ -400,7 +443,7 @@ pub(super) fn draw_playhead(
     let x = rect.left() + playhead_secs as f32 * px_per_sec;
     if x >= rect.left() && x <= rect.right() {
         // `theme::PLAYHEAD` (`state_playhead`), not `theme::ERROR`/`ACCENT` — a distinct red
-        // dedicated to the current-position marker, per `OCA_Design_System_egui.md`'s own
+        // dedicated to the current-position marker, per `CINECUT_Design_System_v1.0.md`'s own
         // separate `state_playhead`/`state_error` tokens (they happened to share a value in this
         // app's prior palette, but the doc treats them as different roles).
         ui.painter().vline(

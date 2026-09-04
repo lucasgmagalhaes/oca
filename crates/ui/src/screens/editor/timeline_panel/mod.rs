@@ -54,8 +54,8 @@ pub(super) const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
 
 use draw::{
     color_filter_tint, draw_filmstrip, draw_frozen_poster, draw_keyframe_markers,
-    draw_marker_ticks, draw_playhead, draw_transition_wedge, draw_waveform, shape_kind_glyph,
-    ThumbnailDrawWork,
+    draw_marker_ticks, draw_playhead, draw_ruler_ticks, draw_transition_wedge, draw_waveform,
+    shape_kind_glyph, ThumbnailDrawWork,
 };
 use snap::{snap_move_start, snap_to_nearest, waveform_snap_points_for_clip, ClipDrag};
 
@@ -241,12 +241,15 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 )
                 .horizontal_scroll_offset(app.timeline_pan_px)
                 .show(ui, |ui| {
+                    // 20px, not the old 14 — bumped to fit an actual timecode label (added
+                    // below) under the tick line, not just the bare fill this ruler used to be.
                     let (rect, response) = ui.allocate_exact_size(
-                        egui::vec2(canvas_content_width, 14.0),
+                        egui::vec2(canvas_content_width, 20.0),
                         canvas_sense(egui::Sense::click_and_drag()),
                     );
                     ruler_top = rect.top();
                     ui.painter().rect_filled(rect, 0, theme::SURFACE_2);
+                    draw_ruler_ticks(ui.painter(), rect, px_per_sec);
                     if let Some(pos) = response.interact_pointer_pos() {
                         let secs = ((pos.x - rect.left()) / px_per_sec).max(0.0) as f64;
                         let all_edges: Vec<f64> = clip_edges
