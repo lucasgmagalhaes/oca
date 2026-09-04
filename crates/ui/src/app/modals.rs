@@ -625,6 +625,96 @@ impl App {
         }
     }
 
+    /// Shows the rename-track modal when `renaming_track` is `Some` — Section 49's "Rename
+    /// Track". Mirrors `show_rename_sequence_modal` exactly.
+    pub(super) fn show_rename_track_modal(&mut self, ctx: &egui::Context) {
+        let Some((track_id, _)) = self.renaming_track.as_ref() else {
+            return;
+        };
+        let track_id = *track_id;
+        let locale = self.locale;
+        let modal = egui::Modal::new(egui::Id::new("rename_track_modal"));
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(320.0);
+            components::modal_title(ui, i18n::Text::RenameTrackTitle.tr(locale));
+            ui.add_space(8.0);
+            let buf = &mut self.renaming_track.as_mut().unwrap().1;
+            let text_edit = ui.add(egui::TextEdit::singleline(buf).desired_width(f32::INFINITY));
+            text_edit.request_focus();
+            if text_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                confirmed = true;
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if components::primary_button(ui, i18n::Text::RenameProjectConfirm.tr(locale))
+                    .clicked()
+                {
+                    confirmed = true;
+                }
+                if ui.button(i18n::Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if response.should_close() || cancelled {
+            self.renaming_track = None;
+            return;
+        }
+        if confirmed {
+            if let Some((_, new_name)) = self.renaming_track.take() {
+                self.rename_track(track_id, new_name);
+            }
+        }
+    }
+
+    /// Confirms deletion of one timeline track — Section 49's "Delete Track", gated on the
+    /// spec's own "Deleting a track containing clips requires confirmation" rule (the caller,
+    /// the track header's context menu, only stages this when the track actually has content;
+    /// an empty track deletes immediately with no modal). Mirrors `show_delete_sequence_modal`.
+    pub(super) fn show_delete_track_modal(&mut self, ctx: &egui::Context) {
+        let Some((track_id, name)) = self.deleting_track.clone() else {
+            return;
+        };
+        let locale = self.locale;
+        let modal = egui::Modal::new(egui::Id::new("delete_track_modal"));
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(360.0);
+            components::modal_title(ui, i18n::Text::DeleteTrackTitle.tr(locale));
+            ui.add_space(8.0);
+            ui.label(i18n::delete_track_prompt(locale, &name));
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .button(i18n::Text::DeleteTrackConfirm.tr(locale))
+                    .clicked()
+                {
+                    confirmed = true;
+                }
+                if ui.button(i18n::Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if response.should_close() || cancelled {
+            self.deleting_track = None;
+            return;
+        }
+        if confirmed {
+            self.deleting_track = None;
+            self.delete_track(track_id);
+        }
+    }
+
     /// Writes the active project to a `<name>.autosave.ocproj` recovery file next to the
     /// project's own save file, subject to a 2-second idle debounce and a 30-second forced-save
     /// ceiling. Skips silently if the project has never been saved (no `file_path` yet) or
