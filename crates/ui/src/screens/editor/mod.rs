@@ -20,7 +20,7 @@ mod timeline_panel;
 use avcore::media::format_timecode;
 use eframe::egui::{self, RichText};
 
-use crate::app::{App, EditorTool, MediaViewMode, MOTION_TRACK_SIZE_RANGE};
+use crate::app::{App, EditorTool, MediaViewMode, PreviewZoom, MOTION_TRACK_SIZE_RANGE};
 use crate::components;
 use crate::i18n::Text;
 use crate::theme;
@@ -1095,6 +1095,39 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
     let locale = app.locale;
     ui.vertical(|ui| {
         ui.set_height(height);
+        ui.horizontal(|ui| {
+            components::section_label(ui, Text::ProgramMonitor.tr(locale));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .selectable_label(
+                        app.preview_state.zoom == PreviewZoom::Percent100,
+                        Text::PreviewZoom100.tr(locale),
+                    )
+                    .clicked()
+                {
+                    app.preview_state.zoom = PreviewZoom::Percent100;
+                }
+                if ui
+                    .selectable_label(
+                        app.preview_state.zoom == PreviewZoom::Fit,
+                        Text::PreviewZoomFit.tr(locale),
+                    )
+                    .clicked()
+                {
+                    app.preview_state.zoom = PreviewZoom::Fit;
+                }
+                if ui
+                    .selectable_label(
+                        app.preview_state.zoom == PreviewZoom::Percent50,
+                        Text::PreviewZoom50.tr(locale),
+                    )
+                    .clicked()
+                {
+                    app.preview_state.zoom = PreviewZoom::Percent50;
+                }
+            });
+        });
+        ui.add_space(theme::SPACE_SM);
         let preview_texture_size = app.preview_state.preview_texture.as_ref().map(|t| t.size());
         let frame_response = egui::Frame::new()
             .fill(egui::Color32::BLACK)
@@ -1542,6 +1575,34 @@ pub fn fullscreen_preview_overlay(app: &mut App, ui: &mut egui::Ui) {
         });
 }
 
+/// Pure size math for [`PreviewZoom`] — extracted out of `layer_transform_preview` so it's
+/// testable without an `egui::Ui`. `Fit` always fills `avail`; `Percent50`/`Percent100` size
+/// off the sequence's own real pixel dimensions instead, then every branch is clamped back down
+/// to `avail` and aspect-corrected against `canvas_aspect` the same way — this preview has no
+/// scrollable viewport (see `PreviewZoom`'s own doc comment), so an oversized zoom silently caps
+/// back to whatever `Fit` would have produced rather than overflowing the panel.
+fn preview_canvas_size(
+    zoom: PreviewZoom,
+    avail: egui::Vec2,
+    canvas_w: u32,
+    canvas_h: u32,
+    canvas_aspect: f32,
+) -> egui::Vec2 {
+    let mut size = match zoom {
+        PreviewZoom::Fit => avail,
+        PreviewZoom::Percent50 => egui::vec2(canvas_w as f32 * 0.5, canvas_h as f32 * 0.5),
+        PreviewZoom::Percent100 => egui::vec2(canvas_w as f32, canvas_h as f32),
+    };
+    size.x = size.x.min(avail.x);
+    size.y = size.y.min(avail.y);
+    if size.x / size.y > canvas_aspect {
+        size.x = size.y * canvas_aspect;
+    } else {
+        size.y = size.x / canvas_aspect;
+    }
+    size
+}
+
 /// Draws the selected clip's video inside a canvas-space box sized to the active sequence's
 /// export aspect ratio (the same target dimensions export will actually use, via
 /// [`avcore::ExportAspectRatio::dims_or`]) and, when its position isn't already animated
@@ -1581,12 +1642,13 @@ fn layer_transform_preview(app: &mut App, ui: &mut egui::Ui) {
     let canvas_aspect = canvas_w as f32 / canvas_h.max(1) as f32;
 
     let avail_rect = ui.available_rect_before_wrap();
-    let mut canvas_size = avail_rect.size();
-    if canvas_size.x / canvas_size.y > canvas_aspect {
-        canvas_size.x = canvas_size.y * canvas_aspect;
-    } else {
-        canvas_size.y = canvas_size.x / canvas_aspect;
-    }
+    let canvas_size = preview_canvas_size(
+        app.preview_state.zoom,
+        avail_rect.size(),
+        canvas_w,
+        canvas_h,
+        canvas_aspect,
+    );
     let canvas_rect = egui::Rect::from_center_size(avail_rect.center(), canvas_size);
     ui.allocate_rect(canvas_rect, egui::Sense::hover());
     ui.painter().rect_stroke(
@@ -1900,3 +1962,6 @@ fn draw_motion_track_region_picker(
         app.stop_picking_motion_track_region();
     }
 }
+
+#[cfg(test)]
+mod mod_test;

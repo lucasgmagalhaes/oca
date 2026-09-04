@@ -571,6 +571,10 @@ text_catalog! {
     SnapshotSaved: pt_br = "Captura de tela salva.", en = "Snapshot saved.";
     AddMarkerButton: pt_br = "Adicionar marcador", en = "Add marker";
     MarkerAdded: pt_br = "Marcador adicionado.", en = "Marker added.";
+    PreviewZoom50: pt_br = "50%", en = "50%";
+    PreviewZoomFit: pt_br = "Ajustar", en = "Fit";
+    PreviewZoom100: pt_br = "100%", en = "100%";
+    ProgramMonitor: pt_br = "Monitor de programa", en = "Program monitor";
     AudioRoleUnspecified: pt_br = "Papel de áudio: não definido", en = "Audio role: unspecified";
     AudioRoleGameAudio: pt_br = "Papel de áudio: áudio do jogo", en = "Audio role: game audio";
     AudioRoleMic: pt_br = "Papel de áudio: microfone", en = "Audio role: mic";
