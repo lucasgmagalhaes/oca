@@ -119,9 +119,15 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     components::section_label(ui, Text::OnExport.tr(locale));
                     ui.horizontal_wrapped(|ui| {
                         let target = app.active_sequence_export_settings().target_lufs;
+                        // "→" (U+2192) reads as tofu here — confirmed via a real screenshot.
+                        // egui's bundled default font only covers a curated symbol subset, not
+                        // arbitrary Unicode blocks (not even this common an arrow), so plain
+                        // ASCII is the only glyph choice that's actually guaranteed, not merely
+                        // "probably fine" — the lesson this session's whole run of tofu bugs
+                        // (nav rail, toolbar, titlebar) converges on.
                         components::tag_accent(
                             ui,
-                            &format!("{} → {target:.0} LUFS", Text::NormalizeTo.tr(locale)),
+                            &format!("{} -> {target:.0} LUFS", Text::NormalizeTo.tr(locale)),
                         );
                         components::tag_outline(
                             ui,
