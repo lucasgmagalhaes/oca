@@ -478,7 +478,7 @@ impl TextLayoutEngine {
     ) -> ShapedText {
         let key = ShapeCacheKey::new(
             text,
-            family,
+            family.clone(),
             style,
             font_size_px,
             max_width_px,
