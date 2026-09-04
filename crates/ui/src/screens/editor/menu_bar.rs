@@ -13,14 +13,16 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! The Editor's top File/Edit/View/Sequence/Clip/Markers/Graphics menu bar, per
+//! The Editor's top File/Edit/View/Sequence/Clip/Markers/Graphics/Help menu bar, per
 //! `spec/architecture/editor-ui-visual-redesign.md`'s Top bar mapping — a second way to reach
 //! actions the toolbar (`super::toolbar`) and per-clip/per-tab context menus already expose,
 //! not new business logic of its own. Coexists with the toolbar (confirmed with the user before
 //! building this — the doc left "does the toolbar still exist alongside it" as an open
-//! decision); nothing is removed from it. `Window`/`Help` aren't built: the doc found no real
-//! `App` state or feature behind either yet (no panel-layout-save/restore UI, no About/docs
-//! dialog anywhere in the app), and this file is wiring, not a place to invent one.
+//! decision); nothing is removed from it. `Window` still isn't built: no panel-layout-save/
+//! restore UI exists behind it yet, and this file is wiring, not a place to invent one. `Help`
+//! *is* built — it turned out the redesign doc's original "no About/docs dialog anywhere in the
+//! app" finding was stale (Fase 8's auto-update work had already added one, reachable only from
+//! Preferences until now) — see `help_menu` below.
 
 use eframe::egui;
 
@@ -38,6 +40,7 @@ pub(crate) fn menu_bar(app: &mut App, ui: &mut egui::Ui) {
         markers_menu(app, ui, locale);
         graphics_menu(app, ui, locale);
         analyze_menu(app, ui, locale);
+        help_menu(app, ui, locale);
     });
 }
 
@@ -500,6 +503,20 @@ fn analyze_menu(app: &mut App, ui: &mut egui::Ui, locale: crate::i18n::Locale) {
             if let Some(output_dir) = dialog.pick_folder() {
                 app.spawn_shorts_pack(output_dir);
             }
+            ui.close();
+        }
+    });
+}
+
+/// "Help" — just the one real destination this app has: the About modal (version, update-check
+/// status, install/restart flow — already fully built, `App::open_about`), previously only
+/// reachable via Preferences. No separate "Documentation" entry: there's no hosted docs site for
+/// this project to link to, and inventing one would be exactly the kind of unverified URL
+/// CLAUDE.md's own rules say not to guess at.
+fn help_menu(app: &mut App, ui: &mut egui::Ui, locale: crate::i18n::Locale) {
+    ui.menu_button(Text::MenuHelp.tr(locale), |ui| {
+        if ui.button(Text::MenuHelpAbout.tr(locale)).clicked() {
+            app.open_about();
             ui.close();
         }
     });

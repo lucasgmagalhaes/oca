@@ -269,9 +269,15 @@ exercised:
   a live text filter isn't a menu command.
 - **Graphics** → Add Text Track/Clip, Add Shape Track/Clip, Draw Custom Shape.
 
-**Window/Help — still not built**, exactly as this doc originally found: `PanelLayout`/
-`LayoutScope` exists as data but has no UI to expose as a "Window" menu yet, and there's no
-About/docs dialog anywhere in the app for "Help" to open. Neither is faked with an empty menu.
+**Window — still not built**: `PanelLayout`/`LayoutScope` exists as data but has no UI to
+expose as a "Window" menu yet. Not faked with an empty menu.
+
+**Help — done.** This doc's original "no About/docs dialog anywhere in the app" finding was
+stale: Fase 8's auto-update work had already built a full About modal (installed version,
+update-check status, install/restart flow — `App::open_about`/`show_about_modal` in
+`app/modals.rs`), just only reachable from Preferences. The menu bar's Help menu now has one
+item, "About oca...", that opens it — no separate "Documentation" entry, since there's no
+hosted docs site for this project to link to and inventing one would be an unverified URL.
 
 Timecode/FPS/resolution chips: real data already exists (`format_timecode`, the preview's
 decoded texture size, the active sequence's frame rate) — currently displayed in the preview
@@ -670,8 +676,8 @@ principles, and this doc's own findings above:
    own bullets for the full breakdown.
 5. **Menu bar — done.** `screens/editor/menu_bar.rs`, coexisting with the toolbar (confirmed
    with the user first, per the open decision this doc originally left). See the Top bar
-   section's own bullets for exactly which menu items are wired vs. which two menus (Window,
-   Help) still have no real feature behind them.
+   section's own bullets for exactly which menu items are wired vs. which one menu (Window)
+   still has no real feature behind it.
 6. Everything flagged as a genuine new feature above — its own scoped follow-up item, not part
    of "implement the mockup" in one pass. (Snapshot capture, the grid/list view toggle, zoom
    controls, real per-asset thumbnails, Anchor X/Y, Favorites/Recent, and the Hand tool were all
@@ -700,6 +706,9 @@ principles, and this doc's own findings above:
 15. **Hand (pan) tool — done.** See the Left icon rail section's own bullet for the scope
     decision (labels/ruler stay fixed, only the canvas pans) and how real horizontal pan was
     added to the timeline without threading a manual offset through every draw call site.
+16. **Help menu → About — done.** See the Top bar section's own bullet: the About modal already
+    existed (Fase 8 auto-update work), this just added a second, discoverable entry point to it
+    from the menu bar. `Window` is still the one menu with nothing real behind it.
 
 ## Verification
 
