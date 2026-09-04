@@ -35,4 +35,4 @@ pub use icon_button::{icon_button, IconButtonOpts};
 pub use icon_label::icon_label_job;
 pub use property::{property_block, property_row, property_section, property_toggle};
 pub use section::{modal_title, page_title, section_label};
-pub use tag::{tag_accent, tag_error, tag_outline, tag_warning};
+pub use tag::{tag_accent, tag_error, tag_outline, tag_success, tag_warning};

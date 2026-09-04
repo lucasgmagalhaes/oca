@@ -255,7 +255,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                 ExportJobStatus::Paused { .. } => {
                                     components::tag_warning(ui, status_label)
                                 }
-                                ExportJobStatus::Done => components::tag_accent(ui, status_label),
+                                ExportJobStatus::Done => components::tag_success(ui, status_label),
                                 ExportJobStatus::Failed { .. } => {
                                     components::tag_error(ui, status_label)
                                 }

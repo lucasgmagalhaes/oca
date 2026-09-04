@@ -48,3 +48,15 @@ pub fn tag_error(ui: &mut Ui, text: &str) {
 pub fn tag_warning(ui: &mut Ui, text: &str) {
     tag(ui, text, theme::WARNING, theme::WARNING_TINT);
 }
+
+/// A tag in `theme::SUCCESS` (`state_success`) — used for a terminal, positive-outcome state
+/// (e.g. "Concluído"), distinct from `tag_accent`'s in-progress/active meaning even though both
+/// used to share `ACCENT` before this token existed.
+pub fn tag_success(ui: &mut Ui, text: &str) {
+    tag(
+        ui,
+        text,
+        theme::SUCCESS,
+        theme::SUCCESS.gamma_multiply(0.18),
+    );
+}
