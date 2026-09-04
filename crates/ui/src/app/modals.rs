@@ -176,7 +176,7 @@ impl App {
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui.button(Text::TextColorPickerApply.tr(locale)).clicked() {
+                if components::primary_button(ui, Text::TextColorPickerApply.tr(locale)).clicked() {
                     match parse_color_value(&edit.manual_input) {
                         Ok(rgba) => {
                             edit.rgba = rgba;
@@ -393,8 +393,7 @@ impl App {
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui
-                    .button(i18n::Text::RenameProjectConfirm.tr(locale))
+                if components::primary_button(ui, i18n::Text::RenameProjectConfirm.tr(locale))
                     .clicked()
                 {
                     confirmed = true;
@@ -484,7 +483,7 @@ impl App {
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui.button(Text::SpeedRampApply.tr(locale)).clicked() {
+                if components::primary_button(ui, Text::SpeedRampApply.tr(locale)).clicked() {
                     confirmed = true;
                 }
                 if ui.button(Text::CancelJob.tr(locale)).clicked() {
@@ -538,8 +537,7 @@ impl App {
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui
-                    .button(i18n::Text::RenameProjectConfirm.tr(locale))
+                if components::primary_button(ui, i18n::Text::RenameProjectConfirm.tr(locale))
                     .clicked()
                 {
                     confirmed = true;
@@ -681,7 +679,7 @@ impl App {
             ui.label(Text::AutosaveFound.tr(locale));
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                if ui.button(Text::AutosaveRestore.tr(locale)).clicked() {
+                if components::primary_button(ui, Text::AutosaveRestore.tr(locale)).clicked() {
                     if let Ok(mut restored) = avcore::load_project_from_file(&autosave_path) {
                         let file_path = self.active_project().file_path.clone();
                         let id = self.active_project().id;
@@ -753,8 +751,7 @@ impl App {
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui
-                    .button(Text::ExportFileExistsOverwrite.tr(locale))
+                if components::primary_button(ui, Text::ExportFileExistsOverwrite.tr(locale))
                     .clicked()
                 {
                     choice = Some(true);
@@ -1016,7 +1013,7 @@ impl App {
                 close = true;
             }
             ui.horizontal(|ui| {
-                if ui.button(Text::SilenceReviewApply.tr(locale)).clicked() {
+                if components::primary_button(ui, Text::SilenceReviewApply.tr(locale)).clicked() {
                     apply = true;
                 }
                 if ui.button(Text::WindowClose.tr(locale)).clicked() {
@@ -1134,8 +1131,7 @@ impl App {
                 close = true;
             }
             ui.horizontal(|ui| {
-                if ui
-                    .button(Text::TranscriptProposalsApply.tr(locale))
+                if components::primary_button(ui, Text::TranscriptProposalsApply.tr(locale))
                     .clicked()
                 {
                     apply = true;
@@ -1449,7 +1445,8 @@ impl App {
                         if ui.button(Text::DeleteTemplate.tr(locale)).clicked() {
                             delete_index = Some(index);
                         }
-                        if ui.button(Text::ApplyTemplate.tr(locale)).clicked() {
+                        if components::primary_button(ui, Text::ApplyTemplate.tr(locale)).clicked()
+                        {
                             apply_index = Some(index);
                         }
                     });
@@ -1616,8 +1613,7 @@ impl App {
             }
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                if ui
-                    .button(Text::GraphicTemplateApplyConfirm.tr(locale))
+                if components::primary_button(ui, Text::GraphicTemplateApplyConfirm.tr(locale))
                     .clicked()
                 {
                     confirmed = true;
@@ -1716,7 +1712,7 @@ impl App {
                 cancelled = true;
             }
             ui.horizontal(|ui| {
-                if ui.button(Text::SmartBinSave.tr(locale)).clicked() {
+                if components::primary_button(ui, Text::SmartBinSave.tr(locale)).clicked() {
                     confirmed = true;
                 }
                 if ui.button(Text::CancelJob.tr(locale)).clicked() {
