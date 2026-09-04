@@ -494,7 +494,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     } else {
                                         match (track.kind, track.name.as_str()) {
                                             (avcore::timeline::TrackKind::Video, _) => {
-                                                theme::SURFACE_2
+                                                theme::MEDIA_VIDEO
                                             }
                                             (avcore::timeline::TrackKind::Audio, "A2") => {
                                                 theme::ACCENT_2.gamma_multiply(0.6)
