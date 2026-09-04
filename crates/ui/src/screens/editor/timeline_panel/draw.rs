@@ -399,13 +399,14 @@ pub(super) fn draw_playhead(
 ) {
     let x = rect.left() + playhead_secs as f32 * px_per_sec;
     if x >= rect.left() && x <= rect.right() {
-        // Red, not `theme::ACCENT` — the playhead's meaning (current-position marker) is
-        // red-adjacent in the OCA mockup, distinct from the violet brand/selection accent (see
-        // `spec/architecture/editor-ui-visual-redesign.md`'s Color system section).
+        // `theme::PLAYHEAD` (`state_playhead`), not `theme::ERROR`/`ACCENT` — a distinct red
+        // dedicated to the current-position marker, per `OCA_Design_System_egui.md`'s own
+        // separate `state_playhead`/`state_error` tokens (they happened to share a value in this
+        // app's prior palette, but the doc treats them as different roles).
         ui.painter().vline(
             x,
             rect.y_range(),
-            egui::Stroke::new(stroke_width, theme::ERROR),
+            egui::Stroke::new(stroke_width, theme::PLAYHEAD),
         );
         // The ruler's playhead (the thicker of the two calls to this function — the per-track
         // row line stays a bare vline) gets a downward-pointing triangle head at its top,
@@ -419,7 +420,7 @@ pub(super) fn draw_playhead(
                     egui::pos2(x + half_w, rect.top()),
                     tip,
                 ],
-                theme::ERROR,
+                theme::PLAYHEAD,
                 egui::Stroke::NONE,
             ));
         }
