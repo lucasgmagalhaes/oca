@@ -25,6 +25,7 @@ use crate::app::{
 };
 use crate::components;
 use crate::i18n::Text;
+use crate::icons;
 use crate::theme;
 
 /// Renders the Editor screen: toolbar, then a three-column row (media library / preview /
@@ -1098,23 +1099,21 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                                                     ui.label(
                                                         RichText::new(&asset.file_name).size(12.0),
                                                     );
-                                                    if ui
-                                                        .small_button(
-                                                            RichText::new(if asset.favorited {
-                                                                "★"
-                                                            } else {
-                                                                "☆"
-                                                            })
-                                                            .color(if asset.favorited {
+                                                    if components::icon_button(
+                                                        ui,
+                                                        icons::STAR_STR,
+                                                        Text::ToggleFavorite.tr(app.locale),
+                                                        components::IconButtonOpts {
+                                                            family: Some(icons::family()),
+                                                            color: Some(if asset.favorited {
                                                                 theme::ACCENT
                                                             } else {
                                                                 theme::TEXT_MUTED
                                                             }),
-                                                        )
-                                                        .on_hover_text(
-                                                            Text::ToggleFavorite.tr(app.locale),
-                                                        )
-                                                        .clicked()
+                                                            ..Default::default()
+                                                        },
+                                                    )
+                                                    .clicked()
                                                     {
                                                         toggled_favorite_id = Some(asset.id);
                                                     }
@@ -1172,24 +1171,21 @@ fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32
                                                             .size(10.0)
                                                             .color(theme::TEXT_PRIMARY),
                                                     );
-                                                    if ui
-                                                        .small_button(
-                                                            RichText::new(if asset.favorited {
-                                                                "★"
-                                                            } else {
-                                                                "☆"
-                                                            })
-                                                            .size(10.0)
-                                                            .color(if asset.favorited {
+                                                    if components::icon_button(
+                                                        ui,
+                                                        icons::STAR_STR,
+                                                        Text::ToggleFavorite.tr(app.locale),
+                                                        components::IconButtonOpts {
+                                                            family: Some(icons::family()),
+                                                            color: Some(if asset.favorited {
                                                                 theme::ACCENT
                                                             } else {
                                                                 theme::TEXT_MUTED
                                                             }),
-                                                        )
-                                                        .on_hover_text(
-                                                            Text::ToggleFavorite.tr(app.locale),
-                                                        )
-                                                        .clicked()
+                                                            ..Default::default()
+                                                        },
+                                                    )
+                                                    .clicked()
                                                     {
                                                         toggled_favorite_id = Some(asset.id);
                                                     }
