@@ -14,7 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use super::*;
-use crate::timeline::{MaskShape, ShapeClip, ShapeKind, TextClip, WordTiming};
+use crate::timeline::{MaskShape, ShapeClip, ShapeKind, TextClip, TextDirection, WordTiming};
 
 fn sample_shape(kind: ShapeKind) -> ShapeClip {
     ShapeClip {
@@ -110,6 +110,49 @@ fn non_empty_text_draws_at_least_one_opaque_pixel() {
     let clip = sample_text("A");
     let buf = render_text_clip_rgba(&clip, 200, 100, 0.0);
     assert!(buf.chunks_exact(4).any(|p| p[3] > 0));
+}
+
+fn leftmost_opaque_column(buf: &[u8], width: u32, height: u32) -> Option<u32> {
+    for x in 0..width {
+        for y in 0..height {
+            if pixel(buf, width, x, y)[3] > 0 {
+                return Some(x);
+            }
+        }
+    }
+    None
+}
+
+/// TEXT-01B step 3's own "mixed-direction golden test" gap — a real pixel-level render, not
+/// just the shaping-level cluster-position checks `text_layout`'s own tests already covered.
+/// Latin + Hebrew mixed content forced `Ltr` should paint its first (Latin) run starting near
+/// the left edge; forced `Rtl` should visibly push the block's own ink further right (the
+/// paragraph's anchor flips to the block's right edge — see `text_horizontal_box`), a real,
+/// observable pixel difference from the actual `overlay_render` pipeline, not an inferred one.
+#[test]
+fn mixed_direction_text_paints_visibly_different_pixels_under_forced_ltr_vs_rtl() {
+    let mut ltr = sample_text("abc \u{5d0}\u{5d1}\u{5d2}");
+    ltr.direction = TextDirection::Ltr;
+    let mut rtl = ltr.clone();
+    rtl.direction = TextDirection::Rtl;
+
+    let width = 400;
+    let height = 120;
+    let ltr_buf = render_text_clip_rgba(&ltr, width, height, 0.0);
+    let rtl_buf = render_text_clip_rgba(&rtl, width, height, 0.0);
+
+    assert_ne!(
+        ltr_buf, rtl_buf,
+        "forcing direction must change the rendered pixels"
+    );
+    let ltr_left =
+        leftmost_opaque_column(&ltr_buf, width, height).expect("ltr render draws something");
+    let rtl_left =
+        leftmost_opaque_column(&rtl_buf, width, height).expect("rtl render draws something");
+    assert!(
+        rtl_left > ltr_left,
+        "forcing Rtl should anchor the block further right than Ltr: ltr_left={ltr_left}, rtl_left={rtl_left}"
+    );
 }
 
 #[test]
