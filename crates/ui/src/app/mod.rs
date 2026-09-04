@@ -154,6 +154,21 @@ pub enum PreviewZoom {
     Percent100,
 }
 
+/// Which filter the Media library panel's asset list is currently showing — a single-selection
+/// model unifying the pre-existing smart-bin chip row with the two new Favorites/Recent chips
+/// (`spec/architecture/editor-ui-visual-redesign.md`'s Media panel mapping), replacing the old
+/// bare `Option<u64>` (`None`/`Some(bin_id)`) it grew out of. `All` shows every asset,
+/// unfiltered. Not persisted: resets to `All` on project switch, same as
+/// `active_multicam_group_id` before it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MediaLibraryFilter {
+    #[default]
+    All,
+    SmartBin(u64),
+    Favorites,
+    Recent,
+}
+
 /// A key + modifier combination that can be assigned to a bindable action. `key_name` is
 /// the value returned by [`egui::Key::name`] (e.g. `"Space"`, `"B"`) and accepted by
 /// [`egui::Key::from_name`], making it stable across egui versions for common keys.
@@ -1044,10 +1059,8 @@ pub struct App {
     /// (first group found, if any) the same way `selected_asset_id` resets on project switch,
     /// see [`App::open_project`].
     pub active_multicam_group_id: Option<u64>,
-    /// The smart bin (P4 item 22, "Smart bins") currently filtering the Library panel's asset
-    /// list — `None` shows every asset in `media_library`, unfiltered. Not persisted: resets to
-    /// `None` on project switch, same as `active_multicam_group_id`.
-    pub active_smart_bin_id: Option<u64>,
+    /// The Media library panel's active asset filter — see [`MediaLibraryFilter`].
+    pub media_filter: MediaLibraryFilter,
     /// A draft [`avcore::SmartBin`] being created/edited, shown as a modal by
     /// [`App::show_smart_bin_modal`] when `Some`. `id == 0` (never a real assigned id, which
     /// starts at 1 — see [`avcore::Project::add_smart_bin`]) means "new bin, not yet created";
@@ -1710,7 +1723,7 @@ impl App {
             formatting_clipboard: None,
             multi_selected_clip_ids: HashSet::new(),
             active_multicam_group_id: None,
-            active_smart_bin_id: None,
+            media_filter: MediaLibraryFilter::All,
             editing_smart_bin: None,
             toasts: Vec::new(),
             prefs_open: false,
@@ -1864,7 +1877,7 @@ impl App {
         let multicam_group_id = project.timeline().multicam_groups.first().map(|g| g.id);
         self.select_asset(asset_id);
         self.active_multicam_group_id = multicam_group_id;
-        self.active_smart_bin_id = None;
+        self.media_filter = MediaLibraryFilter::All;
         self.load_panel_layout_for_active_project();
         self.screen = Screen::Editor;
     }
@@ -1918,6 +1931,20 @@ impl App {
     /// asset nobody's looking at yet.
     pub fn select_asset(&mut self, id: Option<u64>) {
         self.selected_asset_id = id;
+    }
+
+    /// Flips `asset_id`'s [`avcore::media::MediaAsset::favorited`] flag — what clicking the
+    /// star button on a media library row/tile does. A no-op if `asset_id` isn't in the active
+    /// project's media library.
+    pub fn toggle_asset_favorite(&mut self, asset_id: u64) {
+        if let Some(asset) = self
+            .active_project_mut()
+            .media_library
+            .iter_mut()
+            .find(|a| a.id == asset_id)
+        {
+            asset.favorited = !asset.favorited;
+        }
     }
 
     /// Appends `project` to the project list and opens it — used for both "Novo projeto"
@@ -1987,6 +2014,7 @@ impl App {
             file_path: None,
             panel_layout: None,
             smart_bins: Vec::new(),
+            recent_asset_ids: Vec::new(),
         });
     }
 
