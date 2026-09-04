@@ -391,7 +391,7 @@ pub(super) fn shape_clip_properties(
         changed = true;
     }
 
-    ui.add_space(6.0);
+    ui.add_space(4.0);
     ui.label(
         RichText::new(Text::ShapeExportNote.tr(locale))
             .size(10.5)

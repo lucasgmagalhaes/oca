@@ -431,7 +431,7 @@ pub(super) fn text_clip_properties(
         structural_changed = true;
     }
 
-    ui.add_space(6.0);
+    ui.add_space(4.0);
     ui.label(
         RichText::new(Text::TextExportNote.tr(locale))
             .size(10.5)
