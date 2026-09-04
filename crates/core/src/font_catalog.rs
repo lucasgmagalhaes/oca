@@ -19,20 +19,27 @@
 //! FONT-01A's original six families match [`crate::timeline::TextFontFamily`]'s current enum
 //! variants one-to-one via [`TextFontFamily::family_id`]/[`TextFontFamily::from_family_id`]; the
 //! manifest fields mirror the doc's required typed fields (`family_id`, `source_path`, `sha256`,
-//! license, weights, ...). FONT-01B slice 1 grew [`CATALOG`] to 15 families (the doc's full Sans
-//! table) — these new entries have **no [`TextFontFamily`] enum variant yet**, since the doc's
-//! forwards-compatible persisted-identity swap (`.ocproj` storing a `family_id` slug instead of
-//! the plain enum variant name) is a separate, larger structural change this slice still defers
-//! (see [`TextFontFamily`]'s own doc comment) — they're real, usable, shipped-and-tested catalog
-//! entries (already loaded and shaping real text through [`crate::text_layout`], which iterates
-//! [`locked_face_bytes`] generically, not just the six enum-backed families), just not yet
-//! selectable from the Editor's text-clip font picker (FONT-01D, still open).
+//! license, weights, ...). **FONT-01B is now fully vendored**: [`CATALOG`] holds all 43 families
+//! (51 binaries) the doc specifies — Sans (10), Display/condensed/gaming (10), Serif (6),
+//! Handwritten (6), Monospace (4), and the International shaping/fallback set (7 `Noto` faces,
+//! [`FontCategory::International`]). The 37 families beyond the original six have **no
+//! [`TextFontFamily`] enum variant yet**, since the doc's forwards-compatible persisted-identity
+//! swap (`.ocproj` storing a `family_id` slug instead of the plain enum variant name) is a
+//! separate, larger structural change still deferred (see [`TextFontFamily`]'s own doc comment)
+//! — they're real, parsed-and-verified catalog entries (`loads_exactly_the_locked_catalog_faces_
+//! and_nothing_else` in `text_layout`'s own tests confirms all 51 binaries load through the real
+//! production `fontdb` path, not just that they look like valid TTFs), just not yet selectable
+//! from the Editor's text-clip font picker (FONT-01D, still open) or Latin-shaping-verified
+//! individually (`every_bundled_family_shapes_ordinary_latin_text_without_missing_glyphs` still
+//! only iterates the six enum-backed families — extending it to all 43 needs a shaping path keyed
+//! by `family_id` instead of the enum, which `TextLayoutEngine::shape` doesn't expose yet).
 //!
 //! Static data only. Acquisition/vendoring is a maintainer-time, offline operation per the doc's
 //! "Acquisition and update workflow" section — no network code belongs in this module, and none
 //! exists here. Every binary under `crates/core/assets/fonts/` is vendored from the pinned
 //! [`GOOGLE_FONTS_REVISION`], downloaded and SHA-256/size-verified against the real upstream
-//! files at that exact commit, never a later or different revision.
+//! files at that exact commit, never a later or different revision — total bundled size 18 MiB,
+//! inside the doc's 20 MiB release gate.
 
 use crate::timeline::TextFontFamily;
 
@@ -53,6 +60,12 @@ pub enum FontCategory {
     Serif,
     Handwritten,
     Monospace,
+    /// The doc's "International shaping and fallback" set (section: "These faces are visible
+    /// under an International category but also form TEXT-01's deterministic fallback
+    /// chains"). Exposing them in the selector is still gated on TEXT-01's own shaping tests —
+    /// vendored and catalog-validated here, not yet UI-selectable (see this module's own doc
+    /// comment on what "no `TextFontFamily` variant yet" means for these entries).
+    International,
 }
 
 /// Whether a family's upstream binaries are static per-weight files or one variable-axis file.
@@ -103,15 +116,22 @@ pub struct FontFamilyEntry {
     /// corrupt/invalid selection"). `None` only for the fallback family itself.
     pub fallback_family_id: Option<&'static str>,
     /// Coarse glyph-coverage claims this entry backs. `"gf-latin-core"` covers the acceptance
-    /// corpus in the doc's "Shaping and script support" section (Portuguese/Spanish/English).
+    /// corpus in the doc's "Shaping and script support" section (Portuguese/Spanish/English) —
+    /// only claimed where actually verified (the six `TextFontFamily`-enum-backed families, via
+    /// `text_layout`'s own shaping test; see this module's doc comment for why the other 37
+    /// don't claim it yet, even though most are ordinary Latin-script sans/serif/display faces
+    /// that almost certainly have full coverage). `"international-fallback"` marks the 7 `Noto`
+    /// entries vendored specifically for their own non-Latin script, which are not assumed to
+    /// carry Latin coverage at all.
     pub glyphset_guarantees: &'static [&'static str],
 }
 
 const GF_LATIN_CORE: &[&str] = &["gf-latin-core"];
 
-/// The locked catalog: 15 bundled families, one entry each — FONT-01A's original six (order
-/// matching [`TextFontFamily::ALL`]) followed by FONT-01B slice 1's nine-family Sans expansion.
-/// Matches the asset README's own table.
+/// The locked catalog: all 43 bundled families, one entry each — FONT-01A's original six (order
+/// matching [`TextFontFamily::ALL`]) followed by FONT-01B's remaining 37 (the doc's Sans,
+/// Display/condensed/gaming, Serif, Handwritten, Monospace, and International tables, in that
+/// order). Matches the asset README's own table.
 pub const CATALOG: &[FontFamilyEntry] = &[
     FontFamilyEntry {
         family_id: "lato",
@@ -429,6 +449,538 @@ pub const CATALOG: &[FontFamilyEntry] = &[
         fallback_family_id: Some("lato"),
         glyphset_guarantees: GF_LATIN_CORE,
     },
+    // FONT-01B slice 2: Display/condensed/gaming (8 new, Bebas Neue/Archivo Black already
+    // bundled), Serif (5 new), Handwritten (5 new), Monospace (3 new), and International (7
+    // new) -- the doc's remaining four categories plus the shaping-fallback set, completing all
+    // 43 families/51 binaries. Same pinned GOOGLE_FONTS_REVISION, same sha256/size verification.
+    FontFamilyEntry {
+        family_id: "oswald",
+        display_name: "Oswald",
+        category: FontCategory::Display,
+        tags: &["condensed", "subtitle"],
+        license_path: "oswald/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "oswald/Oswald[wght].ttf",
+            sha256: "5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817",
+            size_bytes: 172_088,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "anton",
+        display_name: "Anton",
+        category: FontCategory::Display,
+        tags: &["high-impact", "title"],
+        license_path: "anton/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Static,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "anton/Anton-Regular.ttf",
+            sha256: "a4ba3a92350ebb031da0cb47630ac49eb265082ca1bc0450442f4a83ab947cab",
+            size_bytes: 170_812,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "barlow-condensed",
+        display_name: "Barlow Condensed",
+        category: FontCategory::Display,
+        tags: &["condensed", "hud"],
+        license_path: "barlow-condensed/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Static,
+        faces: &[
+            FontFace {
+                weight: 400,
+                source_path: "barlow-condensed/BarlowCondensed-Regular.ttf",
+                sha256: "583cec5da3b84bc4dc7c9c72e2a565c94d34e431518b19d7e250b7830ad5f996",
+                size_bytes: 102_480,
+            },
+            FontFace {
+                weight: 700,
+                source_path: "barlow-condensed/BarlowCondensed-Bold.ttf",
+                sha256: "e476562ec9c1e16cf16475895b511f08c804f438cc9a9f80a44ea50a0eeb5b65",
+                size_bytes: 109_912,
+            },
+        ],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "league-spartan",
+        display_name: "League Spartan",
+        category: FontCategory::Display,
+        tags: &["geometric", "title"],
+        license_path: "league-spartan/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "league-spartan/LeagueSpartan[wght].ttf",
+            sha256: "2dbb6290b39ab7c48a40b18f74ca59ef48a69a015c3ea0542703f0c6ce51d617",
+            size_bytes: 95_116,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "teko",
+        display_name: "Teko",
+        category: FontCategory::Display,
+        tags: &["narrow", "esports"],
+        license_path: "teko/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "teko/Teko[wght].ttf",
+            sha256: "d1321889f262bbbff632e7976349853399cd097b6f382d4b19790c915c13c1ae",
+            size_bytes: 292_108,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "black-ops-one",
+        display_name: "Black Ops One",
+        category: FontCategory::Display,
+        tags: &["military", "gaming"],
+        license_path: "black-ops-one/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Static,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "black-ops-one/BlackOpsOne-Regular.ttf",
+            sha256: "282a825b5f294377387e3969f765408157dbea8da0f5d0aae68c6bc704b145b3",
+            size_bytes: 166_532,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "russo-one",
+        display_name: "Russo One",
+        category: FontCategory::Display,
+        tags: &["tech", "gaming"],
+        license_path: "russo-one/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Static,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "russo-one/RussoOne-Regular.ttf",
+            sha256: "bc0abcc660bd8b7ad3000ecb2898a27c58a29a50f7ec81652fa12e75148d09df",
+            size_bytes: 39_124,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "bangers",
+        display_name: "Bangers",
+        category: FontCategory::Display,
+        tags: &["comic", "callout"],
+        license_path: "bangers/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Static,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "bangers/Bangers-Regular.ttf",
+            sha256: "4160a7311de9342674cce9160cde9fcbb30f48190397d86ff1b70b455af65824",
+            size_bytes: 93_148,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "merriweather",
+        display_name: "Merriweather",
+        category: FontCategory::Serif,
+        tags: &["serif", "long-form"],
+        license_path: "merriweather/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "merriweather/Merriweather[opsz,wdth,wght].ttf",
+            sha256: "d0ed0e359e396af7ad05e73dffd11a3a4c326ea0d0283c56bd9361cb2cc86a96",
+            size_bytes: 4_628_080,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "libre-baskerville",
+        display_name: "Libre Baskerville",
+        category: FontCategory::Serif,
+        tags: &["documentary", "editorial"],
+        license_path: "libre-baskerville/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "libre-baskerville/LibreBaskerville[wght].ttf",
+            sha256: "05a95421961341c5b2556285e8415df9db27dab4f4abe22b446b3c6a8b916c5d",
+            size_bytes: 171_900,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "lora",
+        display_name: "Lora",
+        category: FontCategory::Serif,
+        tags: &["serif", "narrative"],
+        license_path: "lora/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "lora/Lora[wght].ttf",
+            sha256: "822a6621ccbe8d97d20ac88c1c41f5615c9c2c202eaa75f272cd452aac6475a7",
+            size_bytes: 212_196,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "cinzel",
+        display_name: "Cinzel",
+        category: FontCategory::Serif,
+        tags: &["cinematic", "classical"],
+        license_path: "cinzel/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "cinzel/Cinzel[wght].ttf",
+            sha256: "f4d83d34d1f6c741193e4acf4b3dff9531e5a67b6aa65228d00a7db72a4e0f34",
+            size_bytes: 125_468,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "bitter",
+        display_name: "Bitter",
+        category: FontCategory::Serif,
+        tags: &["slab-serif", "tutorial"],
+        license_path: "bitter/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "bitter/Bitter[wght].ttf",
+            sha256: "ef2b9a711fb02f1e5823b34da1b7450e0fc76793b7d733a8b41006e24916d4a7",
+            size_bytes: 328_636,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "caveat",
+        display_name: "Caveat",
+        category: FontCategory::Handwritten,
+        tags: &["handwritten", "notes"],
+        license_path: "caveat/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "caveat/Caveat[wght].ttf",
+            sha256: "0bdb6b660482d31531b3945849fba5916b3ef8695da7024a9e6b9ee3c4157988",
+            size_bytes: 403_648,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "pacifico",
+        display_name: "Pacifico",
+        category: FontCategory::Handwritten,
+        tags: &["script", "retro"],
+        license_path: "pacifico/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Static,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "pacifico/Pacifico-Regular.ttf",
+            sha256: "5b6c0d5334a7bf77dea52b975c5a0c408878c0f7115ed5b6fb151f634b7bf701",
+            size_bytes: 329_380,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "dancing-script",
+        display_name: "Dancing Script",
+        category: FontCategory::Handwritten,
+        tags: &["script", "friendly"],
+        license_path: "dancing-script/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "dancing-script/DancingScript[wght].ttf",
+            sha256: "21808625578fe8d8cd10cb684be546dca077b27cd03a53a2f1ec11dc743c924c",
+            size_bytes: 133_636,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "comic-neue",
+        display_name: "Comic Neue",
+        category: FontCategory::Handwritten,
+        tags: &["casual", "dialog"],
+        license_path: "comic-neue/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Static,
+        faces: &[
+            FontFace {
+                weight: 400,
+                source_path: "comic-neue/ComicNeue-Regular.ttf",
+                sha256: "a0ee5a37c8b27c4db0700137d928598b1e23b0089e1546a8961909176b779360",
+                size_bytes: 57_248,
+            },
+            FontFace {
+                weight: 700,
+                source_path: "comic-neue/ComicNeue-Bold.ttf",
+                sha256: "3e7e5fccfd7e0788f317b43312151c1bd5cf058c9697a8d83eac3939050bd61e",
+                size_bytes: 55_716,
+            },
+        ],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "gloria-hallelujah",
+        display_name: "Gloria Hallelujah",
+        category: FontCategory::Handwritten,
+        tags: &["marker", "annotation"],
+        license_path: "gloria-hallelujah/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Static,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "gloria-hallelujah/GloriaHallelujah.ttf",
+            sha256: "eb59f2762ce8785a292bebb2af3b3e6aa21454913d791f5f25441d1d57ead9fc",
+            size_bytes: 59_812,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "jetbrains-mono",
+        display_name: "JetBrains Mono",
+        category: FontCategory::Monospace,
+        tags: &["monospace", "code"],
+        license_path: "jetbrains-mono/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "jetbrains-mono/JetBrainsMono[wght].ttf",
+            sha256: "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+            size_bytes: 187_208,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "roboto-mono",
+        display_name: "Roboto Mono",
+        category: FontCategory::Monospace,
+        tags: &["monospace", "telemetry"],
+        license_path: "roboto-mono/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "roboto-mono/RobotoMono[wght].ttf",
+            sha256: "66a80e79d17e4c7cabd162e2916578a4cc08fd19eef6e2a643305eae9c567b2b",
+            size_bytes: 183_700,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "space-mono",
+        display_name: "Space Mono",
+        category: FontCategory::Monospace,
+        tags: &["monospace", "retro"],
+        license_path: "space-mono/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Static,
+        faces: &[
+            FontFace {
+                weight: 400,
+                source_path: "space-mono/SpaceMono-Regular.ttf",
+                sha256: "95837e182baeeada83368f7748db28357f0a1b75c6b84ff7065b5edf933c8e18",
+                size_bytes: 99_356,
+            },
+            FontFace {
+                weight: 700,
+                source_path: "space-mono/SpaceMono-Bold.ttf",
+                sha256: "405e73d41afb7e5906efce206a326af5c956f38e255f35421c260e861e599c59",
+                size_bytes: 98_232,
+            },
+        ],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: GF_LATIN_CORE,
+    },
+    FontFamilyEntry {
+        family_id: "noto-sans-arabic",
+        display_name: "Noto Sans Arabic",
+        category: FontCategory::International,
+        tags: &["international", "arabic"],
+        license_path: "noto-sans-arabic/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "noto-sans-arabic/NotoSansArabic[wdth,wght].ttf",
+            sha256: "63111b5b2e074dd48cc67692e0a2726d86ee94c1c37fe8598257b7b4e87e869e",
+            size_bytes: 844_676,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: &["international-fallback"],
+    },
+    FontFamilyEntry {
+        family_id: "noto-naskh-arabic",
+        display_name: "Noto Naskh Arabic",
+        category: FontCategory::International,
+        tags: &["international", "arabic"],
+        license_path: "noto-naskh-arabic/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "noto-naskh-arabic/NotoNaskhArabic[wght].ttf",
+            sha256: "67b5a525a661b607971fbd3f96a81b89d3a768e74534fca84f18ac97e6fab72f",
+            size_bytes: 307_592,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: &["international-fallback"],
+    },
+    FontFamilyEntry {
+        family_id: "noto-sans-hebrew",
+        display_name: "Noto Sans Hebrew",
+        category: FontCategory::International,
+        tags: &["international", "hebrew"],
+        license_path: "noto-sans-hebrew/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "noto-sans-hebrew/NotoSansHebrew[wdth,wght].ttf",
+            sha256: "7ef36a2c3593758cdb622e1bdef4f84523e92fbc3ccc667438dd80ff54c2de88",
+            size_bytes: 112_640,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: &["international-fallback"],
+    },
+    FontFamilyEntry {
+        family_id: "noto-sans-devanagari",
+        display_name: "Noto Sans Devanagari",
+        category: FontCategory::International,
+        tags: &["international", "devanagari"],
+        license_path: "noto-sans-devanagari/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "noto-sans-devanagari/NotoSansDevanagari[wdth,wght].ttf",
+            sha256: "9ce7b04f60e363d8870e5997744cf85cf69d38a4d7d129d364d92a3b14b461d7",
+            size_bytes: 647_144,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: &["international-fallback"],
+    },
+    FontFamilyEntry {
+        family_id: "noto-sans-bengali",
+        display_name: "Noto Sans Bengali",
+        category: FontCategory::International,
+        tags: &["international", "bengali"],
+        license_path: "noto-sans-bengali/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "noto-sans-bengali/NotoSansBengali[wdth,wght].ttf",
+            sha256: "dcd42978094e584a849c84a51450eeac40c8826057d566ea6d4b9627a403a05a",
+            size_bytes: 463_668,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: &["international-fallback"],
+    },
+    FontFamilyEntry {
+        family_id: "noto-sans-tamil",
+        display_name: "Noto Sans Tamil",
+        category: FontCategory::International,
+        tags: &["international", "tamil"],
+        license_path: "noto-sans-tamil/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "noto-sans-tamil/NotoSansTamil[wdth,wght].ttf",
+            sha256: "aa3a9b321f4b0bb2c40203ffbde9af89713227866e0e13f76e5b9eeea727cf88",
+            size_bytes: 340_668,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: &["international-fallback"],
+    },
+    FontFamilyEntry {
+        family_id: "noto-sans-thai",
+        display_name: "Noto Sans Thai",
+        category: FontCategory::International,
+        tags: &["international", "thai"],
+        license_path: "noto-sans-thai/OFL.txt",
+        license_id: "OFL-1.1",
+        source_kind: FontSourceKind::Variable,
+        faces: &[FontFace {
+            weight: 400,
+            source_path: "noto-sans-thai/NotoSansThai[wdth,wght].ttf",
+            sha256: "5a1c559bb539583c8a1fd99d1c5b9491e5e14478c9cd2bd0970d5c3096cc9ef8",
+            size_bytes: 218_652,
+        }],
+        default_weight: 400,
+        fallback_family_id: Some("lato"),
+        glyphset_guarantees: &["international-fallback"],
+    },
 ];
 
 /// Looks up one family by its stable slug.
@@ -650,6 +1202,163 @@ pub fn locked_face_bytes() -> &'static [(&'static str, u16, &'static [u8])] {
             "fredoka",
             400,
             include_bytes!("../assets/fonts/fredoka/Fredoka[wdth,wght].ttf"),
+        ),
+        (
+            "oswald",
+            400,
+            include_bytes!("../assets/fonts/oswald/Oswald[wght].ttf"),
+        ),
+        (
+            "anton",
+            400,
+            include_bytes!("../assets/fonts/anton/Anton-Regular.ttf"),
+        ),
+        (
+            "barlow-condensed",
+            400,
+            include_bytes!("../assets/fonts/barlow-condensed/BarlowCondensed-Regular.ttf"),
+        ),
+        (
+            "barlow-condensed",
+            700,
+            include_bytes!("../assets/fonts/barlow-condensed/BarlowCondensed-Bold.ttf"),
+        ),
+        (
+            "league-spartan",
+            400,
+            include_bytes!("../assets/fonts/league-spartan/LeagueSpartan[wght].ttf"),
+        ),
+        (
+            "teko",
+            400,
+            include_bytes!("../assets/fonts/teko/Teko[wght].ttf"),
+        ),
+        (
+            "black-ops-one",
+            400,
+            include_bytes!("../assets/fonts/black-ops-one/BlackOpsOne-Regular.ttf"),
+        ),
+        (
+            "russo-one",
+            400,
+            include_bytes!("../assets/fonts/russo-one/RussoOne-Regular.ttf"),
+        ),
+        (
+            "bangers",
+            400,
+            include_bytes!("../assets/fonts/bangers/Bangers-Regular.ttf"),
+        ),
+        (
+            "merriweather",
+            400,
+            include_bytes!("../assets/fonts/merriweather/Merriweather[opsz,wdth,wght].ttf"),
+        ),
+        (
+            "libre-baskerville",
+            400,
+            include_bytes!("../assets/fonts/libre-baskerville/LibreBaskerville[wght].ttf"),
+        ),
+        (
+            "lora",
+            400,
+            include_bytes!("../assets/fonts/lora/Lora[wght].ttf"),
+        ),
+        (
+            "cinzel",
+            400,
+            include_bytes!("../assets/fonts/cinzel/Cinzel[wght].ttf"),
+        ),
+        (
+            "bitter",
+            400,
+            include_bytes!("../assets/fonts/bitter/Bitter[wght].ttf"),
+        ),
+        (
+            "caveat",
+            400,
+            include_bytes!("../assets/fonts/caveat/Caveat[wght].ttf"),
+        ),
+        (
+            "pacifico",
+            400,
+            include_bytes!("../assets/fonts/pacifico/Pacifico-Regular.ttf"),
+        ),
+        (
+            "dancing-script",
+            400,
+            include_bytes!("../assets/fonts/dancing-script/DancingScript[wght].ttf"),
+        ),
+        (
+            "comic-neue",
+            400,
+            include_bytes!("../assets/fonts/comic-neue/ComicNeue-Regular.ttf"),
+        ),
+        (
+            "comic-neue",
+            700,
+            include_bytes!("../assets/fonts/comic-neue/ComicNeue-Bold.ttf"),
+        ),
+        (
+            "gloria-hallelujah",
+            400,
+            include_bytes!("../assets/fonts/gloria-hallelujah/GloriaHallelujah.ttf"),
+        ),
+        (
+            "jetbrains-mono",
+            400,
+            include_bytes!("../assets/fonts/jetbrains-mono/JetBrainsMono[wght].ttf"),
+        ),
+        (
+            "roboto-mono",
+            400,
+            include_bytes!("../assets/fonts/roboto-mono/RobotoMono[wght].ttf"),
+        ),
+        (
+            "space-mono",
+            400,
+            include_bytes!("../assets/fonts/space-mono/SpaceMono-Regular.ttf"),
+        ),
+        (
+            "space-mono",
+            700,
+            include_bytes!("../assets/fonts/space-mono/SpaceMono-Bold.ttf"),
+        ),
+        (
+            "noto-sans-arabic",
+            400,
+            include_bytes!("../assets/fonts/noto-sans-arabic/NotoSansArabic[wdth,wght].ttf"),
+        ),
+        (
+            "noto-naskh-arabic",
+            400,
+            include_bytes!("../assets/fonts/noto-naskh-arabic/NotoNaskhArabic[wght].ttf"),
+        ),
+        (
+            "noto-sans-hebrew",
+            400,
+            include_bytes!("../assets/fonts/noto-sans-hebrew/NotoSansHebrew[wdth,wght].ttf"),
+        ),
+        (
+            "noto-sans-devanagari",
+            400,
+            include_bytes!(
+                "../assets/fonts/noto-sans-devanagari/NotoSansDevanagari[wdth,wght].ttf"
+            ),
+        ),
+        (
+            "noto-sans-bengali",
+            400,
+            include_bytes!("../assets/fonts/noto-sans-bengali/NotoSansBengali[wdth,wght].ttf"),
+        ),
+        (
+            "noto-sans-tamil",
+            400,
+            include_bytes!("../assets/fonts/noto-sans-tamil/NotoSansTamil[wdth,wght].ttf"),
+        ),
+        (
+            "noto-sans-thai",
+            400,
+            include_bytes!("../assets/fonts/noto-sans-thai/NotoSansThai[wdth,wght].ttf"),
         ),
     ]
 }
