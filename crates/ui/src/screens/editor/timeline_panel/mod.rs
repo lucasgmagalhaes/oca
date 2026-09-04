@@ -33,6 +33,11 @@ const TRACK_LABEL_WIDTH: f32 = 86.0;
 /// label but too thin to make the filmstrip thumbnails (`draw::draw_filmstrip`, which sizes its
 /// tiles to `track_rect.height()`) or a waveform actually useful at a glance. Doubled.
 const TRACK_ROW_HEIGHT: f32 = 56.0;
+/// Height of a track row toggled collapsed via its header's expand/collapse button
+/// (`App::collapsed_track_ids`) — matches the mockup's `< >` track-header control. Thin enough
+/// to lose the filmstrip/waveform detail `TRACK_ROW_HEIGHT` exists for, but still tall enough to
+/// read the track name and stay clickable.
+const COLLAPSED_TRACK_ROW_HEIGHT: f32 = 22.0;
 
 /// Fixed color-label swatches offered in the clip/track "Rótulo de cor" context menu — per
 /// `spec/ROADMAP.md` P4 item 27, matching Premiere/DaVinci/FCP's own fixed-palette convention
@@ -224,16 +229,15 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut ruler_top = 0.0_f32;
         ui.horizontal(|ui| {
             ui.add_space(TRACK_LABEL_WIDTH);
-            // Confirmed gap: the only way to pan a zoomed-in timeline was the Hand tool's
-            // drag-to-scroll — no visible scrollbar existed anywhere to grab directly. Wired
-            // onto the ruler's own ScrollArea (shows/hides itself based on whether the timeline
-            // is actually wider than the visible viewport); every per-track ScrollArea stays
-            // hidden below, since `new_pan_px` already keeps them all in lockstep with this one.
+            // The visible pan scrollbar lives at the bottom of the whole timeline component
+            // (below every track row, see the dedicated strip after the tracks ScrollArea below)
+            // — a first attempt put it here on the ruler instead, which read wrong (a scrollbar
+            // above the clips it scrolls, confirmed via a real report). Stays hidden here.
             let ruler_scroll = egui::ScrollArea::horizontal()
                 .id_salt("timeline_ruler_hscroll")
                 .scroll_source(hscroll_source)
                 .scroll_bar_visibility(
-                    egui::containers::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
+                    egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden,
                 )
                 .horizontal_scroll_offset(app.timeline_pan_px)
                 .show(ui, |ui| {
@@ -304,6 +308,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
         let mut toggle_track_visibility_requests: Vec<u64> = Vec::new();
         let mut toggle_track_lock_requests: Vec<u64> = Vec::new();
+        let mut toggle_track_collapsed_requests: Vec<u64> = Vec::new();
         let mut track_audio_role_requests: Vec<(u64, avcore::AudioRole)> = Vec::new();
         let mut track_color_label_requests: Vec<(u64, Option<[u8; 3]>)> = Vec::new();
         // Set the first time a trim/move drag starts this frame — `app` is immutably borrowed
@@ -319,10 +324,15 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             .id_salt("timeline_tracks_scroll")
             .show(ui, |ui| {
                 for track in &app.active_project().timeline().tracks {
+                    let row_height = if app.collapsed_track_ids.contains(&track.id) {
+                        COLLAPSED_TRACK_ROW_HEIGHT
+                    } else {
+                        TRACK_ROW_HEIGHT
+                    };
                     ui.horizontal(|ui| {
                         // Track header: visibility toggle + name.
                         ui.allocate_ui_with_layout(
-                            egui::vec2(TRACK_LABEL_WIDTH, TRACK_ROW_HEIGHT),
+                            egui::vec2(TRACK_LABEL_WIDTH, row_height),
                             egui::Layout::left_to_right(egui::Align::Center),
                             |ui| {
                                 let track_id = track.id;
@@ -385,6 +395,28 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 .clicked()
                                 {
                                     toggle_track_lock_requests.push(track_id);
+                                }
+                                // Matches the mockup's `< >` track-header control (confirmed via
+                                // a real screenshot) — collapses/expands just this track's row
+                                // height. Plain ASCII ("v"/">"), not the Geometric-Shapes
+                                // chevrons the mockup itself uses — same confirmed-tofu class
+                                // (against this app's bundled default font) as every other icon
+                                // fixed this session.
+                                let collapsed = app.collapsed_track_ids.contains(&track_id);
+                                let (collapse_glyph, collapse_tooltip) = if collapsed {
+                                    (">", Text::TrackExpand.tr(locale))
+                                } else {
+                                    ("v", Text::TrackCollapse.tr(locale))
+                                };
+                                if components::icon_button(
+                                    ui,
+                                    collapse_glyph,
+                                    collapse_tooltip,
+                                    components::IconButtonOpts::default(),
+                                )
+                                .clicked()
+                                {
+                                    toggle_track_collapsed_requests.push(track_id);
                                 }
                                 let name_response = ui.add(
                                     egui::Label::new(RichText::new(&track.name).size(11.0).color(
@@ -460,7 +492,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             .horizontal_scroll_offset(app.timeline_pan_px)
                             .show(ui, |ui| {
                                 let (track_rect, _resp) = ui.allocate_exact_size(
-                                    egui::vec2(canvas_content_width, TRACK_ROW_HEIGHT),
+                                    egui::vec2(canvas_content_width, row_height),
                                     egui::Sense::hover(),
                                 );
                                 track_rows.push((track.id, track.kind, track_rect));
@@ -1127,6 +1159,28 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     );
                 }
             });
+        // The persistent horizontal pan scrollbar, pinned to the bottom of the whole timeline
+        // component (below every track row) — matches where a scrollbar naturally reads,
+        // confirmed via a real report that it belonged here, not up on the ruler.
+        ui.horizontal(|ui| {
+            ui.add_space(TRACK_LABEL_WIDTH);
+            let bottom_scroll = egui::ScrollArea::horizontal()
+                .id_salt("timeline_bottom_hscroll")
+                .scroll_source(hscroll_source)
+                .scroll_bar_visibility(
+                    egui::containers::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
+                )
+                .horizontal_scroll_offset(app.timeline_pan_px)
+                .show(ui, |ui| {
+                    ui.allocate_exact_size(
+                        egui::vec2(canvas_content_width, 2.0),
+                        egui::Sense::hover(),
+                    );
+                });
+            if (bottom_scroll.state.offset.x - app.timeline_pan_px).abs() > 0.01 {
+                new_pan_px = Some(bottom_scroll.state.offset.x);
+            }
+        });
         if let Some(px) = new_pan_px {
             app.timeline_pan_px = px;
         }
@@ -1203,6 +1257,11 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         for track_id in toggle_track_lock_requests {
             app.toggle_track_locked(track_id);
+        }
+        for track_id in toggle_track_collapsed_requests {
+            if !app.collapsed_track_ids.remove(&track_id) {
+                app.collapsed_track_ids.insert(track_id);
+            }
         }
         for (track_id, role) in track_audio_role_requests {
             app.set_track_audio_role(track_id, role);
