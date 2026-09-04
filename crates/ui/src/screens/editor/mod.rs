@@ -374,19 +374,20 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             crate::icons::FOLD_HORIZONTAL_STR,
             Text::ToolTrim.tr(locale),
         );
-        // Confirmed via a real screenshot: "⇥"/"⇄"/"⇉" are all tofu (blank boxes) against this
-        // app's bundled default font, unlike "↕" (Slip, below), which renders fine — swapped for
-        // the basic Arrows block (←→↑↓↔↕), the same block ↕ itself comes from and about as
-        // guaranteed as a non-Lucide glyph gets in this font. No vendored Lucide icon exists yet
-        // for ripple/roll/slide (see nav_rail.rs's identical note on this class of gap).
+        // Confirmed via real screenshots: "⇥"/"⇄"/"⇉" AND, in a second round, even the very
+        // basic "→" (used elsewhere in a LUFS tag) are all tofu against this app's bundled
+        // default font. Only "↕" (Slip, below) is confirmed actually rendering — egui's default
+        // font covers a curated symbol subset, not a whole Unicode block just because one glyph
+        // from it happens to work, so ASCII is the only genuinely safe choice here. No vendored
+        // Lucide icon exists yet for ripple/roll/slide (see nav_rail.rs's identical note).
         tool_button(
             app,
             ui,
             EditorTool::Ripple,
-            "→",
+            ">",
             Text::ToolRipple.tr(locale),
         );
-        tool_button(app, ui, EditorTool::Roll, "↔", Text::ToolRoll.tr(locale));
+        tool_button(app, ui, EditorTool::Roll, "<>", Text::ToolRoll.tr(locale));
         tool_button(app, ui, EditorTool::Slip, "↕", Text::ToolSlip.tr(locale));
         tool_button(app, ui, EditorTool::Slide, ">>", Text::ToolSlide.tr(locale));
         tool_button_icon_font(
@@ -1275,32 +1276,18 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 };
             })
             .response;
-        // A small resolution(+fps) readout in the preview's top-left corner — matching
-        // oca-editor-mock.html's `.preview-hud-top` chip — from the actually decoded texture's
-        // own size, not a fabricated/asset-declared value, so it never drifts from what's on
-        // screen (proxy playback, letterboxing, etc.). fps comes from the previewed clip's own
-        // asset (oca has no per-sequence fps) and is omitted when unknown, per the OCA mockup's
-        // bottom-left overlay (`spec/architecture/editor-ui-visual-redesign.md`'s Program
-        // monitor mapping) — relocated here onto the existing resolution chip rather than a
-        // second overlay, since the two numbers read as one unit.
+        // A small resolution(+fps) readout in the preview's bottom-left corner — matching the
+        // Program Monitor mockup exactly (confirmed via a real screenshot of it: bottom-left =
+        // resolution/fps, top-left = CAM, bottom-right = TC/frame) — from the actually decoded
+        // texture's own size, not a fabricated/asset-declared value, so it never drifts from
+        // what's on screen (proxy playback, letterboxing, etc.). fps comes from the previewed
+        // clip's own asset (oca has no per-sequence fps) and is omitted when unknown.
         if let Some([w, h]) = preview_texture_size {
             let text = match app.current_preview_fps() {
                 Some(fps) => format!("{w}×{h} · {fps:.2}fps"),
                 None => format!("{w}×{h}"),
             };
-            draw_preview_hud_chip(
-                ui.painter(),
-                frame_response.rect.left_top() + egui::vec2(8.0, 8.0),
-                &text,
-            );
-        }
-        // "CAM 01" chip in the top-right corner (the mockup's top-right slot is otherwise the
-        // "REC ●" chip, a documented non-goal — see the Program monitor mapping — freeing it
-        // for this instead), wired to real multicam-group data: only drawn when the previewed
-        // track is actually a multicam group's program track, never faked when it isn't.
-        if let Some(angle) = app.current_preview_multicam_angle() {
-            let text = format!("CAM {angle:02}");
-            let width = ui
+            let size = ui
                 .painter()
                 .layout_no_wrap(
                     text.clone(),
@@ -1308,10 +1295,22 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     theme::TEXT_SECONDARY,
                 )
                 .size()
-                .x
-                + 8.0;
-            let top_left = frame_response.rect.right_top() + egui::vec2(-8.0 - width, 8.0);
+                + egui::vec2(8.0, 4.0);
+            let top_left = frame_response.rect.left_bottom() - egui::vec2(-8.0, 8.0 + size.y);
             draw_preview_hud_chip(ui.painter(), top_left, &text);
+        }
+        // "CAM 01" chip in the top-left corner, matching the mockup. Top-right is the mockup's
+        // "REC ●" chip — a documented non-goal, since oca has no live-recording concept to
+        // honestly wire it to (not a placeholder for a feature that doesn't exist). Wired to
+        // real multicam-group data: only drawn when the previewed track is actually a multicam
+        // group's program track, never faked when it isn't.
+        if let Some(angle) = app.current_preview_multicam_angle() {
+            let text = format!("CAM {angle:02}");
+            draw_preview_hud_chip(
+                ui.painter(),
+                frame_response.rect.left_top() + egui::vec2(8.0, 8.0),
+                &text,
+            );
         }
         // Timecode+frame overlay in the preview's bottom-right corner, matching the mockup's
         // bottom-right overlay — a relocation of data already shown in the transport row's
@@ -1341,165 +1340,100 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             draw_preview_hud_chip(ui.painter(), top_left, &text);
         }
         let timeline_duration = app.active_project().timeline().duration_secs();
+        // Restructured to match the Program Monitor mockup's own two-row shape (confirmed via
+        // a real screenshot of it): a scrubber row with the current/total timecode flanking the
+        // slider, THEN a separate, centered transport-controls row — previously one single
+        // left-aligned row with the (small, inline) timecode text mixed in among the icons.
+        let playhead = app.active_project().timeline().playhead_secs;
         ui.horizontal(|ui| {
-            // Every glyph in this row shares one explicit size (`TRANSPORT_ICON_SIZE`) so the
-            // two plain-Unicode step-frame/marker glyphs (no vendored Lucide icon exists for
-            // either — see their own comments below) read at the same visual weight as the
-            // Lucide icon-font glyphs around them, instead of each falling back to its own
-            // font's default metrics and reading as an inconsistent mix of icon styles.
-            if components::icon_button(
-                ui,
-                crate::icons::SKIP_BACK_STR,
-                Text::SeekToStart.tr(locale),
-                components::IconButtonOpts {
-                    family: Some(crate::icons::family()),
-                    size: Some(TRANSPORT_ICON_SIZE),
-                    ..Default::default()
-                },
-            )
-            .clicked()
-            {
-                app.seek_preview(0.0);
-            }
-            // No vendored Lucide icon for single-frame step (`skip-back`/`skip-forward` are
-            // start/end, already used above/below) — thin outline triangles, distinct from the
-            // filled ones the icon font uses for start/end/play, in the default font.
-            if ui
-                .small_button(
-                    RichText::new("◁")
-                        .size(TRANSPORT_ICON_SIZE)
-                        .color(theme::TEXT_SECONDARY),
-                )
-                .on_hover_text(Text::StepFrameBack.tr(locale))
-                .clicked()
-            {
-                app.step_preview_frame(-1);
-            }
-            let play_icon = if app.preview_state.preview_playing {
-                crate::icons::PAUSE_STR
-            } else {
-                crate::icons::PLAY_STR
-            };
-            if ui
-                .button(
-                    RichText::new(play_icon)
-                        .family(crate::icons::family())
-                        .size(TRANSPORT_PLAY_ICON_SIZE)
-                        .color(theme::ACCENT),
-                )
-                .on_hover_text(Text::ShortcutPlayPause.tr(locale))
-                .clicked()
-            {
-                app.toggle_preview_playback();
-            }
-            if ui
-                .small_button(
-                    RichText::new("▷")
-                        .size(TRANSPORT_ICON_SIZE)
-                        .color(theme::TEXT_SECONDARY),
-                )
-                .on_hover_text(Text::StepFrameForward.tr(locale))
-                .clicked()
-            {
-                app.step_preview_frame(1);
-            }
-            if components::icon_button(
-                ui,
-                crate::icons::SKIP_FORWARD_STR,
-                Text::SeekToEnd.tr(locale),
-                components::IconButtonOpts {
-                    family: Some(crate::icons::family()),
-                    size: Some(TRANSPORT_ICON_SIZE),
-                    ..Default::default()
-                },
-            )
-            .clicked()
-            {
-                app.seek_preview(timeline_duration);
-            }
-            if ui
-                .selectable_label(
-                    app.preview_state.loop_enabled,
-                    RichText::new(crate::icons::REPEAT_STR)
-                        .family(crate::icons::family())
-                        .size(TRANSPORT_ICON_SIZE)
-                        .color(theme::TEXT_SECONDARY),
-                )
-                .on_hover_text(Text::PreviewLoopToggle.tr(locale))
-                .clicked()
-            {
-                app.preview_state.loop_enabled = !app.preview_state.loop_enabled;
-            }
-            if components::icon_button(
-                ui,
-                crate::icons::CAMERA_STR,
-                Text::SnapshotButton.tr(locale),
-                components::IconButtonOpts {
-                    family: Some(crate::icons::family()),
-                    size: Some(TRANSPORT_ICON_SIZE),
-                    ..Default::default()
-                },
-            )
-            .clicked()
-            {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("png", &["png"])
-                    .set_file_name("snapshot.png")
-                    .save_file()
-                {
-                    app.save_preview_snapshot(path);
-                }
-            }
-            if ui
-                .small_button(
-                    RichText::new("🔹")
-                        .size(TRANSPORT_ICON_SIZE)
-                        .color(theme::TEXT_SECONDARY),
-                )
-                .on_hover_text(Text::AddMarkerButton.tr(locale))
-                .clicked()
-            {
-                app.add_marker_at_playhead(avcore::MarkerKind::Standard);
-                app.push_toast(Text::MarkerAdded.tr(locale).to_string());
-            }
-            let playhead = app.active_project().timeline().playhead_secs;
             ui.label(
-                RichText::new(format!(
-                    "{} / {}",
-                    format_timecode(playhead),
-                    format_timecode(timeline_duration.max(playhead))
-                ))
-                .size(12.0)
-                .color(theme::TEXT_SECONDARY)
-                .monospace(),
+                RichText::new(format_timecode(playhead))
+                    .size(12.0)
+                    .color(theme::ACCENT)
+                    .monospace(),
             );
-            if ui
-                .small_button(RichText::new("⛶").color(theme::TEXT_SECONDARY))
-                .on_hover_text(Text::EnterFullscreenPreview.tr(locale))
-                .clicked()
-            {
-                app.toggle_fullscreen_preview();
-            }
-            if ui
-                .selectable_label(
-                    app.preview_state.scopes_enabled,
-                    RichText::new("📊").color(theme::TEXT_SECONDARY),
-                )
-                .on_hover_text(Text::PreviewScopesToggle.tr(locale))
-                .clicked()
-            {
-                app.preview_state.scopes_enabled = !app.preview_state.scopes_enabled;
-            }
-            audio_level_meter(app, ui);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    RichText::new(format_timecode(timeline_duration.max(playhead)))
+                        .size(12.0)
+                        .color(theme::TEXT_SECONDARY)
+                        .monospace(),
+                );
+                if timeline_duration > 0.0 {
+                    let mut position = playhead;
+                    let slider = ui.add(
+                        egui::Slider::new(&mut position, 0.0..=timeline_duration).show_value(false),
+                    );
+                    if slider.changed() {
+                        app.seek_preview(position);
+                    }
+                }
+            });
         });
-        if timeline_duration > 0.0 {
-            let mut position = app.active_project().timeline().playhead_secs;
-            let slider =
-                ui.add(egui::Slider::new(&mut position, 0.0..=timeline_duration).show_value(false));
-            if slider.changed() {
-                app.seek_preview(position);
-            }
-        }
+        ui.add_space(theme::SPACE_XS);
+        ui.columns(3, |columns| {
+            // Left column intentionally empty — its equal share of the row is what centers the
+            // middle column's transport controls (`ui.columns` splits width evenly into thirds).
+            columns[1].vertical_centered(|ui| {
+                ui.horizontal(|ui| {
+                    transport_controls(app, ui, locale, timeline_duration);
+                });
+            });
+            columns[2].with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                audio_level_meter(app, ui);
+                if ui
+                    .selectable_label(
+                        app.preview_state.scopes_enabled,
+                        RichText::new("S").color(theme::TEXT_SECONDARY),
+                    )
+                    .on_hover_text(Text::PreviewScopesToggle.tr(locale))
+                    .clicked()
+                {
+                    app.preview_state.scopes_enabled = !app.preview_state.scopes_enabled;
+                }
+                if ui
+                    .small_button(RichText::new("[+]").color(theme::TEXT_SECONDARY))
+                    .on_hover_text(Text::EnterFullscreenPreview.tr(locale))
+                    .clicked()
+                {
+                    app.toggle_fullscreen_preview();
+                }
+                // "🔹" (emoji-presentation, same broken class as nav_rail's "🧹") replaced with
+                // plain ASCII — no vendored Lucide marker icon exists yet either.
+                if ui
+                    .small_button(
+                        RichText::new("*")
+                            .size(TRANSPORT_ICON_SIZE)
+                            .color(theme::TEXT_SECONDARY),
+                    )
+                    .on_hover_text(Text::AddMarkerButton.tr(locale))
+                    .clicked()
+                {
+                    app.add_marker_at_playhead(avcore::MarkerKind::Standard);
+                    app.push_toast(Text::MarkerAdded.tr(locale).to_string());
+                }
+                if components::icon_button(
+                    ui,
+                    crate::icons::CAMERA_STR,
+                    Text::SnapshotButton.tr(locale),
+                    components::IconButtonOpts {
+                        family: Some(crate::icons::family()),
+                        size: Some(TRANSPORT_ICON_SIZE),
+                        ..Default::default()
+                    },
+                )
+                .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("png", &["png"])
+                        .set_file_name("snapshot.png")
+                        .save_file()
+                    {
+                        app.save_preview_snapshot(path);
+                    }
+                }
+            });
+        });
         if app.preview_state.scopes_enabled {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
@@ -1512,6 +1446,109 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             });
         }
     });
+}
+
+/// The Program Monitor's centered transport-control cluster (skip-back, step-back, play/pause,
+/// step-forward, skip-forward, loop) — split out of `preview_panel` so the 3-column centering
+/// trick (`ui.columns(3, ...)`) there can call it just for the middle column.
+fn transport_controls(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    locale: crate::i18n::Locale,
+    timeline_duration: f64,
+) {
+    {
+        // Every glyph in this row shares one explicit size (`TRANSPORT_ICON_SIZE`) so the
+        // two plain-Unicode step-frame/marker glyphs (no vendored Lucide icon exists for
+        // either — see their own comments below) read at the same visual weight as the
+        // Lucide icon-font glyphs around them, instead of each falling back to its own
+        // font's default metrics and reading as an inconsistent mix of icon styles.
+        if components::icon_button(
+            ui,
+            crate::icons::SKIP_BACK_STR,
+            Text::SeekToStart.tr(locale),
+            components::IconButtonOpts {
+                family: Some(crate::icons::family()),
+                size: Some(TRANSPORT_ICON_SIZE),
+                ..Default::default()
+            },
+        )
+        .clicked()
+        {
+            app.seek_preview(0.0);
+        }
+        // No vendored Lucide icon for single-frame step (`skip-back`/`skip-forward` are
+        // start/end, already used above/below). Plain ASCII "<"/">" rather than the
+        // Geometric-Shapes triangles ("◁"/"▷") originally here — confirmed tofu against
+        // this app's bundled default font via a real screenshot (same class of bug as
+        // nav_rail's monogram fallback and the toolbar's tool icons).
+        if ui
+            .small_button(
+                RichText::new("<")
+                    .size(TRANSPORT_ICON_SIZE)
+                    .color(theme::TEXT_SECONDARY),
+            )
+            .on_hover_text(Text::StepFrameBack.tr(locale))
+            .clicked()
+        {
+            app.step_preview_frame(-1);
+        }
+        let play_icon = if app.preview_state.preview_playing {
+            crate::icons::PAUSE_STR
+        } else {
+            crate::icons::PLAY_STR
+        };
+        if ui
+            .button(
+                RichText::new(play_icon)
+                    .family(crate::icons::family())
+                    .size(TRANSPORT_PLAY_ICON_SIZE)
+                    .color(theme::ACCENT),
+            )
+            .on_hover_text(Text::ShortcutPlayPause.tr(locale))
+            .clicked()
+        {
+            app.toggle_preview_playback();
+        }
+        if ui
+            .small_button(
+                RichText::new(">")
+                    .size(TRANSPORT_ICON_SIZE)
+                    .color(theme::TEXT_SECONDARY),
+            )
+            .on_hover_text(Text::StepFrameForward.tr(locale))
+            .clicked()
+        {
+            app.step_preview_frame(1);
+        }
+        if components::icon_button(
+            ui,
+            crate::icons::SKIP_FORWARD_STR,
+            Text::SeekToEnd.tr(locale),
+            components::IconButtonOpts {
+                family: Some(crate::icons::family()),
+                size: Some(TRANSPORT_ICON_SIZE),
+                ..Default::default()
+            },
+        )
+        .clicked()
+        {
+            app.seek_preview(timeline_duration);
+        }
+        if ui
+            .selectable_label(
+                app.preview_state.loop_enabled,
+                RichText::new(crate::icons::REPEAT_STR)
+                    .family(crate::icons::family())
+                    .size(TRANSPORT_ICON_SIZE)
+                    .color(theme::TEXT_SECONDARY),
+            )
+            .on_hover_text(Text::PreviewLoopToggle.tr(locale))
+            .clicked()
+        {
+            app.preview_state.loop_enabled = !app.preview_state.loop_enabled;
+        }
+    }
 }
 
 /// Small live peak/RMS bar for the Editor preview panel's transport row — `spec/ROADMAP.md`
