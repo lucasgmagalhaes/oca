@@ -1071,6 +1071,24 @@ pub struct App {
     /// `Ctrl` + scroll over the timeline (per `request.md`'s Fase 3 spec) — more zoom for
     /// frame-accurate edits, less to see the whole project at once.
     pub timeline_px_per_sec: f32,
+    /// `timeline_px_per_sec` as of the last frame a thumbnail request was actually allowed to
+    /// fire — compared each frame against the current value to detect an in-progress zoom.
+    /// Every filmstrip tile's source frame index is a function of `timeline_px_per_sec`
+    /// ([`crate::screens::editor::timeline_panel::filmstrip_frame_index_for_tile`]), so a
+    /// continuous zoom drag changes nearly every visible tile's cache key on every single
+    /// frame — without this debounce, that fires one background extraction thread per tile
+    /// per frame throughout the whole gesture, almost all of them wasted on a tile whose key
+    /// is already stale again a frame later, and paints blank gaps instead of a thumbnail for
+    /// the whole gesture. Not persisted — same transient-UI category as `timeline_px_per_sec`
+    /// itself.
+    pub timeline_thumbnail_zoom_settled_px_per_sec: f32,
+    /// When `timeline_px_per_sec` last differed from
+    /// `timeline_thumbnail_zoom_settled_px_per_sec` — i.e. when the in-progress zoom was last
+    /// still moving. `screens::editor::timeline_panel` only lets new thumbnail requests through
+    /// once `Instant::now()` is `TIMELINE_THUMBNAIL_ZOOM_DEBOUNCE` past this, so requests resume
+    /// shortly after the zoom gesture settles rather than firing continuously while it's still
+    /// moving. `None` means settled (no pending debounce).
+    pub timeline_zoom_changed_at: Option<std::time::Instant>,
     /// Horizontal pan of the timeline canvas (ruler + clip area, not the track-label gutter),
     /// in pixels — how far the shared content origin has scrolled right. Mirrored every frame
     /// across the ruler's and every track's own small `ScrollArea::horizontal()` (forced via
@@ -1867,6 +1885,8 @@ impl App {
             selected_shape_clip_id: None,
             drawing_shape_points: None,
             timeline_px_per_sec: 4.0,
+            timeline_thumbnail_zoom_settled_px_per_sec: 4.0,
+            timeline_zoom_changed_at: None,
             timeline_pan_px: 0.0,
             collapsed_track_ids: std::collections::HashSet::new(),
             snap_enabled: true,

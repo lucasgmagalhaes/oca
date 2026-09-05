@@ -348,6 +348,8 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
         selected_shape_clip_id: None,
         drawing_shape_points: None,
         timeline_px_per_sec: 4.0,
+        timeline_thumbnail_zoom_settled_px_per_sec: 4.0,
+        timeline_zoom_changed_at: None,
         timeline_pan_px: 0.0,
         collapsed_track_ids: std::collections::HashSet::new(),
         snap_enabled: true,

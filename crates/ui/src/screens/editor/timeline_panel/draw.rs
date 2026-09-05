@@ -38,6 +38,21 @@ pub(super) fn visible_tile_range(
     first..end
 }
 
+/// Whether new filmstrip thumbnail requests should be allowed to fire this frame, given how
+/// recently `timeline_px_per_sec` last changed. `now`/`debounce` are plain parameters (not read
+/// from `Instant::now()` internally) so this stays a pure, directly-testable function — see
+/// `App::timeline_zoom_changed_at`'s own doc comment for why a debounce exists here at all.
+pub(super) fn thumbnail_requests_settled(
+    zoom_changed_at: Option<std::time::Instant>,
+    now: std::time::Instant,
+    debounce: std::time::Duration,
+) -> bool {
+    match zoom_changed_at {
+        None => true,
+        Some(changed_at) => now.duration_since(changed_at) >= debounce,
+    }
+}
+
 pub(super) fn filmstrip_frame_index_for_tile(
     source_in_secs: f64,
     tile_center_offset_px: f32,
@@ -119,9 +134,46 @@ pub(super) fn draw_filmstrip(
                     egui::Color32::WHITE,
                 );
             }
-            None => thumbnail_work.requests.push(key),
+            None => {
+                thumbnail_work.requests.push(key);
+                // The exact frame isn't cached yet (e.g. the timeline was just zoomed, which
+                // changes almost every visible tile's source frame at once — see
+                // `App::timeline_zoom_changed_at`'s doc comment). Painting nothing leaves a
+                // blank gap for as long as the real extraction takes; the nearest already-
+                // cached frame for this same asset is a closer approximation than a hole, and
+                // gets replaced the moment the exact frame's request lands.
+                if let Some(texture) =
+                    nearest_cached_thumbnail(thumbnail_textures, project_id, asset.id, frame_index)
+                {
+                    painter.image(
+                        texture.id(),
+                        tile_rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        egui::Color32::WHITE,
+                    );
+                }
+            }
         }
     }
+}
+
+/// The closest still-cached tile for the same asset, by source frame distance — a stand-in
+/// while the exact frame's own extraction is still in flight. `thumbnail_textures` is bounded
+/// ([`crate::app::THUMBNAIL_CACHE_CAPACITY`], 512 across the whole app), so a full scan filtered
+/// to one asset is cheap even done once per cache-miss tile. Generic over the cached value type
+/// (production always instantiates it at `egui::TextureHandle`) purely so this stays a plain
+/// unit-testable function — constructing a real `TextureHandle` needs a live `egui::Context`.
+pub(super) fn nearest_cached_thumbnail<'a, V>(
+    thumbnail_textures: &'a HashMap<ThumbnailKey, V>,
+    project_id: u64,
+    asset_id: u64,
+    frame_index: i64,
+) -> Option<&'a V> {
+    thumbnail_textures
+        .iter()
+        .filter(|((p, a, _), _)| *p == project_id && *a == asset_id)
+        .min_by_key(|((_, _, f), _)| (f - frame_index).abs())
+        .map(|(_, texture)| texture)
 }
 
 /// Draws a single poster frame — the one at `source_in_secs`, the frame a frozen block

@@ -28,6 +28,12 @@ use crate::theme;
 /// go from several-projects-wide overview down to frame-accurate editing.
 const MIN_PX_PER_SEC: f32 = 0.5;
 const MAX_PX_PER_SEC: f32 = 60.0;
+/// How long `timeline_px_per_sec` must sit still before new filmstrip thumbnail requests
+/// (`draw::draw_filmstrip`'s cache misses) are allowed through again — see
+/// `App::timeline_zoom_changed_at`'s own doc comment for why an active zoom drag needs this at
+/// all. Short enough that zooming still feels responsive once it stops, long enough to skip
+/// every discarded-a-frame-later request during a normal scroll-wheel/pinch zoom gesture.
+const TIMELINE_THUMBNAIL_ZOOM_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(150);
 const TRACK_LABEL_WIDTH: f32 = 86.0;
 /// Height of one track row, header and clip content alike. Was 26-28px — tall enough for a
 /// label but too thin to make the filmstrip thumbnails (`draw::draw_filmstrip`, which sizes its
@@ -55,7 +61,7 @@ pub(super) const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
 use draw::{
     color_filter_tint, draw_filmstrip, draw_frozen_poster, draw_keyframe_markers,
     draw_marker_ticks, draw_playhead, draw_ruler_ticks, draw_transition_wedge, draw_trim_info,
-    draw_waveform, shape_kind_glyph, ThumbnailDrawWork,
+    draw_waveform, shape_kind_glyph, thumbnail_requests_settled, ThumbnailDrawWork,
 };
 use snap::{snap_move_start, snap_to_nearest, waveform_snap_points_for_clip, ClipDrag};
 
@@ -104,6 +110,19 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 (app.timeline_px_per_sec * zoom_delta).clamp(MIN_PX_PER_SEC, MAX_PX_PER_SEC);
         }
         let px_per_sec = app.timeline_px_per_sec;
+        let now = std::time::Instant::now();
+        if px_per_sec != app.timeline_thumbnail_zoom_settled_px_per_sec {
+            app.timeline_thumbnail_zoom_settled_px_per_sec = px_per_sec;
+            app.timeline_zoom_changed_at = Some(now);
+        }
+        let thumbnail_requests_allowed = thumbnail_requests_settled(
+            app.timeline_zoom_changed_at,
+            now,
+            TIMELINE_THUMBNAIL_ZOOM_DEBOUNCE,
+        );
+        if thumbnail_requests_allowed {
+            app.timeline_zoom_changed_at = None;
+        }
 
         // Real horizontal pan (`EditorTool::Hand`): the ruler and every track row each get their
         // own small `ScrollArea::horizontal()` around just their canvas content (the track-label
@@ -1522,8 +1541,13 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             }
         }
         app.touch_thumbnails(&thumbnail_touches);
-        for (project_id, asset_id, frame_index) in thumbnail_requests {
-            app.request_thumbnail(project_id, asset_id, frame_index);
+        // Skipped requests aren't lost — the same tile re-offers its (by-then possibly
+        // different) key next frame once `draw_filmstrip` runs again, same as any other
+        // cache-miss tile that hasn't been requested yet.
+        if thumbnail_requests_allowed {
+            for (project_id, asset_id, frame_index) in thumbnail_requests {
+                app.request_thumbnail(project_id, asset_id, frame_index);
+            }
         }
         // An asset dragged out of the media library and released somewhere at or below the
         // ruler: whichever track row's Y-range the pointer landed on becomes the preferred
