@@ -709,7 +709,9 @@ fn refresh_text_overlay_redraws_a_content_only_edit_without_reopening_the_pipeli
                 .map(|frame| magenta_pixels(&frame))
                 .filter(|&count| count == 0)
         })
-        .expect("the edited clip's frame should stop rendering magenta pixels within the poll window");
+        .expect(
+            "the edited clip's frame should stop rendering magenta pixels within the poll window",
+        );
     assert_eq!(
         refreshed_count, 0,
         "the edited clip should no longer render any magenta pixels"
