@@ -694,13 +694,22 @@ fn refresh_text_overlay_redraws_a_content_only_edit_without_reopening_the_pipeli
     );
     preview.play().unwrap();
 
-    let refreshed_count = (0..20)
+    // The replacement buffer pushed above doesn't swap into `imagefreeze`'s output instantly --
+    // an appsrc push during `Paused` only actually flows once streaming resumes, and empirically
+    // several hundred ms of already-in-flight frames (still built from the pre-edit buffer) can
+    // drain before a frame reflecting the edit appears. So poll for a real content change,
+    // same "wait for it, don't just take the first frame" pattern
+    // `composited_text_highlight_replaces_its_buffer_during_playback` (above) uses, over a
+    // generous window rather than the 400ms this used to allow.
+    let refreshed_count = (0..150)
         .find_map(|_| {
             std::thread::sleep(std::time::Duration::from_millis(20));
-            preview.current_frame()
+            preview
+                .current_frame()
+                .map(|frame| magenta_pixels(&frame))
+                .filter(|&count| count == 0)
         })
-        .map(|frame| magenta_pixels(&frame))
-        .expect("a frame should still be available after the refresh");
+        .expect("the edited clip's frame should stop rendering magenta pixels within the poll window");
     assert_eq!(
         refreshed_count, 0,
         "the edited clip should no longer render any magenta pixels"
