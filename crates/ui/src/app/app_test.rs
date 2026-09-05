@@ -269,6 +269,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
             next_import_token: 0,
             pending_enrichment: HashMap::new(),
             auto_add_to_timeline: HashSet::new(),
+            auto_add_to_new_track: HashSet::new(),
         },
         sound_library_tracks: Vec::new(),
         sound_library_tx,
@@ -751,6 +752,58 @@ fn add_asset_to_timeline_is_a_no_op_for_an_unknown_asset_id() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
 
     app.add_asset_to_timeline(99);
+
+    assert!(app.active_project().timeline().tracks.is_empty());
+}
+
+#[test]
+fn add_asset_to_new_track_always_creates_a_fresh_track_even_when_a_matching_one_exists() {
+    let mut project = test_project(1, vec![test_asset(2)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 20.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.add_asset_to_new_track(2);
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 2, "existing V1 must be left untouched");
+    assert_eq!(tracks[0].clips.len(), 1);
+    assert_eq!(tracks[1].name, "V2");
+    assert_eq!(tracks[1].clips.len(), 1);
+    // A brand-new track is always empty, so the clip starts at 0 — this is what makes a batch
+    // of simultaneously-dropped files land on parallel (time-aligned) tracks.
+    assert_eq!(tracks[1].clips[0].start_secs, 0.0);
+    assert_eq!(tracks[1].clips[0].asset_id, 2);
+}
+
+#[test]
+fn add_asset_to_new_track_gives_each_call_its_own_track() {
+    let mut app = test_app(
+        vec![test_project(1, vec![test_asset(1), test_asset(2)])],
+        Vec::new(),
+    );
+
+    app.add_asset_to_new_track(1);
+    app.add_asset_to_new_track(2);
+
+    let tracks = &app.active_project().timeline().tracks;
+    assert_eq!(tracks.len(), 2);
+    assert_eq!(tracks[0].name, "V1");
+    assert_eq!(tracks[1].name, "V2");
+    assert_eq!(tracks[0].clips[0].asset_id, 1);
+    assert_eq!(tracks[1].clips[0].asset_id, 2);
+    assert_eq!(tracks[0].clips[0].start_secs, 0.0);
+    assert_eq!(tracks[1].clips[0].start_secs, 0.0);
+}
+
+#[test]
+fn add_asset_to_new_track_is_a_no_op_for_an_unknown_asset_id() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.add_asset_to_new_track(99);
 
     assert!(app.active_project().timeline().tracks.is_empty());
 }
