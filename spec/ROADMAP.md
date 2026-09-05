@@ -212,6 +212,21 @@ Read [matrix/effects-and-color.md](matrix/effects-and-color.md),
     its own sequence/tab happened to have when it was queued, so episode 1 and episode 5 of a
     series could silently end up with mismatched targets. Pure orchestration, no new DSP —
     reuses the existing per-job `target_lufs` field and `LUFS_PROFILES` picker.
+13. `[x]` **Multi-file drop lands on parallel tracks, not one stacked track.** Reported gap:
+    dropping/dragging several files onto the Editor at once always landed them concatenated,
+    one after another, onto the same single track (`App::add_asset_to_timeline`'s
+    `resolve_or_create_track(_, kind, None)` always reuses the first existing track of that
+    kind) — the only existing way to get simultaneous parallel tracks was the dedicated
+    Multicam feature or manually dragging each file to its own track row one at a time. Fixed:
+    `App::handle_dropped_files` now treats a batch of 2+ dropped files as simultaneous material
+    (e.g. multiple camera angles, or a video-plus-narration pair) and routes each through the
+    new `App::add_asset_to_new_track` (always `create_new_track`, never reuse) instead of
+    `add_asset_to_timeline` — every file in the batch lands on its own fresh track, each
+    starting at `0.0` since a brand-new track is always empty. A single dropped file keeps the
+    original append-to-existing-track behavior unchanged. Does not touch the "Importar
+    arquivos" button path (library-only import, no auto-add-to-timeline for either single or
+    multi-file selection) or the Multicam feature, which remains the deliberate flow for
+    sync-aligned (non-zero-offset) multi-angle grouping.
 
 ## P3 — Differentiators
 
