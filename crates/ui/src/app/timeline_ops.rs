@@ -53,6 +53,35 @@ impl App {
         self.active_project_mut().record_recent_asset(asset_id);
     }
 
+    /// Appends `asset_id` onto a brand-new, never-reused track — what a multi-file drop/drag
+    /// onto the Editor uses ([`App::handle_dropped_files`]) instead of
+    /// [`App::add_asset_to_timeline`] for each file in the batch, so simultaneous source files
+    /// land on parallel tracks (each new track is empty, so its clip starts at `0.0`) rather
+    /// than being silently concatenated one after another onto a single shared track. A no-op
+    /// if `asset_id` isn't in the active project's media library.
+    pub fn add_asset_to_new_track(&mut self, asset_id: u64) {
+        let Some((kind, duration_secs)) = self.asset_kind_and_duration(asset_id) else {
+            return;
+        };
+        self.push_undo_snapshot();
+        let timeline = self.active_project_mut().timeline_mut();
+        let track_index = create_new_track(timeline, kind);
+        let start_secs = timeline.tracks[track_index].duration_secs();
+        let clip_id = next_clip_id(timeline);
+        let voice_cleanup_enabled = timeline.tracks[track_index].audio_role == AudioRole::Mic;
+        timeline.tracks[track_index]
+            .clips
+            .push(default_clip_instance(
+                clip_id,
+                asset_id,
+                start_secs,
+                0.0,
+                duration_secs,
+                voice_cleanup_enabled,
+            ));
+        self.active_project_mut().record_recent_asset(asset_id);
+    }
+
     /// Inserts `asset_id` onto the timeline at `start_secs` — what dropping an asset dragged
     /// out of the media library onto the timeline strip does. Prefers `preferred_track_id` if
     /// it exists and matches the asset's kind (the track row the drop landed on); otherwise

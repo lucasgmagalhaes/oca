@@ -1590,6 +1590,13 @@ pub(crate) struct ImportState {
     /// [`App::add_sound_library_track_to_timeline`]'s one-click "add to timeline" for a Music &
     /// SFX track that hasn't been imported into the active project yet.
     pub(crate) auto_add_to_timeline: HashSet<u64>,
+    /// Import tokens whose asset should land on a brand-new track (never an existing one) the
+    /// moment its `ImportEvent::AssetReady` lands — used for a multi-file drop/drag onto the
+    /// Editor ([`App::handle_dropped_files`]) so simultaneous files land on parallel tracks
+    /// (all starting at `0.0`) instead of being silently concatenated one after another onto a
+    /// single track, which is what [`App::add_asset_to_timeline`]'s always-reuse-first-track
+    /// resolution would otherwise do for every file in the batch.
+    pub(crate) auto_add_to_new_track: HashSet<u64>,
 }
 
 /// Thumbnail background-job channel/cache state. Filmstrip tile textures keyed by
@@ -1781,6 +1788,7 @@ impl App {
                 next_import_token: 0,
                 pending_enrichment: HashMap::new(),
                 auto_add_to_timeline: HashSet::new(),
+                auto_add_to_new_track: HashSet::new(),
             },
             sound_library_tracks: Vec::new(),
             sound_library_tx,

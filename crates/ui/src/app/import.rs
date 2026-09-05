@@ -43,6 +43,14 @@ impl App {
     /// in the media panel) to get there. Dropped onto the Library screen instead, files land in
     /// the media library only, matching that screen's own "Importar arquivos" button — there's
     /// no timeline in view there for "add it now" to mean anything.
+    ///
+    /// Dropping more than one file at once lands each on its own brand-new track
+    /// ([`App::add_asset_to_new_track`]) instead of [`App::add_asset_to_timeline`]'s usual
+    /// "reuse the first track of matching kind" — a batch of files dragged in together is
+    /// treated as simultaneous material (e.g. multiple camera angles or a video-plus-narration
+    /// pair), so it lands on parallel tracks rather than being silently concatenated one after
+    /// another onto a single track. A single dropped file keeps the original append-to-existing-
+    /// track behavior.
     pub(super) fn handle_dropped_files(&mut self, ctx: &egui::Context) {
         if !matches!(self.screen, Screen::Editor | Screen::Library) {
             return;
@@ -61,9 +69,14 @@ impl App {
         }
         self.ensure_active_project();
         let add_to_timeline = self.screen == Screen::Editor;
+        let is_batch = paths.len() > 1;
         let tokens = self.spawn_import(paths);
         if add_to_timeline {
-            self.import_state.auto_add_to_timeline.extend(tokens);
+            if is_batch {
+                self.import_state.auto_add_to_new_track.extend(tokens);
+            } else {
+                self.import_state.auto_add_to_timeline.extend(tokens);
+            }
         }
     }
 
@@ -191,7 +204,14 @@ impl App {
                     // track that wasn't already in the library — only honored if the active
                     // project is still the one this asset landed in, in case it changed while
                     // the import was in flight.
-                    if self.import_state.auto_add_to_timeline.remove(&import_token)
+                    if self
+                        .import_state
+                        .auto_add_to_new_track
+                        .remove(&import_token)
+                        && self.active_project().id == project_id
+                    {
+                        self.add_asset_to_new_track(next_id);
+                    } else if self.import_state.auto_add_to_timeline.remove(&import_token)
                         && self.active_project().id == project_id
                     {
                         self.add_asset_to_timeline(next_id);
