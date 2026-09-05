@@ -38,11 +38,23 @@ def _import_and_add_to_timeline(oca_window):
     from pywinauto import Desktop
 
     oca_window.child_window(title="Mídia", control_type="Button").click_input()
-    oca_window.child_window(
-        title="⭱ Importar arquivos", control_type="Button"
-    ).click_input()
+
+    # Retried, not single-shot: the "Importar arquivos" click occasionally doesn't land on a
+    # settled frame (same category of OS-level synthetic-input timing noise
+    # `_drag_layer_once`'s own retry loop below documents, ~1 in 4 observed empirically for
+    # this specific click too) and the native Open dialog never spawns at all that attempt —
+    # waiting longer doesn't help when the click was simply lost, only clicking again does.
     dialog = Desktop(backend="uia").window(class_name="#32770")
-    dialog.wait("visible", timeout=10)
+    for attempt in range(3):
+        oca_window.child_window(
+            title="⭱ Importar arquivos", control_type="Button"
+        ).click_input()
+        try:
+            dialog.wait("visible", timeout=5)
+            break
+        except Exception:
+            if attempt == 2:
+                raise
     filename_edit = dialog.child_window(
         control_id=OPEN_DIALOG_FILENAME_CONTROL_ID, class_name="Edit"
     )

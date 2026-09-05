@@ -25,4 +25,18 @@ def test_navigating_to_each_screen_updates_the_breadcrumb(oca_window):
         # the click's effect isn't necessarily visible to UI Automation yet the instant
         # click_input() returns.
         matches = poll_for_descendants(oca_window, screen_title, timeout_secs=3.0)
+        if not matches:
+            # "Ajustes" opens `egui::Modal`'s prefs dialog rather than switching
+            # `app.screen` (see `App::show_prefs_modal`) — a click on the *next* nav item
+            # while that modal's full-screen backdrop is still capturing input can land as
+            # "dismiss the modal" alone (backdrop swallows it) rather than also registering as
+            # the nav click, depending on exactly which frame the click's down/up events land
+            # in relative to the modal opening. One retry click clears this empirically (the
+            # modal is already closed by the first click's dismiss, so the retry is a normal
+            # nav click against the plain nav rail underneath) rather than the click genuinely
+            # never having worked.
+            oca_window.child_window(
+                title=nav_label, control_type="Button"
+            ).click_input()
+            matches = poll_for_descendants(oca_window, screen_title, timeout_secs=3.0)
         assert matches, f"no Text control titled {screen_title!r} after clicking {nav_label!r}"

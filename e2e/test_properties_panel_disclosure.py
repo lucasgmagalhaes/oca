@@ -24,9 +24,12 @@ from __future__ import annotations
 
 import time
 
+from pywinauto import mouse
+
 from test_layer_transform import FIXTURE_VIDEO, _import_and_add_to_timeline, _select_the_clip
 
 GAIN_SECTION_LABEL = "GANHO DO BLOCO"  # Text::PropGain.tr(pt_br).to_uppercase()
+AUDIO_TAB_LABEL = "Áudio"  # Text::PropertiesTabAudio.tr(pt_br)
 
 
 def _slider_count(oca_window):
@@ -38,6 +41,26 @@ def test_gain_section_starts_collapsed_and_toggles_on_click(oca_window):
 
     _import_and_add_to_timeline(oca_window)
     _select_the_clip(oca_window)
+
+    # The Gain section lives under the properties panel's "Áudio" tab (properties_panel/
+    # mod.rs's properties_tab_bar) — the panel defaults to PropertiesTab::Inspector, which
+    # doesn't render it at all, so it's never visible without switching tabs first.
+    oca_window.child_window(title=AUDIO_TAB_LABEL, control_type="Button").click_input()
+    time.sleep(0.3)
+
+    # The panel's asset-metadata block + "Ao exportar" loudness note (above the tab bar) push
+    # the tab content itself below the fold at this window size — accesskit still reports the
+    # Gain header's (unreachable) logical rectangle even while it's scrolled out of view, so a
+    # real click_input() at that rect silently lands on whatever's actually on-screen instead
+    # (confirmed empirically: without this scroll, clicking the found header never changes the
+    # slider count, with it it reliably does). Scroll the properties panel (right side of the
+    # window) down before touching anything in it.
+    panel_rect = oca_window.rectangle()
+    mouse.scroll(
+        coords=(panel_rect.right - 150, (panel_rect.top + panel_rect.bottom) // 2),
+        wheel_dist=-10,
+    )
+    time.sleep(0.3)
 
     gain_header = oca_window.child_window(
         title=GAIN_SECTION_LABEL, control_type="Button"

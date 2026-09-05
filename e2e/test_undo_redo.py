@@ -8,6 +8,12 @@
 # the new track's name ("V1") is a plain accessible Text control (see conftest.py's module
 # docstring on why timeline clips themselves aren't), so its presence/absence is a reliable,
 # coordinate-free signal that undo/redo actually round-tripped through the live app.
+#
+# "Add video track" lives inside the top bar's "Sequência" (Sequence) menu_button (see
+# screens/editor/menu_bar.rs's sequence_menu, added by e8f7eb8 "add the Editor's .../Sequence/...
+# menu bar") -- an egui menu_button's children only exist in the accessibility tree while the
+# menu popup is open, so the menu has to be clicked open first rather than reaching the item
+# directly.
 from __future__ import annotations
 
 import time
@@ -15,10 +21,20 @@ import time
 from conftest import poll_for_descendants
 
 ADD_VIDEO_TRACK_LABEL = "＋ Adicionar faixa de vídeo"
+SEQUENCE_MENU_LABEL = "Sequência"
 
 
 def _toolbar_button(oca_window, symbol):
     return oca_window.child_window(title=symbol, control_type="Button")
+
+
+def _click_add_video_track(oca_window):
+    oca_window.child_window(
+        title=SEQUENCE_MENU_LABEL, control_type="Button"
+    ).click_input()
+    oca_window.child_window(
+        title=ADD_VIDEO_TRACK_LABEL, control_type="Button"
+    ).click_input()
 
 
 def test_undo_redo_round_trips_an_added_video_track(oca_window):
@@ -27,9 +43,7 @@ def test_undo_redo_round_trips_an_added_video_track(oca_window):
     assert not poll_for_descendants(oca_window, "V1", timeout_secs=2.0)
     assert not _toolbar_button(oca_window, "Desfazer").is_enabled()
 
-    oca_window.child_window(
-        title=ADD_VIDEO_TRACK_LABEL, control_type="Button"
-    ).click_input()
+    _click_add_video_track(oca_window)
     assert poll_for_descendants(oca_window, "V1", timeout_secs=3.0)
     assert _toolbar_button(oca_window, "Desfazer").is_enabled()
     assert not _toolbar_button(oca_window, "Refazer").is_enabled()
