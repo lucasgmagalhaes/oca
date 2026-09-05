@@ -526,7 +526,7 @@ pub fn instantiate(
                 source_id: t.id.clone(),
                 text: resolve_text(&t.text, values)?,
                 color_rgba: resolve_color(&t.color_rgba, values)?,
-                font_family: t.font_family,
+                font_family: t.font_family.clone(),
                 font_style: t.font_style,
                 font_size: t.font_size,
                 pos_x: t.pos_x,

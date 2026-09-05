@@ -69,21 +69,20 @@ impl AudioRole {
 /// SIL Open Font License, so projects render identically even when the host has no fonts
 /// installed. The actual font bytes are parsed lazily by [`crate::text_metrics`].
 ///
-/// Persisted in `.ocproj` by variant name (`serde`'s default unit-variant encoding, confirmed
-/// against `rmp-serde`'s own `serialize_unit_variant` — it writes the name string unconditionally,
-/// never a positional index, so reordering these variants in source has never been able to change
-/// on-disk meaning). `Lato` carries `#[serde(other)]` — FONT-01's forwards-compatibility rule
-/// (`spec/architecture/built-in-font-catalog.md`: "an unknown future ID... renders with the
-/// deterministic fallback rather than corrupting project load") for the one part achievable
-/// without a data-carrying persisted type: a project saved by a future build with a family this
-/// build doesn't know falls back to Lato instead of failing to load at all. The remaining half of
-/// that rule — preserving the unrecognized name itself through a resave, rather than silently
-/// normalizing it to `Lato` — needs [`crate::font_catalog`]'s `family_id` to become the actual
-/// persisted representation, deliberately deferred (see that module's own doc comment).
-/// `#[serde(other)]` requires its variant to be declared last, which is why `Lato` (already
-/// `#[default]`) moved to the bottom of this list — [`Self::ALL`]'s own order is a separate,
-/// explicit array and keeps Lato first for the UI.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+/// **Persisted in `.ocproj` by [`crate::font_catalog`]'s stable `family_id` slug** (e.g.
+/// `"bebas-neue"`), not the variant name — FONT-01A's own deferred persisted-identity swap,
+/// now done. [`Serialize`]/[`Deserialize`] are implemented manually below rather than derived,
+/// since the mapping isn't the derive-default "variant name in, variant name out": reading also
+/// accepts the *old* format (a bare variant name, e.g. `"BebasNeue"` — what every `.ocproj`
+/// saved before this migration actually contains) for backward compatibility, and a slug or
+/// name this build recognizes neither of resolves to [`Self::Unknown`] rather than silently
+/// normalizing to [`Self::Lato`] — FONT-01's forwards-compatibility rule in full this time
+/// ("an unknown future ID... keeps its serialized value... renders with the deterministic
+/// fallback"): [`Self::family_id`] returns `Unknown`'s own preserved string, so a build that
+/// doesn't recognize a family still renders it as Lato locally *and* writes the exact same
+/// unrecognized slug back out on save, rather than losing the association the way the old
+/// `#[serde(other)]`-onto-`Lato` unit-variant scheme did.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum TextFontFamily {
     /// Condensed display face suitable for titles.
     BebasNeue,
@@ -95,30 +94,146 @@ pub enum TextFontFamily {
     AnonymousPro,
     /// Heavy, high-contrast face intended for short-form captions.
     ArchivoBlack,
+    // FONT-01B's 37-family expansion (`crate::font_catalog::CATALOG`) — added directly as plain
+    // enum variants, the same shape the original six use, rather than the doc's own
+    // `family_id`-as-persisted-type structural swap (still deferred, see this enum's own doc
+    // comment above): every variant here still serializes as its own name string, and `Lato`'s
+    // `#[serde(other)]` below already gives forward-compatible fallback for any name an older
+    // build doesn't recognize -- the practical "these fonts are selectable and persist
+    // correctly" outcome doesn't need the full swap, only the *"unknown id keeps its exact
+    // string through a resave"* half still does. Grouped by `font_catalog::FontCategory` order,
+    // matching `CATALOG`'s own layout.
+    Inter,
+    Montserrat,
+    Roboto,
+    OpenSans,
+    Poppins,
+    Nunito,
+    SourceSans3,
+    Barlow,
+    Fredoka,
+    Oswald,
+    Anton,
+    BarlowCondensed,
+    LeagueSpartan,
+    Teko,
+    BlackOpsOne,
+    RussoOne,
+    Bangers,
+    Merriweather,
+    LibreBaskerville,
+    Lora,
+    Cinzel,
+    Bitter,
+    Caveat,
+    Pacifico,
+    DancingScript,
+    ComicNeue,
+    GloriaHallelujah,
+    JetBrainsMono,
+    RobotoMono,
+    SpaceMono,
+    NotoSansArabic,
+    NotoNaskhArabic,
+    NotoSansHebrew,
+    NotoSansDevanagari,
+    NotoSansBengali,
+    NotoSansTamil,
+    NotoSansThai,
     /// Modern sans-serif suitable for body text and general captions. Also the deterministic
     /// fallback for a font family this build doesn't recognize (see this enum's own doc comment).
     #[default]
-    #[serde(other)]
     Lato,
+    /// A `family_id` (or, reading an old save, a variant name) this build doesn't recognize —
+    /// preserves the exact original string so a resave doesn't lose it, while rendering/
+    /// behaving as [`Self::Lato`] everywhere else (see this enum's own doc comment). Never a
+    /// member of [`Self::ALL`] — it's a runtime/persistence state, not a selectable option.
+    Unknown(String),
 }
 
 impl TextFontFamily {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 43] = [
         Self::Lato,
         Self::BebasNeue,
         Self::PlayfairDisplay,
         Self::PatrickHand,
         Self::AnonymousPro,
         Self::ArchivoBlack,
+        Self::Inter,
+        Self::Montserrat,
+        Self::Roboto,
+        Self::OpenSans,
+        Self::Poppins,
+        Self::Nunito,
+        Self::SourceSans3,
+        Self::Barlow,
+        Self::Fredoka,
+        Self::Oswald,
+        Self::Anton,
+        Self::BarlowCondensed,
+        Self::LeagueSpartan,
+        Self::Teko,
+        Self::BlackOpsOne,
+        Self::RussoOne,
+        Self::Bangers,
+        Self::Merriweather,
+        Self::LibreBaskerville,
+        Self::Lora,
+        Self::Cinzel,
+        Self::Bitter,
+        Self::Caveat,
+        Self::Pacifico,
+        Self::DancingScript,
+        Self::ComicNeue,
+        Self::GloriaHallelujah,
+        Self::JetBrainsMono,
+        Self::RobotoMono,
+        Self::SpaceMono,
+        Self::NotoSansArabic,
+        Self::NotoNaskhArabic,
+        Self::NotoSansHebrew,
+        Self::NotoSansDevanagari,
+        Self::NotoSansBengali,
+        Self::NotoSansTamil,
+        Self::NotoSansThai,
     ];
 
-    /// Whether this bundled family has a distinct bold file. Single-weight display faces keep
-    /// their own designed weight and therefore expose only [`TextFontStyle::Regular`].
-    pub const fn supports_bold(self) -> bool {
-        matches!(
-            self,
-            Self::Lato | Self::PlayfairDisplay | Self::AnonymousPro
-        )
+    /// Whether this bundled family has a distinct bold file — derived from
+    /// [`crate::font_catalog::CATALOG`] directly (does this family's own entry declare a weight
+    /// 700 face?) rather than a hand-maintained list, so a newly vendored family's bold support
+    /// is never forgotten. Every FONT-01B variable-font family currently locks only its default
+    /// (400) instance (see `font_catalog`'s own doc comment on why), so this returns `false` for
+    /// all of them today — not a missing case, an accurate reflection of what's actually locked.
+    pub fn supports_bold(&self) -> bool {
+        crate::font_catalog::find_family(self.family_id())
+            .is_some_and(|entry| entry.faces.iter().any(|face| face.weight == 700))
+    }
+}
+
+impl Serialize for TextFontFamily {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.family_id())
+    }
+}
+
+impl<'de> Deserialize<'de> for TextFontFamily {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        // New format: a font_catalog family_id slug (e.g. "bebas-neue").
+        if let Some(family) = Self::from_family_id(&raw) {
+            return Ok(family);
+        }
+        // Old format, for backward compatibility with every .ocproj saved before this
+        // migration: a bare enum variant name (e.g. "BebasNeue") -- Debug's derived output for
+        // a unit variant is exactly its name, so comparing against that (rather than a second
+        // hand-maintained name table) can't drift from the real variant names.
+        if let Some(family) = Self::ALL.into_iter().find(|f| format!("{f:?}") == raw) {
+            return Ok(family);
+        }
+        // Neither -- an id this build genuinely doesn't recognize (a newer family, or a
+        // corrupted/foreign value). Preserved verbatim rather than normalized to Lato, per this
+        // enum's own doc comment.
+        Ok(Self::Unknown(raw))
     }
 }
 

@@ -13,12 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! CF-05 (`spec/architecture/competitive-feature-plan.md`): a thin `App` wrapper around
+//! CF-05 (`spec/architecture/competitive-feature-plan.md`): thin `App` wrappers around
 //! `avcore::interchange`/`avcore::interchange::otio_json` so the Editor menu bar's "Export
-//! OpenTimelineIO (.otio)..." action has something to call once its own `rfd::FileDialog` picks
-//! a path — same shape [`crate::app::collab_bundle`] already established for the collaboration
-//! bundle export button (build the real payload in `core`, this module only turns the result
-//! into a toast or a written file).
+//! OpenTimelineIO (.otio)..." and "Import OpenTimelineIO (.otio)..." actions have something to
+//! call once their own `rfd::FileDialog` picks a path — same shape [`crate::app::collab_bundle`]
+//! already established for the collaboration bundle export/import buttons (build the real
+//! payload in `core`, this module only turns the result into a toast, a written file, or a new
+//! sequence tab).
 
 use std::path::PathBuf;
 
@@ -47,6 +48,72 @@ impl App {
                 self.push_toast(Text::OtioExported.tr(self.locale).to_string());
             }
             Err(e) => self.push_toast(format!("Failed to export OpenTimelineIO file: {e}")),
+        }
+    }
+
+    /// Reads a real `.otio` file at `input_path` and imports its supported editorial subset
+    /// (track order, clip source ranges, gaps, markers, transition kind, speed — see
+    /// `avcore::interchange::otio_json`'s own doc comment for exactly what's recognized versus
+    /// approximated-with-a-warning) into a brand-new sequence tab in the active project, the
+    /// exact shape `App::add_sequence`'s own "append and switch to it" already established —
+    /// never overwrites an existing sequence. Every clip's media reference is resolved against
+    /// the *active project's* own media library
+    /// (`avcore::interchange::interchange_to_timeline`'s own contract); a clip whose source
+    /// media isn't already imported into this project is skipped and counted as a warning
+    /// rather than linked to the wrong asset. What the Editor menu bar's "Import OpenTimelineIO
+    /// (.otio)..." action does once its open-file dialog picks a source file.
+    pub fn import_otio_into_new_sequence(&mut self, input_path: std::path::PathBuf) {
+        let bytes = match std::fs::read_to_string(&input_path) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                self.push_toast(format!("Failed to read {}: {e}", input_path.display()));
+                return;
+            }
+        };
+        let json: serde_json::Value = match serde_json::from_str(&bytes) {
+            Ok(json) => json,
+            Err(e) => {
+                self.push_toast(format!("Not a valid JSON file: {e}"));
+                return;
+            }
+        };
+        let import = match avcore::interchange::otio_json::parse_otio_json(&json) {
+            Ok(import) => import,
+            Err(e) => {
+                self.push_toast(format!("Not a recognizable OpenTimelineIO document: {e}"));
+                return;
+            }
+        };
+
+        let sequence_name = if import.timeline.name.trim().is_empty() {
+            input_path
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "Imported".to_string())
+        } else {
+            import.timeline.name.clone()
+        };
+
+        let project = self.active_project_mut();
+        project.new_sequence(sequence_name);
+        // Fresh sequence, fresh timeline -- ids are scoped to their owning sequence (see
+        // `Project::duplicate_sequence`'s own doc comment), so starting over from 1 here can
+        // never collide with any other sequence's own track/clip/marker ids.
+        let mut next_id = 1u64;
+        let placement =
+            avcore::interchange::interchange_to_timeline(&import.timeline, project, &mut next_id);
+        project.active_sequence_mut().timeline = placement.timeline;
+        self.reset_sequence_context();
+
+        let warning_count = import.warnings.len() + placement.warnings.len();
+        if warning_count == 0 {
+            self.push_toast(Text::OtioImported.tr(self.locale).to_string());
+        } else {
+            self.push_toast(
+                Text::OtioImportedWithWarnings
+                    .tr(self.locale)
+                    .replace("{n}", &warning_count.to_string()),
+            );
         }
     }
 }

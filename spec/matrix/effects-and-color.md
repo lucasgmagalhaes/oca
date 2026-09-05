@@ -49,12 +49,12 @@ for exact export-vs-preview wiring per effect).
 - [x] Manual text insertion, full HSV+preset+hex/rgb color editor (transactional modal).
 - [x] Word-highlight subtitle style (shorts/MrBeast-style), live timing in both preview+export,
       auto line-wrap identical in both.
-- [~] Bundled fonts — 43 families/51 TTF files now vendored (FONT-01B complete, `ROADMAP.md`'s
-      own entry has the full writeup), all SIL OFL, real sha256/size-verified against the pinned
-      `google/fonts` revision. Only the original 6 are selectable in the Editor today (a
-      `TextFontFamily` enum variant + preview/export parity) — the other 37 are loaded and
-      catalog-validated but need FONT-01A's persisted-identity swap and FONT-01D's selector UI
-      before they're user-reachable. See
+- [~] Bundled fonts — 43 families/51 TTF files vendored and all selectable in the Editor
+      (`ROADMAP.md`'s FONT-01 entry has the full writeup), all SIL OFL, real sha256/size-verified
+      against the pinned `google/fonts` revision, real Latin-shaping-verified (all 43, including
+      the 7 Noto international faces). Still missing: FONT-01A's persisted-identity swap
+      (`.ocproj` stores the enum variant name, not a stable `family_id`) and FONT-01C's
+      categorized/searchable selector (today's picker is a flat 43-item list). See
       `../architecture/built-in-font-catalog.md`.
 - [ ] Complex shaping/bidi — the current per-character metrics and left-to-right `fontdue::Layout`
       do not correctly handle Arabic contextual forms, mixed bidi, Indic conjuncts, ligature-safe

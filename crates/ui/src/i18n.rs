@@ -600,6 +600,9 @@ text_catalog! {
     CollabBundleExported: pt_br = "Pacote de colaboração exportado.", en = "Collaboration bundle exported.";
     ExportOtio: pt_br = "Exportar OpenTimelineIO (.otio)...", en = "Export OpenTimelineIO (.otio)...";
     OtioExported: pt_br = "Arquivo .otio exportado.", en = ".otio file exported.";
+    ImportOtio: pt_br = "Importar OpenTimelineIO (.otio)...", en = "Import OpenTimelineIO (.otio)...";
+    OtioImported: pt_br = "Arquivo .otio importado em uma nova sequência.", en = ".otio file imported into a new sequence.";
+    OtioImportedWithWarnings: pt_br = "Arquivo .otio importado em uma nova sequência; {n} item(ns) não pôde(puderam) ser trazido(s) sem aproximação.", en = ".otio file imported into a new sequence; {n} item(s) could not be brought in without approximation.";
     DetectChapters: pt_br = "🎬 Detectar capítulos", en = "🎬 Detect Chapters";
     SceneCutDetectionNone: pt_br = "Nenhum corte de cena detectado.", en = "No scene cuts detected.";
     ChapterDefaultLabel: pt_br = "Capítulo {n}", en = "Chapter {n}";
@@ -695,6 +698,14 @@ text_catalog! {
     TextFontPatrickHand: pt_br = "Patrick Hand · Manuscrita", en = "Patrick Hand · Handwritten";
     TextFontAnonymousPro: pt_br = "Anonymous Pro · Monoespaçada", en = "Anonymous Pro · Monospace";
     TextFontArchivoBlack: pt_br = "Archivo Black · Legenda bold", en = "Archivo Black · Bold caption";
+    TextFontUnknown: pt_br = "Fonte desconhecida", en = "Unknown font";
+    TextFontSearchHint: pt_br = "Buscar fonte...", en = "Search font...";
+    FontCategorySans: pt_br = "Sem serifa", en = "Sans";
+    FontCategoryDisplay: pt_br = "Destaque", en = "Display";
+    FontCategorySerif: pt_br = "Serifada", en = "Serif";
+    FontCategoryHandwritten: pt_br = "Manuscrita", en = "Handwritten";
+    FontCategoryMonospace: pt_br = "Monoespaçada", en = "Monospace";
+    FontCategoryInternational: pt_br = "Internacional", en = "International";
     TextFontRegular: pt_br = "Regular", en = "Regular";
     TextFontBold: pt_br = "Negrito", en = "Bold";
     PropTextDirection: pt_br = "Direção do texto", en = "Text direction";

@@ -1015,16 +1015,50 @@ an item earlier:
   a Latin-coverage claim for e.g. `NotoSansThai` was never verified). Nothing in the codebase
   currently reads `glyphset_guarantees` (confirmed via a real grep — it's descriptive metadata
   only, not consumed by any runtime logic), so this was never a functional bug, just an
-  inaccurate claim — fixed to `["international-fallback"]` only before this note was written,
-  not left for a future session to catch.
+  inaccurate claim — fixed to `["international-fallback"]` only, pending real verification.
 
-  **Still open**: FONT-01A's persisted-identity swap (needed before any of these 37 new families
-  can be selected from the Editor's text-clip font picker at all — FONT-01D), variable-weight
-  axis *selection* in the UI (today's default/bold-only picker doesn't expose the axes these
-  variable fonts actually carry), the searchable/categorized selector itself (FONT-01C), Latin-
-  shaping verification for the 37 new families (needs `TextLayoutEngine` to expose a shape-by-
-  `family_id` path instead of only by the `TextFontFamily` enum), and TEXT-01's own shaping-test
-  gate before the 7 international families are exposed as script fallbacks.
+  **FONT-01B slice 3 shipped: all 37 new families are now selectable, not just vendored.**
+  `TextFontFamily` grew from 6 to 43 variants (plain enum variants, the same shape the original
+  six use — not the doc's own `family_id`-as-persisted-type structural swap, still deferred, see
+  below) and `TextFontFamily::ALL` now lists all 43. Two consequences fell out for free, since
+  both already iterate `ALL` generically:
+  - The Editor's text-clip font picker (`properties_panel/text_clip.rs`) now lists and lets a
+    user select every one of the 43 families — `text_font_family_label` reuses each new family's
+    `font_catalog::FontFamilyEntry::display_name` directly rather than a bespoke i18n key per
+    family (font names are proper nouns, not conventionally translated — no pt-BR equivalent for
+    "Montserrat" — a dedicated key would just repeat the same string in both locales). No
+    category grouping in the list yet — that's FONT-01C's own scope, not invented here.
+  - `every_bundled_family_shapes_ordinary_latin_text_without_missing_glyphs`, which iterates
+    `TextFontFamily::ALL`, now genuinely covers all 43 with zero code changes to the test itself.
+    **Retracts slice 2's own "Latin-shaping verification for the 37 new families" gap**: run for
+    real, it confirmed every one of them — *including* the 7 `Noto` international faces — shapes
+    ordinary Portuguese/Latin text with zero `.notdef` hits. Noto's own faces do carry Latin
+    coverage after all (a deliberate design choice by that project for mixed-script documents);
+    slice 2's defensive `glyphset_guarantees` downgrade was the right call at the time (no
+    verification existed yet) but is now upgraded back to `["gf-latin-core",
+    "international-fallback"]` for all 7, this time backed by a real passing test rather than a
+    copy-pasted assumption.
+
+  `TextFontFamily::supports_bold()` changed from a hardcoded 3-family match to a real derivation
+  from `font_catalog::CATALOG` (does this family's own entry declare a weight-700 face?) — every
+  FONT-01B variable-font family locks only its default 400 instance today (no separate Bold
+  entry, since one variable file already carries the whole weight axis), so `supports_bold()`
+  correctly returns `false` for all of them; only the static two-face families (Poppins, Barlow,
+  Barlow Condensed, Comic Neue, Space Mono, plus the original Lato/Playfair Display/Anonymous
+  Pro) return `true`. `cargo build -p ui` + a real launch of the compiled `ui.exe` (no crash,
+  clean startup) confirm this compiles and runs, on top of 518/518 `cargo test -p core --lib` +
+  423/423 `cargo test -p ui` passing.
+
+  **Still open**: FONT-01A's persisted-identity swap (`.ocproj` storing a `family_id` slug
+  instead of the plain enum variant name, so an unrecognized *future* id keeps its exact string
+  through a resave rather than normalizing to `Lato` — a real structural change; adding plain
+  enum variants already gives the *practical* "selectable and persists correctly" outcome
+  without it), variable-weight axis *selection* in the UI (today's default/bold-only picker
+  still doesn't expose the axes these variable fonts actually carry), the searchable/categorized
+  selector itself (FONT-01C, genuinely needed now more than ever — a 43-item flat list is a real
+  UX regression from 6), and TEXT-01's own shaping-test gate before the 7 international families
+  are used as an *automatic* script-fallback chain rather than a manual pick (they're manually
+  selectable today, same as everything else).
 
   Verified for real, not just type-checked: this session's sandbox turned out to have a
   working path to a fully-linked `core` test binary (`rustup update stable` past a
@@ -1061,6 +1095,53 @@ an item earlier:
   fallback for an unrecognized/empty name, 4/4 passing. `cargo check --workspace --all-targets`
   (including this new persistence test) and `cargo clippy -p core --lib --no-deps` both stayed
   clean via the same temporary shim.
+
+  **FONT-01A's persisted-identity swap shipped for real.** `TextFontFamily` now implements
+  `Serialize`/`Deserialize` by hand instead of deriving them: it serializes as its
+  `font_catalog` `family_id` slug (e.g. `"bebas-neue"`), deserializes that slug back, still
+  accepts the old bare variant name (`"BebasNeue"`) for backward compat with pre-swap saves,
+  and — the doc's forwards-compat half this slice previously deferred — preserves an
+  unrecognized id verbatim as a new `Unknown(String)` variant instead of collapsing it to
+  `Lato`. `Unknown` renders/behaves as `Lato` everywhere else (`family_id()` returns the
+  original string, `supports_bold()` returns `false`) but is never a member of `ALL`, so it
+  can't be selected — only arrived at by loading a save from a newer build. `Copy` had to be
+  dropped from the enum (`Unknown` owns a `String`); the resulting move errors were fixed with
+  `.clone()` at six real call sites (`motion_template.rs`, `overlay_render.rs` x2, `render.rs`
+  x2, `text_layout.rs`'s `shape()`), not by adding `Copy` back or cloning speculatively
+  elsewhere. The `ui` font picker (`text_clip.rs`) now shows `"Unknown font (<id>)"` for an
+  `Unknown` value instead of panicking or matching nothing.
+
+  Verified for real, fully linked (this session's sandbox links `core`'s test binaries): the
+  golden-file test this slice's docs named as still-needed
+  (`projects_with_an_unrecognized_font_family_name_load_with_the_lato_fallback`) is renamed to
+  `..._preserve_it_as_unknown` and rewritten to hand-edit a real saved project's MessagePack
+  bytes to reference a fictitious `"InterVariable"` family, then confirm it survives both the
+  initial load *and* a resave as `Unknown("InterVariable")` rather than falling back to `Lato`
+  — `cargo test -p core --test persistence_test`, 19/19 passing. Five new unit tests in
+  `crates/core/tests/timeline_test.rs` cover the slug serialization format, a full round-trip
+  over every `ALL` member, old-format backward-compat deserialization, and `Unknown`'s
+  preserve/render/behave contract — `cargo test -p core --test timeline_test`, 139/139 passing
+  including these. Full-suite regression check: `cargo test -p core`, 45 test binaries, every
+  one passing except the pre-existing (confirmed via `git stash` against a clean checkout,
+  unrelated to this change) `preview_test.rs` GStreamer refresh flake; `cargo test -p ui`,
+  424/424 passing. `cargo fmt -p core -p ui` clean.
+
+  **FONT-01C's categorized/searchable selector shipped too.** The flat 43-item `ComboBox` in
+  `text_clip.rs` is now a search box (filters by display name, `family_id`, and catalog tags —
+  typing "mono" surfaces every monospace family) followed by sections grouped under their
+  `font_catalog::FontCategory` heading (Sans/Display/Serif/Handwritten/Monospace/
+  International, the doc's fixed order), each section omitted when nothing in it matches. The
+  search string lives in egui's own per-widget temp storage keyed by the clip id, not a new
+  `App` field. `cargo build -p ui` clean, `cargo test -p ui` 424/424 passing (no dedicated
+  widget-level test — this codebase doesn't unit-test `ComboBox` popup bodies elsewhere
+  either), and a direct launch of the built `ui.exe` confirmed no startup crash
+  (`MainWindowTitle: "oca"`); interactive click-through of the new popup itself wasn't done
+  this session (`computer-use` can't grant access to an unregistered dev-build `.exe` — see
+  memory note — and `make test-e2e` has its own unrelated hang), so treat the picker's visual
+  layout as code-reviewed and compile/launch-verified, not click-tested.
+
+  **Still open**: variable-weight axis selection in the UI, and TEXT-01's automatic
+  script-fallback chain for the international families.
 - `[~]` **TEXT-01: complex text shaping and bidirectional layout.** Replace per-character
   `fontdue` layout with one bundled-only shaping/layout/rasterization engine covering OpenType
   ligatures/contextual forms, UAX #9 bidi, UAX #14 wrapping, cluster-safe timed highlights,
@@ -1277,15 +1358,28 @@ an item earlier:
   `cargo check --workspace --all-targets` (the documented temporary `filters.c` shim, discarded
   before commit) and `cargo fmt --all -- --check` both stayed clean.
 
-  **Deliberately not done**: the `language` hint's own consumption, the "expose invisible
-  directional controls on demand" editing feature (letting a user insert/reveal these characters
-  directly, as opposed to just being warned about them), mixed-direction golden tests (TEXT-01B
-  step 3's second half), and its original cluster-safe-highlight note (the current
-  `glyph_excluded` filter already only ever includes a whole cluster, never splits one — real
-  cluster-safety for RTL/conjunct scripts specifically still needs TEXT-01C's international fonts
-  to verify against real glyphs, not just bidi levels against a font that can't render them) all
-  remain open. TEXT-01C (international fallback families, gated on FONT-01B actually vendoring
-  those fonts into the repo) remains fully open.
+  **Mixed-direction golden tests (TEXT-01B step 3's second half) now shipped, a later session.**
+  `overlay_render_test.rs` gained a real pixel-level render (not just `text_layout`'s own
+  shaping-level cluster-position checks) of mixed Latin+Hebrew content forced `Ltr` vs `Rtl`,
+  confirming forcing `Rtl` visibly shifts the block's own ink right of forcing `Ltr` — a real,
+  observed pixel difference from the actual `render_text_clip_rgba` pipeline, matching `Auto`
+  alignment's documented per-paragraph-direction default in `cosmic-text` (see
+  `text_horizontal_box`'s and the `TextAlign` mapping's own doc comments). `cargo test -p core
+  --lib` 528/528 passing (this session's environment fully links).
+
+  **Deliberately still not done**: the `language` hint's own consumption (still genuinely
+  blocked — re-confirmed this session against `cosmic-text` 0.19, still the crate's own newest
+  published version per a real `crates.io`/`docs.rs` check, and `Attrs` still has no language
+  field), and the "expose invisible directional controls on demand" editing feature (letting a
+  user insert/reveal these characters directly, as opposed to just being warned about them) — a
+  real UX design decision (where in the text-clip panel, which characters, cursor-position
+  insertion vs. append-only) not yet made, left open rather than guessed at. The original
+  cluster-safe-highlight note is now unblocked in principle — FONT-01B's international faces are
+  fully vendored and TEXT-01's own shaping test already confirms every one of them renders real
+  glyphs with zero `.notdef` hits — but verifying real cluster-safety specifically for a
+  highlighted word mid-conjunct/RTL-cluster hasn't been attempted yet; a real, separate follow-up
+  from the golden test above, which only checked whole-paragraph direction, not word-level
+  highlight-boundary safety.
 
   **TEXT-01D slice 1's "shaped/glyph caches" piece now shipped.** `TextLayoutEngine::shape`
   memoizes through a new small bounded LRU `ShapeCache` (64 entries) keyed by every input that
@@ -1469,6 +1563,13 @@ an item earlier:
   without an open project; a no-op on a second call once already added) — type-checked cleanly
   under `cargo check`, same "can't link this sandbox's `ui` test binary" caveat as the sidecar-
   import `ui` wiring below.
+
+  **Correction, a later session**: the "can't link this sandbox's `ui` test binary" caveat above
+  and below was specific to the sandboxed environment that wrote it — this session's own
+  environment fully links `cargo test -p ui`. Actually run for real, not just re-asserted: all 3
+  `add_watched_file_to_project` cases and all 6 `import_gameplay_events_*` cases below pass —
+  `cargo test -p ui add_watched_file_to_project` (3/3) and `cargo test -p ui
+  import_gameplay_events` (6/6).
 
   **`ui` wiring shipped too**: the Editor toolbar's new "🎮 Import Events" button (`ui`'s new
   `gameplay_events.rs`) opens a file picker, reads and validates the picked sidecar through
@@ -1805,9 +1906,51 @@ an item earlier:
   documented temporary `filters.c` shim, discarded before commit), and `cargo fmt --check` all
   stayed clean.
 
-  Real OTIO JSON export/import once the schema can be verified, and the doc's own "imported paths
-  are normalized and cannot escape an explicitly selected media root" security requirement (only
-  meaningful once real file import exists) remain open.
+  **Real `.otio` import now shipped too**, closing this entry's own previously-open "reverse
+  direction" gap. `avcore::interchange::otio_json::parse_otio_json` reads a real OpenTimelineIO
+  JSON document into an `InterchangeTimeline` — verified against three real files fetched from
+  the OpenTimelineIO project's own `tests/sample_data/` (`simple_cut.otio`, `transition.otio`,
+  `multitrack.otio`, now vendored under `crates/core/tests/fixtures/otio/`), each one first
+  loaded through the real `opentimelineio` 0.18.1 Python library to confirm what it actually
+  contains before writing the parser against it. Two real-world shapes this module's own writer
+  never produces needed that verification specifically: a `Transition.1` item carries no
+  `source_range` of its own (confirmed against `transition.otio`'s real `in_offset`/`out_offset`
+  and its neighboring clips' own ranges — the overlap comes out of the two clips it sits between,
+  not extra timeline duration), so it attaches as `transition_in` on the following clip without
+  advancing the track's own timing cursor; and a `null` `Clip.source_range` means "use the media
+  reference's own `available_range`" (confirmed against a real `Clip-004` in `simple_cut.otio`
+  and `transition.otio` both), not a malformed clip. A nested compound clip (a `Stack.1`/
+  `Track.1` sitting directly among a track's own children, confirmed against the real
+  `nested_example.otio`) isn't recursively imported yet — a separate, later slice — but is
+  replaced with a same-duration `Gap` when its own `source_range` is explicit, so later siblings
+  on the same track still keep their correct start time. Anything else structurally unrecognized
+  (a `Clip.2` with multiple media references — only the active one is kept — an unrecognized
+  media-reference schema, a malformed individual clip/marker) completes import and lands in
+  `OtioImportResult::warnings` instead of failing the whole document, matching
+  `InterchangeImportResult::warnings`'s own convention; only a genuinely malformed top-level
+  document (not `Timeline.1`/`Stack.1` at all, or missing a structurally required field) is a
+  hard `OtioParseError`.
+
+  **UI wiring**: the Editor menu bar's File menu gained "Import OpenTimelineIO (.otio)..."
+  (`App::import_otio_into_new_sequence`) — places the imported content into a brand-new sequence
+  tab (`App::add_sequence`'s own "append and switch to it" shape), never overwriting an existing
+  one; every clip's media reference is resolved against the *active project's* own media library,
+  and an unresolvable one is skipped and counted in the resulting toast rather than silently
+  linked to the wrong asset.
+
+  Verified for real, fully linked: 17 new/updated tests in `otio_json_test.rs` (a round-trip
+  through oca's own writer, the three real fixture files above, and synthetic cases for a
+  malformed document, an unrecognized media-reference schema, an unsupported nested item, and a
+  multi-reference `Clip.2`) — `cargo test -p core --lib interchange::otio_json`, 17/17 passing;
+  full `cargo test -p core --lib`, 527/527 passing. 3 new `App`-level tests (successful import
+  creates and switches to a new sequence with the right clip/asset mapping, malformed JSON toasts
+  without adding a sequence, an unresolvable reference is skipped and counted in the toast) —
+  `cargo test -p ui`, 427/427 passing. `cargo fmt`/`cargo clippy -p core --lib --no-deps` both
+  clean, and a direct launch of the rebuilt `ui.exe` confirmed no startup crash.
+
+  The doc's own "imported paths are normalized and cannot escape an explicitly selected media
+  root" security requirement remains open — meaningful now that real file import exists, not yet
+  addressed.
 - `[ ]` **CF-06: live multicam monitor.** Show synchronized proxy-backed feeds and materialize
   angle decisions through the existing ordinary clip-split representation. **Deliberately skipped
   for now** (user-confirmed): every one of its 4 implementation slices needs a live GStreamer

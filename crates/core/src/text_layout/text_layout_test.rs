@@ -56,7 +56,7 @@ fn every_bundled_family_shapes_ordinary_latin_text_without_missing_glyphs() {
     for family in TextFontFamily::ALL {
         let shaped = engine.shape(
             "Ação, coração, você — 0123456789",
-            family,
+            family.clone(),
             TextFontStyle::Regular,
             32.0,
             None,

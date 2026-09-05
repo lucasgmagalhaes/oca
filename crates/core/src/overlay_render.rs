@@ -272,7 +272,7 @@ fn draw_text_segment_onto(
     text_layout::with_shared_engine(|engine, swash_cache| {
         let shaped = engine.shape(
             &segment.text,
-            segment.font_family,
+            segment.font_family.clone(),
             segment.font_style,
             segment.font_size,
             Some(max_width),
@@ -346,7 +346,7 @@ pub fn render_text_clip_rgba(
         duration_secs: clip.duration_secs,
         text: clip.text.clone(),
         font_size: clip.font_size,
-        font_family: clip.font_family,
+        font_family: clip.font_family.clone(),
         font_style: clip.font_style,
         color_rgba: clip.color_rgba,
         background_rgba: clip.background_rgba,
