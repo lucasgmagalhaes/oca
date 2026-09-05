@@ -5,7 +5,13 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use super::draw::{filmstrip_frame_index_for_tile, visible_tile_range};
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
+use super::draw::{
+    filmstrip_frame_index_for_tile, nearest_cached_thumbnail, thumbnail_requests_settled,
+    visible_tile_range,
+};
 use super::snap::{snap_move_start, snap_to_nearest, waveform_snap_points_for_clip};
 
 #[test]
@@ -43,6 +49,58 @@ fn repeated_tile_centers_on_the_same_source_frame_share_a_cache_key() {
     let second = filmstrip_frame_index_for_tile(1.0, 10.0, 1_000.0, Some(30.0));
 
     assert_eq!(first, second);
+}
+
+#[test]
+fn thumbnail_requests_settled_is_true_when_zoom_never_changed() {
+    assert!(thumbnail_requests_settled(
+        None,
+        Instant::now(),
+        Duration::from_millis(150)
+    ));
+}
+
+#[test]
+fn thumbnail_requests_settled_is_false_immediately_after_a_zoom_change() {
+    let now = Instant::now();
+    assert!(!thumbnail_requests_settled(
+        Some(now),
+        now,
+        Duration::from_millis(150)
+    ));
+}
+
+#[test]
+fn thumbnail_requests_settled_is_true_once_the_debounce_has_elapsed() {
+    let changed_at = Instant::now();
+    let now = changed_at + Duration::from_millis(200);
+    assert!(thumbnail_requests_settled(
+        Some(changed_at),
+        now,
+        Duration::from_millis(150)
+    ));
+}
+
+#[test]
+fn nearest_cached_thumbnail_picks_the_closest_frame_for_the_same_asset() {
+    let mut cache = HashMap::new();
+    cache.insert((1u64, 1u64, 10i64), "far-before");
+    cache.insert((1u64, 1u64, 28i64), "closest");
+    cache.insert((1u64, 1u64, 50i64), "far-after");
+    cache.insert((1u64, 2u64, 30i64), "different-asset-exact-match");
+
+    let result = nearest_cached_thumbnail(&cache, 1, 1, 30);
+
+    assert_eq!(result, Some(&"closest"));
+}
+
+#[test]
+fn nearest_cached_thumbnail_ignores_other_projects_and_assets() {
+    let mut cache = HashMap::new();
+    cache.insert((2u64, 1u64, 30i64), "wrong-project");
+    cache.insert((1u64, 2u64, 30i64), "wrong-asset");
+
+    assert_eq!(nearest_cached_thumbnail(&cache, 1, 1, 30), None);
 }
 
 // px_per_sec = 10.0 below -> SNAP_THRESHOLD_PX (8.0) is 0.8s, a round number to reason about.
