@@ -707,6 +707,17 @@ pub struct ClipInstance {
     pub anchor_x: f32,
     #[serde(default = "default_anchor")]
     pub anchor_y: f32,
+    /// A user-pinned auto-reframe anchor (a `0.0..=1.0` fraction of the source frame, the same
+    /// convention [`crate::auto_reframe::compute_reframe_crop`]'s own `subject_center` parameter
+    /// already uses), overriding face-detection entirely for this clip's next auto/dynamic
+    /// reframe run — CF-04's own "optional user-provided seed point" gap. `None` (the default,
+    /// and every clip saved before this field existed) keeps the exact old face-detection-only
+    /// behavior. Deliberately *not* consumed automatically the moment it's set: a clip carrying
+    /// a seed point still needs its "Reenquadrar automaticamente"/"Reenquadrar dinamicamente"
+    /// button pressed, same as before — this only changes what that run anchors to, not when it
+    /// runs. `#[serde(default)]` so an older saved project still loads.
+    #[serde(default)]
+    pub reframe_seed_point: Option<(f32, f32)>,
 }
 
 fn default_anchor() -> f32 {

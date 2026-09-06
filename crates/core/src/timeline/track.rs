@@ -276,6 +276,9 @@ impl Track {
             blend_mode: clip.blend_mode,
             anchor_x: clip.anchor_x,
             anchor_y: clip.anchor_y,
+            // Unlike the matte above, a reframe seed point is a spatial anchor in the frame,
+            // not tied to a time range -- still valid for both halves after a split.
+            reframe_seed_point: clip.reframe_seed_point,
         };
         clip.source_out_secs = split_source_secs;
         // First half's own ramp rides from the original start speed to the split boundary's
