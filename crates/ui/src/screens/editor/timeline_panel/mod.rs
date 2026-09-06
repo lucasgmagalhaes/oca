@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+mod clip_commands;
 mod draw;
 mod header;
 mod interactions;
@@ -74,6 +75,7 @@ pub(super) const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
     [178, 108, 219], // purple
 ];
 
+use clip_commands::{apply_clip_commands, ClipCommands};
 use draw::{
     color_filter_tint, draw_filmstrip, draw_frozen_poster, draw_keyframe_markers, draw_playhead,
     draw_transition_wedge, draw_trim_info, draw_waveform, shape_kind_glyph,
@@ -1524,27 +1526,17 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 deletes: track_delete_requests,
             },
         );
-        for clip_id in delete_requests {
-            app.selected_clip_id = Some(clip_id);
-            app.delete_selected_clip();
-        }
-        for (clip_id, color_label) in clip_color_label_requests {
-            app.set_clip_color_label(clip_id, color_label);
-        }
-        for clip_id in detach_audio_requests {
-            app.selected_clip_id = Some(clip_id);
-            app.detach_audio_from_selected_clip();
-        }
-        for (clip_id, start_speed, end_speed) in speed_ramp_requests {
-            app.selected_clip_id = Some(clip_id);
-            app.apply_speed_ramp_to_selected_clip(start_speed, end_speed, 4);
-        }
-        if let Some(clip_id) = speed_ramp_custom_request {
-            app.speed_ramp_dialog = Some((clip_id, 0.5, 2.0, "4".to_string(), false));
-        }
-        if split_at_playhead_requested {
-            app.split_at_playhead();
-        }
+        apply_clip_commands(
+            app,
+            ClipCommands {
+                deletes: delete_requests,
+                color_labels: clip_color_label_requests,
+                detach_audio: detach_audio_requests,
+                speed_ramps: speed_ramp_requests,
+                custom_speed_ramp: speed_ramp_custom_request,
+                split_at_playhead: split_at_playhead_requested,
+            },
+        );
         if drag_started_this_frame {
             app.push_undo_snapshot();
         }
