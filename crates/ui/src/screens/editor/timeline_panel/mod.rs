@@ -863,6 +863,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 );
                                 draw_shape_overlays(
                                     ui,
+                                    &painter,
                                     track,
                                     track_rect,
                                     px_per_sec,
