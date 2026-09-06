@@ -17,6 +17,7 @@
 
 use avcore::timeline::{ShapeClip, TextClip};
 use avcore::{ClipInstance, MediaAsset, TrackKind};
+use tracing::warn;
 
 use super::App;
 
@@ -24,7 +25,7 @@ impl App {
     /// Just the id [`App::current_preview_clip`] would resolve to, without cloning the
     /// `ClipInstance`/`MediaAsset` — see [`App::ensure_preview_loaded`]'s doc comment for why
     /// this cheap pass exists.
-    fn current_preview_clip_id(&self) -> Option<u64> {
+    pub(super) fn current_preview_clip_id(&self) -> Option<u64> {
         let project = self.active_project();
         let timeline = project.timeline();
         let track = timeline
@@ -47,7 +48,7 @@ impl App {
     }
 
     /// Just the ids [`App::current_preview_overlay_clips`] would resolve to, without cloning.
-    fn current_preview_overlay_clip_ids(&self) -> Vec<u64> {
+    pub(super) fn current_preview_overlay_clip_ids(&self) -> Vec<u64> {
         let project = self.active_project();
         let timeline = project.timeline();
         timeline
@@ -70,7 +71,7 @@ impl App {
     }
 
     /// Just the ids [`App::current_preview_audio_clips`] would resolve to, without cloning.
-    fn current_preview_audio_clip_ids(&self) -> Vec<u64> {
+    pub(super) fn current_preview_audio_clip_ids(&self) -> Vec<u64> {
         let project = self.active_project();
         let timeline = project.timeline();
         timeline
@@ -89,7 +90,7 @@ impl App {
     }
 
     /// Just the ids [`App::current_preview_text_clips`] would resolve to, without cloning.
-    fn current_preview_text_clip_ids(&self) -> Vec<u64> {
+    pub(super) fn current_preview_text_clip_ids(&self) -> Vec<u64> {
         let timeline = self.active_project().timeline();
         timeline
             .tracks
@@ -106,7 +107,7 @@ impl App {
     }
 
     /// Just the ids [`App::current_preview_shape_clips`] would resolve to, without cloning.
-    fn current_preview_shape_clip_ids(&self) -> Vec<u64> {
+    pub(super) fn current_preview_shape_clip_ids(&self) -> Vec<u64> {
         let timeline = self.active_project().timeline();
         timeline
             .tracks
@@ -130,7 +131,7 @@ impl App {
     /// (real assets plus, for a compound clip, [`App::materialize_nested_sequences_for_active_sequence`]'s
     /// synthetic ones) rather than reading `self.active_project().media_library` directly, so a
     /// nested-sequence clip resolves here exactly like an ordinary one.
-    fn current_preview_clip(
+    pub(super) fn current_preview_clip(
         &self,
         media_library: &[MediaAsset],
     ) -> Option<(ClipInstance, MediaAsset)> {
@@ -179,7 +180,9 @@ impl App {
     /// these three scalar fields, so paying for the rest was pure waste on the hottest UI-thread
     /// path in the app. Defaults (`String::new()`, `0.0`, `0.0`) when nothing covers the
     /// playhead, same as the `unwrap_or_default()` the caller used to apply to the full clone.
-    fn current_preview_clip_lut_and_vignette(&self) -> (String, f32, f32, bool, Option<u64>) {
+    pub(super) fn current_preview_clip_lut_and_vignette(
+        &self,
+    ) -> (String, f32, f32, bool, Option<u64>) {
         let timeline = self.active_project().timeline();
         let Some(track) = timeline
             .tracks
@@ -206,7 +209,7 @@ impl App {
     /// nothing at the playhead, or whose clip's asset doesn't resolve, is just skipped rather
     /// than aborting the whole list, same "degrade gracefully" shape
     /// [`App::current_preview_clip`] already has for the background track.
-    fn current_preview_overlay_clips(
+    pub(super) fn current_preview_overlay_clips(
         &self,
         media_library: &[MediaAsset],
     ) -> Vec<(ClipInstance, MediaAsset)> {
@@ -226,7 +229,7 @@ impl App {
 
     /// Every audio-only track clip covering the playhead, in track order. Video clips with
     /// embedded audio are already represented by the background/overlay branch lists.
-    fn current_preview_audio_clips(
+    pub(super) fn current_preview_audio_clips(
         &self,
         media_library: &[MediaAsset],
     ) -> Vec<(ClipInstance, MediaAsset)> {
@@ -266,14 +269,14 @@ impl App {
             .collect()
     }
 
-    fn current_preview_text_clips(&self) -> Vec<TextClip> {
+    pub(super) fn current_preview_text_clips(&self) -> Vec<TextClip> {
         self.preview_text_clips_at(self.active_project().timeline().playhead_secs)
     }
 
     /// Pushes a replacement RGBA frame only when `position_secs` crosses into another timed
     /// word (or a gap between words). `Preview` owns the last active-word state and ignores
     /// same-word calls, so invoking this every UI frame during playback remains cheap.
-    fn refresh_preview_text_highlights(&mut self, position_secs: f64) {
+    pub(super) fn refresh_preview_text_highlights(&mut self, position_secs: f64) {
         if self.preview_state.preview_text_clip_ids.is_empty() {
             return;
         }
@@ -295,7 +298,7 @@ impl App {
 
     /// Same role as [`App::current_preview_text_clips`], for [`ShapeClip`]s on
     /// `TrackKind::Shape` tracks.
-    fn current_preview_shape_clips(&self) -> Vec<ShapeClip> {
+    pub(super) fn current_preview_shape_clips(&self) -> Vec<ShapeClip> {
         let timeline = self.active_project().timeline();
         timeline
             .tracks
@@ -314,7 +317,7 @@ impl App {
     /// The resolved source path (proxy preferred) for a clip/asset pair, or `None` if it
     /// doesn't exist on disk — the same "don't spin up a pipeline for a file that's known to be
     /// missing" check [`App::ensure_preview_loaded`] already applied to the background clip.
-    fn preview_source_path(asset: &MediaAsset) -> Option<std::path::PathBuf> {
+    pub(super) fn preview_source_path(asset: &MediaAsset) -> Option<std::path::PathBuf> {
         let path = asset
             .proxy_path
             .clone()
