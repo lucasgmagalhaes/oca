@@ -18,6 +18,7 @@ mod layout;
 mod media_library_panel;
 pub(crate) mod menu_bar;
 mod preview_controls;
+mod preview_hud;
 mod properties_panel;
 mod shortcuts;
 mod timeline_panel;
@@ -29,6 +30,7 @@ use layout::{
 };
 use media_library_panel::media_library_panel;
 use preview_controls::{audio_level_meter, transport_controls};
+use preview_hud::draw_preview_hud;
 use shortcuts::handle_editor_shortcuts;
 pub(super) use toolbar::{
     export_srt_for_active_sequence, save_active_project, sequence_tab_bar, toolbar,
@@ -196,22 +198,6 @@ pub(super) const TRANSPORT_ICON_SIZE: f32 = 14.0;
 /// The play/pause button is the row's primary action, deliberately larger than transport icons.
 pub(super) const TRANSPORT_PLAY_ICON_SIZE: f32 = 18.0;
 
-fn draw_preview_hud_chip(painter: &egui::Painter, top_left: egui::Pos2, text: &str) {
-    let text_pos = top_left + egui::vec2(4.0, 2.0);
-    let galley = painter.layout_no_wrap(
-        text.to_owned(),
-        egui::FontId::monospace(10.5),
-        theme::TEXT_SECONDARY,
-    );
-    let bg_rect = egui::Rect::from_min_size(top_left, galley.size() + egui::vec2(8.0, 4.0));
-    painter.rect_filled(
-        bg_rect,
-        egui::CornerRadius::same(theme::RADIUS_SM),
-        egui::Color32::from_black_alpha(160),
-    );
-    painter.galley(text_pos, galley, theme::TEXT_SECONDARY);
-}
-
 fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
     // Lazy: the pipeline for the current selection is opened here, on the first paint of this
     // panel after a selection change — not by `select_asset` itself — so opening a project or
@@ -285,69 +271,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 };
             })
             .response;
-        // A small resolution(+fps) readout in the preview's bottom-left corner — matching the
-        // Program Monitor mockup exactly (confirmed via a real screenshot of it: bottom-left =
-        // resolution/fps, top-left = CAM, bottom-right = TC/frame) — from the actually decoded
-        // texture's own size, not a fabricated/asset-declared value, so it never drifts from
-        // what's on screen (proxy playback, letterboxing, etc.). fps comes from the previewed
-        // clip's own asset (oca has no per-sequence fps) and is omitted when unknown.
-        if let Some([w, h]) = preview_texture_size {
-            let text = match app.current_preview_fps() {
-                Some(fps) => format!("{w}x{h} | {fps:.2}fps"),
-                None => format!("{w}x{h}"),
-            };
-            let size = ui
-                .painter()
-                .layout_no_wrap(
-                    text.clone(),
-                    egui::FontId::monospace(10.5),
-                    theme::TEXT_SECONDARY,
-                )
-                .size()
-                + egui::vec2(8.0, 4.0);
-            let top_left = frame_response.rect.left_bottom() - egui::vec2(-8.0, 8.0 + size.y);
-            draw_preview_hud_chip(ui.painter(), top_left, &text);
-        }
-        // "CAM 01" chip in the top-left corner, matching the mockup. Top-right is the mockup's
-        // "REC ●" chip — a documented non-goal, since oca has no live-recording concept to
-        // honestly wire it to (not a placeholder for a feature that doesn't exist). Wired to
-        // real multicam-group data: only drawn when the previewed track is actually a multicam
-        // group's program track, never faked when it isn't.
-        if let Some(angle) = app.current_preview_multicam_angle() {
-            let text = format!("CAM {angle:02}");
-            draw_preview_hud_chip(
-                ui.painter(),
-                frame_response.rect.left_top() + egui::vec2(8.0, 8.0),
-                &text,
-            );
-        }
-        // Timecode+frame overlay in the preview's bottom-right corner, matching the mockup's
-        // bottom-right overlay — a relocation of data already shown in the transport row's
-        // timecode label below, plus a frame-within-second suffix when fps is known (omitted
-        // otherwise rather than guessed).
-        if preview_texture_size.is_some() {
-            let playhead = app.active_project().timeline().playhead_secs;
-            let mut text = format_timecode(playhead);
-            if let Some(fps) = app.current_preview_fps() {
-                let frame_count = fps.round().max(1.0) as i64;
-                let frame =
-                    ((playhead.fract() * fps as f64).round() as i64).clamp(0, frame_count - 1);
-                text.push_str(&format!(":{frame:02}"));
-            }
-            // Measure first (this chip is bottom-right-anchored, unlike the top-left one above)
-            // so its top-left corner can be derived from the frame's bottom-right corner.
-            let size = ui
-                .painter()
-                .layout_no_wrap(
-                    text.clone(),
-                    egui::FontId::monospace(10.5),
-                    theme::TEXT_SECONDARY,
-                )
-                .size()
-                + egui::vec2(8.0, 4.0);
-            let top_left = frame_response.rect.right_bottom() - egui::vec2(8.0, 8.0) - size;
-            draw_preview_hud_chip(ui.painter(), top_left, &text);
-        }
+        draw_preview_hud(app, ui.painter(), frame_response.rect, preview_texture_size);
         let timeline_duration = app.active_project().timeline().duration_secs();
         // Restructured to match the Program Monitor mockup's own two-row shape (confirmed via
         // a real screenshot of it): a scrubber row with the current/total timecode flanking the
