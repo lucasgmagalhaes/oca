@@ -166,6 +166,133 @@ fn delete_sequence_removes_the_target_and_selects_a_surviving_neighbor() {
 }
 
 #[test]
+fn create_compound_clip_from_selected_clip_wraps_a_single_clip() {
+    let track = test_track(1, TrackKind::Video, vec![test_clip(1, 2.0, 0.0, 5.0)]);
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.select_timeline_clip(1);
+
+    app.create_compound_clip_from_selected_clip();
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks[0].clips.len(), 1);
+    let wrapper = &timeline.tracks[0].clips[0];
+    assert_eq!(
+        wrapper.id, 1,
+        "the wrapper keeps the original clip's own id"
+    );
+    assert!(wrapper.nested_sequence_id.is_some());
+    assert_eq!(wrapper.start_secs, 2.0);
+    assert!((wrapper.source_out_secs - 5.0).abs() < 1e-9);
+    let nested_id = wrapper.nested_sequence_id.unwrap();
+    let nested = app
+        .active_project()
+        .sequences
+        .iter()
+        .find(|s| s.id == nested_id)
+        .unwrap();
+    assert_eq!(nested.timeline.tracks[0].clips.len(), 1);
+    assert_eq!(
+        nested.timeline.tracks[0].clips[0].start_secs, 0.0,
+        "a lone clip rebases to 0.0, same as before multi-clip compounding existed"
+    );
+}
+
+#[test]
+fn create_compound_clip_from_selected_clip_wraps_the_whole_multi_selection_on_the_same_track() {
+    let track = test_track(
+        1,
+        TrackKind::Video,
+        vec![
+            test_clip(1, 0.0, 0.0, 4.0),
+            test_clip(2, 6.0, 0.0, 3.0), // a 2s gap after clip 1, deliberately non-contiguous
+        ],
+    );
+    let mut app = test_app(vec![test_project_with_tracks(1, vec![track])], Vec::new());
+    app.select_timeline_clip(1);
+    app.multi_selected_clip_ids.insert(1);
+    app.multi_selected_clip_ids.insert(2);
+
+    app.create_compound_clip_from_selected_clip();
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(
+        timeline.tracks[0].clips.len(),
+        1,
+        "both members collapse into one compound clip"
+    );
+    let wrapper = &timeline.tracks[0].clips[0];
+    assert_eq!(
+        wrapper.id, 1,
+        "the wrapper keeps the right-clicked clip's own id"
+    );
+    assert_eq!(
+        wrapper.start_secs, 0.0,
+        "spans from the earliest member's start"
+    );
+    assert!(
+        (wrapper.duration_secs() - 9.0).abs() < 1e-9,
+        "spans through the latest member's own end (clip 2 ends at 9.0)"
+    );
+    let nested_id = wrapper.nested_sequence_id.unwrap();
+    let nested = app
+        .active_project()
+        .sequences
+        .iter()
+        .find(|s| s.id == nested_id)
+        .unwrap();
+    let mut nested_clips = nested.timeline.tracks[0].clips.clone();
+    nested_clips.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
+    assert_eq!(nested_clips.len(), 2);
+    assert_eq!(
+        nested_clips[0].start_secs, 0.0,
+        "the earliest member rebases to 0.0"
+    );
+    assert_eq!(
+        nested_clips[1].start_secs, 6.0,
+        "the later member keeps its 6s gap relative to the earliest one, not rebased to 0.0"
+    );
+}
+
+#[test]
+fn create_compound_clip_from_selected_clip_falls_back_to_single_clip_across_tracks() {
+    let video_track = test_track(1, TrackKind::Video, vec![test_clip(1, 0.0, 0.0, 4.0)]);
+    let audio_track = test_track(2, TrackKind::Audio, vec![test_clip(2, 0.0, 0.0, 4.0)]);
+    let mut app = test_app(
+        vec![test_project_with_tracks(1, vec![video_track, audio_track])],
+        Vec::new(),
+    );
+    app.select_timeline_clip(1);
+    app.multi_selected_clip_ids.insert(1);
+    app.multi_selected_clip_ids.insert(2);
+
+    app.create_compound_clip_from_selected_clip();
+
+    let timeline = app.active_project().timeline();
+    let video_track = timeline
+        .tracks
+        .iter()
+        .find(|t| t.kind == TrackKind::Video)
+        .unwrap();
+    let audio_track = timeline
+        .tracks
+        .iter()
+        .find(|t| t.kind == TrackKind::Audio)
+        .unwrap();
+    assert_eq!(
+        video_track.clips.len(),
+        1,
+        "only the selected clip's own track is touched"
+    );
+    assert!(video_track.clips[0].nested_sequence_id.is_some());
+    assert_eq!(
+        audio_track.clips.len(),
+        1,
+        "a multi-selection spanning tracks never touches the other track's clip"
+    );
+    assert!(audio_track.clips[0].nested_sequence_id.is_none());
+}
+
+#[test]
 fn insert_sequence_as_compound_clip_appends_a_nested_clip_on_the_active_timeline() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
     let nested_id = app.active_project().sequences[0].id + 1;
