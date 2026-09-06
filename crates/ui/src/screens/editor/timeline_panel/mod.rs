@@ -15,6 +15,7 @@
 
 mod asset_drop;
 mod clip_commands;
+mod clip_context_menu;
 mod draw;
 mod header;
 mod interactions;
@@ -81,6 +82,7 @@ pub(super) const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
 
 use asset_drop::apply_pending_asset_drop;
 use clip_commands::{apply_clip_commands, ClipCommands};
+use clip_context_menu::{show_clip_context_menu, ClipContextMenuRequests};
 use draw::{
     color_filter_tint, draw_filmstrip, draw_frozen_poster, draw_keyframe_markers, draw_playhead,
     draw_transition_wedge, draw_trim_info, draw_waveform, shape_kind_glyph,
@@ -387,168 +389,35 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     );
                                     let covers_playhead = clip.start_secs <= playhead_secs
                                         && playhead_secs < clip.start_secs + clip.duration_secs();
-                                    body_response.context_menu(|ui| {
-                                        clicked_clip_id = Some(clip.id);
-                                        if ui
-                                            .add_enabled(
-                                                covers_playhead,
-                                                egui::Button::new(
-                                                    Text::ContextMenuSplit.tr(locale),
-                                                ),
-                                            )
-                                            .clicked()
-                                        {
-                                            split_at_playhead_requested = true;
-                                            ui.close();
-                                        }
-                                        if ui.button(Text::ContextMenuCopy.tr(locale)).clicked() {
-                                            copy_requests.push(clip.id);
-                                            ui.close();
-                                        }
-                                        if ui.button(Text::ContextMenuCut.tr(locale)).clicked() {
-                                            cut_requests.push(clip.id);
-                                            ui.close();
-                                        }
-                                        if ui
-                                            .add_enabled(
-                                                has_clipboard_clip,
-                                                egui::Button::new(
-                                                    Text::ContextMenuPaste.tr(locale),
-                                                ),
-                                            )
-                                            .clicked()
-                                        {
-                                            paste_requested = true;
-                                            ui.close();
-                                        }
-                                        ui.separator();
-                                        // Same enablement as the toolbar's "Mesclar em bloco composto"
-                                        // button — needs at least two clips ctrl-clicked into a
-                                        // multi-selection first; this just gives the context menu (per
-                                        // request.md's Fase 3 spec) the same action, not a new one.
-                                        if ui
-                                            .add_enabled(
-                                                multi_selected_count >= 2,
-                                                egui::Button::new(
-                                                    Text::MergeIntoComposite.tr(locale),
-                                                ),
-                                            )
-                                            .clicked()
-                                        {
-                                            merge_into_composite_requested = true;
-                                            ui.close();
-                                        }
-                                        if track.kind == avcore::timeline::TrackKind::Video
-                                            && ui
-                                                .button(Text::ContextMenuDetachAudio.tr(locale))
-                                                .clicked()
-                                        {
-                                            detach_audio_requests.push(clip.id);
-                                            ui.close();
-                                        }
-                                        if track.kind == avcore::timeline::TrackKind::Video
-                                            && clip.nested_sequence_id.is_none()
-                                            && ui
-                                                .button(
-                                                    Text::ContextMenuCreateCompoundClip.tr(locale),
-                                                )
-                                                .clicked()
-                                        {
-                                            clicked_clip_id = Some(clip.id);
-                                            create_compound_clip_requested = true;
-                                            ui.close();
-                                        }
-                                        if let Some(nested_id) = clip.nested_sequence_id {
-                                            if ui
-                                                .button(
-                                                    Text::ContextMenuOpenCompoundClip.tr(locale),
-                                                )
-                                                .clicked()
-                                            {
-                                                open_nested_sequence_request = Some(nested_id);
-                                                ui.close();
-                                            }
-                                        }
-                                        ui.menu_button(
-                                            Text::ContextMenuSpeedRamp.tr(locale),
-                                            |ui| {
-                                                if ui
-                                                    .button(Text::SpeedRampSlowToFast.tr(locale))
-                                                    .clicked()
-                                                {
-                                                    speed_ramp_requests.push((clip.id, 0.5, 2.0));
-                                                    ui.close();
-                                                }
-                                                if ui
-                                                    .button(Text::SpeedRampFastToSlow.tr(locale))
-                                                    .clicked()
-                                                {
-                                                    speed_ramp_requests.push((clip.id, 2.0, 0.5));
-                                                    ui.close();
-                                                }
-                                                ui.separator();
-                                                if ui
-                                                    .button(Text::SpeedRampCustom.tr(locale))
-                                                    .clicked()
-                                                {
-                                                    speed_ramp_custom_request = Some(clip.id);
-                                                    ui.close();
-                                                }
-                                            },
-                                        );
-                                        ui.separator();
-                                        if ui
-                                            .button(Text::ContextMenuCopyFormatting.tr(locale))
-                                            .clicked()
-                                        {
-                                            copy_formatting_requests.push(clip.id);
-                                            ui.close();
-                                        }
-                                        if ui
-                                            .add_enabled(
-                                                has_formatting_clipboard,
-                                                egui::Button::new(
-                                                    Text::ContextMenuPasteFormatting.tr(locale),
-                                                ),
-                                            )
-                                            .clicked()
-                                        {
-                                            paste_formatting_requests.push(clip.id);
-                                            ui.close();
-                                        }
-                                        ui.separator();
-                                        ui.menu_button(
-                                            Text::ContextMenuColorLabel.tr(locale),
-                                            |ui| {
-                                                for &[r, g, b] in CLIP_COLOR_LABEL_PALETTE {
-                                                    let swatch = egui::Color32::from_rgb(r, g, b);
-                                                    if ui
-                                                        .add(egui::Button::new("  ").fill(swatch))
-                                                        .clicked()
-                                                    {
-                                                        clip_color_label_requests
-                                                            .push((clip.id, Some([r, g, b])));
-                                                        ui.close();
-                                                    }
-                                                }
-                                                ui.separator();
-                                                if ui
-                                                    .button(
-                                                        Text::ContextMenuColorLabelClear.tr(locale),
-                                                    )
-                                                    .clicked()
-                                                {
-                                                    clip_color_label_requests.push((clip.id, None));
-                                                    ui.close();
-                                                }
-                                            },
-                                        );
-                                        ui.separator();
-                                        if ui.button(Text::ContextMenuDelete.tr(locale)).clicked() {
-                                            delete_requests.push(clip.id);
-                                            ui.close();
-                                        }
-                                    });
+                                    show_clip_context_menu(
+                                        body_response,
+                                        clip,
+                                        track,
+                                        locale,
+                                        covers_playhead,
+                                        has_clipboard_clip,
+                                        has_formatting_clipboard,
+                                        multi_selected_count,
+                                        ClipContextMenuRequests {
+                                            clicked: &mut clicked_clip_id,
+                                            split_at_playhead: &mut split_at_playhead_requested,
+                                            copies: &mut copy_requests,
+                                            cuts: &mut cut_requests,
+                                            paste: &mut paste_requested,
+                                            merge_into_composite:
+                                                &mut merge_into_composite_requested,
+                                            detach_audio: &mut detach_audio_requests,
+                                            create_compound_clip:
+                                                &mut create_compound_clip_requested,
+                                            open_nested_sequence: &mut open_nested_sequence_request,
+                                            speed_ramps: &mut speed_ramp_requests,
+                                            custom_speed_ramp: &mut speed_ramp_custom_request,
+                                            copy_formatting: &mut copy_formatting_requests,
+                                            paste_formatting: &mut paste_formatting_requests,
+                                            color_labels: &mut clip_color_label_requests,
+                                            deletes: &mut delete_requests,
+                                        },
+                                    );
                                     let edge_sense = if track.locked {
                                         egui::Sense::hover()
                                     } else {
