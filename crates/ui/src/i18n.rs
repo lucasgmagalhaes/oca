@@ -156,6 +156,8 @@ text_catalog! {
     MenuSequenceMoveLeft: pt_br = "Mover para esquerda", en = "Move left";
     MenuSequenceMoveRight: pt_br = "Mover para direita", en = "Move right";
     MenuSequenceDelete: pt_br = "Excluir...", en = "Delete...";
+    MenuSequenceInsertAsCompoundClip: pt_br = "📦 Inserir sequência como clipe composto", en = "📦 Insert sequence as compound clip";
+    MenuSequenceInsertAsCompoundClipEmpty: pt_br = "Nenhuma outra sequência disponível", en = "No other sequence available";
     MenuClipMode: pt_br = "Modo de edição", en = "Edit mode";
     ToolSelect: pt_br = "Selecionar", en = "Select";
     ToolCut: pt_br = "Cortar / Split", en = "Cut / Split";

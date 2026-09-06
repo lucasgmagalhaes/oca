@@ -342,6 +342,55 @@ impl App {
         }
     }
 
+    /// Inserts an existing `Sequence` (elsewhere in the same project) as a compound clip onto
+    /// the active sequence's timeline — the "drag an existing sequence tab onto another
+    /// timeline as a nested clip" direction [`App::create_compound_clip_from_selected_clip`]'s
+    /// own doc comment flags as not shipped (only "wrap the current selection in a brand-new
+    /// nested sequence" does). Lands on the first `Video` track (auto-creating one if none
+    /// exists), right after whatever's already there — the same "append" placement
+    /// [`App::add_asset_to_timeline`] already uses for a double-clicked media-library asset,
+    /// reused here since inserting a compound clip this way has no drag position of its own to
+    /// place it at.
+    ///
+    /// The new clip's duration comes from `avcore::timeline::Timeline::duration_secs` — the
+    /// nested sequence's own edited length — not a real FFmpeg render/probe (that only happens
+    /// lazily, in the background, the first time this clip is actually previewed or exported;
+    /// see `App::materialize_nested_sequences_for_active_sequence`), matching how
+    /// [`App::create_compound_clip_from_selected_clip`] already treats a compound clip's box
+    /// length as a cheap timeline-derived value rather than something that requires rendering
+    /// up front.
+    ///
+    /// A no-op if `sequence_id` doesn't exist in the active project, is the active sequence
+    /// itself (the trivial direct self-nesting cycle — a deeper indirect cycle, e.g. inserting
+    /// sequence A into B while B is already nested inside A, is instead caught gracefully at
+    /// render/materialize time by `avcore::nested_sequence`'s own cycle detection, the same path
+    /// every other nested clip already goes through), or is itself empty
+    /// (`Timeline::duration_secs() == 0.0` — nothing meaningful to place a clip spanning).
+    pub fn insert_sequence_as_compound_clip(&mut self, sequence_id: u64) {
+        let duration_secs = {
+            let project = self.active_project();
+            if project.active_sequence().id == sequence_id {
+                return;
+            }
+            match project.sequences.iter().find(|s| s.id == sequence_id) {
+                Some(nested) => nested.timeline.duration_secs(),
+                None => return,
+            }
+        };
+        if duration_secs <= 0.0 {
+            return;
+        }
+
+        self.push_undo_snapshot();
+        let timeline = self.active_project_mut().timeline_mut();
+        let track_index = resolve_or_create_track(timeline, TrackKind::Video, None);
+        let start_secs = timeline.tracks[track_index].duration_secs();
+        let clip_id = next_clip_id(timeline);
+        let mut clip = default_clip_instance(clip_id, 0, start_secs, 0.0, duration_secs, false);
+        clip.nested_sequence_id = Some(sequence_id);
+        timeline.tracks[track_index].clips.push(clip);
+    }
+
     /// Applies a smooth, continuous speed ramp to the selected clip — the P4 item 29 follow-up
     /// [`App::apply_speed_ramp_to_selected_clip`]'s own doc comment flagged as needing a
     /// `log()`-based `setpts` derivation this codebase's sandboxed development environment
