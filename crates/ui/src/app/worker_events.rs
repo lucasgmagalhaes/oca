@@ -97,9 +97,6 @@ pub(crate) enum AutoReframeEvent {
         /// fell back to a plain center crop, worth telling the user about.
         subject_found: bool,
     },
-    Failed {
-        message: String,
-    },
 }
 
 /// A message from a background dynamic-reframe worker thread (see

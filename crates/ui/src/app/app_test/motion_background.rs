@@ -18,12 +18,15 @@
 use super::support::*;
 use super::*;
 
+#[test]
 fn motion_track_region_defaults_to_a_centered_region() {
     let app = test_app(vec![test_project(1, Vec::new())], Vec::new());
 
     assert_eq!(app.motion_track_region.motion_track_center_x, 0.5);
     assert_eq!(app.motion_track_region.motion_track_center_y, 0.5);
 }
+
+#[test]
 fn start_picking_motion_track_region_is_a_no_op_without_a_loaded_preview() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
     app.preview_state.preview_texture = None;
@@ -32,6 +35,8 @@ fn start_picking_motion_track_region_is_a_no_op_without_a_loaded_preview() {
 
     assert!(!app.motion_track_region.picking_motion_track_region);
 }
+
+#[test]
 fn start_picking_motion_track_region_activates_with_a_loaded_preview() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
     let ctx = egui::Context::default();

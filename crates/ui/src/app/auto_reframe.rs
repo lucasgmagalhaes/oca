@@ -103,11 +103,6 @@ impl App {
                         );
                     }
                 }
-                AutoReframeEvent::Failed { message } => {
-                    self.auto_reframe_state.auto_reframing_clip_id = None;
-                    tracing::error!(error = %message, "auto-reframe failed");
-                    self.push_toast(format!("Auto-reframe failed: {message}"));
-                }
             }
         }
     }
