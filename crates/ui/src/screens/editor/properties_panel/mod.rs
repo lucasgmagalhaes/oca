@@ -16,6 +16,7 @@
 mod background_effects;
 mod chrome;
 mod crop;
+mod effects;
 mod keyframe_editors;
 mod motion_tracking;
 mod privacy_blur;
@@ -24,31 +25,27 @@ mod text_clip;
 mod visual_effects;
 mod voice_cleanup_preview;
 
-use background_effects::{background_removal_properties, chroma_key_properties};
 pub(super) use chrome::stereo_db_meter;
-use chrome::{effects_panel_browser, prop_row, properties_tab_bar};
+use chrome::{prop_row, properties_tab_bar};
 use crop::crop_properties;
+use effects::effects_properties;
 
 use eframe::egui::{self, RichText};
 
 use crate::app::{
-    App, BRIGHTNESS_RANGE, CONTRAST_RANGE, GAIN_DB_RANGE, LAYER_SCALE_RANGE,
-    MASK_CORNER_RADIUS_RANGE, SATURATION_RANGE, SHARPEN_RANGE, SPEED_FACTOR_RANGE,
-    VIGNETTE_INTENSITY_RANGE, VOICE_CLEANUP_CEILING_RANGE, VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE,
-    VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE, VOICE_CLEANUP_NOISE_FLOOR_RANGE,
+    App, GAIN_DB_RANGE, MASK_CORNER_RADIUS_RANGE, SPEED_FACTOR_RANGE, VOICE_CLEANUP_CEILING_RANGE,
+    VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE, VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE,
+    VOICE_CLEANUP_NOISE_FLOOR_RANGE,
 };
 use crate::components;
 use crate::i18n::Text;
 use crate::theme;
 use keyframe_editors::{
-    blend_mode_label, color_filter_label, f32_keyframe_editor, mask_shape_label,
-    position_keyframe_editor,
+    blend_mode_label, f32_keyframe_editor, mask_shape_label, position_keyframe_editor,
 };
 use motion_tracking::motion_tracking_properties;
-use privacy_blur::privacy_blur_properties;
 use shape_clip::shape_clip_properties;
 use text_clip::text_clip_properties;
-use visual_effects::{other_effects_properties, stabilization_properties, transition_properties};
 use voice_cleanup_preview::voice_cleanup_preview;
 
 pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32) {
@@ -180,21 +177,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut mask_corner_radius = clip.mask_corner_radius;
                         let mut flipped_h = clip.flipped_h;
                         let mut blend_mode = clip.blend_mode;
-                        let mut color_filter = clip.color_filter;
-                        let mut lut_path = clip.lut_path.clone();
-                        let (mut layer_scale_x, mut layer_scale_y) =
-                            (clip.layer_scale_x, clip.layer_scale_y);
                         let (mut anchor_x, mut anchor_y) = (clip.anchor_x, clip.anchor_y);
-                        let mut vignette_intensity = clip.vignette_intensity;
-                        let (mut brightness, mut contrast, mut saturation) =
-                            (clip.brightness, clip.contrast, clip.saturation);
-                        let mut sharpen = clip.sharpen;
-                        let mut chroma_key_enabled = clip.chroma_key_enabled;
-                        let mut chroma_key_color = clip.chroma_key_color;
-                        let mut chroma_key_tolerance = clip.chroma_key_tolerance;
-                        let mut background_removal_enabled = clip.background_removal_enabled;
-                        let mut privacy_blur_enabled = clip.privacy_blur_enabled;
-                        let mut privacy_blur_sigma = clip.privacy_blur_sigma;
                         let mut voice_cleanup_enabled = clip.voice_cleanup_enabled;
                         let mut voice_cleanup_noise_floor_db = clip.voice_cleanup_noise_floor_db;
                         let mut voice_cleanup_compressor_threshold_db =
@@ -202,13 +185,6 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut voice_cleanup_compressor_ratio =
                             clip.voice_cleanup_compressor_ratio;
                         let mut voice_cleanup_ceiling_linear = clip.voice_cleanup_ceiling_linear;
-                        let mut blur_intensity = clip.blur_intensity;
-                        let mut shake_intensity = clip.shake_intensity;
-                        let mut glitch_intensity = clip.glitch_intensity;
-                        let mut pixelize_intensity = clip.pixelize_intensity;
-                        let mut stabilization_intensity = clip.stabilization_intensity;
-                        let mut transition_in = clip.transition_in;
-                        let mut transition_duration_secs = clip.transition_duration_secs;
                         // Cloned out up front (like every other field above) rather than read from
                         // `clip` later, so this immutable borrow of `app` doesn't need to stay alive
                         // across the `app.set_selected_clip_*` mutable calls further down.
@@ -217,9 +193,6 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let rotation_keyframes = clip.rotation_keyframes.clone();
                         let opacity_keyframes = clip.opacity_keyframes.clone();
                         let gain_keyframes = clip.gain_keyframes.clone();
-                        let brightness_keyframes = clip.brightness_keyframes.clone();
-                        let contrast_keyframes = clip.contrast_keyframes.clone();
-                        let saturation_keyframes = clip.saturation_keyframes.clone();
 
                         properties_tab_bar(app, ui, locale);
                         let tab = app.properties_tab;
@@ -493,311 +466,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                 }
                             }
 
-                            if tab == crate::app::PropertiesTab::Effects {
-                                let effects_track_kind = app.selected_clip_track_kind();
-                                effects_panel_browser(app, ui, locale, true, effects_track_kind);
-                                ui.add_space(8.0);
-                                ui.separator();
-                                ui.add_space(4.0);
-
-                                let color_filter_changed = components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropColorFilter.tr(locale),
-                                    Text::ColorFilterExportNote.tr(locale),
-                                    color_filter != avcore::timeline::ColorFilter::None,
-                                    |ui| {
-                                        components::enum_combo(
-                                            ui,
-                                            "color_filter",
-                                            &[
-                                                avcore::timeline::ColorFilter::None,
-                                                avcore::timeline::ColorFilter::BlackAndWhite,
-                                                avcore::timeline::ColorFilter::Sepia,
-                                            ],
-                                            &mut color_filter,
-                                            |filter| color_filter_label(filter, locale),
-                                        )
-                                    },
-                                );
-                                if color_filter_changed {
-                                    app.set_selected_clip_color_filter(color_filter);
-                                }
-
-                                let lut_changed = components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropLut.tr(locale),
-                                    Text::LutExportNote.tr(locale),
-                                    !lut_path.is_empty(),
-                                    |ui| {
-                                        let mut changed = false;
-                                        ui.horizontal(|ui| {
-                                            let name = std::path::Path::new(&lut_path)
-                                                .file_name()
-                                                .map(|n| n.to_string_lossy().to_string())
-                                                .unwrap_or_default();
-                                            ui.label(
-                                                RichText::new(if name.is_empty() {
-                                                    "-"
-                                                } else {
-                                                    &name
-                                                })
-                                                .size(11.0)
-                                                .color(theme::TEXT_SECONDARY),
-                                            );
-                                            if ui.button(Text::Browse.tr(locale)).clicked() {
-                                                if let Some(file) = rfd::FileDialog::new()
-                                                    .add_filter("3D LUT", &["cube"])
-                                                    .pick_file()
-                                                {
-                                                    lut_path = file.display().to_string();
-                                                    changed = true;
-                                                }
-                                            }
-                                            if !lut_path.is_empty()
-                                                && ui.button(Text::ClearLut.tr(locale)).clicked()
-                                            {
-                                                lut_path.clear();
-                                                changed = true;
-                                            }
-                                        });
-                                        changed
-                                    },
-                                );
-                                if lut_changed {
-                                    app.set_selected_clip_lut(lut_path);
-                                }
-
-                                let layer_size_changed = components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropLayerSize.tr(locale),
-                                    Text::LayerSizeExportNote.tr(locale),
-                                    (layer_scale_x - 1.0).abs() > 1e-4
-                                        || (layer_scale_y - 1.0).abs() > 1e-4,
-                                    |ui| {
-                                        let mut changed = ui
-                                            .add(
-                                                egui::Slider::new(
-                                                    &mut layer_scale_x,
-                                                    LAYER_SCALE_RANGE,
-                                                )
-                                                .text(Text::PropLayerWidth.tr(locale)),
-                                            )
-                                            .changed();
-                                        changed |= ui
-                                            .add(
-                                                egui::Slider::new(
-                                                    &mut layer_scale_y,
-                                                    LAYER_SCALE_RANGE,
-                                                )
-                                                .text(Text::PropLayerHeight.tr(locale)),
-                                            )
-                                            .changed();
-                                        changed
-                                    },
-                                );
-                                if layer_size_changed {
-                                    app.set_selected_clip_layer_scale(layer_scale_x, layer_scale_y);
-                                }
-
-                                if components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropVignette.tr(locale),
-                                    Text::VignetteExportNote.tr(locale),
-                                    vignette_intensity > 0.0,
-                                    |ui| {
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut vignette_intensity,
-                                                VIGNETTE_INTENSITY_RANGE,
-                                            )
-                                            .fixed_decimals(2),
-                                        )
-                                        .changed()
-                                    },
-                                ) {
-                                    app.set_selected_clip_vignette(vignette_intensity);
-                                }
-
-                                if components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropColorAdjust.tr(locale),
-                                    Text::ColorAdjustExportNote.tr(locale),
-                                    brightness != 0.0
-                                        || (contrast - 1.0).abs() > 1e-4
-                                        || (saturation - 1.0).abs() > 1e-4,
-                                    |ui| {
-                                        let mut changed = ui
-                                            .add(
-                                                egui::Slider::new(
-                                                    &mut brightness,
-                                                    BRIGHTNESS_RANGE,
-                                                )
-                                                .text(Text::PropBrightness.tr(locale)),
-                                            )
-                                            .changed();
-                                        changed |= ui
-                                            .add(
-                                                egui::Slider::new(&mut contrast, CONTRAST_RANGE)
-                                                    .text(Text::PropContrast.tr(locale)),
-                                            )
-                                            .changed();
-                                        changed |= ui
-                                            .add(
-                                                egui::Slider::new(
-                                                    &mut saturation,
-                                                    SATURATION_RANGE,
-                                                )
-                                                .text(Text::PropSaturation.tr(locale)),
-                                            )
-                                            .changed();
-                                        changed
-                                    },
-                                ) {
-                                    app.set_selected_clip_color_adjust(
-                                        brightness, contrast, saturation,
-                                    );
-                                }
-
-                                let mut new_brightness_keyframes = None;
-                                if components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropBrightnessKeyframes.tr(locale),
-                                    Text::ColorKeyframesExportNote.tr(locale),
-                                    !brightness_keyframes.is_empty(),
-                                    |ui| {
-                                        new_brightness_keyframes = f32_keyframe_editor(
-                                            ui,
-                                            &brightness_keyframes,
-                                            BRIGHTNESS_RANGE,
-                                            0.0,
-                                            locale,
-                                        );
-                                        new_brightness_keyframes.is_some()
-                                    },
-                                ) {
-                                    if let Some(kfs) = new_brightness_keyframes {
-                                        app.set_selected_clip_brightness_keyframes(kfs);
-                                    }
-                                }
-
-                                let mut new_contrast_keyframes = None;
-                                if components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropContrastKeyframes.tr(locale),
-                                    Text::ColorKeyframesExportNote.tr(locale),
-                                    !contrast_keyframes.is_empty(),
-                                    |ui| {
-                                        new_contrast_keyframes = f32_keyframe_editor(
-                                            ui,
-                                            &contrast_keyframes,
-                                            CONTRAST_RANGE,
-                                            1.0,
-                                            locale,
-                                        );
-                                        new_contrast_keyframes.is_some()
-                                    },
-                                ) {
-                                    if let Some(kfs) = new_contrast_keyframes {
-                                        app.set_selected_clip_contrast_keyframes(kfs);
-                                    }
-                                }
-
-                                let mut new_saturation_keyframes = None;
-                                if components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropSaturationKeyframes.tr(locale),
-                                    Text::ColorKeyframesExportNote.tr(locale),
-                                    !saturation_keyframes.is_empty(),
-                                    |ui| {
-                                        new_saturation_keyframes = f32_keyframe_editor(
-                                            ui,
-                                            &saturation_keyframes,
-                                            SATURATION_RANGE,
-                                            1.0,
-                                            locale,
-                                        );
-                                        new_saturation_keyframes.is_some()
-                                    },
-                                ) {
-                                    if let Some(kfs) = new_saturation_keyframes {
-                                        app.set_selected_clip_saturation_keyframes(kfs);
-                                    }
-                                }
-
-                                if components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropSharpen.tr(locale),
-                                    Text::SharpenExportNote.tr(locale),
-                                    sharpen > 0.0,
-                                    |ui| {
-                                        ui.add(
-                                            egui::Slider::new(&mut sharpen, SHARPEN_RANGE)
-                                                .fixed_decimals(2),
-                                        )
-                                        .changed()
-                                    },
-                                ) {
-                                    app.set_selected_clip_sharpen(sharpen);
-                                }
-
-                                chroma_key_properties(
-                                    app,
-                                    ui,
-                                    &mut chroma_key_enabled,
-                                    &mut chroma_key_color,
-                                    &mut chroma_key_tolerance,
-                                    locale,
-                                );
-                                background_removal_properties(
-                                    app,
-                                    ui,
-                                    &mut background_removal_enabled,
-                                    locale,
-                                );
-
-                                privacy_blur_properties(
-                                    app,
-                                    ui,
-                                    &mut privacy_blur_enabled,
-                                    &mut privacy_blur_sigma,
-                                    locale,
-                                );
-
-                                other_effects_properties(
-                                    app,
-                                    ui,
-                                    clip_id,
-                                    &mut blur_intensity,
-                                    &mut shake_intensity,
-                                    &mut glitch_intensity,
-                                    &mut pixelize_intensity,
-                                    locale,
-                                );
-                                stabilization_properties(
-                                    app,
-                                    ui,
-                                    clip_id,
-                                    &mut stabilization_intensity,
-                                    locale,
-                                );
-                                transition_properties(
-                                    app,
-                                    ui,
-                                    clip_id,
-                                    &mut transition_in,
-                                    &mut transition_duration_secs,
-                                    locale,
-                                );
-                            }
+                            effects_properties(app, ui, clip_id, locale);
 
                             if tab == crate::app::PropertiesTab::Inspector {
                                 let mut new_position_keyframes = None;
