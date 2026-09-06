@@ -21,21 +21,30 @@
 //! CF-08's slice 1 (exact transcript search) already shipped as part of CF-01 —
 //! [`crate::transcript_search`]. This module is slice 2 ("Add a versioned local index keyed by
 //! media content fingerprint and model version") plus the storage/scoring half of slice 4
-//! ("Return timestamped results with the source of the match... or a combined score").
+//! ("Return timestamped results with the source of the match... or a combined score"), plus the
+//! *planning* half of slice 3 ("Index bounded representative frames and transcript chunks
+//! incrementally") — [`plan_representative_frames`]/[`plan_transcript_chunks`] decide *which*
+//! timestamps/spans are worth embedding, and [`IndexingCursor`]/[`next_indexing_batch`] make
+//! working through them cancellable, resumable, and bounded per call, the doc's own three
+//! acceptance words for this slice.
+//!
 //! **Deliberately not attempted here: computing any real embedding.** A real semantic-search
 //! embedding model (text and/or visual) needs network access to fetch model weights and
 //! `libonnxruntime` — this sandbox has neither (the same `ORT_SKIP_DOWNLOAD=1`/no-network gap
 //! `CLAUDE.md` documents for `background_removal`/`auto_reframe`). So [`IndexedChunk::embedding`]
-//! is an opaque `Vec<f32>` this module never produces itself — a real embedding-computation
-//! slice, and the incremental frame/transcript-chunk sampling pass that would call it (slice 3),
-//! are genuine, separate follow-ups once a model can actually be verified against. What's here —
-//! the versioned index shape, fingerprint-based invalidation, a bounded storage budget, and
-//! cosine-similarity search/combination over whatever embeddings a caller supplies — is real,
-//! useful, and fully testable without one.
+//! is an opaque `Vec<f32>` this module never produces itself, and neither does the planning code
+//! below — it hands a caller *what* to embed (a frame timestamp or a transcript text span), never
+//! computes the embedding itself or reads a file from disk (no `FrameSampler`/transcript-sidecar
+//! I/O here — see those modules for the actual decode/load step). What's here — the versioned
+//! index shape, fingerprint-based invalidation, a bounded storage budget, cosine-similarity
+//! search/combination over whatever embeddings a caller supplies, and now the bounded/resumable
+//! planning queue — is real, useful, and fully testable without a real embedding model.
 
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+
+use crate::transcript::TranscriptWord;
 
 /// The on-disk index schema version — bumped only if this module's own layout changes (not the
 /// same axis as [`MediaIndexEntry::model_version`], which tracks the *embedding model*).
@@ -319,6 +328,215 @@ pub fn combine_search_results(results: Vec<SearchResult>, window_secs: f64) -> V
     }
     merged.sort_by(|a, b| b.score.total_cmp(&a.score));
     merged
+}
+
+/// Default representative-frame sampling density for [`plan_representative_frames`] — sparse
+/// enough that a long recording stays bounded (see that function's own `min`/`max` clamps), dense
+/// enough to catch distinct visual moments in a short one. Mirrors the order of magnitude
+/// `auto_reframe`/`motion_tracking` already use for their own `FrameSampler::even_sample_times`
+/// call sites, not a new tuning exercise.
+pub const DEFAULT_FRAME_SAMPLES_PER_SEC: f64 = 0.1;
+/// Default floor/ceiling for [`plan_representative_frames`]'s sample count — at least a handful
+/// of frames even for a very short clip, never more than this regardless of duration (the doc's
+/// own "bounded in CPU, memory, and disk usage" criterion applied to the frame side).
+pub const DEFAULT_MIN_FRAME_SAMPLES: usize = 3;
+pub const DEFAULT_MAX_FRAME_SAMPLES: usize = 200;
+/// Default transcript-chunk bounds for [`plan_transcript_chunks`] — a chunk spans at most this
+/// many seconds of speech...
+pub const DEFAULT_MAX_CHUNK_SPAN_SECS: f64 = 15.0;
+/// ...or this many words, whichever comes first — bounds a chunk's own text size independent of
+/// how densely someone talks, so a rapid-fire speaker doesn't produce one oversized chunk.
+pub const DEFAULT_MAX_WORDS_PER_CHUNK: usize = 40;
+
+/// One unit of representative content slice 3 queues for embedding — a video frame timestamp to
+/// sample, or a transcript text span to embed as one chunk. Carries everything an
+/// [`IndexedChunk`] needs except the embedding itself, which only a real model (not this module)
+/// can produce.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PlannedChunk {
+    Frame {
+        at_secs: f64,
+    },
+    Transcript {
+        start_secs: f64,
+        end_secs: f64,
+        text: String,
+    },
+}
+
+impl PlannedChunk {
+    /// The [`MatchSource`] an [`IndexedChunk`] built from this plan should carry.
+    pub fn source(&self) -> MatchSource {
+        match self {
+            PlannedChunk::Frame { .. } => MatchSource::Visual,
+            PlannedChunk::Transcript { .. } => MatchSource::Transcript,
+        }
+    }
+}
+
+/// Plans which timestamps within `[0.0, duration_secs)` are worth sampling as representative
+/// frames for visual embedding — thin wrapper over [`crate::frame_sampler::FrameSampler::
+/// even_sample_times`] (reused, not reimplemented) so this module's own bounds apply uniformly
+/// regardless of caller. Empty for a non-positive duration, same as the function it wraps.
+pub fn plan_representative_frames(
+    duration_secs: f64,
+    samples_per_sec: f64,
+    min_samples: usize,
+    max_samples: usize,
+) -> Vec<PlannedChunk> {
+    crate::frame_sampler::FrameSampler::even_sample_times(
+        0.0,
+        duration_secs,
+        samples_per_sec,
+        min_samples,
+        max_samples,
+    )
+    .into_iter()
+    .map(|at_secs| PlannedChunk::Frame { at_secs })
+    .collect()
+}
+
+/// Groups `words` (already time-ordered, as a loaded [`crate::transcript::TranscriptDocument`]
+/// always is) into consecutive chunks, each starting a new chunk once appending the next word
+/// would either push the chunk's own span past `max_chunk_span_secs` (measured from the chunk's
+/// first word's `start_secs` to the candidate word's `end_secs`) or its word count past
+/// `max_words_per_chunk` — whichever bound is hit first. A single word whose own span already
+/// exceeds `max_chunk_span_secs` still becomes its own one-word chunk rather than being dropped
+/// (never lose content to a pathological bound). Empty input produces no chunks.
+pub fn plan_transcript_chunks(
+    words: &[TranscriptWord],
+    max_chunk_span_secs: f64,
+    max_words_per_chunk: usize,
+) -> Vec<PlannedChunk> {
+    let mut chunks = Vec::new();
+    let mut current: Vec<&TranscriptWord> = Vec::new();
+    for word in words {
+        if let Some(first) = current.first() {
+            let would_span = word.end_secs - first.start_secs;
+            let would_exceed_span = would_span > max_chunk_span_secs;
+            let would_exceed_count = current.len() >= max_words_per_chunk;
+            if would_exceed_span || would_exceed_count {
+                chunks.push(flush_transcript_chunk(&current));
+                current.clear();
+            }
+        }
+        current.push(word);
+    }
+    if !current.is_empty() {
+        chunks.push(flush_transcript_chunk(&current));
+    }
+    chunks
+}
+
+fn flush_transcript_chunk(words: &[&TranscriptWord]) -> PlannedChunk {
+    let start_secs = words.first().map(|w| w.start_secs).unwrap_or(0.0);
+    let end_secs = words.last().map(|w| w.end_secs).unwrap_or(start_secs);
+    let text = words
+        .iter()
+        .map(|w| w.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    PlannedChunk::Transcript {
+        start_secs,
+        end_secs,
+        text,
+    }
+}
+
+/// One media asset's own planned work, and how far a resumed pass has gotten through it.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct PendingMedia {
+    pub media_id: u64,
+    pub chunks: Vec<PlannedChunk>,
+    /// Index into `chunks` of the next one [`next_indexing_batch`] will hand out. Advances by
+    /// exactly the number of items a batch actually takes from this entry — resuming after a
+    /// cancel/restart just means reconstructing a cursor with this value already set (a caller
+    /// persists it the same way it persists a [`SemanticIndex`]).
+    pub next_index: usize,
+}
+
+impl PendingMedia {
+    fn is_finished(&self) -> bool {
+        self.next_index >= self.chunks.len()
+    }
+}
+
+/// Resumable position within one bounded indexing pass across possibly many pending media
+/// assets — the doc's own "cancellable, resumable, bounded" acceptance criterion for slice 3,
+/// made concrete as plain, serializable data. A caller persists this between calls (or app
+/// launches); dropping it after a cancel loses only the *plan* for whatever wasn't embedded
+/// yet — nothing here writes to [`SemanticIndex`] itself, so a cancelled pass never leaves the
+/// index in an inconsistent state (a caller only calls [`SemanticIndex::upsert_entry`] once it
+/// has real embeddings for a media asset's chunks in hand).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct IndexingCursor {
+    pub pending: Vec<PendingMedia>,
+}
+
+impl IndexingCursor {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Queues `chunks` for `media_id`, replacing any existing (possibly partially-worked-through)
+    /// entry for the same id — a fresh (re)plan (e.g. after `SemanticIndex::needs_reindex` says
+    /// the media changed) always restarts that asset's own progress from the top, since its old
+    /// planned chunks no longer correspond to the current content.
+    pub fn enqueue(&mut self, media_id: u64, chunks: Vec<PlannedChunk>) {
+        self.pending.retain(|p| p.media_id != media_id);
+        if !chunks.is_empty() {
+            self.pending.push(PendingMedia {
+                media_id,
+                chunks,
+                next_index: 0,
+            });
+        }
+    }
+
+    /// Whether every queued asset has had every planned chunk handed out already — the doc's own
+    /// "resumable" pass reaching its natural end, as opposed to a caller-initiated cancel.
+    pub fn is_finished(&self) -> bool {
+        self.pending.iter().all(PendingMedia::is_finished)
+    }
+}
+
+/// One item handed out by [`next_indexing_batch`] — which media asset a [`PlannedChunk`] belongs
+/// to, since a batch can span more than one pending asset.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IndexingBatchItem {
+    pub media_id: u64,
+    pub chunk: PlannedChunk,
+}
+
+/// Pops up to `max_items` not-yet-handed-out chunks from `cursor`, advancing each touched entry's
+/// own `next_index` in place and dropping any entry that becomes fully finished as a result —
+/// bounded per call (`max_items` caps the CPU/decode/embedding work one tick does regardless of
+/// how much is queued overall), resumable (progress lives entirely in `cursor`, which a caller
+/// can serialize between calls), and cancellable (a caller simply stops calling this — no partial
+/// state anywhere else needs unwinding, per [`IndexingCursor`]'s own doc comment). Earlier-queued
+/// assets are drained before later ones (front of `cursor.pending` first), so one huge asset can't
+/// starve every other pending asset indefinitely — later assets still get scheduled once the
+/// batch boundary falls after it. Returns fewer than `max_items` (possibly zero) once every
+/// pending entry runs out.
+pub fn next_indexing_batch(
+    cursor: &mut IndexingCursor,
+    max_items: usize,
+) -> Vec<IndexingBatchItem> {
+    let mut batch = Vec::with_capacity(max_items.min(cursor.pending.len().max(1)));
+    for pending in cursor.pending.iter_mut() {
+        while batch.len() < max_items && !pending.is_finished() {
+            batch.push(IndexingBatchItem {
+                media_id: pending.media_id,
+                chunk: pending.chunks[pending.next_index].clone(),
+            });
+            pending.next_index += 1;
+        }
+        if batch.len() >= max_items {
+            break;
+        }
+    }
+    cursor.pending.retain(|p| !p.is_finished());
+    batch
 }
 
 #[cfg(test)]
