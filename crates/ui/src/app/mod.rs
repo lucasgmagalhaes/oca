@@ -56,6 +56,7 @@ mod motion_tracking;
 mod multicam;
 mod operation_state;
 mod preview;
+mod preview_fullscreen;
 mod preview_live_updates;
 mod preview_overlays;
 mod preview_selection;

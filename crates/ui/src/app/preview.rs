@@ -344,46 +344,6 @@ impl App {
         }
     }
 
-    /// Enters or exits the Editor preview panel's fullscreen overlay. Entering resets
-    /// [`App::fullscreen_controls_last_moved`] to `None` so the overlay's controls start
-    /// visible rather than possibly already faded from a stale timestamp.
-    pub fn toggle_fullscreen_preview(&mut self) {
-        self.preview_state.fullscreen_preview = !self.preview_state.fullscreen_preview;
-        self.preview_state.fullscreen_controls_last_moved = None;
-    }
-
-    pub fn exit_fullscreen_preview(&mut self) {
-        self.preview_state.fullscreen_preview = false;
-    }
-
-    /// Marks the fullscreen overlay's controls as just-interacted-with — called whenever the
-    /// pointer moves or is pressed while [`App::fullscreen_preview`] is active, resetting the
-    /// fade-out timer so the controls stay visible for another
-    /// [`crate::screens::editor::FULLSCREEN_CONTROLS_IDLE_SECS`].
-    pub fn note_fullscreen_controls_activity(&mut self) {
-        self.preview_state.fullscreen_controls_last_moved = Some(std::time::Instant::now());
-    }
-
-    /// Opacity multiplier (`0.0..=1.0`) for the fullscreen overlay's controls, based on how
-    /// long it's been since the last pointer activity — fully visible until
-    /// [`crate::screens::editor::FULLSCREEN_CONTROLS_IDLE_SECS`] elapses, then a
-    /// half-second linear fade to fully transparent. `None`-last-moved (just entered
-    /// fullscreen) is treated as "just now", so controls start fully visible.
-    pub fn fullscreen_controls_opacity(&self) -> f32 {
-        const FADE_SECS: f32 = 0.5;
-        let idle_secs = self
-            .preview_state
-            .fullscreen_controls_last_moved
-            .map(|t| t.elapsed().as_secs_f32())
-            .unwrap_or(0.0);
-        let over = idle_secs - crate::screens::editor::FULLSCREEN_CONTROLS_IDLE_SECS;
-        if over <= 0.0 {
-            1.0
-        } else {
-            (1.0 - over / FADE_SECS).clamp(0.0, 1.0)
-        }
-    }
-
     /// Seeks to `position_secs` (timeline-relative). Takes the fast path — seeking the
     /// already-open pipeline directly — when `position_secs` still falls within the clip it's
     /// currently loaded for; otherwise updates the timeline playhead and lets
