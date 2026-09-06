@@ -2679,6 +2679,16 @@ an item earlier:
   not a regression introduced since); fixed alongside this change with the same `#[allow(clippy::
   too_many_arguments)]` this codebase already uses on comparably-shaped functions elsewhere
   (`keyframe.rs`, `preview.rs`, `text_layout.rs`, `overlay_render.rs`, `render.rs`).
+
+  **UI wiring design written, no code yet** — see `architecture/competitive-feature-plan.md`'s
+  own CF-09 section, "UI integration design (2026-09-06)": properties-panel affordance (reusing
+  the motion-tracking region-picker for seed selection and background_removal.rs's exact
+  background-thread pattern for generation), new `ClipInstance` fields, and the one real open
+  design question this pass resolved — the stored per-clip matte is clip-local time but
+  `avbridge_apply_privacy_blur` has no per-segment timeline window the way text/shape overlays
+  do, so export-time code must pad the matte to canvas-duration (black outside the clip's own
+  timeline window) rather than assume `maskedmerge` honors FFmpeg's `enable=` timeline option in
+  this build, which can't be verified here.
 - `[ ]` **CF-10: direct publishing.** Add a secure YouTube upload flow; keep OAuth credentials
   in the OS vault and separate from offline bundles.
 
