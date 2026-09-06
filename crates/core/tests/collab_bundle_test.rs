@@ -14,6 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use std::fs;
+use std::io::Write as _;
 use std::path::PathBuf;
 
 use avcore::collab_bundle::{export_collab_bundle, import_collab_bundle};
@@ -151,6 +152,70 @@ fn skips_assets_with_no_proxy_generated_yet() {
         imported.media_library[0].proxy_path.is_none(),
         "nothing was bundled for this asset, so no proxy_path should resolve"
     );
+}
+
+/// A bundle is attacker-controllable data (shared by a collaborator, or downloaded from
+/// anywhere) -- `import_collab_bundle` must never let an embedded proxy entry's path write
+/// outside the recipient's own proxy cache dir (zip-slip, CWE-22). This builds a malicious
+/// bundle by hand (never through `export_collab_bundle`, which only ever emits flat filenames)
+/// to prove the import side defends itself regardless of what a bundle claims.
+#[test]
+fn a_malicious_proxy_entry_path_cannot_escape_the_proxy_cache_dir() {
+    let dir = scratch_dir("zip_slip");
+    let sender_project_path = dir.join("project.ocproj");
+    let project = project_at(&sender_project_path, vec![]);
+    let project_bytes = avcore::persistence::to_ocproj_bytes(&project).unwrap();
+
+    // A sentinel file well outside where any legitimate proxy cache dir could ever land --
+    // if the traversal succeeded, the malicious entry would overwrite it.
+    let canary_path = dir.join("canary.txt");
+    fs::write(&canary_path, b"untouched").unwrap();
+
+    let zip_path = dir.join("malicious.zip");
+    {
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+
+        zip.start_file("project.ocproj", options).unwrap();
+        zip.write_all(&project_bytes).unwrap();
+
+        // Climbs out of the proxy cache dir via a relative `../../../` chain, targeting the
+        // canary file computed above.
+        let traversal_name = format!(
+            "proxies/../../../../../../../..{}",
+            canary_path.to_string_lossy()
+        );
+        zip.start_file(traversal_name, options).unwrap();
+        zip.write_all(b"pwned").unwrap();
+
+        // A second attempt using an absolute path directly as the "filename".
+        zip.start_file("proxies//etc/should-not-exist", options)
+            .unwrap();
+        zip.write_all(b"pwned2").unwrap();
+
+        zip.finish().unwrap();
+    }
+
+    let recipient_project_path = dir.join("recipient/project.ocproj");
+    let imported = import_collab_bundle(&zip_path, &recipient_project_path).unwrap();
+
+    assert_eq!(
+        fs::read(&canary_path).unwrap(),
+        b"untouched",
+        "a malicious zip entry must never write outside the proxy cache dir"
+    );
+    assert!(
+        !PathBuf::from("/etc/should-not-exist").exists(),
+        "an absolute-path entry must never be treated as an absolute destination"
+    );
+
+    // The sanitized basename still lands inside the recipient's own proxy cache dir, since
+    // rejecting the entry outright (rather than writing it somewhere safe-but-wrong) isn't
+    // required -- only escaping the directory is the actual vulnerability.
+    let proxy_dir = cache_dir_for_project(&imported);
+    assert!(proxy_dir.join("should-not-exist").exists());
 }
 
 #[test]
