@@ -16,6 +16,8 @@
 //! Application construction and startup recovery.
 
 use super::*;
+
+impl App {
 /// Builds the initial app state: applies the theme and starts with an empty project list
 /// and export queue — every project, asset, and job comes from the user via "Novo
 /// projeto"/"Abrir projeto" and real imports, not mock data.
@@ -59,6 +61,7 @@ pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
     let (voice_cleanup_preview_tx, voice_cleanup_preview_rx) = mpsc::unbounded_channel();
     let (scene_cut_detection_tx, scene_cut_detection_rx) = mpsc::unbounded_channel();
     let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
+    let (privacy_blur_generation_tx, privacy_blur_generation_rx) = mpsc::unbounded_channel();
     let (tts_tx, tts_rx) = mpsc::unbounded_channel();
     let (youtube_download_tx, youtube_download_rx) = mpsc::unbounded_channel();
     let (watch_folder_tx, watch_folder_rx) = mpsc::unbounded_channel();
@@ -170,6 +173,17 @@ pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
             matte_generation_rx,
             matte_generating_clip_id: None,
         },
+        privacy_blur_generation_state: PrivacyBlurGenerationState {
+            privacy_blur_generation_tx,
+            privacy_blur_generation_rx,
+            privacy_blur_generating_clip_id: None,
+        },
+        privacy_blur_region: PrivacyBlurRegionState {
+            privacy_blur_center_x: 0.5,
+            privacy_blur_center_y: 0.5,
+            privacy_blur_width: 0.2,
+            privacy_blur_height: 0.2,
+        },
         tts_state: TtsState {
             tts_tx,
             tts_rx,
@@ -271,4 +285,5 @@ pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
     }
     app.spawn_update_check();
     app
+}
 }

@@ -62,6 +62,7 @@ mod multicam;
 mod operation_state;
 mod preview;
 mod preview_selection;
+mod privacy_blur;
 mod project_ops;
 mod project_timeline_modals;
 mod scene_detection;
@@ -89,9 +90,10 @@ pub(crate) use color::{format_color_hex, TextColorEdit, TextColorTarget};
 pub(crate) use operation_state::{
     AutoReframeState, DynamicReframeState, ImportState, MatteGenerationState,
     MotionTrackRegionState, MotionTrackingState, NestedSequenceRenderState,
-    PendingGraphicTemplateApply, PreviewState, SceneCutDetectionState, ShortsPackReframeState,
-    TelemetryState, ThumbnailState, TranscribeState, TranscriptPanelState, TtsState,
-    VoiceCleanupPreviewState, WatchFolderState, YoutubeDownloadState,
+    PendingGraphicTemplateApply, PreviewState, PrivacyBlurGenerationState, PrivacyBlurRegionState,
+    SceneCutDetectionState, ShortsPackReframeState, TelemetryState, ThumbnailState, TranscribeState,
+    TranscriptPanelState, TtsState, VoiceCleanupPreviewState, WatchFolderState,
+    YoutubeDownloadState,
 };
 pub use state::{
     BindableAction, EditorTool, KeyBindings, KeyCombo, LayoutScope, MediaLibraryFilter,
@@ -99,8 +101,9 @@ pub use state::{
 };
 use worker_events::{
     AutoReframeEvent, DynamicReframeEvent, ImportEvent, MatteGenerationEvent, MotionTrackEvent,
-    NestedSequenceEvent, RenderEvent, SceneCutEvent, ThumbnailKey, ThumbnailReady, TranscribeEvent,
-    TtsEvent, UpdateCheckEvent, VoiceCleanupPreviewEvent, WatchFolderEvent, YoutubeDownloadEvent,
+    NestedSequenceEvent, PrivacyBlurGenerationEvent, RenderEvent, SceneCutEvent, ThumbnailKey,
+    ThumbnailReady, TranscribeEvent, TtsEvent, UpdateCheckEvent, VoiceCleanupPreviewEvent,
+    WatchFolderEvent, YoutubeDownloadEvent,
 };
 pub use worker_events::{AvailableUpdate, UpdateCheckStatus, YoutubeFormatChoice};
 pub(crate) use worker_events::{WatchFolderFileStatus, WatchedFileRow};
@@ -167,6 +170,12 @@ pub const SHAKE_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
 /// Slider bounds for the properties panel's glitch control (Fase 4's "Efeitos visuais",
 /// [`avcore::timeline::ClipInstance::glitch_intensity`]).
 pub const GLITCH_INTENSITY_RANGE: std::ops::RangeInclusive<f32> = 0.0..=1.0;
+
+/// Slider bounds for the properties panel's CF-09 privacy-blur intensity control
+/// (`avcore::timeline::ClipInstance::privacy_blur_sigma`) — `avbridge_apply_privacy_blur`'s own
+/// `gblur` sigma, which rejects `<= 0.0`, so the range's own lower bound stays a hair above zero
+/// rather than allowing a value the export pass would reject.
+pub const PRIVACY_BLUR_SIGMA_RANGE: std::ops::RangeInclusive<f32> = 0.1..=50.0;
 
 /// Slider bounds for the properties panel's pixelize control (Fase 4's "Efeitos visuais",
 /// [`avcore::timeline::ClipInstance::pixelize_intensity`]).
@@ -338,6 +347,12 @@ pub struct App {
     /// Matte-generation background-job channel/clip-tracking state — same pattern as
     /// [`App::auto_reframe_state`].
     pub(crate) matte_generation_state: MatteGenerationState,
+    /// CF-09 privacy-blur matte-generation background-job channel/clip-tracking state — same
+    /// pattern as [`App::matte_generation_state`].
+    pub(crate) privacy_blur_generation_state: PrivacyBlurGenerationState,
+    /// CF-09 privacy-blur seed-rectangle session state — see [`PrivacyBlurRegionState`]'s own
+    /// doc comment.
+    pub(crate) privacy_blur_region: PrivacyBlurRegionState,
     /// Text-to-speech modal/background-job state, grouped the same way [`PreviewState`] was.
     pub(crate) tts_state: TtsState,
     /// YouTube-download modal/background-job state, grouped the same way [`PreviewState`] was.
@@ -943,6 +958,7 @@ impl eframe::App for App {
         self.pump_voice_cleanup_preview();
         self.pump_scene_cut_detection();
         self.pump_matte_generation();
+        self.pump_privacy_blur_generation();
         self.pump_text_to_speech();
         self.pump_youtube_download();
         self.pump_watch_folder();

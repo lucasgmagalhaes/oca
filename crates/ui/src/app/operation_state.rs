@@ -25,9 +25,9 @@ use tokio::sync::{UnboundedReceiver, UnboundedSender};
 
 use super::{
     AutoReframeEvent, DynamicReframeEvent, ImportEvent, MatteGenerationEvent, MotionTrackEvent,
-    NestedSequenceEvent, PreviewZoom, SceneCutEvent, ThumbnailKey, ThumbnailReady, TranscribeEvent,
-    TtsEvent, VoiceCleanupPreviewEvent, WatchFolderEvent, WatchedFileRow, YoutubeDownloadEvent,
-    YoutubeFormatChoice,
+    NestedSequenceEvent, PreviewZoom, PrivacyBlurGenerationEvent, SceneCutEvent, ThumbnailKey,
+    ThumbnailReady, TranscribeEvent, TtsEvent, VoiceCleanupPreviewEvent, WatchFolderEvent,
+    WatchedFileRow, YoutubeDownloadEvent, YoutubeFormatChoice,
 };
 
 /// [`App::transcript_panel_state`]'s own fields.
@@ -322,6 +322,36 @@ pub(crate) struct MatteGenerationState {
     /// currently computing a matte for, if any — only one runs at a time, same shape as
     /// `AutoReframeState::auto_reframing_clip_id`.
     pub(crate) matte_generating_clip_id: Option<u64>,
+}
+
+/// CF-09 privacy-blur matte-generation background-job state — same pattern as
+/// [`MatteGenerationState`].
+pub(crate) struct PrivacyBlurGenerationState {
+    pub(crate) privacy_blur_generation_tx: UnboundedSender<PrivacyBlurGenerationEvent>,
+    pub(crate) privacy_blur_generation_rx: UnboundedReceiver<PrivacyBlurGenerationEvent>,
+    /// The timeline clip id a background privacy-blur matte-generation run is currently
+    /// computing a matte for, if any — only one runs at a time, same shape as
+    /// [`MatteGenerationState::matte_generating_clip_id`].
+    pub(crate) privacy_blur_generating_clip_id: Option<u64>,
+}
+
+/// CF-09 privacy-blur seed-rectangle session state — the region [`App::
+/// spawn_apply_privacy_blur_for_selected_clip`] seeds `avcore::mask_propagation` from, entered
+/// numerically (no preview click-and-drag picker yet — a real, separate follow-up, same
+/// deliberate v1 scope cut `spec/architecture/competitive-feature-plan.md`'s CF-09 "UI
+/// integration design" section documents). `center_x`/`center_y` are a `0.0..=1.0` fraction of
+/// the *source* frame (same convention `MotionTrackRegionState::motion_track_center_x`/`_y`
+/// already uses); `width`/`height` are each independently a fraction of the frame's shorter
+/// dimension (`avcore::mask_propagation::propagate_mask_by_translation`'s own
+/// `template_width_frac`/`template_height_frac`, which are literally `avcore::track_region`'s
+/// own parameters it tracks with). Not persisted — a fresh session/clip selection starts back at
+/// the centered default, same non-persistence rationale `MotionTrackRegionState`'s own doc
+/// comment gives.
+pub(crate) struct PrivacyBlurRegionState {
+    pub(crate) privacy_blur_center_x: f32,
+    pub(crate) privacy_blur_center_y: f32,
+    pub(crate) privacy_blur_width: f32,
+    pub(crate) privacy_blur_height: f32,
 }
 
 /// Import background-job channel/asset-tracking state — one batch of files imported via

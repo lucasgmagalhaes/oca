@@ -178,6 +178,22 @@ enum MatteGenerationEvent {
     Failed { message: String },
 }
 
+/// A message from a background CF-09 privacy-blur matte-generation worker thread (see
+/// [`App::spawn_apply_privacy_blur_for_selected_clip`]) back to the UI thread. Same shape as
+/// [`MatteGenerationEvent`] plus the seed vertices/center the run actually tracked from (so the
+/// UI thread can persist them onto the clip alongside the mask path — the background thread has
+/// no direct `App` access to write them itself).
+enum PrivacyBlurGenerationEvent {
+    Done {
+        clip_id: u64,
+        mask_path: PathBuf,
+        seed_vertices: Vec<(f32, f32)>,
+    },
+    Failed {
+        message: String,
+    },
+}
+
 /// A message from the background update-check thread (see [`App::spawn_update_check`]) back to
 /// the UI thread. Every terminal result is sent because the About modal distinguishes a
 /// successful current-version result from a failed network request.

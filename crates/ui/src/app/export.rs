@@ -114,6 +114,7 @@ pub struct PendingExportConflict {
     pub audio_segments: Vec<AudioSegment>,
     pub text_segments: Vec<TextSegment>,
     pub shape_segments: Vec<ShapeSegment>,
+    pub privacy_blur_segments: Vec<avcore::PrivacyBlurSegment>,
     pub canvas: Canvas,
     pub target_lufs: f32,
     pub output_path: PathBuf,
@@ -216,6 +217,7 @@ impl App {
                 pending.audio_segments,
                 pending.text_segments,
                 pending.shape_segments,
+                pending.privacy_blur_segments,
                 pending.canvas,
                 pending.target_lufs,
                 output_path.display().to_string(),
@@ -434,6 +436,7 @@ impl App {
         audio_segments: Vec<avcore::AudioSegment>,
         text_segments: Vec<avcore::TextSegment>,
         shape_segments: Vec<avcore::ShapeSegment>,
+        privacy_blur_segments: Vec<avcore::PrivacyBlurSegment>,
         canvas: avcore::Canvas,
         target_lufs: f32,
         output_path: String,
@@ -449,6 +452,7 @@ impl App {
             segments,
             text_segments,
             shape_segments,
+            privacy_blur_segments,
             track_segments,
             audio_segments,
             canvas,
@@ -615,6 +619,7 @@ impl App {
         let job_id = job.id;
         let text_segments = job.text_segments.clone();
         let shape_segments = job.shape_segments.clone();
+        let privacy_blur_segments = job.privacy_blur_segments.clone();
         let audio_segments = job.audio_segments.clone();
         // Prefer multi-track snapshot; fall back to legacy single-track `segments` field for
         // jobs persisted before multi-track support was added.
@@ -663,6 +668,7 @@ impl App {
                 gpu_encoder,
                 &text_segments,
                 &shape_segments,
+                &privacy_blur_segments,
                 control.cancel_flag(),
                 |percent| {
                     let _ = tx.send(RenderEvent::Progress { job_id, percent });
