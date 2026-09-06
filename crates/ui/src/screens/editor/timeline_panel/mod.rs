@@ -20,6 +20,7 @@ mod header;
 mod interactions;
 mod ruler;
 mod selection_commands;
+mod shape_overlays;
 mod snap;
 mod text_overlays;
 mod thumbnails;
@@ -89,6 +90,7 @@ use header::timeline_header;
 use interactions::apply_clip_interactions;
 use ruler::{timeline_ruler, RulerLayout};
 use selection_commands::{apply_selection_commands, SelectionCommands};
+use shape_overlays::{draw_shape_overlays, ShapeOverlayRequests};
 use snap::{snap_move_start, snap_to_nearest, ClipDrag, SnapTargets};
 use text_overlays::{draw_text_overlays, TextOverlayRequests};
 use thumbnails::apply_thumbnail_work;
@@ -990,164 +992,22 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         drag_started: &mut drag_started_this_frame,
                                     },
                                 );
-                                // Render shape clips for shape tracks as solid-color blocks — mirrors the
-                                // text-clip block above, swapping the text label for the shape's own color.
-                                if track.kind == avcore::timeline::TrackKind::Shape {
-                                    for sc in &track.shape_clips {
-                                        let x =
-                                            track_rect.left() + sc.start_secs as f32 * px_per_sec;
-                                        let sc_widget_id =
-                                            ui.id().with(("timeline_shape_clip", sc.id));
-                                        let sc_trim_start_id =
-                                            ui.id().with(("timeline_shape_clip_trim_start", sc.id));
-                                        let sc_trim_end_id =
-                                            ui.id().with(("timeline_shape_clip_trim_end", sc.id));
-                                        let sc_being_dragged =
-                                            ui.ctx().dragged_id().is_some_and(|id| {
-                                                id == sc_widget_id
-                                                    || id == sc_trim_start_id
-                                                    || id == sc_trim_end_id
-                                            });
-                                        // Same viewport-culling reasoning as the video/audio clip loop above.
-                                        if x > track_rect.right() && !sc_being_dragged {
-                                            continue;
-                                        }
-                                        let w = (sc.duration_secs as f32 * px_per_sec).max(3.0);
-                                        let sc_rect = egui::Rect::from_min_size(
-                                            egui::pos2(x, track_rect.top()),
-                                            egui::vec2(w, track_rect.height()),
-                                        );
-                                        let edge_w = (w / 3.0).clamp(2.0, 6.0);
-                                        let sc_left_edge_rect = egui::Rect::from_min_size(
-                                            sc_rect.min,
-                                            egui::vec2(edge_w, sc_rect.height()),
-                                        );
-                                        let sc_right_edge_rect = egui::Rect::from_min_size(
-                                            egui::pos2(sc_rect.right() - edge_w, sc_rect.top()),
-                                            egui::vec2(edge_w, sc_rect.height()),
-                                        );
-                                        let sc_response = ui.interact(
-                                            sc_rect,
-                                            sc_widget_id,
-                                            if track.locked {
-                                                canvas_sense(egui::Sense::click())
-                                            } else {
-                                                canvas_sense(egui::Sense::click_and_drag())
-                                            },
-                                        );
-                                        sc_response.context_menu(|ui| {
-                                            if ui
-                                                .button(Text::ContextMenuDelete.tr(locale))
-                                                .clicked()
-                                            {
-                                                delete_shape_clip_requests.push(sc.id);
-                                                ui.close();
-                                            }
-                                        });
-                                        if sc_response.clicked() {
-                                            clicked_shape_clip_id = Some(sc.id);
-                                        }
-                                        if sc_response.drag_started() {
-                                            drag_started_this_frame = true;
-                                        }
-                                        if sc_response.dragged() {
-                                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                                            let delta_secs =
-                                                (sc_response.drag_delta().x / px_per_sec) as f64;
-                                            shape_clip_drags
-                                                .push((sc.id, sc.start_secs + delta_secs));
-                                        }
-                                        let sc_edge_sense = if track.locked {
-                                            egui::Sense::hover()
-                                        } else {
-                                            canvas_sense(egui::Sense::drag())
-                                        };
-                                        let sc_left_response = ui.interact(
-                                            sc_left_edge_rect,
-                                            sc_trim_start_id,
-                                            sc_edge_sense,
-                                        );
-                                        let sc_right_response = ui.interact(
-                                            sc_right_edge_rect,
-                                            sc_trim_end_id,
-                                            sc_edge_sense,
-                                        );
-                                        if sc_left_response.hovered()
-                                            || sc_left_response.dragged()
-                                            || sc_right_response.hovered()
-                                            || sc_right_response.dragged()
-                                        {
-                                            ui.ctx().set_cursor_icon(
-                                                egui::CursorIcon::ResizeHorizontal,
-                                            );
-                                        }
-                                        if sc_left_response.drag_started()
-                                            || sc_right_response.drag_started()
-                                        {
-                                            drag_started_this_frame = true;
-                                        }
-                                        if let Some(pos) = sc_left_response.interact_pointer_pos() {
-                                            let secs = ((pos.x - track_rect.left()) / px_per_sec)
-                                                .max(0.0)
-                                                as f64;
-                                            shape_trim_requests
-                                                .push((sc.id, TrimEdge::Start(secs)));
-                                        }
-                                        if let Some(pos) = sc_right_response.interact_pointer_pos()
-                                        {
-                                            let secs = ((pos.x - track_rect.left()) / px_per_sec)
-                                                .max(0.0)
-                                                as f64;
-                                            shape_trim_requests.push((sc.id, TrimEdge::End(secs)));
-                                        }
-                                        let block_color = egui::Color32::from_rgba_unmultiplied(
-                                            sc.color_rgba[0],
-                                            sc.color_rgba[1],
-                                            sc.color_rgba[2],
-                                            120,
-                                        );
-                                        painter.rect_filled(
-                                            sc_rect,
-                                            egui::CornerRadius::same(theme::RADIUS_SM),
-                                            block_color,
-                                        );
-                                        let label_pos =
-                                            sc_rect.left_center() + egui::vec2(4.0, 0.0);
-                                        painter.text(
-                                            label_pos,
-                                            egui::Align2::LEFT_CENTER,
-                                            shape_kind_glyph(&sc.shape_kind),
-                                            egui::FontId::proportional(11.0),
-                                            egui::Color32::WHITE,
-                                        );
-                                        if sc_left_response.hovered() || sc_left_response.dragged()
-                                        {
-                                            painter.rect_filled(
-                                                sc_left_edge_rect,
-                                                egui::CornerRadius::ZERO,
-                                                theme::ACCENT,
-                                            );
-                                        }
-                                        if sc_right_response.hovered()
-                                            || sc_right_response.dragged()
-                                        {
-                                            painter.rect_filled(
-                                                sc_right_edge_rect,
-                                                egui::CornerRadius::ZERO,
-                                                theme::ACCENT,
-                                            );
-                                        }
-                                        // Selection ring
-                                        if app.selected_shape_clip_id == Some(sc.id) {
-                                            painter.rect_stroke(
-                                                sc_rect,
-                                                egui::CornerRadius::same(theme::RADIUS_SM),
-                                                egui::Stroke::new(2.0, theme::ACCENT),
-                                                egui::StrokeKind::Inside,
-                                            );
-                                        }
-                                    }
-                                }
+                                draw_shape_overlays(
+                                    ui,
+                                    track,
+                                    track_rect,
+                                    px_per_sec,
+                                    locale,
+                                    hand_active,
+                                    app.selected_shape_clip_id,
+                                    ShapeOverlayRequests {
+                                        clicked: &mut clicked_shape_clip_id,
+                                        deletes: &mut delete_shape_clip_requests,
+                                        drags: &mut shape_clip_drags,
+                                        trims: &mut shape_trim_requests,
+                                        drag_started: &mut drag_started_this_frame,
+                                    },
+                                );
                                 draw_playhead(
                                     ui,
                                     track_rect,
