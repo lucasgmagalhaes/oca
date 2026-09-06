@@ -388,3 +388,233 @@ fn ocsi_bytes_are_rejected_by_the_octr_decoder() {
         crate::persistence::from_octr_bytes(&bytes);
     assert!(result.is_err());
 }
+
+fn word(id: u64, text: &str, start: f64, end: f64) -> TranscriptWord {
+    TranscriptWord {
+        id,
+        text: text.to_string(),
+        start_secs: start,
+        end_secs: end,
+        confidence: 0.9,
+        speaker: None,
+    }
+}
+
+#[test]
+fn plan_representative_frames_is_empty_for_non_positive_duration() {
+    assert!(plan_representative_frames(0.0, 0.1, 3, 200).is_empty());
+    assert!(plan_representative_frames(-5.0, 0.1, 3, 200).is_empty());
+}
+
+#[test]
+fn plan_representative_frames_clamps_to_min_and_max() {
+    // A 1-second clip at a low sample rate would round to 0/1 samples without the floor.
+    let few = plan_representative_frames(1.0, 0.1, 3, 200);
+    assert_eq!(few.len(), 3);
+    // A very long clip at a high rate would produce thousands of samples without the ceiling.
+    let many = plan_representative_frames(10_000.0, 1.0, 3, 200);
+    assert_eq!(many.len(), 200);
+}
+
+#[test]
+fn plan_representative_frames_produces_frame_variants_in_range() {
+    let planned = plan_representative_frames(20.0, 0.5, 3, 200);
+    assert!(!planned.is_empty());
+    for p in &planned {
+        match p {
+            PlannedChunk::Frame { at_secs } => {
+                // even_sample_times spaces samples across [start, end] inclusive when there's
+                // more than one sample (the last sample lands exactly on end_secs) — confirmed
+                // by a real scratch-crate run, not assumed.
+                assert!(*at_secs >= 0.0 && *at_secs <= 20.0);
+            }
+            PlannedChunk::Transcript { .. } => panic!("expected only Frame variants"),
+        }
+    }
+}
+
+#[test]
+fn planned_chunk_source_maps_correctly() {
+    assert_eq!(
+        PlannedChunk::Frame { at_secs: 1.0 }.source(),
+        MatchSource::Visual
+    );
+    assert_eq!(
+        PlannedChunk::Transcript {
+            start_secs: 0.0,
+            end_secs: 1.0,
+            text: "hi".to_string()
+        }
+        .source(),
+        MatchSource::Transcript
+    );
+}
+
+#[test]
+fn plan_transcript_chunks_empty_input_produces_no_chunks() {
+    assert!(plan_transcript_chunks(&[], 15.0, 40).is_empty());
+}
+
+#[test]
+fn plan_transcript_chunks_groups_words_within_bounds_into_one_chunk() {
+    let words = vec![
+        word(1, "hello", 0.0, 0.5),
+        word(2, "world", 0.5, 1.0),
+        word(3, "friend", 1.0, 1.5),
+    ];
+    let chunks = plan_transcript_chunks(&words, 15.0, 40);
+    assert_eq!(chunks.len(), 1);
+    match &chunks[0] {
+        PlannedChunk::Transcript {
+            start_secs,
+            end_secs,
+            text,
+        } => {
+            assert_eq!(*start_secs, 0.0);
+            assert_eq!(*end_secs, 1.5);
+            assert_eq!(text, "hello world friend");
+        }
+        PlannedChunk::Frame { .. } => panic!("expected a Transcript variant"),
+    }
+}
+
+#[test]
+fn plan_transcript_chunks_splits_on_span_bound() {
+    let words = vec![
+        word(1, "a", 0.0, 1.0),
+        word(2, "b", 10.0, 16.0), // pushes span past a 15s bound
+        word(3, "c", 16.0, 17.0),
+    ];
+    let chunks = plan_transcript_chunks(&words, 15.0, 40);
+    assert_eq!(chunks.len(), 2);
+    let PlannedChunk::Transcript { text: t0, .. } = &chunks[0] else {
+        panic!("expected Transcript")
+    };
+    assert_eq!(t0, "a");
+    let PlannedChunk::Transcript { text: t1, .. } = &chunks[1] else {
+        panic!("expected Transcript")
+    };
+    assert_eq!(t1, "b c");
+}
+
+#[test]
+fn plan_transcript_chunks_splits_on_word_count_bound() {
+    let words: Vec<_> = (0..5)
+        .map(|i| word(i, "w", i as f64, i as f64 + 0.5))
+        .collect();
+    let chunks = plan_transcript_chunks(&words, 999.0, 2);
+    assert_eq!(chunks.len(), 3); // 2 + 2 + 1
+}
+
+#[test]
+fn plan_transcript_chunks_never_drops_a_word_whose_own_span_exceeds_the_bound() {
+    let words = vec![word(1, "long", 0.0, 100.0)];
+    let chunks = plan_transcript_chunks(&words, 15.0, 40);
+    assert_eq!(chunks.len(), 1);
+    let PlannedChunk::Transcript { text, .. } = &chunks[0] else {
+        panic!("expected Transcript")
+    };
+    assert_eq!(text, "long");
+}
+
+#[test]
+fn indexing_cursor_starts_finished_when_empty() {
+    let cursor = IndexingCursor::new();
+    assert!(cursor.is_finished());
+}
+
+#[test]
+fn indexing_cursor_enqueue_replaces_existing_entry_for_same_media() {
+    let mut cursor = IndexingCursor::new();
+    cursor.enqueue(1, vec![PlannedChunk::Frame { at_secs: 0.0 }]);
+    cursor.enqueue(
+        1,
+        vec![
+            PlannedChunk::Frame { at_secs: 1.0 },
+            PlannedChunk::Frame { at_secs: 2.0 },
+        ],
+    );
+    assert_eq!(cursor.pending.len(), 1);
+    assert_eq!(cursor.pending[0].chunks.len(), 2);
+}
+
+#[test]
+fn indexing_cursor_enqueue_with_empty_chunks_does_not_add_an_entry() {
+    let mut cursor = IndexingCursor::new();
+    cursor.enqueue(1, Vec::new());
+    assert!(cursor.pending.is_empty());
+    assert!(cursor.is_finished());
+}
+
+#[test]
+fn next_indexing_batch_is_bounded_by_max_items() {
+    let mut cursor = IndexingCursor::new();
+    cursor.enqueue(
+        1,
+        (0..10)
+            .map(|i| PlannedChunk::Frame { at_secs: i as f64 })
+            .collect(),
+    );
+    let batch = next_indexing_batch(&mut cursor, 3);
+    assert_eq!(batch.len(), 3);
+    assert!(!cursor.is_finished());
+    assert_eq!(cursor.pending[0].next_index, 3);
+}
+
+#[test]
+fn next_indexing_batch_drains_across_multiple_pending_assets_in_order() {
+    let mut cursor = IndexingCursor::new();
+    cursor.enqueue(1, vec![PlannedChunk::Frame { at_secs: 0.0 }]);
+    cursor.enqueue(2, vec![PlannedChunk::Frame { at_secs: 0.0 }]);
+    let batch = next_indexing_batch(&mut cursor, 5);
+    assert_eq!(batch.len(), 2);
+    assert_eq!(batch[0].media_id, 1);
+    assert_eq!(batch[1].media_id, 2);
+    assert!(cursor.is_finished());
+    assert!(cursor.pending.is_empty());
+}
+
+#[test]
+fn next_indexing_batch_drops_finished_entries_and_resumes_correctly() {
+    let mut cursor = IndexingCursor::new();
+    cursor.enqueue(
+        1,
+        vec![
+            PlannedChunk::Frame { at_secs: 0.0 },
+            PlannedChunk::Frame { at_secs: 1.0 },
+        ],
+    );
+    let first = next_indexing_batch(&mut cursor, 1);
+    assert_eq!(first.len(), 1);
+    assert!(!cursor.is_finished());
+    let second = next_indexing_batch(&mut cursor, 5);
+    assert_eq!(second.len(), 1);
+    assert!(cursor.is_finished());
+    assert!(cursor.pending.is_empty());
+}
+
+#[test]
+fn next_indexing_batch_returns_empty_when_cursor_already_finished() {
+    let mut cursor = IndexingCursor::new();
+    let batch = next_indexing_batch(&mut cursor, 10);
+    assert!(batch.is_empty());
+}
+
+#[test]
+fn indexing_cursor_round_trips_through_serde() {
+    let mut cursor = IndexingCursor::new();
+    cursor.enqueue(
+        1,
+        vec![
+            PlannedChunk::Frame { at_secs: 0.0 },
+            PlannedChunk::Transcript {
+                start_secs: 0.0,
+                end_secs: 1.0,
+                text: "hi".to_string(),
+            },
+        ],
+    );
+    let bytes = serde_json::to_vec(&cursor).unwrap();
+    let decoded: IndexingCursor = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(decoded, cursor);
+}
