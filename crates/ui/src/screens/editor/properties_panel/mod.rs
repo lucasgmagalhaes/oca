@@ -16,6 +16,7 @@
 mod chrome;
 mod keyframe_editors;
 mod motion_tracking;
+mod privacy_blur;
 mod shape_clip;
 mod text_clip;
 mod voice_cleanup_preview;
@@ -41,6 +42,7 @@ use keyframe_editors::{
     position_keyframe_editor, transition_type_label,
 };
 use motion_tracking::motion_tracking_properties;
+use privacy_blur::privacy_blur_properties;
 use shape_clip::shape_clip_properties;
 use text_clip::text_clip_properties;
 use voice_cleanup_preview::voice_cleanup_preview;
@@ -1054,102 +1056,13 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                     );
                                 }
 
-                                {
-                                    let mut sigma_changed = false;
-                                    if components::property_block(
-                                        ui,
-                                        Text::PrivacyBlurExportNote.tr(locale),
-                                        |ui| {
-                                            let changed = ui
-                                                .checkbox(
-                                                    &mut privacy_blur_enabled,
-                                                    Text::PropPrivacyBlur.tr(locale),
-                                                )
-                                                .changed();
-                                            sigma_changed = ui
-                                                .add(
-                                                    egui::Slider::new(
-                                                        &mut privacy_blur_sigma,
-                                                        crate::app::PRIVACY_BLUR_SIGMA_RANGE,
-                                                    )
-                                                    .text(Text::PrivacyBlurSigma.tr(locale)),
-                                                )
-                                                .changed();
-                                            ui.horizontal(|ui| {
-                                                ui.add(
-                                                    egui::DragValue::new(
-                                                        &mut app
-                                                            .privacy_blur_region
-                                                            .privacy_blur_center_x,
-                                                    )
-                                                    .speed(0.01)
-                                                    .range(0.0..=1.0)
-                                                    .prefix("x "),
-                                                );
-                                                ui.add(
-                                                    egui::DragValue::new(
-                                                        &mut app
-                                                            .privacy_blur_region
-                                                            .privacy_blur_center_y,
-                                                    )
-                                                    .speed(0.01)
-                                                    .range(0.0..=1.0)
-                                                    .prefix("y "),
-                                                );
-                                                if ui
-                                                    .button(Text::PrivacyBlurRegionReset.tr(locale))
-                                                    .clicked()
-                                                {
-                                                    app.privacy_blur_region.privacy_blur_center_x =
-                                                        0.5;
-                                                    app.privacy_blur_region.privacy_blur_center_y =
-                                                        0.5;
-                                                }
-                                            });
-                                            ui.add(
-                                                egui::Slider::new(
-                                                    &mut app.privacy_blur_region.privacy_blur_width,
-                                                    crate::app::MOTION_TRACK_SIZE_RANGE,
-                                                )
-                                                .text(Text::PrivacyBlurRegionWidth.tr(locale)),
-                                            );
-                                            ui.add(
-                                                egui::Slider::new(
-                                                    &mut app
-                                                        .privacy_blur_region
-                                                        .privacy_blur_height,
-                                                    crate::app::MOTION_TRACK_SIZE_RANGE,
-                                                )
-                                                .text(Text::PrivacyBlurRegionHeight.tr(locale)),
-                                            );
-                                            let generating = app
-                                                .privacy_blur_generation_state
-                                                .privacy_blur_generating_clip_id
-                                                .is_some();
-                                            let label = if generating {
-                                                Text::PrivacyBlurGenerating.tr(locale)
-                                            } else {
-                                                Text::PrivacyBlurApply.tr(locale)
-                                            };
-                                            if ui
-                                                .add_enabled(!generating, egui::Button::new(label))
-                                                .clicked()
-                                            {
-                                                app.spawn_apply_privacy_blur_for_selected_clip();
-                                            }
-                                            changed
-                                        },
-                                    ) {
-                                        app.set_selected_clip_privacy_blur_enabled(
-                                            privacy_blur_enabled,
-                                        );
-                                    }
-                                    if sigma_changed {
-                                        app.set_selected_clip_privacy_blur_sigma(
-                                            privacy_blur_sigma,
-                                        );
-                                    }
-                                }
+                                privacy_blur_properties(
+                                    app,
+                                    ui,
+                                    &mut privacy_blur_enabled,
+                                    &mut privacy_blur_sigma,
+                                    locale,
+                                );
 
                                 if components::property_section(
                                     ui,
