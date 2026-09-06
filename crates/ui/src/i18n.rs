@@ -281,6 +281,12 @@ text_catalog! {
     VoiceCleanupCeiling: pt_br = "Teto do limitador", en = "Limiter ceiling";
     VoiceCleanupExportNote: pt_br = "aplicado na exportação (cadeia de redução de ruído + compressor + limitador) — sem efeito no preview ao vivo.", en = "applied on export (noise-reduction + compressor + limiter chain) — no live preview effect.";
     VoiceCleanupMicRoleSuggestion: pt_br = "Este clipe está numa faixa com papel \"Microfone\" — considere ativar a limpeza de voz.", en = "This clip is on a track with the \"Mic\" role — consider enabling voice cleanup.";
+    VoiceCleanupPreviewButton: pt_br = "🔊 Prévia A/B", en = "🔊 A/B preview";
+    VoiceCleanupPreviewRendering: pt_br = "Renderizando prévia…", en = "Rendering preview…";
+    VoiceCleanupPreviewPlayOriginal: pt_br = "▶ Original", en = "▶ Original";
+    VoiceCleanupPreviewPlayProcessed: pt_br = "▶ Tratado", en = "▶ Processed";
+    VoiceCleanupPreviewFailed: pt_br = "Falha ao renderizar a prévia", en = "Failed to render preview";
+    VoiceCleanupPreviewPlaybackFailed: pt_br = "Falha ao reproduzir a prévia", en = "Failed to play preview";
     PropBackgroundRemoval: pt_br = "🤖 Remoção de fundo (IA)", en = "🤖 Background removal (AI)";
     BackgroundRemovalExportNote: pt_br = "afeta a exportação só em blocos de faixas de overlay (não na faixa de fundo) — clique em \"Gerar máscara\" antes de exportar.", en = "only affects export on overlay-track blocks (not the background track) — click \"Generate matte\" before exporting.";
     BackgroundRemovalGenerateMatte: pt_br = "Gerar máscara", en = "Generate matte";
