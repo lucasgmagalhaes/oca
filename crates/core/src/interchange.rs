@@ -37,6 +37,8 @@
 
 pub mod otio_json;
 
+use std::path::{Path, PathBuf};
+
 use crate::project::{Project, Sequence};
 use crate::timeline::{
     BlendMode, ClipInstance, ColorFilter, Marker, MarkerKind, MaskShape, Timeline, Track,
@@ -297,18 +299,81 @@ pub fn sequence_to_interchange(sequence: &Sequence, project: &Project) -> Interc
 
 /// Resolves a [`MediaReference`] back to a project's own [`crate::media::MediaAsset::id`] by
 /// matching `target_url` against [`crate::media::MediaAsset::source_path`] — the reverse of
-/// [`resolve_media_reference`]. `None` for [`MediaReference::Missing`] or a path that no longer
-/// matches anything in `project`'s media library (offline media, same as a real NLE's own
-/// relink-required case).
-fn resolve_asset_id(project: &Project, media_reference: &MediaReference) -> Option<u64> {
+/// [`resolve_media_reference`]. Tries an exact path-string match first (the common case: this
+/// project already carries the asset at the exact path the exporting machine recorded); when
+/// that fails and `media_root` is given, falls back to [`resolve_under_media_root`] — the doc's
+/// own "imported paths are normalized and cannot escape an explicitly selected media root"
+/// acceptance criterion, for the cross-machine/cross-OS case where `target_url` is a foreign
+/// absolute path (e.g. exported on Windows, imported on Linux) but the same file, under its own
+/// name, already exists in this project's media library beneath a root the user explicitly
+/// picked. `None` for [`MediaReference::Missing`] or a path that resolves to nothing in either
+/// scheme (offline media, same as a real NLE's own relink-required case).
+fn resolve_asset_id(
+    project: &Project,
+    media_reference: &MediaReference,
+    media_root: Option<&Path>,
+) -> Option<u64> {
     let MediaReference::External { target_url } = media_reference else {
         return None;
     };
-    project
+    if let Some(asset) = project
         .media_library
         .iter()
         .find(|asset| asset.source_path.to_string_lossy() == *target_url)
+    {
+        return Some(asset.id);
+    }
+    let root = media_root?;
+    let safe_path = resolve_under_media_root(root, target_url)?;
+    project
+        .media_library
+        .iter()
+        .find(|asset| asset.source_path.canonicalize().ok().as_deref() == Some(&safe_path))
         .map(|asset| asset.id)
+}
+
+/// Resolves `target_url`'s own file name against `media_root`, guaranteeing the result can never
+/// escape that root — the literal contract behind CF-05's "imported paths are normalized and
+/// cannot escape an explicitly selected media root" acceptance criterion. `target_url` is
+/// untrusted: it comes from a `.otio` document that may have been authored on a different
+/// machine, OS, or by a different tool entirely, so it is never joined onto `media_root` or
+/// opened directly — only its final path segment is used, joined under `media_root`, then both
+/// sides are canonicalized (resolving any symlink) and the candidate is required to still start
+/// with the canonicalized root.
+///
+/// The final segment is extracted by splitting on both `/` and `\` explicitly, never via
+/// `Path::file_name()` — that method only recognizes the *host's own* separator convention, so a
+/// Windows-style `\`-separated `target_url` parsed on a Linux host (where `\` isn't a path
+/// separator at all) would come back as one giant unsplit "file name" that simply fails to exist
+/// under `media_root`, silently defeating the very cross-machine relink case this function exists
+/// for (caught by running this against a real filesystem, not just type-checking it: a `.otio`
+/// authored on Windows and relinked on Linux is exactly this feature's motivating scenario).
+/// A resulting segment that is empty (a trailing separator), `.`, or `..` is rejected outright —
+/// `media_root.join("..")` would climb to the parent directory despite containing no separator
+/// of its own, so this check runs before candidate construction, not only after canonicalizing.
+///
+/// This defeats every escape vector a raw join would admit: `../../etc/passwd`-style traversal
+/// (neutralized before the candidate is even built), an absolute path substituted wholesale for
+/// `media_root`'s own prefix (only the bare final segment ever contributes), and a symlink
+/// placed inside `media_root` that itself points outside it (only `canonicalize()`, which
+/// resolves symlinks, can catch this — the starts_with check runs on the resolved target, not
+/// the pre-resolution join). Returns `None` — never a partially-validated path — when
+/// `target_url` has no usable final segment, the candidate doesn't exist, isn't a plain file, or
+/// resolves outside `media_root`.
+fn resolve_under_media_root(media_root: &Path, target_url: &str) -> Option<PathBuf> {
+    let file_name = target_url.rsplit(['/', '\\']).next()?;
+    if file_name.is_empty() || file_name == "." || file_name == ".." {
+        return None;
+    }
+    let candidate = media_root.join(file_name);
+    if !candidate.is_file() {
+        return None;
+    }
+    let canonical_root = media_root.canonicalize().ok()?;
+    let canonical_candidate = candidate.canonicalize().ok()?;
+    canonical_candidate
+        .starts_with(&canonical_root)
+        .then_some(canonical_candidate)
 }
 
 /// A freshly reconstructed [`ClipInstance`] carrying only what [`InterchangeClip`] itself
@@ -417,11 +482,15 @@ pub struct InterchangeImportResult {
 /// [`MediaReference`] no longer resolves against `project`'s media library is skipped — not
 /// given a placeholder asset id — and reported in [`InterchangeImportResult::warnings`] instead,
 /// per the doc's own "unsupported fields as warnings, never silently approximate" rule (extended
-/// here to "unresolvable" as well as "unsupported").
+/// here to "unresolvable" as well as "unsupported"). `media_root`, when given, is an explicitly
+/// user-selected folder [`resolve_asset_id`] may additionally match an unresolved reference's
+/// bare file name against — see [`resolve_under_media_root`] for the path-safety contract this
+/// guarantees.
 pub fn interchange_to_timeline(
     interchange: &InterchangeTimeline,
     project: &Project,
     next_id: &mut u64,
+    media_root: Option<&Path>,
 ) -> InterchangeImportResult {
     let mut warnings = Vec::new();
     let mut tracks = Vec::with_capacity(interchange.tracks.len());
@@ -449,7 +518,7 @@ pub fn interchange_to_timeline(
                         } else {
                             ic.speed_factor as f64
                         };
-                    match resolve_asset_id(project, &ic.media_reference) {
+                    match resolve_asset_id(project, &ic.media_reference, media_root) {
                         Some(asset_id) => {
                             let clip_id = *next_id;
                             *next_id += 1;

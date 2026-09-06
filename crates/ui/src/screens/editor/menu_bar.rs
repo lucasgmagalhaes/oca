@@ -103,7 +103,20 @@ fn file_menu(app: &mut App, ui: &mut egui::Ui, locale: crate::i18n::Locale) {
                 .add_filter("OpenTimelineIO", &["otio"])
                 .pick_file()
             {
-                app.import_otio_into_new_sequence(path);
+                app.import_otio_into_new_sequence(path, None);
+            }
+            ui.close();
+        }
+        if ui
+            .button(Text::ImportOtioWithMediaRoot.tr(locale))
+            .clicked()
+        {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("OpenTimelineIO", &["otio"])
+                .pick_file()
+            {
+                let media_root = rfd::FileDialog::new().pick_folder();
+                app.import_otio_into_new_sequence(path, media_root);
             }
             ui.close();
         }

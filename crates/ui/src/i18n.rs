@@ -609,6 +609,7 @@ text_catalog! {
     ExportOtio: pt_br = "Exportar OpenTimelineIO (.otio)...", en = "Export OpenTimelineIO (.otio)...";
     OtioExported: pt_br = "Arquivo .otio exportado.", en = ".otio file exported.";
     ImportOtio: pt_br = "Importar OpenTimelineIO (.otio)...", en = "Import OpenTimelineIO (.otio)...";
+    ImportOtioWithMediaRoot: pt_br = "Importar OpenTimelineIO com raiz de mídia...", en = "Import OpenTimelineIO with media root...";
     OtioImported: pt_br = "Arquivo .otio importado em uma nova sequência.", en = ".otio file imported into a new sequence.";
     OtioImportedWithWarnings: pt_br = "Arquivo .otio importado em uma nova sequência; {n} item(ns) não pôde(puderam) ser trazido(s) sem aproximação.", en = ".otio file imported into a new sequence; {n} item(s) could not be brought in without approximation.";
     DetectChapters: pt_br = "🎬 Detectar capítulos", en = "🎬 Detect Chapters";

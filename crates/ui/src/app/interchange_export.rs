@@ -60,9 +60,19 @@ impl App {
     /// the *active project's* own media library
     /// (`avcore::interchange::interchange_to_timeline`'s own contract); a clip whose source
     /// media isn't already imported into this project is skipped and counted as a warning
-    /// rather than linked to the wrong asset. What the Editor menu bar's "Import OpenTimelineIO
-    /// (.otio)..." action does once its open-file dialog picks a source file.
-    pub fn import_otio_into_new_sequence(&mut self, input_path: std::path::PathBuf) {
+    /// rather than linked to the wrong asset — unless `media_root` is given, in which case an
+    /// otherwise-unresolvable reference gets one more chance: its bare file name matched against
+    /// that explicitly user-picked folder (`avcore::interchange::interchange_to_timeline`'s own
+    /// `media_root` parameter; see its module's `resolve_under_media_root` for the path-safety
+    /// contract — CF-05's own "imported paths are normalized and cannot escape an explicitly
+    /// selected media root" acceptance criterion). What the Editor menu bar's "Import
+    /// OpenTimelineIO (.otio)..."/"...with media root..." actions do once their dialogs pick a
+    /// source file (and, for the latter, a root folder).
+    pub fn import_otio_into_new_sequence(
+        &mut self,
+        input_path: std::path::PathBuf,
+        media_root: Option<std::path::PathBuf>,
+    ) {
         let bytes = match std::fs::read_to_string(&input_path) {
             Ok(bytes) => bytes,
             Err(e) => {
@@ -100,8 +110,12 @@ impl App {
         // `Project::duplicate_sequence`'s own doc comment), so starting over from 1 here can
         // never collide with any other sequence's own track/clip/marker ids.
         let mut next_id = 1u64;
-        let placement =
-            avcore::interchange::interchange_to_timeline(&import.timeline, project, &mut next_id);
+        let placement = avcore::interchange::interchange_to_timeline(
+            &import.timeline,
+            project,
+            &mut next_id,
+            media_root.as_deref(),
+        );
         project.active_sequence_mut().timeline = placement.timeline;
         self.reset_sequence_context();
 
