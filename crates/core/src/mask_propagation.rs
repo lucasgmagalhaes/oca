@@ -32,8 +32,16 @@
 //! index, at which point tracking re-seeds from the corrected vertices/center and continues —
 //! the doc's own "propagate... and offer manual correction at failure points" shape, without
 //! inventing a second tracking algorithm.
+//!
+//! [`rasterize_to_matte_frames`] bridges into slice 3 ("Store generated matte data outside the
+//! main project JSON with versioned references and cache invalidation") for free: it turns a
+//! sequence of [`PropagatedMask`]s into exactly the `Vec<Vec<u8>>` grayscale-per-frame shape
+//! [`crate::background_removal::encode_matte_video`] already accepts, so an arbitrary-object mask
+//! reuses that same on-disk matte-video storage/caching convention background-removal already
+//! established — no new storage format needed for this slice either.
 
 use crate::motion_tracking::{track_region_with_scores, GrayFrame};
+use crate::shape_render::point_in_polygon;
 
 /// Below this normalized confidence (`0.0..=1.0`, see [`match_confidence`]), a propagated frame
 /// is flagged [`PropagatedMask::needs_correction`] — the doc's own "failure points" needing a
@@ -190,6 +198,50 @@ pub fn propagate_mask_with_corrections(
         ));
     }
     out
+}
+
+/// Rasterizes one [`PropagatedMask`]'s vertices (fraction-of-frame coordinates, as every function
+/// in this module produces/consumes) into a `width * height` grayscale-as-luma byte buffer — `255`
+/// inside the polygon, `0` outside — via [`point_in_polygon`]'s existing ray-casting test (reused
+/// exactly as [`crate::overlay_render`]'s own shape rasterizer already uses it, just without that
+/// module's per-shape center/rotation transform, since a mask polygon here is already in absolute
+/// frame-fraction coordinates). A polygon with fewer than 3 vertices can enclose no area, so every
+/// pixel is `0` rather than calling into a ray-cast that can't meaningfully answer "inside."
+pub fn rasterize_mask_to_matte(mask: &PropagatedMask, width: u32, height: u32) -> Vec<u8> {
+    let mut buf = vec![0u8; (width as usize) * (height as usize)];
+    if mask.vertices.len() < 3 || width == 0 || height == 0 {
+        return buf;
+    }
+    let vertices_px: Vec<(f64, f64)> = mask
+        .vertices
+        .iter()
+        .map(|&(x, y)| (x as f64 * width as f64, y as f64 * height as f64))
+        .collect();
+    for y in 0..height {
+        for x in 0..width {
+            let px = x as f64 + 0.5;
+            let py = y as f64 + 0.5;
+            if point_in_polygon((px, py), &vertices_px) {
+                buf[(y * width + x) as usize] = 255;
+            }
+        }
+    }
+    buf
+}
+
+/// [`rasterize_mask_to_matte`] applied to a whole propagated sequence — exactly the `Vec<Vec<u8>>`
+/// shape [`crate::background_removal::encode_matte_video`] expects, so a caller can pipe
+/// [`propagate_mask_by_translation`]/[`propagate_mask_with_corrections`]'s output straight into
+/// that existing encoder with no reshaping in between.
+pub fn rasterize_to_matte_frames(
+    masks: &[PropagatedMask],
+    width: u32,
+    height: u32,
+) -> Vec<Vec<u8>> {
+    masks
+        .iter()
+        .map(|mask| rasterize_mask_to_matte(mask, width, height))
+        .collect()
 }
 
 #[cfg(test)]
