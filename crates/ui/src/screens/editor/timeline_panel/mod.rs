@@ -91,7 +91,7 @@ use selection_commands::{apply_selection_commands, SelectionCommands};
 use snap::{snap_move_start, snap_to_nearest, ClipDrag, SnapTargets};
 use thumbnails::apply_thumbnail_work;
 use track_commands::{apply_track_commands, TrackCommands};
-use track_header::{audio_role_icon, audio_role_label};
+use track_header::{audio_role_icon, audio_role_label, draw_track_header, TrackHeaderRequests};
 
 /// Which edge of a timeline clip a drag targets — see the trim handling in `timeline_panel`.
 pub(super) enum TrimEdge {
@@ -264,184 +264,24 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         TRACK_ROW_HEIGHT
                     };
                     ui.horizontal(|ui| {
-                        // Track header: visibility toggle + name.
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(TRACK_LABEL_WIDTH, row_height),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                let track_id = track.id;
-                                let visible = track.visible;
-                                // Audio tracks read as "muted/unmuted" (a speaker glyph) rather than
-                                // "hidden/shown" (an eye) — same `visible` flag underneath, since an
-                                // invisible video track and a muted audio track are the same "doesn't
-                                // contribute to preview/export" concept. No Lucide speaker icon is
-                                // vendored (`spec/architecture/editor-ui-visual-redesign.md`'s Icon
-                                // set section only covers `eye`/`eye-off`) — and the raw "🔊"/"🔇"
-                                // emoji this used to fall back to is the same tofu class already
-                                // fixed elsewhere this session, so audio tracks now reuse the same
-                                // eye/eye-off icon as video tracks rather than a distinct glyph.
-                                let is_audio = track.kind == avcore::timeline::TrackKind::Audio;
-                                let (eye, eye_family) = if visible {
-                                    (icons::EYE_STR, Some(icons::family()))
-                                } else {
-                                    (icons::EYE_OFF_STR, Some(icons::family()))
-                                };
-                                let tooltip = match (is_audio, visible) {
-                                    (true, true) => Text::TrackMute.tr(locale),
-                                    (true, false) => Text::TrackUnmute.tr(locale),
-                                    (false, true) => Text::TrackHide.tr(locale),
-                                    (false, false) => Text::TrackShow.tr(locale),
-                                };
-                                if components::icon_button(
-                                    ui,
-                                    eye,
-                                    tooltip,
-                                    components::IconButtonOpts {
-                                        family: eye_family,
-                                        ..Default::default()
-                                    },
-                                )
-                                .clicked()
-                                {
-                                    toggle_track_visibility_requests.push(track_id);
-                                }
-                                let locked = track.locked;
-                                let lock_glyph = if locked {
-                                    icons::LOCK_STR
-                                } else {
-                                    icons::LOCK_OPEN_STR
-                                };
-                                let lock_tooltip = if locked {
-                                    Text::TrackUnlock.tr(locale)
-                                } else {
-                                    Text::TrackLock.tr(locale)
-                                };
-                                // Section 45's Track Lock spec: "Visual: lock icon becomes
-                                // active" — was glyph-only (open/closed padlock), same rest color
-                                // regardless of state, before this fix.
-                                if components::icon_button(
-                                    ui,
-                                    lock_glyph,
-                                    lock_tooltip,
-                                    components::IconButtonOpts {
-                                        family: Some(icons::family()),
-                                        color: locked.then_some(theme::ACCENT),
-                                        ..Default::default()
-                                    },
-                                )
-                                .clicked()
-                                {
-                                    toggle_track_lock_requests.push(track_id);
-                                }
-                                // Matches the mockup's `< >` track-header control (confirmed via
-                                // a real screenshot) — collapses/expands just this track's row
-                                // height. Plain ASCII ("v"/">"), not the Geometric-Shapes
-                                // chevrons the mockup itself uses — same confirmed-tofu class
-                                // (against this app's bundled default font) as every other icon
-                                // fixed this session.
-                                let collapsed = app.collapsed_track_ids.contains(&track_id);
-                                let (collapse_glyph, collapse_tooltip) = if collapsed {
-                                    (">", Text::TrackExpand.tr(locale))
-                                } else {
-                                    ("v", Text::TrackCollapse.tr(locale))
-                                };
-                                if components::icon_button(
-                                    ui,
-                                    collapse_glyph,
-                                    collapse_tooltip,
-                                    components::IconButtonOpts::default(),
-                                )
-                                .clicked()
-                                {
-                                    toggle_track_collapsed_requests.push(track_id);
-                                }
-                                let name_response = ui.add(
-                                    egui::Label::new(RichText::new(&track.name).size(11.0).color(
-                                        if let Some([r, g, b]) = track.color_label {
-                                            egui::Color32::from_rgb(r, g, b)
-                                        } else if visible {
-                                            theme::TEXT_SECONDARY
-                                        } else {
-                                            theme::TEXT_MUTED
-                                        },
-                                    ))
-                                    .truncate()
-                                    .sense(egui::Sense::click()),
-                                );
-                                name_response.context_menu(|ui| {
-                                    // Section 49's Track More Menu — Rename/Duplicate/Delete/
-                                    // Move Up/Move Down, added to this existing track-color
-                                    // context menu rather than a second right-click surface.
-                                    if ui.button(Text::TrackCtxRename.tr(locale)).clicked() {
-                                        track_rename_requests.push((track_id, track.name.clone()));
-                                        ui.close();
-                                    }
-                                    if ui.button(Text::TrackCtxDuplicate.tr(locale)).clicked() {
-                                        track_duplicate_requests.push(track_id);
-                                        ui.close();
-                                    }
-                                    if ui.button(Text::TrackCtxMoveUp.tr(locale)).clicked() {
-                                        track_move_up_requests.push(track_id);
-                                        ui.close();
-                                    }
-                                    if ui.button(Text::TrackCtxMoveDown.tr(locale)).clicked() {
-                                        track_move_down_requests.push(track_id);
-                                        ui.close();
-                                    }
-                                    if ui.button(Text::TrackCtxDelete.tr(locale)).clicked() {
-                                        track_delete_requests.push((track_id, track.name.clone()));
-                                        ui.close();
-                                    }
-                                    ui.separator();
-                                    for &[r, g, b] in CLIP_COLOR_LABEL_PALETTE {
-                                        let swatch = egui::Color32::from_rgb(r, g, b);
-                                        if ui.add(egui::Button::new("  ").fill(swatch)).clicked() {
-                                            track_color_label_requests
-                                                .push((track_id, Some([r, g, b])));
-                                            ui.close();
-                                        }
-                                    }
-                                    ui.separator();
-                                    if ui
-                                        .button(Text::ContextMenuColorLabelClear.tr(locale))
-                                        .clicked()
-                                    {
-                                        track_color_label_requests.push((track_id, None));
-                                        ui.close();
-                                    }
-                                });
-                                // D2 (`spec/architecture/differentiators.md`): which audio source
-                                // this track carries, if any — Text/Shape tracks never carry audio,
-                                // so they don't get the picker at all.
-                                if matches!(
-                                    track.kind,
-                                    avcore::timeline::TrackKind::Video
-                                        | avcore::timeline::TrackKind::Audio
-                                ) {
-                                    let mut role = track.audio_role;
-                                    egui::ComboBox::from_id_salt(("track_audio_role", track_id))
-                                        .selected_text(audio_role_icon(role))
-                                        .width(28.0)
-                                        .show_ui(ui, |ui| {
-                                            for candidate in [
-                                                avcore::AudioRole::Unspecified,
-                                                avcore::AudioRole::GameAudio,
-                                                avcore::AudioRole::Mic,
-                                                avcore::AudioRole::Music,
-                                            ] {
-                                                ui.selectable_value(
-                                                    &mut role,
-                                                    candidate,
-                                                    audio_role_icon(candidate),
-                                                );
-                                            }
-                                        })
-                                        .response
-                                        .on_hover_text(audio_role_label(role, locale));
-                                    if role != track.audio_role {
-                                        track_audio_role_requests.push((track_id, role));
-                                    }
-                                }
+                        draw_track_header(
+                            app,
+                            ui,
+                            track,
+                            row_height,
+                            TRACK_LABEL_WIDTH,
+                            locale,
+                            TrackHeaderRequests {
+                                toggle_visibility: &mut toggle_track_visibility_requests,
+                                toggle_lock: &mut toggle_track_lock_requests,
+                                toggle_collapsed: &mut toggle_track_collapsed_requests,
+                                audio_role: &mut track_audio_role_requests,
+                                color_label: &mut track_color_label_requests,
+                                rename: &mut track_rename_requests,
+                                duplicate: &mut track_duplicate_requests,
+                                move_up: &mut track_move_up_requests,
+                                move_down: &mut track_move_down_requests,
+                                delete: &mut track_delete_requests,
                             },
                         );
                         let track_scroll = egui::ScrollArea::horizontal()
