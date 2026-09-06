@@ -2518,11 +2518,7 @@ an item earlier:
   model (text and/or visual) needs network access to fetch model weights and `libonnxruntime` —
   this sandbox has neither (the same `ORT_SKIP_DOWNLOAD=1`/no-network gap `CLAUDE.md` documents
   for `background_removal`/`auto_reframe`). `IndexedChunk::embedding` is an opaque `Vec<f32>` this
-  module never produces itself. Real embedding computation, and the incremental representative-
-  frame/transcript-chunk sampling pass that would call it (slice 3), remain genuine, separate
-  follow-ups once a model can actually be verified against — same category of environment-limited
-  stopping point as CF-06 (live multicam monitor, needs real hardware/display) this session
-  already hit and documented.
+  module never produces itself.
 
   Verified for real, not just type-checked: since `semantic_index.rs` depends only on `std` plus
   `serde`, it was copied unmodified into a throwaway scratch crate alongside the real
@@ -2537,6 +2533,43 @@ an item earlier:
   bytes are correctly rejected by the `OCTR` decoder via its own magic-byte check). `cargo check
   --workspace --all-targets` and `cargo clippy -p core --lib --no-deps` (via the documented
   temporary `filters.c` shim, discarded before commit) and `cargo fmt --check` all stayed clean.
+
+  **Slice 3's planning half now shipped too** — "the incremental representative-frame/
+  transcript-chunk sampling pass" this note used to flag as a genuine follow-up. Still
+  deliberately stops short of computing anything (no model, no network, no `FrameSampler`/
+  transcript-sidecar I/O in this module — that stays the caller's job), but the doc's own three
+  acceptance words for this slice ("cancellable, resumable, bounded") are now real, pure logic:
+  `plan_representative_frames` (thin wrapper over `frame_sampler::FrameSampler::
+  even_sample_times`, reused rather than reimplemented, with its own `min`/`max` sample-count
+  clamps) and `plan_transcript_chunks` (groups a transcript's already-ordered words into spans
+  bounded by *either* a max time span or a max word count, whichever is hit first, and never
+  drops a single word whose own span alone exceeds the bound) decide *which* frame timestamps and
+  transcript spans are worth embedding. `IndexingCursor`/`PendingMedia` (plain, `Serialize`able
+  data — a caller persists it exactly like a `SemanticIndex` itself) track how far a resumed pass
+  has gotten through each queued asset, and `next_indexing_batch` pops up to a caller-chosen
+  `max_items` per call across pending assets (front first, so one huge asset can't starve every
+  other one), draining and dropping each entry once it's exhausted. Nothing here ever writes to
+  `SemanticIndex` itself — a caller only calls `upsert_entry` once it has real embeddings in hand
+  — so a cancelled pass (the caller just stops calling `next_indexing_batch`) never leaves the
+  index in an inconsistent state.
+
+  Verified for real: 19 new tests (54/54 total for this module) added to the same throwaway
+  scratch crate this note's own earlier slice already used — this time with two additional
+  minimal stand-ins (`frame_sampler_stub`'s `even_sample_times`, copied verbatim from the real
+  `frame_sampler.rs`, since the real `FrameSampler` struct needs a live GStreamer `Preview` to
+  open a file, and a `transcript_word_stub::TranscriptWord`, an exact field-for-field copy of the
+  real `transcript.rs` struct) — covering frame-sample bounds/clamping, transcript-chunk grouping
+  on both the span and word-count bounds (plus the never-drop-a-too-long-word edge case), cursor
+  enqueue/replace/finished semantics, batch bounding/draining/multi-asset ordering/resume, and a
+  serde round-trip of the cursor itself. **Real finding from this verification**: a first draft of
+  the frame-sample test assumed `even_sample_times`' output stays strictly less than the
+  requested end time; running it for real against the actual (unmodified) function showed the
+  last sample lands exactly *on* the end timestamp whenever more than one sample is requested —
+  the test's assumption was wrong, not the already-shipped function, fixed by asserting the
+  correct inclusive bound instead. `cargo check --workspace --all-targets`, `cargo clippy -p core
+  --lib --tests` (via the documented temporary `filters.c`/`text_overlay.c` shim plus an
+  `FFMPEG_DIR`/`lib`-symlink workaround for this sandbox's multiarch FFmpeg package layout, both
+  reverted before commit), and `cargo fmt --all -- --check` all stayed clean.
 - `[ ]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and
   privacy blur, reusing the existing matte/model/tracker infrastructure.
 - `[ ]` **CF-10: direct publishing.** Add a secure YouTube upload flow; keep OAuth credentials
