@@ -38,7 +38,7 @@ use crate::i18n::Text;
 use crate::theme;
 pub(super) use layout::CLIP_COLOR_LABEL_PALETTE;
 use layout::{
-    COLLAPSED_TRACK_ROW_HEIGHT, MAX_PX_PER_SEC, MIN_PX_PER_SEC, RULER_HEIGHT,
+    TimelineCanvasLayout, COLLAPSED_TRACK_ROW_HEIGHT, MAX_PX_PER_SEC, MIN_PX_PER_SEC, RULER_HEIGHT,
     THUMBNAIL_ZOOM_DEBOUNCE, TRACK_LABEL_WIDTH, TRACK_ROW_HEIGHT,
 };
 
@@ -104,32 +104,16 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         // `app.timeline_pan_px` once the whole panel is done (can't mutate `app` mid-loop — the
         // per-track loop below holds an immutable borrow of it), so every other row picks up the
         // new offset next frame. One frame of lag between rows is imperceptible at normal rates.
-        let hand_active = app.tool == EditorTool::Hand;
-        let timeline_duration_secs = app.active_project().timeline().duration_secs();
-        let canvas_visible_width = (ui.available_width() - TRACK_LABEL_WIDTH).max(0.0);
-        // +200pt of slack past the last clip, so there's always a little room to pan past the
-        // end of the edit instead of hard-stopping exactly at it.
-        let canvas_content_width =
-            (timeline_duration_secs as f32 * px_per_sec + 200.0).max(canvas_visible_width);
-        let hscroll_source = egui::containers::scroll_area::ScrollSource {
-            drag: if hand_active {
-                egui::containers::scroll_area::DragScroll::Always
-            } else {
-                egui::containers::scroll_area::DragScroll::OnTouch
-            },
-            ..Default::default()
-        };
+        let canvas_layout = TimelineCanvasLayout::new(
+            ui.available_width(),
+            px_per_sec,
+            app.active_project().timeline().duration_secs(),
+            app.tool,
+        );
         let mut new_pan_px: Option<f32> = None;
         // Drags on the ruler/clips themselves need to stop reacting while Hand is active, or
         // they'd win the pointer over the ScrollArea's own background drag-to-pan sensing (egui
         // always gives a more specific child widget priority over its container).
-        let canvas_sense = |normal: egui::Sense| {
-            if hand_active {
-                egui::Sense::hover()
-            } else {
-                normal
-            }
-        };
 
         // Magnetic snap targets (ROADMAP.md P0 item 2): every clip's start/end edge, across
         // every track — collected once per frame up front so both the ruler's playhead drag
@@ -154,10 +138,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             RulerLayout {
                 track_label_width: TRACK_LABEL_WIDTH,
                 ruler_height: RULER_HEIGHT,
-                canvas_content_width,
+                canvas_content_width: canvas_layout.content_width,
                 px_per_sec,
-                hscroll_source,
-                hand_active,
+                hscroll_source: canvas_layout.hscroll_source,
+                hand_active: canvas_layout.hand_active,
                 snap_enabled,
                 snap_targets: &snap_targets,
             },
@@ -214,14 +198,14 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                         );
                         let track_scroll = egui::ScrollArea::horizontal()
                             .id_salt(("timeline_track_hscroll", track.id))
-                            .scroll_source(hscroll_source)
+                            .scroll_source(canvas_layout.hscroll_source)
                             .scroll_bar_visibility(
                                 egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden,
                             )
                             .horizontal_scroll_offset(app.timeline_pan_px)
                             .show(ui, |ui| {
                                 let (track_rect, _resp) = ui.allocate_exact_size(
-                                    egui::vec2(canvas_content_width, row_height),
+                                    egui::vec2(canvas_layout.content_width, row_height),
                                     egui::Sense::hover(),
                                 );
                                 track_requests.rows.push((track.id, track.kind, track_rect));
@@ -304,9 +288,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         clip_rect,
                                         clip_widget_id,
                                         if track.locked {
-                                            canvas_sense(egui::Sense::click())
+                                            canvas_layout.canvas_sense(egui::Sense::click())
                                         } else {
-                                            canvas_sense(egui::Sense::click_and_drag())
+                                            canvas_layout
+                                                .canvas_sense(egui::Sense::click_and_drag())
                                         },
                                     );
                                     let covers_playhead = clip.start_secs <= playhead_secs
@@ -344,7 +329,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     let edge_sense = if track.locked {
                                         egui::Sense::hover()
                                     } else {
-                                        canvas_sense(egui::Sense::drag())
+                                        canvas_layout.canvas_sense(egui::Sense::drag())
                                     };
                                     let left_response =
                                         ui.interact(left_edge_rect, trim_start_id, edge_sense);
@@ -776,7 +761,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     track_rect,
                                     px_per_sec,
                                     locale,
-                                    hand_active,
+                                    canvas_layout.hand_active,
                                     app.selected_text_clip_id,
                                     TextOverlayRequests {
                                         clicked: &mut clip_requests.clicked_text_clip_id,
@@ -793,7 +778,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     track_rect,
                                     px_per_sec,
                                     locale,
-                                    hand_active,
+                                    canvas_layout.hand_active,
                                     app.selected_shape_clip_id,
                                     ShapeOverlayRequests {
                                         clicked: &mut clip_requests.clicked_shape_clip_id,
@@ -832,14 +817,14 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             ui.add_space(TRACK_LABEL_WIDTH);
             let bottom_scroll = egui::ScrollArea::horizontal()
                 .id_salt("timeline_bottom_hscroll")
-                .scroll_source(hscroll_source)
+                .scroll_source(canvas_layout.hscroll_source)
                 .scroll_bar_visibility(
                     egui::containers::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
                 )
                 .horizontal_scroll_offset(app.timeline_pan_px)
                 .show(ui, |ui| {
                     ui.allocate_exact_size(
-                        egui::vec2(canvas_content_width, 2.0),
+                        egui::vec2(canvas_layout.content_width, 2.0),
                         egui::Sense::hover(),
                     );
                 });

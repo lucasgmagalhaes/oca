@@ -7,6 +7,10 @@
 
 //! Layout and fixed presentation values for the editor timeline.
 
+use eframe::egui;
+
+use crate::app::EditorTool;
+
 /// Bounds for the timeline zoom level.
 pub(super) const MIN_PX_PER_SEC: f32 = 0.5;
 pub(super) const MAX_PX_PER_SEC: f32 = 60.0;
@@ -29,3 +33,47 @@ pub(crate) const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
     [86, 156, 214],
     [178, 108, 219],
 ];
+
+/// Frame-local geometry and interaction settings shared by the timeline canvases.
+pub(super) struct TimelineCanvasLayout {
+    pub(super) content_width: f32,
+    pub(super) hscroll_source: egui::containers::scroll_area::ScrollSource,
+    pub(super) hand_active: bool,
+}
+
+impl TimelineCanvasLayout {
+    pub(super) fn new(
+        available_width: f32,
+        px_per_sec: f32,
+        duration_secs: f64,
+        tool: EditorTool,
+    ) -> Self {
+        let hand_active = tool == EditorTool::Hand;
+        let visible_width = (available_width - TRACK_LABEL_WIDTH).max(0.0);
+        // Keep a small region after the last clip available for panning.
+        let content_width = (duration_secs as f32 * px_per_sec + 200.0).max(visible_width);
+        let hscroll_source = egui::containers::scroll_area::ScrollSource {
+            drag: if hand_active {
+                egui::containers::scroll_area::DragScroll::Always
+            } else {
+                egui::containers::scroll_area::DragScroll::OnTouch
+            },
+            ..Default::default()
+        };
+
+        Self {
+            content_width,
+            hscroll_source,
+            hand_active,
+        }
+    }
+
+    /// Suppresses clip interactions while the Hand tool owns drag-to-pan.
+    pub(super) fn canvas_sense(&self, normal: egui::Sense) -> egui::Sense {
+        if self.hand_active {
+            egui::Sense::hover()
+        } else {
+            normal
+        }
+    }
+}
