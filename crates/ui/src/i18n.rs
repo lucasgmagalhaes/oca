@@ -202,6 +202,8 @@ text_catalog! {
     MediaViewList: pt_br = "Visualização em lista", en = "List view";
     MediaViewGrid: pt_br = "Visualização em grade", en = "Grid view";
     TimelineZoom: pt_br = "Zoom", en = "Zoom";
+    TimelineZoomIn: pt_br = "Aumentar zoom", en = "Zoom in";
+    TimelineZoomOut: pt_br = "Diminuir zoom", en = "Zoom out";
     SelectedClip: pt_br = "Clipe selecionado", en = "Selected clip";
     NoClipSelected: pt_br = "Nenhum clipe selecionado", en = "No clip selected";
     PropertiesTabInspector: pt_br = "Inspetor", en = "Inspector";

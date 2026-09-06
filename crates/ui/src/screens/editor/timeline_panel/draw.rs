@@ -477,8 +477,12 @@ pub(super) fn draw_ruler_ticks(painter: &egui::Painter, rect: egui::Rect, px_per
             rect.bottom() - 4.0..=rect.bottom(),
             egui::Stroke::new(1.0, theme::BORDER),
         );
+        // Below the marker-tick/playhead triangle band (both anchor to `rect.top()..=rect.top()
+        // + 8.0`, see `draw_marker_ticks`/`draw_playhead`) rather than at `rect.top()` itself —
+        // drawing the label there used to collide with (or fully hide behind) a marker or the
+        // playhead whenever either landed at the same x as a timecode tick.
         painter.text(
-            egui::pos2(x + 3.0, rect.top()),
+            egui::pos2(x + 3.0, rect.top() + 9.0),
             egui::Align2::LEFT_TOP,
             avcore::media::format_timecode(secs),
             egui::FontId::monospace(9.0),
