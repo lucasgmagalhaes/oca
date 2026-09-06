@@ -2618,6 +2618,29 @@ an item earlier:
   --workspace --all-targets`, `cargo clippy -p core --lib --tests` (via the documented temporary
   `filters.c`/`text_overlay.c` shim plus the `FFMPEG_DIR`/`lib`-symlink workaround, both reverted
   before commit), and `cargo fmt --all -- --check` all stayed clean.
+
+  **Slice 3's storage question answered by reuse, not new code.** "Store generated matte data
+  outside the main project JSON with versioned references and cache invalidation" turns out to
+  already be satisfied by `background_removal`'s existing hidden-sibling-folder convention
+  (`mask_dir_for`/`matte_path_for`, keyed by `clip_id`) — the missing piece was only a bridge from
+  a `PropagatedMask` sequence into that same `encode_matte_video(frames: &[Vec<u8>], ...)` input
+  shape. Added `rasterize_mask_to_matte`/`rasterize_to_matte_frames` to `mask_propagation`, reusing
+  `crate::shape_render::point_in_polygon` (the same ray-casting test `overlay_render`'s own shape
+  rasterizer already calls, just without that module's per-shape center/rotation transform — a
+  mask polygon here is already in absolute frame-fraction coordinates) to rasterize each frame's
+  translated polygon into a `255`-inside/`0`-outside grayscale-as-luma buffer. A caller can now
+  pipe `propagate_mask_by_translation`/`propagate_mask_with_corrections`'s output straight into
+  the existing `encode_matte_video` with no reshaping and no new storage format. Slice 4 (privacy
+  blur as the first end-to-end effect) remains open — it needs either a real segmentation source
+  (slice 1, network-blocked) or a genuinely new masked-blur filter-graph feature, which needs its
+  own design pass before touching code, not a small follow-up to this one.
+
+  Verified for real: 5 new tests added to the same scratch crate (33/33 total for this module) —
+  inside/outside/corner correctness against a known square, a degenerate (<3-vertex) polygon
+  producing an all-zero buffer rather than a meaningless ray-cast, zero-sized-canvas handling, and
+  the per-mask batch shape. `cargo check --workspace --all-targets`, `cargo clippy -p core --lib
+  --tests`, and `cargo fmt --all -- --check` all stayed clean via the same shim, reverted before
+  commit.
 - `[ ]` **CF-10: direct publishing.** Add a secure YouTube upload flow; keep OAuth credentials
   in the OS vault and separate from offline bundles.
 
