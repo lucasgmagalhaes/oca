@@ -2490,8 +2490,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/worker_events.rs": {
-    "mtime": 1788722657.7768085,
-    "ast_hash": "3d05a9ade625ada9a7018c12e2cf56fe",
+    "mtime": 1788730642.1856902,
+    "ast_hash": "1c7c4d85dfd775f7a45c7f1fff6b7bf3",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/fullscreen_preview.rs": {
