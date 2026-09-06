@@ -14,6 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 mod draw;
+mod header;
 mod snap;
 mod track_header;
 
@@ -74,6 +75,7 @@ use draw::{
     draw_marker_ticks, draw_playhead, draw_ruler_ticks, draw_transition_wedge, draw_trim_info,
     draw_waveform, shape_kind_glyph, thumbnail_requests_settled, ThumbnailDrawWork,
 };
+use header::timeline_header;
 use snap::{snap_move_start, snap_to_nearest, ClipDrag, SnapTargets};
 use track_header::{audio_role_icon, audio_role_label};
 
@@ -161,62 +163,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
 
         let waveform_snap_targets = snap_targets.waveform_points();
 
-        ui.horizontal(|ui| {
-            ui.label(
-                RichText::new(Text::Timeline.tr(app.locale))
-                    .size(11.0)
-                    .color(theme::TEXT_MUTED),
-            );
-            ui.add_space(theme::SPACE_MD);
-            // Sequence tabs now live in the Timeline panel's own header row, matching the
-            // mockup's "TIMELINE  Interview ✕ +" single strip (confirmed via a real screenshot)
-            // — previously their own separate row above the whole three-column body.
-            super::sequence_tab_bar(app, ui);
-            // A visible zoom affordance for `timeline_px_per_sec` — until now only reachable via
-            // Ctrl+scroll, with no on-screen indicator of the current zoom level at all. Matches
-            // `oca-editor-mock.html`'s `.tl-zoom` slider in the timeline toolbar's right corner.
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                // Discrete zoom in/out buttons, confirmed missing against a real report that
-                // zooming felt "very limited" — Ctrl+scroll requires the pointer to sit exactly
-                // over the timeline while holding a modifier, and the logarithmic slider's own
-                // usable drag range is only a few pixels wide (most of its length maps to either
-                // extreme), so neither was a practical way to reach a specific zoom level on
-                // demand. A fixed multiplicative step (not additive — `MIN_PX_PER_SEC..=
-                // MAX_PX_PER_SEC` spans two orders of magnitude, so a constant +/-N px/sec step
-                // would feel instant near the top of the range and glacial near the bottom).
-                const ZOOM_STEP_FACTOR: f32 = 1.25;
-                if ui
-                    .button(RichText::new("+").size(13.0))
-                    .on_hover_text(Text::TimelineZoomIn.tr(app.locale))
-                    .clicked()
-                {
-                    app.timeline_px_per_sec = (app.timeline_px_per_sec * ZOOM_STEP_FACTOR)
-                        .clamp(MIN_PX_PER_SEC, MAX_PX_PER_SEC);
-                }
-                ui.add(
-                    egui::Slider::new(
-                        &mut app.timeline_px_per_sec,
-                        MIN_PX_PER_SEC..=MAX_PX_PER_SEC,
-                    )
-                    .show_value(false)
-                    .logarithmic(true),
-                );
-                if ui
-                    .button(RichText::new("-").size(13.0))
-                    .on_hover_text(Text::TimelineZoomOut.tr(app.locale))
-                    .clicked()
-                {
-                    app.timeline_px_per_sec = (app.timeline_px_per_sec / ZOOM_STEP_FACTOR)
-                        .clamp(MIN_PX_PER_SEC, MAX_PX_PER_SEC);
-                }
-                ui.label(
-                    RichText::new(Text::TimelineZoom.tr(app.locale))
-                        .size(11.0)
-                        .color(theme::TEXT_MUTED),
-                );
-            });
-        });
-        ui.separator();
+        timeline_header(app, ui);
 
         // Ruler: click or drag to move the playhead. Kept as its own thin strip rather than
         // reusing a track row so scrubbing doesn't depend on there being any tracks yet.
