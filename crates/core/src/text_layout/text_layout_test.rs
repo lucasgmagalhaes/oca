@@ -7,6 +7,7 @@ fn origin_shifts_every_glyph_by_exactly_that_offset() {
         "Hi",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -17,6 +18,7 @@ fn origin_shifts_every_glyph_by_exactly_that_offset() {
         "Hi",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (10.0, 5.0),
@@ -58,6 +60,7 @@ fn every_bundled_family_shapes_ordinary_latin_text_without_missing_glyphs() {
             "Ação, coração, você — 0123456789",
             family.clone(),
             TextFontStyle::Regular,
+            None,
             32.0,
             None,
             (0.0, 0.0),
@@ -89,6 +92,7 @@ fn fi_and_fl_ligatures_form_a_single_multi_character_cluster() {
         text,
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -122,6 +126,7 @@ fn bold_style_selects_a_different_font_face_than_regular_for_a_two_weight_family
         "Test",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -132,6 +137,7 @@ fn bold_style_selects_a_different_font_face_than_regular_for_a_two_weight_family
         "Test",
         TextFontFamily::Lato,
         TextFontStyle::Bold,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -147,6 +153,95 @@ fn bold_style_selects_a_different_font_face_than_regular_for_a_two_weight_family
 }
 
 #[test]
+fn a_variable_family_renders_measurably_wider_glyphs_at_a_higher_weight() {
+    // TEXT-01C: an explicit `wght` axis override reaches cosmic-text's own variable-font
+    // instancing (verified for real against the bundled Inter file in a scratch crate this
+    // session, see spec/ROADMAP.md's TEXT-01C entry) -- this asserts the same real effect
+    // inline, so a future regression in the plumbing (not the underlying library, already
+    // proven) is caught here too.
+    let mut engine = TextLayoutEngine::new_from_locked_catalog();
+    let light = engine.shape(
+        "Weight",
+        TextFontFamily::Inter,
+        TextFontStyle::Regular,
+        Some(100),
+        48.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    let heavy = engine.shape(
+        "Weight",
+        TextFontFamily::Inter,
+        TextFontStyle::Regular,
+        Some(900),
+        48.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    // Same underlying variable font file both times -- proves genuine axis instancing of one
+    // face, not a silent fallback to two different static faces.
+    assert_eq!(
+        light.lines[0].glyphs[0].font_id,
+        heavy.lines[0].glyphs[0].font_id
+    );
+    assert!(
+        heavy.width > light.width,
+        "expected weight 900 ({}) to render wider than weight 100 ({})",
+        heavy.width,
+        light.width
+    );
+}
+
+#[test]
+fn no_weight_override_keeps_the_existing_regular_bold_behavior() {
+    let mut engine = TextLayoutEngine::new_from_locked_catalog();
+    let via_style = engine.shape(
+        "Weight",
+        TextFontFamily::Lato,
+        TextFontStyle::Bold,
+        None,
+        48.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    let via_explicit_700 = engine.shape(
+        "Weight",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        Some(700),
+        48.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    assert_eq!(via_style.width, via_explicit_700.width);
+}
+
+#[test]
+fn a_static_familys_weight_override_never_produces_an_empty_shape() {
+    let mut engine = TextLayoutEngine::new_from_locked_catalog();
+    let shaped = engine.shape(
+        "Weight",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        Some(550),
+        48.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    assert!(!shaped.lines[0].glyphs.is_empty());
+}
+
+#[test]
 fn single_weight_family_ignores_bold_request_without_producing_notdef() {
     // Bebas Neue only ships one designed weight -- requesting Bold must still shape cleanly by
     // falling back to the one available face, not fail or emit .notdef.
@@ -156,6 +251,7 @@ fn single_weight_family_ignores_bold_request_without_producing_notdef() {
         "Title",
         TextFontFamily::BebasNeue,
         TextFontStyle::Bold,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -204,6 +300,7 @@ fn wrapping_at_a_narrow_width_produces_more_than_one_line() {
         "This is a fairly long caption that should wrap across several lines",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         24.0,
         Some(120.0),
         (0.0, 0.0),
@@ -231,6 +328,7 @@ fn unwrapped_shaping_produces_exactly_one_line_for_single_line_text() {
         "One short line",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -259,6 +357,7 @@ fn forced_direction_never_leaks_the_bidi_mark_into_the_glyph_list_or_cluster_ran
         text,
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -269,6 +368,7 @@ fn forced_direction_never_leaks_the_bidi_mark_into_the_glyph_list_or_cluster_ran
         text,
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -279,6 +379,7 @@ fn forced_direction_never_leaks_the_bidi_mark_into_the_glyph_list_or_cluster_ran
         text,
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -346,6 +447,7 @@ fn forced_direction_does_not_panic_on_empty_text() {
             "",
             TextFontFamily::Lato,
             TextFontStyle::Regular,
+            None,
             32.0,
             None,
             (0.0, 0.0),
@@ -367,6 +469,7 @@ fn auto_detects_a_pure_hebrew_paragraph_as_rtl() {
         hebrew,
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -400,6 +503,7 @@ fn forced_rtl_direction_flips_which_side_of_the_line_each_scripts_run_lands_on()
         text,
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -410,6 +514,7 @@ fn forced_rtl_direction_flips_which_side_of_the_line_each_scripts_run_lands_on()
         text,
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -617,6 +722,7 @@ fn shape_cache_hits_on_a_repeated_identical_call() {
         "Boss fight",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (10.0, 20.0),
@@ -630,6 +736,7 @@ fn shape_cache_hits_on_a_repeated_identical_call() {
         "Boss fight",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (10.0, 20.0),
@@ -652,6 +759,7 @@ fn shape_cache_result_matches_a_fresh_uncached_shape() {
         "Victory screen",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         24.0,
         None,
         (0.0, 0.0),
@@ -662,6 +770,7 @@ fn shape_cache_result_matches_a_fresh_uncached_shape() {
         "Victory screen",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         24.0,
         None,
         (0.0, 0.0),
@@ -689,6 +798,7 @@ fn shape_cache_misses_when_any_input_differs() {
         "Boss fight",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -700,6 +810,7 @@ fn shape_cache_misses_when_any_input_differs() {
         "Boss fight!",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),
@@ -711,6 +822,7 @@ fn shape_cache_misses_when_any_input_differs() {
         "Boss fight",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (5.0, 0.0),
@@ -722,7 +834,21 @@ fn shape_cache_misses_when_any_input_differs() {
         "Boss fight",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         40.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    // Different weight_override (TEXT-01C) -- must be its own cache entry, since two different
+    // wght values render visibly different glyphs on a variable family.
+    engine.shape(
+        "Boss fight",
+        TextFontFamily::Lato,
+        TextFontStyle::Regular,
+        Some(600),
+        32.0,
         None,
         (0.0, 0.0),
         TextDirection::Auto,
@@ -730,7 +856,7 @@ fn shape_cache_misses_when_any_input_differs() {
     );
     let (hits, misses) = engine.shape_cache_stats();
     assert_eq!(hits, 0, "every call above has at least one differing input");
-    assert_eq!(misses, 4);
+    assert_eq!(misses, 5);
 }
 
 #[test]
@@ -741,6 +867,7 @@ fn shape_cache_evicts_the_least_recently_used_entry_once_over_capacity() {
             &format!("caption {i}"),
             TextFontFamily::Lato,
             TextFontStyle::Regular,
+            None,
             32.0,
             None,
             (0.0, 0.0),
@@ -757,6 +884,7 @@ fn shape_cache_evicts_the_least_recently_used_entry_once_over_capacity() {
         "caption 0",
         TextFontFamily::Lato,
         TextFontStyle::Regular,
+        None,
         32.0,
         None,
         (0.0, 0.0),

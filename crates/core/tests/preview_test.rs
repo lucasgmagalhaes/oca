@@ -496,6 +496,7 @@ fn open_composited_with_text_and_shape_overlays_composites_without_error() {
         font_size: 24.0,
         font_family: Default::default(),
         font_style: Default::default(),
+        font_weight: None,
         color_rgba: [255, 255, 255, 255],
         background_rgba: [0, 0, 0, 0],
         background_padding: 8.0,
@@ -553,6 +554,7 @@ fn composited_text_highlight_replaces_its_buffer_during_playback() {
         font_size: 48.0,
         font_family: Default::default(),
         font_style: Default::default(),
+        font_weight: None,
         // Hide the base caption so magenta pixels belong only to the active word.
         color_rgba: [255, 255, 255, 0],
         background_rgba: [0, 0, 0, 0],
@@ -644,6 +646,7 @@ fn refresh_text_overlay_redraws_a_content_only_edit_without_reopening_the_pipeli
         font_size: 40.0,
         font_family: Default::default(),
         font_style: Default::default(),
+        font_weight: None,
         color_rgba: [255, 0, 255, 255],
         background_rgba: [0, 0, 0, 0],
         background_padding: 8.0,
