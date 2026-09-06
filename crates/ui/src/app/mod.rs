@@ -57,6 +57,7 @@ mod motion_template;
 mod motion_tracking;
 mod multicam;
 mod preview;
+mod project_timeline_modals;
 mod scene_detection;
 mod shorts_pack;
 mod silence_review;
