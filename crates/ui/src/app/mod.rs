@@ -37,6 +37,7 @@ use crate::screens;
 use crate::theme;
 
 mod auto_reframe;
+mod autosave;
 mod background_removal;
 mod clip_modals;
 mod clip_props;
