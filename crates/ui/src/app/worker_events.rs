@@ -25,7 +25,7 @@ use avcore::MediaAsset;
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
 /// needed, matching the execution plan's "tokio + canais assíncronos" without pulling egui's
 /// synchronous frame loop into async code.
-pub(super) enum RenderEvent {
+pub(crate) enum RenderEvent {
     Progress {
         job_id: u64,
         percent: u8,
@@ -49,7 +49,7 @@ pub(super) enum RenderEvent {
 /// A message from a background import worker thread (see [`App::spawn_import`]) back to
 /// the UI thread. `project_id` (rather than an index into `projects`) is what the result gets
 /// applied to, since the active project can change while a slow import is still running.
-pub(super) enum ImportEvent {
+pub(crate) enum ImportEvent {
     /// Sent as soon as `path`'s cheap probe comes back — the asset is usable immediately
     /// (correct duration/resolution/kind), just without loudness or a proxy yet.
     AssetReady {
@@ -76,7 +76,7 @@ pub(super) enum ImportEvent {
 
 /// A message from a background transcription worker thread (see [`App::spawn_transcribe`])
 /// back to the UI thread.
-pub(super) enum TranscribeEvent {
+pub(crate) enum TranscribeEvent {
     Done {
         asset_id: u64,
         segments: Vec<avcore::TranscribeSegment>,
@@ -89,7 +89,7 @@ pub(super) enum TranscribeEvent {
 
 /// A message from a background auto-reframe worker thread (see
 /// [`App::spawn_auto_reframe_selected_clip`]) back to the UI thread.
-pub(super) enum AutoReframeEvent {
+pub(crate) enum AutoReframeEvent {
     Done {
         clip_id: u64,
         crop: avcore::CropRect,
@@ -104,7 +104,7 @@ pub(super) enum AutoReframeEvent {
 
 /// A message from a background dynamic-reframe worker thread (see
 /// [`App::spawn_dynamic_reframe_selected_clip`]) back to the UI thread.
-pub(super) enum DynamicReframeEvent {
+pub(crate) enum DynamicReframeEvent {
     Done {
         clip_id: u64,
         crop_x_keyframes: Vec<avcore::Keyframe<f32>>,
@@ -124,7 +124,7 @@ pub(super) enum DynamicReframeEvent {
 
 /// A message from a background motion-tracking worker thread (see
 /// [`App::spawn_motion_track_selected_clip`]) back to the UI thread.
-pub(super) enum MotionTrackEvent {
+pub(crate) enum MotionTrackEvent {
     Done {
         clip_id: u64,
         keyframes: Vec<avcore::Keyframe<avcore::Position>>,
@@ -136,7 +136,7 @@ pub(super) enum MotionTrackEvent {
 /// formatted message rather than the original `VoiceCleanupPreviewError`, since `avcore`
 /// errors aren't required to be `Send`/`'static` across the channel boundary and `ui` only ever
 /// shows the message as a toast anyway.
-pub(super) enum VoiceCleanupPreviewEvent {
+pub(crate) enum VoiceCleanupPreviewEvent {
     Done {
         clip_id: u64,
         result: Result<avcore::voice_cleanup_preview::VoiceCleanupPreviewResult, String>,
@@ -145,7 +145,7 @@ pub(super) enum VoiceCleanupPreviewEvent {
 
 /// A message from a background nested-sequence-materialization worker thread (see
 /// [`App::materialize_nested_sequences_for_active_sequence`]) back to the UI thread.
-pub(super) enum NestedSequenceEvent {
+pub(crate) enum NestedSequenceEvent {
     Ready {
         sequence_id: u64,
         cache: HashMap<u64, avcore::nested_sequence::NestedSequenceCache>,
@@ -164,7 +164,7 @@ pub(super) enum NestedSequenceEvent {
 
 /// A message from a background scene-cut-detection worker thread (see
 /// [`App::spawn_detect_scene_cuts_for_selected_clip`]) back to the UI thread.
-pub(super) enum SceneCutEvent {
+pub(crate) enum SceneCutEvent {
     Done {
         clip_id: u64,
         cuts: Vec<avcore::SceneCut>,
@@ -173,7 +173,7 @@ pub(super) enum SceneCutEvent {
 
 /// A message from a background AI-background-removal matte-generation worker thread (see
 /// [`App::spawn_generate_matte_for_selected_clip`]) back to the UI thread.
-pub(super) enum MatteGenerationEvent {
+pub(crate) enum MatteGenerationEvent {
     Done { clip_id: u64, mask_path: PathBuf },
     Failed { message: String },
 }
@@ -183,7 +183,7 @@ pub(super) enum MatteGenerationEvent {
 /// [`MatteGenerationEvent`] plus the seed vertices/center the run actually tracked from (so the
 /// UI thread can persist them onto the clip alongside the mask path — the background thread has
 /// no direct `App` access to write them itself).
-pub(super) enum PrivacyBlurGenerationEvent {
+pub(crate) enum PrivacyBlurGenerationEvent {
     Done {
         clip_id: u64,
         mask_path: PathBuf,
@@ -197,7 +197,7 @@ pub(super) enum PrivacyBlurGenerationEvent {
 /// A message from the background update-check thread (see [`App::spawn_update_check`]) back to
 /// the UI thread. Every terminal result is sent because the About modal distinguishes a
 /// successful current-version result from a failed network request.
-pub(super) enum UpdateCheckEvent {
+pub(crate) enum UpdateCheckEvent {
     NewerVersionAvailable {
         version: String,
         html_url: String,
@@ -238,7 +238,7 @@ pub enum UpdateCheckStatus {
 
 /// A message from a background text-to-speech worker thread (see
 /// [`App::spawn_generate_tts`]) back to the UI thread.
-pub(super) enum TtsEvent {
+pub(crate) enum TtsEvent {
     Done { wav_path: PathBuf },
     Failed { message: String },
 }
@@ -254,7 +254,7 @@ pub enum YoutubeFormatChoice {
 
 /// A message from a background YouTube-download worker thread (see
 /// [`App::spawn_youtube_download`]) back to the UI thread.
-pub(super) enum YoutubeDownloadEvent {
+pub(crate) enum YoutubeDownloadEvent {
     Progress(f32),
     Done { path: PathBuf },
     Failed { message: String },
@@ -290,7 +290,7 @@ pub(crate) struct WatchedFileRow {
 
 /// A message from the watch-folder worker thread (see [`App::start_watching_folder`]) back to
 /// the UI thread.
-pub(super) enum WatchFolderEvent {
+pub(crate) enum WatchFolderEvent {
     Detected(PathBuf),
     Stabilizing(PathBuf),
     Processing(PathBuf),
@@ -310,7 +310,7 @@ pub(super) enum WatchFolderEvent {
 /// is `(asset_id, frame_index)` rather than a fixed-width seconds bucket: timeline zoom chooses
 /// a source frame for each visible filmstrip tile, while quantizing to the source frame rate
 /// keeps nearby zoom levels able to share cached textures.
-pub(super) enum ThumbnailReady {
+pub(crate) enum ThumbnailReady {
     Ready {
         project_id: u64,
         asset_id: u64,
