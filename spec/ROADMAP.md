@@ -1227,8 +1227,9 @@ an item earlier:
   memory note — and `make test-e2e` has its own unrelated hang), so treat the picker's visual
   layout as code-reviewed and compile/launch-verified, not click-tested.
 
-  **Still open**: variable-weight axis selection in the UI, and TEXT-01's automatic
-  script-fallback chain for the international families.
+  **Still open at the time of this slice**: variable-weight axis selection in the UI, and TEXT-01's
+  automatic script-fallback chain for the international families — both since shipped, see this
+  entry's own later notes below.
 - `[~]` **TEXT-01: complex text shaping and bidirectional layout.** Replace per-character
   `fontdue` layout with one bundled-only shaping/layout/rasterization engine covering OpenType
   ligatures/contextual forms, UAX #9 bidi, UAX #14 wrapping, cluster-safe timed highlights,
@@ -1533,11 +1534,53 @@ an item earlier:
   `-p ui --tests --no-deps` (via the documented temporary `filters.c` shim, discarded before
   commit) and `cargo fmt --check` all stayed clean.
 
-  **Still open**: TEXT-01's own automatic script-fallback chain for the international families
-  (unrelated to this slice), and the doc's own "categorized/searchable selector" scope for any
-  future per-family axis beyond `wght` (e.g. width/slant/optical-size axes some variable fonts
-  also carry) — this slice only exposes the one axis every FONT-01B variable family actually
-  ships.
+  **Still open**: the doc's own "categorized/searchable selector" scope for any future per-family
+  axis beyond `wght` (e.g. width/slant/optical-size axes some variable fonts also carry) — this
+  slice only exposes the one axis every FONT-01B variable family actually ships.
+
+  **TEXT-01's own automatic script-fallback chain now shipped too.** Direct inspection of
+  `cosmic-text` 0.19's own source (`font/fallback/mod.rs`) found a real `Fallback` trait already
+  wired into `FontSystem` construction — `FontSystem::new_with_locale_and_db_and_fallback`, not
+  the `new_with_locale_and_db` this module previously called (which defaults to `PlatformFallback`,
+  an OS-conventional name list). `text_layout.rs` now builds its `FontSystem` with a new
+  `OcaFallback` implementing that trait, mapping each `unicode_script::Script` to the single
+  bundled `Noto Sans <Script>` display name that actually covers it (Arabic, Hebrew, Devanagari,
+  Bengali, Tamil, Thai — FONT-01B's own 6 default international faces; "Noto Naskh Arabic" stays a
+  manual style pick, not part of the automatic chain) — `common_fallback`/`forbidden_fallback` both
+  empty, since nothing beyond a caller's own selected family should apply regardless of script, and
+  nothing needs forbidding. `unicode-script = "0.5"` added as a direct dependency at the exact
+  version already pinned transitively through `cosmic-text` — no new dependency tree, same
+  reasoning `unicode-bidi`'s own earlier direct-dependency addition documents.
+
+  **A real, contrary finding from running this against the actual bundled catalog, not assuming
+  the acceptance-criteria framing was still accurate**: a control test proved the *previous*
+  `PlatformFallback` construction does **not** actually produce `.notdef` for embedded Arabic/
+  Hebrew/Devanagari/Bengali/Tamil/Thai text today, despite none of its own OS-conventional
+  fallback names (e.g. "Segoe UI Historic") ever matching anything in this bundled-only database
+  — `cosmic_text::font::fallback::FontFallbackIter` turns out to carry a *third*, undirected
+  fallback tier below both the script- and common-fallback name lists: it walks every other
+  loaded font in weight-match order and tries shaping the missing cluster against each one in
+  turn, stopping at the first that actually produces a real glyph, regardless of whether that
+  font was ever named in any fallback list. With only 43 bundled families today, this exhaustive
+  per-font trial-and-error already stumbles onto the correct `Noto` face by elimination — meaning
+  the doc's original "produces `.notdef` boxes" motivation for this gap doesn't hold as stated.
+  `OcaFallback`'s real, still-genuine value is turning that undirected, ~three-dozen-font trial
+  into a deterministic, efficient, name-directed match to exactly the intended face — confirmed
+  by comparing resolved font ids, not just re-checking for the absence of `.notdef` (which both
+  the old and new construction already avoid).
+
+  Verified for real against actual `cosmic-text` and the real bundled fonts (scratch-crate
+  technique): 11 tests — the 6 international scripts each shaping through the unrelated `Lato`
+  family with zero `.notdef` hits, a realistic mixed-script string, a plain-Latin regression
+  check, an explicit `NotoSansArabic` pick still working unchanged, the control above (documented
+  as a passing, informative assertion rather than deleted once its original premise turned out
+  false), and the determinism check (`Lato`'s fallback-resolved Arabic glyph and a direct
+  `NotoSansArabic` pick resolve to the exact same font id). Mirrored as 8 new tests in the real
+  `crates/core/src/text_layout/text_layout_test.rs` (the control test itself stays scratch-crate-
+  only, since it deliberately reconstructs the *old*, no-longer-present construction path rather
+  than testing this module's own current code). `cargo check --workspace --all-targets`, `cargo
+  clippy -p core --lib --no-deps` (via the documented temporary `filters.c`/`text_overlay.c` shim,
+  discarded before commit), and `cargo fmt --all -- --check` all stayed clean.
 - `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:

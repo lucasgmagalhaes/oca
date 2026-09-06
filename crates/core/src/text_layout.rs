@@ -26,11 +26,19 @@
 //! doc comment.
 //!
 //! Loads only [`crate::font_catalog`]'s locked bytes into a `fontdb::Database` via
-//! `FontSystem::new_with_locale_and_db` — never `FontSystem::new()`, which the architecture doc
-//! explicitly forbids because it scans installed system fonts. `cosmic-text`'s own
-//! `PlatformFallback` fallback-name list can never resolve to anything outside that locked set
-//! for the same reason the acceptance spike relied on: it only ever matches families already
-//! present in the `fontdb::Database` it was built with.
+//! `FontSystem::new_with_locale_and_db_and_fallback` — never `FontSystem::new()`, which the
+//! architecture doc explicitly forbids because it scans installed system fonts. Any fallback
+//! family name, whether `cosmic-text`'s own default `PlatformFallback` or [`OcaFallback`] below,
+//! can never resolve to anything outside that locked set for the same reason the acceptance
+//! spike relied on: `cosmic_text::FontSystem::get_font_matches` only ever queries the local
+//! `fontdb::Database` it was built with, never the OS. [`OcaFallback`] replaces
+//! `PlatformFallback` specifically because that default's own fallback names (OS-conventional
+//! names like "Segoe UI Historic") never match anything in our bundled-only database either —
+//! it was safe (bundled-only was never violated) but inert, so a caption mixing scripts our
+//! *selected* family doesn't cover (e.g. Latin text with an embedded Arabic phrase) rendered
+//! `.notdef` boxes for those clusters instead of actually falling back to one of the bundled
+//! `Noto` international faces already sitting unused in the same database. TEXT-01's own
+//! "automatic script-fallback chain for the international families" gap.
 //!
 //! [`TextLayoutEngine::shape`] also carries TEXT-01D slice 1's own "shaped/glyph caches" piece —
 //! [`ShapeCache`], a small bounded LRU keyed by every input that can change `shape`'s output
@@ -49,12 +57,51 @@ use std::ops::Range;
 use std::sync::{Mutex, OnceLock};
 
 use cosmic_text::{
-    fontdb, Align, Attrs, Buffer, Family, FontSystem, Metrics, PhysicalGlyph, Shaping, SwashCache,
-    Weight,
+    fontdb, Align, Attrs, Buffer, Fallback, Family, FontSystem, Metrics, PhysicalGlyph, Shaping,
+    SwashCache, Weight,
 };
+use unicode_script::Script;
 
 use crate::font_catalog;
 use crate::timeline::{TextAlign, TextDirection, TextFontFamily, TextFontStyle};
+
+/// `cosmic-text`'s automatic per-script fallback chain, pointed at this crate's own bundled
+/// `Noto` international faces ([`font_catalog`]'s `FontCategory::International` entries) instead
+/// of `PlatformFallback`'s OS-conventional names — see this module's own doc comment for why the
+/// default is safe but inert against a bundled-only database. `common_fallback`/
+/// `forbidden_fallback` are both empty: there is no bundled "always try this regardless of
+/// script" family beyond what a caller's own selected `TextFontFamily` already is, and nothing
+/// this crate ever wants to forbid a script from resolving to.
+///
+/// One display name per script — the single default `Noto Sans <Script>` face, not every
+/// bundled face that happens to cover that script (`font_catalog`'s "Noto Naskh Arabic" is a
+/// deliberate manual style pick for Arabic, not part of the automatic chain). A script with no
+/// bundled coverage maps to `&[]`, the same "no candidates, `.notdef` if the selected family
+/// truly can't shape it" behavior every other unhandled script already has under
+/// `PlatformFallback`.
+struct OcaFallback;
+
+impl Fallback for OcaFallback {
+    fn common_fallback(&self) -> &[&'static str] {
+        &[]
+    }
+
+    fn forbidden_fallback(&self) -> &[&'static str] {
+        &[]
+    }
+
+    fn script_fallback(&self, script: Script, _locale: &str) -> &[&'static str] {
+        match script {
+            Script::Arabic => &["Noto Sans Arabic"],
+            Script::Hebrew => &["Noto Sans Hebrew"],
+            Script::Devanagari => &["Noto Sans Devanagari"],
+            Script::Bengali => &["Noto Sans Bengali"],
+            Script::Tamil => &["Noto Sans Tamil"],
+            Script::Thai => &["Noto Sans Thai"],
+            _ => &[],
+        }
+    }
+}
 
 /// Left-to-right mark (U+200E) / right-to-left mark (U+200F) — invisible, zero-advance format
 /// characters whose own bidi class (`L`/`R`) is "strong" for UAX #9's P2/P3 first-strong-char
@@ -403,7 +450,8 @@ impl TextLayoutEngine {
         for (_, _, bytes) in font_catalog::locked_face_bytes() {
             db.load_font_data(bytes.to_vec());
         }
-        let font_system = FontSystem::new_with_locale_and_db("en-US".to_string(), db);
+        let font_system =
+            FontSystem::new_with_locale_and_db_and_fallback("en-US".to_string(), db, OcaFallback);
         Self {
             font_system,
             shape_cache: ShapeCache::new(SHAPE_CACHE_CAPACITY),
