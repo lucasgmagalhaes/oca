@@ -510,8 +510,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1788730564.6282847,
-    "ast_hash": "bc6c53ba9ebf2fcf280739ab33ad955e",
+    "mtime": 1788733494.7724416,
+    "ast_hash": "cd09fc0a4ccfc7792fa8fccdbb98edd1",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
@@ -520,8 +520,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/preview.rs": {
-    "mtime": 1788730559.8950992,
-    "ast_hash": "59999c5d8b08d154628a1202d3efd460",
+    "mtime": 1788733505.5716484,
+    "ast_hash": "f93812e70aae5808a78c1f6fa0b84aae",
     "semantic_hash": ""
   },
   "crates/ui/src/app/timeline_ops.rs": {
@@ -2642,6 +2642,11 @@
   "crates/ui/src/screens/editor/preview_hud.rs": {
     "mtime": 1788732564.7457926,
     "ast_hash": "a9e9360164e76813b3d258f00733e224",
+    "semantic_hash": ""
+  },
+  "crates/ui/src/app/preview_live_updates.rs": {
+    "mtime": 1788733494.7719798,
+    "ast_hash": "d205a6d917276256dbcc743299a5c886",
     "semantic_hash": ""
   }
 }
