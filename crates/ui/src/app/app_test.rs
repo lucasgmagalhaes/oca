@@ -2133,6 +2133,126 @@ fn trim_clip_end_is_bounded_by_the_source_assets_own_duration() {
 }
 
 #[test]
+fn move_text_clip_repositions_it_on_the_timeline() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_text_clip();
+    let clip_id = app.active_project().timeline().tracks[0].text_clips[0].id;
+
+    app.move_text_clip(clip_id, 12.5);
+
+    let tc = &app.active_project().timeline().tracks[0].text_clips[0];
+    assert_eq!(tc.start_secs, 12.5);
+}
+
+#[test]
+fn move_text_clip_clamps_a_negative_start_to_zero() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_text_clip();
+    let clip_id = app.active_project().timeline().tracks[0].text_clips[0].id;
+
+    app.move_text_clip(clip_id, -5.0);
+
+    let tc = &app.active_project().timeline().tracks[0].text_clips[0];
+    assert_eq!(tc.start_secs, 0.0);
+}
+
+#[test]
+fn trim_text_clip_start_moves_the_left_edge_and_keeps_the_end_fixed() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_text_clip();
+    let clip_id = app.active_project().timeline().tracks[0].text_clips[0].id;
+    // add_text_clip's own default: starts at the playhead (0.0), lasts 3.0 seconds.
+    let end_secs = 3.0;
+
+    app.trim_text_clip_start(clip_id, 1.0);
+
+    let tc = &app.active_project().timeline().tracks[0].text_clips[0];
+    assert_eq!(tc.start_secs, 1.0);
+    assert_eq!(tc.start_secs + tc.duration_secs, end_secs);
+}
+
+#[test]
+fn trim_text_clip_start_never_shrinks_past_the_minimum_duration() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_text_clip();
+    let clip_id = app.active_project().timeline().tracks[0].text_clips[0].id;
+
+    // Dragging the left edge all the way to (and past) the right edge should stop at the
+    // minimum trim duration instead of collapsing/inverting the clip.
+    app.trim_text_clip_start(clip_id, 100.0);
+
+    let tc = &app.active_project().timeline().tracks[0].text_clips[0];
+    assert!(tc.duration_secs > 0.0);
+    assert!(tc.start_secs < 3.0);
+}
+
+#[test]
+fn trim_text_clip_end_moves_the_right_edge_and_keeps_the_start_fixed() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_text_clip();
+    let clip_id = app.active_project().timeline().tracks[0].text_clips[0].id;
+
+    app.trim_text_clip_end(clip_id, 10.0);
+
+    let tc = &app.active_project().timeline().tracks[0].text_clips[0];
+    assert_eq!(tc.start_secs, 0.0);
+    assert_eq!(tc.duration_secs, 10.0);
+}
+
+#[test]
+fn trim_text_clip_end_never_shrinks_past_the_minimum_duration() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_text_clip();
+    let clip_id = app.active_project().timeline().tracks[0].text_clips[0].id;
+
+    app.trim_text_clip_end(clip_id, -100.0);
+
+    let tc = &app.active_project().timeline().tracks[0].text_clips[0];
+    assert!(tc.duration_secs > 0.0);
+}
+
+#[test]
+fn move_shape_clip_repositions_it_on_the_timeline() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_shape_clip();
+    let clip_id = app.active_project().timeline().tracks[0].shape_clips[0].id;
+
+    app.move_shape_clip(clip_id, 7.0);
+
+    let sc = &app.active_project().timeline().tracks[0].shape_clips[0];
+    assert_eq!(sc.start_secs, 7.0);
+}
+
+#[test]
+fn trim_shape_clip_start_moves_the_left_edge_and_keeps_the_end_fixed() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_shape_clip();
+    let clip_id = app.active_project().timeline().tracks[0].shape_clips[0].id;
+    let sc_before = app.active_project().timeline().tracks[0].shape_clips[0].clone();
+    let end_secs = sc_before.start_secs + sc_before.duration_secs;
+
+    app.trim_shape_clip_start(clip_id, sc_before.start_secs + 0.5);
+
+    let sc = &app.active_project().timeline().tracks[0].shape_clips[0];
+    assert_eq!(sc.start_secs, sc_before.start_secs + 0.5);
+    assert_eq!(sc.start_secs + sc.duration_secs, end_secs);
+}
+
+#[test]
+fn trim_shape_clip_end_moves_the_right_edge_and_keeps_the_start_fixed() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.add_shape_clip();
+    let clip_id = app.active_project().timeline().tracks[0].shape_clips[0].id;
+    let start_secs = app.active_project().timeline().tracks[0].shape_clips[0].start_secs;
+
+    app.trim_shape_clip_end(clip_id, start_secs + 20.0);
+
+    let sc = &app.active_project().timeline().tracks[0].shape_clips[0];
+    assert_eq!(sc.start_secs, start_secs);
+    assert_eq!(sc.duration_secs, 20.0);
+}
+
+#[test]
 fn ripple_trim_clip_start_shifts_only_later_clips() {
     let mut project = test_project(1, vec![test_asset(1)]);
     project.timeline_mut().tracks = vec![test_track(

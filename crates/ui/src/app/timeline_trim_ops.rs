@@ -255,4 +255,83 @@ impl App {
             }
         }
     }
+
+    /// Repositions the text clip with `text_clip_id` to `new_start_secs` — what dragging a
+    /// text-overlay block's body does on the timeline. Unlike [`App::move_clip`], a text clip
+    /// has no source asset to bound it against, so this is a plain reposition with no drop-below-
+    /// zero. A no-op if the clip isn't found.
+    pub fn move_text_clip(&mut self, text_clip_id: u64, new_start_secs: f64) {
+        for track in &mut self.active_project_mut().timeline_mut().tracks {
+            if let Some(tc) = track.text_clip_mut(text_clip_id) {
+                tc.start_secs = new_start_secs.max(0.0);
+                return;
+            }
+        }
+    }
+
+    /// Drags the text clip's left edge to `new_start_secs`, keeping its right edge fixed —
+    /// [`App::trim_clip_start`]'s counterpart for [`avcore::timeline::TextClip`]. A no-op if the
+    /// clip isn't found; bounded so the clip never shrinks below
+    /// [`App::MIN_TRIM_DURATION_SECS`] or starts before zero.
+    pub fn trim_text_clip_start(&mut self, text_clip_id: u64, new_start_secs: f64) {
+        for track in &mut self.active_project_mut().timeline_mut().tracks {
+            if let Some(tc) = track.text_clip_mut(text_clip_id) {
+                let end_secs = tc.start_secs + tc.duration_secs;
+                let new_start_secs = new_start_secs
+                    .max(0.0)
+                    .min(end_secs - Self::MIN_TRIM_DURATION_SECS);
+                tc.duration_secs = end_secs - new_start_secs;
+                tc.start_secs = new_start_secs;
+                return;
+            }
+        }
+    }
+
+    /// Drags the text clip's right edge to `new_end_secs`, keeping its start fixed —
+    /// [`App::trim_clip_end`]'s counterpart for [`avcore::timeline::TextClip`]. A no-op if the
+    /// clip isn't found; bounded so the clip never shrinks below
+    /// [`App::MIN_TRIM_DURATION_SECS`].
+    pub fn trim_text_clip_end(&mut self, text_clip_id: u64, new_end_secs: f64) {
+        for track in &mut self.active_project_mut().timeline_mut().tracks {
+            if let Some(tc) = track.text_clip_mut(text_clip_id) {
+                tc.duration_secs = (new_end_secs - tc.start_secs).max(Self::MIN_TRIM_DURATION_SECS);
+                return;
+            }
+        }
+    }
+
+    /// [`App::move_text_clip`]'s counterpart for [`avcore::timeline::ShapeClip`].
+    pub fn move_shape_clip(&mut self, shape_clip_id: u64, new_start_secs: f64) {
+        for track in &mut self.active_project_mut().timeline_mut().tracks {
+            if let Some(sc) = track.shape_clip_mut(shape_clip_id) {
+                sc.start_secs = new_start_secs.max(0.0);
+                return;
+            }
+        }
+    }
+
+    /// [`App::trim_text_clip_start`]'s counterpart for [`avcore::timeline::ShapeClip`].
+    pub fn trim_shape_clip_start(&mut self, shape_clip_id: u64, new_start_secs: f64) {
+        for track in &mut self.active_project_mut().timeline_mut().tracks {
+            if let Some(sc) = track.shape_clip_mut(shape_clip_id) {
+                let end_secs = sc.start_secs + sc.duration_secs;
+                let new_start_secs = new_start_secs
+                    .max(0.0)
+                    .min(end_secs - Self::MIN_TRIM_DURATION_SECS);
+                sc.duration_secs = end_secs - new_start_secs;
+                sc.start_secs = new_start_secs;
+                return;
+            }
+        }
+    }
+
+    /// [`App::trim_text_clip_end`]'s counterpart for [`avcore::timeline::ShapeClip`].
+    pub fn trim_shape_clip_end(&mut self, shape_clip_id: u64, new_end_secs: f64) {
+        for track in &mut self.active_project_mut().timeline_mut().tracks {
+            if let Some(sc) = track.shape_clip_mut(shape_clip_id) {
+                sc.duration_secs = (new_end_secs - sc.start_secs).max(Self::MIN_TRIM_DURATION_SECS);
+                return;
+            }
+        }
+    }
 }

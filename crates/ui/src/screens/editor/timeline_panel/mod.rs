@@ -35,6 +35,16 @@ const MAX_PX_PER_SEC: f32 = 60.0;
 /// every discarded-a-frame-later request during a normal scroll-wheel/pinch zoom gesture.
 const TIMELINE_THUMBNAIL_ZOOM_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(150);
 const TRACK_LABEL_WIDTH: f32 = 86.0;
+/// Height of the ruler strip. Was 20px — confirmed against a real report as visually broken at
+/// that height: the timecode label (`draw::draw_ruler_ticks`) and the marker/playhead triangle
+/// heads (`draw::draw_marker_ticks`/`draw::draw_playhead`) both anchor to the ruler's *top* 8px,
+/// while the tick vline itself sits at the very bottom — 20px wasn't enough room for the top
+/// triangle band and the label below it to avoid overlapping, so a timecode label routinely
+/// collided with (or was fully covered by) a marker/playhead triangle sitting at the same x.
+/// 28px gives the label its own dedicated band between the triangles and the tick line, with no
+/// code change needed in `draw_marker_ticks`/`draw_playhead` themselves (both already anchor
+/// purely off `rect.top()`, so they don't need to know the ruler grew taller).
+const RULER_HEIGHT: f32 = 28.0;
 /// Height of one track row, header and clip content alike. Was 26-28px — tall enough for a
 /// label but too thin to make the filmstrip thumbnails (`draw::draw_filmstrip`, which sizes its
 /// tiles to `track_rect.height()`) or a waveform actually useful at a glance. Doubled.
@@ -231,6 +241,23 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             // Ctrl+scroll, with no on-screen indicator of the current zoom level at all. Matches
             // `oca-editor-mock.html`'s `.tl-zoom` slider in the timeline toolbar's right corner.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Discrete zoom in/out buttons, confirmed missing against a real report that
+                // zooming felt "very limited" — Ctrl+scroll requires the pointer to sit exactly
+                // over the timeline while holding a modifier, and the logarithmic slider's own
+                // usable drag range is only a few pixels wide (most of its length maps to either
+                // extreme), so neither was a practical way to reach a specific zoom level on
+                // demand. A fixed multiplicative step (not additive — `MIN_PX_PER_SEC..=
+                // MAX_PX_PER_SEC` spans two orders of magnitude, so a constant +/-N px/sec step
+                // would feel instant near the top of the range and glacial near the bottom).
+                const ZOOM_STEP_FACTOR: f32 = 1.25;
+                if ui
+                    .button(RichText::new("+").size(13.0))
+                    .on_hover_text(Text::TimelineZoomIn.tr(app.locale))
+                    .clicked()
+                {
+                    app.timeline_px_per_sec = (app.timeline_px_per_sec * ZOOM_STEP_FACTOR)
+                        .clamp(MIN_PX_PER_SEC, MAX_PX_PER_SEC);
+                }
                 ui.add(
                     egui::Slider::new(
                         &mut app.timeline_px_per_sec,
@@ -239,6 +266,14 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     .show_value(false)
                     .logarithmic(true),
                 );
+                if ui
+                    .button(RichText::new("-").size(13.0))
+                    .on_hover_text(Text::TimelineZoomOut.tr(app.locale))
+                    .clicked()
+                {
+                    app.timeline_px_per_sec = (app.timeline_px_per_sec / ZOOM_STEP_FACTOR)
+                        .clamp(MIN_PX_PER_SEC, MAX_PX_PER_SEC);
+                }
                 ui.label(
                     RichText::new(Text::TimelineZoom.tr(app.locale))
                         .size(11.0)
@@ -265,10 +300,8 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 )
                 .horizontal_scroll_offset(app.timeline_pan_px)
                 .show(ui, |ui| {
-                    // 20px, not the old 14 — bumped to fit an actual timecode label (added
-                    // below) under the tick line, not just the bare fill this ruler used to be.
                     let (rect, response) = ui.allocate_exact_size(
-                        egui::vec2(canvas_content_width, 20.0),
+                        egui::vec2(canvas_content_width, RULER_HEIGHT),
                         canvas_sense(egui::Sense::click_and_drag()),
                     );
                     ruler_top = rect.top();
@@ -332,6 +365,15 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut split_at_playhead_requested = false;
         let mut trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
         let mut clip_drags: Vec<ClipDrag> = Vec::new();
+        // Text/shape overlay clips get the same drag-to-move/drag-to-trim treatment as video/
+        // audio clips (previously click-only — no way to reposition or resize a text/shape
+        // block's duration by dragging its edges at all). Same-track only: unlike video/audio
+        // clips, a text/shape overlay never moves across tracks by drag (no cross-track drop
+        // target resolution exists for either kind).
+        let mut text_clip_drags: Vec<(u64, f64)> = Vec::new();
+        let mut shape_clip_drags: Vec<(u64, f64)> = Vec::new();
+        let mut text_trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
+        let mut shape_trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
         let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
         let mut toggle_track_visibility_requests: Vec<u64> = Vec::new();
         let mut toggle_track_lock_requests: Vec<u64> = Vec::new();
@@ -952,6 +994,78 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                                     &mut thumbnail_work,
                                                 );
                                             }
+                                            // A video clip's own embedded audio waveform,
+                                            // confirmed missing against a real report: previously
+                                            // a Video-track clip drew a filmstrip *or* a waveform,
+                                            // never both, so the audio carried by ordinary
+                                            // gameplay footage never had any on-timeline visual
+                                            // cue at all (only a clip detached onto its own Audio
+                                            // track via "Destacar áudio" ever showed one). Drawn
+                                            // as a thin band along the bottom edge — skipped
+                                            // entirely on a collapsed row (too short to read) or
+                                            // an asset with no audio/no cached peaks yet.
+                                            let waveform_band_h =
+                                                (clip_rect.height() * 0.32).min(18.0);
+                                            if asset.has_audio
+                                                && clip_rect.height() >= 32.0
+                                                && !clip.frozen
+                                            {
+                                                if let Some(peaks) = &asset.waveform_peaks {
+                                                    let waveform_rect = egui::Rect::from_min_size(
+                                                        egui::pos2(
+                                                            clip_rect.left(),
+                                                            clip_rect.bottom() - waveform_band_h,
+                                                        ),
+                                                        egui::vec2(
+                                                            clip_rect.width(),
+                                                            waveform_band_h,
+                                                        ),
+                                                    );
+                                                    painter.rect_filled(
+                                                        waveform_rect,
+                                                        egui::CornerRadius::ZERO,
+                                                        theme::SURFACE_2.gamma_multiply(0.75),
+                                                    );
+                                                    draw_waveform(
+                                                        painter,
+                                                        waveform_rect,
+                                                        peaks,
+                                                        asset.duration_secs,
+                                                        clip.source_in_secs..clip.source_out_secs,
+                                                        clip.gain_linear(),
+                                                        theme::TEXT_PRIMARY.gamma_multiply(0.7),
+                                                    );
+                                                }
+                                            }
+                                            // File name + duration, confirmed missing against a
+                                            // real report: a plain (non-nested, non-frozen)
+                                            // video clip previously drew no identifying text at
+                                            // all — every badge above is conditional on some
+                                            // special state (crop/mask/flip/chroma-key/speed),
+                                            // so an ordinary clip's block carried no name or
+                                            // duration whatsoever. Skipped once a nested-sequence
+                                            // name is drawn below instead (that's this block's
+                                            // own identity for a compound clip) — same unclipped
+                                            // `painter.text` convention every other clip badge in
+                                            // this loop already uses (e.g. the nested-sequence
+                                            // name itself), so a narrow zoomed-out block can
+                                            // overflow its own text just like those already do.
+                                            if clip.nested_sequence_id.is_none() {
+                                                let label = format!(
+                                                    "{}  {}",
+                                                    asset.file_name,
+                                                    avcore::media::format_timecode(
+                                                        clip.duration_secs()
+                                                    )
+                                                );
+                                                painter.text(
+                                                    clip_rect.left_top() + egui::vec2(4.0, 2.0),
+                                                    egui::Align2::LEFT_TOP,
+                                                    label,
+                                                    egui::FontId::proportional(11.0),
+                                                    theme::TEXT_PRIMARY,
+                                                );
+                                            }
                                         }
                                     } else if let Some(asset) = asset {
                                         if let Some(peaks) = &asset.waveform_peaks {
@@ -1163,8 +1277,20 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     for tc in &track.text_clips {
                                         let x =
                                             track_rect.left() + tc.start_secs as f32 * px_per_sec;
+                                        let tc_widget_id =
+                                            ui.id().with(("timeline_text_clip", tc.id));
+                                        let tc_trim_start_id =
+                                            ui.id().with(("timeline_text_clip_trim_start", tc.id));
+                                        let tc_trim_end_id =
+                                            ui.id().with(("timeline_text_clip_trim_end", tc.id));
+                                        let tc_being_dragged =
+                                            ui.ctx().dragged_id().is_some_and(|id| {
+                                                id == tc_widget_id
+                                                    || id == tc_trim_start_id
+                                                    || id == tc_trim_end_id
+                                            });
                                         // Same viewport-culling reasoning as the video/audio clip loop above.
-                                        if x > track_rect.right() {
+                                        if x > track_rect.right() && !tc_being_dragged {
                                             continue;
                                         }
                                         let w = (tc.duration_secs as f32 * px_per_sec).max(3.0);
@@ -1172,10 +1298,25 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                             egui::pos2(x, track_rect.top()),
                                             egui::vec2(w, track_rect.height()),
                                         );
+                                        // Narrow edge strips for drag-to-trim, same layout as the
+                                        // video/audio clip loop above.
+                                        let edge_w = (w / 3.0).clamp(2.0, 6.0);
+                                        let tc_left_edge_rect = egui::Rect::from_min_size(
+                                            tc_rect.min,
+                                            egui::vec2(edge_w, tc_rect.height()),
+                                        );
+                                        let tc_right_edge_rect = egui::Rect::from_min_size(
+                                            egui::pos2(tc_rect.right() - edge_w, tc_rect.top()),
+                                            egui::vec2(edge_w, tc_rect.height()),
+                                        );
                                         let tc_response = ui.interact(
                                             tc_rect,
-                                            ui.id().with(("timeline_text_clip", tc.id)),
-                                            canvas_sense(egui::Sense::click()),
+                                            tc_widget_id,
+                                            if track.locked {
+                                                canvas_sense(egui::Sense::click())
+                                            } else {
+                                                canvas_sense(egui::Sense::click_and_drag())
+                                            },
                                         );
                                         tc_response.context_menu(|ui| {
                                             if ui
@@ -1188,6 +1329,58 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         });
                                         if tc_response.clicked() {
                                             clicked_text_clip_id = Some(tc.id);
+                                        }
+                                        if tc_response.drag_started() {
+                                            drag_started_this_frame = true;
+                                        }
+                                        if tc_response.dragged() {
+                                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                                            let delta_secs =
+                                                (tc_response.drag_delta().x / px_per_sec) as f64;
+                                            text_clip_drags
+                                                .push((tc.id, tc.start_secs + delta_secs));
+                                        }
+                                        let tc_edge_sense = if track.locked {
+                                            egui::Sense::hover()
+                                        } else {
+                                            canvas_sense(egui::Sense::drag())
+                                        };
+                                        let tc_left_response = ui.interact(
+                                            tc_left_edge_rect,
+                                            tc_trim_start_id,
+                                            tc_edge_sense,
+                                        );
+                                        let tc_right_response = ui.interact(
+                                            tc_right_edge_rect,
+                                            tc_trim_end_id,
+                                            tc_edge_sense,
+                                        );
+                                        if tc_left_response.hovered()
+                                            || tc_left_response.dragged()
+                                            || tc_right_response.hovered()
+                                            || tc_right_response.dragged()
+                                        {
+                                            ui.ctx().set_cursor_icon(
+                                                egui::CursorIcon::ResizeHorizontal,
+                                            );
+                                        }
+                                        if tc_left_response.drag_started()
+                                            || tc_right_response.drag_started()
+                                        {
+                                            drag_started_this_frame = true;
+                                        }
+                                        if let Some(pos) = tc_left_response.interact_pointer_pos() {
+                                            let secs = ((pos.x - track_rect.left()) / px_per_sec)
+                                                .max(0.0)
+                                                as f64;
+                                            text_trim_requests.push((tc.id, TrimEdge::Start(secs)));
+                                        }
+                                        if let Some(pos) = tc_right_response.interact_pointer_pos()
+                                        {
+                                            let secs = ((pos.x - track_rect.left()) / px_per_sec)
+                                                .max(0.0)
+                                                as f64;
+                                            text_trim_requests.push((tc.id, TrimEdge::End(secs)));
                                         }
                                         let block_color = egui::Color32::from_rgba_unmultiplied(
                                             tc.color_rgba[0],
@@ -1210,6 +1403,23 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                             egui::FontId::proportional(11.0),
                                             egui::Color32::WHITE,
                                         );
+                                        if tc_left_response.hovered() || tc_left_response.dragged()
+                                        {
+                                            painter.rect_filled(
+                                                tc_left_edge_rect,
+                                                egui::CornerRadius::ZERO,
+                                                theme::ACCENT,
+                                            );
+                                        }
+                                        if tc_right_response.hovered()
+                                            || tc_right_response.dragged()
+                                        {
+                                            painter.rect_filled(
+                                                tc_right_edge_rect,
+                                                egui::CornerRadius::ZERO,
+                                                theme::ACCENT,
+                                            );
+                                        }
                                         // Selection ring
                                         if app.selected_text_clip_id == Some(tc.id) {
                                             painter.rect_stroke(
@@ -1227,8 +1437,20 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     for sc in &track.shape_clips {
                                         let x =
                                             track_rect.left() + sc.start_secs as f32 * px_per_sec;
+                                        let sc_widget_id =
+                                            ui.id().with(("timeline_shape_clip", sc.id));
+                                        let sc_trim_start_id =
+                                            ui.id().with(("timeline_shape_clip_trim_start", sc.id));
+                                        let sc_trim_end_id =
+                                            ui.id().with(("timeline_shape_clip_trim_end", sc.id));
+                                        let sc_being_dragged =
+                                            ui.ctx().dragged_id().is_some_and(|id| {
+                                                id == sc_widget_id
+                                                    || id == sc_trim_start_id
+                                                    || id == sc_trim_end_id
+                                            });
                                         // Same viewport-culling reasoning as the video/audio clip loop above.
-                                        if x > track_rect.right() {
+                                        if x > track_rect.right() && !sc_being_dragged {
                                             continue;
                                         }
                                         let w = (sc.duration_secs as f32 * px_per_sec).max(3.0);
@@ -1236,10 +1458,23 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                             egui::pos2(x, track_rect.top()),
                                             egui::vec2(w, track_rect.height()),
                                         );
+                                        let edge_w = (w / 3.0).clamp(2.0, 6.0);
+                                        let sc_left_edge_rect = egui::Rect::from_min_size(
+                                            sc_rect.min,
+                                            egui::vec2(edge_w, sc_rect.height()),
+                                        );
+                                        let sc_right_edge_rect = egui::Rect::from_min_size(
+                                            egui::pos2(sc_rect.right() - edge_w, sc_rect.top()),
+                                            egui::vec2(edge_w, sc_rect.height()),
+                                        );
                                         let sc_response = ui.interact(
                                             sc_rect,
-                                            ui.id().with(("timeline_shape_clip", sc.id)),
-                                            canvas_sense(egui::Sense::click()),
+                                            sc_widget_id,
+                                            if track.locked {
+                                                canvas_sense(egui::Sense::click())
+                                            } else {
+                                                canvas_sense(egui::Sense::click_and_drag())
+                                            },
                                         );
                                         sc_response.context_menu(|ui| {
                                             if ui
@@ -1252,6 +1487,59 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         });
                                         if sc_response.clicked() {
                                             clicked_shape_clip_id = Some(sc.id);
+                                        }
+                                        if sc_response.drag_started() {
+                                            drag_started_this_frame = true;
+                                        }
+                                        if sc_response.dragged() {
+                                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                                            let delta_secs =
+                                                (sc_response.drag_delta().x / px_per_sec) as f64;
+                                            shape_clip_drags
+                                                .push((sc.id, sc.start_secs + delta_secs));
+                                        }
+                                        let sc_edge_sense = if track.locked {
+                                            egui::Sense::hover()
+                                        } else {
+                                            canvas_sense(egui::Sense::drag())
+                                        };
+                                        let sc_left_response = ui.interact(
+                                            sc_left_edge_rect,
+                                            sc_trim_start_id,
+                                            sc_edge_sense,
+                                        );
+                                        let sc_right_response = ui.interact(
+                                            sc_right_edge_rect,
+                                            sc_trim_end_id,
+                                            sc_edge_sense,
+                                        );
+                                        if sc_left_response.hovered()
+                                            || sc_left_response.dragged()
+                                            || sc_right_response.hovered()
+                                            || sc_right_response.dragged()
+                                        {
+                                            ui.ctx().set_cursor_icon(
+                                                egui::CursorIcon::ResizeHorizontal,
+                                            );
+                                        }
+                                        if sc_left_response.drag_started()
+                                            || sc_right_response.drag_started()
+                                        {
+                                            drag_started_this_frame = true;
+                                        }
+                                        if let Some(pos) = sc_left_response.interact_pointer_pos() {
+                                            let secs = ((pos.x - track_rect.left()) / px_per_sec)
+                                                .max(0.0)
+                                                as f64;
+                                            shape_trim_requests
+                                                .push((sc.id, TrimEdge::Start(secs)));
+                                        }
+                                        if let Some(pos) = sc_right_response.interact_pointer_pos()
+                                        {
+                                            let secs = ((pos.x - track_rect.left()) / px_per_sec)
+                                                .max(0.0)
+                                                as f64;
+                                            shape_trim_requests.push((sc.id, TrimEdge::End(secs)));
                                         }
                                         let block_color = egui::Color32::from_rgba_unmultiplied(
                                             sc.color_rgba[0],
@@ -1273,6 +1561,23 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                             egui::FontId::proportional(11.0),
                                             egui::Color32::WHITE,
                                         );
+                                        if sc_left_response.hovered() || sc_left_response.dragged()
+                                        {
+                                            painter.rect_filled(
+                                                sc_left_edge_rect,
+                                                egui::CornerRadius::ZERO,
+                                                theme::ACCENT,
+                                            );
+                                        }
+                                        if sc_right_response.hovered()
+                                            || sc_right_response.dragged()
+                                        {
+                                            painter.rect_filled(
+                                                sc_right_edge_rect,
+                                                egui::CornerRadius::ZERO,
+                                                theme::ACCENT,
+                                            );
+                                        }
                                         // Selection ring
                                         if app.selected_shape_clip_id == Some(sc.id) {
                                             painter.rect_stroke(
@@ -1488,6 +1793,27 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 (_, TrimEdge::Start(secs)) => app.trim_clip_start(clip_id, secs),
                 (_, TrimEdge::End(secs)) => app.trim_clip_end(clip_id, secs),
             }
+        }
+        // Text/shape overlay trims: no named-trim-mode variants (Ripple/Roll/Slip/Slide are
+        // video/audio-only tools; an overlay clip is always plain-trimmed regardless of the
+        // active `EditorTool`).
+        for (tc_id, edge) in text_trim_requests {
+            match edge {
+                TrimEdge::Start(secs) => app.trim_text_clip_start(tc_id, secs),
+                TrimEdge::End(secs) => app.trim_text_clip_end(tc_id, secs),
+            }
+        }
+        for (sc_id, edge) in shape_trim_requests {
+            match edge {
+                TrimEdge::Start(secs) => app.trim_shape_clip_start(sc_id, secs),
+                TrimEdge::End(secs) => app.trim_shape_clip_end(sc_id, secs),
+            }
+        }
+        for (tc_id, new_start_secs) in text_clip_drags {
+            app.move_text_clip(tc_id, new_start_secs);
+        }
+        for (sc_id, new_start_secs) in shape_clip_drags {
+            app.move_shape_clip(sc_id, new_start_secs);
         }
         for drag in clip_drags {
             // Slip/Slide (ROADMAP.md P2 item 11) act on the clip in place rather than moving

@@ -309,6 +309,19 @@ impl Track {
         self.clips.iter_mut().find(|c| c.id == clip_id)
     }
 
+    /// Mutable access to the text clip with this id, if it's on this track. Mirrors
+    /// [`Track::clip_mut`] for [`TextClip`], since text overlays get the same
+    /// drag-to-move/drag-to-trim treatment as ordinary clips on the timeline strip.
+    pub fn text_clip_mut(&mut self, text_clip_id: u64) -> Option<&mut TextClip> {
+        self.text_clips.iter_mut().find(|t| t.id == text_clip_id)
+    }
+
+    /// Mutable access to the shape clip with this id, if it's on this track. Mirrors
+    /// [`Track::clip_mut`] for [`ShapeClip`].
+    pub fn shape_clip_mut(&mut self, shape_clip_id: u64) -> Option<&mut ShapeClip> {
+        self.shape_clips.iter_mut().find(|s| s.id == shape_clip_id)
+    }
+
     /// Repositions the clip with `clip_id` to `new_start_secs` on this same track — what
     /// dragging a clip's body (not one of its edges) does. Doesn't check for overlap with
     /// neighboring clips (matches this struct's existing no-overlap-checking policy, see
