@@ -279,6 +279,15 @@ impl Track {
             // Unlike the matte above, a reframe seed point is a spatial anchor in the frame,
             // not tied to a time range -- still valid for both halves after a split.
             reframe_seed_point: clip.reframe_seed_point,
+            // Same staleness reasoning as background_removal_enabled/_mask_path above -- the
+            // seed vertices were traced against the pre-split clip's own first frame, which is
+            // no longer either half's own first frame after a split.
+            privacy_blur_enabled: false,
+            privacy_blur_mask_path: String::new(),
+            privacy_blur_sigma: clip.privacy_blur_sigma,
+            privacy_blur_seed_vertices: Vec::new(),
+            privacy_blur_seed_center_x_frac: 0.0,
+            privacy_blur_seed_center_y_frac: 0.0,
         };
         clip.source_out_secs = split_source_secs;
         // First half's own ramp rides from the original start speed to the split boundary's
@@ -302,6 +311,11 @@ impl Track {
         // range changed too.
         clip.background_removal_enabled = false;
         clip.background_removal_mask_path = String::new();
+        clip.privacy_blur_enabled = false;
+        clip.privacy_blur_mask_path = String::new();
+        clip.privacy_blur_seed_vertices = Vec::new();
+        clip.privacy_blur_seed_center_x_frac = 0.0;
+        clip.privacy_blur_seed_center_y_frac = 0.0;
 
         self.clips.insert(index + 1, second_half);
         true
