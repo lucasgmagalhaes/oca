@@ -38,6 +38,7 @@ use crate::theme;
 
 mod auto_reframe;
 mod background_removal;
+mod clip_modals;
 mod clip_props;
 mod collab_bundle;
 mod color;
