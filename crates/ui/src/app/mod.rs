@@ -80,6 +80,7 @@ mod transcribe;
 mod transcript_panel;
 mod transcript_proposals;
 mod ui_loop;
+mod undo_history;
 mod update_check;
 mod voice_cleanup_preview;
 mod watch_folder;
@@ -638,86 +639,6 @@ pub struct App {
 }
 
 impl App {
-    /// Records the active sequence's current state as an undo point — call this immediately
-    /// *before* applying a timeline-mutating edit (move/trim/split/effect-change/track-add/...),
-    /// never after. See `spec/architecture/undo-redo.md` for which call sites need this.
-    pub(crate) fn push_undo_snapshot(&mut self) {
-        let sequence = self.active_project().active_sequence().clone();
-        self.undo_stack.push(sequence);
-    }
-
-    /// Like [`App::push_undo_snapshot`], but coalesces a continuous drag (a slider/`DragValue`
-    /// held down in the properties panel, which re-fires its setter every single frame while
-    /// dragged) into exactly one undo step instead of one per frame. Pushes only the first time
-    /// it's called since [`App::end_undo_drag_tracking_if_pointer_released`] last reset the
-    /// flag — call sites are the shared per-clip-kind mutation dispatch points
-    /// (`with_selected_clip_mut`, `text_clip_properties`'s and `shape_clip_properties`'s
-    /// write-back), not each individual slider, so every effect-property setter gets this for
-    /// free. Mirrors the `drag_started()`-gated push the timeline strip's trim/move drags use,
-    /// but via a stateful flag rather than an `egui::Response` — the property setters are
-    /// called through several layers of `bool`-returning helpers
-    /// (`components::property_section` etc.) that don't thread a `Response` back to the caller.
-    pub(crate) fn push_undo_snapshot_for_drag(&mut self) {
-        if !self.undo_drag_active {
-            self.push_undo_snapshot();
-            self.undo_drag_active = true;
-        }
-    }
-
-    /// Resets [`App::undo_drag_active`] once no pointer button is held — call once per frame
-    /// from the Editor screen. Until the pointer is released, [`App::push_undo_snapshot_for_drag`]
-    /// keeps treating further setter calls as the same in-progress drag.
-    pub(crate) fn end_undo_drag_tracking_if_pointer_released(&mut self, pointer_down: bool) {
-        if !pointer_down {
-            self.undo_drag_active = false;
-        }
-    }
-
-    /// Whether [`App::undo`] would do anything — drives the toolbar undo button's enabled state.
-    pub fn can_undo(&self) -> bool {
-        self.undo_stack.can_undo()
-    }
-
-    /// Whether [`App::redo`] would do anything — drives the toolbar redo button's enabled state.
-    pub fn can_redo(&self) -> bool {
-        self.undo_stack.can_redo()
-    }
-
-    /// Restores the active sequence to its state before the last recorded edit — what `Ctrl+Z`/
-    /// the toolbar's undo button do. A no-op if there's nothing to undo. Clears clip selection
-    /// since the restored timeline may not contain the currently selected clip id, and
-    /// invalidates the preview pipeline so it reopens against the restored timeline.
-    pub fn undo(&mut self) {
-        let current = self.active_project().active_sequence().clone();
-        let Some(previous) = self.undo_stack.undo(current) else {
-            return;
-        };
-        *self.active_project_mut().active_sequence_mut() = previous;
-        self.selected_clip_id = None;
-        self.selected_text_clip_id = None;
-        self.selected_shape_clip_id = None;
-        self.multi_selected_clip_ids.clear();
-        self.preview_state.preview_playing = false;
-        self.preview_state.preview_frozen_since = None;
-        self.invalidate_preview_rendering();
-    }
-
-    /// The inverse of [`App::undo`] — what `Ctrl+Y`/the toolbar's redo button do.
-    pub fn redo(&mut self) {
-        let current = self.active_project().active_sequence().clone();
-        let Some(next) = self.undo_stack.redo(current) else {
-            return;
-        };
-        *self.active_project_mut().active_sequence_mut() = next;
-        self.selected_clip_id = None;
-        self.selected_text_clip_id = None;
-        self.selected_shape_clip_id = None;
-        self.multi_selected_clip_ids.clear();
-        self.preview_state.preview_playing = false;
-        self.preview_state.preview_frozen_since = None;
-        self.invalidate_preview_rendering();
-    }
-
     /// Returns the active tab's persisted export defaults. Keeping this as a copied value
     /// avoids extending a project borrow through egui closures that may mutate the same app.
     pub fn active_sequence_export_settings(&self) -> avcore::SequenceExportSettings {
