@@ -226,6 +226,16 @@ unsafe extern "C" {
         fps_den: c_int,
         out_path: *const c_char,
     ) -> c_int;
+    fn avbridge_apply_privacy_blur(
+        in_path: *const c_char,
+        out_path: *const c_char,
+        matte_path: *const c_char,
+        blur_sigma: f64,
+        canvas_width: c_int,
+        canvas_height: c_int,
+        canvas_fps_num: c_int,
+        canvas_fps_den: c_int,
+    ) -> c_int;
 }
 
 /// Trampoline handed to the C side as `progress_cb`; `user_data` is a `*mut F` for whatever
@@ -1775,6 +1785,90 @@ pub fn apply_shape_overlays(
         3 => Err(TextOverlayError::FilterGraph),
         4 => Err(TextOverlayError::Pipeline),
         other => Err(TextOverlayError::Unknown(other)),
+    }
+}
+
+/// What [`apply_privacy_blur`] failed on.
+#[derive(Debug, thiserror::Error)]
+pub enum PrivacyBlurError {
+    /// A path contains a NUL byte and can't be handed to the C API.
+    #[error("path is not a valid C string: {0}")]
+    InvalidPath(NulError),
+    #[error("failed to open input")]
+    OpenInput,
+    #[error("failed to allocate output context")]
+    AllocOutput,
+    #[error("failed to build the blur/mask filter graph")]
+    FilterGraph,
+    #[error("decode/filter/encode pipeline failed mid-stream")]
+    Pipeline,
+    /// `blur_sigma` was <= 0.0 — there is no meaningful "zero blur" for `gblur`; a caller
+    /// wanting the frame untouched should skip calling this function entirely.
+    #[error("blur_sigma must be positive")]
+    NonPositiveSigma,
+    #[error("unknown privacy-blur status code: {0}")]
+    Unknown(c_int),
+}
+
+/// Opens `in_path` (an already-rendered export, same "post-process pass" contract
+/// [`apply_text_overlays`]/[`apply_shape_overlays`] use), blurs (Gaussian, `blur_sigma`)
+/// everywhere `matte_path`'s own per-frame luma is non-zero, and writes the result to
+/// `out_path`. The caller is responsible for renaming `out_path` over `in_path` when this
+/// returns `Ok(())`, same as the other two overlay functions.
+///
+/// `matte_path` is expected to be exactly [`encode_matte_video`]'s own output shape
+/// (grayscale-as-luma, neutral chroma) — CF-09's arbitrary-object privacy-blur use case builds
+/// one from `avcore::mask_propagation::rasterize_to_matte_frames`, but any matte video of that
+/// shape works. Its own frame rate/duration must already match `canvas_fps_num`/`_den` — this
+/// function does no timing reconciliation between the main video and the matte.
+///
+/// Fails with [`PrivacyBlurError::NonPositiveSigma`] immediately (without touching `out_path`)
+/// if `blur_sigma <= 0.0`.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_privacy_blur(
+    in_path: &Path,
+    out_path: &Path,
+    matte_path: &Path,
+    blur_sigma: f64,
+    canvas_width: u32,
+    canvas_height: u32,
+    fps_num: u32,
+    fps_den: u32,
+) -> Result<(), PrivacyBlurError> {
+    if blur_sigma <= 0.0 {
+        return Err(PrivacyBlurError::NonPositiveSigma);
+    }
+
+    let c_in = CString::new(in_path.to_string_lossy().as_bytes())
+        .map_err(PrivacyBlurError::InvalidPath)?;
+    let c_out = CString::new(out_path.to_string_lossy().as_bytes())
+        .map_err(PrivacyBlurError::InvalidPath)?;
+    let c_matte = CString::new(matte_path.to_string_lossy().as_bytes())
+        .map_err(PrivacyBlurError::InvalidPath)?;
+
+    // SAFETY: c_in/c_out/c_matte are valid NUL-terminated C strings held alive for the full
+    // call. privacy_blur.c frees the decoder/encoder contexts, filter graph, and output I/O on
+    // every exit path.
+    let status = unsafe {
+        avbridge_apply_privacy_blur(
+            c_in.as_ptr(),
+            c_out.as_ptr(),
+            c_matte.as_ptr(),
+            blur_sigma,
+            canvas_width as c_int,
+            canvas_height as c_int,
+            fps_num as c_int,
+            fps_den as c_int,
+        )
+    };
+
+    match status {
+        0 => Ok(()),
+        1 => Err(PrivacyBlurError::OpenInput),
+        2 => Err(PrivacyBlurError::AllocOutput),
+        3 => Err(PrivacyBlurError::FilterGraph),
+        4 => Err(PrivacyBlurError::Pipeline),
+        other => Err(PrivacyBlurError::Unknown(other)),
     }
 }
 

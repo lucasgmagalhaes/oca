@@ -86,6 +86,7 @@ pub fn match_confidence(score: i64, template_width: i32, template_height: i32) -
 /// (`frames` empty) returns an empty result. `frames[0]`'s own confidence is always `1.0` — it's
 /// the template itself, a perfect self-match by construction, matching
 /// [`crate::motion_tracking::TrackResult::scores`]'s own convention.
+#[allow(clippy::too_many_arguments)]
 pub fn propagate_mask_by_translation(
     seed_vertices: &[(f32, f32)],
     initial_center_x_frac: f32,
@@ -146,6 +147,7 @@ pub struct MaskCorrection {
 /// ascending; an out-of-order entry (`frame_index` at or before the current segment's own start)
 /// or an out-of-range one (`frame_index > frames.len()`) is skipped rather than applied, so a
 /// caller building this list incrementally can't corrupt an already-propagated prefix.
+#[allow(clippy::too_many_arguments)]
 pub fn propagate_mask_with_corrections(
     seed_vertices: &[(f32, f32)],
     initial_center_x_frac: f32,
