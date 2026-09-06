@@ -20,7 +20,7 @@ use crate::components;
 use crate::i18n::Text;
 use crate::theme;
 
-pub(super) fn toolbar(app: &mut App, ui: &mut egui::Ui) {
+pub(crate) fn toolbar(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     ui.horizontal(|ui| {
         tool_button_icon_font(
@@ -154,7 +154,7 @@ struct SequenceTabDrag {
     sequence_id: u64,
 }
 
-pub(super) fn sequence_tab_bar(app: &mut App, ui: &mut egui::Ui) {
+pub(crate) fn sequence_tab_bar(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     let active_index = app.active_project().active_sequence;
     let mut select_index = None;
@@ -310,7 +310,7 @@ pub(super) fn sequence_tab_bar(app: &mut App, ui: &mut egui::Ui) {
 
 /// Saves the active project to its remembered [`avcore::Project::file_path`], or prompts
 /// for a destination (and remembers it for next time) if it doesn't have one yet.
-pub(super) fn save_active_project(app: &mut App) {
+pub(crate) fn save_active_project(app: &mut App) {
     let path = match app.active_project().file_path.clone() {
         Some(path) => Some(path),
         None => rfd::FileDialog::new()
@@ -341,7 +341,7 @@ pub(super) fn save_active_project(app: &mut App) {
 /// export ask — the embedded raster-overlay half already happens on every normal export). Doesn't
 /// remember the chosen path the way project saves do — each export is a one-off action, not an
 /// ongoing document with its own save location.
-pub(super) fn export_srt_for_active_sequence(app: &mut App) {
+pub(crate) fn export_srt_for_active_sequence(app: &mut App) {
     let locale = app.locale;
     let sequence = &app.active_project().sequences[app.active_project().active_sequence];
     let srt = avcore::export_srt(&sequence.timeline);

@@ -124,7 +124,7 @@ pub(super) fn prop_row(ui: &mut egui::Ui, label: &str, value: &str) {
 /// mockup shows this meter as a fixed vertical strip along the whole editor body's right edge,
 /// visible regardless of which Inspector/Effects/Audio tab is active or whether a clip is even
 /// selected — not nested inside one tab's content. See `screens::editor::audio_meter_column`.
-pub(super) fn stereo_db_meter(ui: &mut egui::Ui, level: avcore::AudioLevel, meter_height: f32) {
+pub(crate) fn stereo_db_meter(ui: &mut egui::Ui, level: avcore::AudioLevel, meter_height: f32) {
     const BAR_WIDTH: f32 = 16.0;
     const BAR_GAP: f32 = 4.0;
     const LABEL_WIDTH: f32 = 26.0;

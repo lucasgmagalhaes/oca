@@ -35,7 +35,7 @@ pub(super) fn audio_meter_column(app: &App, ui: &mut egui::Ui, height: f32) {
 
 /// Hit-testable width of a [`resizable_divider`]/[`resizable_divider_horizontal`] handle — wider
 /// than the 1px line it draws, since a bare 1px strip is unreliable to grab with a mouse.
-const DIVIDER_HIT_WIDTH: f32 = 6.0;
+pub(crate) const DIVIDER_HIT_WIDTH: f32 = 6.0;
 
 /// A draggable divider between two side-by-side panels (per `request.md`'s Fase 3 "painéis de
 /// UI redimensionáveis" spec). Dragging it left/right adjusts `*width` by the pointer's
