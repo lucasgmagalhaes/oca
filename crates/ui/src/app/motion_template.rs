@@ -140,9 +140,14 @@ impl App {
     /// or the template has no elements, so a failed/empty apply leaves no undo-history noise.
     ///
     /// New clips default to a 3-second duration, the same default [`App::add_text_clip`]/
-    /// [`App::add_shape_clip`] already use for a manually inserted overlay — CF-07 slice 2's own
-    /// "timing" (animation in/out, and by extension a template-declared duration) remains open,
-    /// a real, separate follow-up.
+    /// [`App::add_shape_clip`] already use for a manually inserted overlay — a
+    /// template-declared duration remains open, a real, separate follow-up. CF-07 slice 2's own
+    /// "timing" (animation in/out) is now applied for `Text` elements: a nonzero
+    /// `TemplateTextElement::timing` becomes real `opacity_keyframes` via
+    /// [`avcore::motion_template::timing_opacity_keyframes`], computed against this 3-second
+    /// placed duration. `Shape` elements have no timing to apply yet — `ShapeClip` has no
+    /// opacity-keyframe field of its own (only center/width/height/rotation), a real, separate
+    /// follow-up from adding one.
     pub fn apply_graphic_template(
         &mut self,
         template: &GraphicTemplate,
@@ -177,14 +182,16 @@ impl App {
                     font_size,
                     pos_x,
                     pos_y,
+                    timing,
                     ..
                 } => {
                     let track_index = resolve_or_create_track(timeline, TrackKind::Text, None);
                     let clip_id = next_clip_id(timeline);
+                    let duration_secs = 3.0;
                     timeline.tracks[track_index].text_clips.push(TextClip {
                         id: clip_id,
                         start_secs: playhead_secs,
-                        duration_secs: 3.0,
+                        duration_secs,
                         text,
                         font_size,
                         font_family,
@@ -199,7 +206,10 @@ impl App {
                         words: Vec::new(),
                         highlight_enabled: false,
                         highlight_color_rgba: [255, 220, 0, 255],
-                        opacity_keyframes: vec![],
+                        opacity_keyframes: motion_template::timing_opacity_keyframes(
+                            timing,
+                            duration_secs,
+                        ),
                         pos_x_keyframes: vec![],
                         pos_y_keyframes: vec![],
                         scale_keyframes: vec![],
