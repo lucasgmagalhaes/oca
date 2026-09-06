@@ -288,6 +288,95 @@ the model-resource preference system.
 - Model input resolution, sample count, memory, and execution time are bounded.
 - Manual correction always overrides model output at the corrected keyframe.
 
+**UI integration design (2026-09-06, design-only — no code written against this yet).** Slices 2
+(`avcore::mask_propagation`), 3 (matte rasterization), and 4 (`avbridge_apply_privacy_blur`) all
+shipped as pure/`core`/`avbridge` backend pieces with no `ui` wiring. This section designs the
+missing piece: a properties-panel affordance that actually drives them, following this repo's
+"design before code" rule (`.claude/CLAUDE.md`) before any `ui` code is written.
+
+*User workflow.* On a selected video clip's properties panel, a new "Blur de privacidade" section
+(same shape as the existing "Remoção de fundo" background-removal section in
+`background_removal.rs`/its properties-panel counterpart):
+1. A checkbox toggles `ClipInstance::privacy_blur_enabled`.
+2. A "🎯 Selecionar na prévia" button reuses `MotionTrackRegionState`'s existing click-and-drag
+   rectangle-picker interaction verbatim (`App::start_picking_motion_track_region`'s pattern, the
+   preview-overlay rectangle in `screens/editor/mod.rs`) rather than inventing a new lasso-drawing
+   gesture — a v1 scope cut, not a limitation of the underlying `mask_propagation` API (it already
+   accepts an arbitrary polygon; a rectangle's 4 corners is just the seed vertex list this UI step
+   produces). Writes `ClipInstance::privacy_blur_seed_vertices: Vec<(f32, f32)>` (4 corners) and
+   the picked rectangle's own center as `privacy_blur_seed_center_x/y_frac`.
+3. A slider sets `ClipInstance::privacy_blur_sigma` (blur intensity, default e.g. `15.0`, same
+   `f32` `gblur` sigma `privacy_blur.c` already takes).
+4. An "Aplicar blur" button spawns a background thread — **structurally identical to
+   `App::spawn_generate_matte_for_selected_clip`** (`background_removal.rs`): opens
+   `avcore::FrameSampler` on the clip's own source, samples frames across
+   `[source_in_secs, source_out_secs)` (motion-tracking's existing `4.0` samples/sec cadence is
+   the right one to reuse here, not background-removal's `2.0` — block-matching is cheap per
+   frame, unlike a fresh ONNX session per sample), converts each to `GrayFrame`
+   (`avcore::rgba_to_gray`), calls `mask_propagation::propagate_mask_by_translation` (no manual
+   corrections in this first cut — `propagate_mask_with_corrections`'s review/correction UI is a
+   real, separate follow-up, same "ship the plain case first" scope cut `dynamic_reframe`'s own
+   seed-point feature took), rasterizes via `rasterize_to_matte_frames`, and persists via the
+   already-existing `avcore::encode_matte_video` into the same per-project mask cache directory
+   background-removal already uses (`avcore::background_removal::mask_cache_dir_for_project`,
+   `.<project>_mattes/clip_{id}_privacy_blur_matte.mp4` — a distinct filename suffix, same
+   directory, no new cache-dir concept needed). Writes the result to a new
+   `ClipInstance::privacy_blur_mask_path: String` field on completion, via the same
+   `MatteGenerationEvent`-style channel/`pump_*` background-job pattern.
+
+*New `ClipInstance` fields* (all `#[serde(default)]`, mirroring `background_removal_enabled`/
+`_mask_path`'s exact precedent): `privacy_blur_enabled: bool`, `privacy_blur_mask_path: String`,
+`privacy_blur_sigma: f32`, `privacy_blur_seed_vertices: Vec<(f32, f32)>`,
+`privacy_blur_seed_center_x_frac: f32`, `privacy_blur_seed_center_y_frac: f32`. Deliberately
+excluded from `ClipFormatting` (paste-formatting), same reasoning `background_removal_mask_path`'s
+own doc comment already gives: the matte is generated for *this exact clip instance's* trim range,
+so copying it onto another block would point that block at the wrong clip's matte.
+
+*The one real open design question this section resolves rather than leaving implicit*: the
+stored per-clip matte is in **clip-local time** (frame 0 = the clip's own `source_in_secs`), the
+same convention background-removal's matte already uses — but `avbridge_apply_privacy_blur` has
+no per-call time window the way `avbridge_apply_text_overlays`/`_shape_overlays` do
+(`start_secs`/`duration_secs` per segment, gated by `enable='between(t,start,end)'` inside the
+filter graph). Feeding the clip-local matte directly into a whole-canvas-duration export pass
+would blur from `t=0` of the *export*, not from the clip's own on-timeline `start_secs` — wrong
+whenever the clip isn't the very first thing in the sequence.
+
+Two ways to close this gap were considered:
+1. **Extend `avbridge_apply_privacy_blur` to accept an array of windowed segments**, mirroring
+   `TextSegment`/`ShapeSegment`'s own `start_secs`/`duration_secs` + `enable='between(...)'`
+   shape. Rejected for now: this needs confirming that `maskedmerge` actually honors FFmpeg's
+   timeline `enable` option in this pinned build (`AVFILTER_FLAG_SUPPORT_TIMELINE`) — genuinely
+   uncertain without a real FFmpeg build to check against (this sandbox can't), and getting it
+   wrong silently blurs the whole export instead of just the intended window.
+2. **Build a fresh, canvas-duration-long matte at export time** — black frames for
+   `[0, clip.start_secs)`, the stored clip-local matte's own frames for
+   `[clip.start_secs, clip.start_secs + clip.duration_secs())`, black frames for the remainder —
+   via a new pure `avcore::privacy_blur` function (e.g. `pad_matte_frames_to_canvas_duration`)
+   re-encoded through the already-verified `encode_matte_video`, then one `apply_privacy_blur`
+   call per privacy-blur-enabled clip, chained exactly like `render.rs`'s existing
+   `apply_text_overlay_pass`/`apply_shape_overlay_pass` (temp path, rename over `output`,
+   log-and-skip on error, never fail the whole export over a post-processing issue) — a new
+   `apply_privacy_blur_pass` sitting right after `apply_shape_overlay_pass` in
+   `render_export_job`. **This is the recommended approach**: it needs no new FFmpeg filter
+   capability at all (only bytes this codebase already knows how to produce and feed to a
+   function already shipped and syntax-checked), trading a small amount of extra frame-padding
+   work in Rust for avoiding an unverifiable-in-this-sandbox assumption about `maskedmerge`'s
+   timeline-editing support. Multiple privacy-blur clips at different timeline positions each get
+   their own sequential pass, same as if there were several independent overlay clips today.
+
+*Preview-side live update* is out of scope for this first cut (same "export-only for now" stance
+`stabilization_intensity`/LUTs already take per `ClipInstance`'s own doc comments, for a different
+underlying reason here — a live GStreamer `maskedmerge`+`movie` branch per privacy-blur clip is a
+materially bigger lift than this design pass, not a small follow-up).
+
+*Validation plan once implemented*: `pad_matte_frames_to_canvas_duration` and the seed-vertex ->
+matte pipeline are pure/deterministic and unit-testable the same scratch-crate way `mask_
+propagation`'s own tests were verified this session; the background-thread wiring gets `ui`
+unit tests matching `background_removal.rs`'s own test shape (mock-free, since the actual
+tracking/rasterization functions are already independently tested); the new properties-panel
+section needs the same "compiles and launches, not click-tested" honesty this session's other UI
+work already carries when a running build isn't available to verify against.
+
 ### CF-10: Direct publishing and review collaboration
 
 **Outcome:** publish approved exports with metadata and, later, collect timestamped review
