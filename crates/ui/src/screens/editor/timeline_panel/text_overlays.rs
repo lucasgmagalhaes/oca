@@ -73,20 +73,20 @@ pub(super) fn draw_text_overlays(
         );
         tc_response.context_menu(|ui| {
             if ui.button(Text::ContextMenuDelete.tr(locale)).clicked() {
-                delete_text_clip_requests.push(tc.id);
+                requests.deletes.push(tc.id);
                 ui.close();
             }
         });
         if tc_response.clicked() {
-            clicked_text_clip_id = Some(tc.id);
+            *requests.clicked = Some(tc.id);
         }
         if tc_response.drag_started() {
-            drag_started_this_frame = true;
+            *requests.drag_started = true;
         }
         if tc_response.dragged() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             let delta_secs = (tc_response.drag_delta().x / px_per_sec) as f64;
-            text_clip_drags.push((tc.id, tc.start_secs + delta_secs));
+            requests.drags.push((tc.id, tc.start_secs + delta_secs));
         }
         let tc_edge_sense = if track.locked {
             egui::Sense::hover()
@@ -103,15 +103,15 @@ pub(super) fn draw_text_overlays(
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
         }
         if tc_left_response.drag_started() || tc_right_response.drag_started() {
-            drag_started_this_frame = true;
+            *requests.drag_started = true;
         }
         if let Some(pos) = tc_left_response.interact_pointer_pos() {
             let secs = ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
-            text_trim_requests.push((tc.id, TrimEdge::Start(secs)));
+            requests.trims.push((tc.id, TrimEdge::Start(secs)));
         }
         if let Some(pos) = tc_right_response.interact_pointer_pos() {
             let secs = ((pos.x - track_rect.left()) / px_per_sec).max(0.0) as f64;
-            text_trim_requests.push((tc.id, TrimEdge::End(secs)));
+            requests.trims.push((tc.id, TrimEdge::End(secs)));
         }
         let block_color = egui::Color32::from_rgba_unmultiplied(
             tc.color_rgba[0],
