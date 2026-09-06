@@ -15,6 +15,7 @@
 
 mod draw;
 mod header;
+mod interactions;
 mod ruler;
 mod snap;
 mod track_header;
@@ -77,12 +78,13 @@ use draw::{
     thumbnail_requests_settled, ThumbnailDrawWork,
 };
 use header::timeline_header;
+use interactions::apply_clip_interactions;
 use ruler::{timeline_ruler, RulerLayout};
 use snap::{snap_move_start, snap_to_nearest, ClipDrag, SnapTargets};
 use track_header::{audio_role_icon, audio_role_label};
 
 /// Which edge of a timeline clip a drag targets — see the trim handling in `timeline_panel`.
-enum TrimEdge {
+pub(super) enum TrimEdge {
     Start(f64),
     End(f64),
 }
@@ -1622,97 +1624,16 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         if drag_started_this_frame {
             app.push_undo_snapshot();
         }
-        // Ripple/Roll (ROADMAP.md P2 item 11) change what an edge drag commits as; every other
-        // tool (including Slip/Slide, which act on the clip *body* instead — see the drag loop
-        // below) falls back to the same plain trim edge-dragging has always done.
-        for (clip_id, edge) in trim_requests {
-            match (app.tool, edge) {
-                (EditorTool::Ripple, TrimEdge::Start(secs)) => {
-                    app.ripple_trim_clip_start(clip_id, secs)
-                }
-                (EditorTool::Ripple, TrimEdge::End(secs)) => {
-                    app.ripple_trim_clip_end(clip_id, secs)
-                }
-                (EditorTool::Roll, TrimEdge::Start(secs)) => {
-                    app.roll_edit_from_start_edge(clip_id, secs)
-                }
-                (EditorTool::Roll, TrimEdge::End(secs)) => app.roll_edit_clip(clip_id, secs),
-                (_, TrimEdge::Start(secs)) => app.trim_clip_start(clip_id, secs),
-                (_, TrimEdge::End(secs)) => app.trim_clip_end(clip_id, secs),
-            }
-        }
-        // Text/shape overlay trims: no named-trim-mode variants (Ripple/Roll/Slip/Slide are
-        // video/audio-only tools; an overlay clip is always plain-trimmed regardless of the
-        // active `EditorTool`).
-        for (tc_id, edge) in text_trim_requests {
-            match edge {
-                TrimEdge::Start(secs) => app.trim_text_clip_start(tc_id, secs),
-                TrimEdge::End(secs) => app.trim_text_clip_end(tc_id, secs),
-            }
-        }
-        for (sc_id, edge) in shape_trim_requests {
-            match edge {
-                TrimEdge::Start(secs) => app.trim_shape_clip_start(sc_id, secs),
-                TrimEdge::End(secs) => app.trim_shape_clip_end(sc_id, secs),
-            }
-        }
-        for (tc_id, new_start_secs) in text_clip_drags {
-            app.move_text_clip(tc_id, new_start_secs);
-        }
-        for (sc_id, new_start_secs) in shape_clip_drags {
-            app.move_shape_clip(sc_id, new_start_secs);
-        }
-        for drag in clip_drags {
-            // Slip/Slide (ROADMAP.md P2 item 11) act on the clip in place rather than moving
-            // it across tracks, so they skip the cross-track drop-target resolution below
-            // entirely — dragging a clip's body while either is active always edits it on its
-            // own track.
-            if app.tool == EditorTool::Slip {
-                let old_start_secs = app
-                    .active_project()
-                    .timeline()
-                    .tracks
-                    .iter()
-                    .flat_map(|t| &t.clips)
-                    .find(|c| c.id == drag.clip_id)
-                    .map(|c| c.start_secs);
-                if let Some(old_start_secs) = old_start_secs {
-                    app.slip_clip(drag.clip_id, drag.new_start_secs - old_start_secs);
-                }
-                continue;
-            }
-            if app.tool == EditorTool::Slide {
-                app.slide_clip(drag.clip_id, drag.new_start_secs);
-                continue;
-            }
-            // Whichever track row's Y-range the pointer is currently over, if its kind
-            // matches the dragged clip's own track — a video clip can't be dropped onto an
-            // audio row or vice versa. Falls back to a same-track reposition if the pointer
-            // isn't over any matching row (including its own, the common case).
-            let target_track_id = track_rows
-                .iter()
-                .find(|(_, kind, rect)| {
-                    *kind == drag.kind && rect.y_range().contains(drag.pointer_y)
-                })
-                .map(|(id, _, _)| *id);
-            // A composite block's members must all stay on the same track (see
-            // ClipInstance::composite_id's doc comment), so a cross-track drop is refused for
-            // one — it falls back to the same-track group move below instead.
-            let is_composite = app
-                .active_project()
-                .timeline()
-                .tracks
-                .iter()
-                .flat_map(|t| &t.clips)
-                .find(|c| c.id == drag.clip_id)
-                .is_some_and(|c| c.composite_id.is_some());
-            match target_track_id {
-                Some(track_id) if track_id != drag.source_track_id && !is_composite => {
-                    app.move_clip_to_track(drag.clip_id, track_id, drag.new_start_secs);
-                }
-                _ => app.move_clip_with_group(drag.clip_id, drag.new_start_secs),
-            }
-        }
+        apply_clip_interactions(
+            app,
+            trim_requests,
+            text_trim_requests,
+            shape_trim_requests,
+            text_clip_drags,
+            shape_clip_drags,
+            clip_drags,
+            &track_rows,
+        );
         app.touch_thumbnails(&thumbnail_touches);
         // Skipped requests aren't lost — the same tile re-offers its (by-then possibly
         // different) key next frame once `draw_filmstrip` runs again, same as any other
