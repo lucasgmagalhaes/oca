@@ -26,7 +26,7 @@ mod visual_effects;
 mod voice_cleanup_preview;
 
 pub(super) use chrome::stereo_db_meter;
-use chrome::{prop_row, properties_tab_bar};
+use chrome::{effects_panel_browser, prop_row, properties_tab_bar};
 use crop::crop_properties;
 use effects::effects_properties;
 
