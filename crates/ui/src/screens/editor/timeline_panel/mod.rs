@@ -16,6 +16,7 @@
 mod asset_drop;
 mod clip_commands;
 mod clip_context_menu;
+mod clip_requests;
 mod draw;
 mod header;
 mod interactions;
@@ -44,6 +45,7 @@ use layout::{
 use asset_drop::apply_pending_asset_drop;
 use clip_commands::{apply_clip_commands, ClipCommands};
 use clip_context_menu::{show_clip_context_menu, ClipContextMenuRequests};
+use clip_requests::ClipRequests;
 use draw::{
     color_filter_tint, draw_filmstrip, draw_frozen_poster, draw_keyframe_markers, draw_playhead,
     draw_transition_wedge, draw_trim_info, draw_waveform, shape_kind_glyph,
@@ -167,37 +169,9 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let has_clipboard_clip = app.has_clipboard_clip();
         let has_formatting_clipboard = app.has_formatting_clipboard();
         let multi_selected_count = app.multi_selected_clip_ids.len();
-        let mut clicked_clip_id = None;
-        let mut clicked_text_clip_id: Option<u64> = None;
-        let mut clicked_shape_clip_id: Option<u64> = None;
-        let mut delete_text_clip_requests: Vec<u64> = Vec::new();
-        let mut delete_shape_clip_requests: Vec<u64> = Vec::new();
-        let mut delete_requests: Vec<u64> = Vec::new();
-        let mut copy_requests: Vec<u64> = Vec::new();
-        let mut cut_requests: Vec<u64> = Vec::new();
-        let mut copy_formatting_requests: Vec<u64> = Vec::new();
-        let mut paste_formatting_requests: Vec<u64> = Vec::new();
-        let mut multi_select_requests: Vec<u64> = Vec::new();
-        let mut clip_color_label_requests: Vec<(u64, Option<[u8; 3]>)> = Vec::new();
-        let mut detach_audio_requests: Vec<u64> = Vec::new();
-        let mut speed_ramp_requests: Vec<(u64, f32, f32)> = Vec::new();
-        let mut speed_ramp_custom_request: Option<u64> = None;
-        let mut create_compound_clip_requested = false;
-        let mut open_nested_sequence_request: Option<u64> = None;
-        let mut paste_requested = false;
-        let mut merge_into_composite_requested = false;
-        let mut split_at_playhead_requested = false;
-        let mut trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
-        let mut clip_drags: Vec<ClipDrag> = Vec::new();
-        // Text/shape overlay clips get the same drag-to-move/drag-to-trim treatment as video/
-        // audio clips (previously click-only — no way to reposition or resize a text/shape
-        // block's duration by dragging its edges at all). Same-track only: unlike video/audio
-        // clips, a text/shape overlay never moves across tracks by drag (no cross-track drop
-        // target resolution exists for either kind).
-        let mut text_clip_drags: Vec<(u64, f64)> = Vec::new();
-        let mut shape_clip_drags: Vec<(u64, f64)> = Vec::new();
-        let mut text_trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
-        let mut shape_trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
+        // Clip and overlay widgets cannot mutate `app` while the timeline is borrowed for
+        // painting, so collect their intent and apply it once this frame's iteration ends.
+        let mut clip_requests = ClipRequests::default();
         let mut track_requests = TrackRequests::default();
         // Set the first time a trim/move drag starts this frame — `app` is immutably borrowed
         // for the whole track/clip iteration below, so the undo snapshot itself is pushed once,
@@ -347,23 +321,24 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         has_formatting_clipboard,
                                         multi_selected_count,
                                         ClipContextMenuRequests {
-                                            clicked: &mut clicked_clip_id,
-                                            split_at_playhead: &mut split_at_playhead_requested,
-                                            copies: &mut copy_requests,
-                                            cuts: &mut cut_requests,
-                                            paste: &mut paste_requested,
-                                            merge_into_composite:
-                                                &mut merge_into_composite_requested,
-                                            detach_audio: &mut detach_audio_requests,
-                                            create_compound_clip:
-                                                &mut create_compound_clip_requested,
-                                            open_nested_sequence: &mut open_nested_sequence_request,
-                                            speed_ramps: &mut speed_ramp_requests,
-                                            custom_speed_ramp: &mut speed_ramp_custom_request,
-                                            copy_formatting: &mut copy_formatting_requests,
-                                            paste_formatting: &mut paste_formatting_requests,
-                                            color_labels: &mut clip_color_label_requests,
-                                            deletes: &mut delete_requests,
+                                            clicked: &mut clip_requests.clicked_clip_id,
+                                            split_at_playhead: &mut clip_requests.split_at_playhead,
+                                            copies: &mut clip_requests.copies,
+                                            cuts: &mut clip_requests.cuts,
+                                            paste: &mut clip_requests.paste,
+                                            merge_into_composite: &mut clip_requests
+                                                .merge_into_composite,
+                                            detach_audio: &mut clip_requests.detach_audio,
+                                            create_compound_clip: &mut clip_requests
+                                                .create_compound,
+                                            open_nested_sequence: &mut clip_requests
+                                                .open_nested_sequence,
+                                            speed_ramps: &mut clip_requests.speed_ramps,
+                                            custom_speed_ramp: &mut clip_requests.custom_speed_ramp,
+                                            copy_formatting: &mut clip_requests.copy_formatting,
+                                            paste_formatting: &mut clip_requests.paste_formatting,
+                                            color_labels: &mut clip_requests.color_labels,
+                                            deletes: &mut clip_requests.deletes,
                                         },
                                     );
                                     let edge_sense = if track.locked {
@@ -404,14 +379,14 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                                     .push((track.id, at_secs));
                                             }
                                         } else if ui.input(|i| i.modifiers.ctrl) {
-                                            multi_select_requests.push(clip.id);
+                                            clip_requests.multi_select.push(clip.id);
                                         } else {
-                                            clicked_clip_id = Some(clip.id);
+                                            clip_requests.clicked_clip_id = Some(clip.id);
                                         }
                                     }
                                     if body_response.double_clicked() {
                                         if let Some(nested_id) = clip.nested_sequence_id {
-                                            open_nested_sequence_request = Some(nested_id);
+                                            clip_requests.open_nested_sequence = Some(nested_id);
                                         }
                                     }
                                     if body_response.drag_started() {
@@ -436,7 +411,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                             } else {
                                                 candidate_start
                                             };
-                                            clip_drags.push(ClipDrag {
+                                            clip_requests.drags.push(ClipDrag {
                                                 clip_id: clip.id,
                                                 source_track_id: track.id,
                                                 kind: track.kind,
@@ -457,7 +432,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         } else {
                                             secs
                                         };
-                                        trim_requests.push((clip.id, TrimEdge::Start(secs)));
+                                        clip_requests.trims.push((clip.id, TrimEdge::Start(secs)));
                                     }
                                     if let Some(pos) = right_response.interact_pointer_pos() {
                                         let secs = ((pos.x - track_rect.left()) / px_per_sec)
@@ -471,7 +446,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         } else {
                                             secs
                                         };
-                                        trim_requests.push((clip.id, TrimEdge::End(secs)));
+                                        clip_requests.trims.push((clip.id, TrimEdge::End(secs)));
                                     }
 
                                     painter.rect_filled(
@@ -804,10 +779,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     hand_active,
                                     app.selected_text_clip_id,
                                     TextOverlayRequests {
-                                        clicked: &mut clicked_text_clip_id,
-                                        deletes: &mut delete_text_clip_requests,
-                                        drags: &mut text_clip_drags,
-                                        trims: &mut text_trim_requests,
+                                        clicked: &mut clip_requests.clicked_text_clip_id,
+                                        deletes: &mut clip_requests.delete_text_clips,
+                                        drags: &mut clip_requests.text_drags,
+                                        trims: &mut clip_requests.text_trims,
                                         drag_started: &mut drag_started_this_frame,
                                     },
                                 );
@@ -821,10 +796,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     hand_active,
                                     app.selected_shape_clip_id,
                                     ShapeOverlayRequests {
-                                        clicked: &mut clicked_shape_clip_id,
-                                        deletes: &mut delete_shape_clip_requests,
-                                        drags: &mut shape_clip_drags,
-                                        trims: &mut shape_trim_requests,
+                                        clicked: &mut clip_requests.clicked_shape_clip_id,
+                                        deletes: &mut clip_requests.delete_shape_clips,
+                                        drags: &mut clip_requests.shape_drags,
+                                        trims: &mut clip_requests.shape_trims,
                                         drag_started: &mut drag_started_this_frame,
                                     },
                                 );
@@ -878,20 +853,20 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         apply_selection_commands(
             app,
             SelectionCommands {
-                clicked_clip_id,
-                clicked_text_clip_id,
-                clicked_shape_clip_id,
-                delete_text_clip_requests,
-                delete_shape_clip_requests,
-                multi_select_requests,
-                copy_requests,
-                cut_requests,
-                copy_formatting_requests,
-                paste_formatting_requests,
-                paste_requested,
-                merge_into_composite_requested,
-                create_compound_clip_requested,
-                open_nested_sequence_request,
+                clicked_clip_id: clip_requests.clicked_clip_id,
+                clicked_text_clip_id: clip_requests.clicked_text_clip_id,
+                clicked_shape_clip_id: clip_requests.clicked_shape_clip_id,
+                delete_text_clip_requests: clip_requests.delete_text_clips,
+                delete_shape_clip_requests: clip_requests.delete_shape_clips,
+                multi_select_requests: clip_requests.multi_select,
+                copy_requests: clip_requests.copies,
+                cut_requests: clip_requests.cuts,
+                copy_formatting_requests: clip_requests.copy_formatting,
+                paste_formatting_requests: clip_requests.paste_formatting,
+                paste_requested: clip_requests.paste,
+                merge_into_composite_requested: clip_requests.merge_into_composite,
+                create_compound_clip_requested: clip_requests.create_compound,
+                open_nested_sequence_request: clip_requests.open_nested_sequence,
             },
         );
         apply_track_commands(
@@ -913,12 +888,12 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         apply_clip_commands(
             app,
             ClipCommands {
-                deletes: delete_requests,
-                color_labels: clip_color_label_requests,
-                detach_audio: detach_audio_requests,
-                speed_ramps: speed_ramp_requests,
-                custom_speed_ramp: speed_ramp_custom_request,
-                split_at_playhead: split_at_playhead_requested,
+                deletes: clip_requests.deletes,
+                color_labels: clip_requests.color_labels,
+                detach_audio: clip_requests.detach_audio,
+                speed_ramps: clip_requests.speed_ramps,
+                custom_speed_ramp: clip_requests.custom_speed_ramp,
+                split_at_playhead: clip_requests.split_at_playhead,
             },
         );
         if drag_started_this_frame {
@@ -926,12 +901,12 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         }
         apply_clip_interactions(
             app,
-            trim_requests,
-            text_trim_requests,
-            shape_trim_requests,
-            text_clip_drags,
-            shape_clip_drags,
-            clip_drags,
+            clip_requests.trims,
+            clip_requests.text_trims,
+            clip_requests.shape_trims,
+            clip_requests.text_drags,
+            clip_requests.shape_drags,
+            clip_requests.drags,
             &track_requests.rows,
         );
         apply_thumbnail_work(
