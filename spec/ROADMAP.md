@@ -2630,10 +2630,7 @@ an item earlier:
   mask polygon here is already in absolute frame-fraction coordinates) to rasterize each frame's
   translated polygon into a `255`-inside/`0`-outside grayscale-as-luma buffer. A caller can now
   pipe `propagate_mask_by_translation`/`propagate_mask_with_corrections`'s output straight into
-  the existing `encode_matte_video` with no reshaping and no new storage format. Slice 4 (privacy
-  blur as the first end-to-end effect) remains open — it needs either a real segmentation source
-  (slice 1, network-blocked) or a genuinely new masked-blur filter-graph feature, which needs its
-  own design pass before touching code, not a small follow-up to this one.
+  the existing `encode_matte_video` with no reshaping and no new storage format.
 
   Verified for real: 5 new tests added to the same scratch crate (33/33 total for this module) —
   inside/outside/corner correctness against a known square, a degenerate (<3-vertex) polygon
@@ -2641,6 +2638,47 @@ an item earlier:
   the per-mask batch shape. `cargo check --workspace --all-targets`, `cargo clippy -p core --lib
   --tests`, and `cargo fmt --all -- --check` all stayed clean via the same shim, reverted before
   commit.
+
+  **Slice 4 (privacy blur as the first end-to-end effect) shipped, with an explicit unverified-
+  at-runtime caveat.** Added `avbridge_apply_privacy_blur` (`csrc/privacy_blur.c`) — structurally
+  identical to `avbridge_apply_text_overlays`/`_shape_overlays`'s existing "post-process pass over
+  an already-rendered export" shape, but with two sources feeding one node instead of chaining N
+  overlay segments onto one: the main video via the usual `buffer` source, and the matte video
+  (from #136's `rasterize_to_matte_frames` + `encode_matte_video`) via FFmpeg's own `movie=`
+  filter source — no second manual decode loop needed, the same trick `avbridge_apply_text_
+  overlays` already uses to pull in its PNG overlays. The graph itself: `split=2` the main video,
+  `gblur=sigma=<sigma>` one copy, then `maskedmerge` it back over the untouched copy using the
+  matte's own luma as the blend weight — blurred wherever the matte is non-zero, sharp elsewhere.
+  `format=yuv420p` on both the main branch and the matte source keeps every `maskedmerge` input in
+  the same pixel format (its own documented requirement); `scale=W:H` on the matte guards against a
+  matte built at a different resolution than the main video; `loop=0` repeats the matte's last
+  frame if a caller supplies fewer matte frames than the main video's own frame count (a coarser
+  sampling cadence, not necessarily every frame) rather than the `movie` source hitting EOF and
+  stalling the graph early. Wired through the full stack: `avbridge::apply_privacy_blur` (Rust FFI
+  wrapper, `PrivacyBlurError`) and `avcore::privacy_blur::apply_privacy_blur` (thin wrapper, same
+  `MatteEncodeError`-style pattern `background_removal` already uses) — no `ui` wiring yet (no
+  design pass done for the properties-panel/toolbar affordance that would trigger this on export;
+  out of scope for this pass, which only had to prove the pipeline itself is reachable end to
+  end from a propagated mask).
+
+  **Explicit, deliberate gap: real runtime behavior of this filter graph is unverified.** This
+  sandbox's packaged FFmpeg is too old to build the rest of `avbridge` at all (`CLAUDE.md`'s own
+  documented gap), so there is no way here to actually run this function against a real video and
+  confirm the blur/mask compositing produces a correct frame — verification stopped at `gcc
+  -fsyntax-only` (per-file, against the real installed FFmpeg headers — confirms the C parses and
+  every type/function reference resolves, catching real syntax/type errors) plus `cargo check
+  --workspace --all-targets`/`cargo clippy --workspace --all-targets` (via the documented temporary
+  `filters.c`/`text_overlay.c` shim, reverted before commit — confirms the Rust FFI declaration's
+  signature matches the C function and the whole crate graph still type-checks) and `cargo fmt
+  --all -- --check`. Treat the filter-graph string itself as code-reviewed, not execution-verified
+  — the user explicitly chose this verification level (over a design-only note, or skipping the
+  item) knowing this constraint. **Drive-by fix found while re-running clippy for this change**:
+  #135's `propagate_mask_by_translation`/`propagate_mask_with_corrections` (8 and 9 parameters)
+  were both past clippy's `too_many_arguments` default threshold and had no `#[allow(...)]` —
+  apparently missed in that PR's own verification pass (a `cargo clippy` invocation difference,
+  not a regression introduced since); fixed alongside this change with the same `#[allow(clippy::
+  too_many_arguments)]` this codebase already uses on comparably-shaped functions elsewhere
+  (`keyframe.rs`, `preview.rs`, `text_layout.rs`, `overlay_render.rs`, `render.rs`).
 - `[ ]` **CF-10: direct publishing.** Add a secure YouTube upload flow; keep OAuth credentials
   in the OS vault and separate from offline bundles.
 
