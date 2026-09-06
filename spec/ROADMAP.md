@@ -834,9 +834,9 @@ not by default priority.
       own "value-equality, not a version counter" pattern. `ExportPreviewCache` itself now also
       compares every *other* sequence (not just the active one), since a compound clip's
       rendered content depends on a sequence `tracks`/`media_library` alone can't see edits to.
-    - **UI**: "📦 Criar clipe composto" (timeline clip context menu, Video-track clips only,
-      single-clip only — multi-selection/composite-group compounding isn't supported yet, a
-      real scope cut) moves the selected clip into a fresh `Sequence`'s own new V1 track
+    - **UI**: "📦 Criar clipe composto" (timeline clip context menu, Video-track clips only —
+      see the later follow-up below for same-track multi-selection support) moves the selected
+      clip into a fresh `Sequence`'s own new V1 track
       (rebased to start at `0.0`) and replaces it in place with a plain nested-sequence clip.
       Double-click (or "📦 Abrir clipe composto") switches the Editor's active tab into the
       nested sequence — the common "enter the compound clip" affordance every NLE with this
@@ -926,6 +926,28 @@ not by default priority.
       cache-reuse test confirming an unchanged nested timeline returns the same cached path
       rather than re-rendering. All run for real in this session (`cargo test -p core`, this
       machine's FFmpeg/GStreamer toolchain actually links here).
+    - **Follow-up: same-track multi-selection compounding now ships**, closing this item's own
+      "multi-selection/composite-group compounding isn't supported yet" scope cut for the
+      multi-selection half. `App::create_compound_clip_from_selected_clip` now checks the
+      current ctrl-click multi-selection (`App::multi_selected_clip_ids`) first: if it has more
+      than one member, includes the right-clicked clip, and every member sits on that clip's own
+      track with no `nested_sequence_id` already — the unambiguous case, one nested track, no
+      z-order/flattening decision to make — the whole selection compounds together instead of
+      just the one clip. Each member rebases relative to the *earliest* member's own
+      `start_secs` (not `0.0` individually), so relative gaps between members survive inside the
+      nested timeline; the single wrapper clip spans from the earliest member's start through
+      the latest member's own end. A multi-selection spanning more than one track still falls
+      back to compounding just the single right-clicked clip (silently, not an error) — a real
+      composite-group (`composite_id`) compound routinely pairs a video clip with an audio one on
+      a different track, which needs the same multi-track nested handling this pass deliberately
+      doesn't attempt; left as a further scope cut, not an oversight. 3 new `app_test.rs` cases
+      (single-clip regression, same-track multi-selection collapsing into one wrapper with the
+      gap preserved, cross-track fallback touching only the right-clicked clip's own track).
+      `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets` (via
+      the documented temporary `filters.c`/`text_overlay.c` shim, discarded before commit) and
+      `cargo fmt --all -- --check` all stayed clean — this sandbox's `ui` test binary still can't
+      *link* (the pre-existing ONNX Runtime gap), so the new tests are type-checked, not run,
+      same caveat every other `App`-level test this session has hit.
 
 ## P5 — Competitive Product Growth
 

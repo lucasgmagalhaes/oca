@@ -273,9 +273,23 @@ impl App {
     /// Moves the selected clip's own data (trim range, every effect/keyframe) into a fresh
     /// `Sequence`'s own new V1 track, rebased to start at `0.0`, then replaces it in place on
     /// the original track with a plain nested-sequence clip spanning the same
-    /// `start_secs`/duration. Only a single clip — multi-selection/composite-group compounding
-    /// isn't supported yet, a real scope cut, not an oversight. Only `Video`-track clips (same
-    /// scope cut). A no-op if nothing is selected or the selection isn't a `Video`-track clip.
+    /// `start_secs`/duration. Only `Video`-track clips. A no-op if nothing is selected or the
+    /// selection isn't a `Video`-track clip.
+    ///
+    /// **Multi-clip compounding**: if the current ctrl-click multi-selection
+    /// ([`App::multi_selected_clip_ids`]) has more than one member, includes the selected clip,
+    /// and every member sits on that same track with no `nested_sequence_id` of its own already
+    /// — the unambiguous case, one nested track, no z-order/flattening decision to make — the
+    /// whole selection is compounded together instead of just the one clip: each member is
+    /// rebased relative to the *earliest* member's own `start_secs` (not `0.0` individually) so
+    /// their relative spacing/gaps survive inside the nested sequence, and the single resulting
+    /// wrapper clip spans from the earliest member's start to the latest member's own end.
+    /// Falls back to the single-clip behavior above (silently, not an error) when the
+    /// multi-selection spans more than one track or already contains a compound clip — this
+    /// method never guesses across tracks. A composite-group (`ClipInstance::composite_id`)
+    /// multi-clip compound isn't supported yet either way — real groups routinely pair a video
+    /// clip with an audio one on different tracks, which needs the same multi-track nested
+    /// handling this pass deliberately doesn't attempt; a real scope cut, not an oversight.
     pub fn create_compound_clip_from_selected_clip(&mut self) {
         let Some(clip_id) = self.selected_clip_id else {
             return;
@@ -283,10 +297,48 @@ impl App {
         if self.selected_clip_track_kind() != Some(TrackKind::Video) {
             return;
         }
-        let Some(original) = self.selected_clip().cloned() else {
+
+        let timeline = self.active_project().timeline();
+        let Some(track) = timeline
+            .tracks
+            .iter()
+            .find(|t| t.clips.iter().any(|c| c.id == clip_id))
+        else {
             return;
         };
-        let duration_secs = original.duration_secs();
+        let group_ids: Vec<u64> = if self.multi_selected_clip_ids.len() > 1
+            && self.multi_selected_clip_ids.contains(&clip_id)
+            && self.multi_selected_clip_ids.iter().all(|id| {
+                track
+                    .clips
+                    .iter()
+                    .any(|c| c.id == *id && c.nested_sequence_id.is_none())
+            }) {
+            self.multi_selected_clip_ids.iter().copied().collect()
+        } else {
+            vec![clip_id]
+        };
+        let mut members: Vec<ClipInstance> = track
+            .clips
+            .iter()
+            .filter(|c| group_ids.contains(&c.id))
+            .cloned()
+            .collect();
+        if members.is_empty() {
+            return;
+        }
+        members.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
+        let primary = members
+            .iter()
+            .find(|c| c.id == clip_id)
+            .cloned()
+            .unwrap_or_else(|| members[0].clone());
+        let min_start = members[0].start_secs;
+        let max_end = members
+            .iter()
+            .map(|c| c.start_secs + c.duration_secs())
+            .fold(f64::NEG_INFINITY, f64::max);
+        let duration_secs = max_end - min_start;
 
         self.push_undo_snapshot();
         let project = self.active_project_mut();
@@ -301,9 +353,11 @@ impl App {
             multicam_groups: Vec::new(),
         };
         let track_index = create_new_track(&mut nested_timeline, TrackKind::Video);
-        let mut inner_clip = original.clone();
-        inner_clip.start_secs = 0.0;
-        nested_timeline.tracks[track_index].clips.push(inner_clip);
+        for member in &members {
+            let mut inner_clip = member.clone();
+            inner_clip.start_secs = member.start_secs - min_start;
+            nested_timeline.tracks[track_index].clips.push(inner_clip);
+        }
 
         project.sequences.push(avcore::project::Sequence {
             id: new_sequence_id,
@@ -314,19 +368,18 @@ impl App {
 
         let timeline = project.timeline_mut();
         for track in &mut timeline.tracks {
-            if let Some(clip) = track.clips.iter_mut().find(|c| c.id == clip_id) {
-                let mut wrapper = default_clip_instance(
-                    clip_id,
-                    0,
-                    original.start_secs,
-                    0.0,
-                    duration_secs,
-                    false,
-                );
+            if track.clips.iter().any(|c| group_ids.contains(&c.id)) {
+                track.clips.retain(|c| !group_ids.contains(&c.id));
+                let mut wrapper =
+                    default_clip_instance(clip_id, 0, min_start, 0.0, duration_secs, false);
                 wrapper.nested_sequence_id = Some(new_sequence_id);
-                wrapper.composite_id = original.composite_id;
-                wrapper.color_label = original.color_label;
-                *clip = wrapper;
+                wrapper.composite_id = if group_ids.len() == 1 {
+                    primary.composite_id
+                } else {
+                    None
+                };
+                wrapper.color_label = primary.color_label;
+                track.clips.push(wrapper);
                 break;
             }
         }

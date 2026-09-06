@@ -299,7 +299,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     egui::Sense::hover(),
                                 );
                                 track_rows.push((track.id, track.kind, track_rect));
-                                let painter = ui.painter();
+                                let painter = ui.painter().clone();
                                 for clip in &track.clips {
                                     let x = track_rect.left() + clip.start_secs as f32 * px_per_sec;
                                     // Viewport culling (TIMELINE_PERFORMANCE.md's documented "no track/clip-
@@ -672,7 +672,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                                 };
                                                 draw_frozen_poster(
                                                     &app.thumbnail_state.thumbnail_textures,
-                                                    painter,
+                                                    &painter,
                                                     clip_rect,
                                                     project_id,
                                                     asset,
@@ -686,7 +686,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                                 };
                                                 draw_filmstrip(
                                                     &app.thumbnail_state.thumbnail_textures,
-                                                    painter,
+                                                    &painter,
                                                     clip_rect,
                                                     project_id,
                                                     asset,
@@ -728,7 +728,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                                         theme::SURFACE_2.gamma_multiply(0.75),
                                                     );
                                                     draw_waveform(
-                                                        painter,
+                                                        &painter,
                                                         waveform_rect,
                                                         peaks,
                                                         asset.duration_secs,
@@ -771,7 +771,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     } else if let Some(asset) = asset {
                                         if let Some(peaks) = &asset.waveform_peaks {
                                             draw_waveform(
-                                                painter,
+                                                &painter,
                                                 clip_rect,
                                                 peaks,
                                                 asset.duration_secs,
@@ -882,8 +882,8 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                             theme::TEXT_PRIMARY,
                                         );
                                     }
-                                    draw_keyframe_markers(painter, clip_rect, clip);
-                                    draw_transition_wedge(painter, clip_rect, clip, px_per_sec);
+                                    draw_keyframe_markers(&painter, clip_rect, clip);
+                                    draw_transition_wedge(&painter, clip_rect, clip, px_per_sec);
                                     // Section 51's Clip Selection: "1px petroleum-blue border...
                                     // do not add glow." Was 2px `theme::ACCENT` for a single
                                     // selection; multi-selection used a 2px `theme::ERROR` (red)
@@ -945,7 +945,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                                 + clip.duration_secs())
                                                 - sequence_secs;
                                             draw_trim_info(
-                                                painter,
+                                                &painter,
                                                 pos,
                                                 locale,
                                                 source_secs,
@@ -963,7 +963,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                                     - (clip.start_secs + clip.duration_secs()));
                                             let trim_duration = sequence_secs - clip.start_secs;
                                             draw_trim_info(
-                                                painter,
+                                                &painter,
                                                 pos,
                                                 locale,
                                                 source_secs,
@@ -975,6 +975,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                 }
                                 draw_text_overlays(
                                     ui,
+                                    &painter,
                                     track,
                                     track_rect,
                                     px_per_sec,

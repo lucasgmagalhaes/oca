@@ -24,7 +24,7 @@ pub(super) fn chroma_key_properties(
     app: &mut App,
     ui: &mut egui::Ui,
     enabled: &mut bool,
-    color: &mut [u8; 4],
+    color: &mut [u8; 3],
     tolerance: &mut f32,
     locale: Locale,
 ) {

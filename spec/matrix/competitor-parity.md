@@ -50,13 +50,15 @@ Sources: [CapCut Desktop Review 2026](https://bigvu.tv/blog/capcut-online-deskto
       segmentation model, similar tier of effort to the background-removal MODNet integration
       already shipped. The 2026-08-28 refresh promoted it to ROADMAP CF-09 with a user-seeded,
       privacy-blur-first implementation slice, shipped end to end (see ROADMAP.md's CF-09 entry).
-- [ ] **Motion graphics templates (MOGRT-style reusable animated assets).** Adobe's Graphics
+- [~] **Motion graphics templates (MOGRT-style reusable animated assets).** Adobe's Graphics
       Templates panel — an animated graphic with editable text/image fields, importable/
       exportable/shareable as a standalone asset. Distinct from oca's existing "layer
       templates" (`matrix/timeline-and-editing.md`), which save a *position/effect
       configuration* for a layer group, not a portable animated-graphic asset with its own
       editable parameter set. The 2026-08-28 refresh promoted it to ROADMAP CF-07, behind the
-      higher-impact workflow work, with a declarative and script-free asset format.
+      higher-impact workflow work, with a declarative and script-free asset format. Multiple
+      slices now shipped (versioned JSON format, parameters, apply-to-timeline flow) — see
+      ROADMAP.md's CF-07 entry for exact current scope and what's still open.
 
 ## New gaps found (2026-08-27 update — lower cost than the P5 tier)
 

@@ -23,6 +23,7 @@ pub(super) struct TextOverlayRequests<'a> {
 
 pub(super) fn draw_text_overlays(
     ui: &mut egui::Ui,
+    painter: &egui::Painter,
     track: &avcore::timeline::Track,
     track_rect: egui::Rect,
     px_per_sec: f32,
