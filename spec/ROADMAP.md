@@ -2019,6 +2019,40 @@ an item earlier:
   CF-04 is now considered complete for this phase; remaining harder asks (content-adaptive
   cadence, optional seed point, a dedicated review/correction UI) are tracked as open follow-ups
   rather than blocking this item.
+
+  **The "optional user-provided seed point" follow-up now shipped too.** `ClipInstance` gains
+  `reframe_seed_point: Option<(f32, f32)>` (`#[serde(default)]`, `None` — the default, and every
+  clip saved before this field existed — keeps the exact old face-detection-only behavior). When
+  set, both `App::spawn_auto_reframe_selected_clip` and `App::spawn_dynamic_reframe_for_clip`
+  (the shared core `App::spawn_shorts_pack`'s own pre-pass already goes through) use it directly
+  as the crop anchor and skip face detection entirely — no frame decode, no ONNX inference, and
+  no configured model required at all, closing a real, related gap this pass found while wiring
+  it in: previously *any* reframe run demanded `prefs.reframe_model_path`, even one that would
+  now use a manual anchor instead. `compute_reframe_crop` itself needed no change — it already
+  took an `Option<(f32, f32)>` `subject_center` parameter; only *where that value comes from* was
+  the gap. For the dynamic (multi-sample) path, every sample is fixed to the same pinned point
+  rather than a per-sample detection loop — correct since a manually pinned anchor has no
+  trajectory to track — which the existing gap-fill/smooth/sparsify pipeline degenerates
+  correctly to a single constant crop for, no separate code path needed.
+
+  A real design decision made before writing code, per `.claude/CLAUDE.md`'s own "design before
+  code" rule: rather than a new click-on-the-video-preview interaction (a real, unverifiable-in-
+  this-sandbox risk — no way to visually confirm hit-testing against a rendered texture with no
+  display available here), the seed point is edited as a plain "Ancorar manualmente" checkbox
+  plus X/Y `DragValue` sliders in the properties panel's existing Crop section, reusing the exact
+  widget pattern `crop_x`/`crop_y` already establish right above it — no new interaction paradigm,
+  fully consistent with this codebase's own components.
+
+  Verified: 6 new `App`-level tests in `app_test.rs` — the setter stores/clamps/clears the field
+  correctly and is a no-op with nothing selected, a clip carrying a seed point skips the
+  "no model configured" toast even with an empty `reframe_model_path`, and a clip without one
+  still requires a configured model as before. `cargo check --workspace --all-targets` and `cargo
+  clippy -p core --lib --no-deps` / `-p ui --tests --no-deps` (via the documented temporary
+  `filters.c`/`text_overlay.c` shim, discarded before commit) and `cargo fmt --all -- --check` all
+  stayed clean. Not run against a live GUI session (no display in this sandbox) — the checkbox/
+  slider's actual on-screen appearance and the background thread's real skip-detection behavior
+  against real footage need a manual pass on a dev machine, same caveat this item's own prior
+  slices already carry.
 - `[~]` **CF-05: OpenTimelineIO interchange.** Round-trip the supported editorial subset and
   emit an explicit compatibility report for unsupported effects.
 
