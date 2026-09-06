@@ -15,6 +15,7 @@
 
 mod draw;
 mod header;
+mod ruler;
 mod snap;
 mod track_header;
 
@@ -71,11 +72,12 @@ pub(super) const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
 ];
 
 use draw::{
-    color_filter_tint, draw_filmstrip, draw_frozen_poster, draw_keyframe_markers,
-    draw_marker_ticks, draw_playhead, draw_ruler_ticks, draw_transition_wedge, draw_trim_info,
-    draw_waveform, shape_kind_glyph, thumbnail_requests_settled, ThumbnailDrawWork,
+    color_filter_tint, draw_filmstrip, draw_frozen_poster, draw_keyframe_markers, draw_playhead,
+    draw_transition_wedge, draw_trim_info, draw_waveform, shape_kind_glyph,
+    thumbnail_requests_settled, ThumbnailDrawWork,
 };
 use header::timeline_header;
+use ruler::{timeline_ruler, RulerLayout};
 use snap::{snap_move_start, snap_to_nearest, ClipDrag, SnapTargets};
 use track_header::{audio_role_icon, audio_role_label};
 
@@ -167,53 +169,21 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
 
         // Ruler: click or drag to move the playhead. Kept as its own thin strip rather than
         // reusing a track row so scrubbing doesn't depend on there being any tracks yet.
-        let mut ruler_top = 0.0_f32;
-        ui.horizontal(|ui| {
-            ui.add_space(TRACK_LABEL_WIDTH);
-            // The visible pan scrollbar lives at the bottom of the whole timeline component
-            // (below every track row, see the dedicated strip after the tracks ScrollArea below)
-            // — a first attempt put it here on the ruler instead, which read wrong (a scrollbar
-            // above the clips it scrolls, confirmed via a real report). Stays hidden here.
-            let ruler_scroll = egui::ScrollArea::horizontal()
-                .id_salt("timeline_ruler_hscroll")
-                .scroll_source(hscroll_source)
-                .scroll_bar_visibility(
-                    egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden,
-                )
-                .horizontal_scroll_offset(app.timeline_pan_px)
-                .show(ui, |ui| {
-                    let (rect, response) = ui.allocate_exact_size(
-                        egui::vec2(canvas_content_width, RULER_HEIGHT),
-                        canvas_sense(egui::Sense::click_and_drag()),
-                    );
-                    ruler_top = rect.top();
-                    ui.painter().rect_filled(rect, 0, theme::SURFACE_2);
-                    draw_ruler_ticks(ui.painter(), rect, px_per_sec);
-                    if let Some(pos) = response.interact_pointer_pos() {
-                        let secs = ((pos.x - rect.left()) / px_per_sec).max(0.0) as f64;
-                        let secs = if snap_enabled {
-                            snap_to_nearest(secs, &snap_targets.all(), px_per_sec)
-                        } else {
-                            secs
-                        };
-                        app.active_project_mut().timeline_mut().playhead_secs = secs;
-                    }
-                    let markers = app.active_project().timeline().markers.clone();
-                    if let Some(seek_secs) = draw_marker_ticks(ui, rect, &markers, px_per_sec) {
-                        app.active_project_mut().timeline_mut().playhead_secs = seek_secs;
-                    }
-                    draw_playhead(
-                        ui,
-                        rect,
-                        app.active_project().timeline().playhead_secs,
-                        px_per_sec,
-                        2.0,
-                    );
-                });
-            if (ruler_scroll.state.offset.x - app.timeline_pan_px).abs() > 0.01 {
-                new_pan_px = Some(ruler_scroll.state.offset.x);
-            }
-        });
+        let (ruler_top, ruler_pan_px) = timeline_ruler(
+            app,
+            ui,
+            RulerLayout {
+                track_label_width: TRACK_LABEL_WIDTH,
+                ruler_height: RULER_HEIGHT,
+                canvas_content_width,
+                px_per_sec,
+                hscroll_source,
+                hand_active,
+                snap_enabled,
+                snap_targets: &snap_targets,
+            },
+        );
+        new_pan_px = new_pan_px.or(ruler_pan_px);
 
         let locale = app.locale;
         let playhead_secs = app.active_project().timeline().playhead_secs;
