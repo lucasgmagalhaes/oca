@@ -189,6 +189,7 @@ impl App {
                         font_size,
                         font_family,
                         font_style,
+                        font_weight: None,
                         color_rgba,
                         background_rgba: [0, 0, 0, 0],
                         background_padding: 8.0,

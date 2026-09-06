@@ -699,6 +699,7 @@ text_catalog! {
     PropTextContent: pt_br = "Texto", en = "Text";
     PropTextFontFamily: pt_br = "Fonte", en = "Font";
     PropTextFontStyle: pt_br = "Estilo", en = "Style";
+    PropTextFontWeight: pt_br = "Peso da fonte", en = "Font weight";
     PropTextFontSize: pt_br = "Tamanho da fonte", en = "Font size";
     TextFontLato: pt_br = "Lato · Sans moderna", en = "Lato · Modern sans";
     TextFontBebasNeue: pt_br = "Bebas Neue · Título", en = "Bebas Neue · Display";
