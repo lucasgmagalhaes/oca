@@ -535,8 +535,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/mod.rs": {
-    "mtime": 1788732598.5727232,
-    "ast_hash": "2a77c47653d0c463acac9a23cfeefa7e",
+    "mtime": 1788733039.3218718,
+    "ast_hash": "ada94ba3d7b1200ba537efba4556e8b3",
     "semantic_hash": ""
   },
   ".github/FFMPEG_UPDATE.md": {
@@ -2500,8 +2500,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/preview_controls.rs": {
-    "mtime": 1788722937.5434532,
-    "ast_hash": "c98327f9c9c66a7235bbe570c966b959",
+    "mtime": 1788733044.22187,
+    "ast_hash": "77c847ba289b4c304e665d1753991a45",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/properties_panel/background_effects.rs": {
