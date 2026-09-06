@@ -271,6 +271,48 @@ not novel guesses — see `matrix/competitor-parity.md`.
     (export → import, including a fake proxy file surviving intact and resolving to a *new* path
     under the recipient's own cache dir) is covered by `core`'s integration tests and mirrored at
     the `App` level in `ui`.
+
+    **Security follow-up: fixed a real zip-slip (CWE-22) in `import_collab_bundle`.** A `.zip`
+    bundle is attacker-controllable data — shared by a collaborator, or downloaded from
+    anywhere — and `import_collab_bundle` was joining each proxy entry's *embedded* path
+    directly onto `proxy_dir` with no sanitization (`proxy_dir.join(file_name)`, `file_name`
+    taken verbatim from the zip entry name after the `proxies/` prefix). A malicious entry named
+    e.g. `proxies/../../../../etc/cron.d/evil` climbs out of the proxy cache dir entirely via
+    `PathBuf::join`'s own `..`-following behavior, and one named `proxies//etc/passwd` (an
+    absolute path as the "filename") replaces the whole base path outright, since `Path::join`
+    with an absolute-looking component discards everything before it — this is exactly this
+    codebase's own cited CWE-22 weakness class (`architecture/competitive-feature-plan.md`'s
+    security section), not a hypothetical: this session confirmed it for real, not just by
+    reading the code, by building an actual malicious `.zip` with the real `zip` crate and
+    watching the unfixed code overwrite a real file it had no business touching (a canary file,
+    and separately a real `/etc/should-not-exist` write in this sandbox, both reproduced before
+    the fix and gone after it). Fixed via `safe_proxy_entry_filename`, which reduces an entry's
+    embedded path down to [`Path::file_name`]'s own last-component result before ever joining it
+    onto `proxy_dir` — `file_name()` already discards any `..`/root/prefix components, so a
+    traversal or absolute-path entry degrades to just its basename inside the cache dir instead
+    of escaping it; an entry with no valid basename at all (bare `..`, `.`, or a trailing
+    separator) is skipped, matching this function's own existing "known gap, not silently wrong"
+    tolerance for other malformed bundle contents, rather than erroring out the whole import.
+    Verified for real, not just type-checked: this session's sandbox turned out to have a working
+    path to a fully-linked `core` (`rustup update stable` past the too-old-bundled-rustc block,
+    then `apt-get install libavfilter-dev`/`libgstreamer*-dev` past the missing-headers/
+    pkg-config gaps, plus the documented temporary local `filters.c` shim, discarded before
+    commit) — `cargo check -p core --lib`, `cargo check --workspace --all-targets`, `cargo fmt`,
+    and `cargo clippy -p core --lib --no-deps` all stayed clean, but `core`'s own test binary
+    still can't *link* here (the pre-existing ONNX Runtime `download-binaries` network gap), so
+    `collab_bundle.rs` (zero heavy deps beyond `persistence`/`proxy`/`project`, none of which
+    touch `avbridge`/GStreamer/ONNX for the functions it actually calls) was copied into a
+    throwaway scratch crate alongside real `zip`/`serde`/`rmp-serde`/`flate2` and stripped
+    stand-in `Project`/`MediaAsset`/`proxy` types, then `cargo test`ed there for real: 11/11
+    passing, including a dedicated regression test that hand-builds a malicious `.zip` (both a
+    relative `../../../../` traversal and an absolute-path entry) and confirms neither escapes
+    the recipient's proxy cache dir — confirmed meaningful by temporarily reverting the fix in
+    the scratch crate and watching that exact test fail (and, the first time, actually write to
+    `/etc/should-not-exist` for real) before restoring it. 7 new unit tests on
+    `safe_proxy_entry_filename` itself (plain filename, relative traversal, absolute path, bare
+    `..`/`.`, a trailing bare traversal, a nested-but-ordinary path) plus a new integration test
+    mirroring the scratch-crate regression case were added to the real `crates/core/src/
+    collab_bundle.rs`/`crates/core/tests/collab_bundle_test.rs` themselves.
 15. `[x]` **D4 — automatic chapter markers from scene cuts** (`architecture/differentiators.md`).
     `avcore::scene_detection::detect_scene_cuts` scores consecutive sampled-frame pairs by mean
     absolute luma difference (reuses `motion_tracking::rgba_to_gray` for grayscale conversion,

@@ -26,7 +26,7 @@
 
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::persistence::{self, PersistError};
 use crate::project::Project;
@@ -118,6 +118,16 @@ pub fn export_collab_bundle(
     Ok(())
 }
 
+/// Reduces a zip entry's embedded path (everything after `proxies/`) down to a single safe
+/// filename component, or `None` if it doesn't have one. `export_collab_bundle` only ever writes
+/// flat filenames here (no subdirectories), so a legitimate bundle never needs anything this
+/// throws away; a malicious one (`../../etc/cron.d/evil`, an absolute path, a bare `..`) gets
+/// exactly the same treatment as a plain filename, since [`Path::file_name`] already normalizes
+/// away `.`/`..` components and any leading root/prefix, returning only the last real segment.
+fn safe_proxy_entry_filename(embedded_path: &str) -> Option<PathBuf> {
+    Path::new(embedded_path).file_name().map(PathBuf::from)
+}
+
 /// Unpacks a bundle written by [`export_collab_bundle`]: writes its `.ocproj` snapshot to
 /// `dest_project_path` and its bundled proxy files into that path's own proxy cache dir (see
 /// [`proxy::cache_dir_for_project`]) — the same dir the recipient's own app computes for
@@ -158,8 +168,18 @@ pub fn import_collab_bundle(
         .collect();
     for name in proxy_entry_names {
         let file_name = &name[PROXIES_ENTRY_PREFIX.len()..];
+        // A bundle is attacker-controllable data (shared by a collaborator, or downloaded from
+        // anywhere) -- never trust an embedded entry path. `safe_proxy_entry_filename` keeps only
+        // the final path component, discarding any `../`/absolute-path segments a malicious
+        // archive might embed to write outside `proxy_dir` (zip-slip, CWE-22); an entry with no
+        // valid basename at all (e.g. `..`, `.`, or a bare separator) is skipped rather than
+        // guessed at, matching this function's existing "known gap, not silently wrong" tolerance
+        // for other partial/malformed bundle contents.
+        let Some(safe_name) = safe_proxy_entry_filename(file_name) else {
+            continue;
+        };
         let mut entry = zip.by_name(&name)?;
-        let mut out = File::create(proxy_dir.join(file_name))?;
+        let mut out = File::create(proxy_dir.join(safe_name))?;
         io::copy(&mut entry, &mut out)?;
     }
 
@@ -175,4 +195,58 @@ pub fn import_collab_bundle(
     }
 
     Ok(project)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keeps_a_plain_filename_unchanged() {
+        assert_eq!(
+            safe_proxy_entry_filename("clip.mp4"),
+            Some(PathBuf::from("clip.mp4"))
+        );
+    }
+
+    #[test]
+    fn strips_a_relative_traversal_prefix_down_to_the_basename() {
+        assert_eq!(
+            safe_proxy_entry_filename("../../../etc/cron.d/evil"),
+            Some(PathBuf::from("evil"))
+        );
+    }
+
+    #[test]
+    fn strips_an_absolute_unix_path_down_to_the_basename() {
+        assert_eq!(
+            safe_proxy_entry_filename("/etc/passwd"),
+            Some(PathBuf::from("passwd"))
+        );
+    }
+
+    #[test]
+    fn rejects_a_bare_parent_dir_component() {
+        assert_eq!(safe_proxy_entry_filename(".."), None);
+    }
+
+    #[test]
+    fn rejects_a_bare_current_dir_component() {
+        assert_eq!(safe_proxy_entry_filename("."), None);
+    }
+
+    #[test]
+    fn rejects_a_trailing_traversal_with_nothing_after_it() {
+        assert_eq!(safe_proxy_entry_filename("proxies/.."), None);
+    }
+
+    #[test]
+    fn keeps_the_final_component_of_a_nested_but_otherwise_ordinary_path() {
+        // `export_collab_bundle` never nests entries under a subdirectory, but even if a bundle
+        // did, only the last component should ever end up in the destination path.
+        assert_eq!(
+            safe_proxy_entry_filename("sub/dir/clip.mp4"),
+            Some(PathBuf::from("clip.mp4"))
+        );
+    }
 }
