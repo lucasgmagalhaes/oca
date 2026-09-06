@@ -22,8 +22,11 @@
 use avcore::{
     clip_silence_gaps, SilenceGap, DEFAULT_MIN_SILENCE_SECS, DEFAULT_SILENCE_THRESHOLD_LINEAR,
 };
+use eframe::egui;
 
+use crate::components;
 use crate::i18n::Text;
+use crate::theme;
 
 use super::App;
 
@@ -43,6 +46,93 @@ pub struct SilenceReview {
 }
 
 impl App {
+    /// The silence-gap review modal (D1, `ROADMAP.md` P3 item 13) — every gap
+    /// `App::begin_silence_review` staged in `App::silence_review`, each with a checkbox
+    /// defaulting to accepted, click-to-seek on its timecode, and an "Apply" button that runs
+    /// `App::apply_silence_review` on whatever's still checked. Shown while `silence_review` is
+    /// `Some`; a no-op otherwise. Never applies anything itself while drawing — same
+    /// read-then-mutate-after shape as `show_timeline_index_panel`.
+    pub(super) fn show_silence_review_modal(&mut self, ctx: &egui::Context) {
+        if self.silence_review.is_none() {
+            return;
+        }
+        let locale = self.locale;
+        let mut toggle_index: Option<usize> = None;
+        let mut seek_to: Option<f64> = None;
+        let mut apply = false;
+        let mut close = false;
+
+        let modal = egui::Modal::new(egui::Id::new("silence_review_modal"));
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(360.0);
+            components::modal_title(ui, Text::SilenceReviewTitle.tr(locale));
+            ui.add_space(4.0);
+
+            let Some(review) = &self.silence_review else {
+                return;
+            };
+            if review.gaps.is_empty() {
+                ui.label(
+                    egui::RichText::new(Text::SilenceReviewEmpty.tr(locale))
+                        .color(theme::TEXT_MUTED),
+                );
+            }
+            egui::ScrollArea::vertical()
+                .max_height(320.0)
+                .show(ui, |ui| {
+                    for (index, entry) in review.gaps.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            let mut accepted = entry.accepted;
+                            if ui.checkbox(&mut accepted, "").changed() {
+                                toggle_index = Some(index);
+                            }
+                            let label = Text::SilenceReviewGapLabel
+                                .tr(locale)
+                                .replace(
+                                    "{start}",
+                                    &avcore::media::format_timecode(entry.gap.start_secs),
+                                )
+                                .replace(
+                                    "{end}",
+                                    &avcore::media::format_timecode(entry.gap.end_secs),
+                                )
+                                .replace(
+                                    "{duration}",
+                                    &format!("{:.1}", entry.gap.duration_secs()),
+                                );
+                            if ui.button(label).clicked() {
+                                seek_to = Some(entry.gap.start_secs);
+                            }
+                        });
+                    }
+                });
+
+            ui.add_space(8.0);
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                close = true;
+            }
+            ui.horizontal(|ui| {
+                if components::primary_button(ui, Text::SilenceReviewApply.tr(locale)).clicked() {
+                    apply = true;
+                }
+                if ui.button(Text::WindowClose.tr(locale)).clicked() {
+                    close = true;
+                }
+            });
+        });
+
+        if let Some(index) = toggle_index {
+            self.toggle_silence_gap_accepted(index);
+        }
+        if let Some(position_secs) = seek_to {
+            self.seek_preview(position_secs);
+        }
+        if apply {
+            self.apply_silence_review();
+        } else if response.should_close() || close {
+            self.close_silence_review();
+        }
+    }
     /// Scans every clip on the track holding `selected_clip_id` for silence gaps (via
     /// [`avcore::clip_silence_gaps`] against each clip's asset waveform) and opens the review
     /// modal with the result, sorted earliest-first. A clip whose asset has no cached waveform
