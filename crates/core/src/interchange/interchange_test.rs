@@ -436,7 +436,7 @@ fn interchange_to_timeline_round_trips_a_clip_with_no_timing_drift() {
 
     let ic = sequence_to_interchange(&seq, &proj);
     let mut next_id = 100;
-    let result = interchange_to_timeline(&ic, &proj, &mut next_id);
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id, None);
 
     assert!(result.warnings.is_empty());
     assert_eq!(result.timeline.tracks.len(), 1);
@@ -466,7 +466,7 @@ fn interchange_to_timeline_round_trips_a_long_sequence_without_accumulating_drif
 
     let ic = sequence_to_interchange(&seq, &proj);
     let mut next_id = 10_000;
-    let result = interchange_to_timeline(&ic, &proj, &mut next_id);
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id, None);
 
     assert!(result.warnings.is_empty());
     let reconstructed_starts: Vec<f64> = result.timeline.tracks[0]
@@ -494,7 +494,7 @@ fn interchange_to_timeline_carries_speed_factor_and_transition_kind() {
 
     let ic = sequence_to_interchange(&seq, &proj);
     let mut next_id = 100;
-    let result = interchange_to_timeline(&ic, &proj, &mut next_id);
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id, None);
 
     let reconstructed = &result.timeline.tracks[0].clips[0];
     assert_eq!(reconstructed.speed_factor, 2.0);
@@ -510,7 +510,7 @@ fn interchange_to_timeline_reports_a_warning_and_skips_a_clip_with_unresolvable_
 
     let ic = sequence_to_interchange(&seq, &proj);
     let mut next_id = 100;
-    let result = interchange_to_timeline(&ic, &proj, &mut next_id);
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id, None);
 
     assert!(result.timeline.tracks[0].clips.is_empty());
     assert_eq!(result.warnings.len(), 1);
@@ -526,7 +526,7 @@ fn interchange_to_timeline_allocates_strictly_increasing_ids_and_advances_next_i
 
     let ic = sequence_to_interchange(&seq, &proj);
     let mut next_id = 50;
-    let result = interchange_to_timeline(&ic, &proj, &mut next_id);
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id, None);
 
     let mut ids = vec![result.timeline.tracks[0].id];
     ids.extend(result.timeline.tracks[0].clips.iter().map(|c| c.id));
@@ -552,10 +552,155 @@ fn interchange_to_timeline_round_trips_markers() {
 
     let ic = sequence_to_interchange(&seq, &proj);
     let mut next_id = 100;
-    let result = interchange_to_timeline(&ic, &proj, &mut next_id);
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id, None);
 
     assert_eq!(result.timeline.markers.len(), 1);
     assert_eq!(result.timeline.markers[0].label, "Boss fight");
     assert_eq!(result.timeline.markers[0].kind, MarkerKind::Highlight);
     assert!((result.timeline.markers[0].position_secs - 42.0).abs() < 1e-6);
+}
+
+/// A fresh, unique-per-test scratch directory under [`std::env::temp_dir`] — this crate's own
+/// established convention (see e.g. `tests/bundle_test.rs`'s `temp_dir` helper) rather than a
+/// `tempfile` dependency this crate doesn't otherwise carry.
+fn scratch_dir(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "oca_interchange_test_{name}_{}_{}",
+        std::process::id(),
+        name.len() // cheap extra uniqueness alongside the pid across repeated calls in one test
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn resolve_under_media_root_finds_a_real_file_by_bare_name() {
+    let root = scratch_dir("finds_by_bare_name");
+    std::fs::write(root.join("gameplay.mp4"), b"fake video bytes").unwrap();
+
+    let resolved = resolve_under_media_root(&root, "gameplay.mp4").unwrap();
+    assert_eq!(resolved, root.join("gameplay.mp4").canonicalize().unwrap());
+}
+
+#[test]
+fn resolve_under_media_root_uses_only_the_file_name_of_a_foreign_absolute_path() {
+    let root = scratch_dir("foreign_absolute_path");
+    std::fs::write(root.join("gameplay.mp4"), b"fake video bytes").unwrap();
+
+    // A path recorded on a different machine/OS entirely -- only its bare file name may ever
+    // be used, never the rest of the string.
+    let resolved =
+        resolve_under_media_root(&root, r"C:\Users\Someone\Videos\gameplay.mp4").unwrap();
+    assert_eq!(resolved, root.join("gameplay.mp4").canonicalize().unwrap());
+}
+
+#[test]
+fn resolve_under_media_root_rejects_parent_directory_traversal() {
+    let root = scratch_dir("traversal");
+    let inner = root.join("project_root");
+    std::fs::create_dir(&inner).unwrap();
+    std::fs::write(root.join("secret.txt"), b"outside the selected root").unwrap();
+
+    // `Path::file_name` strips every leading directory component, including `..` segments, so
+    // this can only ever look for a literal file named `secret.txt` inside `project_root` --
+    // never escape upward to find the sibling file of the same name.
+    let resolved = resolve_under_media_root(&inner, "../secret.txt");
+    assert!(resolved.is_none());
+}
+
+#[test]
+#[cfg(unix)]
+fn resolve_under_media_root_rejects_a_symlink_escaping_the_root() {
+    let root = scratch_dir("symlink_escape_root");
+    let outside = scratch_dir("symlink_escape_outside");
+    std::fs::write(outside.join("real.mp4"), b"outside content").unwrap();
+    std::os::unix::fs::symlink(outside.join("real.mp4"), root.join("real.mp4")).unwrap();
+
+    let resolved = resolve_under_media_root(&root, "real.mp4");
+    assert!(
+        resolved.is_none(),
+        "a symlink resolving outside media_root must never be returned"
+    );
+}
+
+#[test]
+fn resolve_under_media_root_rejects_a_trailing_separator_with_no_file_name() {
+    let root = scratch_dir("trailing_separator");
+    assert!(resolve_under_media_root(&root, "some/dir/").is_none());
+    assert!(resolve_under_media_root(&root, r"some\dir\").is_none());
+}
+
+#[test]
+fn resolve_under_media_root_rejects_a_bare_dot_or_dot_dot_final_segment() {
+    let root = scratch_dir("dot_segments");
+    assert!(resolve_under_media_root(&root, ".").is_none());
+    assert!(resolve_under_media_root(&root, "..").is_none());
+    assert!(resolve_under_media_root(&root, "some/..").is_none());
+}
+
+#[test]
+fn resolve_under_media_root_rejects_a_nonexistent_file() {
+    let root = scratch_dir("nonexistent");
+    assert!(resolve_under_media_root(&root, "missing.mp4").is_none());
+}
+
+#[test]
+fn resolve_under_media_root_rejects_a_directory() {
+    let root = scratch_dir("rejects_directory");
+    std::fs::create_dir(root.join("gameplay.mp4")).unwrap();
+    assert!(resolve_under_media_root(&root, "gameplay.mp4").is_none());
+}
+
+#[test]
+fn interchange_to_timeline_resolves_an_unresolvable_reference_via_media_root() {
+    let root = scratch_dir("resolves_via_media_root");
+    std::fs::write(root.join("gameplay.mp4"), b"fake video bytes").unwrap();
+    let mut asset = asset(10, "gameplay.mp4");
+    // The project's own asset lives at the real resolved path under `root` -- simulating an
+    // already-imported asset whose absolute path differs from a foreign-machine `target_url`.
+    asset.source_path = root.join("gameplay.mp4");
+
+    let clips = vec![clip(1, 10, 0.0, 5.0)];
+    let tracks = vec![track(1, TrackKind::Video, clips)];
+    let seq = sequence("Main", timeline_with(tracks));
+    let proj = project(vec![asset], vec![]);
+    let mut ic = sequence_to_interchange(&seq, &proj);
+    // Simulate a `.otio` document authored on a different machine: same file, foreign path.
+    if let InterchangeTrackItem::Clip(clip) = &mut ic.tracks[0].items[0] {
+        clip.media_reference = MediaReference::External {
+            target_url: r"C:\Users\Someone\Videos\gameplay.mp4".to_string(),
+        };
+    }
+
+    let mut next_id = 100;
+    let without_root = interchange_to_timeline(&ic, &proj, &mut next_id, None);
+    assert_eq!(
+        without_root.warnings.len(),
+        1,
+        "an exact path match must fail without a media_root"
+    );
+
+    let mut next_id = 100;
+    let with_root = interchange_to_timeline(&ic, &proj, &mut next_id, Some(root.as_path()));
+    assert!(with_root.warnings.is_empty());
+    assert_eq!(with_root.timeline.tracks[0].clips.len(), 1);
+    assert_eq!(with_root.timeline.tracks[0].clips[0].asset_id, 10);
+}
+
+#[test]
+fn interchange_to_timeline_still_reports_a_warning_when_media_root_has_no_match() {
+    let root = scratch_dir("no_match");
+    // Nothing written under `root` -- the media_root fallback must not invent a match.
+    let clips = vec![clip(1, 999, 0.0, 5.0)];
+    let tracks = vec![track(1, TrackKind::Video, clips)];
+    let seq = sequence("Main", timeline_with(tracks));
+    let proj = project(vec![], vec![]);
+
+    let ic = sequence_to_interchange(&seq, &proj);
+    let mut next_id = 100;
+    let result = interchange_to_timeline(&ic, &proj, &mut next_id, Some(root.as_path()));
+
+    assert!(result.timeline.tracks[0].clips.is_empty());
+    assert_eq!(result.warnings.len(), 1);
 }
