@@ -74,9 +74,7 @@ use draw::{
     draw_marker_ticks, draw_playhead, draw_ruler_ticks, draw_transition_wedge, draw_trim_info,
     draw_waveform, shape_kind_glyph, thumbnail_requests_settled, ThumbnailDrawWork,
 };
-use snap::{
-    snap_move_start, snap_to_nearest, waveform_snap_points_for_clip, ClipDrag, SnapTargets,
-};
+use snap::{snap_move_start, snap_to_nearest, ClipDrag, SnapTargets};
 use track_header::{audio_role_icon, audio_role_label};
 
 /// Which edge of a timeline clip a drag targets — see the trim handling in `timeline_panel`.
@@ -161,25 +159,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let snap_targets = SnapTargets::from_project(app.active_project());
         let snap_targets_excluding = |exclude_id: u64| snap_targets.excluding(exclude_id);
 
-        // D5 (`spec/architecture/differentiators.md`): waveform low-energy points as an extra
-        // snap target for trim-edge (cut-point) drags specifically, not whole-clip moves — a
-        // dragged cut should be able to magnetically land mid-pause instead of mid-word/mid-
-        // sound-effect. See `waveform_snap_points_for_clip`'s own doc comment for the mechanism.
-        let waveform_snap_targets: Vec<f64> = {
-            let project = app.active_project();
-            project
-                .timeline()
-                .tracks
-                .iter()
-                .flat_map(|t| &t.clips)
-                .flat_map(|clip| {
-                    let asset = project.media_library.iter().find(|a| a.id == clip.asset_id);
-                    asset
-                        .map(|asset| waveform_snap_points_for_clip(asset, clip))
-                        .unwrap_or_default()
-                })
-                .collect()
-        };
+        let waveform_snap_targets = snap_targets.waveform_points();
 
         ui.horizontal(|ui| {
             ui.label(
@@ -884,7 +864,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                             as f64;
                                         let mut targets = snap_targets_excluding(clip.id);
                                         targets.push(playhead_secs);
-                                        targets.extend(&waveform_snap_targets);
+                                        targets.extend(waveform_snap_targets);
                                         let secs = if snap_enabled {
                                             snap_to_nearest(secs, &targets, px_per_sec)
                                         } else {
@@ -898,7 +878,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                             as f64;
                                         let mut targets = snap_targets_excluding(clip.id);
                                         targets.push(playhead_secs);
-                                        targets.extend(&waveform_snap_targets);
+                                        targets.extend(waveform_snap_targets);
                                         let secs = if snap_enabled {
                                             snap_to_nearest(secs, &targets, px_per_sec)
                                         } else {

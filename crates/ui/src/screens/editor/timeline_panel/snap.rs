@@ -31,6 +31,7 @@ pub(super) struct ClipDrag {
 pub(super) struct SnapTargets {
     clip_edges: Vec<(u64, f64, f64)>,
     marker_secs: Vec<f64>,
+    waveform_secs: Vec<f64>,
 }
 
 impl SnapTargets {
@@ -55,6 +56,20 @@ impl SnapTargets {
                 .iter()
                 .map(|marker| marker.position_secs)
                 .collect(),
+            waveform_secs: project
+                .timeline()
+                .tracks
+                .iter()
+                .flat_map(|track| &track.clips)
+                .flat_map(|clip| {
+                    project
+                        .media_library
+                        .iter()
+                        .find(|asset| asset.id == clip.asset_id)
+                        .map(|asset| waveform_snap_points_for_clip(asset, clip))
+                        .unwrap_or_default()
+                })
+                .collect(),
         }
     }
 
@@ -65,6 +80,10 @@ impl SnapTargets {
             .flat_map(|(_, start, end)| [*start, *end])
             .chain(self.marker_secs.iter().copied())
             .collect()
+    }
+
+    pub(super) fn waveform_points(&self) -> &[f64] {
+        &self.waveform_secs
     }
 }
 
