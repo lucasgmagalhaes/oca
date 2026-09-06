@@ -276,6 +276,17 @@ pub struct TextClip {
     /// time, while keeping the persisted value harmless and forwards-compatible.
     #[serde(default)]
     pub font_style: TextFontStyle,
+    /// TEXT-01C (`spec/architecture/complex-text-shaping.md`): an explicit OpenType `wght` axis
+    /// value (typically `100..=900`) overriding `font_style`'s plain Regular/Bold choice for a
+    /// [`FontSourceKind::Variable`](crate::font_catalog::FontSourceKind::Variable) family — every
+    /// FONT-01B variable family locks one upstream variable TTF spanning a real weight range, not
+    /// just its two named Regular/Bold instances. `None` (the default, and every project saved
+    /// before this field existed) keeps the exact old `font_style`-only behavior; a static family
+    /// has no `wght` axis at all, so this is harmless-but-meaningless there (cosmic-text's own
+    /// font matching simply never finds an axis to apply it to). `#[serde(default)]` so an older
+    /// saved project still loads.
+    #[serde(default)]
+    pub font_weight: Option<u16>,
     /// RGBA color: `[r, g, b, a]`, each 0–255. Alpha 255 = fully opaque.
     pub color_rgba: [u8; 4],
     /// RGBA color behind the complete laid-out text block. Alpha 0 disables the background.

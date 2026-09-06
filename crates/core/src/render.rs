@@ -58,6 +58,9 @@ pub struct TextSegment {
     pub font_family: TextFontFamily,
     #[serde(default)]
     pub font_style: TextFontStyle,
+    /// See [`crate::timeline::TextClip::font_weight`]'s own doc comment.
+    #[serde(default)]
+    pub font_weight: Option<u16>,
     pub color_rgba: [u8; 4],
     #[serde(default)]
     pub background_rgba: [u8; 4],
@@ -803,6 +806,7 @@ fn text_clip_to_segments(
         font_size: clip.font_size,
         font_family: clip.font_family.clone(),
         font_style: clip.font_style,
+        font_weight: clip.font_weight,
         color_rgba: clip.color_rgba,
         background_rgba: clip.background_rgba,
         background_padding: clip.background_padding,
@@ -843,6 +847,7 @@ fn text_clip_to_segments(
             font_size: clip.font_size,
             font_family: clip.font_family.clone(),
             font_style: clip.font_style,
+            font_weight: clip.font_weight,
             color_rgba: clip.highlight_color_rgba,
             background_rgba: [0, 0, 0, 0],
             background_padding: 0.0,
