@@ -597,6 +597,48 @@ MatteStatus avbridge_encode_matte_video(const uint8_t *luma_frames, int frame_co
                                         int height, int fps_num, int fps_den, const char *out_path);
 
 typedef enum {
+    PRIVACY_BLUR_OK = 0,
+    /* avformat_open_input() or avformat_find_stream_info() failed on in_path. */
+    PRIVACY_BLUR_ERR_OPEN_INPUT = 1,
+    /* Couldn't allocate the output context or open the output file for writing. */
+    PRIVACY_BLUR_ERR_ALLOC_OUTPUT = 2,
+    /* Couldn't build the blur/mask filter graph (bad matte_path, or the installed FFmpeg build
+       lacks gblur/maskedmerge — both are standard libavfilter filters, so this would only
+       happen against an unusually stripped-down build). */
+    PRIVACY_BLUR_ERR_FILTER_GRAPH = 3,
+    /* A decode/filter/encode call failed mid-stream. */
+    PRIVACY_BLUR_ERR_PIPELINE = 4,
+} PrivacyBlurStatus;
+
+/* Opens `in_path` (an already-rendered H.264/AAC mp4, same "post-process pass over an
+   already-rendered export" shape as `avbridge_apply_text_overlays`/`_shape_overlays`), applies a
+   Gaussian blur of `blur_sigma` everywhere `matte_path`'s own per-frame luma is non-zero, and
+   writes the result to `out_path`. `matte_path` is expected to be exactly what
+   `avbridge_encode_matte_video` produces (grayscale-as-luma, neutral chroma) — typically from
+   `avcore::mask_propagation::rasterize_to_matte_frames`'s output for CF-09's arbitrary-object
+   privacy-blur use case, but any matte video of that same shape works. `matte_path`'s own
+   frame rate/duration must already match `in_path`'s (`canvas_fps_num`/`_den`) — this function
+   does no timing reconciliation between the two, just reads `matte_path` frame-for-frame via
+   FFmpeg's own `movie` filter source alongside the main decode loop.
+
+   The filter graph (`gblur` for the blur, `maskedmerge` for the per-pixel blend against the
+   matte's luma) is built from fixed, non-user-supplied strings except `matte_path` itself
+   (single-quote-escaped the same way `avbridge_apply_text_overlays` escapes `overlay_path`) and
+   `blur_sigma` (a plain `%f`-formatted double) — there is no dynamic geq expression construction
+   here the way the other overlay functions have, since blur/mask compositing needs none. Video
+   is decoded, filtered, and re-encoded via libopenh264; audio is stream-copied unchanged, exactly
+   like the other two overlay functions.
+
+   `blur_sigma` <= 0 is treated as PRIVACY_BLUR_ERR_FILTER_GRAPH (gblur requires a positive
+   sigma) rather than silently passing the frame through unfiltered — a caller wanting "no blur"
+   should skip calling this function entirely, the same convention
+   `avbridge_apply_text_overlays`/`_shape_overlays` use for `segment_count <= 0`. */
+PrivacyBlurStatus avbridge_apply_privacy_blur(const char *in_path, const char *out_path,
+                                              const char *matte_path, double blur_sigma,
+                                              int canvas_width, int canvas_height,
+                                              int canvas_fps_num, int canvas_fps_den);
+
+typedef enum {
     PCM_OK = 0,
     PCM_ERR_OPEN_INPUT = 1,
     PCM_ERR_STREAM_INFO = 2,
