@@ -6317,7 +6317,7 @@ fn import_otio_into_new_sequence_creates_a_new_sequence_with_the_imported_conten
     let mut app = test_app(vec![test_project(1, vec![asset])], Vec::new());
     assert_eq!(app.active_project().sequences.len(), 1);
 
-    app.import_otio_into_new_sequence(otio_path);
+    app.import_otio_into_new_sequence(otio_path, None);
 
     let project = app.active_project();
     assert_eq!(project.sequences.len(), 2, "appended, not replaced");
@@ -6341,7 +6341,7 @@ fn import_otio_into_new_sequence_toasts_on_malformed_json_without_adding_a_seque
     std::fs::write(&otio_path, "not json at all").unwrap();
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
 
-    app.import_otio_into_new_sequence(otio_path);
+    app.import_otio_into_new_sequence(otio_path, None);
 
     assert_eq!(app.active_project().sequences.len(), 1);
     assert_eq!(app.toasts.len(), 1);
@@ -6356,7 +6356,7 @@ fn import_otio_into_new_sequence_counts_a_warning_for_an_unresolvable_media_refe
     std::fs::write(&otio_path, otio_fixture("nonexistent.mp4", 0.0, 3.0, 24.0)).unwrap();
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
 
-    app.import_otio_into_new_sequence(otio_path);
+    app.import_otio_into_new_sequence(otio_path, None);
 
     let project = app.active_project();
     assert_eq!(project.sequences.len(), 2);
