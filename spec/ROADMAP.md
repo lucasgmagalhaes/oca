@@ -1667,7 +1667,7 @@ an item earlier:
   and `cargo fmt --check` (the first three via the documented temporary local `filters.c` shim,
   discarded before every commit) all stayed clean — no new warnings beyond the pre-existing
   baseline.
-- `[~]` **CF-03: integrated gameplay-voice cleanup.** Move the proven watched-folder FFmpeg chain
+- `[x]` **CF-03: integrated gameplay-voice cleanup.** Move the proven watched-folder FFmpeg chain
   into a non-destructive `Mic`-role effect with A/B preview and measured output.
 
   **Slice 1 (export-side non-destructive effect) shipped.** Reuses `scripts/Watch-Gameplay.ps1`'s
@@ -1740,6 +1740,59 @@ an item earlier:
   updated for the five new fields), `cargo clippy -p core --lib --no-deps` / `-p avbridge
   --all-targets --no-deps`, `cargo fmt --check`, and `clang-format --dry-run --Werror` on the
   touched C files all stayed clean.
+
+  **Slice 3 shipped: A/B preview + measured before/after loudness/peak — CF-03's own last open
+  acceptance criterion.** Deliberately *not* a live GStreamer preview effect (that gap is
+  separately documented above and on `ClipInstance::voice_cleanup_enabled`'s own doc comment —
+  most effects' elements only conditionally exist in the running pipeline at all, a materially
+  bigger lift than this slice's own scope). Instead, `avcore::voice_cleanup_preview::
+  render_voice_cleanup_preview` renders two short (≤6s, `PREVIEW_SAMPLE_MAX_SECS`), disposable
+  samples of the clip's own source audio — cleanup bypassed vs. applied at its currently staged
+  parameters — through the exact same real mixing path a real export uses
+  (`avbridge::mix_audio_timeline`, reusing the item's own already-proven filter chain unchanged),
+  then measures each with `avcore::loudness::measure_loudness` (the same primitive used
+  elsewhere, not a new analysis path). Both renders use the sequence's own configured
+  `target_lufs` so the preview's overall loudness matches what a real export would actually
+  produce; the cleanup chain's own contribution still shows up in the measured true peak/
+  loudness range even once both land on roughly the same integrated LUFS via the shared
+  mastering pass every mix already applies.
+
+  `ui`: the properties panel's Voice Cleanup section gained a "🔊 Prévia A/B" button
+  (`App::spawn_voice_cleanup_preview`, the same background-thread + channel + per-frame
+  `pump_voice_cleanup_preview()` pattern every other background job in this app already uses,
+  disabled while a render for the selected clip is already in flight) and, once a render
+  completes, two "▶ Original"/"▶ Tratado" buttons with each sample's measured LUFS/true-peak/
+  loudness-range line next to it. Playback (`App::play_voice_cleanup_preview_sample`) opens the
+  chosen sample through a dedicated `avcore::preview::Preview` instance
+  (`VoiceCleanupPreviewState::player`) kept deliberately separate from the main timeline's own
+  preview pipeline (`PreviewState::preview`), so auditioning a sample never disturbs the
+  timeline's playhead/pipeline state. The result is tagged with the clip id it belongs to, so
+  switching the selected clip never shows a stale A/B comparison for a different clip's
+  parameters.
+
+  Verified for real, not just type-checked: this session's sandbox has a working path to a
+  fully-linked, real-executing `avbridge` (`rustup update stable` past a too-old-bundled-rustc
+  block, `apt-get install libavfilter-dev`/`libgstreamer*-dev` past missing-headers/pkg-config
+  gaps, plus the documented temporary local `filters.c` shim — this pass additionally needed the
+  identical shim applied to `text_overlay.c`'s own unrelated `av_opt_set_array` call site purely
+  so the rest of the crate's object files satisfy the linker, since that call is never actually
+  reached under the shim — both discarded before commit). `cargo check --workspace --all-targets`
+  passed clean via the shim; `crates/core/src/voice_cleanup_preview.rs` (depends only on
+  `avbridge` + `crate::loudness`/`crate::media`, none of core's heavy ONNX/whisper/GStreamer
+  dependencies) was copied into a throwaway scratch crate that depends on the *real* `avbridge`
+  crate directly (a path dependency, not a copy) and `cargo test`ed there for real: 4/4 passing,
+  including the same real-difference assertion `avbridge`'s own `audio_mix_test.rs` already
+  established for this filter chain (the processed sample's measured loudness range comes back no
+  wider than the bypassed one's — real evidence the compressor/limiter chain actually ran, from a
+  real AAC encode through the real linked FFmpeg build, not just that the C compiles). New
+  `App`-level tests (`spawn_voice_cleanup_preview` marks the selected clip rendering and is a
+  no-op while one is already in flight; `pump_voice_cleanup_preview` stores a tagged result and
+  clears the in-flight marker on success, toasts without storing a result on failure) type-check
+  cleanly under `cargo check` — this sandbox's `ui` bin test target still can't *link* (the
+  pre-existing ONNX Runtime gap), same caveat every other `App`-level test addition in this
+  environment already carries. `cargo fmt --check` and `cargo clippy -p core --lib --no-deps` /
+  `-p ui --bin ui --no-deps` / `-p ui --tests --no-deps` (no new warnings in any touched file)
+  both stayed clean.
 - `[x]` **CF-04: dynamic auto-reframe.** Track a face/selected subject and generate reviewed,
   smoothed crop/position keyframes for vertical exports and Shorts Pack.
 

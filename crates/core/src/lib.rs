@@ -74,6 +74,7 @@ pub mod transcript_proposals;
 pub mod transcript_search;
 pub mod undo;
 pub mod update_check;
+pub mod voice_cleanup_preview;
 pub mod watched_folder;
 pub mod waveform;
 pub mod youtube_download;
