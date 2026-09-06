@@ -15,6 +15,8 @@
 
 //! Export queue and export-preview tests.
 
+use std::time::Duration;
+
 use super::support::*;
 use super::*;
 

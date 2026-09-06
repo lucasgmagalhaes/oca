@@ -16,6 +16,7 @@
 //! Application construction and startup recovery.
 
 use super::*;
+use crate::theme;
 
 impl App {
     /// Builds the initial app state: applies the theme and starts with an empty project list

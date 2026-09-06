@@ -99,7 +99,7 @@ pub(super) fn transition_properties(
     ui: &mut egui::Ui,
     clip_id: u64,
     transition: &mut avcore::timeline::TransitionType,
-    duration_secs: &mut f64,
+    duration_secs: &mut f32,
     locale: Locale,
 ) {
     if components::property_section(
