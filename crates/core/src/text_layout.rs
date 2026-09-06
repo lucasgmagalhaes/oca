@@ -276,6 +276,11 @@ struct ShapeCacheKey {
     text: String,
     family: TextFontFamily,
     style: TextFontStyle,
+    /// TEXT-01C's explicit `wght` axis override — see
+    /// [`crate::timeline::TextClip::font_weight`]'s own doc comment. Must be part of the cache
+    /// key like every other shaping input: two calls differing only in this field can and do
+    /// render visibly different glyph outlines on a variable family.
+    weight_override: Option<u16>,
     font_size_bits: u32,
     max_width_bits: Option<u32>,
     origin_x_bits: u32,
@@ -290,6 +295,7 @@ impl ShapeCacheKey {
         text: &str,
         family: TextFontFamily,
         style: TextFontStyle,
+        weight_override: Option<u16>,
         font_size_px: f32,
         max_width_px: Option<f32>,
         origin: (f32, f32),
@@ -300,6 +306,7 @@ impl ShapeCacheKey {
             text: text.to_string(),
             family,
             style,
+            weight_override,
             font_size_bits: font_size_px.to_bits(),
             max_width_bits: max_width_px.map(f32::to_bits),
             origin_x_bits: origin.0.to_bits(),
@@ -429,10 +436,22 @@ impl TextLayoutEngine {
             .unwrap_or("Lato")
     }
 
-    fn cosmic_weight(style: TextFontStyle) -> Weight {
-        match style {
-            TextFontStyle::Regular => Weight::NORMAL,
-            TextFontStyle::Bold => Weight::BOLD,
+    /// `weight_override` (TEXT-01C's `wght` axis value) wins when given; otherwise falls back to
+    /// `style`'s plain Regular/Bold choice, exactly as before this parameter existed.
+    /// `cosmic-text` itself resolves what "wins" means past this point: for a
+    /// [`FontSourceKind::Variable`](crate::font_catalog::FontSourceKind::Variable) family it
+    /// looks up the loaded font's own `wght` axis and clamps to its real `min`/`max` before
+    /// setting `swash`'s normalized variation coordinates (see `cosmic_text::swash::variations`);
+    /// for a static family with no such axis, an override value simply doesn't change which of
+    /// the family's fixed weight faces gets matched (`fontdb`'s ordinary nearest-weight query
+    /// still applies) — never a hard error either way.
+    fn cosmic_weight(style: TextFontStyle, weight_override: Option<u16>) -> Weight {
+        match weight_override {
+            Some(w) => Weight(w),
+            None => match style {
+                TextFontStyle::Regular => Weight::NORMAL,
+                TextFontStyle::Bold => Weight::BOLD,
+            },
         }
     }
 
@@ -470,6 +489,7 @@ impl TextLayoutEngine {
         text: &str,
         family: TextFontFamily,
         style: TextFontStyle,
+        weight_override: Option<u16>,
         font_size_px: f32,
         max_width_px: Option<f32>,
         origin: (f32, f32),
@@ -480,6 +500,7 @@ impl TextLayoutEngine {
             text,
             family.clone(),
             style,
+            weight_override,
             font_size_px,
             max_width_px,
             origin,
@@ -493,6 +514,7 @@ impl TextLayoutEngine {
             text,
             family,
             style,
+            weight_override,
             font_size_px,
             max_width_px,
             origin,
@@ -509,6 +531,7 @@ impl TextLayoutEngine {
         text: &str,
         family: TextFontFamily,
         style: TextFontStyle,
+        weight_override: Option<u16>,
         font_size_px: f32,
         max_width_px: Option<f32>,
         origin: (f32, f32),
@@ -539,7 +562,7 @@ impl TextLayoutEngine {
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         let attrs = Attrs::new()
             .family(Family::Name(Self::cosmic_family_name(family)))
-            .weight(Self::cosmic_weight(style));
+            .weight(Self::cosmic_weight(style, weight_override));
         {
             let mut buffer = buffer.borrow_with(&mut self.font_system);
             buffer.set_size(max_width_px, None);
@@ -612,6 +635,7 @@ impl TextLayoutEngine {
             text,
             family,
             style,
+            None,
             font_size_px,
             None,
             (0.0, 0.0),

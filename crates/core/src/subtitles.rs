@@ -82,6 +82,7 @@ mod tests {
             font_size: 32.0,
             font_family: Default::default(),
             font_style: Default::default(),
+            font_weight: None,
             color_rgba: [255, 255, 255, 255],
             background_rgba: [0, 0, 0, 0],
             background_padding: 8.0,

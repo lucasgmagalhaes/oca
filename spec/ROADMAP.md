@@ -1470,6 +1470,44 @@ an item earlier:
   --workspace --all-targets` (via the documented temporary `filters.c` shim, discarded before
   commit) and `cargo fmt --check` all stayed clean. See `architecture/complex-text-shaping.md`'s
   own writeup for the full detail.
+
+  **FONT-01C's "variable-weight axis selection" gap (flagged open above) now shipped, scoped
+  down from a full TEXT-01C shaping migration.** Read as originally written, this looked gated
+  behind a much larger change; investigated cautiously instead of either skipping it or guessing
+  at an implementation. Direct inspection of `cosmic-text` 0.19's own source (`font/system.rs`,
+  `font/mod.rs`, `swash.rs`) confirmed it already resolves an explicit OpenType `wght` axis value
+  through `fontdb`'s variable-font instancing and `Attrs::weight()` — no engine change needed, only
+  a plumbing one. `TextClip`/`TextSegment` gained `font_weight: Option<u16>` (`#[serde(default)]`,
+  `None` = today's plain Regular/Bold behavior, unchanged). `TextLayoutEngine::shape`/
+  `shape_uncached` take a new `weight_override: Option<u16>` parameter threaded into
+  `Attrs::weight()`; `ShapeCacheKey` gained the matching field (two shapes differing only in this
+  input produce different glyph outlines on a variable family, so it must be part of the cache
+  key like every other shaping input, same reasoning as `direction`/`text_align` before it).
+  `text_clip.rs`'s properties panel shows a 100-900 weight slider, but only when
+  `font_catalog::find_family(..).source_kind == FontSourceKind::Variable` — a static two-face
+  family keeps its existing Regular/Bold-only control, since it has no axis to slide.
+
+  Verified for real against actual `cosmic-text` and the real bundled Inter variable file
+  (scratch-crate technique, same setup TEXT-01A's own verification established): weight 100 vs.
+  900 resolve to the *same* font file (`font_id` equal — genuine single-face axis instancing, not
+  cosmic-text silently substituting two different static faces) yet render measurably wider
+  glyphs at 900, with at least one individual glyph's own advance width (not just aggregate line
+  width) growing; an explicit `Some(700)` override on a static family (Lato) produces the exact
+  same shape as its existing `TextFontStyle::Bold` path, confirming `None` isn't silently doing
+  anything different from an explicit value matching the old Bold weight; and an off-axis override
+  a static family has no matching face for (`Some(550)` on Lato) degrades gracefully via `fontdb`'s
+  own nearest-weight matching rather than panicking or producing an empty shape. Mirrored as 3 new
+  inline tests in the real `crates/core/src/text_layout/text_layout_test.rs`, plus the existing
+  `shape_cache_misses_when_any_input_differs` test extended with a 5th differing-input case for
+  the new field. `cargo check --workspace --all-targets` and `cargo clippy -p core --lib --no-deps`/
+  `-p ui --tests --no-deps` (via the documented temporary `filters.c` shim, discarded before
+  commit) and `cargo fmt --check` all stayed clean.
+
+  **Still open**: TEXT-01's own automatic script-fallback chain for the international families
+  (unrelated to this slice), and the doc's own "categorized/searchable selector" scope for any
+  future per-family axis beyond `wght` (e.g. width/slant/optical-size axes some variable fonts
+  also carry) — this slice only exposes the one axis every FONT-01B variable family actually
+  ships.
 - `[x]` **CF-01: transcript-based editing and speech cleanup.** Reuse Whisper word timings to
   search, seek, propose filler-word/retake removals, and apply reviewed cuts as one undo action.
   **Slice 1 (persist a media-relative transcript document) shipped**:

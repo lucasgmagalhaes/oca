@@ -85,9 +85,16 @@ pub(super) fn text_clip_properties(
         .show_ui(ui, |ui| {
             font_family_picker_body(ui, &mut tc.font_family, tc_id, locale);
         });
+    let is_variable_family = avcore::font_catalog::find_family(tc.font_family.family_id())
+        .is_some_and(|entry| entry.source_kind == avcore::font_catalog::FontSourceKind::Variable);
     if tc.font_family != previous_family {
         if !tc.font_family.supports_bold() {
             tc.font_style = avcore::TextFontStyle::Regular;
+        }
+        if !is_variable_family {
+            // A static family has no `wght` axis for this to drive — dropped rather than left
+            // to silently do nothing on the newly selected family.
+            tc.font_weight = None;
         }
         changed = true;
     }
@@ -113,6 +120,23 @@ pub(super) fn text_clip_properties(
     });
     if tc.font_style != previous_style {
         changed = true;
+    }
+
+    // TEXT-01C: an explicit `wght` axis value, only meaningful for a
+    // FontSourceKind::Variable family (FONT-01B locks one upstream variable TTF per such
+    // family, spanning a real weight range rather than just Regular/Bold's two named
+    // instances) — hidden for a static family instead of shown-but-inert, since it would have
+    // no effect there.
+    if is_variable_family {
+        components::property_row(ui, Text::PropTextFontWeight.tr(locale));
+        let mut weight = tc.font_weight.unwrap_or(400);
+        if ui
+            .add(egui::Slider::new(&mut weight, 100..=900).step_by(10.0))
+            .changed()
+        {
+            tc.font_weight = Some(weight);
+            changed = true;
+        }
     }
 
     // Paragraph base direction (TEXT-01B) — Auto (UAX #9 detection) by default; an explicit
