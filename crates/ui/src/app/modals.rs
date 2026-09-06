@@ -353,69 +353,6 @@ impl App {
         }
     }
 
-    /// Shows the "Texto-pra-fala" modal when [`App::tts_modal_text`] is `Some`. "Gerar" starts
-    /// the background synthesis ([`App::spawn_generate_tts`]) and closes the modal immediately
-    /// (a no-op, leaving the modal open, while the buffer is blank or no voice model is
-    /// configured); Escape/Cancel discards without generating anything.
-    pub(super) fn show_tts_modal(&mut self, ctx: &egui::Context) {
-        if self.tts_state.tts_modal_text.is_none() {
-            return;
-        }
-        let locale = self.locale;
-        let model_configured = !self.prefs.tts_model_path.is_empty();
-        let modal = egui::Modal::new(egui::Id::new("tts_modal"));
-        let mut confirmed = false;
-        let mut cancelled = false;
-        let response = modal.show(ctx, |ui| {
-            ui.set_width(420.0);
-            components::modal_title(ui, Text::TtsModalTitle.tr(locale));
-            ui.add_space(8.0);
-            if !model_configured {
-                ui.label(
-                    egui::RichText::new(Text::TtsNoModelConfigured.tr(locale))
-                        .color(theme::TEXT_DISABLED),
-                );
-                ui.add_space(8.0);
-            }
-            let buf = self.tts_state.tts_modal_text.as_mut().unwrap();
-            ui.add(
-                egui::TextEdit::multiline(buf)
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(4),
-            );
-            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                cancelled = true;
-            }
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                let text_blank = self
-                    .tts_state
-                    .tts_modal_text
-                    .as_ref()
-                    .is_some_and(|t| t.trim().is_empty());
-                if ui
-                    .add_enabled(
-                        model_configured && !text_blank,
-                        egui::Button::new(Text::TtsGenerate.tr(locale)),
-                    )
-                    .clicked()
-                {
-                    confirmed = true;
-                }
-                if ui.button(Text::CancelJob.tr(locale)).clicked() {
-                    cancelled = true;
-                }
-            });
-        });
-        if response.should_close() || cancelled {
-            self.tts_state.tts_modal_text = None;
-            return;
-        }
-        if confirmed {
-            self.spawn_generate_tts();
-        }
-    }
-
     /// Shows the "Baixar do YouTube" modal when [`App::youtube_modal_url`] is `Some`. Unlike
     /// [`Self::show_tts_modal`], stays open across "Baixar" (submit) — it shows a progress bar
     /// while [`App::youtube_downloading`] is `true` and any [`App::youtube_download_error`]
