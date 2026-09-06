@@ -61,6 +61,7 @@ mod motion_tracking;
 mod multicam;
 mod operation_state;
 mod preview;
+mod preview_selection;
 mod project_ops;
 mod project_timeline_modals;
 mod scene_detection;
