@@ -390,7 +390,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     let covers_playhead = clip.start_secs <= playhead_secs
                                         && playhead_secs < clip.start_secs + clip.duration_secs();
                                     show_clip_context_menu(
-                                        body_response,
+                                        &body_response,
                                         clip,
                                         track,
                                         locale,
