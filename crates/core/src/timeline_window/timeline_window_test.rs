@@ -89,6 +89,12 @@ fn clip(
         anchor_x: 0.5,
         anchor_y: 0.5,
         reframe_seed_point: None,
+        privacy_blur_enabled: false,
+        privacy_blur_mask_path: String::new(),
+        privacy_blur_sigma: 15.0,
+        privacy_blur_seed_vertices: Vec::new(),
+        privacy_blur_seed_center_x_frac: 0.0,
+        privacy_blur_seed_center_y_frac: 0.0,
     }
 }
 

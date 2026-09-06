@@ -33,6 +33,71 @@
 
 use std::path::Path;
 
+/// Pads a clip-local matte (one grayscale-as-luma buffer per sampled frame, same shape
+/// [`crate::mask_propagation::rasterize_to_matte_frames`] produces and
+/// [`crate::background_removal::encode_matte_video`] consumes) out to cover a whole export's own
+/// canvas-duration timeline, so a single [`apply_privacy_blur`] call blurs only during the clip's
+/// own on-timeline window rather than from the start of the export.
+///
+/// `avbridge_apply_privacy_blur` has no per-segment timeline window the way
+/// `avbridge_apply_text_overlays`/`_shape_overlays` do (`start_secs`/`duration_secs` gated by
+/// `enable='between(t,start,end)'`) — extending it to support that needs confirming FFmpeg's
+/// `maskedmerge` actually honors the timeline `enable` option in this pinned build, which can't
+/// be verified in this sandbox (see `spec/architecture/competitive-feature-plan.md`'s CF-09 "UI
+/// integration design" section for the full reasoning). Padding the matte itself sidesteps that
+/// uncertainty entirely: black (all-zero) frames before/after the clip's own window mean
+/// `maskedmerge` sees a fully-zero mask there regardless of whether `enable=` would have worked,
+/// using only machinery already shipped and verified (`encode_matte_video`'s own byte format).
+///
+/// `frame_bytes` is one padding frame's size (`width * height`, matching every entry in
+/// `clip_matte_frames`) — an all-zero buffer of this size is what "no blur" looks like to
+/// `maskedmerge`. `fps_num`/`fps_den` is the *canvas* export's own frame rate (not the clip
+/// matte's own possibly-coarser sampling rate) — every frame this function returns, padding
+/// included, is meant to be encoded at that rate so the padded matte's total duration lines up
+/// with the export's own.
+///
+/// Frame counts are computed by rounding each boundary's own `seconds * (fps_num / fps_den)`
+/// rather than accumulating per-frame durations, so padding length is stable regardless of how
+/// many frames `clip_matte_frames` itself has. `clip_start_secs`/`clip_duration_secs` clamped to
+/// `[0, canvas_duration_secs]` first (a clip starting at a negative offset or extending past the
+/// canvas's own end — shouldn't happen from a real timeline, but this function stays total over
+/// it rather than underflowing a `usize` subtraction).
+pub fn pad_matte_frames_to_canvas_duration(
+    clip_matte_frames: &[Vec<u8>],
+    frame_bytes: usize,
+    fps_num: u32,
+    fps_den: u32,
+    clip_start_secs: f64,
+    clip_duration_secs: f64,
+    canvas_duration_secs: f64,
+) -> Vec<Vec<u8>> {
+    let canvas_duration_secs = canvas_duration_secs.max(0.0);
+    let clip_start_secs = clip_start_secs.clamp(0.0, canvas_duration_secs);
+    let clip_end_secs = (clip_start_secs + clip_duration_secs.max(0.0))
+        .clamp(clip_start_secs, canvas_duration_secs);
+
+    let fps = if fps_den > 0 {
+        fps_num as f64 / fps_den as f64
+    } else {
+        0.0
+    };
+    let frames_before = (clip_start_secs * fps).round().max(0.0) as usize;
+    let frames_after = ((canvas_duration_secs - clip_end_secs) * fps)
+        .round()
+        .max(0.0) as usize;
+
+    let black_frame = vec![0u8; frame_bytes];
+    let mut out = Vec::with_capacity(frames_before + clip_matte_frames.len() + frames_after);
+    out.extend(std::iter::repeat(black_frame.clone()).take(frames_before));
+    out.extend_from_slice(clip_matte_frames);
+    out.extend(std::iter::repeat(black_frame).take(frames_after));
+    out
+}
+
+#[cfg(test)]
+#[path = "privacy_blur/privacy_blur_test.rs"]
+mod tests;
+
 /// What [`apply_privacy_blur`] failed on — thin wrapper over [`avbridge::PrivacyBlurError`],
 /// same pattern [`crate::background_removal::MatteEncodeError`] already uses for
 /// `avbridge::MatteError`.

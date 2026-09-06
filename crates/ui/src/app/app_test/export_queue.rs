@@ -31,6 +31,7 @@ fn queue_export_appends_a_queued_job_with_the_next_id() {
         vec![],
         vec![],
         vec![],
+        vec![],
         test_canvas(),
         -14.0,
         "out.mp4".to_string(),
@@ -49,6 +50,7 @@ fn queue_export_starts_at_one_when_no_jobs_exist() {
     app.queue_export(
         "Export".to_string(),
         Vec::new(),
+        vec![],
         vec![],
         vec![],
         vec![],
@@ -123,6 +125,7 @@ fn queued_job_keeps_the_sequence_export_snapshot_after_settings_change() {
     app.queue_export(
         "Short".to_string(),
         Vec::new(),
+        vec![],
         vec![],
         vec![],
         vec![],

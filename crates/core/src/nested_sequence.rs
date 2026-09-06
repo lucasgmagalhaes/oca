@@ -44,8 +44,9 @@ use std::sync::atomic::AtomicBool;
 use crate::media::MediaAsset;
 use crate::project::{Project, Sequence};
 use crate::render::{
-    render_export_job_multi_with_audio, resolve_audio_segments, resolve_shape_segments,
-    resolve_text_segments, resolve_timeline_segments_multi, RenderError, RenderOutcome,
+    render_export_job_multi_with_audio, resolve_audio_segments, resolve_privacy_blur_segments,
+    resolve_shape_segments, resolve_text_segments, resolve_timeline_segments_multi, RenderError,
+    RenderOutcome,
 };
 use crate::timeline::Timeline;
 
@@ -187,6 +188,7 @@ fn render_nested_sequence(
     let audio_segments = resolve_audio_segments(sequence, &media_library)?;
     let text_segments = resolve_text_segments(sequence, canvas.width, canvas.height);
     let shape_segments = resolve_shape_segments(sequence, canvas.width, canvas.height);
+    let privacy_blur_segments = resolve_privacy_blur_segments(sequence);
 
     std::fs::create_dir_all(cache_dir).map_err(RenderError::ReplaceOutput)?;
     let output = cache_dir.join(format!("sequence_{}.mp4", sequence.id));
@@ -200,6 +202,7 @@ fn render_nested_sequence(
         avbridge::GpuEncoderPreference::Auto,
         &text_segments,
         &shape_segments,
+        &privacy_blur_segments,
         &AtomicBool::new(false),
         |_percent| {},
     )?;

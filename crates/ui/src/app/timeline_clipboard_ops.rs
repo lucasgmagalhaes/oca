@@ -170,6 +170,16 @@ impl App {
                     anchor_x: source.anchor_x,
                     anchor_y: source.anchor_y,
                     reframe_seed_point: source.reframe_seed_point,
+                    // Same reasoning as background_removal_enabled/_mask_path just above — a
+                    // pasted clip keeps the same source_in_secs/source_out_secs, so a matte (and
+                    // the seed vertices it was traced from) generated for that exact range is
+                    // still valid to carry over.
+                    privacy_blur_enabled: source.privacy_blur_enabled,
+                    privacy_blur_mask_path: source.privacy_blur_mask_path,
+                    privacy_blur_sigma: source.privacy_blur_sigma,
+                    privacy_blur_seed_vertices: source.privacy_blur_seed_vertices,
+                    privacy_blur_seed_center_x_frac: source.privacy_blur_seed_center_x_frac,
+                    privacy_blur_seed_center_y_frac: source.privacy_blur_seed_center_y_frac,
                 });
         }
     }

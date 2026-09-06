@@ -15,7 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AudioSegment, Canvas, ClipSegment, ShapeSegment, TextSegment};
+use crate::{AudioSegment, Canvas, ClipSegment, PrivacyBlurSegment, ShapeSegment, TextSegment};
 
 /// Target output aspect ratio for a timeline export. `Original` preserves the source
 /// resolution inferred from the first clip; the fixed presets override width/height while
@@ -174,6 +174,11 @@ pub struct ExportJob {
     /// this field) loading correctly.
     #[serde(default)]
     pub shape_segments: Vec<ShapeSegment>,
+    /// CF-09 privacy-blur clips snapshotted from the sequence's video tracks at queue time —
+    /// same reasoning as `text_segments`/`shape_segments`. `#[serde(default)]` keeps existing
+    /// saved queues (without this field) loading correctly.
+    #[serde(default)]
+    pub privacy_blur_segments: Vec<PrivacyBlurSegment>,
     /// One inner `Vec<ClipSegment>` per visible video track, as returned by
     /// [`crate::render::resolve_timeline_segments_multi`].  Empty when the job was queued
     /// before multi-track support (those jobs fall back to [`ExportJob::segments`]).

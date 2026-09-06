@@ -68,6 +68,43 @@ impl App {
         self.with_selected_clip_mut(|clip| clip.background_removal_mask_path = mask_path);
     }
 
+    /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::privacy_blur_enabled`] — what
+    /// checking the properties panel's "Blur de privacidade" box does. A no-op if nothing is
+    /// selected. Only takes visible effect on export once a matte has actually been generated
+    /// (see [`App::spawn_apply_privacy_blur_for_selected_clip`]) — checking the box alone
+    /// doesn't generate one.
+    pub fn set_selected_clip_privacy_blur_enabled(&mut self, privacy_blur_enabled: bool) {
+        self.with_selected_clip_mut(|clip| clip.privacy_blur_enabled = privacy_blur_enabled);
+    }
+
+    /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::privacy_blur_sigma`] — what
+    /// dragging the properties panel's blur-intensity slider does. A no-op if nothing is
+    /// selected.
+    pub fn set_selected_clip_privacy_blur_sigma(&mut self, privacy_blur_sigma: f32) {
+        self.with_selected_clip_mut(|clip| clip.privacy_blur_sigma = privacy_blur_sigma);
+    }
+
+    /// Applies a finished [`App::spawn_apply_privacy_blur_for_selected_clip`] run: sets
+    /// [`avcore::timeline::ClipInstance::privacy_blur_mask_path`] and
+    /// [`avcore::timeline::ClipInstance::privacy_blur_seed_vertices`] to the run's own result,
+    /// and [`avcore::timeline::ClipInstance::privacy_blur_seed_center_x_frac`]/`_y_frac` to
+    /// [`App::privacy_blur_region`]'s current center — the exact seed this run actually tracked
+    /// from. A no-op if nothing is selected.
+    pub fn set_selected_clip_privacy_blur_mask(
+        &mut self,
+        mask_path: String,
+        seed_vertices: Vec<(f32, f32)>,
+    ) {
+        let center_x = self.privacy_blur_region.privacy_blur_center_x;
+        let center_y = self.privacy_blur_region.privacy_blur_center_y;
+        self.with_selected_clip_mut(|clip| {
+            clip.privacy_blur_mask_path = mask_path;
+            clip.privacy_blur_seed_vertices = seed_vertices;
+            clip.privacy_blur_seed_center_x_frac = center_x;
+            clip.privacy_blur_seed_center_y_frac = center_y;
+        });
+    }
+
     /// Sets `selected_clip_id`'s [`avcore::timeline::ClipInstance::speed_factor`], clamped to
     /// [`SPEED_FACTOR_RANGE`] — what dragging the properties panel's speed slider does. A no-op
     /// if nothing is selected.

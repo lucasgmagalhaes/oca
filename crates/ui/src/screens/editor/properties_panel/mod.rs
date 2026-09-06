@@ -190,6 +190,8 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut chroma_key_color = clip.chroma_key_color;
                         let mut chroma_key_tolerance = clip.chroma_key_tolerance;
                         let mut background_removal_enabled = clip.background_removal_enabled;
+                        let mut privacy_blur_enabled = clip.privacy_blur_enabled;
+                        let mut privacy_blur_sigma = clip.privacy_blur_sigma;
                         let mut voice_cleanup_enabled = clip.voice_cleanup_enabled;
                         let mut voice_cleanup_noise_floor_db = clip.voice_cleanup_noise_floor_db;
                         let mut voice_cleanup_compressor_threshold_db =
@@ -1050,6 +1052,103 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                     app.set_selected_clip_background_removal(
                                         background_removal_enabled,
                                     );
+                                }
+
+                                {
+                                    let mut sigma_changed = false;
+                                    if components::property_block(
+                                        ui,
+                                        Text::PrivacyBlurExportNote.tr(locale),
+                                        |ui| {
+                                            let changed = ui
+                                                .checkbox(
+                                                    &mut privacy_blur_enabled,
+                                                    Text::PropPrivacyBlur.tr(locale),
+                                                )
+                                                .changed();
+                                            sigma_changed = ui
+                                                .add(
+                                                    egui::Slider::new(
+                                                        &mut privacy_blur_sigma,
+                                                        crate::app::PRIVACY_BLUR_SIGMA_RANGE,
+                                                    )
+                                                    .text(Text::PrivacyBlurSigma.tr(locale)),
+                                                )
+                                                .changed();
+                                            ui.horizontal(|ui| {
+                                                ui.add(
+                                                    egui::DragValue::new(
+                                                        &mut app
+                                                            .privacy_blur_region
+                                                            .privacy_blur_center_x,
+                                                    )
+                                                    .speed(0.01)
+                                                    .range(0.0..=1.0)
+                                                    .prefix("x "),
+                                                );
+                                                ui.add(
+                                                    egui::DragValue::new(
+                                                        &mut app
+                                                            .privacy_blur_region
+                                                            .privacy_blur_center_y,
+                                                    )
+                                                    .speed(0.01)
+                                                    .range(0.0..=1.0)
+                                                    .prefix("y "),
+                                                );
+                                                if ui
+                                                    .button(Text::PrivacyBlurRegionReset.tr(locale))
+                                                    .clicked()
+                                                {
+                                                    app.privacy_blur_region.privacy_blur_center_x =
+                                                        0.5;
+                                                    app.privacy_blur_region.privacy_blur_center_y =
+                                                        0.5;
+                                                }
+                                            });
+                                            ui.add(
+                                                egui::Slider::new(
+                                                    &mut app.privacy_blur_region.privacy_blur_width,
+                                                    crate::app::MOTION_TRACK_SIZE_RANGE,
+                                                )
+                                                .text(Text::PrivacyBlurRegionWidth.tr(locale)),
+                                            );
+                                            ui.add(
+                                                egui::Slider::new(
+                                                    &mut app
+                                                        .privacy_blur_region
+                                                        .privacy_blur_height,
+                                                    crate::app::MOTION_TRACK_SIZE_RANGE,
+                                                )
+                                                .text(Text::PrivacyBlurRegionHeight.tr(locale)),
+                                            );
+                                            let generating = app
+                                                .privacy_blur_generation_state
+                                                .privacy_blur_generating_clip_id
+                                                .is_some();
+                                            let label = if generating {
+                                                Text::PrivacyBlurGenerating.tr(locale)
+                                            } else {
+                                                Text::PrivacyBlurApply.tr(locale)
+                                            };
+                                            if ui
+                                                .add_enabled(!generating, egui::Button::new(label))
+                                                .clicked()
+                                            {
+                                                app.spawn_apply_privacy_blur_for_selected_clip();
+                                            }
+                                            changed
+                                        },
+                                    ) {
+                                        app.set_selected_clip_privacy_blur_enabled(
+                                            privacy_blur_enabled,
+                                        );
+                                    }
+                                    if sigma_changed {
+                                        app.set_selected_clip_privacy_blur_sigma(
+                                            privacy_blur_sigma,
+                                        );
+                                    }
                                 }
 
                                 if components::property_section(

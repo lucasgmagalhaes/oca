@@ -718,6 +718,55 @@ pub struct ClipInstance {
     /// runs. `#[serde(default)]` so an older saved project still loads.
     #[serde(default)]
     pub reframe_seed_point: Option<(f32, f32)>,
+    /// CF-09 slice 4 (`spec/architecture/competitive-feature-plan.md`) — `true` once
+    /// [`ClipInstance::privacy_blur_mask_path`] holds a matte generated for this exact clip
+    /// instance (via `avcore::mask_propagation` propagating [`Self::privacy_blur_seed_vertices`]
+    /// across the clip's own trimmed source range). Same "not a plain style toggle" reasoning
+    /// [`Self::background_removal_enabled`]'s own doc comment gives — the matte is tied to this
+    /// instance's exact `source_in_secs`/`source_out_secs` range, so this field (and the other
+    /// `privacy_blur_*` fields below) is deliberately excluded from [`ClipFormatting`], same as
+    /// the background-removal fields. `#[serde(default)]` so older saved projects load with it
+    /// off.
+    #[serde(default)]
+    pub privacy_blur_enabled: bool,
+    /// Path to the grayscale-as-luma matte video the properties panel's "Aplicar blur" flow
+    /// generates for this clip (mirrors [`Self::background_removal_mask_path`]'s exact
+    /// generation/caching shape, reusing the same `avcore::encode_matte_video`/mask-cache-dir
+    /// machinery) — meaningless while [`Self::privacy_blur_enabled`] is `false`. Empty string =
+    /// not yet generated. `#[serde(default)]` so older saved projects load with no matte.
+    #[serde(default)]
+    pub privacy_blur_mask_path: String,
+    /// `gblur` sigma (blur intensity) `avbridge_apply_privacy_blur` is called with. `#[serde(
+    /// default = "default_privacy_blur_sigma")]` rather than defaulting to `0.0`: a positive
+    /// sigma is required (`avbridge::apply_privacy_blur` rejects `<= 0.0`), so an older saved
+    /// project (or a freshly-added clip that hasn't touched this slider yet) still gets a usable
+    /// value if blur is ever enabled without first visiting the slider.
+    #[serde(default = "default_privacy_blur_sigma")]
+    pub privacy_blur_sigma: f32,
+    /// The seed polygon's vertices (`(x_frac, y_frac)`, fraction of frame size — the same
+    /// convention [`crate::timeline::ShapeKind::Polygon`] and `avcore::mask_propagation::
+    /// PropagatedMask::vertices` already use), drawn on the clip's own first trimmed frame —
+    /// empty means "not yet seeded." Reset alongside [`Self::privacy_blur_enabled`]/
+    /// [`Self::privacy_blur_mask_path`] whenever the clip's own trim range changes (a split): a
+    /// rectangle traced against one specific frame's visual content is meaningless once that
+    /// frame is no longer this clip's own first frame, unlike [`Self::reframe_seed_point`]'s
+    /// purely spatial anchor.
+    #[serde(default)]
+    pub privacy_blur_seed_vertices: Vec<(f32, f32)>,
+    /// The seed rectangle's own center, in the same `(x_frac, y_frac)` convention —
+    /// [`avcore::mask_propagation::propagate_mask_by_translation`]'s own
+    /// `initial_center_x_frac`/`_y_frac` tracking seed, kept alongside
+    /// [`Self::privacy_blur_seed_vertices`] rather than re-derived from them (the vertices are a
+    /// rectangle in this first cut, but the propagation API accepts an arbitrary polygon, so the
+    /// tracked center isn't necessarily their centroid).
+    #[serde(default)]
+    pub privacy_blur_seed_center_x_frac: f32,
+    #[serde(default)]
+    pub privacy_blur_seed_center_y_frac: f32,
+}
+
+fn default_privacy_blur_sigma() -> f32 {
+    15.0
 }
 
 fn default_anchor() -> f32 {

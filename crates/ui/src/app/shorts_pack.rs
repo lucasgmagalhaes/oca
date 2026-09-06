@@ -220,6 +220,7 @@ impl App {
                 avcore::resolve_text_segments(&windowed_sequence, canvas.width, canvas.height);
             let shape_segments =
                 avcore::resolve_shape_segments(&windowed_sequence, canvas.width, canvas.height);
+            let privacy_blur_segments = avcore::resolve_privacy_blur_segments(&windowed_sequence);
             let output_path = output_dir.join(format!("{short_name}.mp4"));
 
             self.queue_export(
@@ -228,6 +229,7 @@ impl App {
                 audio_segments,
                 text_segments,
                 shape_segments,
+                privacy_blur_segments,
                 canvas,
                 target_lufs,
                 output_path.display().to_string(),

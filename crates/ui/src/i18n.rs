@@ -294,6 +294,14 @@ text_catalog! {
     BackgroundRemovalGenerateMatte: pt_br = "Gerar máscara", en = "Generate matte";
     BackgroundRemovalGenerating: pt_br = "Gerando máscara...", en = "Generating matte...";
     BackgroundRemovalNoModelConfigured: pt_br = "O modelo de remoção de fundo não está disponível no pacote.", en = "The background removal model is missing from the application bundle.";
+    PropPrivacyBlur: pt_br = "🕶 Blur de privacidade", en = "🕶 Privacy blur";
+    PrivacyBlurExportNote: pt_br = "borra a região selecionada durante toda a duração deste bloco na exportação — clique em \"Aplicar blur\" após ajustar a região.", en = "blurs the selected region for this block's whole on-timeline duration in export — click \"Apply blur\" after adjusting the region.";
+    PrivacyBlurSigma: pt_br = "Intensidade do blur", en = "Blur intensity";
+    PrivacyBlurRegionWidth: pt_br = "Largura da região", en = "Region width";
+    PrivacyBlurRegionHeight: pt_br = "Altura da região", en = "Region height";
+    PrivacyBlurRegionReset: pt_br = "Centralizar região", en = "Center region";
+    PrivacyBlurApply: pt_br = "Aplicar blur", en = "Apply blur";
+    PrivacyBlurGenerating: pt_br = "Aplicando blur...", en = "Applying blur...";
     PrefsBackgroundRemovalModelPath: pt_br = "Caminho do modelo de remoção de fundo", en = "Background removal model path";
     TtsButton: pt_br = "🔊 Texto-pra-fala", en = "🔊 Text-to-speech";
     TtsModalTitle: pt_br = "Texto-pra-fala", en = "Text-to-speech";

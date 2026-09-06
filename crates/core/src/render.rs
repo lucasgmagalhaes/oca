@@ -447,6 +447,7 @@ pub fn resolve_timeline_segments(
 ///
 /// Text overlay errors are logged but do not fail the export — the video is already complete
 /// without the overlays and deleting the caller's file on a post-processing issue would be worse.
+#[allow(clippy::too_many_arguments)]
 pub fn render_export_job(
     segments: &[avbridge::ClipSegment],
     canvas: Canvas,
@@ -455,6 +456,7 @@ pub fn render_export_job(
     gpu_encoder: avbridge::GpuEncoderPreference,
     text_segments: &[TextSegment],
     shape_segments: &[avbridge::ShapeSegment],
+    privacy_blur_segments: &[PrivacyBlurSegment],
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u8),
 ) -> Result<RenderOutcome, RenderError> {
@@ -481,12 +483,16 @@ pub fn render_export_job(
             // Apply text/shape overlays as post-processing passes if any were placed. Shapes
             // after text so a highlight box can sit visually above a caption if the user
             // stacks them at the same position — an arbitrary but consistent choice, same as
-            // any other z-order tie-break.
+            // any other z-order tie-break. Privacy blur last: it should blur whatever text/
+            // shapes already ended up inside the tracked region too, not sit underneath them.
             if !text_segments.is_empty() {
                 apply_text_overlay_pass(output, canvas, text_segments);
             }
             if !shape_segments.is_empty() {
                 apply_shape_overlay_pass(output, canvas, shape_segments);
+            }
+            if !privacy_blur_segments.is_empty() {
+                apply_privacy_blur_pass(output, canvas, total_duration_secs, privacy_blur_segments);
             }
             RenderOutcome::Completed
         }
@@ -511,6 +517,7 @@ pub fn render_timeline_export(
     let audio_segments = resolve_audio_segments(sequence, media_library)?;
     let text_segments = resolve_text_segments(sequence, canvas.width, canvas.height);
     let shape_segments = resolve_shape_segments(sequence, canvas.width, canvas.height);
+    let privacy_blur_segments = resolve_privacy_blur_segments(sequence);
     render_export_job_multi_with_audio(
         &track_segments,
         &audio_segments,
@@ -520,6 +527,7 @@ pub fn render_timeline_export(
         gpu_encoder,
         &text_segments,
         &shape_segments,
+        &privacy_blur_segments,
         cancel,
         on_progress,
     )
@@ -703,6 +711,213 @@ fn apply_shape_overlay_pass(
             let _ = std::fs::remove_file(&tmp);
         }
     }
+}
+
+/// One CF-09 slice 4 privacy-blur clip snapshotted from the sequence at export-queue time — same
+/// "resolved once, doesn't retroactively change if the source project is edited later"
+/// convention [`TextSegment`]/[`avbridge::ShapeSegment`] already have. `mask_path` is the clip-
+/// local matte video path [`crate::mask_propagation`]/[`crate::background_removal::
+/// encode_matte_video`] produced; `start_secs`/`duration_secs` are this clip's own on-timeline
+/// window, used by [`apply_privacy_blur_pass`] to pad that matte out to the export's own canvas
+/// duration (see that function's own doc comment for why padding, not a filter-graph timeline
+/// window).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PrivacyBlurSegment {
+    pub mask_path: String,
+    pub blur_sigma: f32,
+    pub start_secs: f64,
+    pub duration_secs: f64,
+}
+
+/// Collects every video-track [`ClipInstance`] with `privacy_blur_enabled` and a non-empty
+/// `privacy_blur_mask_path` into a [`PrivacyBlurSegment`], sorted by `start_secs` ascending —
+/// same "snapshot at queue time" convention [`resolve_text_segments`]/[`resolve_shape_segments`]
+/// already use.
+pub fn resolve_privacy_blur_segments(sequence: &Sequence) -> Vec<PrivacyBlurSegment> {
+    let mut clips: Vec<&ClipInstance> = sequence
+        .timeline
+        .tracks
+        .iter()
+        .filter(|t| t.kind == TrackKind::Video)
+        .flat_map(|t| &t.clips)
+        .filter(|c| c.privacy_blur_enabled && !c.privacy_blur_mask_path.is_empty())
+        .collect();
+    clips.sort_by(|a, b| a.start_secs.total_cmp(&b.start_secs));
+    clips
+        .into_iter()
+        .map(|c| PrivacyBlurSegment {
+            mask_path: c.privacy_blur_mask_path.clone(),
+            blur_sigma: c.privacy_blur_sigma,
+            start_secs: c.start_secs,
+            duration_secs: c.duration_secs(),
+        })
+        .collect()
+}
+
+/// Upper bound on how many frames [`build_padded_matte`] decodes from one clip-local matte
+/// video — bounds worst-case memory (every decoded luma frame is held in memory at once, same
+/// shape [`crate::background_removal::encode_matte_video`]'s own caller already accepts) for a
+/// very long privacy-blur clip. A clip whose own `duration_secs * canvas fps` exceeds this still
+/// gets a full-duration matte, just resampled at a coarser-than-canvas rate — `movie=...:loop=0`
+/// holds each sampled frame until the next one, same tolerance the background-removal matte
+/// already relies on for a clip whose sampling rate doesn't match the canvas exactly.
+const MAX_PRIVACY_BLUR_MATTE_FRAMES: usize = 10_000;
+
+/// Applies every privacy-blur segment to an already-written export file in place, one at a time
+/// (each pass's own output feeds the next, same chaining [`apply_text_overlay_pass`]/
+/// [`apply_shape_overlay_pass`] already use) — logs and skips a segment on any error rather than
+/// failing the whole export, same "already-complete video, don't destroy it over a post-
+/// processing issue" posture those two passes take.
+fn apply_privacy_blur_pass(
+    output: &Path,
+    canvas: Canvas,
+    canvas_duration_secs: f64,
+    segments: &[PrivacyBlurSegment],
+) {
+    for segment in segments {
+        apply_one_privacy_blur_segment(output, canvas, canvas_duration_secs, segment);
+    }
+}
+
+/// One segment's own pass: re-samples its clip-local matte video (`segment.mask_path`) at the
+/// canvas's own `fps_num`/`fps_den`, evenly across `[0, duration_secs)` — the matte is a plain
+/// grayscale-as-luma H.264 file, no different from any other video [`crate::FrameSampler`]
+/// already decodes — converts each decoded frame to a luma buffer
+/// ([`crate::motion_tracking::rgba_to_gray`]), pads the result out to `canvas_duration_secs`
+/// (black frames before `start_secs` and after `start_secs + duration_secs` —
+/// [`crate::privacy_blur::pad_matte_frames_to_canvas_duration`]), re-encodes the padded frames
+/// into a temporary matte video, then calls [`crate::privacy_blur::apply_privacy_blur`]. Every
+/// decoded frame must match the canvas's own `width`/`height` exactly — a clip-local matte
+/// encoded at a different resolution (shouldn't happen: it's always sampled from the same
+/// source clip this segment came from) is treated as a build failure rather than silently
+/// resizing or corrupting the padded buffer.
+fn apply_one_privacy_blur_segment(
+    output: &Path,
+    canvas: Canvas,
+    canvas_duration_secs: f64,
+    segment: &PrivacyBlurSegment,
+) {
+    static TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
+    let Some(parent) = output.parent() else {
+        return;
+    };
+    let Some(stem) = output.file_stem().and_then(|s| s.to_str()) else {
+        return;
+    };
+    let temp_id = TEMP_ID.fetch_add(1, Ordering::Relaxed);
+    let suffix = format!("{}-{temp_id}", std::process::id());
+    let tmp = parent.join(format!("{stem}.oca-privacy-blur-{suffix}.mp4"));
+    let matte_tmp = parent.join(format!("{stem}.oca-privacy-blur-matte-{suffix}.mp4"));
+
+    if let Err(error) = build_padded_matte(
+        Path::new(&segment.mask_path),
+        &matte_tmp,
+        canvas.width,
+        canvas.height,
+        canvas.fps_num,
+        canvas.fps_den,
+        segment.start_secs,
+        segment.duration_secs,
+        canvas_duration_secs,
+    ) {
+        tracing::error!(error = %error, output = %output.display(), "privacy blur matte build failed");
+        let _ = std::fs::remove_file(&matte_tmp);
+        return;
+    }
+
+    match crate::privacy_blur::apply_privacy_blur(
+        output,
+        &tmp,
+        &matte_tmp,
+        segment.blur_sigma as f64,
+        canvas.width,
+        canvas.height,
+        canvas.fps_num,
+        canvas.fps_den,
+    ) {
+        Ok(()) => {
+            if let Err(e) = std::fs::rename(&tmp, output) {
+                tracing::error!(error = %e, output = %output.display(), "privacy blur rename failed");
+                let _ = std::fs::remove_file(&tmp);
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, output = %output.display(), "privacy blur skipped");
+            let _ = std::fs::remove_file(&tmp);
+        }
+    }
+    let _ = std::fs::remove_file(&matte_tmp);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_padded_matte(
+    matte_path: &Path,
+    out_path: &Path,
+    canvas_width: u32,
+    canvas_height: u32,
+    fps_num: u32,
+    fps_den: u32,
+    clip_start_secs: f64,
+    clip_duration_secs: f64,
+    canvas_duration_secs: f64,
+) -> Result<(), String> {
+    let fps = if fps_den > 0 {
+        fps_num as f64 / fps_den as f64
+    } else {
+        0.0
+    };
+    if fps <= 0.0 || clip_duration_secs <= 0.0 {
+        return Err("invalid fps or clip duration".to_string());
+    }
+    let natural_count = (clip_duration_secs * fps).ceil() as usize + 1;
+    let sample_times = crate::frame_sampler::FrameSampler::even_sample_times(
+        0.0,
+        clip_duration_secs,
+        fps,
+        1,
+        natural_count.min(MAX_PRIVACY_BLUR_MATTE_FRAMES),
+    );
+    let sampler =
+        crate::frame_sampler::FrameSampler::open(matte_path, std::time::Duration::from_millis(20))
+            .map_err(|e| format!("failed to open matte for decoding: {e}"))?;
+
+    let mut clip_frames: Vec<Vec<u8>> = Vec::with_capacity(sample_times.len());
+    for &t in &sample_times {
+        let Some(frame) = sampler.sample(t, std::time::Duration::from_millis(1500)) else {
+            continue;
+        };
+        if frame.width != canvas_width || frame.height != canvas_height {
+            return Err(format!(
+                "matte resolution {}x{} does not match canvas {}x{}",
+                frame.width, frame.height, canvas_width, canvas_height
+            ));
+        }
+        let gray = crate::motion_tracking::rgba_to_gray(&frame.rgba, frame.width, frame.height);
+        clip_frames.push(gray.data);
+    }
+    if clip_frames.is_empty() {
+        return Err("couldn't decode any matte frames".to_string());
+    }
+
+    let padded = crate::privacy_blur::pad_matte_frames_to_canvas_duration(
+        &clip_frames,
+        (canvas_width as usize) * (canvas_height as usize),
+        fps_num,
+        fps_den,
+        clip_start_secs,
+        clip_duration_secs,
+        canvas_duration_secs,
+    );
+    crate::background_removal::encode_matte_video(
+        &padded,
+        canvas_width,
+        canvas_height,
+        fps_num,
+        fps_den,
+        out_path,
+    )
+    .map_err(|e| format!("failed to encode padded matte: {e}"))
 }
 
 /// Collects all [`TextClip`]s from `sequence`'s text tracks into [`TextSegment`]s,
@@ -1055,6 +1270,7 @@ pub fn resolve_timeline_segments_multi(
 /// avfilter `overlay` chain. Track order is z-order: later tracks appear above earlier tracks.
 ///
 /// `on_progress` and `cancel` have the same contract as [`render_export_job`].
+#[allow(clippy::too_many_arguments)]
 pub fn render_export_job_multi(
     track_segments: &[Vec<avbridge::ClipSegment>],
     canvas: Canvas,
@@ -1063,6 +1279,7 @@ pub fn render_export_job_multi(
     gpu_encoder: avbridge::GpuEncoderPreference,
     text_segments: &[TextSegment],
     shape_segments: &[avbridge::ShapeSegment],
+    privacy_blur_segments: &[PrivacyBlurSegment],
     cancel: &AtomicBool,
     on_progress: impl FnMut(u8),
 ) -> Result<RenderOutcome, RenderError> {
@@ -1075,6 +1292,7 @@ pub fn render_export_job_multi(
         gpu_encoder,
         text_segments,
         shape_segments,
+        privacy_blur_segments,
         cancel,
         on_progress,
     )
@@ -1094,6 +1312,7 @@ pub fn render_export_job_multi_with_audio(
     gpu_encoder: avbridge::GpuEncoderPreference,
     text_segments: &[TextSegment],
     shape_segments: &[avbridge::ShapeSegment],
+    privacy_blur_segments: &[PrivacyBlurSegment],
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u8),
 ) -> Result<RenderOutcome, RenderError> {
@@ -1109,6 +1328,7 @@ pub fn render_export_job_multi_with_audio(
             gpu_encoder,
             text_segments,
             shape_segments,
+            privacy_blur_segments,
             cancel,
             on_progress,
         )?;
@@ -1154,6 +1374,9 @@ pub fn render_export_job_multi_with_audio(
             }
             if !shape_segments.is_empty() {
                 apply_shape_overlay_pass(output, canvas, shape_segments);
+            }
+            if !privacy_blur_segments.is_empty() {
+                apply_privacy_blur_pass(output, canvas, total_duration_secs, privacy_blur_segments);
             }
             if !audio_segments.is_empty() {
                 return apply_audio_mix_pass(

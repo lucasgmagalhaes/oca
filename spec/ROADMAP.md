@@ -2680,15 +2680,61 @@ an item earlier:
   too_many_arguments)]` this codebase already uses on comparably-shaped functions elsewhere
   (`keyframe.rs`, `preview.rs`, `text_layout.rs`, `overlay_render.rs`, `render.rs`).
 
-  **UI wiring design written, no code yet** — see `architecture/competitive-feature-plan.md`'s
-  own CF-09 section, "UI integration design (2026-09-06)": properties-panel affordance (reusing
-  the motion-tracking region-picker for seed selection and background_removal.rs's exact
-  background-thread pattern for generation), new `ClipInstance` fields, and the one real open
-  design question this pass resolved — the stored per-clip matte is clip-local time but
-  `avbridge_apply_privacy_blur` has no per-segment timeline window the way text/shape overlays
-  do, so export-time code must pad the matte to canvas-duration (black outside the clip's own
-  timeline window) rather than assume `maskedmerge` honors FFmpeg's `enable=` timeline option in
-  this build, which can't be verified here.
+  **CF-09 shipped end to end, closing out the whole item.** The UI wiring the previous note
+  designed (`architecture/competitive-feature-plan.md`'s CF-09 "UI integration design
+  (2026-09-06)" section) is now implemented:
+  - New `ClipInstance` fields (`privacy_blur_enabled`, `privacy_blur_mask_path`,
+    `privacy_blur_sigma`, `privacy_blur_seed_vertices`, `privacy_blur_seed_center_x/y_frac`),
+    reset on split (the seed was traced against the pre-split clip's own first frame, same
+    staleness reasoning `background_removal_mask_path` already documents) and carried over on
+    copy-paste (same range, still valid).
+  - A properties-panel "Blur de privacidade" section: enable checkbox, blur-intensity slider,
+    numeric center/width/height controls for the seed rectangle (no preview click-and-drag
+    picker yet — a real, separate follow-up, same v1 scope cut the design note already flagged),
+    and an "Aplicar blur" button.
+  - `App::spawn_apply_privacy_blur_for_selected_clip` (new `ui/src/app/privacy_blur.rs`) —
+    structurally identical to `spawn_generate_matte_for_selected_clip`'s background-thread
+    pattern: samples frames at motion-tracking's own `4.0`/sec cadence (block-matching is cheap,
+    unlike background-removal's ONNX-per-sample cost), seeds a rectangle from the properties
+    panel's current region state, propagates it (`avcore::mask_propagation::
+    propagate_mask_by_translation`), rasterizes and encodes it into a matte video cached next to
+    the project (same directory background-removal's own matte already uses).
+  - Export-side integration resolves the open design question exactly as planned: `avcore::
+    render::resolve_privacy_blur_segments` snapshots every privacy-blur clip at queue time
+    (`PrivacyBlurSegment`, threaded through `ExportJob`/`queue_export`/`PendingExportConflict`
+    same as `text_segments`/`shape_segments`), and a new `apply_privacy_blur_pass` re-samples
+    each clip's own clip-local matte via `avcore::FrameSampler` (the matte is a plain
+    grayscale-as-luma H.264 file, no different from any other video this crate decodes), pads it
+    to the export's own canvas duration (`crate::privacy_blur::
+    pad_matte_frames_to_canvas_duration` — black frames outside the clip's own timeline window),
+    re-encodes it, and calls `crate::privacy_blur::apply_privacy_blur` — chained after the
+    text/shape overlay passes (so blur covers whatever text/shapes ended up inside the tracked
+    region too), same "log-and-skip on error, never destroy an already-complete export" posture
+    those two passes already take. Wired into both the single- and multi-track render paths, and
+    into the nested-sequence pre-render pass.
+  - **Drive-by fix, unrelated to this feature**: a "refactor(ui): isolate properties panel
+    chrome" commit that landed on `main` mid-session broke the whole `ui` crate's build (6
+    visibility errors — `pub(super)` items re-exported one module level higher than their own
+    visibility allowed). Fixed by bumping `DIVIDER_HIT_WIDTH`/`stereo_db_meter`/`toolbar`/
+    `sequence_tab_bar`/`save_active_project`/`export_srt_for_active_sequence` to `pub(crate)`,
+    matching the existing `pub(crate) mod menu_bar` convention in the same file — confirmed via a
+    stashed-changes check that this was already broken on `main` before this session's own
+    changes, not something introduced here.
+  - **Explicit, unchanged caveat**: `avbridge_apply_privacy_blur`'s own filter graph
+    (`gblur`+`maskedmerge`) is still unverified at runtime in this sandbox — see the previous
+    slice-4 note for the full reasoning. Everything added in this pass is either pure/
+    deterministic (`pad_matte_frames_to_canvas_duration`, verified for real via a scratch crate,
+    8/8 passing) or exercises only already-verified machinery (`FrameSampler`, `encode_matte_
+    video`, `mask_propagation`'s own already-tested functions) — no new avbridge C code was
+    added this round.
+
+  Verified: `cargo check --workspace --all-targets`/`cargo clippy --workspace --all-targets`
+  (via the documented temporary shim, reverted before commit) both clean; `pad_matte_frames_
+  to_canvas_duration` scratch-crate tested for real (8/8); `cargo fmt --all -- --check` clean.
+  Not verified: the actual UI interaction (no running build available in this sandbox — same
+  "compiles and type-checks, not click-tested" honesty this session's other UI work already
+  carries), and the export pass's real behavior against a real video (same FFmpeg-build
+  limitation as the C filter graph itself).
 - `[ ]` **CF-10: direct publishing.** Add a secure YouTube upload flow; keep OAuth credentials
   in the OS vault and separate from offline bundles.
 

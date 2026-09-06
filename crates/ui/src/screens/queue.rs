@@ -74,6 +74,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             canvas.width,
                             canvas.height,
                         );
+                        let privacy_blur_segments =
+                            avcore::resolve_privacy_blur_segments(active_sequence);
                         let default_name = format!("{sequence_name}_export.mp4");
                         let mut dialog = rfd::FileDialog::new()
                             .add_filter("MP4", &["mp4"])
@@ -90,6 +92,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                         audio_segments,
                                         text_segments,
                                         shape_segments,
+                                        privacy_blur_segments,
                                         canvas,
                                         target_lufs: export_settings.target_lufs,
                                         output_path: output,
@@ -101,6 +104,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                     audio_segments,
                                     text_segments,
                                     shape_segments,
+                                    privacy_blur_segments,
                                     canvas,
                                     export_settings.target_lufs,
                                     output.display().to_string(),
