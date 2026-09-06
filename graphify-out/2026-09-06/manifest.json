@@ -600,8 +600,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/auto_reframe.rs": {
-    "mtime": 1788718147.893208,
-    "ast_hash": "1e712942c6b37e59ab383d8a0bdd026b",
+    "mtime": 1788731085.497098,
+    "ast_hash": "b1cdbb1d178a1b265c0a3efad57bd4ea",
     "semantic_hash": ""
   },
   "e2e/test_auto_reframe.py": {
@@ -2400,8 +2400,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test/motion_background.rs": {
-    "mtime": 1788720975.5220838,
-    "ast_hash": "51c0c3c6bebc62235170e46d3a30b963",
+    "mtime": 1788731085.495404,
+    "ast_hash": "c9b6421322dd6eb1acc85977d67dd912",
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test/project_timeline.rs": {
@@ -2490,8 +2490,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/worker_events.rs": {
-    "mtime": 1788730642.1856902,
-    "ast_hash": "1c7c4d85dfd775f7a45c7f1fff6b7bf3",
+    "mtime": 1788731085.4962714,
+    "ast_hash": "cc53ab5b200f235f962fee09a3f429d6",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/fullscreen_preview.rs": {
