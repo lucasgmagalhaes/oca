@@ -17,6 +17,7 @@ mod draw;
 mod header;
 mod interactions;
 mod ruler;
+mod selection_commands;
 mod snap;
 mod track_header;
 
@@ -80,6 +81,7 @@ use draw::{
 use header::timeline_header;
 use interactions::apply_clip_interactions;
 use ruler::{timeline_ruler, RulerLayout};
+use selection_commands::{apply_selection_commands, SelectionCommands};
 use snap::{snap_move_start, snap_to_nearest, ClipDrag, SnapTargets};
 use track_header::{audio_role_icon, audio_role_label};
 
@@ -1485,74 +1487,25 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         if let Some(px) = new_pan_px {
             app.timeline_pan_px = px;
         }
-        if let Some(id) = clicked_clip_id {
-            app.selected_text_clip_id = None;
-            app.selected_shape_clip_id = None;
-            app.select_timeline_clip(id);
-        }
-        if let Some(id) = clicked_text_clip_id {
-            app.selected_clip_id = None;
-            app.selected_shape_clip_id = None;
-            app.selected_text_clip_id = Some(id);
-        }
-        if let Some(id) = clicked_shape_clip_id {
-            app.selected_clip_id = None;
-            app.selected_text_clip_id = None;
-            app.selected_shape_clip_id = Some(id);
-        }
-        for tc_id in delete_text_clip_requests {
-            let timeline = app.active_project_mut().timeline_mut();
-            for track in &mut timeline.tracks {
-                if track.kind == avcore::timeline::TrackKind::Text {
-                    track.text_clips.retain(|tc| tc.id != tc_id);
-                }
-            }
-            if app.selected_text_clip_id == Some(tc_id) {
-                app.selected_text_clip_id = None;
-            }
-        }
-        for sc_id in delete_shape_clip_requests {
-            let timeline = app.active_project_mut().timeline_mut();
-            for track in &mut timeline.tracks {
-                if track.kind == avcore::timeline::TrackKind::Shape {
-                    track.shape_clips.retain(|sc| sc.id != sc_id);
-                }
-            }
-            if app.selected_shape_clip_id == Some(sc_id) {
-                app.selected_shape_clip_id = None;
-            }
-        }
-        for clip_id in multi_select_requests {
-            app.toggle_multi_select(clip_id);
-        }
-        for clip_id in copy_requests {
-            app.selected_clip_id = Some(clip_id);
-            app.copy_selected_clip();
-        }
-        for clip_id in cut_requests {
-            app.selected_clip_id = Some(clip_id);
-            app.cut_selected_clip();
-        }
-        for clip_id in copy_formatting_requests {
-            app.selected_clip_id = Some(clip_id);
-            app.copy_selected_clip_formatting();
-        }
-        for clip_id in paste_formatting_requests {
-            app.selected_clip_id = Some(clip_id);
-            app.paste_selected_clip_formatting();
-        }
-        if paste_requested {
-            app.paste_clip_at_playhead();
-        }
-        if merge_into_composite_requested {
-            app.merge_into_composite();
-        }
-        if create_compound_clip_requested {
-            app.create_compound_clip_from_selected_clip();
-        }
-        if let Some(nested_id) = open_nested_sequence_request {
-            app.open_nested_sequence(nested_id);
-        }
+        apply_selection_commands(
+            app,
+            SelectionCommands {
+                clicked_clip_id,
+                clicked_text_clip_id,
+                clicked_shape_clip_id,
+                delete_text_clip_requests,
+                delete_shape_clip_requests,
+                multi_select_requests,
+                copy_requests,
+                cut_requests,
+                copy_formatting_requests,
+                paste_formatting_requests,
+                paste_requested,
+                merge_into_composite_requested,
+                create_compound_clip_requested,
+                open_nested_sequence_request,
+            },
+        );
         for track_id in toggle_track_visibility_requests {
             app.toggle_track_visibility(track_id);
         }
