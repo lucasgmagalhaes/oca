@@ -15,6 +15,7 @@
 
 mod draw;
 mod snap;
+mod track_header;
 
 use eframe::egui::{self, RichText};
 
@@ -74,31 +75,7 @@ use draw::{
     draw_waveform, shape_kind_glyph, thumbnail_requests_settled, ThumbnailDrawWork,
 };
 use snap::{snap_move_start, snap_to_nearest, waveform_snap_points_for_clip, ClipDrag};
-
-/// Icon for a track's [`avcore::AudioRole`] (D2, `spec/architecture/differentiators.md`) — the
-/// track header's role picker, and its own collapsed `ComboBox` display.
-fn audio_role_icon(role: avcore::AudioRole) -> &'static str {
-    // ASCII letters -- this function's callers render the result as a plain &str with no
-    // font-family override, so a vendored Lucide icon (which needs one) or a raw emoji (same
-    // tofu class already fixed elsewhere) would both just be a different blank box here.
-    match role {
-        avcore::AudioRole::Unspecified => "-",
-        avcore::AudioRole::GameAudio => "G",
-        avcore::AudioRole::Mic => "V",
-        avcore::AudioRole::Music => "N",
-    }
-}
-
-/// Hover text for the role picker's collapsed state — the icon alone is too terse to stand
-/// alone.
-fn audio_role_label(role: avcore::AudioRole, locale: crate::i18n::Locale) -> &'static str {
-    match role {
-        avcore::AudioRole::Unspecified => Text::AudioRoleUnspecified.tr(locale),
-        avcore::AudioRole::GameAudio => Text::AudioRoleGameAudio.tr(locale),
-        avcore::AudioRole::Mic => Text::AudioRoleMic.tr(locale),
-        avcore::AudioRole::Music => Text::AudioRoleMusic.tr(locale),
-    }
-}
+use track_header::{audio_role_icon, audio_role_label};
 
 /// Which edge of a timeline clip a drag targets — see the trim handling in `timeline_panel`.
 enum TrimEdge {
