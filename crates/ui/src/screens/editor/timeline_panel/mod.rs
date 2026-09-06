@@ -28,6 +28,7 @@ mod text_overlays;
 mod thumbnails;
 mod track_commands;
 mod track_header;
+mod track_requests;
 
 use eframe::egui::{self, RichText};
 
@@ -58,6 +59,7 @@ use text_overlays::{draw_text_overlays, TextOverlayRequests};
 use thumbnails::apply_thumbnail_work;
 use track_commands::{apply_track_commands, TrackCommands};
 use track_header::{draw_track_header, TrackHeaderRequests};
+use track_requests::TrackRequests;
 
 /// Which edge of a timeline clip a drag targets — see the trim handling in `timeline_panel`.
 pub(super) enum TrimEdge {
@@ -196,18 +198,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut shape_clip_drags: Vec<(u64, f64)> = Vec::new();
         let mut text_trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
         let mut shape_trim_requests: Vec<(u64, TrimEdge)> = Vec::new();
-        let mut track_rows: Vec<(u64, avcore::timeline::TrackKind, egui::Rect)> = Vec::new();
-        let mut toggle_track_visibility_requests: Vec<u64> = Vec::new();
-        let mut toggle_track_lock_requests: Vec<u64> = Vec::new();
-        let mut toggle_track_collapsed_requests: Vec<u64> = Vec::new();
-        let mut track_audio_role_requests: Vec<(u64, avcore::AudioRole)> = Vec::new();
-        let mut track_color_label_requests: Vec<(u64, Option<[u8; 3]>)> = Vec::new();
-        let mut track_rename_requests: Vec<(u64, String)> = Vec::new();
-        let mut track_duplicate_requests: Vec<u64> = Vec::new();
-        let mut track_move_up_requests: Vec<u64> = Vec::new();
-        let mut track_move_down_requests: Vec<u64> = Vec::new();
-        let mut track_delete_requests: Vec<(u64, String)> = Vec::new();
-        let mut razor_split_requests: Vec<(u64, f64)> = Vec::new();
+        let mut track_requests = TrackRequests::default();
         // Set the first time a trim/move drag starts this frame — `app` is immutably borrowed
         // for the whole track/clip iteration below, so the undo snapshot itself is pushed once,
         // after that borrow ends, rather than inline at the drag_started() check.
@@ -235,16 +226,16 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                             TRACK_LABEL_WIDTH,
                             locale,
                             TrackHeaderRequests {
-                                toggle_visibility: &mut toggle_track_visibility_requests,
-                                toggle_lock: &mut toggle_track_lock_requests,
-                                toggle_collapsed: &mut toggle_track_collapsed_requests,
-                                audio_role: &mut track_audio_role_requests,
-                                color_label: &mut track_color_label_requests,
-                                rename: &mut track_rename_requests,
-                                duplicate: &mut track_duplicate_requests,
-                                move_up: &mut track_move_up_requests,
-                                move_down: &mut track_move_down_requests,
-                                delete: &mut track_delete_requests,
+                                toggle_visibility: &mut track_requests.toggle_visibility,
+                                toggle_lock: &mut track_requests.toggle_lock,
+                                toggle_collapsed: &mut track_requests.toggle_collapsed,
+                                audio_role: &mut track_requests.audio_roles,
+                                color_label: &mut track_requests.color_labels,
+                                rename: &mut track_requests.renames,
+                                duplicate: &mut track_requests.duplicates,
+                                move_up: &mut track_requests.move_up,
+                                move_down: &mut track_requests.move_down,
+                                delete: &mut track_requests.deletes,
                             },
                         );
                         let track_scroll = egui::ScrollArea::horizontal()
@@ -259,7 +250,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                     egui::vec2(canvas_content_width, row_height),
                                     egui::Sense::hover(),
                                 );
-                                track_rows.push((track.id, track.kind, track_rect));
+                                track_requests.rows.push((track.id, track.kind, track_rect));
                                 let painter = ui.painter().clone();
                                 for clip in &track.clips {
                                     let x = track_rect.left() + clip.start_secs as f32 * px_per_sec;
@@ -408,7 +399,9 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                                     / px_per_sec)
                                                     .max(0.0)
                                                     as f64;
-                                                razor_split_requests.push((track.id, at_secs));
+                                                track_requests
+                                                    .razor_splits
+                                                    .push((track.id, at_secs));
                                             }
                                         } else if ui.input(|i| i.modifiers.ctrl) {
                                             multi_select_requests.push(clip.id);
@@ -904,17 +897,17 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         apply_track_commands(
             app,
             TrackCommands {
-                toggle_visibility: toggle_track_visibility_requests,
-                toggle_lock: toggle_track_lock_requests,
-                toggle_collapsed: toggle_track_collapsed_requests,
-                audio_roles: track_audio_role_requests,
-                color_labels: track_color_label_requests,
-                renames: track_rename_requests,
-                duplicates: track_duplicate_requests,
-                move_up: track_move_up_requests,
-                move_down: track_move_down_requests,
-                razor_splits: razor_split_requests,
-                deletes: track_delete_requests,
+                toggle_visibility: track_requests.toggle_visibility,
+                toggle_lock: track_requests.toggle_lock,
+                toggle_collapsed: track_requests.toggle_collapsed,
+                audio_roles: track_requests.audio_roles,
+                color_labels: track_requests.color_labels,
+                renames: track_requests.renames,
+                duplicates: track_requests.duplicates,
+                move_up: track_requests.move_up,
+                move_down: track_requests.move_down,
+                razor_splits: track_requests.razor_splits,
+                deletes: track_requests.deletes,
             },
         );
         apply_clip_commands(
@@ -939,7 +932,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             text_clip_drags,
             shape_clip_drags,
             clip_drags,
-            &track_rows,
+            &track_requests.rows,
         );
         apply_thumbnail_work(
             app,
@@ -953,7 +946,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         // if that row's kind doesn't match the asset, same as a cross-track clip move). A
         // release above the ruler means the drag never reached the timeline at all, so it's
         // ignored rather than silently appending.
-        apply_pending_asset_drop(app, ruler_top, px_per_sec, &track_rows);
+        apply_pending_asset_drop(app, ruler_top, px_per_sec, &track_requests.rows);
     });
 }
 
