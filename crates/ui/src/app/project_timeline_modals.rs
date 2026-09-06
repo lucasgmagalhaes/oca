@@ -24,6 +24,72 @@ use crate::theme;
 use super::App;
 
 impl App {
+    /// Shows the rename-project modal when `renaming_project` is `Some`. Commits the new name on
+    /// Enter or the "Rename" button, discards on Escape or "Cancel". If the project has a saved
+    /// file on disk the updated project is written back immediately so the name persists.
+    pub(super) fn show_rename_project_modal(&mut self, ctx: &egui::Context) {
+        let Some((idx, _, _)) = self.renaming_project.as_ref() else {
+            return;
+        };
+        let idx = *idx;
+        let locale = self.locale;
+        let modal = egui::Modal::new(egui::Id::new("rename_project_modal"));
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(380.0);
+            components::modal_title(ui, i18n::Text::RenameProjectTitle.tr(locale));
+            ui.add_space(8.0);
+            let (_, name_buf, summary_buf) = self.renaming_project.as_mut().unwrap();
+            ui.label(i18n::Text::ProjectNameLabel.tr(locale));
+            let name_edit =
+                ui.add(egui::TextEdit::singleline(name_buf).desired_width(f32::INFINITY));
+            name_edit.request_focus();
+            if name_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                confirmed = true;
+            }
+            ui.add_space(4.0);
+            ui.label(i18n::Text::ProjectSummaryLabel.tr(locale));
+            ui.add(
+                egui::TextEdit::multiline(summary_buf)
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(3),
+            );
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if components::primary_button(ui, i18n::Text::RenameProjectConfirm.tr(locale))
+                    .clicked()
+                {
+                    confirmed = true;
+                }
+                if ui.button(i18n::Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if response.should_close() || cancelled {
+            self.renaming_project = None;
+            return;
+        }
+        if confirmed {
+            if let Some((_, new_name, new_summary)) = self.renaming_project.take() {
+                let name = new_name.trim().to_string();
+                if !name.is_empty() && idx < self.projects.len() {
+                    self.projects[idx].name = name;
+                    self.projects[idx].summary = new_summary.trim().to_string();
+                    if let Some(path) = self.projects[idx].file_path.clone() {
+                        if let Err(e) = avcore::save_project_to_file(&self.projects[idx], &path) {
+                            self.push_toast(format!("Failed to save project settings: {e}"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Shows the rename-sequence modal when `renaming_sequence` is `Some`. Commits on Enter or
     /// the Rename button; discards on Escape or Cancel. The active project is marked dirty so
     /// autosave and manual save pick it up.
