@@ -243,3 +243,84 @@ fn keyframes_ride_the_delta_from_the_first_tracked_frame() {
 fn keyframes_are_empty_when_no_positions_were_tracked() {
     assert!(tracked_positions_to_keyframes(&[], &[], Position { x: 0.0, y: 0.0 }).is_empty());
 }
+
+#[test]
+fn track_region_with_scores_positions_match_plain_track_region() {
+    let start = (20 - BLOCK_SIZE / 2, 20 - BLOCK_SIZE / 2);
+    let frames: Vec<GrayFrame> = (0..4)
+        .map(|i| frame_with_block(start.0 + i * 2, start.1 + i, 0))
+        .collect();
+
+    let plain = track_region(
+        &frames,
+        20.0 / FRAME_W as f32,
+        20.0 / FRAME_H as f32,
+        0.2,
+        0.2,
+        0.1,
+    );
+    let with_scores = track_region_with_scores(
+        &frames,
+        20.0 / FRAME_W as f32,
+        20.0 / FRAME_H as f32,
+        0.2,
+        0.2,
+        0.1,
+    );
+
+    assert_eq!(plain.len(), with_scores.positions.len());
+    for (a, b) in plain.iter().zip(&with_scores.positions) {
+        assert_eq!(a.center_x_frac, b.center_x_frac);
+        assert_eq!(a.center_y_frac, b.center_y_frac);
+    }
+}
+
+#[test]
+fn track_region_with_scores_first_frame_score_is_zero() {
+    let frames: Vec<GrayFrame> = (0..3).map(|_| frame_with_block(30, 20, 0)).collect();
+    let result = track_region_with_scores(
+        &frames,
+        36.0 / FRAME_W as f32,
+        26.0 / FRAME_H as f32,
+        0.2,
+        0.2,
+        0.1,
+    );
+    assert_eq!(result.scores[0], 0);
+}
+
+#[test]
+fn track_region_with_scores_reports_a_low_score_for_a_perfect_match() {
+    // The block never moves, so every subsequent frame should re-find a near-perfect match
+    // against the frame-0 template (score 0 or very close to it).
+    let frames: Vec<GrayFrame> = (0..3).map(|_| frame_with_block(30, 20, 0)).collect();
+    let result = track_region_with_scores(
+        &frames,
+        36.0 / FRAME_W as f32,
+        26.0 / FRAME_H as f32,
+        0.2,
+        0.2,
+        0.1,
+    );
+    for &score in &result.scores {
+        assert_eq!(score, 0);
+    }
+}
+
+#[test]
+fn track_region_with_scores_reports_template_dimensions() {
+    let frames = vec![frame_with_block(30, 20, 0)];
+    let result = track_region_with_scores(&frames, 0.5, 0.5, 0.2, 0.2, 0.1);
+    // 0.2 * short_side(60) = 12px on each axis.
+    assert_eq!(result.template_width, 12);
+    assert_eq!(result.template_height, 12);
+}
+
+#[test]
+fn track_region_with_scores_on_empty_frames_is_empty_with_zeroed_dimensions() {
+    let result = track_region_with_scores(&[], 0.5, 0.5, 0.2, 0.2, 0.1);
+    assert!(result.positions.is_empty());
+    assert!(result.scores.is_empty());
+    assert_eq!(result.template_width, 0);
+    assert_eq!(result.template_height, 0);
+}

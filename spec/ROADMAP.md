@@ -2570,8 +2570,54 @@ an item earlier:
   --lib --tests` (via the documented temporary `filters.c`/`text_overlay.c` shim plus an
   `FFMPEG_DIR`/`lib`-symlink workaround for this sandbox's multiarch FFmpeg package layout, both
   reverted before commit), and `cargo fmt --all -- --check` all stayed clean.
-- `[ ]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and
+- `[~]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and
   privacy blur, reusing the existing matte/model/tracker infrastructure.
+
+  **Slice 2 (mask propagation between sampled frames, plus a manual-correction affordance)
+  shipped in tractable, model-free form.** A real arbitrary-object segmentation model (slice 1)
+  needs network access to fetch weights and `libonnxruntime`, same gap CF-08's real-embedding
+  slice already hit — but *propagating* an already-seeded mask across frames needs neither, once
+  the propagation is rigid translation rather than per-pixel resegmentation. `avcore::
+  mask_propagation` reuses `motion_tracking::track_region`'s existing block-matching tracker
+  (not reimplemented) to follow one tracked point, then translates every vertex of a caller-
+  supplied polygon (any shape, drawn once on the seed frame — arbitrary, not limited to a
+  rectangle) by that same per-frame delta. `propagate_mask_by_translation` does the plain case;
+  `propagate_mask_with_corrections` lets a caller supply an observed correction at any frame
+  index, restarting tracking from the corrected vertices/center from there rather than continuing
+  to drift from a source of error already fixed — the doc's own "propagate... and offer manual
+  correction at failure points" acceptance shape. The tracker's own sum-of-absolute-differences
+  match score (previously computed but discarded — `track_region` only ever returned the
+  positions) is now exposed via a new `track_region_with_scores`/`TrackResult` (kept alongside the
+  original `track_region`, a thin wrapper over it now, so its own existing callers/tests are
+  untouched) and normalized into a `0.0..=1.0` confidence (`match_confidence`) that doubles as
+  this slice's own "failure point" signal — a poorly-matched frame is flagged
+  `PropagatedMask::needs_correction`.
+
+  Deliberately not attempted: a real segmentation model (slice 1) and anything beyond rigid
+  translation (rotation/scale/deformation of the mask shape) — both need either network access
+  this sandbox lacks or a materially harder tracking problem, left as genuine, separate
+  follow-ups. No UI wiring yet either (an actual lasso/rectangle mask-drawing interaction is a
+  new, non-trivial interaction this session can't visually verify — "design before code" per
+  `CLAUDE.md`), same category as CF-08's index staying core-only until a real caller exists.
+
+  Verified for real: copied `motion_tracking.rs` and the new `mask_propagation.rs` (both
+  unmodified — neither has any `avbridge`/GStreamer/ONNX dependency, only `crate::keyframe`'s
+  small `Keyframe`/`Position` types, stubbed field-for-field) into a throwaway scratch crate and
+  ran the real test suites there: 28/28 passing, 19 new (8 for `track_region_with_scores`'
+  positions-match/first-frame-score-zero/perfect-match/template-dimensions/empty-input cases, 11
+  for `mask_propagation` covering `match_confidence`'s edge cases, translation correctness, a
+  real low-confidence flag when the tracked content genuinely vanishes from the frame, correction
+  restart/out-of-order/out-of-range handling, and the with-no-corrections-matches-plain-
+  translation equivalence). **Real finding from this verification**: a first draft of the
+  low-confidence test used a uniform mid-gray "vanished" frame, expecting a poor match — the
+  actual measured confidence came back `0.82` (not low), because this synthetic block's own texture
+  values average close to mid-gray, so the L1 distance to a mid-gray field is small by
+  construction. Computed the same texture's real per-background-value L1 distance for a few
+  candidates and picked the one that's genuinely worst (`255`, confidence `0.43`) instead of
+  guessing — the test's own synthetic setup was wrong, not `match_confidence`'s math. `cargo check
+  --workspace --all-targets`, `cargo clippy -p core --lib --tests` (via the documented temporary
+  `filters.c`/`text_overlay.c` shim plus the `FFMPEG_DIR`/`lib`-symlink workaround, both reverted
+  before commit), and `cargo fmt --all -- --check` all stayed clean.
 - `[ ]` **CF-10: direct publishing.** Add a secure YouTube upload flow; keep OAuth credentials
   in the OS vault and separate from offline bundles.
 
