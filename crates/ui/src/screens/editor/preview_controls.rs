@@ -88,6 +88,89 @@ pub(super) fn preview_scrubber(app: &mut App, ui: &mut egui::Ui, timeline_durati
     });
 }
 
+/// Centered transport buttons plus the Program Monitor's right-aligned auxiliary actions.
+pub(super) fn preview_transport_row(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    locale: crate::i18n::Locale,
+    timeline_duration: f64,
+) {
+    ui.columns(3, |columns| {
+        // The empty left column balances the centered transport cluster.
+        columns[1].vertical_centered(|ui| {
+            ui.horizontal(|ui| transport_controls(app, ui, locale, timeline_duration));
+        });
+        columns[2].with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            audio_level_meter(app, ui);
+            if ui
+                .selectable_label(
+                    app.preview_state.scopes_enabled,
+                    RichText::new("S").color(theme::TEXT_SECONDARY),
+                )
+                .on_hover_text(Text::PreviewScopesToggle.tr(locale))
+                .clicked()
+            {
+                app.preview_state.scopes_enabled = !app.preview_state.scopes_enabled;
+            }
+            if ui
+                .small_button(RichText::new("[+]").color(theme::TEXT_SECONDARY))
+                .on_hover_text(Text::EnterFullscreenPreview.tr(locale))
+                .clicked()
+            {
+                app.toggle_fullscreen_preview();
+            }
+            if ui
+                .small_button(
+                    RichText::new("*")
+                        .size(TRANSPORT_ICON_SIZE)
+                        .color(theme::TEXT_SECONDARY),
+                )
+                .on_hover_text(Text::AddMarkerButton.tr(locale))
+                .clicked()
+            {
+                app.add_marker_at_playhead(avcore::MarkerKind::Standard);
+                app.push_toast(Text::MarkerAdded.tr(locale).to_string());
+            }
+            if components::icon_button(
+                ui,
+                crate::icons::CAMERA_STR,
+                Text::SnapshotButton.tr(locale),
+                components::IconButtonOpts {
+                    family: Some(crate::icons::family()),
+                    size: Some(TRANSPORT_ICON_SIZE),
+                    ..Default::default()
+                },
+            )
+            .clicked()
+            {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("png", &["png"])
+                    .set_file_name("snapshot.png")
+                    .save_file()
+                {
+                    app.save_preview_snapshot(path);
+                }
+            }
+        });
+    });
+}
+
+/// Optional decoded waveform and vectorscope images beneath the transport row.
+pub(super) fn preview_scopes(app: &App, ui: &mut egui::Ui) {
+    if !app.preview_state.scopes_enabled {
+        return;
+    }
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        if let Some(texture) = &app.preview_state.waveform_texture {
+            ui.image((texture.id(), egui::vec2(200.0, 100.0)));
+        }
+        if let Some(texture) = &app.preview_state.vectorscope_texture {
+            ui.image((texture.id(), egui::vec2(100.0, 100.0)));
+        }
+    });
+}
+
 /// The Program Monitor's centered transport-control cluster (skip-back, step-back, play/pause,
 /// step-forward, skip-forward, loop) — split out of `preview_panel` so the 3-column centering
 /// trick (`ui.columns(3, ...)`) there can call it just for the middle column.

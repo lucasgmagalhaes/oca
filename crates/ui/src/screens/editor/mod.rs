@@ -29,7 +29,7 @@ use layout::{
     audio_meter_column, resizable_divider, resizable_divider_horizontal, DIVIDER_HIT_WIDTH,
 };
 use media_library_panel::media_library_panel;
-use preview_controls::{audio_level_meter, preview_header, preview_scrubber, transport_controls};
+use preview_controls::{preview_header, preview_scopes, preview_scrubber, preview_transport_row};
 use preview_hud::draw_preview_hud;
 use shortcuts::handle_editor_shortcuts;
 pub(super) use toolbar::{
@@ -41,7 +41,6 @@ use eframe::egui::{self, RichText};
 use avcore::media::format_timecode;
 
 use crate::app::{App, EditorTool, PreviewZoom, MOTION_TRACK_SIZE_RANGE};
-use crate::components;
 use crate::i18n::Text;
 use crate::icons;
 use crate::theme;
@@ -244,80 +243,8 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let timeline_duration = app.active_project().timeline().duration_secs();
         preview_scrubber(app, ui, timeline_duration);
         ui.add_space(theme::SPACE_XS);
-        ui.columns(3, |columns| {
-            // Left column intentionally empty — its equal share of the row is what centers the
-            // middle column's transport controls (`ui.columns` splits width evenly into thirds).
-            columns[1].vertical_centered(|ui| {
-                ui.horizontal(|ui| {
-                    transport_controls(app, ui, locale, timeline_duration);
-                });
-            });
-            columns[2].with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                audio_level_meter(app, ui);
-                if ui
-                    .selectable_label(
-                        app.preview_state.scopes_enabled,
-                        RichText::new("S").color(theme::TEXT_SECONDARY),
-                    )
-                    .on_hover_text(Text::PreviewScopesToggle.tr(locale))
-                    .clicked()
-                {
-                    app.preview_state.scopes_enabled = !app.preview_state.scopes_enabled;
-                }
-                if ui
-                    .small_button(RichText::new("[+]").color(theme::TEXT_SECONDARY))
-                    .on_hover_text(Text::EnterFullscreenPreview.tr(locale))
-                    .clicked()
-                {
-                    app.toggle_fullscreen_preview();
-                }
-                // "🔹" (emoji-presentation, same broken class as nav_rail's "🧹") replaced with
-                // plain ASCII — no vendored Lucide marker icon exists yet either.
-                if ui
-                    .small_button(
-                        RichText::new("*")
-                            .size(TRANSPORT_ICON_SIZE)
-                            .color(theme::TEXT_SECONDARY),
-                    )
-                    .on_hover_text(Text::AddMarkerButton.tr(locale))
-                    .clicked()
-                {
-                    app.add_marker_at_playhead(avcore::MarkerKind::Standard);
-                    app.push_toast(Text::MarkerAdded.tr(locale).to_string());
-                }
-                if components::icon_button(
-                    ui,
-                    crate::icons::CAMERA_STR,
-                    Text::SnapshotButton.tr(locale),
-                    components::IconButtonOpts {
-                        family: Some(crate::icons::family()),
-                        size: Some(TRANSPORT_ICON_SIZE),
-                        ..Default::default()
-                    },
-                )
-                .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("png", &["png"])
-                        .set_file_name("snapshot.png")
-                        .save_file()
-                    {
-                        app.save_preview_snapshot(path);
-                    }
-                }
-            });
-        });
-        if app.preview_state.scopes_enabled {
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                if let Some(texture) = &app.preview_state.waveform_texture {
-                    ui.image((texture.id(), egui::vec2(200.0, 100.0)));
-                }
-                if let Some(texture) = &app.preview_state.vectorscope_texture {
-                    ui.image((texture.id(), egui::vec2(100.0, 100.0)));
-                }
-            });
-        }
+        preview_transport_row(app, ui, locale, timeline_duration);
+        preview_scopes(app, ui);
     });
 }
 
