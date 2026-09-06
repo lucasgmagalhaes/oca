@@ -24,7 +24,10 @@ use super::*;
 
 #[test]
 fn missing_proxy_is_not_up_to_date() {
-    let dir = std::env::temp_dir().join("oca_proxy_unit_test_missing");
+    let dir = std::env::temp_dir().join(format!(
+        "oca_proxy_unit_test_missing_{}",
+        std::process::id()
+    ));
     fs::create_dir_all(&dir).unwrap();
     let source = dir.join("source.mp4");
     fs::write(&source, b"src").unwrap();
@@ -39,7 +42,8 @@ fn missing_proxy_is_not_up_to_date() {
 
 #[test]
 fn a_proxy_older_than_its_source_is_not_up_to_date() {
-    let dir = std::env::temp_dir().join("oca_proxy_unit_test_stale");
+    let dir =
+        std::env::temp_dir().join(format!("oca_proxy_unit_test_stale_{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let proxy_path = dir.join("proxy.mp4");
     fs::write(&proxy_path, b"old proxy").unwrap();
@@ -57,7 +61,8 @@ fn a_proxy_older_than_its_source_is_not_up_to_date() {
 
 #[test]
 fn a_proxy_newer_than_its_source_is_up_to_date() {
-    let dir = std::env::temp_dir().join("oca_proxy_unit_test_fresh");
+    let dir =
+        std::env::temp_dir().join(format!("oca_proxy_unit_test_fresh_{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let source = dir.join("source.mp4");
     fs::write(&source, b"source").unwrap();

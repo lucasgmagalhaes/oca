@@ -164,7 +164,7 @@ fn renders_two_clips_with_different_effects_as_one_concatenated_export() {
         &[asset],
         &output,
         -14.0,
-        avcore::GpuEncoderPreference::Auto,
+        avcore::GpuEncoderPreference::Cpu,
         &cancel,
         |percent| last_percent = percent,
     )
@@ -209,7 +209,7 @@ fn frozen_clip_still_exports_its_full_timeline_duration() {
         &[asset],
         &output,
         -14.0,
-        avcore::GpuEncoderPreference::Auto,
+        avcore::GpuEncoderPreference::Cpu,
         &cancel,
         |_| {},
     )
@@ -234,7 +234,7 @@ fn rejects_a_sequence_with_no_video_track() {
         &[],
         &output,
         -14.0,
-        avcore::GpuEncoderPreference::Auto,
+        avcore::GpuEncoderPreference::Cpu,
         &cancel,
         |_| {},
     )
@@ -269,7 +269,7 @@ fn rejects_a_clip_with_a_missing_asset() {
         &[],
         &output,
         -14.0,
-        avcore::GpuEncoderPreference::Auto,
+        avcore::GpuEncoderPreference::Cpu,
         &cancel,
         |_| {},
     )
@@ -305,7 +305,7 @@ fn cancelling_mid_timeline_export_reports_cancelled() {
         &[asset],
         &output,
         -14.0,
-        avcore::GpuEncoderPreference::Auto,
+        avcore::GpuEncoderPreference::Cpu,
         &cancel,
         |_percent| {
             calls += 1;
@@ -351,7 +351,7 @@ fn deflicker_exports_without_error() {
         &[asset],
         &output,
         -14.0,
-        avcore::GpuEncoderPreference::Auto,
+        avcore::GpuEncoderPreference::Cpu,
         &cancel,
         |_| {},
     )
@@ -441,7 +441,7 @@ fn word_highlight_text_overlay_exports_without_error() {
         &[asset],
         &output,
         -14.0,
-        avcore::GpuEncoderPreference::Auto,
+        avcore::GpuEncoderPreference::Cpu,
         &cancel,
         |_| {},
     )
@@ -486,7 +486,7 @@ fn fade_transition_exports_without_error() {
         &[asset],
         &output,
         -14.0,
-        avcore::GpuEncoderPreference::Auto,
+        avcore::GpuEncoderPreference::Cpu,
         &cancel,
         |_| {},
     )
@@ -531,7 +531,7 @@ fn slide_transition_exports_without_error() {
         &[asset],
         &output,
         -14.0,
-        avcore::GpuEncoderPreference::Auto,
+        avcore::GpuEncoderPreference::Cpu,
         &cancel,
         |_| {},
     )
@@ -576,7 +576,7 @@ fn zoom_transition_exports_without_error() {
         &[asset],
         &output,
         -14.0,
-        avcore::GpuEncoderPreference::Auto,
+        avcore::GpuEncoderPreference::Cpu,
         &cancel,
         |_| {},
     )
@@ -636,7 +636,7 @@ fn animated_scale_keyframes_export_without_error() {
         &[asset],
         &output,
         -14.0,
-        avcore::GpuEncoderPreference::Auto,
+        avcore::GpuEncoderPreference::Cpu,
         &cancel,
         |_| {},
     )
@@ -689,7 +689,7 @@ fn animated_rotation_keyframes_export_without_error() {
         &[asset],
         &output,
         -14.0,
-        avcore::GpuEncoderPreference::Auto,
+        avcore::GpuEncoderPreference::Cpu,
         &cancel,
         |_| {},
     )

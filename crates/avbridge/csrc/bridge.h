@@ -562,7 +562,7 @@ TextOverlayStatus avbridge_apply_shape_overlays(const char *in_path, const char 
 typedef enum {
     MATTE_OK = 0,
     MATTE_ERR_ALLOC_OUTPUT = 1,
-    /* Couldn't find/open the libopenh264 encoder. */
+    /* Couldn't find/open a supported CPU H.264 encoder. */
     MATTE_ERR_ENCODER = 2,
     MATTE_ERR_NEW_STREAM = 3,
     MATTE_ERR_OPEN_OUTPUT = 4,
@@ -577,7 +577,8 @@ typedef enum {
 
 /* Encodes `frame_count` grayscale-as-luma frames — a per-clip AI background-removal alpha
    matte (see `avcore::background_removal::segment_person`), not meant to ever be shown to the
-   user directly — into a plain H.264 video at `out_path`, via `libopenh264` (forced, no GPU
+   user directly — into a plain H.264 video at `out_path`, via the available CPU H.264 encoder
+   (forced, no GPU
    attempt: this is a small internal artifact, not worth the hardware-encoder fallback ladder
    `open_video_encoder` uses for the main export path).
 
@@ -586,7 +587,7 @@ typedef enum {
    height`). Each output frame is encoded as YUV420P with the supplied bytes as the luma plane
    and both chroma planes filled with the neutral value 128 ("no color") — "grayscale-as-luma"
    rather than a true single-plane GRAY8 stream, since whether this FFmpeg build's
-   `libopenh264` wrapper accepts `AV_PIX_FMT_GRAY8` input is unverified. Frame `i` gets pts `i`
+   encoder accepts `AV_PIX_FMT_GRAY8` input is unverified. Frame `i` gets pts `i`
    at `fps_num/fps_den` — this function has no notion of any original clip's timing, just its
    own frame count and rate.
 

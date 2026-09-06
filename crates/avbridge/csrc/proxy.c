@@ -102,12 +102,12 @@ ProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path,
         }
     }
 
-    /* Video encoder (libopenh264 — BSD-licensed, available in this LGPL FFmpeg build; not
-       libx264/GPL) + scaler, dimensions keeping the source's aspect ratio with height fixed
+    /* Video encoder (prefer libopenh264, with libx264 support for GPL-enabled dev builds) +
+       scaler, dimensions keeping the source's aspect ratio with height fixed
        at target_height, rounded to the nearest even number (odd dimensions are invalid for
        yuv420p — chroma planes are subsampled 2x in both directions). */
     {
-        const AVCodec *venc = avcodec_find_encoder_by_name("libopenh264");
+        const AVCodec *venc = find_cpu_h264_encoder();
         if (!venc) {
             status = PROXY_ERR_ENCODER;
             goto cleanup;
@@ -135,10 +135,10 @@ ProxyStatus avbridge_generate_proxy(const char *in_path, const char *out_path,
         venc_ctx->time_base = av_inv_q(frame_rate);
         venc_ctx->framerate = frame_rate;
         venc_ctx->gop_size = (frame_rate.num / frame_rate.den) * 2; /* ~2s keyframe interval */
-        venc_ctx->max_b_frames = 0; /* libopenh264 doesn't support B-frames */
+        venc_ctx->max_b_frames = 0; /* keeps proxy decoding lightweight across CPU encoders */
         /* Proxy target: small and fast to decode while scrubbing, not archival quality.
-           libopenh264 has no CRF-equivalent (unlike libx264, which this build doesn't have —
-           see the doc comment on this function) — bitrate is the only practical rate-control
+           A pixel-count-derived bitrate keeps output predictable across the supported CPU
+           encoders, rather than relying on encoder-specific quality controls.
            knob, sized off the (already downscaled) pixel count so both a 540p and a 360p
            proxy land in a reasonable range rather than one fixed number over- or
            under-shooting depending on target_height. */

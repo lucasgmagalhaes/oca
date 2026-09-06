@@ -240,7 +240,8 @@ fn renders_a_real_nested_sequence_to_a_probeable_synthetic_asset() {
         vec![sequence(1, parent_timeline.clone()), child],
         vec![asset],
     );
-    let cache_dir = std::env::temp_dir().join("oca_nested_sequence_test");
+    let cache_dir =
+        std::env::temp_dir().join(format!("oca_nested_sequence_test_{}", std::process::id()));
     let mut cache = HashMap::new();
 
     let assets =
@@ -273,7 +274,10 @@ fn reuses_the_cached_render_when_the_nested_timeline_is_unchanged() {
         vec![sequence(1, parent_timeline.clone()), child],
         vec![asset],
     );
-    let cache_dir = std::env::temp_dir().join("oca_nested_sequence_test_cache_reuse");
+    let cache_dir = std::env::temp_dir().join(format!(
+        "oca_nested_sequence_test_cache_reuse_{}",
+        std::process::id()
+    ));
     let mut cache = HashMap::new();
 
     let first =

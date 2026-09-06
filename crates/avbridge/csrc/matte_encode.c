@@ -53,7 +53,7 @@ MatteStatus avbridge_encode_matte_video(const uint8_t *luma_frames, int frame_co
         return MATTE_ERR_ALLOC_OUTPUT;
     }
 
-    const AVCodec *venc = avcodec_find_encoder_by_name("libopenh264");
+    const AVCodec *venc = find_cpu_h264_encoder();
     if (!venc) {
         status = MATTE_ERR_ENCODER;
         goto cleanup;
@@ -70,7 +70,7 @@ MatteStatus avbridge_encode_matte_video(const uint8_t *luma_frames, int frame_co
     venc_ctx->time_base = av_inv_q(frame_rate);
     venc_ctx->framerate = frame_rate;
     venc_ctx->gop_size = (fps_num / fps_den) * 2;
-    venc_ctx->max_b_frames = 0; /* libopenh264 doesn't support B-frames */
+    venc_ctx->max_b_frames = 0; /* keeps internal matte decoding lightweight */
     /* Internal-only artifact re-decoded frame-by-frame at export time, not archival quality —
        sized the same way proxy.c's bit_rate is, off the (small, luma-dominated) pixel count. */
     venc_ctx->bit_rate = (int64_t)width * height * 2;

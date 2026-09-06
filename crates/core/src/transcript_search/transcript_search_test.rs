@@ -60,7 +60,7 @@ fn doc(asset_id: u64, words: Vec<TranscribeWord>) -> TranscriptDocument {
 
 /// A scratch dir under temp, cleaned up after the test.
 fn scratch_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("oca_search_test_{tag}"));
+    let dir = std::env::temp_dir().join(format!("oca_search_test_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir

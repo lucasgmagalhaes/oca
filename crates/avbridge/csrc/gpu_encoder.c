@@ -30,14 +30,24 @@
 
 /* h264_qsv rejects AV_PIX_FMT_YUV420P as a direct software-frame input (empirically observed:
    "Specified pixel format yuv420p is not supported by the h264_qsv encoder", wants nv12/qsv
-   instead) — every other candidate here (h264_nvenc, h264_amf, libopenh264) accepts yuv420p,
-   so only Quick Sync gets a different answer. See open_video_encoder's doc comment in
-   bridge_internal.h for the full story. */
+   instead) — every other candidate here accepts yuv420p. See open_video_encoder's doc comment
+   in bridge_internal.h for the full story. */
 static enum AVPixelFormat pix_fmt_for_encoder_name(const char *encoder_name) {
     if (strcmp(encoder_name, "h264_qsv") == 0) {
         return AV_PIX_FMT_NV12;
     }
     return AV_PIX_FMT_YUV420P;
+}
+
+const AVCodec *find_cpu_h264_encoder(void) {
+    static const char *const candidates[] = {"libopenh264", "libx264"};
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        const AVCodec *encoder = avcodec_find_encoder_by_name(candidates[i]);
+        if (encoder) {
+            return encoder;
+        }
+    }
+    return NULL;
 }
 
 /* Tries to open a video encoder by name at the given canvas geometry. Returns NULL (freeing
@@ -150,7 +160,7 @@ fail:
 /* Tries an explicit override first, then Linux DRM render nodes in deterministic order, and
    finally FFmpeg's own default-device resolution. Vendor VAAPI drivers remain an operating-
    system/GPU responsibility; absence or permission failure is intentionally just
-   "unavailable" so open_video_encoder can fall back to libopenh264. */
+   "unavailable" so open_video_encoder can fall back to a CPU encoder. */
 static AVCodecContext *try_open_vaapi_encoder(int canvas_width, int canvas_height,
                                                AVRational canvas_fps,
                                                int64_t canvas_bit_rate_bps,
@@ -200,7 +210,6 @@ AVCodecContext *open_video_encoder(GpuEncoderPreference preference, int canvas_w
     static const char *const amf = "h264_amf";
     static const char *const vaapi = "h264_vaapi";
     static const char *const videotoolbox = "h264_videotoolbox";
-    static const char *const cpu = "libopenh264";
 
     const char *hw_candidates[5] = {NULL, NULL, NULL, NULL, NULL};
     int hw_candidate_count = 0;
@@ -259,10 +268,13 @@ AVCodecContext *open_video_encoder(GpuEncoderPreference preference, int canvas_w
         }
     }
 
-    AVCodecContext *ctx = try_open_encoder(cpu, canvas_width, canvas_height, canvas_fps,
-                                            canvas_bit_rate_bps, global_header, out_pix_fmt);
+    const AVCodec *cpu = find_cpu_h264_encoder();
+    AVCodecContext *ctx = cpu ? try_open_encoder(cpu->name, canvas_width, canvas_height,
+                                                  canvas_fps, canvas_bit_rate_bps, global_header,
+                                                  out_pix_fmt)
+                              : NULL;
     if (ctx) {
-        av_log(NULL, AV_LOG_INFO, "oca: opened video encoder %s (cpu fallback)\n", cpu);
+        av_log(NULL, AV_LOG_INFO, "oca: opened video encoder %s (cpu fallback)\n", cpu->name);
     }
     if (out_used_gpu) {
         *out_used_gpu = 0;

@@ -759,7 +759,7 @@ impl GpuEncoderPreference {
 /// Renders `segments` as one continuous export onto a `canvas_width`x`canvas_height` canvas
 /// at `canvas_fps_num`/`canvas_fps_den`: video is decoded, each segment's own filter chain
 /// applied (prefixed with a canvas-conform scale/pad/fps stage), and re-encoded via
-/// libopenh264 — unlike [`encode_export`], video is never stream-copied, since each clip may
+/// the available CPU H.264 encoder — unlike [`encode_export`], video is never stream-copied, since each clip may
 /// need a different filter chain. Audio across all segments runs through ONE continuous
 /// loudnorm+limiter graph (so normalization sees the whole timeline) before being re-encoded
 /// to AAC — every segment's audio must therefore share the same sample rate/format/channel
@@ -1322,7 +1322,7 @@ pub enum ProxyError {
     /// Couldn't find/open the video or audio decoder.
     #[error("failed to open a decoder")]
     Decoder,
-    /// Couldn't find/open the `libopenh264` video encoder or the AAC audio encoder.
+    /// Couldn't find/open a supported CPU H.264 video encoder or the AAC audio encoder.
     #[error("failed to open an encoder")]
     Encoder,
     /// Couldn't build the video scaler.
@@ -1340,8 +1340,8 @@ pub enum ProxyError {
 }
 
 /// Generates a downscaled editing proxy of `in_path`'s video (height = `target_height`, width
-/// computed to preserve the source's aspect ratio) via `libopenh264` (BSD-licensed — this
-/// LGPL FFmpeg build has no `libx264`/GPL). Any audio stream is re-encoded to AAC 128kbps
+/// computed to preserve the source's aspect ratio) via the available CPU H.264 encoder
+/// (`libopenh264` when present, otherwise `libx264`). Any audio stream is re-encoded to AAC 128kbps
 /// unchanged otherwise. Fails with [`ProxyError::NoVideoStream`] if `in_path` has no video
 /// stream; a video-only source produces a video-only proxy, no error.
 pub fn generate_proxy(
@@ -1387,7 +1387,7 @@ pub enum MatteError {
     InvalidPath(NulError),
     #[error("failed to allocate output context")]
     AllocOutput,
-    /// Couldn't find/open the `libopenh264` encoder.
+    /// Couldn't find/open a supported CPU H.264 encoder.
     #[error("failed to open an encoder")]
     Encoder,
     #[error("failed to create an output stream")]
@@ -1413,7 +1413,7 @@ pub enum MatteError {
 /// Encodes `frames` — one grayscale-as-luma alpha matte per source frame (see
 /// `avcore::background_removal::segment_person`), each exactly `width * height` bytes
 /// (row-major, one byte per pixel) — into a plain H.264 video at `out_path`, via
-/// `libopenh264`. See [`avbridge_encode_matte_video`]'s doc comment in `bridge.h` for the
+/// the available CPU H.264 encoder. See [`avbridge_encode_matte_video`]'s doc comment in `bridge.h` for the
 /// grayscale-as-luma/neutral-chroma encoding this produces. Fails with
 /// [`MatteError::Empty`] if `frames` is empty, and [`MatteError::OddDimensions`] if `width`
 /// or `height` is odd.

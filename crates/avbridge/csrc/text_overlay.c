@@ -393,7 +393,7 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
             goto cleanup;
         }
 
-        const AVCodec *venc = avcodec_find_encoder_by_name("libopenh264");
+        const AVCodec *venc = find_cpu_h264_encoder();
         if (!venc) {
             status = TEXT_OVERLAY_ERR_PIPELINE;
             goto cleanup;
@@ -535,7 +535,9 @@ TextOverlayStatus avbridge_apply_text_overlays(const char *in_path, const char *
         av_frame_unref(dec_frame);
     }
     /* Flush filtergraph */
-    av_buffersrc_add_frame_flags(buffersrc_ctx, NULL, 0);
+    if (av_buffersrc_add_frame_flags(buffersrc_ctx, NULL, 0) < 0) {
+        status = TEXT_OVERLAY_ERR_PIPELINE;
+    }
     while (av_buffersink_get_frame(buffersink_ctx, filt_frame) >= 0) {
         filt_frame->pts = next_video_pts++;
         filt_frame->pict_type = AV_PICTURE_TYPE_NONE;

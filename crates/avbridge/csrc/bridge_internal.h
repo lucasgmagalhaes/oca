@@ -28,8 +28,8 @@
 
 typedef enum {
     /* Try platform-available hardware encoders in a fixed order (NVENC, Quick Sync, VAAPI,
-       AMF, then VideoToolbox on macOS), falling back to the CPU (libopenh264) encoder if none
-       of them open successfully. */
+       AMF, then VideoToolbox on macOS), falling back to the first available CPU H.264 encoder
+       if none of them open successfully. */
     GPU_ENCODER_AUTO = 0,
     /* Force the CPU (libopenh264) encoder — no hardware attempt. */
     GPU_ENCODER_CPU = 1,
@@ -50,9 +50,8 @@ typedef enum {
    (AUTO tries all four cross-platform candidates and VideoToolbox on macOS). Each software-frame candidate's requested pixel
    format comes from
    gpu_encoder.c's pix_fmt_for_encoder_name(): AV_PIX_FMT_YUV420P for every encoder except
-   h264_qsv, which gets AV_PIX_FMT_NV12 — the same format the existing filter chains already
-   conform every segment to for the other encoders (see e.g. timeline_export.c's final
-   `format=yuv420p` stage). This split exists because h264_qsv was empirically observed on
+   h264_qsv, which gets AV_PIX_FMT_NV12. The filter chains conform each segment to the selected
+   format. This split exists because h264_qsv was empirically observed on
    this dev machine's FFmpeg build to reject yuv420p outright ("Specified pixel format yuv420p
    is not supported by the h264_qsv encoder", listing only nv12/qsv as supported) even without
    real Quick Sync hardware present — a mismatch indistinguishable, before this fix, from "no
@@ -76,7 +75,7 @@ typedef enum {
    name an explicit render node; otherwise /dev/dri/renderD128..191 are tried before FFmpeg's
    default device resolution. Missing drivers/devices/permissions all fall through to CPU.
 
-   If none of the attempted encoders open, falls back to the CPU (libopenh264) encoder — the
+   If none of the attempted encoders open, falls back to the first available CPU H.264 encoder — the
    "fallback pro encode por CPU" from the Fase 5 spec. Sets *out_used_gpu to 1 if a hardware
    encoder was actually opened, 0 if the CPU fallback (or explicit GPU_ENCODER_CPU) was used.
    If `out_pix_fmt` is non-NULL, sets it to the software pixel format the filter graph must emit
@@ -86,13 +85,17 @@ typedef enum {
    instead of hardcoding yuv420p. `global_header` should be nonzero when the output format wants
    AV_CODEC_FLAG_GLOBAL_HEADER set (out_ctx->oformat->flags & AVFMT_GLOBALHEADER).
 
-   Returns NULL only if even the CPU fallback couldn't open (should only happen if libopenh264
-   itself is missing from this FFmpeg build). Caller owns the returned AVCodecContext (not yet
+   Returns NULL only if even the CPU fallback couldn't open (when neither libopenh264 nor
+   libx264 is available). Caller owns the returned AVCodecContext (not yet
    attached to any AVStream). Defined in gpu_encoder.c. */
 AVCodecContext *open_video_encoder(GpuEncoderPreference preference, int canvas_width,
                                         int canvas_height, AVRational canvas_fps,
                                         int64_t canvas_bit_rate_bps, int global_header,
                                         int *out_used_gpu, enum AVPixelFormat *out_pix_fmt);
+
+/* Returns the preferred available software H.264 encoder: libopenh264 when present, otherwise
+   libx264. Returns NULL when the FFmpeg build provides neither. Defined in gpu_encoder.c. */
+const AVCodec *find_cpu_h264_encoder(void);
 
 /* Opens `path` and reads its stream info into a new AVFormatContext.
    Returns 0 on success (caller owns *fmt_ctx_out and must close it),

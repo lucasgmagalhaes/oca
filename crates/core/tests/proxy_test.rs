@@ -26,6 +26,10 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
+fn temp_cache_dir(name: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("oca_proxy_test_{name}_{}", std::process::id()))
+}
+
 #[test]
 fn proxy_path_uses_the_source_stem_with_a_proxy_suffix() {
     let source = Path::new("/videos/boss03_ribby_croaks.mp4");
@@ -50,7 +54,7 @@ fn proxy_path_differs_per_quality_so_switching_never_collides() {
 
 #[test]
 fn ensure_proxy_skips_ffmpeg_when_the_proxy_is_already_up_to_date() {
-    let dir = std::env::temp_dir().join("oca_proxy_test_cache_hit");
+    let dir = temp_cache_dir("cache_hit");
     fs::create_dir_all(&dir).unwrap();
     let source = dir.join("source.mp4");
     fs::write(&source, b"fake source").unwrap();
@@ -72,7 +76,7 @@ fn ensure_proxy_skips_ffmpeg_when_the_proxy_is_already_up_to_date() {
 
 #[test]
 fn generates_a_real_downscaled_proxy() {
-    let dir = std::env::temp_dir().join("oca_proxy_test_real_generate");
+    let dir = temp_cache_dir("real_generate");
     let _ = fs::remove_dir_all(&dir);
     let source = fixture("video.mp4");
 
@@ -94,7 +98,7 @@ fn generates_a_real_downscaled_proxy() {
 
 #[test]
 fn errors_on_a_missing_source() {
-    let dir = std::env::temp_dir().join("oca_proxy_test_missing_source");
+    let dir = temp_cache_dir("missing_source");
     let _ = fs::remove_dir_all(&dir);
     let result = ensure_proxy(&fixture("does_not_exist.mp4"), &dir, PreviewQuality::Medium);
     let _ = fs::remove_dir_all(&dir);

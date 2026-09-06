@@ -142,7 +142,10 @@ fn validate_rejects_nan_confidence() {
 
 #[test]
 fn save_and_load_round_trips_a_document() {
-    let dir = std::env::temp_dir().join("oca_transcript_test_round_trip");
+    let dir = std::env::temp_dir().join(format!(
+        "oca_transcript_test_round_trip_{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     let doc = TranscriptDocument::from_transcribe_segments(42, Some("pt".to_string()), &segments());
 
@@ -157,7 +160,10 @@ fn save_and_load_round_trips_a_document() {
 
 #[test]
 fn load_returns_none_for_a_missing_asset() {
-    let dir = std::env::temp_dir().join("oca_transcript_test_missing");
+    let dir = std::env::temp_dir().join(format!(
+        "oca_transcript_test_missing_{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
 
@@ -171,7 +177,10 @@ fn load_returns_none_for_a_missing_asset() {
 fn load_rejects_a_corrupt_file_via_validate() {
     // A document that parses cleanly (correct framing/schema) but fails semantic validation
     // (start_secs < 0) must not silently load as if nothing were wrong.
-    let dir = std::env::temp_dir().join("oca_transcript_test_invalid");
+    let dir = std::env::temp_dir().join(format!(
+        "oca_transcript_test_invalid_{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     let mut doc = TranscriptDocument::from_transcribe_segments(7, None, &segments());
     doc.words[0].start_secs = -5.0;
