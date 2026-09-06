@@ -15,6 +15,7 @@
 
 mod background_effects;
 mod chrome;
+mod crop;
 mod keyframe_editors;
 mod motion_tracking;
 mod privacy_blur;
@@ -26,11 +27,12 @@ mod voice_cleanup_preview;
 use background_effects::{background_removal_properties, chroma_key_properties};
 pub(super) use chrome::stereo_db_meter;
 use chrome::{effects_panel_browser, prop_row, properties_tab_bar};
+use crop::crop_properties;
 
 use eframe::egui::{self, RichText};
 
 use crate::app::{
-    App, BRIGHTNESS_RANGE, CONTRAST_RANGE, CROP_MIN_SIZE, GAIN_DB_RANGE, LAYER_SCALE_RANGE,
+    App, BRIGHTNESS_RANGE, CONTRAST_RANGE, GAIN_DB_RANGE, LAYER_SCALE_RANGE,
     MASK_CORNER_RADIUS_RANGE, SATURATION_RANGE, SHARPEN_RANGE, SPEED_FACTOR_RANGE,
     VIGNETTE_INTENSITY_RANGE, VOICE_CLEANUP_CEILING_RANGE, VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE,
     VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE, VOICE_CLEANUP_NOISE_FLOOR_RANGE,
@@ -174,8 +176,6 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let mut frozen = clip.frozen;
                         let mut deflicker_enabled = clip.deflicker_enabled;
                         let mut speed_factor = clip.speed_factor;
-                        let (mut crop_x, mut crop_y, mut crop_w, mut crop_h) =
-                            (clip.crop_x, clip.crop_y, clip.crop_w, clip.crop_h);
                         let mut mask_shape = clip.mask_shape;
                         let mut mask_corner_radius = clip.mask_corner_radius;
                         let mut flipped_h = clip.flipped_h;
@@ -185,7 +185,6 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let (mut layer_scale_x, mut layer_scale_y) =
                             (clip.layer_scale_x, clip.layer_scale_y);
                         let (mut anchor_x, mut anchor_y) = (clip.anchor_x, clip.anchor_y);
-                        let mut reframe_seed_point = clip.reframe_seed_point;
                         let mut vignette_intensity = clip.vignette_intensity;
                         let (mut brightness, mut contrast, mut saturation) =
                             (clip.brightness, clip.contrast, clip.saturation);
@@ -221,10 +220,6 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let brightness_keyframes = clip.brightness_keyframes.clone();
                         let contrast_keyframes = clip.contrast_keyframes.clone();
                         let saturation_keyframes = clip.saturation_keyframes.clone();
-                        let crop_x_keyframes = clip.crop_x_keyframes.clone();
-                        let crop_y_keyframes = clip.crop_y_keyframes.clone();
-                        let crop_w_keyframes = clip.crop_w_keyframes.clone();
-                        let crop_h_keyframes = clip.crop_h_keyframes.clone();
 
                         properties_tab_bar(app, ui, locale);
                         let tab = app.properties_tab;
@@ -423,246 +418,12 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         {
                             voice_cleanup_preview(app, ui, clip_id, locale);
                         }
-                        // Crop reframes the video frame itself — no meaning for an audio block.
                         if app.selected_clip_track_kind()
                             == Some(avcore::timeline::TrackKind::Video)
                         {
+                            crop_properties(app, ui, clip_id, locale);
+
                             if tab == crate::app::PropertiesTab::Inspector {
-                                components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropCrop.tr(locale),
-                                    Text::CropExportNote.tr(locale),
-                                    crop_x != 0.0
-                                        || crop_y != 0.0
-                                        || crop_w != 1.0
-                                        || crop_h != 1.0,
-                                    |ui| {
-                                        let mut crop_changed = false;
-                                        ui.horizontal(|ui| {
-                                            crop_changed |= ui
-                                                .add(
-                                                    egui::DragValue::new(&mut crop_x)
-                                                        .speed(0.01)
-                                                        .range(0.0..=1.0)
-                                                        .prefix("x "),
-                                                )
-                                                .changed();
-                                            crop_changed |= ui
-                                                .add(
-                                                    egui::DragValue::new(&mut crop_y)
-                                                        .speed(0.01)
-                                                        .range(0.0..=1.0)
-                                                        .prefix("y "),
-                                                )
-                                                .changed();
-                                        });
-                                        ui.horizontal(|ui| {
-                                            crop_changed |= ui
-                                                .add(
-                                                    egui::DragValue::new(&mut crop_w)
-                                                        .speed(0.01)
-                                                        .range(CROP_MIN_SIZE..=1.0)
-                                                        .prefix("w "),
-                                                )
-                                                .changed();
-                                            crop_changed |= ui
-                                                .add(
-                                                    egui::DragValue::new(&mut crop_h)
-                                                        .speed(0.01)
-                                                        .range(CROP_MIN_SIZE..=1.0)
-                                                        .prefix("h "),
-                                                )
-                                                .changed();
-                                        });
-                                        if crop_changed {
-                                            app.set_selected_clip_crop(
-                                                crop_x, crop_y, crop_w, crop_h,
-                                            );
-                                        }
-                                        ui.horizontal(|ui| {
-                                            if ui.button(Text::CropReset.tr(locale)).clicked() {
-                                                app.set_selected_clip_crop(0.0, 0.0, 1.0, 1.0);
-                                            }
-                                            let reframing = app
-                                                .auto_reframe_state
-                                                .auto_reframing_clip_id
-                                                .is_some();
-                                            let label = if reframing {
-                                                Text::AutoReframeInProgress.tr(locale)
-                                            } else {
-                                                Text::AutoReframeAction.tr(locale)
-                                            };
-                                            if ui
-                                                .add_enabled(!reframing, egui::Button::new(label))
-                                                .clicked()
-                                            {
-                                                app.spawn_auto_reframe_selected_clip();
-                                            }
-                                            let dynamic_reframing = app
-                                                .dynamic_reframe_state
-                                                .dynamic_reframing_clip_id
-                                                .is_some();
-                                            let dynamic_label = if dynamic_reframing {
-                                                Text::DynamicReframeInProgress.tr(locale)
-                                            } else {
-                                                Text::DynamicReframeAction.tr(locale)
-                                            };
-                                            if ui
-                                                .add_enabled(
-                                                    !dynamic_reframing,
-                                                    egui::Button::new(dynamic_label),
-                                                )
-                                                .on_hover_text(Text::DynamicReframeHint.tr(locale))
-                                                .clicked()
-                                            {
-                                                app.spawn_dynamic_reframe_selected_clip();
-                                            }
-                                        });
-                                        let mut seed_enabled = reframe_seed_point.is_some();
-                                        let (mut seed_x, mut seed_y) =
-                                            reframe_seed_point.unwrap_or((0.5, 0.5));
-                                        ui.horizontal(|ui| {
-                                            if ui
-                                                .checkbox(
-                                                    &mut seed_enabled,
-                                                    Text::ReframeSeedPointToggle.tr(locale),
-                                                )
-                                                .on_hover_text(
-                                                    Text::ReframeSeedPointHint.tr(locale),
-                                                )
-                                                .changed()
-                                            {
-                                                reframe_seed_point =
-                                                    seed_enabled.then_some((seed_x, seed_y));
-                                                app.set_selected_clip_reframe_seed_point(
-                                                    reframe_seed_point,
-                                                );
-                                            }
-                                        });
-                                        if seed_enabled {
-                                            ui.horizontal(|ui| {
-                                                let mut seed_changed = false;
-                                                seed_changed |= ui
-                                                    .add(
-                                                        egui::DragValue::new(&mut seed_x)
-                                                            .speed(0.01)
-                                                            .range(0.0..=1.0)
-                                                            .prefix("x "),
-                                                    )
-                                                    .changed();
-                                                seed_changed |= ui
-                                                    .add(
-                                                        egui::DragValue::new(&mut seed_y)
-                                                            .speed(0.01)
-                                                            .range(0.0..=1.0)
-                                                            .prefix("y "),
-                                                    )
-                                                    .changed();
-                                                if seed_changed {
-                                                    reframe_seed_point = Some((seed_x, seed_y));
-                                                    app.set_selected_clip_reframe_seed_point(
-                                                        reframe_seed_point,
-                                                    );
-                                                }
-                                            });
-                                        }
-                                        crop_changed
-                                    },
-                                );
-
-                                let mut new_crop_x_keyframes = None;
-                                if components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropCropXKeyframes.tr(locale),
-                                    Text::CropKeyframesExportNote.tr(locale),
-                                    !crop_x_keyframes.is_empty(),
-                                    |ui| {
-                                        new_crop_x_keyframes = f32_keyframe_editor(
-                                            ui,
-                                            &crop_x_keyframes,
-                                            0.0..=1.0,
-                                            0.0,
-                                            locale,
-                                        );
-                                        new_crop_x_keyframes.is_some()
-                                    },
-                                ) {
-                                    if let Some(kfs) = new_crop_x_keyframes {
-                                        app.set_selected_clip_crop_x_keyframes(kfs);
-                                    }
-                                }
-
-                                let mut new_crop_y_keyframes = None;
-                                if components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropCropYKeyframes.tr(locale),
-                                    Text::CropKeyframesExportNote.tr(locale),
-                                    !crop_y_keyframes.is_empty(),
-                                    |ui| {
-                                        new_crop_y_keyframes = f32_keyframe_editor(
-                                            ui,
-                                            &crop_y_keyframes,
-                                            0.0..=1.0,
-                                            0.0,
-                                            locale,
-                                        );
-                                        new_crop_y_keyframes.is_some()
-                                    },
-                                ) {
-                                    if let Some(kfs) = new_crop_y_keyframes {
-                                        app.set_selected_clip_crop_y_keyframes(kfs);
-                                    }
-                                }
-
-                                let mut new_crop_w_keyframes = None;
-                                if components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropCropWKeyframes.tr(locale),
-                                    Text::CropKeyframesExportNote.tr(locale),
-                                    !crop_w_keyframes.is_empty(),
-                                    |ui| {
-                                        new_crop_w_keyframes = f32_keyframe_editor(
-                                            ui,
-                                            &crop_w_keyframes,
-                                            CROP_MIN_SIZE..=1.0,
-                                            1.0,
-                                            locale,
-                                        );
-                                        new_crop_w_keyframes.is_some()
-                                    },
-                                ) {
-                                    if let Some(kfs) = new_crop_w_keyframes {
-                                        app.set_selected_clip_crop_w_keyframes(kfs);
-                                    }
-                                }
-
-                                let mut new_crop_h_keyframes = None;
-                                if components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropCropHKeyframes.tr(locale),
-                                    Text::CropKeyframesExportNote.tr(locale),
-                                    !crop_h_keyframes.is_empty(),
-                                    |ui| {
-                                        new_crop_h_keyframes = f32_keyframe_editor(
-                                            ui,
-                                            &crop_h_keyframes,
-                                            CROP_MIN_SIZE..=1.0,
-                                            1.0,
-                                            locale,
-                                        );
-                                        new_crop_h_keyframes.is_some()
-                                    },
-                                ) {
-                                    if let Some(kfs) = new_crop_h_keyframes {
-                                        app.set_selected_clip_crop_h_keyframes(kfs);
-                                    }
-                                }
-
                                 let mask_changed = components::property_section(
                                     ui,
                                     clip_id,
