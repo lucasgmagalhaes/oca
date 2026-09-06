@@ -14,6 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use super::*;
+use crate::keyframe::evaluate_keyframes;
 use crate::timeline::{ShapeKind, TextFontFamily, TextFontStyle};
 
 fn text_element(id: &str, text: TextBinding, color: ColorBinding) -> TemplateTextElement {
@@ -26,6 +27,7 @@ fn text_element(id: &str, text: TextBinding, color: ColorBinding) -> TemplateTex
         font_size: 32.0,
         pos_x: 0.1,
         pos_y: 0.8,
+        timing: TemplateTiming::default(),
     }
 }
 
@@ -221,6 +223,169 @@ fn rejects_a_non_positive_shape_extent() {
             width: 0.0,
             height: 0.1,
         })
+    );
+}
+
+#[test]
+fn rejects_a_negative_fade_in() {
+    let mut template = minimal_template();
+    let mut t = text_element(
+        "e1",
+        TextBinding::Fixed("Hi".to_string()),
+        ColorBinding::Fixed([255, 255, 255, 255]),
+    );
+    t.timing.fade_in_secs = -1.0;
+    template.elements = vec![TemplateElement::Text(t)];
+    assert_eq!(
+        template.validate(),
+        Err(TemplateValidationError::NegativeTiming {
+            element_id: "e1".to_string(),
+            fade_in_secs: -1.0,
+            fade_out_secs: 0.0,
+        })
+    );
+}
+
+#[test]
+fn rejects_a_negative_fade_out() {
+    let mut template = minimal_template();
+    let mut t = text_element(
+        "e1",
+        TextBinding::Fixed("Hi".to_string()),
+        ColorBinding::Fixed([255, 255, 255, 255]),
+    );
+    t.timing.fade_out_secs = -0.5;
+    template.elements = vec![TemplateElement::Text(t)];
+    assert_eq!(
+        template.validate(),
+        Err(TemplateValidationError::NegativeTiming {
+            element_id: "e1".to_string(),
+            fade_in_secs: 0.0,
+            fade_out_secs: -0.5,
+        })
+    );
+}
+
+#[test]
+fn zero_timing_produces_no_opacity_keyframes() {
+    let keyframes = timing_opacity_keyframes(TemplateTiming::default(), 3.0);
+    assert!(keyframes.is_empty());
+}
+
+#[test]
+fn zero_duration_produces_no_opacity_keyframes_even_with_timing_set() {
+    let timing = TemplateTiming {
+        fade_in_secs: 0.5,
+        fade_out_secs: 0.5,
+    };
+    assert!(timing_opacity_keyframes(timing, 0.0).is_empty());
+}
+
+#[test]
+fn fade_in_only_holds_full_opacity_after_the_fade() {
+    let timing = TemplateTiming {
+        fade_in_secs: 1.0,
+        fade_out_secs: 0.0,
+    };
+    let keyframes = timing_opacity_keyframes(timing, 4.0);
+    assert_eq!(keyframes.len(), 2);
+    assert_eq!(
+        keyframes[0],
+        Keyframe {
+            time_fraction: 0.0,
+            value: 0.0
+        }
+    );
+    assert_eq!(
+        keyframes[1],
+        Keyframe {
+            time_fraction: 0.25,
+            value: 1.0
+        }
+    );
+    // Fully opaque well past the fade -- evaluate_keyframes holds the last keyframe's value.
+    assert_eq!(evaluate_keyframes(&keyframes, 0.9, 0.0), 1.0);
+}
+
+#[test]
+fn fade_out_only_holds_full_opacity_before_the_fade() {
+    let timing = TemplateTiming {
+        fade_in_secs: 0.0,
+        fade_out_secs: 1.0,
+    };
+    let keyframes = timing_opacity_keyframes(timing, 4.0);
+    assert_eq!(keyframes.len(), 2);
+    assert_eq!(
+        keyframes[0],
+        Keyframe {
+            time_fraction: 0.75,
+            value: 1.0
+        }
+    );
+    assert_eq!(
+        keyframes[1],
+        Keyframe {
+            time_fraction: 1.0,
+            value: 0.0
+        }
+    );
+    assert_eq!(evaluate_keyframes(&keyframes, 0.1, 0.0), 1.0);
+}
+
+#[test]
+fn fade_in_and_out_together_produce_four_ascending_keyframes() {
+    let timing = TemplateTiming {
+        fade_in_secs: 1.0,
+        fade_out_secs: 1.0,
+    };
+    let keyframes = timing_opacity_keyframes(timing, 4.0);
+    assert_eq!(keyframes.len(), 4);
+    let fractions: Vec<f32> = keyframes.iter().map(|k| k.time_fraction).collect();
+    let mut sorted = fractions.clone();
+    sorted.sort_by(|a, b| a.total_cmp(b));
+    assert_eq!(fractions, sorted, "keyframes must be ascending");
+    assert_eq!(keyframes[0].value, 0.0);
+    assert_eq!(keyframes[1].value, 1.0);
+    assert_eq!(keyframes[2].value, 1.0);
+    assert_eq!(keyframes[3].value, 0.0);
+}
+
+#[test]
+fn an_overlapping_fade_in_and_out_is_scaled_down_to_fit_the_duration() {
+    // fade_in + fade_out (6.0) exceeds duration_secs (4.0) -- both must shrink proportionally
+    // rather than producing out-of-order time_fraction keyframes.
+    let timing = TemplateTiming {
+        fade_in_secs: 3.0,
+        fade_out_secs: 3.0,
+    };
+    let keyframes = timing_opacity_keyframes(timing, 4.0);
+    assert_eq!(keyframes.len(), 4);
+    let fractions: Vec<f32> = keyframes.iter().map(|k| k.time_fraction).collect();
+    let mut sorted = fractions.clone();
+    sorted.sort_by(|a, b| a.total_cmp(b));
+    assert_eq!(
+        fractions, sorted,
+        "keyframes must stay ascending after scaling"
+    );
+    // Equal fades scaled equally must meet exactly in the middle.
+    assert!((keyframes[1].time_fraction - 0.5).abs() < 1e-6);
+    assert!((keyframes[2].time_fraction - 0.5).abs() < 1e-6);
+}
+
+#[test]
+fn negative_timing_inputs_are_clamped_rather_than_producing_backwards_keyframes() {
+    // validate() rejects this at the GraphicTemplate level -- this only proves the pure
+    // conversion function itself never panics or misbehaves if ever called with unvalidated
+    // input directly.
+    let timing = TemplateTiming {
+        fade_in_secs: -1.0,
+        fade_out_secs: 1.0,
+    };
+    let keyframes = timing_opacity_keyframes(timing, 4.0);
+    assert_eq!(
+        keyframes.len(),
+        2,
+        "a clamped-negative fade_in must not contribute keyframes"
     );
 }
 

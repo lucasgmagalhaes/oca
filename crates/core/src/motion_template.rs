@@ -41,18 +41,23 @@
 //! this whole feature.
 //!
 //! Slice 2 ("support text, color, image, timing, safe-area anchors, and aspect-ratio variants")
-//! adds two of those five here: [`safe_area_violations`] (a non-blocking design-time check, not
-//! a repositioning mechanism — see its own doc comment) and [`TemplateFamily`] (grouping sibling
+//! adds three of those five here: [`safe_area_violations`] (a non-blocking design-time check, not
+//! a repositioning mechanism — see its own doc comment), [`TemplateFamily`] (grouping sibling
 //! [`GraphicTemplate`]s prepared for different [`crate::export::ExportAspectRatio`]s, rather than
-//! one template auto-adapting its own layout across canvas shapes). `Image` and timing
-//! (animation in/out) remain open — `Image` for the same "no overlay-clip kind to reuse yet"
-//! reason slice 1 documented, timing as a real, separate follow-up.
+//! one template auto-adapting its own layout across canvas shapes), and [`TemplateTextElement::
+//! timing`] (fade-in/fade-out, resolved into real opacity keyframes by
+//! [`timing_opacity_keyframes`] once a `ui`-side caller knows the instantiated clip's actual
+//! placed duration). `Image` remains open, for the same "no overlay-clip kind to reuse yet"
+//! reason slice 1 documented; so does timing for `TemplateShapeElement` specifically —
+//! [`crate::timeline::ShapeClip`] has no opacity-keyframe field of its own yet (only
+//! center/width/height/rotation), a real, separate follow-up from adding one.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
 use crate::export::ExportAspectRatio;
+use crate::keyframe::Keyframe;
 use crate::timeline::{ShapeKind, TextFontFamily, TextFontStyle};
 
 /// The only schema version this build understands — see [`TemplateValidationError::
@@ -116,6 +121,83 @@ pub struct TemplateTextElement {
     pub font_size: f32,
     pub pos_x: f32,
     pub pos_y: f32,
+    /// CF-07 slice 2's "timing" (animation in/out) — a fully optional fade-in/fade-out spec
+    /// applied automatically at apply time (see [`timing_opacity_keyframes`]), rather than
+    /// requiring a manual keyframe edit after placement like every other template-instantiated
+    /// clip today. `#[serde(default)]` (all-zero, i.e. no animation) so a template authored
+    /// before this field existed still applies with its exact old static behavior. Text-only for
+    /// this slice: unlike [`crate::timeline::TextClip`], [`crate::timeline::ShapeClip`] has no
+    /// opacity-keyframe field of its own yet (only center/width/height/rotation) — animating a
+    /// shape's fade in/out needs that field added first, a real, separate follow-up.
+    #[serde(default)]
+    pub timing: TemplateTiming,
+}
+
+/// CF-07 slice 2's "timing": how long a template-instantiated element takes to fade in at the
+/// start of its on-timeline duration and fade out at the end, in seconds. `Default` (`0.0`/
+/// `0.0`) means no animation at all — the exact behavior every template had before this field
+/// existed. Negative values are rejected by [`GraphicTemplate::validate`]; a combined fade time
+/// exceeding the clip's actual placed duration is handled by [`timing_opacity_keyframes`]
+/// shrinking both proportionally, not by validation here (this type has no duration of its own
+/// to compare against — that's only known once a caller places the instantiated clip).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+pub struct TemplateTiming {
+    pub fade_in_secs: f32,
+    pub fade_out_secs: f32,
+}
+
+/// Converts `timing` into `Keyframe<f32>` opacity points, expressed as
+/// [`crate::keyframe::Keyframe`]'s own `0.0..=1.0`-of-`duration_secs` `time_fraction`
+/// convention, ready to drop straight into [`crate::timeline::TextClip::opacity_keyframes`].
+/// Returns an empty `Vec` — [`crate::keyframe::evaluate_keyframes`]'s own "0 keyframes -> the
+/// caller's default (fully opaque)" behavior — when neither fade is positive or `duration_secs`
+/// is non-positive, so a template authored before `TemplateTiming` existed (all-zero, via
+/// `#[serde(default)]`) instantiates with the exact same "no opacity animation at all" result it
+/// always had.
+///
+/// A combined fade time exceeding `duration_secs` is scaled down proportionally rather than
+/// producing out-of-order `time_fraction`s (an authored/parameter-driven duration mismatch,
+/// not a validation-time concern — [`GraphicTemplate::validate`] only checks
+/// non-negativity, since a `TemplateTextElement` has no duration of its own to compare
+/// against).
+pub fn timing_opacity_keyframes(timing: TemplateTiming, duration_secs: f64) -> Vec<Keyframe<f32>> {
+    let fade_in_secs = timing.fade_in_secs.max(0.0) as f64;
+    let fade_out_secs = timing.fade_out_secs.max(0.0) as f64;
+    if (fade_in_secs <= 0.0 && fade_out_secs <= 0.0) || duration_secs <= 0.0 {
+        return Vec::new();
+    }
+
+    let total = fade_in_secs + fade_out_secs;
+    let scale = if total > duration_secs {
+        duration_secs / total
+    } else {
+        1.0
+    };
+    let fade_in_secs = fade_in_secs * scale;
+    let fade_out_secs = fade_out_secs * scale;
+
+    let mut keyframes = Vec::new();
+    if fade_in_secs > 0.0 {
+        keyframes.push(Keyframe {
+            time_fraction: 0.0,
+            value: 0.0,
+        });
+        keyframes.push(Keyframe {
+            time_fraction: (fade_in_secs / duration_secs) as f32,
+            value: 1.0,
+        });
+    }
+    if fade_out_secs > 0.0 {
+        keyframes.push(Keyframe {
+            time_fraction: (1.0 - fade_out_secs / duration_secs) as f32,
+            value: 1.0,
+        });
+        keyframes.push(Keyframe {
+            time_fraction: 1.0,
+            value: 0.0,
+        });
+    }
+    keyframes
 }
 
 /// A [`crate::timeline::ShapeClip`]-shaped template primitive — the same field set, minus the
@@ -210,6 +292,11 @@ pub enum TemplateValidationError {
         width: f32,
         height: f32,
     },
+    NegativeTiming {
+        element_id: String,
+        fade_in_secs: f32,
+        fade_out_secs: f32,
+    },
 }
 
 impl std::fmt::Display for TemplateValidationError {
@@ -259,6 +346,15 @@ impl std::fmt::Display for TemplateValidationError {
                 f,
                 "shape element {element_id:?}: width/height must both be positive (got \
                  {width}x{height})"
+            ),
+            Self::NegativeTiming {
+                element_id,
+                fade_in_secs,
+                fade_out_secs,
+            } => write!(
+                f,
+                "text element {element_id:?}: timing.fade_in_secs/fade_out_secs must both be \
+                 non-negative (got {fade_in_secs}/{fade_out_secs})"
             ),
         }
     }
@@ -350,6 +446,13 @@ impl GraphicTemplate {
                             value: t.font_size,
                         });
                     }
+                    if t.timing.fade_in_secs < 0.0 || t.timing.fade_out_secs < 0.0 {
+                        return Err(TemplateValidationError::NegativeTiming {
+                            element_id: t.id.clone(),
+                            fade_in_secs: t.timing.fade_in_secs,
+                            fade_out_secs: t.timing.fade_out_secs,
+                        });
+                    }
                     if let TextBinding::Parameter(pid) = &t.text {
                         self.check_reference(&t.id, pid, TemplateParameterKind::Text)?;
                     }
@@ -421,6 +524,7 @@ pub enum InstantiatedElement {
         font_size: f32,
         pos_x: f32,
         pos_y: f32,
+        timing: TemplateTiming,
     },
     Shape {
         source_id: String,
@@ -531,6 +635,7 @@ pub fn instantiate(
                 font_size: t.font_size,
                 pos_x: t.pos_x,
                 pos_y: t.pos_y,
+                timing: t.timing,
             }),
             TemplateElement::Shape(s) => Ok(InstantiatedElement::Shape {
                 source_id: s.id.clone(),

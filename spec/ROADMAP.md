@@ -2317,7 +2317,45 @@ an item earlier:
   clippy --workspace --all-targets` (via the documented temporary `filters.c` shim, discarded
   before commit) both stayed clean, confirming the new modal/methods are actually reachable.
   `cargo fmt --check` also stayed clean. CF-07 slice 3 is now considered complete; `Image`
-  primitive, timing, and migration tests (slice 2's remainder and slice 4) remain open.
+  primitive and migration tests (slice 2's remainder and slice 4) remain open.
+
+  **Slice 2's "timing" (animation in/out) now shipped too, for `Text` elements.**
+  `TemplateTextElement` gains `timing: TemplateTiming` (`fade_in_secs`/`fade_out_secs`,
+  `#[serde(default)]` — all-zero, i.e. the exact old static-only behavior, so a template authored
+  before this field existed applies unchanged). `GraphicTemplate::validate` rejects a negative
+  fade duration (`TemplateValidationError::NegativeTiming`); a combined fade time exceeding the
+  clip's own placed duration isn't a validation concern (a `TemplateTextElement` has no duration
+  of its own to compare against — only a `ui`-side caller knows that, once it decides where and
+  how long to place the instantiated clip), so `timing_opacity_keyframes(timing, duration_secs)`
+  instead scales both fades down proportionally, guaranteeing the resulting keyframes stay
+  ascending rather than producing a reversed/overlapping pair. `App::apply_graphic_template` calls
+  it against the placed clip's own 3-second default duration and uses the result as the new
+  `TextClip`'s `opacity_keyframes` — no manual keyframe edit needed after applying a template that
+  declares timing, closing the gap this entry's own "a template element is a static starting
+  point" doc comment (on `TemplateTextElement`/`TemplateShapeElement`) originally left open for
+  entrance/exit animation specifically.
+
+  **Text-only, not Shape, in this slice**: `crate::timeline::ShapeClip` has no opacity-keyframe
+  field of its own at all (only `center`/`width`/`height`/`rotation` keyframes) — adding one
+  would mean touching `shape_render.rs`'s FFmpeg `geq` filter-expression machinery, a materially
+  bigger and riskier change than reusing `TextClip::opacity_keyframes`, which already existed;
+  left as a real, separate follow-up rather than attempted here.
+
+  Verified for real, not just type-checked: since `motion_template.rs` depends only on
+  `crate::export`/`crate::keyframe`/`crate::timeline` (no `avbridge`/GStreamer/ONNX), it — plus
+  `keyframe.rs` (also unmodified) and minimal stand-in `export.rs`/`timeline.rs` — was copied into
+  a throwaway scratch crate and `cargo test`ed there for real: 36/36 passing (27 pre-existing plus
+  9 new), covering the two new validation-rejection cases, zero timing/zero duration each
+  producing no keyframes, fade-in-only and fade-out-only each holding full opacity outside their
+  own fade window (checked via the real `evaluate_keyframes`, not just asserting the raw keyframe
+  list), both fades together producing four strictly-ascending keyframes, an overlapping
+  combined fade correctly scaled down to land exactly at the clip's midpoint, and negative inputs
+  clamped rather than producing backwards keyframes if this pure function is ever called with
+  unvalidated input directly. Mirrored as the same 9 tests in the real
+  `crates/core/src/motion_template/motion_template_test.rs`. `cargo check --workspace
+  --all-targets`, `cargo clippy -p core --lib --no-deps` / `-p ui --tests --no-deps` (via the
+  documented temporary `filters.c`/`text_overlay.c` shim, discarded before commit), and `cargo fmt
+  --all -- --check` all stayed clean.
 - `[~]` **CF-08: semantic transcript and visual search.** Build a bounded, versioned local index
   after exact transcript search ships in CF-01. Slice 1 (exact transcript search) shipped as part
   of CF-01 — `avcore::transcript_search`.

@@ -7690,6 +7690,7 @@ fn text_template_element(id: &str, text: TextBinding) -> TemplateElement {
         font_size: 32.0,
         pos_x: 0.2,
         pos_y: 0.8,
+        timing: Default::default(),
     })
 }
 
