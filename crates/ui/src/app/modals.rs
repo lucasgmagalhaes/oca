@@ -19,7 +19,7 @@ use eframe::egui;
 use tracing::warn;
 
 use crate::components;
-use crate::i18n::{self, Text};
+use crate::i18n::Text;
 use crate::screens;
 use crate::theme;
 

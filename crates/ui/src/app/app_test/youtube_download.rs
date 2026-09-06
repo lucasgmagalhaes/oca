@@ -16,7 +16,6 @@
 //! YouTube download state-machine tests.
 
 use super::support::*;
-use super::*;
 
 #[test]
 fn open_youtube_modal_starts_with_an_empty_url() {

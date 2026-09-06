@@ -23,14 +23,11 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Instant;
 
-use avcore::{
-    AudioRole, ClipInstance, ExportJob, ExportJobStatus, MediaAsset, Project, RenderOutcome,
-    TrackKind,
-};
+use avcore::{AudioRole, ExportJob, ExportJobStatus, MediaAsset, Project};
 use eframe::egui;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use tracing::{debug, error, info, warn};
+use tracing::info;
 
 use crate::i18n::{Locale, Text};
 
@@ -95,8 +92,8 @@ pub(crate) use operation_state::{
     YoutubeDownloadState,
 };
 pub use state::{
-    BindableAction, EditorTool, KeyBindings, KeyCombo, LayoutScope, MediaLibraryFilter,
-    MediaViewMode, PrefsState, PreviewZoom, PropertiesTab, Screen,
+    BindableAction, EditorTool, KeyCombo, LayoutScope, MediaLibraryFilter, MediaViewMode,
+    PrefsState, PreviewZoom, PropertiesTab, Screen,
 };
 use worker_events::{
     AutoReframeEvent, DynamicReframeEvent, ImportEvent, MatteGenerationEvent, MotionTrackEvent,

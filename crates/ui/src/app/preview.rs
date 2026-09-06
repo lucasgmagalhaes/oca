@@ -14,7 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use avcore::timeline::{ShapeClip, TextClip};
-use avcore::{ClipInstance, MediaAsset, TrackKind};
+use avcore::{ClipInstance, TrackKind};
 use eframe::egui;
 use tracing::{debug, error, warn};
 
