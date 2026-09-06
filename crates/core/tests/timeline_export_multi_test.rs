@@ -110,6 +110,7 @@ fn clip(
         blend_mode: BlendMode::Normal,
         anchor_x: 0.5,
         anchor_y: 0.5,
+        reframe_seed_point: None,
     }
 }
 
