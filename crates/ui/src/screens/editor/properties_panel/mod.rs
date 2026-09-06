@@ -397,6 +397,97 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                 voice_cleanup_ceiling_linear,
                             );
                         }
+                        // CF-03 slice 3: A/B preview + measured before/after loudness/peak, the
+                        // acceptance criterion this effect's own doc comment previously left
+                        // open (`VoiceCleanupExportNote`'s "no live preview effect" still holds —
+                        // this renders two real, disposable samples instead, through the exact
+                        // mixing path a real export uses, rather than a live pipeline change).
+                        if tab == crate::app::PropertiesTab::Audio
+                            && is_audio_clip
+                            && voice_cleanup_enabled
+                        {
+                            let rendering =
+                                app.voice_cleanup_preview_state.rendering_clip_id == Some(clip_id);
+                            let mut spawn_preview = false;
+                            let mut play_bypassed = false;
+                            let mut play_processed = false;
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .add_enabled(
+                                        !rendering,
+                                        egui::Button::new(
+                                            Text::VoiceCleanupPreviewButton.tr(locale),
+                                        ),
+                                    )
+                                    .clicked()
+                                {
+                                    spawn_preview = true;
+                                }
+                                if rendering {
+                                    ui.label(
+                                        RichText::new(
+                                            Text::VoiceCleanupPreviewRendering.tr(locale),
+                                        )
+                                        .size(10.5)
+                                        .color(theme::TEXT_MUTED),
+                                    );
+                                }
+                            });
+                            // Copied into locals (not held as a reference) so this immutable
+                            // borrow of `app` ends before `spawn_preview`/`play_bypassed`/
+                            // `play_processed` are acted on below via `&mut app`.
+                            let result_for_clip = app
+                                .voice_cleanup_preview_state
+                                .result
+                                .as_ref()
+                                .filter(|(result_clip_id, _)| *result_clip_id == clip_id)
+                                .map(|(_, result)| {
+                                    (result.bypassed.metrics, result.processed.metrics)
+                                });
+                            if let Some((bypassed_metrics, processed_metrics)) = result_for_clip {
+                                let metrics_line = |m: avcore::media::LoudnessMetrics| {
+                                    format!(
+                                        "{:.1} LUFS · {:.1} dBTP · {:.1} LU",
+                                        m.integrated_lufs, m.true_peak_dbtp, m.loudness_range_lu
+                                    )
+                                };
+                                ui.horizontal(|ui| {
+                                    if ui
+                                        .button(Text::VoiceCleanupPreviewPlayOriginal.tr(locale))
+                                        .clicked()
+                                    {
+                                        play_bypassed = true;
+                                    }
+                                    ui.label(
+                                        RichText::new(metrics_line(bypassed_metrics))
+                                            .size(10.5)
+                                            .color(theme::TEXT_MUTED),
+                                    );
+                                });
+                                ui.horizontal(|ui| {
+                                    if ui
+                                        .button(Text::VoiceCleanupPreviewPlayProcessed.tr(locale))
+                                        .clicked()
+                                    {
+                                        play_processed = true;
+                                    }
+                                    ui.label(
+                                        RichText::new(metrics_line(processed_metrics))
+                                            .size(10.5)
+                                            .color(theme::TEXT_MUTED),
+                                    );
+                                });
+                            }
+                            if spawn_preview {
+                                app.spawn_voice_cleanup_preview();
+                            }
+                            if play_bypassed {
+                                app.play_voice_cleanup_preview_sample(false);
+                            }
+                            if play_processed {
+                                app.play_voice_cleanup_preview_sample(true);
+                            }
+                        }
                         // Crop reframes the video frame itself — no meaning for an audio block.
                         if app.selected_clip_track_kind()
                             == Some(avcore::timeline::TrackKind::Video)

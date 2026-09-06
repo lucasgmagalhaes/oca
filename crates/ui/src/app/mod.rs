@@ -72,6 +72,7 @@ mod transcribe;
 mod transcript_panel;
 mod transcript_proposals;
 mod update_check;
+mod voice_cleanup_preview;
 mod watch_folder;
 mod youtube_download;
 
@@ -749,6 +750,18 @@ enum MotionTrackEvent {
     },
 }
 
+/// A message from a background voice-cleanup A/B preview render (see
+/// [`App::spawn_voice_cleanup_preview`]) back to the UI thread. `Err` carries a `Display`-
+/// formatted message rather than the original `VoiceCleanupPreviewError`, since `avcore`
+/// errors aren't required to be `Send`/`'static` across the channel boundary and `ui` only ever
+/// shows the message as a toast anyway.
+enum VoiceCleanupPreviewEvent {
+    Done {
+        clip_id: u64,
+        result: Result<avcore::voice_cleanup_preview::VoiceCleanupPreviewResult, String>,
+    },
+}
+
 /// A message from a background nested-sequence-materialization worker thread (see
 /// [`App::materialize_nested_sequences_for_active_sequence`]) back to the UI thread.
 enum NestedSequenceEvent {
@@ -1017,6 +1030,9 @@ pub struct App {
     pub(crate) pending_graphic_template_apply: Option<PendingGraphicTemplateApply>,
     /// Motion-tracking background-job channel/clip-tracking state — same pattern.
     pub(crate) motion_tracking_state: MotionTrackingState,
+    /// CF-03 slice 3 voice-cleanup A/B preview background-job/playback state — see
+    /// [`VoiceCleanupPreviewState`]'s own doc comment.
+    pub(crate) voice_cleanup_preview_state: VoiceCleanupPreviewState,
     /// Scene-cut-detection background-job channel/clip-tracking state — same pattern.
     pub(crate) scene_cut_detection_state: SceneCutDetectionState,
     /// Motion-tracking region-picker session state — see [`MotionTrackRegionState`]'s own doc
@@ -1526,6 +1542,28 @@ pub(crate) struct MotionTrackingState {
     pub(crate) motion_tracking_clip_id: Option<u64>,
 }
 
+/// CF-03 slice 3 (`spec/architecture/competitive-feature-plan.md`) background-job state for the
+/// voice-cleanup A/B preview — same channel/one-in-flight pattern as [`MotionTrackingState`].
+/// `result` is the last completed render (if any), tagged with the clip id it belongs to so
+/// switching the selected clip doesn't show a stale A/B comparison for a different clip's own
+/// parameters. `player` is a playback pipeline dedicated to the two rendered sample files —
+/// deliberately separate from [`PreviewState::preview`] (the main timeline's own pipeline) so
+/// auditioning a sample never disturbs the timeline's playhead/pipeline state.
+pub(crate) struct VoiceCleanupPreviewState {
+    pub(crate) tx: UnboundedSender<VoiceCleanupPreviewEvent>,
+    pub(crate) rx: UnboundedReceiver<VoiceCleanupPreviewEvent>,
+    pub(crate) rendering_clip_id: Option<u64>,
+    pub(crate) result: Option<(
+        u64,
+        avcore::voice_cleanup_preview::VoiceCleanupPreviewResult,
+    )>,
+    pub(crate) player: Option<avcore::preview::Preview>,
+    /// Whether `player` currently holds the processed sample (`true`) or the bypassed one
+    /// (`false`) — purely so the properties panel can highlight whichever of the two "▶" buttons
+    /// is the one actually playing right now.
+    pub(crate) player_is_processed: bool,
+}
+
 /// Background-job state for rendering compound clips (nested sequences) off the UI thread — see
 /// [`App::materialize_nested_sequences_for_active_sequence`]. Deliberately separate from
 /// `App::nested_sequence_render_cache` (the actual rendered-file cache, keyed by nested
@@ -1743,6 +1781,7 @@ impl App {
         let (dynamic_reframe_tx, dynamic_reframe_rx) = mpsc::unbounded_channel();
         let (nested_sequence_tx, nested_sequence_rx) = mpsc::unbounded_channel();
         let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
+        let (voice_cleanup_preview_tx, voice_cleanup_preview_rx) = mpsc::unbounded_channel();
         let (scene_cut_detection_tx, scene_cut_detection_rx) = mpsc::unbounded_channel();
         let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
         let (tts_tx, tts_rx) = mpsc::unbounded_channel();
@@ -1832,6 +1871,14 @@ impl App {
                 motion_tracking_tx,
                 motion_tracking_rx,
                 motion_tracking_clip_id: None,
+            },
+            voice_cleanup_preview_state: VoiceCleanupPreviewState {
+                tx: voice_cleanup_preview_tx,
+                rx: voice_cleanup_preview_rx,
+                rendering_clip_id: None,
+                result: None,
+                player: None,
+                player_is_processed: false,
             },
             scene_cut_detection_state: SceneCutDetectionState {
                 scene_cut_detection_tx,
@@ -2627,6 +2674,7 @@ impl eframe::App for App {
         self.pump_auto_reframe();
         self.pump_dynamic_reframe();
         self.pump_motion_tracking();
+        self.pump_voice_cleanup_preview();
         self.pump_scene_cut_detection();
         self.pump_matte_generation();
         self.pump_text_to_speech();
