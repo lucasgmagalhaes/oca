@@ -19,6 +19,7 @@ mod clip_context_menu;
 mod draw;
 mod header;
 mod interactions;
+mod layout;
 mod ruler;
 mod selection_commands;
 mod shape_overlays;
@@ -33,50 +34,11 @@ use eframe::egui::{self, RichText};
 use crate::app::{App, EditorTool};
 use crate::i18n::Text;
 use crate::theme;
-
-/// Bounds for `App::timeline_px_per_sec` — tight enough to stay readable, loose enough to
-/// go from several-projects-wide overview down to frame-accurate editing.
-const MIN_PX_PER_SEC: f32 = 0.5;
-const MAX_PX_PER_SEC: f32 = 60.0;
-/// How long `timeline_px_per_sec` must sit still before new filmstrip thumbnail requests
-/// (`draw::draw_filmstrip`'s cache misses) are allowed through again — see
-/// `App::timeline_zoom_changed_at`'s own doc comment for why an active zoom drag needs this at
-/// all. Short enough that zooming still feels responsive once it stops, long enough to skip
-/// every discarded-a-frame-later request during a normal scroll-wheel/pinch zoom gesture.
-const TIMELINE_THUMBNAIL_ZOOM_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(150);
-const TRACK_LABEL_WIDTH: f32 = 86.0;
-/// Height of the ruler strip. Was 20px — confirmed against a real report as visually broken at
-/// that height: the timecode label (`draw::draw_ruler_ticks`) and the marker/playhead triangle
-/// heads (`draw::draw_marker_ticks`/`draw::draw_playhead`) both anchor to the ruler's *top* 8px,
-/// while the tick vline itself sits at the very bottom — 20px wasn't enough room for the top
-/// triangle band and the label below it to avoid overlapping, so a timecode label routinely
-/// collided with (or was fully covered by) a marker/playhead triangle sitting at the same x.
-/// 28px gives the label its own dedicated band between the triangles and the tick line, with no
-/// code change needed in `draw_marker_ticks`/`draw_playhead` themselves (both already anchor
-/// purely off `rect.top()`, so they don't need to know the ruler grew taller).
-const RULER_HEIGHT: f32 = 28.0;
-/// Height of one track row, header and clip content alike. Was 26-28px — tall enough for a
-/// label but too thin to make the filmstrip thumbnails (`draw::draw_filmstrip`, which sizes its
-/// tiles to `track_rect.height()`) or a waveform actually useful at a glance. Doubled.
-const TRACK_ROW_HEIGHT: f32 = 56.0;
-/// Height of a track row toggled collapsed via its header's expand/collapse button
-/// (`App::collapsed_track_ids`) — matches the mockup's `< >` track-header control. Thin enough
-/// to lose the filmstrip/waveform detail `TRACK_ROW_HEIGHT` exists for, but still tall enough to
-/// read the track name and stay clickable.
-const COLLAPSED_TRACK_ROW_HEIGHT: f32 = 22.0;
-
-/// Fixed color-label swatches offered in the clip/track "Rótulo de cor" context menu — per
-/// `spec/ROADMAP.md` P4 item 27, matching Premiere/DaVinci/FCP's own fixed-palette convention
-/// (a free color picker would let two clips end up with visually indistinguishable colors,
-/// defeating the "recognize at a glance" point of a label).
-pub(super) const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
-    [229, 83, 83],   // red
-    [230, 145, 56],  // orange
-    [230, 200, 56],  // yellow
-    [96, 189, 104],  // green
-    [86, 156, 214],  // blue
-    [178, 108, 219], // purple
-];
+pub(super) use layout::CLIP_COLOR_LABEL_PALETTE;
+use layout::{
+    COLLAPSED_TRACK_ROW_HEIGHT, MAX_PX_PER_SEC, MIN_PX_PER_SEC, RULER_HEIGHT,
+    THUMBNAIL_ZOOM_DEBOUNCE, TRACK_LABEL_WIDTH, TRACK_ROW_HEIGHT,
+};
 
 use asset_drop::apply_pending_asset_drop;
 use clip_commands::{apply_clip_commands, ClipCommands};
@@ -122,11 +84,8 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             app.timeline_thumbnail_zoom_settled_px_per_sec = px_per_sec;
             app.timeline_zoom_changed_at = Some(now);
         }
-        let thumbnail_requests_allowed = thumbnail_requests_settled(
-            app.timeline_zoom_changed_at,
-            now,
-            TIMELINE_THUMBNAIL_ZOOM_DEBOUNCE,
-        );
+        let thumbnail_requests_allowed =
+            thumbnail_requests_settled(app.timeline_zoom_changed_at, now, THUMBNAIL_ZOOM_DEBOUNCE);
         if thumbnail_requests_allowed {
             app.timeline_zoom_changed_at = None;
         }
