@@ -29,7 +29,7 @@ use layout::{
     audio_meter_column, resizable_divider, resizable_divider_horizontal, DIVIDER_HIT_WIDTH,
 };
 use media_library_panel::media_library_panel;
-use preview_controls::{audio_level_meter, preview_scrubber, transport_controls};
+use preview_controls::{audio_level_meter, preview_header, preview_scrubber, transport_controls};
 use preview_hud::draw_preview_hud;
 use shortcuts::handle_editor_shortcuts;
 pub(super) use toolbar::{
@@ -208,38 +208,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
     let locale = app.locale;
     ui.vertical(|ui| {
         ui.set_height(height);
-        ui.horizontal(|ui| {
-            components::section_label(ui, Text::ProgramMonitor.tr(locale));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .selectable_label(
-                        app.preview_state.zoom == PreviewZoom::Percent100,
-                        Text::PreviewZoom100.tr(locale),
-                    )
-                    .clicked()
-                {
-                    app.preview_state.zoom = PreviewZoom::Percent100;
-                }
-                if ui
-                    .selectable_label(
-                        app.preview_state.zoom == PreviewZoom::Fit,
-                        Text::PreviewZoomFit.tr(locale),
-                    )
-                    .clicked()
-                {
-                    app.preview_state.zoom = PreviewZoom::Fit;
-                }
-                if ui
-                    .selectable_label(
-                        app.preview_state.zoom == PreviewZoom::Percent50,
-                        Text::PreviewZoom50.tr(locale),
-                    )
-                    .clicked()
-                {
-                    app.preview_state.zoom = PreviewZoom::Percent50;
-                }
-            });
-        });
+        preview_header(app, ui, locale);
         ui.add_space(theme::SPACE_SM);
         let preview_texture_size = app.preview_state.preview_texture.as_ref().map(|t| t.size());
         let frame_response = egui::Frame::new()

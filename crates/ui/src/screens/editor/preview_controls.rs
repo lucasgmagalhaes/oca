@@ -15,12 +15,48 @@
 
 use eframe::egui::{self, RichText};
 
-use crate::app::App;
+use crate::app::{App, PreviewZoom};
 use crate::components;
 use crate::i18n::Text;
 use crate::theme;
 
 use super::{format_timecode, TRANSPORT_ICON_SIZE, TRANSPORT_PLAY_ICON_SIZE};
+
+/// Program Monitor label and viewport zoom controls.
+pub(super) fn preview_header(app: &mut App, ui: &mut egui::Ui, locale: crate::i18n::Locale) {
+    ui.horizontal(|ui| {
+        components::section_label(ui, Text::ProgramMonitor.tr(locale));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui
+                .selectable_label(
+                    app.preview_state.zoom == PreviewZoom::Percent100,
+                    Text::PreviewZoom100.tr(locale),
+                )
+                .clicked()
+            {
+                app.preview_state.zoom = PreviewZoom::Percent100;
+            }
+            if ui
+                .selectable_label(
+                    app.preview_state.zoom == PreviewZoom::Fit,
+                    Text::PreviewZoomFit.tr(locale),
+                )
+                .clicked()
+            {
+                app.preview_state.zoom = PreviewZoom::Fit;
+            }
+            if ui
+                .selectable_label(
+                    app.preview_state.zoom == PreviewZoom::Percent50,
+                    Text::PreviewZoom50.tr(locale),
+                )
+                .clicked()
+            {
+                app.preview_state.zoom = PreviewZoom::Percent50;
+            }
+        });
+    });
+}
 
 /// Timeline position readout and scrubber displayed above the transport controls.
 pub(super) fn preview_scrubber(app: &mut App, ui: &mut egui::Ui, timeline_duration: f64) {
