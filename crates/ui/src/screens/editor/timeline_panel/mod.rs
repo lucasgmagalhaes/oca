@@ -21,6 +21,7 @@ mod interactions;
 mod ruler;
 mod selection_commands;
 mod snap;
+mod thumbnails;
 mod track_commands;
 mod track_header;
 
@@ -88,6 +89,7 @@ use interactions::apply_clip_interactions;
 use ruler::{timeline_ruler, RulerLayout};
 use selection_commands::{apply_selection_commands, SelectionCommands};
 use snap::{snap_move_start, snap_to_nearest, ClipDrag, SnapTargets};
+use thumbnails::apply_thumbnail_work;
 use track_commands::{apply_track_commands, TrackCommands};
 use track_header::{audio_role_icon, audio_role_label};
 
@@ -1552,15 +1554,12 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             clip_drags,
             &track_rows,
         );
-        app.touch_thumbnails(&thumbnail_touches);
-        // Skipped requests aren't lost — the same tile re-offers its (by-then possibly
-        // different) key next frame once `draw_filmstrip` runs again, same as any other
-        // cache-miss tile that hasn't been requested yet.
-        if thumbnail_requests_allowed {
-            for (project_id, asset_id, frame_index) in thumbnail_requests {
-                app.request_thumbnail(project_id, asset_id, frame_index);
-            }
-        }
+        apply_thumbnail_work(
+            app,
+            &thumbnail_touches,
+            thumbnail_requests_allowed,
+            thumbnail_requests,
+        );
         // An asset dragged out of the media library and released somewhere at or below the
         // ruler: whichever track row's Y-range the pointer landed on becomes the preferred
         // drop target (`App::add_asset_to_timeline_at` falls back to a matching-kind track
