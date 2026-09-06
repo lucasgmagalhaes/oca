@@ -121,6 +121,7 @@ fn job(status: ExportJobStatus) -> ExportJob {
 
         text_segments: vec![],
         shape_segments: vec![],
+        privacy_blur_segments: vec![],
 
         track_segments: Vec::new(),
         audio_segments: Vec::new(),

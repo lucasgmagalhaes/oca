@@ -145,6 +145,12 @@ pub(super) fn test_clip(
         anchor_x: 0.5,
         anchor_y: 0.5,
         reframe_seed_point: None,
+        privacy_blur_enabled: false,
+        privacy_blur_mask_path: String::new(),
+        privacy_blur_sigma: 15.0,
+        privacy_blur_seed_vertices: Vec::new(),
+        privacy_blur_seed_center_x_frac: 0.0,
+        privacy_blur_seed_center_y_frac: 0.0,
     }
 }
 
@@ -201,6 +207,7 @@ pub(super) fn test_job(id: u64, status: ExportJobStatus) -> ExportJob {
 
         text_segments: vec![],
         shape_segments: vec![],
+        privacy_blur_segments: vec![],
 
         track_segments: Vec::new(),
         audio_segments: Vec::new(),
@@ -223,6 +230,7 @@ pub(super) fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> A
     let (voice_cleanup_preview_tx, voice_cleanup_preview_rx) = mpsc::unbounded_channel();
     let (scene_cut_detection_tx, scene_cut_detection_rx) = mpsc::unbounded_channel();
     let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
+    let (privacy_blur_generation_tx, privacy_blur_generation_rx) = mpsc::unbounded_channel();
     let (tts_tx, tts_rx) = mpsc::unbounded_channel();
     let (youtube_download_tx, youtube_download_rx) = mpsc::unbounded_channel();
     let (sound_library_tx, sound_library_rx) = mpsc::unbounded_channel();
@@ -322,6 +330,17 @@ pub(super) fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> A
             matte_generation_tx,
             matte_generation_rx,
             matte_generating_clip_id: None,
+        },
+        privacy_blur_generation_state: PrivacyBlurGenerationState {
+            privacy_blur_generation_tx,
+            privacy_blur_generation_rx,
+            privacy_blur_generating_clip_id: None,
+        },
+        privacy_blur_region: PrivacyBlurRegionState {
+            privacy_blur_center_x: 0.5,
+            privacy_blur_center_y: 0.5,
+            privacy_blur_width: 0.2,
+            privacy_blur_height: 0.2,
         },
         tts_state: TtsState {
             tts_tx,
