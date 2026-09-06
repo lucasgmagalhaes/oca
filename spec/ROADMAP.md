@@ -2570,8 +2570,9 @@ an item earlier:
   --lib --tests` (via the documented temporary `filters.c`/`text_overlay.c` shim plus an
   `FFMPEG_DIR`/`lib`-symlink workaround for this sandbox's multiarch FFmpeg package layout, both
   reverted before commit), and `cargo fmt --all -- --check` all stayed clean.
-- `[~]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and
-  privacy blur, reusing the existing matte/model/tracker infrastructure.
+- `[x]` **CF-09: arbitrary-object mask and tracking.** Start with a user-seeded local model and
+  privacy blur, reusing the existing matte/model/tracker infrastructure. Shipped end to end —
+  see the "CF-09 shipped end to end" note further down for the final UI-wiring slice.
 
   **Slice 2 (mask propagation between sampled frames, plus a manual-correction affordance)
   shipped in tractable, model-free form.** A real arbitrary-object segmentation model (slice 1)

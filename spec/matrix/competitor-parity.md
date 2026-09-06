@@ -44,12 +44,12 @@ Sources: [CapCut Desktop Review 2026](https://bigvu.tv/blog/capcut-online-deskto
       studio pipeline, but real, and (unlike the rest of P4) pure filtering over data this
       codebase already has, no special hardware or GStreamer element needed.
       → `ROADMAP.md` P4 item 22.
-- [ ] **Real-time AI object masking.** Premiere Pro 2026 — arbitrary-object segmentation +
+- [x] **Real-time AI object masking.** Premiere Pro 2026 — arbitrary-object segmentation +
       tracking, not fixed-template block matching. A materially bigger lift than oca's current
       motion tracking (`matrix/ai-features.md`, SAD-based, no ML) — would need a real
       segmentation model, similar tier of effort to the background-removal MODNet integration
       already shipped. The 2026-08-28 refresh promoted it to ROADMAP CF-09 with a user-seeded,
-      privacy-blur-first implementation slice.
+      privacy-blur-first implementation slice, shipped end to end (see ROADMAP.md's CF-09 entry).
 - [ ] **Motion graphics templates (MOGRT-style reusable animated assets).** Adobe's Graphics
       Templates panel — an animated graphic with editable text/image fields, importable/
       exportable/shareable as a standalone asset. Distinct from oca's existing "layer
