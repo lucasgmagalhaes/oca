@@ -31,9 +31,7 @@ mod track_header;
 use eframe::egui::{self, RichText};
 
 use crate::app::{App, EditorTool};
-use crate::components;
 use crate::i18n::Text;
-use crate::icons;
 use crate::theme;
 
 /// Bounds for `App::timeline_px_per_sec` — tight enough to stay readable, loose enough to
@@ -97,7 +95,7 @@ use snap::{snap_move_start, snap_to_nearest, ClipDrag, SnapTargets};
 use text_overlays::{draw_text_overlays, TextOverlayRequests};
 use thumbnails::apply_thumbnail_work;
 use track_commands::{apply_track_commands, TrackCommands};
-use track_header::{audio_role_icon, audio_role_label, draw_track_header, TrackHeaderRequests};
+use track_header::{draw_track_header, TrackHeaderRequests};
 
 /// Which edge of a timeline clip a drag targets — see the trim handling in `timeline_panel`.
 pub(super) enum TrimEdge {
