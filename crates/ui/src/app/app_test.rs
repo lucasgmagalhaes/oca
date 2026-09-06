@@ -220,6 +220,7 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
     let (auto_reframe_tx, auto_reframe_rx) = mpsc::unbounded_channel();
     let (dynamic_reframe_tx, dynamic_reframe_rx) = mpsc::unbounded_channel();
     let (motion_tracking_tx, motion_tracking_rx) = mpsc::unbounded_channel();
+    let (voice_cleanup_preview_tx, voice_cleanup_preview_rx) = mpsc::unbounded_channel();
     let (scene_cut_detection_tx, scene_cut_detection_rx) = mpsc::unbounded_channel();
     let (matte_generation_tx, matte_generation_rx) = mpsc::unbounded_channel();
     let (tts_tx, tts_rx) = mpsc::unbounded_channel();
@@ -295,6 +296,14 @@ fn test_app(projects: Vec<Project>, export_jobs: Vec<ExportJob>) -> App {
             motion_tracking_tx,
             motion_tracking_rx,
             motion_tracking_clip_id: None,
+        },
+        voice_cleanup_preview_state: VoiceCleanupPreviewState {
+            tx: voice_cleanup_preview_tx,
+            rx: voice_cleanup_preview_rx,
+            rendering_clip_id: None,
+            result: None,
+            player: None,
+            player_is_processed: false,
         },
         scene_cut_detection_state: SceneCutDetectionState {
             scene_cut_detection_tx,
@@ -5389,6 +5398,103 @@ fn pump_update_check_is_a_no_op_with_no_pending_events() {
     app.pump_update_check();
 
     assert_eq!(app.update_check_status, UpdateCheckStatus::Checking);
+}
+
+fn test_voice_cleanup_preview_result(
+    integrated_lufs_bypassed: f32,
+    integrated_lufs_processed: f32,
+) -> avcore::voice_cleanup_preview::VoiceCleanupPreviewResult {
+    let metrics = |integrated_lufs: f32| avcore::media::LoudnessMetrics {
+        integrated_lufs,
+        true_peak_dbtp: -1.0,
+        loudness_range_lu: 5.0,
+    };
+    avcore::voice_cleanup_preview::VoiceCleanupPreviewResult {
+        bypassed: avcore::voice_cleanup_preview::VoiceCleanupPreviewSample {
+            path: PathBuf::from("bypassed.m4a"),
+            metrics: metrics(integrated_lufs_bypassed),
+        },
+        processed: avcore::voice_cleanup_preview::VoiceCleanupPreviewSample {
+            path: PathBuf::from("processed.m4a"),
+            metrics: metrics(integrated_lufs_processed),
+        },
+    }
+}
+
+#[test]
+fn spawn_voice_cleanup_preview_marks_the_selected_clip_as_rendering() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Audio,
+        vec![test_clip(1, 0.0, 0.0, 5.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+    app.selected_clip_id = Some(1);
+
+    app.spawn_voice_cleanup_preview();
+
+    assert_eq!(app.voice_cleanup_preview_state.rendering_clip_id, Some(1));
+}
+
+#[test]
+fn spawn_voice_cleanup_preview_is_a_no_op_while_a_render_is_already_in_flight() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Audio,
+        vec![test_clip(1, 0.0, 0.0, 5.0), test_clip(2, 5.0, 0.0, 5.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+    app.voice_cleanup_preview_state.rendering_clip_id = Some(1);
+    app.selected_clip_id = Some(2);
+
+    app.spawn_voice_cleanup_preview();
+
+    // Still tagged as rendering clip 1 -- a second clip's render was never dispatched while
+    // one was already in flight.
+    assert_eq!(app.voice_cleanup_preview_state.rendering_clip_id, Some(1));
+}
+
+#[test]
+fn pump_voice_cleanup_preview_stores_a_successful_result_and_clears_rendering() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.voice_cleanup_preview_state.rendering_clip_id = Some(1);
+    let result = test_voice_cleanup_preview_result(-16.0, -14.0);
+    app.voice_cleanup_preview_state
+        .tx
+        .send(VoiceCleanupPreviewEvent::Done {
+            clip_id: 1,
+            result: Ok(result),
+        })
+        .unwrap();
+
+    app.pump_voice_cleanup_preview();
+
+    assert_eq!(app.voice_cleanup_preview_state.rendering_clip_id, None);
+    let (clip_id, result) = app.voice_cleanup_preview_state.result.as_ref().unwrap();
+    assert_eq!(*clip_id, 1);
+    assert_eq!(result.bypassed.metrics.integrated_lufs, -16.0);
+    assert_eq!(result.processed.metrics.integrated_lufs, -14.0);
+}
+
+#[test]
+fn pump_voice_cleanup_preview_toasts_on_failure_without_storing_a_result() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    app.voice_cleanup_preview_state.rendering_clip_id = Some(1);
+    app.voice_cleanup_preview_state
+        .tx
+        .send(VoiceCleanupPreviewEvent::Done {
+            clip_id: 1,
+            result: Err("source file not found".to_string()),
+        })
+        .unwrap();
+
+    app.pump_voice_cleanup_preview();
+
+    assert_eq!(app.voice_cleanup_preview_state.rendering_clip_id, None);
+    assert!(app.voice_cleanup_preview_state.result.is_none());
+    assert_eq!(app.toasts.len(), 1);
 }
 
 #[test]
