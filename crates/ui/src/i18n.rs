@@ -430,6 +430,8 @@ text_catalog! {
     DynamicReframeAction: pt_br = "Reenquadramento dinâmico", en = "Dynamic reframe";
     DynamicReframeInProgress: pt_br = "Reenquadrando...", en = "Reframing...";
     DynamicReframeHint: pt_br = "Acompanha o sujeito ao longo do clipe, gerando keyframes de recorte em vez de um único enquadramento fixo.", en = "Tracks the subject across the clip, generating crop keyframes instead of a single fixed framing.";
+    ReframeSeedPointToggle: pt_br = "Ancorar manualmente", en = "Manual anchor";
+    ReframeSeedPointHint: pt_br = "Usa este ponto fixo como âncora do reenquadramento em vez de detectar rostos — nenhum modelo é necessário.", en = "Uses this fixed point as the reframe anchor instead of detecting faces — no model required.";
 
     MotionTrackAction: pt_br = "Rastrear movimento", en = "Track motion";
     MotionTrackInProgress: pt_br = "Rastreando...", en = "Tracking...";

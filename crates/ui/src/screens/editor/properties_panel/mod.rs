@@ -173,6 +173,7 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let (mut layer_scale_x, mut layer_scale_y) =
                             (clip.layer_scale_x, clip.layer_scale_y);
                         let (mut anchor_x, mut anchor_y) = (clip.anchor_x, clip.anchor_y);
+                        let mut reframe_seed_point = clip.reframe_seed_point;
                         let mut vignette_intensity = clip.vignette_intensity;
                         let (mut brightness, mut contrast, mut saturation) =
                             (clip.brightness, clip.contrast, clip.saturation);
@@ -584,6 +585,54 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                                 app.spawn_dynamic_reframe_selected_clip();
                                             }
                                         });
+                                        let mut seed_enabled = reframe_seed_point.is_some();
+                                        let (mut seed_x, mut seed_y) =
+                                            reframe_seed_point.unwrap_or((0.5, 0.5));
+                                        ui.horizontal(|ui| {
+                                            if ui
+                                                .checkbox(
+                                                    &mut seed_enabled,
+                                                    Text::ReframeSeedPointToggle.tr(locale),
+                                                )
+                                                .on_hover_text(
+                                                    Text::ReframeSeedPointHint.tr(locale),
+                                                )
+                                                .changed()
+                                            {
+                                                reframe_seed_point =
+                                                    seed_enabled.then_some((seed_x, seed_y));
+                                                app.set_selected_clip_reframe_seed_point(
+                                                    reframe_seed_point,
+                                                );
+                                            }
+                                        });
+                                        if seed_enabled {
+                                            ui.horizontal(|ui| {
+                                                let mut seed_changed = false;
+                                                seed_changed |= ui
+                                                    .add(
+                                                        egui::DragValue::new(&mut seed_x)
+                                                            .speed(0.01)
+                                                            .range(0.0..=1.0)
+                                                            .prefix("x "),
+                                                    )
+                                                    .changed();
+                                                seed_changed |= ui
+                                                    .add(
+                                                        egui::DragValue::new(&mut seed_y)
+                                                            .speed(0.01)
+                                                            .range(0.0..=1.0)
+                                                            .prefix("y "),
+                                                    )
+                                                    .changed();
+                                                if seed_changed {
+                                                    reframe_seed_point = Some((seed_x, seed_y));
+                                                    app.set_selected_clip_reframe_seed_point(
+                                                        reframe_seed_point,
+                                                    );
+                                                }
+                                            });
+                                        }
                                         crop_changed
                                     },
                                 );

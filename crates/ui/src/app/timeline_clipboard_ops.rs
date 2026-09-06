@@ -169,6 +169,7 @@ impl App {
                     blend_mode: source.blend_mode,
                     anchor_x: source.anchor_x,
                     anchor_y: source.anchor_y,
+                    reframe_seed_point: source.reframe_seed_point,
                 });
         }
     }
