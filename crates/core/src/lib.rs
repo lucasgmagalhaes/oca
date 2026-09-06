@@ -41,6 +41,7 @@ pub mod highlight_detection;
 pub mod interchange;
 pub mod keyframe;
 pub mod loudness;
+pub mod mask_propagation;
 pub mod media;
 pub mod motion_template;
 pub mod motion_tracking;
@@ -117,7 +118,8 @@ pub use keyframe::{Keyframe, Position};
 pub use loudness::{measure_loudness, LoudnessError};
 pub use media::{LoudnessMetrics, MediaAsset, MediaKind};
 pub use motion_tracking::{
-    rgba_to_gray, track_region, tracked_positions_to_keyframes, GrayFrame, TrackedPosition,
+    rgba_to_gray, track_region, track_region_with_scores, tracked_positions_to_keyframes,
+    GrayFrame, TrackResult, TrackedPosition,
 };
 pub use multicam_sync::{
     amplitude_envelope, best_lag_windows, compute_sync_offset_secs, DEFAULT_ENVELOPE_WINDOW_SECS,

@@ -122,8 +122,53 @@ pub fn track_region(
     template_height_frac: f32,
     search_radius_frac: f32,
 ) -> Vec<TrackedPosition> {
+    track_region_with_scores(
+        frames,
+        initial_center_x_frac,
+        initial_center_y_frac,
+        template_width_frac,
+        template_height_frac,
+        search_radius_frac,
+    )
+    .positions
+}
+
+/// [`track_region`]'s full result: the tracked positions plus enough of the tracker's own
+/// internal state (per-frame match score, template pixel dimensions) for a caller like
+/// [`crate::mask_propagation`] to judge match quality — [`track_region`] itself only exposes the
+/// positions, matching its original contract exactly (no existing caller needs the rest).
+#[derive(Debug, Clone)]
+pub struct TrackResult {
+    pub positions: Vec<TrackedPosition>,
+    /// Sum-of-absolute-differences match score for each frame in [`Self::positions`] (same
+    /// order) — lower is a better match. `frames[0]`'s own score is always `0` (it *is* the
+    /// template, a perfect self-match by construction), not a real search result.
+    pub scores: Vec<i64>,
+    /// The template's actual pixel width/height, after `template_width_frac`/
+    /// `template_height_frac` were resolved against the frame size and clamped — needed to
+    /// normalize a raw SAD score into a resolution-independent confidence (see
+    /// [`crate::mask_propagation::match_confidence`]).
+    pub template_width: i32,
+    pub template_height: i32,
+}
+
+/// Same tracking [`track_region`] does, but also returns each frame's own match score and the
+/// resolved template pixel size — see [`TrackResult`]'s own doc comment for why.
+pub fn track_region_with_scores(
+    frames: &[GrayFrame],
+    initial_center_x_frac: f32,
+    initial_center_y_frac: f32,
+    template_width_frac: f32,
+    template_height_frac: f32,
+    search_radius_frac: f32,
+) -> TrackResult {
     let Some(first) = frames.first() else {
-        return Vec::new();
+        return TrackResult {
+            positions: Vec::new(),
+            scores: Vec::new(),
+            template_width: 0,
+            template_height: 0,
+        };
     };
     let (w, h) = (first.width as i32, first.height as i32);
     let short_side = w.min(h);
@@ -140,11 +185,13 @@ pub fn track_region(
     let template = extract_patch(first, cx - half_w, cy - half_h, width, height);
     let search_radius = ((search_radius_frac * short_side as f32).round() as i32).max(1);
 
-    let mut results = Vec::with_capacity(frames.len());
-    results.push(TrackedPosition {
+    let mut positions = Vec::with_capacity(frames.len());
+    let mut scores = Vec::with_capacity(frames.len());
+    positions.push(TrackedPosition {
         center_x_frac: cx as f32 / w as f32,
         center_y_frac: cy as f32 / h as f32,
     });
+    scores.push(0);
 
     for frame in &frames[1..] {
         let (fw, fh) = (frame.width as i32, frame.height as i32);
@@ -169,13 +216,19 @@ pub fn track_region(
         }
         cx = best_x;
         cy = best_y;
-        results.push(TrackedPosition {
+        positions.push(TrackedPosition {
             center_x_frac: cx as f32 / fw as f32,
             center_y_frac: cy as f32 / fh as f32,
         });
+        scores.push(best_score);
     }
 
-    results
+    TrackResult {
+        positions,
+        scores,
+        template_width: width,
+        template_height: height,
+    }
 }
 
 /// Converts tracked positions into a [`Keyframe<Position>`] list: each keyframe's value is
