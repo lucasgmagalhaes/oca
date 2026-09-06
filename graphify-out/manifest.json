@@ -510,8 +510,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1788733818.7087204,
-    "ast_hash": "0e1328eac69e1a34e87ea27e2edcc524",
+    "mtime": 1788734109.1518767,
+    "ast_hash": "e12d4db69728092c90790569e6e7469e",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
@@ -2662,6 +2662,11 @@
   "crates/ui/src/app/preview_snapshot.rs": {
     "mtime": 1788733813.9130878,
     "ast_hash": "6f5e000b48ec1566206f97f2067ae999",
+    "semantic_hash": ""
+  },
+  "crates/ui/src/app/undo_history.rs": {
+    "mtime": 1788734102.8766448,
+    "ast_hash": "41fbd7d49d58e0b35c5fd01382e346af",
     "semantic_hash": ""
   }
 }
