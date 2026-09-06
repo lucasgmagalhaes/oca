@@ -49,6 +49,11 @@ cosmic-text = { version = "0.19", default-features = false, features = ["std", "
 # (TEXT-01B) — already a transitive dependency of `cosmic-text` itself (same version this pins),
 # so this adds no new dependency tree, just a direct name for `get_base_direction`.
 unicode-bidi = "0.3"
+# TEXT-01's own automatic script-fallback chain: `cosmic_text::Fallback::script_fallback` takes a
+# `unicode_script::Script` to name which bundled international family a `.notdef` cluster should
+# retry against. Already a transitive dependency of `cosmic-text` itself (same version this pins),
+# so this adds no new dependency tree either — same reasoning as `unicode-bidi` above.
+unicode-script = "0.5"
 # Encodes the shared Rust text rasterizer's full-canvas RGBA buffers as temporary PNG overlays
 # for the native export post-pass. PNG is the only enabled codec; preview consumes the same
 # buffers directly without encoding them.

@@ -924,6 +924,7 @@ dependencies = [
  "sysinfo",
  "tracing",
  "unicode-bidi",
+ "unicode-script",
  "unicode-segmentation",
  "ureq",
  "whisper-rs",
