@@ -315,3 +315,56 @@ fn propagate_mask_with_corrections_is_empty_for_empty_frames() {
     );
     assert!(propagated.is_empty());
 }
+
+fn mask(vertices: Vec<(f32, f32)>) -> PropagatedMask {
+    PropagatedMask {
+        vertices,
+        confidence: 1.0,
+        needs_correction: false,
+    }
+}
+
+#[test]
+fn rasterize_mask_to_matte_marks_pixels_inside_the_polygon() {
+    // A square spanning the middle half of a 10x10 canvas: pixels (2..8, 2..8) inside, corners
+    // outside.
+    let m = mask(vec![(0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8)]);
+    let buf = rasterize_mask_to_matte(&m, 10, 10);
+
+    assert_eq!(buf.len(), 100);
+    assert_eq!(buf[5 * 10 + 5], 255, "center pixel should be inside");
+    assert_eq!(buf[0], 0, "top-left corner should be outside");
+    assert_eq!(buf[9 * 10 + 9], 0, "bottom-right corner should be outside");
+}
+
+#[test]
+fn rasterize_mask_to_matte_is_all_zero_for_a_degenerate_polygon() {
+    let m = mask(vec![(0.5, 0.5), (0.6, 0.6)]); // only 2 vertices
+    let buf = rasterize_mask_to_matte(&m, 10, 10);
+    assert!(buf.iter().all(|&b| b == 0));
+}
+
+#[test]
+fn rasterize_mask_to_matte_is_empty_for_zero_sized_canvas() {
+    let m = mask(vec![(0.2, 0.2), (0.8, 0.2), (0.8, 0.8)]);
+    assert!(rasterize_mask_to_matte(&m, 0, 10).is_empty());
+    assert!(rasterize_mask_to_matte(&m, 10, 0).is_empty());
+}
+
+#[test]
+fn rasterize_to_matte_frames_produces_one_buffer_per_mask() {
+    let masks = vec![
+        mask(vec![(0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8)]),
+        mask(vec![(0.0, 0.0), (0.1, 0.0), (0.1, 0.1)]),
+    ];
+    let frames = rasterize_to_matte_frames(&masks, 10, 10);
+    assert_eq!(frames.len(), 2);
+    for f in &frames {
+        assert_eq!(f.len(), 100);
+    }
+}
+
+#[test]
+fn rasterize_to_matte_frames_is_empty_for_no_masks() {
+    assert!(rasterize_to_matte_frames(&[], 10, 10).is_empty());
+}
