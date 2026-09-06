@@ -18,6 +18,7 @@ pub(super) struct ShapeOverlayRequests<'a> {
 }
 pub(super) fn draw_shape_overlays(
     ui: &mut egui::Ui,
+    painter: &egui::Painter,
     track: &avcore::timeline::Track,
     track_rect: egui::Rect,
     px_per_sec: f32,

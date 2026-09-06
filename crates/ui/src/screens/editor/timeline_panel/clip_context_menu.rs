@@ -23,7 +23,7 @@ pub(super) struct ClipContextMenuRequests<'a> {
 }
 
 pub(super) fn show_clip_context_menu(
-    response: egui::Response,
+    response: &egui::Response,
     clip: &avcore::timeline::ClipInstance,
     track: &avcore::timeline::Track,
     locale: Locale,
