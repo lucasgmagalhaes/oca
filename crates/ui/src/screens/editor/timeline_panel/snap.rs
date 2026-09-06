@@ -26,6 +26,48 @@ pub(super) struct ClipDrag {
     pub(super) pointer_y: f32,
 }
 
+/// Immutable snapping data collected once per timeline frame. Keeping this projection separate
+/// from rendering prevents every drag handler from re-traversing tracks and markers.
+pub(super) struct SnapTargets {
+    clip_edges: Vec<(u64, f64, f64)>,
+    marker_secs: Vec<f64>,
+}
+
+impl SnapTargets {
+    pub(super) fn from_project(project: &avcore::Project) -> Self {
+        Self {
+            clip_edges: project
+                .timeline()
+                .tracks
+                .iter()
+                .flat_map(|track| &track.clips)
+                .map(|clip| {
+                    (
+                        clip.id,
+                        clip.start_secs,
+                        clip.start_secs + clip.duration_secs(),
+                    )
+                })
+                .collect(),
+            marker_secs: project
+                .timeline()
+                .markers
+                .iter()
+                .map(|marker| marker.position_secs)
+                .collect(),
+        }
+    }
+
+    pub(super) fn excluding(&self, clip_id: u64) -> Vec<f64> {
+        self.clip_edges
+            .iter()
+            .filter(|(id, _, _)| *id != clip_id)
+            .flat_map(|(_, start, end)| [*start, *end])
+            .chain(self.marker_secs.iter().copied())
+            .collect()
+    }
+}
+
 /// How close (in pixels, at the current zoom) a dragged position must land to a snap target
 /// (another clip's edge, or the playhead) before it magnetically snaps to it — `ROADMAP.md` P0
 /// item 2. Small enough to stay unobtrusive at high zoom, large enough to actually catch a

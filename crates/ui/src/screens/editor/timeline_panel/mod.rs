@@ -74,7 +74,9 @@ use draw::{
     draw_marker_ticks, draw_playhead, draw_ruler_ticks, draw_transition_wedge, draw_trim_info,
     draw_waveform, shape_kind_glyph, thumbnail_requests_settled, ThumbnailDrawWork,
 };
-use snap::{snap_move_start, snap_to_nearest, waveform_snap_points_for_clip, ClipDrag};
+use snap::{
+    snap_move_start, snap_to_nearest, waveform_snap_points_for_clip, ClipDrag, SnapTargets,
+};
 use track_header::{audio_role_icon, audio_role_label};
 
 /// Which edge of a timeline clip a drag targets — see the trim handling in `timeline_panel`.
@@ -156,32 +158,8 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         // that toggle is set, the same quick-override convention most editors layer on top of a
         // persistent snap preference.
         let snap_enabled = app.snap_enabled ^ ui.input(|i| i.modifiers.alt);
-        let clip_edges: Vec<(u64, f64, f64)> = app
-            .active_project()
-            .timeline()
-            .tracks
-            .iter()
-            .flat_map(|t| &t.clips)
-            .map(|c| (c.id, c.start_secs, c.start_secs + c.duration_secs()))
-            .collect();
-        // Markers are magnetic-snap targets too (`spec/architecture/competitive-feature-plan.md`
-        // quick wins — P0 item 2's own doc comment flagged this as "revisit when [markers]
-        // land," which they since have, via P2 item 9).
-        let marker_secs: Vec<f64> = app
-            .active_project()
-            .timeline()
-            .markers
-            .iter()
-            .map(|m| m.position_secs)
-            .collect();
-        let snap_targets_excluding = |exclude_id: u64| -> Vec<f64> {
-            clip_edges
-                .iter()
-                .filter(|(id, _, _)| *id != exclude_id)
-                .flat_map(|(_, start, end)| [*start, *end])
-                .chain(marker_secs.iter().copied())
-                .collect()
-        };
+        let snap_targets = SnapTargets::from_project(app.active_project());
+        let snap_targets_excluding = |exclude_id: u64| snap_targets.excluding(exclude_id);
 
         // D5 (`spec/architecture/differentiators.md`): waveform low-energy points as an extra
         // snap target for trim-edge (cut-point) drags specifically, not whole-clip moves — a
