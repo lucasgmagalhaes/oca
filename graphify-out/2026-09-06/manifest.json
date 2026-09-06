@@ -510,18 +510,18 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1788723127.3480356,
-    "ast_hash": "ea88292786e8e1f4ff225a060fc51fa1",
+    "mtime": 1788730564.6282847,
+    "ast_hash": "bc6c53ba9ebf2fcf280739ab33ad955e",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
-    "mtime": 1788722657.7702036,
-    "ast_hash": "48c7620e2fd3fcd4e7625f2b72ddc97c",
+    "mtime": 1788730559.8945127,
+    "ast_hash": "8ec7616a81745f3362d73dce02221879",
     "semantic_hash": ""
   },
   "crates/ui/src/app/preview.rs": {
-    "mtime": 1788721724.0091522,
-    "ast_hash": "4c51c7bd8551dc7cf7838114950f05c7",
+    "mtime": 1788730559.8950992,
+    "ast_hash": "59999c5d8b08d154628a1202d3efd460",
     "semantic_hash": ""
   },
   "crates/ui/src/app/timeline_ops.rs": {
@@ -2310,8 +2310,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/media_library_panel.rs": {
-    "mtime": 1788718665.9510365,
-    "ast_hash": "4f1596b682a2cd9aaf32a26e8fdd11fb",
+    "mtime": 1788730559.8964689,
+    "ast_hash": "d8c479b46d3fe8e157392e81aa5da4e4",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/toolbar.rs": {
@@ -2435,8 +2435,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test/youtube_download.rs": {
-    "mtime": 1788720898.2676096,
-    "ast_hash": "20ce72a9a542cb1b332f044a7c07f1fd",
+    "mtime": 1788730559.8958082,
+    "ast_hash": "36173ca4045cfdcaa26f6dcbe2b3610d",
     "semantic_hash": ""
   },
   "crates/ui/src/app/autosave.rs": {
@@ -2490,8 +2490,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/worker_events.rs": {
-    "mtime": 1788722657.7768085,
-    "ast_hash": "3d05a9ade625ada9a7018c12e2cf56fe",
+    "mtime": 1788730642.1856902,
+    "ast_hash": "1c7c4d85dfd775f7a45c7f1fff6b7bf3",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/fullscreen_preview.rs": {
