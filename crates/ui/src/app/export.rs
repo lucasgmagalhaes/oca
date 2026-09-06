@@ -23,7 +23,12 @@ use avcore::{
     AudioSegment, Canvas, ClipSegment, ExportJob, ExportJobStatus, RenderOutcome, ShapeSegment,
     TextSegment,
 };
+use eframe::egui;
 use tracing::{debug, error, info};
+
+use crate::components;
+use crate::i18n::Text;
+use crate::theme;
 
 use super::{App, NestedSequenceEvent, RenderEvent};
 
@@ -134,6 +139,90 @@ pub(super) struct ExportPreviewCache {
 }
 
 impl App {
+    /// Shows the Overwrite/Rename/Cancel modal when [`App::pending_export_conflict`] is
+    /// `Some` — the output path a queued export was about to use already exists on disk.
+    /// Overwrite queues it as-is; Rename picks the first free `name (2).mp4`-style sibling via
+    /// [`next_available_path`] and queues that instead; Cancel (or Escape) drops the job.
+    pub(super) fn show_export_conflict_modal(&mut self, ctx: &egui::Context) {
+        let Some(pending) = self.pending_export_conflict.as_ref() else {
+            return;
+        };
+        let locale = self.locale;
+        let filename = pending
+            .output_path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| pending.output_path.display().to_string());
+        let renamed_preview = next_available_path(&pending.output_path);
+        let renamed_filename = renamed_preview
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| renamed_preview.display().to_string());
+
+        let modal = egui::Modal::new(egui::Id::new("export_conflict_modal"));
+        let mut choice: Option<bool> = None; // Some(true) = overwrite, Some(false) = rename
+        let mut cancelled = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(380.0);
+            components::modal_title(ui, Text::ExportFileExistsTitle.tr(locale));
+            ui.add_space(8.0);
+            ui.label(
+                Text::ExportFileExistsBody
+                    .tr(locale)
+                    .replace("{name}", &filename),
+            );
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(
+                    Text::ExportFileExistsRenamedTo
+                        .tr(locale)
+                        .replace("{name}", &renamed_filename),
+                )
+                .size(11.0)
+                .color(theme::TEXT_MUTED),
+            );
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                cancelled = true;
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if components::primary_button(ui, Text::ExportFileExistsOverwrite.tr(locale))
+                    .clicked()
+                {
+                    choice = Some(true);
+                }
+                if ui.button(Text::ExportFileExistsRename.tr(locale)).clicked() {
+                    choice = Some(false);
+                }
+                if ui.button(Text::CancelJob.tr(locale)).clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if response.should_close() || cancelled {
+            self.pending_export_conflict = None;
+            return;
+        }
+        if let Some(overwrite) = choice {
+            let pending = self.pending_export_conflict.take().unwrap();
+            let output_path = if overwrite {
+                pending.output_path
+            } else {
+                next_available_path(&pending.output_path)
+            };
+            self.queue_export(
+                pending.title,
+                pending.track_segments,
+                pending.audio_segments,
+                pending.text_segments,
+                pending.shape_segments,
+                pending.canvas,
+                pending.target_lufs,
+                output_path.display().to_string(),
+            );
+        }
+    }
+
     /// Resolves the active sequence's visible video tracks + media library into export segments
     /// (track segments, audio segments, canvas) — what the Fila (export queue) screen's header
     /// needs every frame just to show a file-size estimate and gate the "Adicionar exportação"
