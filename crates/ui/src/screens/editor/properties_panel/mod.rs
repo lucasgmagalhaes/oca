@@ -20,6 +20,7 @@ mod motion_tracking;
 mod privacy_blur;
 mod shape_clip;
 mod text_clip;
+mod visual_effects;
 mod voice_cleanup_preview;
 
 use background_effects::{background_removal_properties, chroma_key_properties};
@@ -29,24 +30,23 @@ use chrome::{effects_panel_browser, prop_row, properties_tab_bar};
 use eframe::egui::{self, RichText};
 
 use crate::app::{
-    App, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CONTRAST_RANGE, CROP_MIN_SIZE, GAIN_DB_RANGE,
-    GLITCH_INTENSITY_RANGE, LAYER_SCALE_RANGE, MASK_CORNER_RADIUS_RANGE, PIXELIZE_INTENSITY_RANGE,
-    SATURATION_RANGE, SHAKE_INTENSITY_RANGE, SHARPEN_RANGE, SPEED_FACTOR_RANGE,
-    STABILIZATION_INTENSITY_RANGE, VIGNETTE_INTENSITY_RANGE, VOICE_CLEANUP_CEILING_RANGE,
-    VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE, VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE,
-    VOICE_CLEANUP_NOISE_FLOOR_RANGE,
+    App, BRIGHTNESS_RANGE, CONTRAST_RANGE, CROP_MIN_SIZE, GAIN_DB_RANGE, LAYER_SCALE_RANGE,
+    MASK_CORNER_RADIUS_RANGE, SATURATION_RANGE, SHARPEN_RANGE, SPEED_FACTOR_RANGE,
+    VIGNETTE_INTENSITY_RANGE, VOICE_CLEANUP_CEILING_RANGE, VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE,
+    VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE, VOICE_CLEANUP_NOISE_FLOOR_RANGE,
 };
 use crate::components;
 use crate::i18n::Text;
 use crate::theme;
 use keyframe_editors::{
     blend_mode_label, color_filter_label, f32_keyframe_editor, mask_shape_label,
-    position_keyframe_editor, transition_type_label,
+    position_keyframe_editor,
 };
 use motion_tracking::motion_tracking_properties;
 use privacy_blur::privacy_blur_properties;
 use shape_clip::shape_clip_properties;
 use text_clip::text_clip_properties;
+use visual_effects::{other_effects_properties, stabilization_properties, transition_properties};
 use voice_cleanup_preview::voice_cleanup_preview;
 
 pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32) {
@@ -1011,122 +1011,31 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                     locale,
                                 );
 
-                                if components::property_section(
+                                other_effects_properties(
+                                    app,
                                     ui,
                                     clip_id,
-                                    Text::PropOtherEffects.tr(locale),
-                                    Text::OtherEffectsExportNote.tr(locale),
-                                    blur_intensity > 0.0
-                                        || shake_intensity > 0.0
-                                        || glitch_intensity > 0.0
-                                        || pixelize_intensity > 0.0,
-                                    |ui| {
-                                        let mut changed = ui
-                                            .add(
-                                                egui::Slider::new(
-                                                    &mut blur_intensity,
-                                                    BLUR_INTENSITY_RANGE,
-                                                )
-                                                .text(Text::PropBlur.tr(locale)),
-                                            )
-                                            .changed();
-                                        changed |= ui
-                                            .add(
-                                                egui::Slider::new(
-                                                    &mut shake_intensity,
-                                                    SHAKE_INTENSITY_RANGE,
-                                                )
-                                                .text(Text::PropShake.tr(locale)),
-                                            )
-                                            .changed();
-                                        changed |= ui
-                                            .add(
-                                                egui::Slider::new(
-                                                    &mut glitch_intensity,
-                                                    GLITCH_INTENSITY_RANGE,
-                                                )
-                                                .text(Text::PropGlitch.tr(locale)),
-                                            )
-                                            .changed();
-                                        changed |= ui
-                                            .add(
-                                                egui::Slider::new(
-                                                    &mut pixelize_intensity,
-                                                    PIXELIZE_INTENSITY_RANGE,
-                                                )
-                                                .text(Text::PropPixelize.tr(locale)),
-                                            )
-                                            .changed();
-                                        changed
-                                    },
-                                ) {
-                                    app.set_selected_clip_blur(blur_intensity);
-                                    app.set_selected_clip_shake(shake_intensity);
-                                    app.set_selected_clip_glitch(glitch_intensity);
-                                    app.set_selected_clip_pixelize(pixelize_intensity);
-                                }
-
-                                let stabilization_changed = components::property_section(
-                                    ui,
-                                    clip_id,
-                                    Text::PropStabilization.tr(locale),
-                                    Text::StabilizationExportNote.tr(locale),
-                                    stabilization_intensity > 0.0,
-                                    |ui| {
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut stabilization_intensity,
-                                                STABILIZATION_INTENSITY_RANGE,
-                                            )
-                                            .fixed_decimals(2),
-                                        )
-                                        .changed()
-                                    },
+                                    &mut blur_intensity,
+                                    &mut shake_intensity,
+                                    &mut glitch_intensity,
+                                    &mut pixelize_intensity,
+                                    locale,
                                 );
-                                if stabilization_changed {
-                                    app.set_selected_clip_stabilization(stabilization_intensity);
-                                }
-
-                                let transition_changed = components::property_section(
+                                stabilization_properties(
+                                    app,
                                     ui,
                                     clip_id,
-                                    Text::PropTransition.tr(locale),
-                                    Text::TransitionExportNote.tr(locale),
-                                    transition_in != avcore::timeline::TransitionType::None,
-                                    |ui| {
-                                        let mut changed = components::enum_combo(
-                                            ui,
-                                            "transition_in",
-                                            &[
-                                                avcore::timeline::TransitionType::None,
-                                                avcore::timeline::TransitionType::Fade,
-                                                avcore::timeline::TransitionType::HardCut,
-                                                avcore::timeline::TransitionType::Slide,
-                                                avcore::timeline::TransitionType::Zoom,
-                                            ],
-                                            &mut transition_in,
-                                            |transition| transition_type_label(transition, locale),
-                                        );
-                                        changed |= ui
-                                            .add(
-                                                egui::Slider::new(
-                                                    &mut transition_duration_secs,
-                                                    crate::app::TRANSITION_DURATION_RANGE,
-                                                )
-                                                .suffix(" s")
-                                                .fixed_decimals(2)
-                                                .text(Text::PropTransitionDuration.tr(locale)),
-                                            )
-                                            .changed();
-                                        changed
-                                    },
+                                    &mut stabilization_intensity,
+                                    locale,
                                 );
-                                if transition_changed {
-                                    app.set_selected_clip_transition(
-                                        transition_in,
-                                        transition_duration_secs,
-                                    );
-                                }
+                                transition_properties(
+                                    app,
+                                    ui,
+                                    clip_id,
+                                    &mut transition_in,
+                                    &mut transition_duration_secs,
+                                    locale,
+                                );
                             }
 
                             if tab == crate::app::PropertiesTab::Inspector {
