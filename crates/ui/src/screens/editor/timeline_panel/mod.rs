@@ -244,13 +244,8 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     draw_ruler_ticks(ui.painter(), rect, px_per_sec);
                     if let Some(pos) = response.interact_pointer_pos() {
                         let secs = ((pos.x - rect.left()) / px_per_sec).max(0.0) as f64;
-                        let all_edges: Vec<f64> = clip_edges
-                            .iter()
-                            .flat_map(|(_, start, end)| [*start, *end])
-                            .chain(marker_secs.iter().copied())
-                            .collect();
                         let secs = if snap_enabled {
-                            snap_to_nearest(secs, &all_edges, px_per_sec)
+                            snap_to_nearest(secs, &snap_targets.all(), px_per_sec)
                         } else {
                             secs
                         };

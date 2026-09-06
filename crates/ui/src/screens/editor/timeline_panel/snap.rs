@@ -82,6 +82,16 @@ impl SnapTargets {
             .collect()
     }
 
+    /// Every clip edge and marker position, for playhead scrubbing where no clip needs to be
+    /// excluded from the target set.
+    pub(super) fn all(&self) -> Vec<f64> {
+        self.clip_edges
+            .iter()
+            .flat_map(|(_, start, end)| [*start, *end])
+            .chain(self.marker_secs.iter().copied())
+            .collect()
+    }
+
     pub(super) fn waveform_points(&self) -> &[f64] {
         &self.waveform_secs
     }
