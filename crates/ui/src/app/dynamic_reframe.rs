@@ -191,6 +191,35 @@ impl App {
     }
 }
 
+/// Decodes the frame at `at_secs` via `sampler`, runs face detection against it (`None` on any
+/// decode/detection failure, matching the static auto-reframe's own graceful degradation), and
+/// pushes its grayscale conversion onto `gray_samples` for the caller's own scene-cut scan —
+/// shared by both the fixed-cadence loop and the cut-adjacent extra-sample pass in
+/// [`dynamic_reframe_one`] so the two don't duplicate this decode-detect-and-convert sequence.
+fn detect_subject_at(
+    sampler: &avcore::FrameSampler,
+    at_secs: f64,
+    model_path: &Path,
+    previous_center: Option<(f32, f32)>,
+    gray_samples: &mut Vec<(f64, avcore::GrayFrame)>,
+) -> Option<(f32, f32)> {
+    let frame = sampler.sample(at_secs, Duration::from_millis(800))?;
+    let (w, h, rgba) =
+        downscale_frame_rgba(frame.width, frame.height, frame.rgba, REFRAME_FRAME_MAX_DIM);
+    gray_samples.push((at_secs, avcore::rgba_to_gray(&rgba, w, h)));
+    match avcore::detect_faces(model_path, &rgba, w, h) {
+        Ok(faces) => avcore::select_subject_center(
+            &faces,
+            previous_center,
+            avcore::DEFAULT_CONTINUITY_MAX_DISTANCE,
+        ),
+        Err(e) => {
+            tracing::warn!(error = %e, "dynamic auto-reframe face detection failed");
+            None
+        }
+    }
+}
+
 /// Runs on [`App::spawn_dynamic_reframe_selected_clip`]'s background thread — opens
 /// [`avcore::FrameSampler`] once, samples the subject center at each of
 /// [`avcore::FrameSampler::even_sample_times`]'s evenly-spaced points, then pipes the resulting
@@ -253,30 +282,17 @@ fn dynamic_reframe_one(
         // crop between samples even though neither actually moved. Only updated on an actual
         // detection: a gap-filled/centered sample carries no new evidence about where the
         // subject is now.
+        //
+        // Also accumulates each sample's grayscale frame (`avcore::rgba_to_gray`, reusing the
+        // same downscaled RGBA face detection already decoded — no extra decode) for the
+        // content-adaptive-cadence pass below, at zero extra cost for the common no-cuts case.
         let mut previous_center: Option<(f32, f32)> = None;
+        let mut gray_samples: Vec<(f64, avcore::GrayFrame)> =
+            Vec::with_capacity(sample_times.len());
         for &t in &sample_times {
             let time_fraction = (((t - source_in_secs) / duration) as f32).clamp(0.0, 1.0);
-            let subject_center = sampler
-                .sample(t, Duration::from_millis(800))
-                .and_then(|frame| {
-                    let (w, h, rgba) = downscale_frame_rgba(
-                        frame.width,
-                        frame.height,
-                        frame.rgba,
-                        REFRAME_FRAME_MAX_DIM,
-                    );
-                    match avcore::detect_faces(model_path, &rgba, w, h) {
-                        Ok(faces) => avcore::select_subject_center(
-                            &faces,
-                            previous_center,
-                            avcore::DEFAULT_CONTINUITY_MAX_DISTANCE,
-                        ),
-                        Err(e) => {
-                            tracing::warn!(error = %e, "dynamic auto-reframe face detection failed");
-                            None
-                        }
-                    }
-                });
+            let subject_center =
+                detect_subject_at(&sampler, t, model_path, previous_center, &mut gray_samples);
             if subject_center.is_some() {
                 previous_center = subject_center;
             }
@@ -284,6 +300,39 @@ fn dynamic_reframe_one(
                 time_fraction,
                 subject_center,
             });
+        }
+
+        // CF-04's own "content-adaptive cadence": a hard cut detected within the fixed-cadence
+        // samples above gets a few extra, denser samples inserted right where it happened, so
+        // the framing snaps to the post-cut subject instead of smearing a linear interpolation
+        // across the whole fixed-cadence gap the cut fell within. A no-op copy when no cut is
+        // found (the common case), so this costs nothing beyond the cheap luma-diff scan itself.
+        let cuts = avcore::detect_scene_cuts(&gray_samples, avcore::DEFAULT_SCENE_CUT_THRESHOLD);
+        if !cuts.is_empty() {
+            let augmented_times = avcore::augment_sample_times_for_cuts(
+                &sample_times,
+                &cuts,
+                avcore::DEFAULT_EXTRA_SAMPLES_PER_CUT,
+            );
+            for &t in &augmented_times {
+                if sample_times
+                    .iter()
+                    .any(|&existing| (existing - t).abs() < 1e-9)
+                {
+                    continue;
+                }
+                let time_fraction = (((t - source_in_secs) / duration) as f32).clamp(0.0, 1.0);
+                let subject_center =
+                    detect_subject_at(&sampler, t, model_path, previous_center, &mut gray_samples);
+                if subject_center.is_some() {
+                    previous_center = subject_center;
+                }
+                samples.push(avcore::ReframeSample {
+                    time_fraction,
+                    subject_center,
+                });
+            }
+            samples.sort_by(|a, b| a.time_fraction.total_cmp(&b.time_fraction));
         }
     }
 
