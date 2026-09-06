@@ -17,10 +17,154 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use avcore::YoutubeDownloadTarget;
+use eframe::egui;
+
+use crate::components;
+use crate::i18n::Text;
+use crate::theme;
 
 use super::{youtube_downloads_dir, App, YoutubeDownloadEvent, YoutubeFormatChoice};
 
 impl App {
+    /// Shows the "Baixar do YouTube" modal when [`App::youtube_modal_url`] is `Some`. Unlike
+    /// [`Self::show_tts_modal`], stays open across "Baixar" (submit) — it shows a progress bar
+    /// while [`App::youtube_downloading`] is `true` and any [`App::youtube_download_error`]
+    /// inline, closing only once a download actually completes
+    /// ([`App::pump_youtube_download`]) or the user cancels/closes it explicitly.
+    pub(super) fn show_youtube_download_modal(&mut self, ctx: &egui::Context) {
+        if self.youtube_download_state.youtube_modal_url.is_none() {
+            return;
+        }
+        let locale = self.locale;
+        let downloading = self.youtube_download_state.youtube_downloading;
+        let modal = egui::Modal::new(egui::Id::new("youtube_download_modal"));
+        let mut start = false;
+        let mut cancel_download = false;
+        let mut close = false;
+        let response = modal.show(ctx, |ui| {
+            ui.set_width(420.0);
+            components::modal_title(ui, Text::YoutubeDownloadModalTitle.tr(locale));
+            ui.add_space(8.0);
+            ui.add_enabled_ui(!downloading, |ui| {
+                let buf = self
+                    .youtube_download_state
+                    .youtube_modal_url
+                    .as_mut()
+                    .unwrap();
+                ui.add(
+                    egui::TextEdit::singleline(buf)
+                        .hint_text(Text::YoutubeDownloadUrlHint.tr(locale))
+                        .desired_width(f32::INFINITY),
+                );
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.selectable_value(
+                        &mut self.youtube_download_state.youtube_modal_format,
+                        super::YoutubeFormatChoice::Mp4,
+                        Text::YoutubeDownloadFormatMp4.tr(locale),
+                    );
+                    ui.selectable_value(
+                        &mut self.youtube_download_state.youtube_modal_format,
+                        super::YoutubeFormatChoice::Mp3,
+                        Text::YoutubeDownloadFormatMp3.tr(locale),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label(Text::YoutubeDownloadQuality.tr(locale));
+                    match self.youtube_download_state.youtube_modal_format {
+                        super::YoutubeFormatChoice::Mp4 => {
+                            egui::ComboBox::new("youtube_mp4_quality", "")
+                                .selected_text(
+                                    self.youtube_download_state
+                                        .youtube_modal_mp4_quality
+                                        .label(),
+                                )
+                                .show_ui(ui, |ui| {
+                                    for q in avcore::Mp4Quality::ALL {
+                                        ui.selectable_value(
+                                            &mut self
+                                                .youtube_download_state
+                                                .youtube_modal_mp4_quality,
+                                            q,
+                                            q.label(),
+                                        );
+                                    }
+                                });
+                        }
+                        super::YoutubeFormatChoice::Mp3 => {
+                            egui::ComboBox::new("youtube_mp3_bitrate", "")
+                                .selected_text(
+                                    self.youtube_download_state
+                                        .youtube_modal_mp3_bitrate
+                                        .label(),
+                                )
+                                .show_ui(ui, |ui| {
+                                    for b in avcore::Mp3Bitrate::ALL {
+                                        ui.selectable_value(
+                                            &mut self
+                                                .youtube_download_state
+                                                .youtube_modal_mp3_bitrate,
+                                            b,
+                                            b.label(),
+                                        );
+                                    }
+                                });
+                        }
+                    }
+                });
+            });
+            ui.add_space(8.0);
+            if downloading {
+                ui.add(
+                    egui::ProgressBar::new(self.youtube_download_state.youtube_download_progress)
+                        .text(Text::YoutubeDownloadInProgress.tr(locale)),
+                );
+                ui.add_space(8.0);
+            }
+            if let Some(err) = &self.youtube_download_state.youtube_download_error {
+                ui.label(egui::RichText::new(err.as_str()).color(theme::ERROR));
+                ui.add_space(8.0);
+            }
+            if !downloading && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                close = true;
+            }
+            ui.horizontal(|ui| {
+                let url_blank = self
+                    .youtube_download_state
+                    .youtube_modal_url
+                    .as_ref()
+                    .is_some_and(|u| u.trim().is_empty());
+                if downloading {
+                    if ui.button(Text::YoutubeDownloadCancel.tr(locale)).clicked() {
+                        cancel_download = true;
+                    }
+                } else {
+                    if ui
+                        .add_enabled(
+                            !url_blank,
+                            egui::Button::new(Text::YoutubeDownloadStart.tr(locale)),
+                        )
+                        .clicked()
+                    {
+                        start = true;
+                    }
+                    if ui.button(Text::CancelJob.tr(locale)).clicked() {
+                        close = true;
+                    }
+                }
+            });
+        });
+        if (response.should_close() || close) && !downloading {
+            self.close_youtube_modal();
+            return;
+        }
+        if start {
+            self.spawn_youtube_download();
+        }
+        if cancel_download {
+            self.request_cancel_youtube_download();
+        }
+    }
     /// Opens the "Baixar do YouTube" modal with an empty URL field — what the Mídia screen's
     /// button does. A no-op if the modal is already open or a download is already running.
     pub fn open_youtube_modal(&mut self) {
