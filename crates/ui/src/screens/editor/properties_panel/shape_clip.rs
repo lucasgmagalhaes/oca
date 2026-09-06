@@ -92,6 +92,7 @@ pub(super) fn shape_clip_properties(
     };
 
     let mut changed = false;
+    let mut structural_changed = false;
 
     // Shape preset
     components::property_row(ui, Text::PropShapeKind.tr(locale));
@@ -377,6 +378,7 @@ pub(super) fn shape_clip_properties(
         .changed()
     {
         changed = true;
+        structural_changed = true;
     }
     components::property_row(ui, Text::PropShapeDuration.tr(locale));
     if ui
@@ -389,6 +391,7 @@ pub(super) fn shape_clip_properties(
         .changed()
     {
         changed = true;
+        structural_changed = true;
     }
 
     ui.add_space(4.0);
@@ -398,7 +401,14 @@ pub(super) fn shape_clip_properties(
             .color(theme::TEXT_MUTED),
     );
 
-    // Apply changes back to the clip in the active project.
+    // Apply changes back to the clip in the active project. `start_secs`/`duration_secs`
+    // (structural_changed) can change which clips cover the playhead, so those still force a
+    // full pipeline reopen via `ensure_preview_loaded`'s normal id-diffing path. Every other
+    // field here (kind/color/position/size/rotation/stroke) only changes this clip's own
+    // rasterized look — if it's already part of the currently open composited preview,
+    // `refresh_preview_shape_content` pushes a fresh buffer into its existing `appsrc` branch
+    // instead of tearing down and rebuilding the whole GStreamer pipeline on every dragged
+    // slider frame.
     if changed {
         app.push_undo_snapshot_for_drag();
         let timeline = app.active_project_mut().timeline_mut();
@@ -409,6 +419,11 @@ pub(super) fn shape_clip_properties(
                     break;
                 }
             }
+        }
+        if structural_changed {
+            app.invalidate_preview_rendering();
+        } else {
+            app.refresh_preview_shape_content(sc_id);
         }
     }
 }

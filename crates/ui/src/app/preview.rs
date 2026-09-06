@@ -684,6 +684,36 @@ impl App {
         }
     }
 
+    /// Same role as [`App::refresh_preview_text_content`], for a [`ShapeClip`] edit — pushes a
+    /// freshly rasterized buffer into the already-open shape branch when `clip_id` is part of
+    /// the currently loaded composited preview (`preview_shape_clip_ids`), without tearing down
+    /// the pipeline. A no-op otherwise (falls back to the normal reopen path on the next frame
+    /// that needs it). Closes P1 item 3's "Shapes (non-text overlays) still have no
+    /// live-preview path" gap.
+    pub(crate) fn refresh_preview_shape_content(&mut self, clip_id: u64) {
+        if !self.preview_state.preview_shape_clip_ids.contains(&clip_id) {
+            return;
+        }
+        let Some(clip) = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Shape)
+            .flat_map(|t| &t.shape_clips)
+            .find(|c| c.id == clip_id)
+            .cloned()
+        else {
+            return;
+        };
+        let Some(preview) = self.preview_state.preview.as_mut() else {
+            return;
+        };
+        if let Err(error) = preview.refresh_shape_overlay(&clip) {
+            warn!(%error, "failed to refresh preview shape style edit");
+        }
+    }
+
     /// Toggles play/pause on the current preview pipeline. A no-op if nothing is selected or
     /// the pipeline failed to open. A frozen clip's underlying pipeline stays `Paused`
     /// regardless — only [`App::preview_frozen_since`] starts/stops, driving the playhead

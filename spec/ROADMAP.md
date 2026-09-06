@@ -113,10 +113,32 @@ Read [architecture/performance-and-caching.md](architecture/performance-and-cach
    or renegotiation needed at all, just new numbers; `Preview::set_live_mask` reuses the
    `refresh_text_overlay` pattern (`appsrc ! imagefreeze(allow-replace=true)`) to push a freshly
    rasterized `GRAY8` buffer. Deflicker/stabilization remain the genuinely open gap — both need
-   *temporal* state across multiple frames, a different problem shape entirely. Shapes (non-text
-   overlays) still have no live-preview path. Wired through the same `with_selected_clip_mut`
-   shared dispatch path as balance/blur/chroma-key. See `matrix/performance.md` for the full
-   findings.
+   *temporal* state across multiple frames, a different problem shape entirely. Wired through the
+   same `with_selected_clip_mut` shared dispatch path as balance/blur/chroma-key. See
+   `matrix/performance.md` for the full findings.
+
+   **Fifth follow-up**: shape overlay clips (`TrackKind::Shape`, decorative rectangles/ellipses/
+   arrows/etc., not to be confused with the background-removal `mask_shape` [`MaskShapeBranch`]
+   already covered by `set_live_mask` above) now update live too, closing this item's last
+   remaining gap. `open_composited`'s shape-overlay loop previously called
+   `build_static_overlay_branch` and discarded the returned `appsrc` — no live-update path
+   existed at all, so every shape-clip properties-panel edit fell through to a full pipeline
+   reopen. Added `ShapeOverlayBranch` (`{ clip_id, appsrc, canvas_width, canvas_height }`,
+   mirroring `MaskShapeBranch`'s shape — a shape clip has no time-dependent rasterization input,
+   unlike `TextOverlayBranch`'s word-highlight state) and `Preview::refresh_shape_overlay`,
+   copying `refresh_text_overlay`'s exact re-rasterize-and-push shape via
+   `render_shape_clip_rgba`. On the `ui` side, `App::refresh_preview_shape_content` mirrors
+   `refresh_preview_text_content` (checks the pre-existing `preview_shape_clip_ids` reopen-
+   detection list, which had been tracked all along for diffing but never used for a live push),
+   wired into `shape_clip_properties`' apply block the same way `text_clip.rs` splits
+   `structural_changed` (start/duration, which can change which clips cover the playhead) from
+   every other field (kind/color/position/size/rotation/stroke, content-only). Verified via
+   `cargo check`/`clippy --all-targets` across the whole workspace (a local, never-committed
+   FFmpeg-7.1-symbol shim plus an `FFMPEG_DIR`/`lib`-symlink workaround for this sandbox's
+   multiarch package layout got a real type/borrow-check pass past the pre-existing FFmpeg-too-
+   old gap and the GStreamer pkg-config gap) — no errors, no new clippy warnings; GStreamer
+   pipeline behavior itself is untested in this sandbox (no display, no real playback), same
+   caveat as every other `preview.rs` live-update path above.
 4. `[x]` Versioned cache for the timeline→avfilter-graph resolution
    (`resolve_timeline_segments_multi`). The confirmed hot spot was `screens::queue::show`
    recomputing it every UI frame the Fila screen is open, just for a size estimate — fixed via
