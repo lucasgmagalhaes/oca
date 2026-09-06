@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+mod background_effects;
 mod chrome;
 mod keyframe_editors;
 mod motion_tracking;
@@ -21,18 +22,19 @@ mod shape_clip;
 mod text_clip;
 mod voice_cleanup_preview;
 
+use background_effects::{background_removal_properties, chroma_key_properties};
 pub(super) use chrome::stereo_db_meter;
 use chrome::{effects_panel_browser, prop_row, properties_tab_bar};
 
 use eframe::egui::{self, RichText};
 
 use crate::app::{
-    App, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CHROMA_KEY_TOLERANCE_RANGE, CONTRAST_RANGE,
-    CROP_MIN_SIZE, GAIN_DB_RANGE, GLITCH_INTENSITY_RANGE, LAYER_SCALE_RANGE,
-    MASK_CORNER_RADIUS_RANGE, PIXELIZE_INTENSITY_RANGE, SATURATION_RANGE, SHAKE_INTENSITY_RANGE,
-    SHARPEN_RANGE, SPEED_FACTOR_RANGE, STABILIZATION_INTENSITY_RANGE, VIGNETTE_INTENSITY_RANGE,
-    VOICE_CLEANUP_CEILING_RANGE, VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE,
-    VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE, VOICE_CLEANUP_NOISE_FLOOR_RANGE,
+    App, BLUR_INTENSITY_RANGE, BRIGHTNESS_RANGE, CONTRAST_RANGE, CROP_MIN_SIZE, GAIN_DB_RANGE,
+    GLITCH_INTENSITY_RANGE, LAYER_SCALE_RANGE, MASK_CORNER_RADIUS_RANGE, PIXELIZE_INTENSITY_RANGE,
+    SATURATION_RANGE, SHAKE_INTENSITY_RANGE, SHARPEN_RANGE, SPEED_FACTOR_RANGE,
+    STABILIZATION_INTENSITY_RANGE, VIGNETTE_INTENSITY_RANGE, VOICE_CLEANUP_CEILING_RANGE,
+    VOICE_CLEANUP_COMPRESSOR_RATIO_RANGE, VOICE_CLEANUP_COMPRESSOR_THRESHOLD_RANGE,
+    VOICE_CLEANUP_NOISE_FLOOR_RANGE,
 };
 use crate::components;
 use crate::i18n::Text;
@@ -986,75 +988,20 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                                     app.set_selected_clip_sharpen(sharpen);
                                 }
 
-                                if components::property_block(
+                                chroma_key_properties(
+                                    app,
                                     ui,
-                                    Text::ChromaKeyExportNote.tr(locale),
-                                    |ui| {
-                                        let mut changed = ui
-                                            .checkbox(
-                                                &mut chroma_key_enabled,
-                                                Text::PropChromaKey.tr(locale),
-                                            )
-                                            .changed();
-                                        if chroma_key_enabled {
-                                            ui.horizontal(|ui| {
-                                                ui.label(Text::ChromaKeyColor.tr(locale));
-                                                changed |= ui
-                                                    .color_edit_button_srgb(&mut chroma_key_color)
-                                                    .changed();
-                                            });
-                                            changed |= ui
-                                                .add(
-                                                    egui::Slider::new(
-                                                        &mut chroma_key_tolerance,
-                                                        CHROMA_KEY_TOLERANCE_RANGE,
-                                                    )
-                                                    .text(Text::ChromaKeyTolerance.tr(locale)),
-                                                )
-                                                .changed();
-                                        }
-                                        changed
-                                    },
-                                ) {
-                                    app.set_selected_clip_chroma_key(
-                                        chroma_key_enabled,
-                                        chroma_key_color,
-                                        chroma_key_tolerance,
-                                    );
-                                }
-
-                                if components::property_block(
+                                    &mut chroma_key_enabled,
+                                    &mut chroma_key_color,
+                                    &mut chroma_key_tolerance,
+                                    locale,
+                                );
+                                background_removal_properties(
+                                    app,
                                     ui,
-                                    Text::BackgroundRemovalExportNote.tr(locale),
-                                    |ui| {
-                                        let changed = ui
-                                            .checkbox(
-                                                &mut background_removal_enabled,
-                                                Text::PropBackgroundRemoval.tr(locale),
-                                            )
-                                            .changed();
-                                        let generating = app
-                                            .matte_generation_state
-                                            .matte_generating_clip_id
-                                            .is_some();
-                                        let label = if generating {
-                                            Text::BackgroundRemovalGenerating.tr(locale)
-                                        } else {
-                                            Text::BackgroundRemovalGenerateMatte.tr(locale)
-                                        };
-                                        if ui
-                                            .add_enabled(!generating, egui::Button::new(label))
-                                            .clicked()
-                                        {
-                                            app.spawn_generate_matte_for_selected_clip();
-                                        }
-                                        changed
-                                    },
-                                ) {
-                                    app.set_selected_clip_background_removal(
-                                        background_removal_enabled,
-                                    );
-                                }
+                                    &mut background_removal_enabled,
+                                    locale,
+                                );
 
                                 privacy_blur_properties(
                                     app,
