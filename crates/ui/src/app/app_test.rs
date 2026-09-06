@@ -566,6 +566,175 @@ fn delete_sequence_removes_the_target_and_selects_a_surviving_neighbor() {
 }
 
 #[test]
+fn insert_sequence_as_compound_clip_appends_a_nested_clip_on_the_active_timeline() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let nested_id = app.active_project().sequences[0].id + 1;
+    app.active_project_mut().sequences.push(Sequence {
+        id: nested_id,
+        name: "Other Sequence".to_string(),
+        timeline: Timeline {
+            tracks: vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 8.0)],
+            )],
+            playhead_secs: 0.0,
+            markers: Vec::new(),
+            multicam_groups: Vec::new(),
+        },
+        export_settings: Default::default(),
+    });
+
+    app.insert_sequence_as_compound_clip(nested_id);
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks.len(), 1);
+    assert_eq!(timeline.tracks[0].kind, TrackKind::Video);
+    assert_eq!(timeline.tracks[0].clips.len(), 1);
+    let clip = &timeline.tracks[0].clips[0];
+    assert_eq!(clip.nested_sequence_id, Some(nested_id));
+    assert_eq!(clip.start_secs, 0.0);
+    assert!((clip.source_out_secs - 8.0).abs() < 1e-9);
+}
+
+#[test]
+fn insert_sequence_as_compound_clip_appends_after_existing_clips_on_the_first_video_track() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 5.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    let nested_id = 99;
+    app.active_project_mut().sequences.push(Sequence {
+        id: nested_id,
+        name: "Other Sequence".to_string(),
+        timeline: Timeline {
+            tracks: vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 3.0)],
+            )],
+            playhead_secs: 0.0,
+            markers: Vec::new(),
+            multicam_groups: Vec::new(),
+        },
+        export_settings: Default::default(),
+    });
+
+    app.insert_sequence_as_compound_clip(nested_id);
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks[0].clips.len(), 2);
+    let inserted = &timeline.tracks[0].clips[1];
+    assert_eq!(inserted.nested_sequence_id, Some(nested_id));
+    assert_eq!(
+        inserted.start_secs, 5.0,
+        "must append after the existing clip"
+    );
+}
+
+#[test]
+fn insert_sequence_as_compound_clip_creates_a_video_track_when_none_exists() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let nested_id = 42;
+    app.active_project_mut().sequences.push(Sequence {
+        id: nested_id,
+        name: "Other Sequence".to_string(),
+        timeline: Timeline {
+            tracks: vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 4.0)],
+            )],
+            playhead_secs: 0.0,
+            markers: Vec::new(),
+            multicam_groups: Vec::new(),
+        },
+        export_settings: Default::default(),
+    });
+    assert!(app.active_project().timeline().tracks.is_empty());
+
+    app.insert_sequence_as_compound_clip(nested_id);
+
+    let timeline = app.active_project().timeline();
+    assert_eq!(timeline.tracks.len(), 1);
+    assert_eq!(timeline.tracks[0].kind, TrackKind::Video);
+}
+
+#[test]
+fn insert_sequence_as_compound_clip_refuses_the_active_sequence_itself() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let active_id = app.active_project().sequences[0].id;
+
+    app.insert_sequence_as_compound_clip(active_id);
+
+    assert!(app.active_project().timeline().tracks.is_empty());
+}
+
+#[test]
+fn insert_sequence_as_compound_clip_refuses_a_nonexistent_sequence_id() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+
+    app.insert_sequence_as_compound_clip(999);
+
+    assert!(app.active_project().timeline().tracks.is_empty());
+}
+
+#[test]
+fn insert_sequence_as_compound_clip_refuses_an_empty_nested_sequence() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let nested_id = 7;
+    app.active_project_mut().sequences.push(Sequence {
+        id: nested_id,
+        name: "Empty Sequence".to_string(),
+        timeline: Timeline {
+            tracks: Vec::new(),
+            playhead_secs: 0.0,
+            markers: Vec::new(),
+            multicam_groups: Vec::new(),
+        },
+        export_settings: Default::default(),
+    });
+
+    app.insert_sequence_as_compound_clip(nested_id);
+
+    assert!(app.active_project().timeline().tracks.is_empty());
+}
+
+#[test]
+fn insert_sequence_as_compound_clip_pushes_one_undo_snapshot() {
+    let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
+    let nested_id = 5;
+    app.active_project_mut().sequences.push(Sequence {
+        id: nested_id,
+        name: "Other Sequence".to_string(),
+        timeline: Timeline {
+            tracks: vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 4.0)],
+            )],
+            playhead_secs: 0.0,
+            markers: Vec::new(),
+            multicam_groups: Vec::new(),
+        },
+        export_settings: Default::default(),
+    });
+
+    app.insert_sequence_as_compound_clip(nested_id);
+    assert!(app.can_undo());
+    app.undo();
+
+    assert!(app.active_project().timeline().tracks.is_empty());
+}
+
+#[test]
 fn delete_sequence_refuses_to_remove_the_last_tab() {
     let mut app = test_app(vec![test_project(1, Vec::new())], Vec::new());
     let only_id = app.active_project().sequences[0].id;

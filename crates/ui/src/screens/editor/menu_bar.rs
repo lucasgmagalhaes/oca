@@ -292,6 +292,30 @@ fn sequence_menu(app: &mut App, ui: &mut egui::Ui, locale: crate::i18n::Locale) 
             app.create_multicam_group_from_video_tracks();
             ui.close();
         }
+        ui.separator();
+        // The "drag an existing sequence tab onto another timeline" direction
+        // `App::create_compound_clip_from_selected_clip`'s own doc comment flags as not shipped
+        // -- every *other* sequence in this project, inserted as a compound clip onto the
+        // active sequence's timeline (App::insert_sequence_as_compound_clip's own doc comment
+        // has the full placement/cycle-safety contract).
+        ui.menu_button(Text::MenuSequenceInsertAsCompoundClip.tr(locale), |ui| {
+            let others: Vec<(u64, String)> = app
+                .active_project()
+                .sequences
+                .iter()
+                .filter(|s| s.id != app.active_project().active_sequence().id)
+                .map(|s| (s.id, s.name.clone()))
+                .collect();
+            if others.is_empty() {
+                ui.label(Text::MenuSequenceInsertAsCompoundClipEmpty.tr(locale));
+            }
+            for (sequence_id, name) in others {
+                if ui.button(name).clicked() {
+                    app.insert_sequence_as_compound_clip(sequence_id);
+                    ui.close();
+                }
+            }
+        });
     });
 }
 

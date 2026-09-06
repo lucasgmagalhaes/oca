@@ -855,8 +855,38 @@ not by default priority.
       asset — `toggle_preview_playback`, `seek_preview` — were switched to a new asset-free
       `current_preview_video_clip` instead of threading `media_library` through them for no
       reason.
-    - **Explicitly not done**: dragging an *existing* sequence tab onto another timeline as a
-      nested clip (only the "create compound from selection" direction ships).
+    - **Follow-up: inserting an existing sequence as a compound clip now ships too**, closing
+      most of the "explicitly not done" gap this note originally flagged (a real drag-and-drop
+      gesture for a sequence tab onto the timeline panel itself remains out of scope — no
+      existing drag source exists for a tab today — but the actual outcome, an existing sequence
+      landing as a compound clip, is now reachable). `App::insert_sequence_as_compound_clip`
+      appends a new nested-sequence `ClipInstance` onto the active sequence's first `Video`
+      track (auto-creating one if none exists), right after whatever's already there — the same
+      "append" placement `App::add_asset_to_timeline` already uses for a double-clicked
+      media-library asset, reused here since this insertion path has no drag position of its own
+      to place a clip at. The new clip's box duration comes from `avcore::timeline::Timeline::
+      duration_secs` (an already-existing pure function — the nested sequence's own edited
+      length), not a real FFmpeg render/probe up front, matching how
+      `create_compound_clip_from_selected_clip` already treats a compound clip's box length as a
+      cheap timeline-derived value; the real render still only happens lazily in the background
+      the first time the clip is actually previewed or exported. A no-op if the target sequence
+      doesn't exist, is the active sequence itself (the trivial direct self-nesting cycle — a
+      deeper indirect cycle is instead caught gracefully at render/materialize time by
+      `avcore::nested_sequence`'s own existing cycle detection, the same path every other nested
+      clip already goes through, so this insertion path doesn't need to duplicate that check), or
+      is itself empty. Reachable from a new "📦 Insert sequence as compound clip" submenu in the
+      Editor's Sequence menu, listing every *other* sequence in the project by name.
+
+      Verified: 7 new `App`-level tests in `app_test.rs` — appends a nested clip with the target
+      sequence's own duration, appends after an existing clip on the first video track rather
+      than overwriting it, auto-creates a video track when none exists, refuses the active
+      sequence itself, refuses a nonexistent sequence id, refuses an empty nested sequence, and
+      pushes exactly one undo snapshot. `cargo check --workspace --all-targets` and `cargo clippy
+      -p ui --tests --no-deps` (via the documented temporary `filters.c`/`text_overlay.c` shim,
+      discarded before commit) and `cargo fmt --all -- --check` all stayed clean — this session's
+      sandbox can't *link* `ui`'s own test binary (the same pre-existing ONNX Runtime network gap
+      `CLAUDE.md` documents, confirmed directly this pass), so these are type-checked, not run,
+      same caveat every other `ui`-side slice this session has hit.
     - **Follow-up: delete-time warning now ships.** Deleting a `Sequence` still referenced by a
       compound clip elsewhere used to leave a dangling `nested_sequence_id` with no warning at
       all — `RenderError::MissingNestedSequence` degraded gracefully (logged, clip skipped)
