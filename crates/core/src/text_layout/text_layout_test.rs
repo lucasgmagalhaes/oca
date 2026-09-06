@@ -266,6 +266,109 @@ fn single_weight_family_ignores_bold_request_without_producing_notdef() {
         .all(|g| g.glyph_id != 0));
 }
 
+fn shape_has_any_notdef(text: &str, family: TextFontFamily) -> bool {
+    let mut engine = TextLayoutEngine::new_from_locked_catalog();
+    let shaped = engine.shape(
+        text,
+        family,
+        TextFontStyle::Regular,
+        None,
+        48.0,
+        None,
+        (0.0, 0.0),
+        TextDirection::Auto,
+        TextAlign::Auto,
+    );
+    shaped
+        .lines
+        .iter()
+        .flat_map(|l| l.glyphs.iter())
+        .any(|g| g.glyph_id == 0)
+}
+
+#[test]
+fn oca_fallback_shapes_embedded_arabic_through_a_latin_family_with_no_notdef() {
+    // Lato has zero Arabic coverage -- OcaFallback's own `script_fallback` points this cluster
+    // at the bundled "Noto Sans Arabic" face instead.
+    assert!(!shape_has_any_notdef("مرحبا", TextFontFamily::Lato));
+}
+
+#[test]
+fn oca_fallback_shapes_embedded_hebrew_through_a_latin_family_with_no_notdef() {
+    assert!(!shape_has_any_notdef("שלום", TextFontFamily::Lato));
+}
+
+#[test]
+fn oca_fallback_shapes_embedded_devanagari_through_a_latin_family_with_no_notdef() {
+    assert!(!shape_has_any_notdef("नमस्ते", TextFontFamily::Lato));
+}
+
+#[test]
+fn oca_fallback_shapes_embedded_bengali_through_a_latin_family_with_no_notdef() {
+    assert!(!shape_has_any_notdef("নমস্কার", TextFontFamily::Lato));
+}
+
+#[test]
+fn oca_fallback_shapes_embedded_tamil_through_a_latin_family_with_no_notdef() {
+    assert!(!shape_has_any_notdef("வணக்கம்", TextFontFamily::Lato));
+}
+
+#[test]
+fn oca_fallback_shapes_embedded_thai_through_a_latin_family_with_no_notdef() {
+    assert!(!shape_has_any_notdef("สวัสดี", TextFontFamily::Lato));
+}
+
+#[test]
+fn oca_fallback_handles_mixed_latin_and_arabic_in_one_string() {
+    assert!(!shape_has_any_notdef(
+        "Hello مرحبا World",
+        TextFontFamily::Lato
+    ));
+}
+
+#[test]
+fn oca_fallback_resolves_arabic_to_the_same_face_as_selecting_it_directly() {
+    // The real value OcaFallback adds over cosmic-text's own undirected last-resort "try every
+    // other loaded font" fallback tier: a deterministic, name-directed match to exactly the
+    // intended "Noto Sans Arabic" face, confirmed here by comparing resolved font ids -- not
+    // merely "some font in the catalog happened to not-notdef this text" (see this test module's
+    // own scratch-crate verification note for the real control that found cosmic-text's
+    // undirected tier already avoids notdef by exhaustive trial in this small a catalog, which
+    // this determinism check is what actually distinguishes OcaFallback from doing nothing).
+    let mut engine = TextLayoutEngine::new_from_locked_catalog();
+    let via_lato_fallback = engine
+        .shape(
+            "مرحبا",
+            TextFontFamily::Lato,
+            TextFontStyle::Regular,
+            None,
+            48.0,
+            None,
+            (0.0, 0.0),
+            TextDirection::Auto,
+            TextAlign::Auto,
+        )
+        .lines[0]
+        .glyphs[0]
+        .font_id;
+    let via_direct_pick = engine
+        .shape(
+            "مرحبا",
+            TextFontFamily::NotoSansArabic,
+            TextFontStyle::Regular,
+            None,
+            48.0,
+            None,
+            (0.0, 0.0),
+            TextDirection::Auto,
+            TextAlign::Auto,
+        )
+        .lines[0]
+        .glyphs[0]
+        .font_id;
+    assert_eq!(via_lato_fallback, via_direct_pick);
+}
+
 #[test]
 fn text_width_px_is_zero_for_empty_text_and_positive_for_nonempty_text() {
     let mut engine = TextLayoutEngine::new_from_locked_catalog();
