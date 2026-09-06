@@ -60,6 +60,7 @@ mod preview_fullscreen;
 mod preview_live_updates;
 mod preview_overlays;
 mod preview_selection;
+mod preview_snapshot;
 mod privacy_blur;
 mod project_ops;
 mod project_timeline_modals;

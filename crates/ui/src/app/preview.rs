@@ -19,7 +19,6 @@ use eframe::egui;
 use tracing::{debug, error, warn};
 
 use super::App;
-use crate::i18n::Text;
 
 /// Output resolution for [`App::pump_preview_frame`]'s waveform scope texture — wide enough to
 /// resolve per-column detail against a typical Editor panel width, short enough that the per-
@@ -57,22 +56,6 @@ impl App {
         self.preview_state.preview_audio_clip_ids.clear();
         self.preview_state.preview_text_clip_ids.clear();
         self.preview_state.preview_shape_clip_ids.clear();
-    }
-
-    /// Writes the most recently displayed preview frame (`preview_state.last_frame`) to
-    /// `output_path` as a PNG — what the preview transport row's snapshot button does once its
-    /// save-file dialog picks a destination. Toasts instead of writing anything if no frame has
-    /// decoded yet (nothing selected, pipeline still opening) — same "toast, don't write an
-    /// empty/missing file" posture as [`Self::export_chapters_txt`].
-    pub fn save_preview_snapshot(&mut self, output_path: std::path::PathBuf) {
-        let Some(frame) = &self.preview_state.last_frame else {
-            self.push_toast(Text::SnapshotNoFrame.tr(self.locale).to_string());
-            return;
-        };
-        match frame.save_png(&output_path) {
-            Ok(()) => self.push_toast(Text::SnapshotSaved.tr(self.locale).to_string()),
-            Err(e) => self.push_toast(format!("Failed to save snapshot: {e}")),
-        }
     }
 
     /// Applies the persisted hardware-decoding preference and drops any currently-open
