@@ -23,12 +23,18 @@ impl App {
     /// properties panel's "Reenquadramento automático" button does. Targets the current
     /// active sequence's export aspect ratio (falling back to the source's own resolution for
     /// `Original`, same as export itself — see [`avcore::ExportAspectRatio::dims_or`]). A no-op
-    /// if nothing is selected, no model is configured, or a run is already in flight.
+    /// if nothing is selected or a run is already in flight; a model must be configured *unless*
+    /// the clip already carries a [`avcore::timeline::ClipInstance::reframe_seed_point`] — a
+    /// manually pinned anchor needs no face-detection model at all.
     pub fn spawn_auto_reframe_selected_clip(&mut self) {
         if self.auto_reframe_state.auto_reframing_clip_id.is_some() {
             return;
         }
-        if self.prefs.reframe_model_path.trim().is_empty() {
+        let Some(clip) = self.selected_clip() else {
+            return;
+        };
+        let seed_point = clip.reframe_seed_point;
+        if seed_point.is_none() && self.prefs.reframe_model_path.trim().is_empty() {
             self.push_toast(
                 crate::i18n::Text::AutoReframeNoModelConfigured
                     .tr(self.locale)
@@ -36,9 +42,6 @@ impl App {
             );
             return;
         }
-        let Some(clip) = self.selected_clip() else {
-            return;
-        };
         let clip_id = clip.id;
         let asset_id = clip.asset_id;
         let midpoint_secs = (clip.source_in_secs + clip.source_out_secs) / 2.0;
@@ -72,6 +75,7 @@ impl App {
                 target_h,
                 &model_path,
                 clip_id,
+                seed_point,
                 &tx,
             );
         });
@@ -115,6 +119,11 @@ impl App {
 /// leaving the clip untouched — `crop_x`/`crop_y`/`crop_w`/`crop_h` is a plain data field with
 /// no "unset" state, so this always has *something* reasonable to apply, matching
 /// [`avcore::auto_reframe::compute_reframe_crop`]'s own `None`-subject fallback.
+///
+/// `seed_point`, when `Some` (`ClipInstance::reframe_seed_point`, CF-04's own "optional
+/// user-provided seed point"), is used directly as the crop's anchor and skips face detection
+/// entirely — no frame decode, no ONNX inference — since the user has already pinned exactly
+/// where this clip should stay framed, overriding whatever face detection would have found.
 #[allow(clippy::too_many_arguments)]
 fn auto_reframe_one(
     source_path: &Path,
@@ -125,19 +134,24 @@ fn auto_reframe_one(
     target_h: u32,
     model_path: &Path,
     clip_id: u64,
+    seed_point: Option<(f32, f32)>,
     tx: &tokio::sync::mpsc::UnboundedSender<AutoReframeEvent>,
 ) {
-    let frame = extract_frame(source_path, at_secs);
-    let subject_center =
-        frame.and_then(
-            |(w, h, rgba)| match avcore::detect_faces(model_path, &rgba, w, h) {
-                Ok(faces) => avcore::main_subject_center(&faces),
-                Err(e) => {
-                    tracing::warn!(error = %e, "auto-reframe face detection failed");
-                    None
-                }
-            },
-        );
+    let subject_center = match seed_point {
+        Some(seed) => Some(seed),
+        None => {
+            let frame = extract_frame(source_path, at_secs);
+            frame.and_then(
+                |(w, h, rgba)| match avcore::detect_faces(model_path, &rgba, w, h) {
+                    Ok(faces) => avcore::main_subject_center(&faces),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "auto-reframe face detection failed");
+                        None
+                    }
+                },
+            )
+        }
+    };
     let subject_found = subject_center.is_some();
     let crop = avcore::compute_reframe_crop(source_w, source_h, target_w, target_h, subject_center);
     let _ = tx.send(AutoReframeEvent::Done {

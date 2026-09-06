@@ -145,6 +145,7 @@ fn test_clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64
         blend_mode: avcore::timeline::BlendMode::Normal,
         anchor_x: 0.5,
         anchor_y: 0.5,
+        reframe_seed_point: None,
     }
 }
 
@@ -3131,6 +3132,139 @@ fn set_selected_clip_crop_is_a_no_op_when_nothing_is_selected() {
         ),
         (0.0, 0.0, 1.0, 1.0)
     );
+}
+
+#[test]
+fn set_selected_clip_reframe_seed_point_updates_the_selected_clip() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_reframe_seed_point(Some((0.3, 0.7)));
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].reframe_seed_point, Some((0.3, 0.7)));
+}
+
+#[test]
+fn set_selected_clip_reframe_seed_point_clamps_each_axis() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+
+    app.set_selected_clip_reframe_seed_point(Some((-1.0, 2.0)));
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].reframe_seed_point, Some((0.0, 1.0)));
+}
+
+#[test]
+fn set_selected_clip_reframe_seed_point_clears_back_to_none() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.set_selected_clip_reframe_seed_point(Some((0.3, 0.7)));
+
+    app.set_selected_clip_reframe_seed_point(None);
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].reframe_seed_point, None);
+}
+
+#[test]
+fn set_selected_clip_reframe_seed_point_is_a_no_op_when_nothing_is_selected() {
+    let mut app = test_app(
+        vec![test_project_with_tracks(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+        )],
+        Vec::new(),
+    );
+
+    app.set_selected_clip_reframe_seed_point(Some((0.3, 0.7)));
+
+    let clips = &app.active_project().timeline().tracks[0].clips;
+    assert_eq!(clips[0].reframe_seed_point, None);
+}
+
+#[test]
+fn spawn_auto_reframe_selected_clip_skips_the_no_model_toast_when_a_seed_point_is_set() {
+    let mut clip = test_clip(1, 0.0, 0.0, 10.0);
+    clip.reframe_seed_point = Some((0.3, 0.7));
+    let mut asset = test_asset(1);
+    asset.resolution = Some((1920, 1080));
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![test_track(1, TrackKind::Video, vec![clip])],
+            vec![asset],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.prefs.reframe_model_path.clear();
+
+    app.spawn_auto_reframe_selected_clip();
+
+    assert!(
+        app.toasts.is_empty(),
+        "a clip with a manual seed point must not require a configured model"
+    );
+}
+
+#[test]
+fn spawn_auto_reframe_selected_clip_still_requires_a_model_without_a_seed_point() {
+    let mut asset = test_asset(1);
+    asset.resolution = Some((1920, 1080));
+    let mut app = test_app(
+        vec![test_project_with_tracks_and_assets(
+            1,
+            vec![test_track(
+                1,
+                TrackKind::Video,
+                vec![test_clip(1, 0.0, 0.0, 10.0)],
+            )],
+            vec![asset],
+        )],
+        Vec::new(),
+    );
+    app.selected_clip_id = Some(1);
+    app.prefs.reframe_model_path.clear();
+
+    app.spawn_auto_reframe_selected_clip();
+
+    assert_eq!(app.toasts.len(), 1);
 }
 
 #[test]

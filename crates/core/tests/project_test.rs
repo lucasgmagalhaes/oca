@@ -85,6 +85,7 @@ fn compound_clip(id: u64, nested_sequence_id: Option<u64>) -> ClipInstance {
         blend_mode: BlendMode::Normal,
         anchor_x: 0.5,
         anchor_y: 0.5,
+        reframe_seed_point: None,
     }
 }
 

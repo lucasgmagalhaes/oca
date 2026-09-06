@@ -85,6 +85,7 @@ fn clip(id: u64, start_secs: f64, source_in_secs: f64, source_out_secs: f64) -> 
         blend_mode: BlendMode::Normal,
         anchor_x: 0.5,
         anchor_y: 0.5,
+        reframe_seed_point: None,
     }
 }
 

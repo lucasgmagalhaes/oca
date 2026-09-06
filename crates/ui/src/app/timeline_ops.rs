@@ -679,6 +679,7 @@ fn default_clip_instance(
         blend_mode: avcore::timeline::BlendMode::Normal,
         anchor_x: 0.5,
         anchor_y: 0.5,
+        reframe_seed_point: None,
     }
 }
 

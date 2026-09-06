@@ -196,6 +196,7 @@ impl App {
                     blend_mode: avcore::timeline::BlendMode::Normal,
                     anchor_x: 0.5,
                     anchor_y: 0.5,
+                    reframe_seed_point: None,
                 });
             timeline.tracks[track_index]
                 .clips

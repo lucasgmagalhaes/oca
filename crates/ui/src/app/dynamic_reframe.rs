@@ -69,14 +69,6 @@ impl App {
         {
             return false;
         }
-        if self.prefs.reframe_model_path.trim().is_empty() {
-            self.push_toast(
-                crate::i18n::Text::AutoReframeNoModelConfigured
-                    .tr(self.locale)
-                    .to_string(),
-            );
-            return false;
-        }
         let Some(clip) = self
             .active_project()
             .timeline()
@@ -87,6 +79,15 @@ impl App {
         else {
             return false;
         };
+        let seed_point = clip.reframe_seed_point;
+        if seed_point.is_none() && self.prefs.reframe_model_path.trim().is_empty() {
+            self.push_toast(
+                crate::i18n::Text::AutoReframeNoModelConfigured
+                    .tr(self.locale)
+                    .to_string(),
+            );
+            return false;
+        }
         let asset_id = clip.asset_id;
         let source_in_secs = clip.source_in_secs;
         let source_out_secs = clip.source_out_secs;
@@ -121,6 +122,7 @@ impl App {
                 target_h,
                 &model_path,
                 clip_id,
+                seed_point,
                 &tx,
             );
         });
@@ -194,6 +196,13 @@ impl App {
 /// [`avcore::FrameSampler::even_sample_times`]'s evenly-spaced points, then pipes the resulting
 /// trajectory through `avcore`'s gap-filling/smoothing/sparsification to produce the four crop
 /// keyframe lists.
+///
+/// `seed_point`, when `Some` (`ClipInstance::reframe_seed_point`), fixes every sample to that
+/// same point instead of running face detection at all — the user has pinned one anchor for the
+/// whole clip, so there is no subject trajectory to track. Still goes through the same gap-fill/
+/// smooth/sparsify pipeline as the detected case (trivially: every sample already agrees, so it
+/// sparsifies down to a single constant crop) rather than a separate short-circuit path, keeping
+/// this one shape for both cases.
 #[allow(clippy::too_many_arguments)]
 fn dynamic_reframe_one(
     source_path: &Path,
@@ -205,6 +214,7 @@ fn dynamic_reframe_one(
     target_h: u32,
     model_path: &Path,
     clip_id: u64,
+    seed_point: Option<(f32, f32)>,
     tx: &tokio::sync::mpsc::UnboundedSender<DynamicReframeEvent>,
 ) {
     let sample_times = avcore::FrameSampler::even_sample_times(
@@ -214,53 +224,67 @@ fn dynamic_reframe_one(
         DYNAMIC_REFRAME_MIN_SAMPLES,
         DYNAMIC_REFRAME_MAX_SAMPLES,
     );
-    let Ok(sampler) = avcore::FrameSampler::open(source_path, Duration::from_millis(20)) else {
-        let _ = tx.send(DynamicReframeEvent::Failed {
-            clip_id,
-            message: "could not open source video for sampling".to_string(),
-        });
-        return;
-    };
     let duration = (source_out_secs - source_in_secs).max(1e-6);
 
-    // Threaded across samples (in time order, hence a plain loop rather than `.map()`) so
-    // `select_subject_center` can prefer whichever face continues the *previous* sample's own
-    // chosen subject over just whichever has the highest raw confidence this sample — otherwise
-    // two people trading the higher per-frame score would visibly re-target the crop between
-    // samples even though neither actually moved. Only updated on an actual detection: a
-    // gap-filled/centered sample carries no new evidence about where the subject is now.
-    let mut previous_center: Option<(f32, f32)> = None;
     let mut samples: Vec<avcore::ReframeSample> = Vec::with_capacity(sample_times.len());
-    for &t in &sample_times {
-        let time_fraction = (((t - source_in_secs) / duration) as f32).clamp(0.0, 1.0);
-        let subject_center = sampler
-            .sample(t, Duration::from_millis(800))
-            .and_then(|frame| {
-                let (w, h, rgba) = downscale_frame_rgba(
-                    frame.width,
-                    frame.height,
-                    frame.rgba,
-                    REFRAME_FRAME_MAX_DIM,
-                );
-                match avcore::detect_faces(model_path, &rgba, w, h) {
-                    Ok(faces) => avcore::select_subject_center(
-                        &faces,
-                        previous_center,
-                        avcore::DEFAULT_CONTINUITY_MAX_DISTANCE,
-                    ),
-                    Err(e) => {
-                        tracing::warn!(error = %e, "dynamic auto-reframe face detection failed");
-                        None
-                    }
-                }
+    if let Some(seed) = seed_point {
+        // A manually pinned anchor needs no decode/detection at all -- every sample agrees, so
+        // this skips opening a FrameSampler entirely rather than opening one just to ignore it.
+        for &t in &sample_times {
+            let time_fraction = (((t - source_in_secs) / duration) as f32).clamp(0.0, 1.0);
+            samples.push(avcore::ReframeSample {
+                time_fraction,
+                subject_center: Some(seed),
             });
-        if subject_center.is_some() {
-            previous_center = subject_center;
         }
-        samples.push(avcore::ReframeSample {
-            time_fraction,
-            subject_center,
-        });
+    } else {
+        let Ok(sampler) = avcore::FrameSampler::open(source_path, Duration::from_millis(20)) else {
+            let _ = tx.send(DynamicReframeEvent::Failed {
+                clip_id,
+                message: "could not open source video for sampling".to_string(),
+            });
+            return;
+        };
+
+        // Threaded across samples (in time order, hence a plain loop rather than `.map()`) so
+        // `select_subject_center` can prefer whichever face continues the *previous* sample's
+        // own chosen subject over just whichever has the highest raw confidence this sample —
+        // otherwise two people trading the higher per-frame score would visibly re-target the
+        // crop between samples even though neither actually moved. Only updated on an actual
+        // detection: a gap-filled/centered sample carries no new evidence about where the
+        // subject is now.
+        let mut previous_center: Option<(f32, f32)> = None;
+        for &t in &sample_times {
+            let time_fraction = (((t - source_in_secs) / duration) as f32).clamp(0.0, 1.0);
+            let subject_center = sampler
+                .sample(t, Duration::from_millis(800))
+                .and_then(|frame| {
+                    let (w, h, rgba) = downscale_frame_rgba(
+                        frame.width,
+                        frame.height,
+                        frame.rgba,
+                        REFRAME_FRAME_MAX_DIM,
+                    );
+                    match avcore::detect_faces(model_path, &rgba, w, h) {
+                        Ok(faces) => avcore::select_subject_center(
+                            &faces,
+                            previous_center,
+                            avcore::DEFAULT_CONTINUITY_MAX_DISTANCE,
+                        ),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "dynamic auto-reframe face detection failed");
+                            None
+                        }
+                    }
+                });
+            if subject_center.is_some() {
+                previous_center = subject_center;
+            }
+            samples.push(avcore::ReframeSample {
+                time_fraction,
+                subject_center,
+            });
+        }
     }
 
     let subject_found = samples.iter().any(|s| s.subject_center.is_some());

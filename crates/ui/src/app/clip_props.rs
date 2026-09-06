@@ -177,6 +177,16 @@ impl App {
         });
     }
 
+    /// Sets `selected_clip_id`'s manual auto-reframe anchor
+    /// ([`avcore::timeline::ClipInstance::reframe_seed_point`], clamped to `0.0..=1.0` on each
+    /// axis) — what dragging the properties panel's "Ancorar manualmente" X/Y sliders does once
+    /// enabled. `None` clears it back to face-detection-only behavior — what unchecking that same
+    /// toggle does. A no-op if nothing is selected.
+    pub fn set_selected_clip_reframe_seed_point(&mut self, seed_point: Option<(f32, f32)>) {
+        let seed_point = seed_point.map(|(x, y)| (x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)));
+        self.with_selected_clip_mut(|clip| clip.reframe_seed_point = seed_point);
+    }
+
     /// Sets `selected_clip_id`'s video-stabilization strength
     /// ([`avcore::timeline::ClipInstance::stabilization_intensity`], clamped to
     /// [`STABILIZATION_INTENSITY_RANGE`]) — what dragging the properties panel's stabilization
