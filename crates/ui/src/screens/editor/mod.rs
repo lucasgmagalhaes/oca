@@ -16,6 +16,7 @@
 mod layout;
 mod media_library_panel;
 pub(crate) mod menu_bar;
+mod preview_controls;
 mod properties_panel;
 mod shortcuts;
 mod timeline_panel;
@@ -25,6 +26,7 @@ use layout::{
     audio_meter_column, resizable_divider, resizable_divider_horizontal, DIVIDER_HIT_WIDTH,
 };
 use media_library_panel::media_library_panel;
+use preview_controls::{audio_level_meter, transport_controls};
 use shortcuts::handle_editor_shortcuts;
 pub(super) use toolbar::{
     export_srt_for_active_sequence, save_active_project, sequence_tab_bar, toolbar,
@@ -188,9 +190,9 @@ const MIN_PREVIEW_W: f32 = 200.0;
 /// Audio tab is active, matching the OCA mockup's own always-visible meter. Reads the same
 /// [`App::current_audio_level`] the preview transport row's compact meter already does.
 /// Shared glyph size for every icon in the preview transport row (skip/step/loop/camera/marker).
-const TRANSPORT_ICON_SIZE: f32 = 14.0;
+pub(super) const TRANSPORT_ICON_SIZE: f32 = 14.0;
 /// The play/pause button is the row's primary action, deliberately larger than transport icons.
-const TRANSPORT_PLAY_ICON_SIZE: f32 = 18.0;
+pub(super) const TRANSPORT_PLAY_ICON_SIZE: f32 = 18.0;
 
 fn draw_preview_hud_chip(painter: &egui::Painter, top_left: egui::Pos2, text: &str) {
     let text_pos = top_left + egui::vec2(4.0, 2.0);
@@ -451,170 +453,6 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             });
         }
     });
-}
-
-/// The Program Monitor's centered transport-control cluster (skip-back, step-back, play/pause,
-/// step-forward, skip-forward, loop) — split out of `preview_panel` so the 3-column centering
-/// trick (`ui.columns(3, ...)`) there can call it just for the middle column.
-fn transport_controls(
-    app: &mut App,
-    ui: &mut egui::Ui,
-    locale: crate::i18n::Locale,
-    timeline_duration: f64,
-) {
-    {
-        // Every glyph in this row shares one explicit size (`TRANSPORT_ICON_SIZE`) so the
-        // two plain-Unicode step-frame/marker glyphs (no vendored Lucide icon exists for
-        // either — see their own comments below) read at the same visual weight as the
-        // Lucide icon-font glyphs around them, instead of each falling back to its own
-        // font's default metrics and reading as an inconsistent mix of icon styles.
-        if components::icon_button(
-            ui,
-            crate::icons::SKIP_BACK_STR,
-            Text::SeekToStart.tr(locale),
-            components::IconButtonOpts {
-                family: Some(crate::icons::family()),
-                size: Some(TRANSPORT_ICON_SIZE),
-                ..Default::default()
-            },
-        )
-        .clicked()
-        {
-            app.seek_preview(0.0);
-        }
-        // No vendored Lucide icon for single-frame step (`skip-back`/`skip-forward` are
-        // start/end, already used above/below). Plain ASCII "<"/">" rather than the
-        // Geometric-Shapes triangles ("◁"/"▷") originally here — confirmed tofu against
-        // this app's bundled default font via a real screenshot (same class of bug as
-        // nav_rail's monogram fallback and the toolbar's tool icons).
-        if ui
-            .small_button(
-                RichText::new("<")
-                    .size(TRANSPORT_ICON_SIZE)
-                    .color(theme::TEXT_SECONDARY),
-            )
-            .on_hover_text(Text::StepFrameBack.tr(locale))
-            .clicked()
-        {
-            app.step_preview_frame(-1);
-        }
-        let play_icon = if app.preview_state.preview_playing {
-            crate::icons::PAUSE_STR
-        } else {
-            crate::icons::PLAY_STR
-        };
-        if ui
-            .button(
-                RichText::new(play_icon)
-                    .family(crate::icons::family())
-                    .size(TRANSPORT_PLAY_ICON_SIZE)
-                    .color(theme::ACCENT),
-            )
-            .on_hover_text(Text::ShortcutPlayPause.tr(locale))
-            .clicked()
-        {
-            app.toggle_preview_playback();
-        }
-        if ui
-            .small_button(
-                RichText::new(">")
-                    .size(TRANSPORT_ICON_SIZE)
-                    .color(theme::TEXT_SECONDARY),
-            )
-            .on_hover_text(Text::StepFrameForward.tr(locale))
-            .clicked()
-        {
-            app.step_preview_frame(1);
-        }
-        if components::icon_button(
-            ui,
-            crate::icons::SKIP_FORWARD_STR,
-            Text::SeekToEnd.tr(locale),
-            components::IconButtonOpts {
-                family: Some(crate::icons::family()),
-                size: Some(TRANSPORT_ICON_SIZE),
-                ..Default::default()
-            },
-        )
-        .clicked()
-        {
-            app.seek_preview(timeline_duration);
-        }
-        if ui
-            .selectable_label(
-                app.preview_state.loop_enabled,
-                RichText::new(crate::icons::REPEAT_STR)
-                    .family(crate::icons::family())
-                    .size(TRANSPORT_ICON_SIZE)
-                    .color(theme::TEXT_SECONDARY),
-            )
-            .on_hover_text(Text::PreviewLoopToggle.tr(locale))
-            .clicked()
-        {
-            app.preview_state.loop_enabled = !app.preview_state.loop_enabled;
-        }
-    }
-}
-
-/// Small live peak/RMS bar for the Editor preview panel's transport row — `spec/ROADMAP.md`
-/// P4 item 30. Reads [`App::current_audio_level`] every frame the panel draws; stays visually
-/// flat at zero when no pipeline is open, playback is paused, or the current clip has no
-/// audio, same as any other VU meter idling on silence.
-/// One bar of [`audio_level_meter`] — filled to `rms`, plus a peak-hold tick at `peak` (red
-/// past 0.98, the same clip-warning threshold the single-channel meter used before the L/R
-/// split below existed).
-fn draw_meter_bar(painter: &egui::Painter, rect: egui::Rect, peak: f32, rms: f32) {
-    painter.rect_filled(rect, theme::RADIUS_XS, theme::SURFACE_2);
-    let peak = peak.clamp(0.0, 1.0);
-    let rms = rms.clamp(0.0, 1.0);
-    if rms > 0.0 {
-        let mut rms_rect = rect;
-        rms_rect.set_width(rect.width() * rms);
-        // Standard green/yellow/red level convention, matching stereo_db_meter's own fix —
-        // Section 39's own rule: "Meters are informational and must not use Petroleum Blue as
-        // their signal color."
-        let fill_color = if rms > 0.9 {
-            theme::ERROR
-        } else if rms > 0.7 {
-            theme::WARNING
-        } else {
-            theme::SUCCESS
-        };
-        painter.rect_filled(rms_rect, theme::RADIUS_XS, fill_color);
-    }
-    if peak > 0.0 {
-        let peak_x = rect.left() + rect.width() * peak;
-        let peak_color = if peak > 0.98 {
-            theme::ERROR
-        } else {
-            theme::ACCENT_2
-        };
-        painter.vline(peak_x, rect.y_range(), egui::Stroke::new(2.0, peak_color));
-    }
-}
-
-/// Two thin stacked horizontal bars (L on top, R on bottom) — the preview transport row's
-/// compact stereo meter, per `avcore::AudioLevel`'s real per-channel peak/rms
-/// (`spec/architecture/editor-ui-visual-redesign.md`'s Inspector section: "build the real
-/// per-channel metering path first" — done in `avcore::preview`'s buffer probe — "or ship the
-/// honest single-channel meter restyled taller"; this does the former, so both bars are
-/// genuinely independent, not the same mono value drawn twice).
-fn audio_level_meter(app: &App, ui: &mut egui::Ui) {
-    let level = app.current_audio_level();
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(60.0, 14.0), egui::Sense::hover());
-    if !ui.is_rect_visible(rect) {
-        return;
-    }
-    let bar_h = (rect.height() - 2.0) / 2.0;
-    let l_rect = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), bar_h));
-    let r_rect = egui::Rect::from_min_size(
-        rect.min + egui::vec2(0.0, bar_h + 2.0),
-        egui::vec2(rect.width(), bar_h),
-    );
-    let painter = ui.painter();
-    draw_meter_bar(painter, l_rect, level.peak_l, level.rms_l);
-    draw_meter_bar(painter, r_rect, level.peak_r, level.rms_r);
-    response.on_hover_text(Text::PreviewAudioLevelMeter.tr(app.locale));
 }
 
 /// Idle time (no pointer movement/click) before the fullscreen preview overlay's controls
