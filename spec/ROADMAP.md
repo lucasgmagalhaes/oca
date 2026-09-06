@@ -1932,12 +1932,12 @@ an item earlier:
   one in the properties panel's Crop section, disabled while a run (static or dynamic — separate
   in-flight state, they don't share one) is active.
 
-  **Deliberately not done, matching the full spec's own harder asks**: cadence is bounded but not
-  content-adaptive (no scene-cut-aware sampling); no optional user seed; there is no dedicated
-  review/correction UI — the emitted keyframes land directly in the properties panel's existing
-  Crop X/Y/W/H Keyframes sections (already editable there), the same "existing UI is the review
-  step" precedent D4's chapter-marker detection established, not a bespoke accept/reject modal; no
-  Shorts Pack integration yet. All real, separate follow-up slices.
+  **Deliberately not done at the time of this slice** (since shipped — see this entry's own later
+  notes for the seed point, Shorts Pack integration, and content-adaptive cadence): there is no
+  dedicated review/correction UI — the emitted keyframes land directly in the properties panel's
+  existing Crop X/Y/W/H Keyframes sections (already editable there), the same "existing UI is the
+  review step" precedent D4's chapter-marker detection established, not a bespoke accept/reject
+  modal. Still open, a real, separate follow-up.
 
   Verified via `cargo check --workspace --all-targets` (the documented temporary local `filters.c`
   shim, discarded afterward) and `cargo fmt --check`, both clean. `avcore::dynamic_reframe`'s own
@@ -1946,6 +1946,35 @@ an item earlier:
   Not run against a live GUI session or a real ONNX model (no display, no network to fetch the
   bundled face-detector model in this sandbox) — the button's actual behavior and the smoothing
   window's real-footage quality need a manual pass on a real dev machine.
+
+  **Content-adaptive cadence now shipped too**, closing the "cadence is bounded but not content-
+  adaptive (no scene-cut-aware sampling)" gap this slice originally left open. `avcore::
+  dynamic_reframe::augment_sample_times_for_cuts(sample_times, cuts, extra_per_cut)` thickens the
+  fixed-cadence sample-time list around a detected hard cut
+  (`crate::scene_detection::detect_scene_cuts`, reused rather than a second detector) with
+  `DEFAULT_EXTRA_SAMPLES_PER_CUT` (2) evenly-spaced extra times inserted strictly inside the gap
+  immediately preceding the cut — without this, the crop keyframes either side of that gap and
+  `sparse_axis_keyframes`'s own linear interpolation would visibly smear the framing change across
+  the whole fixed-cadence interval instead of snapping to it. `ui`'s `dynamic_reframe_one` reuses
+  each sample's *already-decoded* RGBA frame (converted via `avcore::rgba_to_gray`) for the
+  scene-cut scan — zero extra decode cost in the common no-cuts case — then, only when a cut is
+  actually found, runs a second small bounded pass (`extra_per_cut` × cut count, not unbounded)
+  decoding+detecting at just the newly inserted times before re-sorting the full sample list and
+  continuing through the unmodified gap-fill/smooth/sparsify pipeline. A manual seed point (the
+  earlier CF-04 follow-up) still takes priority and skips this entirely — a user-pinned anchor has
+  no cuts to adapt around.
+
+  Verified for real, not just type-checked: since `augment_sample_times_for_cuts` depends only on
+  its own `SceneCut` parameter (no `avbridge`/GStreamer/ONNX), it was copied into a throwaway
+  scratch crate and `cargo test`ed there for real: 8/8 passing — a no-op with no cuts, zero
+  `extra_per_cut`, or fewer than two samples; evenly-spaced insertion within the correct preceding
+  gap; a cut at the very first sample (no preceding gap) correctly ignored; a cut matching no real
+  sample time ignored; multiple cuts handled without duplicate times; and the result staying
+  strictly ascending under a stress case with a cut at every gap. Mirrored as the same 8 tests in
+  the real `crates/core/src/dynamic_reframe/dynamic_reframe_test.rs`. `cargo check --workspace
+  --all-targets` and `cargo clippy -p core --lib --no-deps` / `-p ui --tests --no-deps` (via the
+  documented temporary `filters.c`/`text_overlay.c` shim, discarded before commit) and `cargo fmt
+  --all -- --check` all stayed clean.
 
   **Cross-sample subject continuity now shipped too.** The gap this entry's own "deliberately not
   done" note flagged — "subject selection has no cross-sample identity tracking (two people

@@ -232,3 +232,71 @@ fn select_subject_center_breaks_a_continuity_tie_by_score_too() {
     let center = select_subject_center(&faces, previous_center, DEFAULT_CONTINUITY_MAX_DISTANCE);
     assert_eq!(center, Some((0.55, 0.5)));
 }
+
+fn cut(at_secs: f64) -> SceneCut {
+    SceneCut {
+        at_secs,
+        score: 1.0,
+    }
+}
+
+#[test]
+fn augment_sample_times_for_cuts_is_a_no_op_with_no_cuts() {
+    let times = vec![0.0, 1.0, 2.0, 3.0];
+    assert_eq!(augment_sample_times_for_cuts(&times, &[], 2), times);
+}
+
+#[test]
+fn augment_sample_times_for_cuts_is_a_no_op_with_zero_extra_per_cut() {
+    let times = vec![0.0, 1.0, 2.0];
+    assert_eq!(augment_sample_times_for_cuts(&times, &[cut(1.0)], 0), times);
+}
+
+#[test]
+fn augment_sample_times_for_cuts_is_a_no_op_with_fewer_than_two_samples() {
+    let times = vec![0.0];
+    assert_eq!(augment_sample_times_for_cuts(&times, &[cut(0.0)], 2), times);
+}
+
+#[test]
+fn augment_sample_times_for_cuts_inserts_evenly_spaced_times_in_the_preceding_gap() {
+    let times = vec![0.0, 1.0, 2.0, 3.0];
+    // Cut lands at 2.0 -- the gap immediately preceding it is [1.0, 2.0].
+    let augmented = augment_sample_times_for_cuts(&times, &[cut(2.0)], 2);
+    assert_eq!(
+        augmented,
+        vec![0.0, 1.0, 1.0 + 1.0 / 3.0, 1.0 + 2.0 / 3.0, 2.0, 3.0]
+    );
+}
+
+#[test]
+fn augment_sample_times_for_cuts_ignores_a_cut_at_the_first_sample() {
+    // No preceding gap exists for the very first sample -- nothing to thicken.
+    let times = vec![0.0, 1.0, 2.0];
+    assert_eq!(augment_sample_times_for_cuts(&times, &[cut(0.0)], 2), times);
+}
+
+#[test]
+fn augment_sample_times_for_cuts_ignores_a_cut_that_matches_no_sample() {
+    let times = vec![0.0, 1.0, 2.0];
+    assert_eq!(augment_sample_times_for_cuts(&times, &[cut(1.5)], 2), times);
+}
+
+#[test]
+fn augment_sample_times_for_cuts_handles_multiple_cuts_without_duplicating_times() {
+    let times = vec![0.0, 1.0, 2.0, 3.0, 4.0];
+    let augmented = augment_sample_times_for_cuts(&times, &[cut(2.0), cut(4.0)], 1);
+    assert_eq!(augmented, vec![0.0, 1.0, 1.5, 2.0, 3.0, 3.5, 4.0]);
+}
+
+#[test]
+fn augment_sample_times_for_cuts_never_produces_out_of_order_or_duplicate_times() {
+    let times = vec![0.0, 1.0, 2.0, 3.0];
+    let augmented = augment_sample_times_for_cuts(&times, &[cut(1.0), cut(2.0), cut(3.0)], 3);
+    for w in augmented.windows(2) {
+        assert!(
+            w[1] > w[0],
+            "times must be strictly ascending: {augmented:?}"
+        );
+    }
+}

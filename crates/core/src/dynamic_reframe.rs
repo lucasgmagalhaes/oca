@@ -27,11 +27,14 @@
 //! call per sample — no second detection mechanism, no new ONNX surface.
 //!
 //! **Scope cuts from the full CF-04 spec, deliberate and documented, not silent gaps:**
-//! - "Bounded adaptive cadence" is bounded (fixed max sample count) but not content-adaptive —
-//!   cadence never adjusts based on scene motion/cuts. Sampling itself reuses
+//! - "Bounded adaptive cadence" — now content-adaptive too, via [`augment_sample_times_for_cuts`]
+//!   (see its own doc comment): the fixed cadence itself still comes from
 //!   [`crate::frame_sampler::FrameSampler::even_sample_times`] (same primitive
 //!   [`crate::motion_tracking`]'s tracker already uses), called by the `ui`-side orchestration
-//!   that drives this module, not duplicated here.
+//!   that drives this module, not duplicated here, but that orchestration now thickens the
+//!   sample list around a detected hard cut ([`crate::scene_detection::detect_scene_cuts`],
+//!   reused rather than a second detector) using frames it already decoded for face detection,
+//!   at no extra decode cost for the common no-cuts case.
 //! - "Select the primary subject using continuity, size, confidence" — each sample
 //!   independently reuses [`crate::auto_reframe::main_subject_center`]'s existing
 //!   highest-confidence-wins rule; there's no cross-sample identity tracking (e.g. two people
@@ -46,6 +49,7 @@
 
 use crate::auto_reframe::{CropRect, FaceBox};
 use crate::keyframe::Keyframe;
+use crate::scene_detection::SceneCut;
 
 /// How far (as a fraction of frame size, matching [`FaceBox`]'s own `0.0..=1.0` coordinates) a
 /// candidate face's center may sit from the *previous* sample's chosen center and still count as
@@ -93,6 +97,56 @@ pub fn select_subject_center(
         .iter()
         .max_by(|a, b| a.score.total_cmp(&b.score))
         .map(|f| face_center(*f))
+}
+
+/// How many extra sample times [`augment_sample_times_for_cuts`] inserts per detected cut —
+/// bounded, so a clip with many cuts still costs a small, predictable number of extra decode+
+/// detection passes, not an unbounded one.
+pub const DEFAULT_EXTRA_SAMPLES_PER_CUT: usize = 2;
+
+/// CF-04's own "content-adaptive cadence": thickens `sample_times` around a detected hard cut so
+/// the post-cut framing is captured with less lag than relying on the fixed cadence alone would
+/// — without this, the crop keyframes only either side of the cut's own fixed-cadence gap and
+/// [`sparse_axis_keyframes`]'s interpolation would visibly smear the framing change across that
+/// whole gap instead of snapping to it.
+///
+/// Each [`SceneCut::at_secs`] is, by construction, one of the entries already present in
+/// `sample_times` — [`crate::scene_detection::detect_scene_cuts`]'s own contract makes a cut's
+/// `at_secs` the *later* sample of the adjacent pair that triggered it. For each cut this inserts
+/// `extra_per_cut` new times evenly spaced strictly inside the gap immediately preceding it (that
+/// pair's own interval), never before `sample_times`' own first entry or after its last, and never
+/// exactly on an existing time. Returns a new sorted, deduplicated list — `sample_times` itself is
+/// never mutated. A plain copy of `sample_times` when `cuts` is empty, `extra_per_cut` is `0`, or
+/// `sample_times` has fewer than 2 entries (no gap exists to thicken).
+pub fn augment_sample_times_for_cuts(
+    sample_times: &[f64],
+    cuts: &[SceneCut],
+    extra_per_cut: usize,
+) -> Vec<f64> {
+    if cuts.is_empty() || extra_per_cut == 0 || sample_times.len() < 2 {
+        return sample_times.to_vec();
+    }
+    let mut out = sample_times.to_vec();
+    for cut in cuts {
+        let Some(idx) = sample_times
+            .iter()
+            .position(|&t| (t - cut.at_secs).abs() < 1e-9)
+        else {
+            continue;
+        };
+        if idx == 0 {
+            continue;
+        }
+        let gap_start = sample_times[idx - 1];
+        let gap_end = sample_times[idx];
+        let step = (gap_end - gap_start) / (extra_per_cut + 1) as f64;
+        for i in 1..=extra_per_cut {
+            out.push(gap_start + step * i as f64);
+        }
+    }
+    out.sort_by(f64::total_cmp);
+    out.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+    out
 }
 
 /// How many *consecutive* samples with no subject detected still hold the last-known center
