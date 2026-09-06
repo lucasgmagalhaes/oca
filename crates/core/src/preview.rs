@@ -1531,6 +1531,19 @@ struct TextOverlayBranch {
     canvas_height: u32,
 }
 
+/// A replaceable `appsrc ! imagefreeze(allow-replace=true)` branch for one [`ShapeClip`] overlay
+/// built by [`open_composited`] — same replace-in-place shape [`TextOverlayBranch`] has, so
+/// [`Preview::refresh_shape_overlay`] can push a freshly rasterized buffer without rebuilding the
+/// pipeline. Closes P1 item 3's "Shapes (non-text overlays) still have no live-preview path" gap
+/// (not to be confused with [`MaskShapeBranch`], which is a background-removal matte input, not
+/// a `TrackKind::Shape` overlay clip).
+struct ShapeOverlayBranch {
+    clip_id: u64,
+    appsrc: gst_app::AppSrc,
+    canvas_width: u32,
+    canvas_height: u32,
+}
+
 /// A replaceable `appsrc ! imagefreeze(allow-replace=true)` mask branch built by
 /// [`build_mask_shape_stage`] for one overlay clip's `mask_shape` — same replace-in-place shape
 /// [`TextOverlayBranch`] has, so [`Preview::set_live_mask`] can push a freshly rasterized GRAY8
@@ -1724,6 +1737,10 @@ pub struct Preview {
     /// Replaceable `appsrc ! imagefreeze(allow-replace=true)` branches for active text clips.
     /// Their order and ids mirror `open_composited`'s `text_overlays` argument.
     text_overlay_branches: Vec<TextOverlayBranch>,
+    /// Replaceable `appsrc ! imagefreeze(allow-replace=true)` branches for active shape overlay
+    /// clips. Their order and ids mirror `open_composited`'s `shape_overlays` argument — see
+    /// [`Self::refresh_shape_overlay`].
+    shape_overlay_branches: Vec<ShapeOverlayBranch>,
     /// Replaceable mask branches, keyed implicitly by [`MaskShapeBranch::clip_id`] — see
     /// [`Self::set_live_mask`].
     mask_shape_branches: Vec<MaskShapeBranch>,
@@ -1886,6 +1903,7 @@ impl Preview {
             branches: Vec::new(),
             matte_branches: Vec::new(),
             text_overlay_branches: Vec::new(),
+            shape_overlay_branches: Vec::new(),
             mask_shape_branches: Vec::new(),
             audio_level,
             clip_resolutions,
@@ -2234,9 +2252,23 @@ impl Preview {
             });
             next_zorder += 1;
         }
+        let mut shape_overlay_branches = Vec::with_capacity(shape_overlays.len());
         for clip in shape_overlays {
             let rgba = crate::overlay_render::render_shape_clip_rgba(clip, canvas.0, canvas.1);
-            build_static_overlay_branch(&pipeline, &compositor, canvas, rgba, next_zorder, false)?;
+            let appsrc = build_static_overlay_branch(
+                &pipeline,
+                &compositor,
+                canvas,
+                rgba,
+                next_zorder,
+                false,
+            )?;
+            shape_overlay_branches.push(ShapeOverlayBranch {
+                clip_id: clip.id,
+                appsrc,
+                canvas_width: canvas.0,
+                canvas_height: canvas.1,
+            });
             next_zorder += 1;
         }
 
@@ -2260,6 +2292,7 @@ impl Preview {
             branches,
             matte_branches,
             text_overlay_branches,
+            shape_overlay_branches,
             mask_shape_branches,
             audio_level,
             clip_resolutions,
@@ -2394,6 +2427,30 @@ impl Preview {
         push_rgba_overlay_buffer(&branch.appsrc, rgba)?;
         branch.active_word_index =
             crate::overlay_render::active_highlight_word_index(clip, local_time_secs);
+        Ok(true)
+    }
+
+    /// Re-rasterizes and replaces exactly one shape overlay branch's buffer, keyed by
+    /// `clip.id` — same role [`Self::refresh_text_overlay`] has for text clips, applied to
+    /// [`ShapeClip`] (kind/color/position/size/rotation/stroke edits) instead. Unlike text
+    /// clips, a shape clip's rasterization has no time-dependent input (no word-highlight
+    /// animation), so there's no analogue to `update_text_overlays`' per-frame scrubbing path —
+    /// every call here is the "some property changed" case. `Ok(false)` if no branch is
+    /// currently open for this clip id — the caller falls back to a full reopen in that case.
+    pub fn refresh_shape_overlay(&mut self, clip: &ShapeClip) -> Result<bool, PreviewError> {
+        let Some(branch) = self
+            .shape_overlay_branches
+            .iter_mut()
+            .find(|branch| branch.clip_id == clip.id)
+        else {
+            return Ok(false);
+        };
+        let rgba = crate::overlay_render::render_shape_clip_rgba(
+            clip,
+            branch.canvas_width,
+            branch.canvas_height,
+        );
+        push_rgba_overlay_buffer(&branch.appsrc, rgba)?;
         Ok(true)
     }
 
