@@ -1220,8 +1220,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel/mod.rs": {
-    "mtime": 1788731989.054647,
-    "ast_hash": "a383c039519532c118dda44f76e2ab50",
+    "mtime": 1788732172.860743,
+    "ast_hash": "e2ebbfdf87af3a765ba9f03d17487bad",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel/snap.rs": {
@@ -2632,6 +2632,11 @@
   "crates/ui/src/screens/editor/timeline_panel/track_requests.rs": {
     "mtime": 1788731981.8691397,
     "ast_hash": "31acd8c23154791d481c958dba1ecd27",
+    "semantic_hash": ""
+  },
+  "crates/ui/src/screens/editor/timeline_panel/clip_requests.rs": {
+    "mtime": 1788732142.7609217,
+    "ast_hash": "70655d76c2dfa62e91620ed5fbdd7cd6",
     "semantic_hash": ""
   }
 }
