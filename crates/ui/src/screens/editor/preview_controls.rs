@@ -20,7 +20,37 @@ use crate::components;
 use crate::i18n::Text;
 use crate::theme;
 
-use super::{TRANSPORT_ICON_SIZE, TRANSPORT_PLAY_ICON_SIZE};
+use super::{format_timecode, TRANSPORT_ICON_SIZE, TRANSPORT_PLAY_ICON_SIZE};
+
+/// Timeline position readout and scrubber displayed above the transport controls.
+pub(super) fn preview_scrubber(app: &mut App, ui: &mut egui::Ui, timeline_duration: f64) {
+    let playhead = app.active_project().timeline().playhead_secs;
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(format_timecode(playhead))
+                .size(12.0)
+                .color(theme::ACCENT)
+                .monospace(),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(
+                RichText::new(format_timecode(timeline_duration.max(playhead)))
+                    .size(12.0)
+                    .color(theme::TEXT_SECONDARY)
+                    .monospace(),
+            );
+            if timeline_duration > 0.0 {
+                let mut position = playhead;
+                let slider = ui.add(
+                    egui::Slider::new(&mut position, 0.0..=timeline_duration).show_value(false),
+                );
+                if slider.changed() {
+                    app.seek_preview(position);
+                }
+            }
+        });
+    });
+}
 
 /// The Program Monitor's centered transport-control cluster (skip-back, step-back, play/pause,
 /// step-forward, skip-forward, loop) — split out of `preview_panel` so the 3-column centering

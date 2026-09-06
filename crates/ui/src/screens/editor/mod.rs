@@ -29,7 +29,7 @@ use layout::{
     audio_meter_column, resizable_divider, resizable_divider_horizontal, DIVIDER_HIT_WIDTH,
 };
 use media_library_panel::media_library_panel;
-use preview_controls::{audio_level_meter, transport_controls};
+use preview_controls::{audio_level_meter, preview_scrubber, transport_controls};
 use preview_hud::draw_preview_hud;
 use shortcuts::handle_editor_shortcuts;
 pub(super) use toolbar::{
@@ -273,36 +273,7 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
             .response;
         draw_preview_hud(app, ui.painter(), frame_response.rect, preview_texture_size);
         let timeline_duration = app.active_project().timeline().duration_secs();
-        // Restructured to match the Program Monitor mockup's own two-row shape (confirmed via
-        // a real screenshot of it): a scrubber row with the current/total timecode flanking the
-        // slider, THEN a separate, centered transport-controls row — previously one single
-        // left-aligned row with the (small, inline) timecode text mixed in among the icons.
-        let playhead = app.active_project().timeline().playhead_secs;
-        ui.horizontal(|ui| {
-            ui.label(
-                RichText::new(format_timecode(playhead))
-                    .size(12.0)
-                    .color(theme::ACCENT)
-                    .monospace(),
-            );
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(
-                    RichText::new(format_timecode(timeline_duration.max(playhead)))
-                        .size(12.0)
-                        .color(theme::TEXT_SECONDARY)
-                        .monospace(),
-                );
-                if timeline_duration > 0.0 {
-                    let mut position = playhead;
-                    let slider = ui.add(
-                        egui::Slider::new(&mut position, 0.0..=timeline_duration).show_value(false),
-                    );
-                    if slider.changed() {
-                        app.seek_preview(position);
-                    }
-                }
-            });
-        });
+        preview_scrubber(app, ui, timeline_duration);
         ui.add_space(theme::SPACE_XS);
         ui.columns(3, |columns| {
             // Left column intentionally empty — its equal share of the row is what centers the
