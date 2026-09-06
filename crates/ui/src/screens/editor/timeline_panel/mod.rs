@@ -19,6 +19,7 @@ mod interactions;
 mod ruler;
 mod selection_commands;
 mod snap;
+mod track_commands;
 mod track_header;
 
 use eframe::egui::{self, RichText};
@@ -83,6 +84,7 @@ use interactions::apply_clip_interactions;
 use ruler::{timeline_ruler, RulerLayout};
 use selection_commands::{apply_selection_commands, SelectionCommands};
 use snap::{snap_move_start, snap_to_nearest, ClipDrag, SnapTargets};
+use track_commands::{apply_track_commands, TrackCommands};
 use track_header::{audio_role_icon, audio_role_label};
 
 /// Which edge of a timeline clip a drag targets — see the trim handling in `timeline_panel`.
@@ -1506,53 +1508,22 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 open_nested_sequence_request,
             },
         );
-        for track_id in toggle_track_visibility_requests {
-            app.toggle_track_visibility(track_id);
-        }
-        for track_id in toggle_track_lock_requests {
-            app.toggle_track_locked(track_id);
-        }
-        for track_id in toggle_track_collapsed_requests {
-            if !app.collapsed_track_ids.remove(&track_id) {
-                app.collapsed_track_ids.insert(track_id);
-            }
-        }
-        for (track_id, role) in track_audio_role_requests {
-            app.set_track_audio_role(track_id, role);
-        }
-        for (track_id, color_label) in track_color_label_requests {
-            app.set_track_color_label(track_id, color_label);
-        }
-        for (track_id, name) in track_rename_requests {
-            app.renaming_track = Some((track_id, name));
-        }
-        for track_id in track_duplicate_requests {
-            app.duplicate_track(track_id);
-        }
-        for track_id in track_move_up_requests {
-            app.move_track_up(track_id);
-        }
-        for track_id in track_move_down_requests {
-            app.move_track_down(track_id);
-        }
-        for (track_id, at_secs) in razor_split_requests {
-            app.split_track_clip_at(track_id, at_secs);
-        }
-        for (track_id, name) in track_delete_requests {
-            // Section 49's own rule: only a track that actually carries content needs
-            // confirmation before deleting — an empty track (no clips of any kind) just goes.
-            let has_content = app.active_project().timeline().tracks.iter().any(|t| {
-                t.id == track_id
-                    && (!t.clips.is_empty()
-                        || !t.text_clips.is_empty()
-                        || !t.shape_clips.is_empty())
-            });
-            if has_content {
-                app.deleting_track = Some((track_id, name));
-            } else {
-                app.delete_track(track_id);
-            }
-        }
+        apply_track_commands(
+            app,
+            TrackCommands {
+                toggle_visibility: toggle_track_visibility_requests,
+                toggle_lock: toggle_track_lock_requests,
+                toggle_collapsed: toggle_track_collapsed_requests,
+                audio_roles: track_audio_role_requests,
+                color_labels: track_color_label_requests,
+                renames: track_rename_requests,
+                duplicates: track_duplicate_requests,
+                move_up: track_move_up_requests,
+                move_down: track_move_down_requests,
+                razor_splits: razor_split_requests,
+                deletes: track_delete_requests,
+            },
+        );
         for clip_id in delete_requests {
             app.selected_clip_id = Some(clip_id);
             app.delete_selected_clip();
