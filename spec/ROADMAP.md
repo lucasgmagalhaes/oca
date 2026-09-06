@@ -2096,9 +2096,55 @@ an item earlier:
   `cargo test -p ui`, 427/427 passing. `cargo fmt`/`cargo clippy -p core --lib --no-deps` both
   clean, and a direct launch of the rebuilt `ui.exe` confirmed no startup crash.
 
-  The doc's own "imported paths are normalized and cannot escape an explicitly selected media
-  root" security requirement remains open — meaningful now that real file import exists, not yet
-  addressed.
+  **The "imported paths are normalized and cannot escape an explicitly selected media root"
+  acceptance criterion now shipped too.** `resolve_asset_id`'s existing exact-path-string match
+  (the common case: this project already carries the asset at the exact path the exporting
+  machine recorded) now falls back, when it fails and an optional `media_root` is given, to
+  `resolve_under_media_root(media_root, target_url)` — a new safety primitive that extracts only
+  `target_url`'s final path segment, joins it under `media_root`, then canonicalizes both sides
+  (resolving any symlink) and requires the candidate to still start with the canonicalized root.
+  This is the cross-machine/cross-OS relink case: a `.otio` exported on one machine and imported
+  on another where the same file already exists in the importing project's own media library
+  under a different absolute path — never an auto-import of new, previously-unseen media (that
+  would need this app's own async probe pipeline, a real, separate follow-up; this slice only
+  re-anchors matching against assets the project already has). `interchange_to_timeline` gained
+  the `media_root: Option<&Path>` parameter threaded through; the Editor's File menu gained a
+  second "Import OpenTimelineIO with media root..." action (`App::import_otio_into_new_sequence`'s
+  existing single-path button is untouched, still passing `None`) that additionally prompts for a
+  folder before importing.
+
+  **Real bug found and fixed by running the path-safety primitive against a real filesystem,
+  not just type-checking it**: an initial implementation extracted the final segment via
+  `Path::file_name()`, which only recognizes the *host's own* separator convention — a
+  Windows-style `\`-separated `target_url` parsed on this Linux sandbox (where `\` isn't a path
+  separator at all) came back as one giant unsplit "file name" that simply failed to exist under
+  `media_root`, silently defeating the exact cross-machine relink case this primitive exists for.
+  Fixed by splitting `target_url` on both `/` and `\` explicitly regardless of host OS, with an
+  added explicit rejection of an empty/`.`/`..` final segment (`media_root.join("..")` would
+  climb to the parent directory despite containing no separator of its own, so this check has to
+  run before candidate construction, not only after canonicalizing).
+
+  Verified for real against a real filesystem (not just type-checked): since this primitive
+  depends only on `std::path`/`std::fs` (no `avbridge`/GStreamer/ONNX), it — plus a minimal
+  stand-in `MediaAsset`/`Project`/`MediaReference` — was copied into a throwaway scratch crate and
+  `cargo test`ed there for real: 11/11 passing, covering a real bare-name match, a real Windows-
+  style foreign absolute path correctly reduced to its bare file name (the bug above, caught this
+  way), `../`-parent traversal rejected before any filesystem call, a real symlink placed inside
+  the root but resolving outside it rejected via `canonicalize()`, a nonexistent file, a directory
+  (not a plain file), a trailing separator with no final segment, and bare `.`/`..` segments — plus
+  `resolve_asset_id`'s own fallback ordering (exact match preferred over the media-root fallback,
+  the fallback engaged only when the exact match fails, and no match invented when the root has
+  nothing matching). Mirrored as 9 new tests directly in `crates/core/src/interchange/
+  interchange_test.rs` plus 2 more exercising `interchange_to_timeline`'s new parameter end-to-end
+  (resolves via the root when the exact match fails; still reports the existing warning when the
+  root has no match either) — type-checked cleanly here (this sandbox's own `core` test binary
+  still can't *link*, the same pre-existing ONNX Runtime network gap `CLAUDE.md` documents), with
+  the scratch-crate run above standing in as this slice's real-execution proof, same "can't link
+  this sandbox's own test binary" caveat every other `core`-side slice this session has hit.
+  `cargo check
+  --workspace --all-targets`, `cargo clippy -p core --lib --no-deps` / `-p ui --tests --no-deps`
+  (via the documented temporary `filters.c`/`text_overlay.c` shim, discarded before commit), and
+  `cargo fmt --all -- --check` all stayed clean.
 - `[ ]` **CF-06: live multicam monitor.** Show synchronized proxy-backed feeds and materialize
   angle decisions through the existing ordinary clip-split representation. **Deliberately skipped
   for now** (user-confirmed): every one of its 4 implementation slices needs a live GStreamer
