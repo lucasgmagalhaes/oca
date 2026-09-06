@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+mod asset_drop;
 mod clip_commands;
 mod draw;
 mod header;
@@ -75,6 +76,7 @@ pub(super) const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
     [178, 108, 219], // purple
 ];
 
+use asset_drop::apply_pending_asset_drop;
 use clip_commands::{apply_clip_commands, ClipCommands};
 use draw::{
     color_filter_tint, draw_filmstrip, draw_frozen_poster, draw_keyframe_markers, draw_playhead,
@@ -1565,20 +1567,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         // if that row's kind doesn't match the asset, same as a cross-track clip move). A
         // release above the ruler means the drag never reached the timeline at all, so it's
         // ignored rather than silently appending.
-        if let Some((asset_id, pos)) = app.pending_asset_drop.take() {
-            if pos.y >= ruler_top {
-                let target = track_rows
-                    .iter()
-                    .find(|(_, _, rect)| rect.y_range().contains(pos.y));
-                match target {
-                    Some((track_id, _, rect)) => {
-                        let secs = ((pos.x - rect.left()) / px_per_sec).max(0.0) as f64;
-                        app.add_asset_to_timeline_at(asset_id, Some(*track_id), secs);
-                    }
-                    None => app.add_asset_to_timeline(asset_id),
-                }
-            }
-        }
+        apply_pending_asset_drop(app, ruler_top, px_per_sec, &track_rows);
     });
 }
 
