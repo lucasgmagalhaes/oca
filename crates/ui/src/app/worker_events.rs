@@ -25,7 +25,7 @@ use avcore::MediaAsset;
 /// synchronously (`try_recv` on the UI side, `send` on the worker side) — no async runtime
 /// needed, matching the execution plan's "tokio + canais assíncronos" without pulling egui's
 /// synchronous frame loop into async code.
-enum RenderEvent {
+pub(super) enum RenderEvent {
     Progress {
         job_id: u64,
         percent: u8,
@@ -49,7 +49,7 @@ enum RenderEvent {
 /// A message from a background import worker thread (see [`App::spawn_import`]) back to
 /// the UI thread. `project_id` (rather than an index into `projects`) is what the result gets
 /// applied to, since the active project can change while a slow import is still running.
-enum ImportEvent {
+pub(super) enum ImportEvent {
     /// Sent as soon as `path`'s cheap probe comes back — the asset is usable immediately
     /// (correct duration/resolution/kind), just without loudness or a proxy yet.
     AssetReady {
@@ -76,7 +76,7 @@ enum ImportEvent {
 
 /// A message from a background transcription worker thread (see [`App::spawn_transcribe`])
 /// back to the UI thread.
-enum TranscribeEvent {
+pub(super) enum TranscribeEvent {
     Done {
         asset_id: u64,
         segments: Vec<avcore::TranscribeSegment>,
@@ -89,7 +89,7 @@ enum TranscribeEvent {
 
 /// A message from a background auto-reframe worker thread (see
 /// [`App::spawn_auto_reframe_selected_clip`]) back to the UI thread.
-enum AutoReframeEvent {
+pub(super) enum AutoReframeEvent {
     Done {
         clip_id: u64,
         crop: avcore::CropRect,
@@ -104,7 +104,7 @@ enum AutoReframeEvent {
 
 /// A message from a background dynamic-reframe worker thread (see
 /// [`App::spawn_dynamic_reframe_selected_clip`]) back to the UI thread.
-enum DynamicReframeEvent {
+pub(super) enum DynamicReframeEvent {
     Done {
         clip_id: u64,
         crop_x_keyframes: Vec<avcore::Keyframe<f32>>,
@@ -124,7 +124,7 @@ enum DynamicReframeEvent {
 
 /// A message from a background motion-tracking worker thread (see
 /// [`App::spawn_motion_track_selected_clip`]) back to the UI thread.
-enum MotionTrackEvent {
+pub(super) enum MotionTrackEvent {
     Done {
         clip_id: u64,
         keyframes: Vec<avcore::Keyframe<avcore::Position>>,
@@ -136,7 +136,7 @@ enum MotionTrackEvent {
 /// formatted message rather than the original `VoiceCleanupPreviewError`, since `avcore`
 /// errors aren't required to be `Send`/`'static` across the channel boundary and `ui` only ever
 /// shows the message as a toast anyway.
-enum VoiceCleanupPreviewEvent {
+pub(super) enum VoiceCleanupPreviewEvent {
     Done {
         clip_id: u64,
         result: Result<avcore::voice_cleanup_preview::VoiceCleanupPreviewResult, String>,
@@ -145,7 +145,7 @@ enum VoiceCleanupPreviewEvent {
 
 /// A message from a background nested-sequence-materialization worker thread (see
 /// [`App::materialize_nested_sequences_for_active_sequence`]) back to the UI thread.
-enum NestedSequenceEvent {
+pub(super) enum NestedSequenceEvent {
     Ready {
         sequence_id: u64,
         cache: HashMap<u64, avcore::nested_sequence::NestedSequenceCache>,
@@ -164,7 +164,7 @@ enum NestedSequenceEvent {
 
 /// A message from a background scene-cut-detection worker thread (see
 /// [`App::spawn_detect_scene_cuts_for_selected_clip`]) back to the UI thread.
-enum SceneCutEvent {
+pub(super) enum SceneCutEvent {
     Done {
         clip_id: u64,
         cuts: Vec<avcore::SceneCut>,
@@ -173,7 +173,7 @@ enum SceneCutEvent {
 
 /// A message from a background AI-background-removal matte-generation worker thread (see
 /// [`App::spawn_generate_matte_for_selected_clip`]) back to the UI thread.
-enum MatteGenerationEvent {
+pub(super) enum MatteGenerationEvent {
     Done { clip_id: u64, mask_path: PathBuf },
     Failed { message: String },
 }
@@ -183,7 +183,7 @@ enum MatteGenerationEvent {
 /// [`MatteGenerationEvent`] plus the seed vertices/center the run actually tracked from (so the
 /// UI thread can persist them onto the clip alongside the mask path — the background thread has
 /// no direct `App` access to write them itself).
-enum PrivacyBlurGenerationEvent {
+pub(super) enum PrivacyBlurGenerationEvent {
     Done {
         clip_id: u64,
         mask_path: PathBuf,
@@ -197,7 +197,7 @@ enum PrivacyBlurGenerationEvent {
 /// A message from the background update-check thread (see [`App::spawn_update_check`]) back to
 /// the UI thread. Every terminal result is sent because the About modal distinguishes a
 /// successful current-version result from a failed network request.
-enum UpdateCheckEvent {
+pub(super) enum UpdateCheckEvent {
     NewerVersionAvailable {
         version: String,
         html_url: String,
@@ -238,7 +238,7 @@ pub enum UpdateCheckStatus {
 
 /// A message from a background text-to-speech worker thread (see
 /// [`App::spawn_generate_tts`]) back to the UI thread.
-enum TtsEvent {
+pub(super) enum TtsEvent {
     Done { wav_path: PathBuf },
     Failed { message: String },
 }
@@ -254,7 +254,7 @@ pub enum YoutubeFormatChoice {
 
 /// A message from a background YouTube-download worker thread (see
 /// [`App::spawn_youtube_download`]) back to the UI thread.
-enum YoutubeDownloadEvent {
+pub(super) enum YoutubeDownloadEvent {
     Progress(f32),
     Done { path: PathBuf },
     Failed { message: String },
@@ -290,7 +290,7 @@ pub(crate) struct WatchedFileRow {
 
 /// A message from the watch-folder worker thread (see [`App::start_watching_folder`]) back to
 /// the UI thread.
-enum WatchFolderEvent {
+pub(super) enum WatchFolderEvent {
     Detected(PathBuf),
     Stabilizing(PathBuf),
     Processing(PathBuf),
@@ -310,7 +310,7 @@ enum WatchFolderEvent {
 /// is `(asset_id, frame_index)` rather than a fixed-width seconds bucket: timeline zoom chooses
 /// a source frame for each visible filmstrip tile, while quantizing to the source frame rate
 /// keeps nearby zoom levels able to share cached textures.
-enum ThumbnailReady {
+pub(super) enum ThumbnailReady {
     Ready {
         project_id: u64,
         asset_id: u64,
@@ -333,4 +333,4 @@ enum ThumbnailReady {
 /// serves both the active project's timeline/library (`screens::editor::timeline_panel`,
 /// `screens::library`) and, for the Início screen's project cards, any project in `App::projects`
 /// regardless of which one is active.
-type ThumbnailKey = (u64, u64, i64);
+pub(super) type ThumbnailKey = (u64, u64, i64);

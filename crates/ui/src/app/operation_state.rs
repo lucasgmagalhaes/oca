@@ -21,7 +21,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use eframe::egui;
-use tokio::sync::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use super::{
     AutoReframeEvent, DynamicReframeEvent, ImportEvent, MatteGenerationEvent, MotionTrackEvent,
