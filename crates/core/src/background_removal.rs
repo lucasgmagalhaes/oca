@@ -154,13 +154,7 @@ pub fn segment_person(
         .try_extract_tensor::<f32>()
         .map_err(|e| SegmentError::Onnx(e.to_string()))?;
 
-    Ok(resize_matte(
-        &data.to_vec(),
-        model_w,
-        model_h,
-        width,
-        height,
-    ))
+    Ok(resize_matte(data, model_w, model_h, width, height))
 }
 
 /// Where a project's per-clip AI-background-removal alpha mattes are cached: a hidden sibling

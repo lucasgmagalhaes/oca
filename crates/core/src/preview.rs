@@ -2841,7 +2841,12 @@ impl Preview {
             let Ok(layer_plane) = layer_frame.plane_data(0) else {
                 continue;
             };
-            for (base_px, layer_px) in rgba.chunks_exact_mut(4).zip(layer_plane.chunks_exact(4)) {
+            for (base_px, layer_px) in rgba
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(layer_plane.as_chunks::<4>().0)
+            {
                 if layer_px[3] == 0 {
                     continue;
                 }
