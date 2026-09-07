@@ -891,7 +891,7 @@ fn next_id_hex() -> String {
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0);
     let pid = std::process::id() as u64;
-    let counter = EVENT_COUNTER.fetch_add(1, Ordering::Relaxed) as u64;
+    let counter = EVENT_COUNTER.fetch_add(1, Ordering::Relaxed);
     let mixed = splitmix64(nanos ^ (pid.wrapping_mul(0x9E3779B9)) ^ (counter << 32));
     format!("{mixed:016x}")
 }

@@ -231,19 +231,19 @@ pub fn apply(ctx: &egui::Context) {
     // majority of buttons in this app — Secondary is the unstated default, `primary_button` the
     // rare exception) inherits.
     visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
-    visuals.widgets.inactive.corner_radius = CornerRadius::same(RADIUS_SM as u8);
+    visuals.widgets.inactive.corner_radius = CornerRadius::same(RADIUS_SM);
 
     visuals.widgets.hovered.bg_fill = BG_HOVER;
     visuals.widgets.hovered.weak_bg_fill = BG_HOVER;
     visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, ACCENT);
     visuals.widgets.hovered.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
-    visuals.widgets.hovered.corner_radius = CornerRadius::same(RADIUS_SM as u8);
+    visuals.widgets.hovered.corner_radius = CornerRadius::same(RADIUS_SM);
 
     visuals.widgets.active.bg_fill = ACCENT.gamma_multiply(0.3);
     visuals.widgets.active.weak_bg_fill = ACCENT.gamma_multiply(0.3);
     visuals.widgets.active.bg_stroke = Stroke::new(1.0, ACCENT);
     visuals.widgets.active.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
-    visuals.widgets.active.corner_radius = CornerRadius::same(RADIUS_SM as u8);
+    visuals.widgets.active.corner_radius = CornerRadius::same(RADIUS_SM);
 
     // Section 72's Menu Behavior "Open" state (`#1B2028`, subtle accent border) — egui's
     // `open` widget visuals are exactly this: a top-level `menu_button`'s own fill/stroke while
@@ -252,16 +252,16 @@ pub fn apply(ctx: &egui::Context) {
     visuals.widgets.open.weak_bg_fill = Color32::from_rgb(0x1b, 0x20, 0x28);
     visuals.widgets.open.bg_stroke = Stroke::new(1.0, BORDER_ACCENT);
     visuals.widgets.open.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
-    visuals.widgets.open.corner_radius = CornerRadius::same(RADIUS_SM as u8);
+    visuals.widgets.open.corner_radius = CornerRadius::same(RADIUS_SM);
 
     // `bg_elevated`/`border_strong` — Section 8's File-menu spec ("Background: bg_elevated,
     // Border: border_strong"), which in egui terms is every `Window`/`Modal`/popup surface
     // (menu_button dropdowns, ComboBox popups) — distinct from `SURFACE`/`bg_panel`, which
     // `card_frame()` and the side panels already set explicitly and aren't affected by this.
     visuals.window_fill = BG_ELEVATED;
-    visuals.window_corner_radius = CornerRadius::same(RADIUS_MD as u8);
+    visuals.window_corner_radius = CornerRadius::same(RADIUS_MD);
     visuals.window_stroke = Stroke::new(1.0, BORDER_STRONG);
-    visuals.menu_corner_radius = CornerRadius::same(RADIUS_MD as u8);
+    visuals.menu_corner_radius = CornerRadius::same(RADIUS_MD);
     // Doc's Section 6 "Shadows: default none" — menus/dialogs may keep a very subtle one, but
     // this app's existing borderless/flat look already reads as "none", so this just makes it
     // explicit rather than relying on egui's own default shadow.

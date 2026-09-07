@@ -366,7 +366,7 @@ pub(super) fn draw_transition_wedge(
     if !clip.has_transition() {
         return;
     }
-    let wedge_w = (clip.transition_duration_secs as f32 * px_per_sec)
+    let wedge_w = (clip.transition_duration_secs * px_per_sec)
         .min(clip_rect.width())
         .max(1.0);
     // Full clip height at the incoming edge, tapering to a point `wedge_w` in — the classic
