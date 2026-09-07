@@ -449,3 +449,7 @@ impl Default for PrefsState {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "state/state_test.rs"]
+mod tests;
