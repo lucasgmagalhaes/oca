@@ -319,7 +319,6 @@ impl Timeline {
             return false;
         };
         let switched_duration_secs = (switched_clip.source_out_secs - switched_clip.source_in_secs)
-            as f64
             / switched_clip.speed_factor as f64;
         switched_clip.asset_id = new_asset_id;
         switched_clip.speed_factor = 1.0;
