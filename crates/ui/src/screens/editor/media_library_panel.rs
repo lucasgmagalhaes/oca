@@ -136,40 +136,10 @@ pub(super) fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, 
         ui.set_width(width);
         ui.set_height(height);
         ui.vertical(|ui| {
-            ui.horizontal(|ui| {
-                components::section_label(ui, Text::MediaLibrary.tr(app.locale));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(
-                        RichText::new(crate::i18n::media_item_count_label(
-                            app.locale,
-                            app.active_project().media_library.len(),
-                        ))
-                        .size(11.0)
-                        .color(theme::TEXT_MUTED),
-                    );
-                    ui.add_space(theme::SPACE_SM);
-                    // ASCII "#"/"=" -- no vendored grid/list icon exists, and the raw "▦"/"☰"
-                    // glyphs are the same tofu class already fixed elsewhere this session.
-                    if ui
-                        .selectable_label(app.media_view_mode == MediaViewMode::Grid, "#")
-                        .on_hover_text(Text::MediaViewGrid.tr(app.locale))
-                        .clicked()
-                    {
-                        app.media_view_mode = MediaViewMode::Grid;
-                    }
-                    if ui
-                        .selectable_label(app.media_view_mode == MediaViewMode::List, "=")
-                        .on_hover_text(Text::MediaViewList.tr(app.locale))
-                        .clicked()
-                    {
-                        app.media_view_mode = MediaViewMode::List;
-                    }
-                });
-            });
-            ui.add_space(4.0);
             // Smart bins (P4 item 22) plus the Favorites/Recent filters form the library's
-            // tab strip. "Media" clears the filter; each bin is click-to-select,
-            // double-click-to-edit (the rules, not the assets themselves).
+            // primary tab strip. "Media" clears the filter; each bin is click-to-select,
+            // double-click-to-edit (the rules, not the assets themselves). The view controls
+            // live in this same compact header so the content starts immediately with search.
             ui.horizontal_wrapped(|ui| {
                 if media_filter_tab(
                     ui,
@@ -211,9 +181,38 @@ pub(super) fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, 
                         edited_bin_id = Some(bin.id);
                     }
                 }
-                if ui.button(Text::SmartBinNew.tr(app.locale)).clicked() {
+                if ui
+                    .button("+")
+                    .on_hover_text(Text::SmartBinNew.tr(app.locale))
+                    .clicked()
+                {
                     new_bin_clicked = true;
                 }
+                ui.separator();
+                // ASCII "#"/"=" -- no vendored grid/list icon exists, and the raw "▦"/"☰"
+                // glyphs are the same tofu class already fixed elsewhere this session.
+                if ui
+                    .selectable_label(app.media_view_mode == MediaViewMode::Grid, "#")
+                    .on_hover_text(Text::MediaViewGrid.tr(app.locale))
+                    .clicked()
+                {
+                    app.media_view_mode = MediaViewMode::Grid;
+                }
+                if ui
+                    .selectable_label(app.media_view_mode == MediaViewMode::List, "=")
+                    .on_hover_text(Text::MediaViewList.tr(app.locale))
+                    .clicked()
+                {
+                    app.media_view_mode = MediaViewMode::List;
+                }
+                ui.label(
+                    RichText::new(crate::i18n::media_item_count_label(
+                        app.locale,
+                        app.active_project().media_library.len(),
+                    ))
+                    .size(11.0)
+                    .color(theme::TEXT_MUTED),
+                );
             });
             ui.add_space(4.0);
             ui.add(
