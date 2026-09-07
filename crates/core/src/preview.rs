@@ -2870,3 +2870,7 @@ impl Drop for Preview {
         let _ = self.pipeline.set_state(gst::State::Null);
     }
 }
+
+#[cfg(test)]
+#[path = "preview/preview_test.rs"]
+mod tests;
