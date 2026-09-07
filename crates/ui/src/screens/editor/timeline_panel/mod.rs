@@ -168,6 +168,9 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let project_id = app.active_project().id;
         egui::ScrollArea::vertical()
             .id_salt("timeline_tracks_scroll")
+            // The ruler is outside this vertical scroll area. Its default content padding would
+            // otherwise shift every track canvas independently of the ruler's canvas.
+            .content_margin(egui::Margin::ZERO)
             .show(ui, |ui| {
                 for track in &app.active_project().timeline().tracks {
                     let row_height = if app.collapsed_track_ids.contains(&track.id) {
@@ -814,7 +817,7 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         // component (below every track row) — matches where a scrollbar naturally reads,
         // confirmed via a real report that it belonged here, not up on the ruler.
         ui.horizontal(|ui| {
-            ui.add_space(TRACK_LABEL_WIDTH);
+            ui.allocate_exact_size(egui::vec2(TRACK_LABEL_WIDTH, 2.0), egui::Sense::hover());
             let bottom_scroll = egui::ScrollArea::horizontal()
                 .id_salt("timeline_bottom_hscroll")
                 .scroll_source(canvas_layout.hscroll_source)

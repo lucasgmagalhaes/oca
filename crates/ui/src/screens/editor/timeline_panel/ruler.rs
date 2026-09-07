@@ -42,7 +42,13 @@ pub(super) fn timeline_ruler(
     let mut ruler_top = 0.0_f32;
     let mut new_pan_px = None;
     ui.horizontal(|ui| {
-        ui.add_space(layout.track_label_width);
+        // Reserve the same exact gutter that every track row allocates for its controls. A
+        // generic layout spacer can be rounded or stretched differently from the track-header
+        // allocation, which makes the ruler's zero point disagree with the clip canvas.
+        ui.allocate_exact_size(
+            egui::vec2(layout.track_label_width, layout.ruler_height),
+            egui::Sense::hover(),
+        );
         let ruler_scroll = egui::ScrollArea::horizontal()
             .id_salt("timeline_ruler_hscroll")
             .scroll_source(layout.hscroll_source)
@@ -68,11 +74,16 @@ pub(super) fn timeline_ruler(
                     } else {
                         secs
                     };
-                    app.active_project_mut().timeline_mut().playhead_secs = secs;
+                    // The preview pipeline may still be reporting its terminal source position
+                    // after playback ends. Updating only the model here lets that stale position
+                    // overwrite this click on the next frame. Route every ruler seek through the
+                    // preview-aware path, which both updates the timeline and seeks/reopens the
+                    // pipeline at the requested timeline position.
+                    app.seek_preview(secs);
                 }
                 let markers = app.active_project().timeline().markers.clone();
                 if let Some(seek_secs) = draw_marker_ticks(ui, rect, &markers, layout.px_per_sec) {
-                    app.active_project_mut().timeline_mut().playhead_secs = seek_secs;
+                    app.seek_preview(seek_secs);
                 }
                 draw_playhead(
                     ui,
