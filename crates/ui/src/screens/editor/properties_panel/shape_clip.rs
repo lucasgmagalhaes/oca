@@ -64,6 +64,10 @@ fn shape_preset_label(preset: ShapePreset, locale: crate::i18n::Locale) -> Strin
     }
 }
 
+#[cfg(test)]
+#[path = "shape_clip/shape_clip_test.rs"]
+mod tests;
+
 /// Renders the properties panel content for a selected shape overlay clip. Shows controls for
 /// the shape preset, RGBA color, center X/Y, width/height, rotation, outline thickness, start
 /// time, and duration. Applies changes immediately by mutating the clip through the active
