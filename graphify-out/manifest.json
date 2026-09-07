@@ -520,8 +520,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/preview.rs": {
-    "mtime": 1788791661.24224,
-    "ast_hash": "51f0b89ec12120abb54f4d804e15c0d3",
+    "mtime": 1788792262.1578555,
+    "ast_hash": "d48013165078e9df314a934425d3649c",
     "semantic_hash": ""
   },
   "crates/ui/src/app/timeline_ops.rs": {
@@ -2395,8 +2395,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test/media_preview.rs": {
-    "mtime": 1788720778.9813685,
-    "ast_hash": "9e62d87469432bd7fd29f93fe1c4d588",
+    "mtime": 1788792275.2481048,
+    "ast_hash": "0c64e284c32976f0ef43b04e6c3cce73",
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test/motion_background.rs": {
