@@ -1481,3 +1481,7 @@ fn fps_to_rational(fps: f32) -> (u32, u32) {
         ((fps * 1000.0).round() as u32, 1000)
     }
 }
+
+#[cfg(test)]
+#[path = "render/render_test.rs"]
+mod tests;
