@@ -812,3 +812,7 @@ pub(super) fn next_clip_id(timeline: &avcore::timeline::Timeline) -> u64 {
         .unwrap_or(0);
     video_audio_max.max(text_max).max(shape_max) + 1
 }
+
+#[cfg(test)]
+#[path = "timeline_ops/timeline_ops_test.rs"]
+mod tests;
