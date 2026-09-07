@@ -1,0 +1,25 @@
+[package]
+name = "oca-perf"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Deliberately its own workspace, not a member of the root one (`/Cargo.toml`'s `members` list
+# does not include this directory) — see perf/PLAN.md for why. This crate must stay linkable
+# and runnable in a sandboxed CI/dev environment that cannot link `core`/`ui` at all (no network
+# access to fetch `libonnxruntime`, no GStreamer runtime), so it depends on nothing from this
+# repository's own workspace — only crates.io.
+[workspace]
+
+[lib]
+name = "oca_perf"
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "preview_effects_bench"
+harness = false
