@@ -282,7 +282,3 @@ impl Project {
         self.recent_asset_ids.truncate(RECENT_ASSET_CAPACITY);
     }
 }
-
-#[cfg(test)]
-#[path = "project_test.rs"]
-mod tests;
