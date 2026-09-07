@@ -147,13 +147,13 @@ fn parse_crash_report_rejects_a_body_missing_the_message_line() {
 
 #[test]
 fn crash_stack_text_folds_location_and_message_onto_the_backtrace() {
-    let crash = PendingCrashReview {
-        timestamp: 1,
-        app_version: "1.0.0".to_owned(),
-        location: "a.rs:1:1".to_owned(),
-        message: "boom".to_owned(),
-        backtrace: "0: frame_one".to_owned(),
-    };
+    let crash = PendingCrashReview::new(
+        1,
+        "1.0.0".to_owned(),
+        "a.rs:1:1".to_owned(),
+        "boom".to_owned(),
+        "0: frame_one".to_owned(),
+    );
     let stack = crash_stack_text(&crash);
     assert!(stack.contains("a.rs:1:1"));
     assert!(stack.contains("boom"));

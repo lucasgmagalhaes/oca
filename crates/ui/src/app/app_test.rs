@@ -394,13 +394,13 @@ fn seed_error_reporting_seeds_launch_identity_and_breadcrumb() {
 }
 
 fn sample_pending_crash(timestamp: u64) -> crate::app::crash_review::PendingCrashReview {
-    crate::app::crash_review::PendingCrashReview {
+    crate::app::crash_review::PendingCrashReview::new(
         timestamp,
-        app_version: "1.4.2".to_owned(),
-        location: "crates/ui/src/app/mod.rs:1:1".to_owned(),
-        message: "index out of bounds".to_owned(),
-        backtrace: "0: oca::main".to_owned(),
-    }
+        "1.4.2".to_owned(),
+        "crates/ui/src/app/mod.rs:1:1".to_owned(),
+        "index out of bounds".to_owned(),
+        "0: oca::main".to_owned(),
+    )
 }
 
 #[test]
@@ -424,6 +424,27 @@ fn crash_review_payload_preview_shows_the_exact_post_sanitization_payload() {
     let stack = value["extra"]["stack_trace"].as_str().unwrap();
     assert!(stack.contains("index out of bounds"));
     assert!(stack.contains("crates/ui/src/app/mod.rs:1:1"));
+}
+
+#[test]
+fn crash_review_payload_preview_keeps_event_identity_stable_across_frames() {
+    let mut app = test_app(Vec::new(), Vec::new());
+    app.pending_crash_review = Some(sample_pending_crash(1_700_000_000));
+
+    let first: serde_json::Value =
+        serde_json::from_str(&app.crash_review_payload_preview().unwrap()).unwrap();
+    let second: serde_json::Value =
+        serde_json::from_str(&app.crash_review_payload_preview().unwrap()).unwrap();
+
+    assert_eq!(first["event_id"], second["event_id"]);
+    assert_eq!(
+        first["extra"]["oca_event_id"],
+        second["extra"]["oca_event_id"]
+    );
+    assert_eq!(
+        first["extra"]["oca_event_id"],
+        app.pending_crash_review.unwrap().report.event_id
+    );
 }
 
 #[test]

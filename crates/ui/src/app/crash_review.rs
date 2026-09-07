@@ -46,6 +46,34 @@ pub(crate) struct PendingCrashReview {
     pub(crate) location: String,
     pub(crate) message: String,
     pub(crate) backtrace: String,
+    /// Immutable payload for this crash occurrence. The review modal is rendered every frame,
+    /// so rebuilding it there would assign a fresh event identity on every frame.
+    pub(crate) report: avcore::ErrorReport,
+}
+
+impl PendingCrashReview {
+    /// Captures one stable report when the previous launch's crash is discovered.
+    ///
+    /// This makes Sentry's `event_id` and OCA's `oca_event_id` identify the same crash in the
+    /// preview and in every eventual delivery attempt.
+    pub(crate) fn new(
+        timestamp: u64,
+        app_version: String,
+        location: String,
+        message: String,
+        backtrace: String,
+    ) -> Self {
+        let crash_stack = format!("panic at {location}: {message}\n\n{backtrace}");
+        let report = super::error_reporting::build_crash_report(&crash_stack, &app_version);
+        Self {
+            timestamp,
+            app_version,
+            location,
+            message,
+            backtrace,
+            report,
+        }
+    }
 }
 
 /// Scans `log_dir` for `crash_<unix>.txt` files newer than `after_unix` (the last one already
@@ -78,13 +106,13 @@ pub(crate) fn find_latest_unreviewed_crash(
     let (timestamp, path) = candidates.pop()?;
     let body = std::fs::read_to_string(&path).ok()?;
     let (app_version, location, message, backtrace) = parse_crash_report(&body)?;
-    Some(PendingCrashReview {
+    Some(PendingCrashReview::new(
         timestamp,
         app_version,
         location,
         message,
         backtrace,
-    })
+    ))
 }
 
 /// Parses the exact body `install_panic_hook` writes in `main.rs`:
@@ -130,13 +158,9 @@ impl App {
     /// not happen, but a broken payload must never be silently shown as sendable either).
     pub(crate) fn crash_review_payload_preview(&self) -> Option<String> {
         let crash = self.pending_crash_review.as_ref()?;
-        let report = super::error_reporting::build_crash_report(
-            &crash_stack_text(crash),
-            &crash.app_version,
-        );
-        avcore::validate_report(&report).ok()?;
+        avcore::validate_report(&crash.report).ok()?;
         serde_json::to_string_pretty(&super::error_reporting::sentry_event_payload(
-            &report,
+            &crash.report,
             crash.timestamp,
         ))
         .ok()
@@ -150,10 +174,7 @@ impl App {
     /// unsendable report on every future launch.
     pub(crate) fn send_pending_crash_once(&mut self) {
         if let Some(crash) = self.pending_crash_review.clone() {
-            let report = super::error_reporting::build_crash_report(
-                &crash_stack_text(&crash),
-                &crash.app_version,
-            );
+            let report = crash.report;
             match avcore::validate_report(&report) {
                 Ok(()) => super::error_reporting::one_shot_reporter().report(report),
                 Err(e) => tracing::warn!(error = %e, "dropping invalid crash report"),
@@ -174,10 +195,7 @@ impl App {
             self.pending_crash_review.clone(),
             self.error_reporter.clone(),
         ) {
-            let report = super::error_reporting::build_crash_report(
-                &crash_stack_text(&crash),
-                &crash.app_version,
-            );
+            let report = crash.report;
             match avcore::validate_report(&report) {
                 Ok(()) => reporter.report(report),
                 Err(e) => tracing::warn!(error = %e, "dropping invalid crash report"),
