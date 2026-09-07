@@ -73,6 +73,12 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                 .id_salt("properties_panel_scroll")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
+                    // Keep the inspector chrome visible even before the user selects a clip.
+                    // The mockup makes these three workspaces a stable landmark, and leaving
+                    // them out turned the right column into an ambiguous empty panel on a new
+                    // project. Effects remains browsable without a selection; Inspector and
+                    // Audio retain their honest no-selection state below the shared tab strip.
+                    properties_tab_bar(app, ui, locale);
                     // Text/shape clip properties take priority when one is selected — only one of
                     // `selected_clip_id`/`selected_text_clip_id`/`selected_shape_clip_id` is ever
                     // `Some` at a time (see `App`'s doc comments on those fields).
@@ -91,7 +97,6 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                     if app.properties_tab == crate::app::PropertiesTab::Effects
                         && app.selected_clip_id.is_none()
                     {
-                        properties_tab_bar(app, ui, locale);
                         effects_panel_browser(app, ui, locale, false, None);
                         return;
                     }
@@ -194,7 +199,6 @@ pub(super) fn properties_panel(app: &mut App, ui: &mut egui::Ui, width: f32, hei
                         let opacity_keyframes = clip.opacity_keyframes.clone();
                         let gain_keyframes = clip.gain_keyframes.clone();
 
-                        properties_tab_bar(app, ui, locale);
                         let tab = app.properties_tab;
 
                         if tab == crate::app::PropertiesTab::Audio {

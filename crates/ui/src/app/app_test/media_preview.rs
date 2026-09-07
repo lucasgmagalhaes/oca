@@ -19,6 +19,11 @@ use super::support::*;
 use super::*;
 
 #[test]
+fn media_library_defaults_to_the_visual_grid() {
+    assert_eq!(MediaViewMode::default(), MediaViewMode::Grid);
+}
+
+#[test]
 fn selected_asset_is_none_when_no_asset_id_is_selected() {
     let app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 

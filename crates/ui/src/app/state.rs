@@ -102,11 +102,12 @@ pub enum PropertiesTab {
 /// the same [`avcore::media::MediaAsset`] entries (`spec/architecture/editor-ui-visual-
 /// redesign.md`'s Media library mapping: "Grid/list view toggle ... pure UI, no new `App`/
 /// `avcore` state beyond a `bool`/enum view-mode field"), not a new data model. Not persisted:
-/// resets to `List` on every app launch, same as `tool`/`properties_tab`.
+/// resets to `Grid` on every app launch so imported footage first appears in the visual,
+/// two-column browser used by the editor mockup; users can still switch to the denser list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MediaViewMode {
-    #[default]
     List,
+    #[default]
     Grid,
 }
 
