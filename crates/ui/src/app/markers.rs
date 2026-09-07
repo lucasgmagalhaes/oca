@@ -262,3 +262,7 @@ fn marker_kind_icon(kind: avcore::MarkerKind) -> &'static str {
         avcore::MarkerKind::Highlight => "*",
     }
 }
+
+#[cfg(test)]
+#[path = "markers/markers_test.rs"]
+mod tests;
