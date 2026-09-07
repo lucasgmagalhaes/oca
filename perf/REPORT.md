@@ -25,6 +25,15 @@ in a performance pass, per `PLAN.md`'s own criteria) or a `clippy::style`-adjace
 (`type_complexity`, `ptr_arg`, `too_many_arguments`, `enum_variant_names`) clippy files under the
 same flag but isn't actually about runtime cost.
 
+**2026-09-07, third follow-up — a real algorithmic fix, not a lint-driven one**: found by manual
+inspection (`clippy::perf` doesn't catch this shape of thing) that `App::pump_preview_frame`
+always calls `avcore::luma_waveform_rgba` and `avcore::vectorscope_rgba` back to back whenever
+`scopes_enabled`, each independently iterating over the *entire* decoded source frame. Added
+`avcore::render_scopes_rgba` (`crates/core/src/scopes.rs`), computing both scopes' per-pixel
+accumulation in one shared pass over the source instead of two, and switched the one real call
+site to it. See "Scopes: two passes merged into one" below for the measured result and how
+correctness was confirmed.
+
 ## Summary
 
 - Ran `cargo clippy --workspace --all-targets -- -W clippy::perf` across the whole workspace.
@@ -113,6 +122,41 @@ mechanical fixes:
   processing to viewport resolution, not source resolution). Halving each dimension alone would
   cut this cost to roughly a quarter (~20ms), likely enough to clear a 30fps budget on its own.
 
+## Scopes: two full-frame passes merged into one
+
+`App::pump_preview_frame` renders the waveform and vectorscope monitors together, every frame,
+whenever `App::preview_state.scopes_enabled` — never just one or the other. Before this fix, that
+meant two independent calls (`avcore::luma_waveform_rgba`, `avcore::vectorscope_rgba`), each doing
+its own full iteration over every pixel of the decoded source frame. `avcore::render_scopes_rgba`
+computes both scopes' accumulation in one shared pass instead, sharing the per-pixel index
+arithmetic and RGBA byte reads between them.
+
+**Correctness confirmed before performance**: `render_scopes_rgba`'s output for both scopes must
+be byte-identical to calling the two original functions separately, on every input shape — not
+just a solid-color test case, which could pass by coincidence. `crates/core/src/scopes/
+scopes_test.rs` gained `render_scopes_matches_calling_both_standalone_functions` (a non-uniform,
+non-square, non-power-of-two 37x23 test frame, checked against both `luma_waveform_rgba` and
+`vectorscope_rgba` called independently) plus two edge-case tests (empty source; one output side
+requested with the other zero-sized, confirming the two scopes are computed independently within
+the shared pass, not accidentally coupled). Run for real via the same throwaway-scratch-crate
+technique this repository already uses for a zero-heavy-dependency module (`scopes.rs` depends on
+nothing but `std`): 9/9 passing, not just type-checked.
+
+**Measured** (`perf/benches/scopes_bench.rs`, same 1920x1080 methodology, real 256x128 waveform /
+128x128 vectorscope output sizes — `App::pump_preview_frame`'s own constants): **~9-11% faster**,
+reproduced across two independent full benchmark runs (60.3ms → 53.5ms, then 59.2ms → 54.1ms) —
+consistent direction both times, clearing this sandbox's own ~4-5% noise floor (established in the
+`apply_vignette_to_rgba` control measurement earlier in this document) with room to spare, same
+confidence level as the `apply_lut_to_rgba` fix. The improvement is more modest than merging two
+loops into one might suggest because each scope still does its own real per-pixel math (`luma()`'s
+weighted sum, `chroma_cb_cr()`'s two dot products) — only the shared iteration/indexing overhead
+(bounds checks, the `(y * src_w + x) * 4` index computation, the RGBA byte reads themselves) is
+actually saved, not the arithmetic.
+
+`avcore::luma_waveform_rgba`/`avcore::vectorscope_rgba` themselves are unchanged and still public
+— `render_scopes_rgba` is additive, not a replacement, so any caller that only ever needs one
+scope (none currently exist, but nothing stops one existing later) isn't forced to compute both.
+
 ## Fixes applied to `crates/core`
 
 All verified via `cargo check --workspace --all-targets` + `cargo clippy --workspace --all-targets`
@@ -146,6 +190,11 @@ is strictly more evidence than a typical sandboxed `core` change gets.
    in the auto-reframe center-smoothing pass → `for (x, y) in centers[..].iter().flatten()`
    (`clippy::manual_flatten`) — removes a per-iteration branch the `Iterator::flatten` adapter
    already handles.
+7. **`scopes.rs`** — new `render_scopes_rgba`, merging the two full-frame passes
+   `App::pump_preview_frame` always ran back to back into one. Not a `clippy::perf` finding — found
+   by inspection, not the lint sweep — see "Scopes: two full-frame passes merged into one" above
+   for the measured ~9-11% improvement and how correctness was confirmed independently of the
+   performance question.
 
 ## Not fixed this pass, and why
 
@@ -196,7 +245,7 @@ be handled or lower priority than first stated — corrected below rather than l
 
 ```bash
 cd perf
-cargo test              # 3/3 before/after equality checks
+cargo test              # 4/4 before/after equality checks
 cargo bench              # full Criterion run, ~2 minutes
 ```
 
