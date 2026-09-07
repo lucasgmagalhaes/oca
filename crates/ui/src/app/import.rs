@@ -289,7 +289,7 @@ impl App {
         }
 
         let Some(asset) = self
-            .projects
+            .open_projects
             .iter()
             .find(|p| p.id == project_id)
             .and_then(|p| p.media_library.iter().find(|a| a.id == asset_id))

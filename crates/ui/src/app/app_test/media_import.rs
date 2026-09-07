@@ -80,7 +80,7 @@ fn pump_import_queue_targets_the_project_by_id_not_the_active_index() {
         1
     );
     assert!(app
-        .projects
+        .open_projects
         .iter()
         .find(|p| p.id == 2)
         .unwrap()

@@ -60,9 +60,9 @@ fn import_collab_bundle_opens_the_project_with_its_new_file_path() {
 
     recipient.import_collab_bundle(bundle_path, dest_project_path.clone());
 
-    assert_eq!(recipient.projects.len(), 1);
+    assert_eq!(recipient.open_projects.len(), 1);
     assert_eq!(
-        recipient.projects[0].file_path,
+        recipient.open_projects.get(0).unwrap().file_path,
         Some(dest_project_path.clone())
     );
     assert_eq!(
