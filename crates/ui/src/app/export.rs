@@ -843,3 +843,7 @@ pub(super) fn normalize_loaded_queue(mut jobs: Vec<ExportJob>) -> Vec<ExportJob>
     }
     jobs
 }
+
+#[cfg(test)]
+#[path = "export/export_test.rs"]
+mod tests;
