@@ -1220,8 +1220,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel/mod.rs": {
-    "mtime": 1788732401.9292536,
-    "ast_hash": "d4cf4d835ac07df950f4b34efdbc280c",
+    "mtime": 1788796977.480204,
+    "ast_hash": "6d3512047cc4de2048396cfddd933103",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel/snap.rs": {
@@ -2575,8 +2575,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel/ruler.rs": {
-    "mtime": 1788722135.738983,
-    "ast_hash": "1a8f4385fd8d4ce3d9ec3ef9378327ae",
+    "mtime": 1788796946.880364,
+    "ast_hash": "3658562d07cb7158ab886f9fe676235c",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel/selection_commands.rs": {
@@ -2752,11 +2752,6 @@
   "crates/ui/src/app/open_projects.rs": {
     "mtime": 1788793192.006981,
     "ast_hash": "b1f212e5522348733e171693bd582186",
-    "semantic_hash": ""
-  },
-  "test-media/samplelib-5s-1080p.mp4": {
-    "mtime": 1788794383.163828,
-    "ast_hash": "8cd0e9af15f4baaafe9dfe98ace8b886",
     "semantic_hash": ""
   },
   "crates/core/src/error_reporting/error_reporting_test.rs": {
