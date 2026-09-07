@@ -90,32 +90,29 @@ fn asset_thumb_sized(
     );
 }
 
-/// One tab-style filter chip in the media library's header row — the OCA mockup's "MEDIA / Bins
-/// / Favorites / Recent" tab strip, not the plain `selectable_label` pill this used to be.
-/// Reuses `properties_panel::properties_tab_bar`'s own accent-tint-fill/accent-stroke-when-active
-/// convention (this codebase's one established "tab" look) instead of inventing a second one.
-/// Returns whether it was clicked.
-fn media_filter_tab(ui: &mut egui::Ui, active: bool, label: &str) -> bool {
+/// Renders one media-library filter as a compact, underlined tab.
+///
+/// The mockup uses a navigational tab strip, not a collection of filled filter chips. Keeping
+/// the inactive tabs borderless makes the library hierarchy clear while the active underline
+/// preserves the established teal selection cue used elsewhere in the editor.
+fn media_filter_tab(ui: &mut egui::Ui, active: bool, label: &str) -> egui::Response {
     let text = RichText::new(label).color(if active {
         theme::ACCENT
     } else {
         theme::TEXT_SECONDARY
     });
-    let button = egui::Button::new(text)
-        .fill(if active {
-            theme::ACCENT_TINT
-        } else {
-            egui::Color32::TRANSPARENT
-        })
-        .stroke(egui::Stroke::new(
-            1.0,
-            if active {
-                theme::ACCENT
-            } else {
-                egui::Color32::TRANSPARENT
-            },
-        ));
-    ui.add(button).clicked()
+    let response = ui.add(egui::Button::new(text).frame(false));
+    if active {
+        let underline_y = response.rect.bottom() - 1.0;
+        ui.painter().line_segment(
+            [
+                egui::pos2(response.rect.left(), underline_y),
+                egui::pos2(response.rect.right(), underline_y),
+            ],
+            egui::Stroke::new(2.0, theme::ACCENT),
+        );
+    }
+    response
 }
 
 pub(super) fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, height: f32) {
@@ -169,42 +166,41 @@ pub(super) fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, 
                     }
                 });
             });
-            ui.add_space(theme::SPACE_SM);
-            ui.add(
-                egui::TextEdit::singleline(&mut app.media_search)
-                    .hint_text(Text::SearchMediaPlaceholder.tr(app.locale))
-                    .desired_width(f32::INFINITY),
-            );
             ui.add_space(4.0);
-            // Smart bins (P4 item 22) plus the Favorites/Recent filters -- a row of filter
-            // chips above the asset list, single-selection (see MediaLibraryFilter's own
-            // doc comment). "All" clears the filter; each bin is click-to-select,
-            // double-click-to-edit (the rules, not the assets themselves -- there's nothing
-            // else to double-click a filter chip for).
+            // Smart bins (P4 item 22) plus the Favorites/Recent filters form the library's
+            // tab strip. "Media" clears the filter; each bin is click-to-select,
+            // double-click-to-edit (the rules, not the assets themselves).
             ui.horizontal_wrapped(|ui| {
                 if media_filter_tab(
                     ui,
                     app.media_filter == MediaLibraryFilter::All,
-                    Text::SmartBinAll.tr(app.locale),
-                ) {
+                    Text::MediaFilterMedia.tr(app.locale),
+                )
+                .clicked()
+                {
                     selected_filter = Some(MediaLibraryFilter::All);
                 }
                 if media_filter_tab(
                     ui,
                     app.media_filter == MediaLibraryFilter::Favorites,
                     Text::MediaFilterFavorites.tr(app.locale),
-                ) {
+                )
+                .clicked()
+                {
                     selected_filter = Some(MediaLibraryFilter::Favorites);
                 }
                 if media_filter_tab(
                     ui,
                     app.media_filter == MediaLibraryFilter::Recent,
                     Text::MediaFilterRecent.tr(app.locale),
-                ) {
+                )
+                .clicked()
+                {
                     selected_filter = Some(MediaLibraryFilter::Recent);
                 }
                 for bin in &app.active_project().smart_bins {
-                    let response = ui.selectable_label(
+                    let response = media_filter_tab(
+                        ui,
                         app.media_filter == MediaLibraryFilter::SmartBin(bin.id),
                         &bin.name,
                     );
@@ -220,6 +216,12 @@ pub(super) fn media_library_panel(app: &mut App, ui: &mut egui::Ui, width: f32, 
                 }
             });
             ui.add_space(4.0);
+            ui.add(
+                egui::TextEdit::singleline(&mut app.media_search)
+                    .hint_text(Text::SearchMediaPlaceholder.tr(app.locale))
+                    .desired_width(f32::INFINITY),
+            );
+            ui.add_space(theme::SPACE_SM);
 
             egui::ScrollArea::vertical()
                 .id_salt("media_library_scroll")

@@ -23,7 +23,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Instant;
 
-use avcore::{AudioRole, ExportJob, MediaAsset};
+use avcore::{AudioRole, ExportJob, MediaAsset, Project};
 use eframe::egui;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 

@@ -35,6 +35,12 @@ impl App {
             return;
         };
         self.push_undo_snapshot();
+        let was_empty = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .all(|track| track.clips.is_empty());
         let timeline = self.active_project_mut().timeline_mut();
         let track_index = resolve_or_create_track(timeline, kind, None);
         let start_secs = timeline.tracks[track_index].duration_secs();
@@ -51,6 +57,7 @@ impl App {
                 voice_cleanup_enabled,
             ));
         self.active_project_mut().record_recent_asset(asset_id);
+        self.fit_timeline_to_initial_content(was_empty);
     }
 
     /// Appends `asset_id` onto a brand-new, never-reused track — what a multi-file drop/drag
@@ -64,6 +71,12 @@ impl App {
             return;
         };
         self.push_undo_snapshot();
+        let was_empty = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .all(|track| track.clips.is_empty());
         let timeline = self.active_project_mut().timeline_mut();
         let track_index = create_new_track(timeline, kind);
         let start_secs = timeline.tracks[track_index].duration_secs();
@@ -80,6 +93,7 @@ impl App {
                 voice_cleanup_enabled,
             ));
         self.active_project_mut().record_recent_asset(asset_id);
+        self.fit_timeline_to_initial_content(was_empty);
     }
 
     /// Inserts `asset_id` onto the timeline at `start_secs` — what dropping an asset dragged
@@ -101,6 +115,12 @@ impl App {
             return;
         };
         self.push_undo_snapshot();
+        let was_empty = self
+            .active_project()
+            .timeline()
+            .tracks
+            .iter()
+            .all(|track| track.clips.is_empty());
         let timeline = self.active_project_mut().timeline_mut();
         let track_index = resolve_or_create_track(timeline, kind, preferred_track_id);
         let clip_id = next_clip_id(timeline);
@@ -116,6 +136,28 @@ impl App {
                 voice_cleanup_enabled,
             ));
         self.active_project_mut().record_recent_asset(asset_id);
+        self.fit_timeline_to_initial_content(was_empty);
+    }
+
+    /// Gives the first timeline clip enough horizontal room to be edited immediately.
+    ///
+    /// A fixed four-pixels-per-second initial zoom makes a typical five-second imported clip
+    /// only twenty pixels wide. This runs exactly once, when the first clip is placed, and
+    /// therefore never overrides a deliberate user zoom adjustment. Long timelines retain the
+    /// former overview scale while short footage is capped at the normal maximum zoom.
+    fn fit_timeline_to_initial_content(&mut self, was_empty: bool) {
+        if !was_empty {
+            return;
+        }
+        let duration_secs = self.active_project().timeline().duration_secs() as f32;
+        if duration_secs <= 0.0 {
+            return;
+        }
+        const EDITABLE_CLIP_WIDTH_PX: f32 = 480.0;
+        const OVERVIEW_PX_PER_SEC: f32 = 4.0;
+        const MAX_PX_PER_SEC: f32 = 60.0;
+        self.timeline_px_per_sec =
+            (EDITABLE_CLIP_WIDTH_PX / duration_secs).clamp(OVERVIEW_PX_PER_SEC, MAX_PX_PER_SEC);
     }
 
     /// Detaches this block's embedded audio onto a synced clip on its own Audio track — the

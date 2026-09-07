@@ -585,6 +585,34 @@ fn add_asset_to_timeline_creates_a_track_and_appends_a_clip_when_none_exists() {
     assert_eq!(clip.start_secs, 0.0);
     assert_eq!(clip.source_in_secs, 0.0);
     assert_eq!(clip.source_out_secs, 10.0); // test_asset's fixed duration_secs.
+    assert_eq!(app.timeline_px_per_sec, 48.0);
+}
+
+#[test]
+fn first_short_clip_uses_the_maximum_editable_timeline_zoom() {
+    let mut project = test_project(1, vec![test_asset(1)]);
+    project.media_library[0].duration_secs = 5.0;
+    let mut app = test_app(vec![project], Vec::new());
+
+    app.add_asset_to_timeline(1);
+
+    assert_eq!(app.timeline_px_per_sec, 60.0);
+}
+
+#[test]
+fn appending_to_existing_timeline_preserves_the_user_zoom() {
+    let mut project = test_project(1, vec![test_asset(2)]);
+    project.timeline_mut().tracks = vec![test_track(
+        1,
+        TrackKind::Video,
+        vec![test_clip(1, 0.0, 0.0, 20.0)],
+    )];
+    let mut app = test_app(vec![project], Vec::new());
+    app.timeline_px_per_sec = 17.0;
+
+    app.add_asset_to_timeline(2);
+
+    assert_eq!(app.timeline_px_per_sec, 17.0);
 }
 
 #[test]
