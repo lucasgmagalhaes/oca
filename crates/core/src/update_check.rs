@@ -343,3 +343,7 @@ pub fn is_newer(current: &str, latest: &str) -> bool {
     }
     false
 }
+
+#[cfg(test)]
+#[path = "update_check_test.rs"]
+mod tests;

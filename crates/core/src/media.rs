@@ -100,3 +100,7 @@ pub fn format_timecode(total_secs: f64) -> String {
         format!("{minutes:02}:{seconds:02}")
     }
 }
+
+#[cfg(test)]
+#[path = "media_test.rs"]
+mod tests;

@@ -235,3 +235,7 @@ impl GpuSampler {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "telemetry_test.rs"]
+mod tests;

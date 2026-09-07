@@ -94,3 +94,7 @@ impl Default for UndoStack {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "undo_test.rs"]
+mod tests;
