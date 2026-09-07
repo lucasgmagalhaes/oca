@@ -222,3 +222,7 @@ pub(super) fn audio_role_label(role: avcore::AudioRole, locale: Locale) -> &'sta
         avcore::AudioRole::Music => Text::AudioRoleMusic.tr(locale),
     }
 }
+
+#[cfg(test)]
+#[path = "track_header/track_header_test.rs"]
+mod tests;
