@@ -1048,3 +1048,7 @@ impl ErrorReportBuilder {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "error_reporting/error_reporting_test.rs"]
+mod tests;
