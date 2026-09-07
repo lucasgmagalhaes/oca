@@ -117,7 +117,7 @@ fn pump_preview_frame_ignores_a_fresh_session_without_a_project() {
 
     app.pump_preview_frame(&ctx);
 
-    assert!(app.projects.is_empty());
+    assert!(app.open_projects.is_empty());
 }
 
 #[test]

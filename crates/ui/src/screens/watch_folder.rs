@@ -94,7 +94,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             return;
         }
 
-        let has_open_project = !app.projects.is_empty();
+        let has_open_project = !app.open_projects.is_empty();
         for row in &app.watch_folder_state.files {
             components::card_frame().show(ui, |ui| {
                 ui.horizontal(|ui| {

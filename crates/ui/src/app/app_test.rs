@@ -34,6 +34,7 @@ mod interoperability;
 mod media_import;
 mod media_preview;
 mod motion_background;
+mod open_projects;
 mod project_timeline;
 mod shorts_pack;
 mod support;

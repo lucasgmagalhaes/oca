@@ -16,11 +16,18 @@
 //! Project, sequence, and active-selection operations.
 
 use super::*;
+use avcore::Project;
 
 impl App {
     /// The project currently open in the Editor/Mídia screens.
+    ///
+    /// Callers must establish an active project first, usually through
+    /// [`App::ensure_active_project`]. The optional state itself lives in [`OpenProjects`]; this
+    /// non-optional compatibility accessor remains for editor-only operations that require one.
     pub fn active_project(&self) -> &Project {
-        &self.projects[self.active_project]
+        self.open_projects
+            .active()
+            .expect("active project required by this operation")
     }
 
     /// Guarantees `active_project()`/`active_project_mut()` resolve — the Editor and Mídia
@@ -33,7 +40,7 @@ impl App {
     /// button relies on to navigate away from Home) — restored here so calling this from
     /// Mídia doesn't hijack the user back to the Editor screen mid-render.
     pub fn ensure_active_project(&mut self) {
-        if self.projects.is_empty() {
+        if self.open_projects.is_empty() {
             let screen_before = self.screen;
             self.create_new_project(Text::UntitledProject.tr(self.locale).to_string());
             self.screen = screen_before;
@@ -46,7 +53,17 @@ impl App {
     pub fn active_project_mut(&mut self) -> &mut Project {
         self.project_dirty = true;
         self.last_edit_instant = Some(Instant::now());
-        &mut self.projects[self.active_project]
+        self.active_project_mut_untracked()
+    }
+
+    /// Mutably accesses the active project without recording an edit for autosave.
+    ///
+    /// This is reserved for derived UI state such as preview playhead synchronization. Callers
+    /// must establish an active project first, just like [`App::active_project`].
+    pub(crate) fn active_project_mut_untracked(&mut self) -> &mut Project {
+        self.open_projects
+            .active_mut()
+            .expect("active project required by this operation")
     }
 
     /// The asset backing the Editor's "Clipe selecionado" panel, if any is selected.
@@ -116,7 +133,9 @@ impl App {
     /// Switches the active project to `index` and navigates to the Editor screen — this is
     /// what a project card click on the Início screen does.
     pub fn open_project(&mut self, index: usize) {
-        self.active_project = index;
+        if !self.open_projects.activate(index) {
+            return;
+        }
         self.undo_stack.clear();
         let project = self.active_project();
         info!(
@@ -202,10 +221,13 @@ impl App {
     /// Appends `project` to the project list and opens it — used for both "Novo projeto"
     /// (an empty project) and "Abrir projeto" (one just loaded from disk).
     pub fn add_and_open_project(&mut self, project: Project) {
-        self.projects.push(project);
-        let idx = self.projects.len() - 1;
+        let idx = self.open_projects.push_and_activate(project);
         // Track the file path in recent projects before open_project() runs.
-        if let Some(path) = self.projects[idx].file_path.clone() {
+        if let Some(path) = self
+            .open_projects
+            .get(idx)
+            .and_then(|project| project.file_path.clone())
+        {
             let path_str = path.display().to_string();
             self.prefs.recent_project_paths.retain(|p| p != &path_str);
             self.prefs.recent_project_paths.insert(0, path_str);
@@ -219,25 +241,21 @@ impl App {
     /// then persists prefs. Adjusts `active_project` so it stays in bounds. Does NOT navigate —
     /// the caller (Home screen) decides whether to switch screens.
     pub fn remove_project(&mut self, index: usize) {
-        if index >= self.projects.len() {
+        let Some(project) = self.open_projects.get(index) else {
             return;
-        }
+        };
         // Remove from recents before dropping the project.
-        if let Some(path) = &self.projects[index].file_path {
+        if let Some(path) = &project.file_path {
             let path_str = path.display().to_string();
             self.prefs.recent_project_paths.retain(|p| p != &path_str);
         }
-        self.projects.remove(index);
-        // Keep active_project in bounds.
-        if !self.projects.is_empty() && self.active_project >= self.projects.len() {
-            self.active_project = self.projects.len() - 1;
-        }
+        self.open_projects.remove(index);
         self.save_prefs();
     }
 
     /// Builds an empty project with a fresh id and opens it — what "Novo projeto" does.
     pub fn create_new_project(&mut self, name: String) {
-        let id = self.projects.iter().map(|p| p.id).max().unwrap_or(0) + 1;
+        let id = self.open_projects.iter().map(|p| p.id).max().unwrap_or(0) + 1;
         let target_lufs = LUFS_PROFILES
             .get(self.prefs.lufs_profile)
             .map(|(_, target_lufs)| *target_lufs)

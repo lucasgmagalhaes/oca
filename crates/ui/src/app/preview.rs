@@ -167,7 +167,7 @@ impl App {
             // (next frame) resolves and opens the clip at 0.0 the same way any other playhead
             // move does.
             if self.preview_state.loop_enabled && self.preview_state.preview_playing {
-                self.projects[self.active_project]
+                self.active_project_mut_untracked()
                     .timeline_mut()
                     .playhead_secs = 0.0;
                 return;
@@ -420,7 +420,7 @@ impl App {
                 // See pump_preview_frame's own comment -- a scrub-driven playhead move is not
                 // an edit worth resetting the autosave debounce timer over, and a drag calls
                 // this every frame too.
-                self.projects[self.active_project]
+                self.active_project_mut_untracked()
                     .timeline_mut()
                     .playhead_secs = position_secs;
             }
@@ -448,12 +448,12 @@ impl App {
                 if let Err(e) = preview.seek_composited(&offsets, &rates) {
                     warn!(error = %e, "failed to seek composited preview");
                 }
-                self.projects[self.active_project]
+                self.active_project_mut_untracked()
                     .timeline_mut()
                     .playhead_secs = position_secs;
             }
             _ => {
-                self.projects[self.active_project]
+                self.active_project_mut_untracked()
                     .timeline_mut()
                     .playhead_secs = position_secs;
             }
@@ -523,7 +523,7 @@ impl App {
         // Home intentionally supports a fresh session with no project. The frame loop still
         // pumps background queues in that state, so preview work must not resolve an active
         // timeline until a project exists.
-        if self.projects.is_empty() {
+        if self.open_projects.is_empty() {
             return;
         }
         // Read before borrowing `self.preview_state.preview` below -- this is a method call, which needs an
@@ -710,7 +710,7 @@ impl App {
         // gzip+msgpack serialize (pump_autosave) firing on the UI thread roughly every 30s of
         // playback, visible as a periodic multi-hundred-ms stutter. Mirroring the pipeline's own
         // playhead position is not a user edit worth autosave-protecting at every frame anyway.
-        self.projects[self.active_project]
+        self.active_project_mut_untracked()
             .timeline_mut()
             .playhead_secs = new_playhead;
         self.refresh_preview_text_highlights(new_playhead);

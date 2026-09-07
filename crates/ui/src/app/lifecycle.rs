@@ -92,8 +92,7 @@ impl App {
             properties_tab: PropertiesTab::default(),
             media_view_mode: MediaViewMode::default(),
             locale: prefs.locale,
-            projects,
-            active_project: 0,
+            open_projects: OpenProjects::new(projects),
             selected_asset_id: None,
             export_jobs: export::load_queue(),
             prefs,
@@ -284,7 +283,7 @@ impl App {
         if !app.prefs.sound_library_path.is_empty() {
             app.rescan_sound_library();
         }
-        if !app.projects.is_empty() {
+        if !app.open_projects.is_empty() {
             app.load_panel_layout_for_active_project();
         }
         app.spawn_update_check();

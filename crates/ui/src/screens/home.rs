@@ -93,7 +93,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             .spacing(egui::vec2(16.0, 16.0))
             .min_col_width(card_width)
             .show(ui, |ui| {
-                let count = app.projects.len();
                 let mut open_index: Option<usize> = None;
                 let mut remove_index: Option<usize> = None;
                 let mut rename_index: Option<usize> = None;
@@ -105,8 +104,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 // `&mut self` while the card closures below only ever borrow `app` immutably.
                 let mut thumbnail_requests: Vec<(u64, u64)> = Vec::new();
                 let mut thumbnail_touches: Vec<(u64, u64, i64)> = Vec::new();
-                for i in 0..count {
-                    let project = &app.projects[i];
+                for (i, project) in app.open_projects.iter().enumerate() {
                     let project_id = project.id;
                     let name = project.name.clone();
                     let summary = project.summary.clone();
@@ -202,7 +200,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         open_index = Some(i);
                     }
 
-                    let file_path = app.projects[i].file_path.clone();
+                    let file_path = project.file_path.clone();
                     card_resp.context_menu(|ui| {
                         if ui
                             .button(crate::i18n::Text::HomeCtxRename.tr(app.locale))
@@ -239,9 +237,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 }
 
                 if let Some(i) = rename_index {
-                    let current_name = app.projects[i].name.clone();
-                    let current_summary = app.projects[i].summary.clone();
-                    app.renaming_project = Some((i, current_name, current_summary));
+                    if let Some(project) = app.open_projects.get(i) {
+                        app.renaming_project =
+                            Some((i, project.name.clone(), project.summary.clone()));
+                    }
                 } else if let Some(i) = remove_index {
                     app.remove_project(i);
                 } else if let Some(i) = open_index {

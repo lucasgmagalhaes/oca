@@ -23,7 +23,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Instant;
 
-use avcore::{AudioRole, ExportJob, MediaAsset, Project};
+use avcore::{AudioRole, ExportJob, MediaAsset};
 use eframe::egui;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
@@ -54,6 +54,7 @@ mod modals;
 mod motion_template;
 mod motion_tracking;
 mod multicam;
+mod open_projects;
 mod operation_state;
 mod preview;
 mod preview_fullscreen;
@@ -88,6 +89,7 @@ mod worker_events;
 mod youtube_download;
 
 pub(crate) use color::{format_color_hex, TextColorEdit, TextColorTarget};
+pub(crate) use open_projects::OpenProjects;
 pub(crate) use operation_state::{
     AutoReframeState, DynamicReframeState, ImportState, MatteGenerationState,
     MotionTrackRegionState, MotionTrackingState, NestedSequenceRenderState,
@@ -261,8 +263,8 @@ pub struct App {
     /// [`MediaViewMode`].
     pub media_view_mode: MediaViewMode,
     pub locale: Locale,
-    pub projects: Vec<Project>,
-    pub active_project: usize,
+    /// Ordered projects open in this UI session plus their optional active selection.
+    pub(crate) open_projects: OpenProjects,
     pub selected_asset_id: Option<u64>,
     pub export_jobs: Vec<ExportJob>,
     pub prefs: PrefsState,

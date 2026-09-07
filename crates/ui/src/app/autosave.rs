@@ -33,7 +33,7 @@ impl App {
     /// hasn't changed. Serializes on the calling thread (fast, in-memory) then writes on a
     /// background thread so the UI never blocks on file I/O.
     pub(super) fn pump_autosave(&mut self) {
-        if !self.project_dirty || self.projects.is_empty() {
+        if !self.project_dirty || self.open_projects.is_empty() {
             return;
         }
         let Some(file_path) = self.active_project().file_path.clone() else {

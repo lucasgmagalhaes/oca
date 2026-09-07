@@ -129,7 +129,7 @@ impl App {
     /// "Import..." step. A no-op if there's no active project open, or if this row was already
     /// queued (guards a double-click, since [`App::spawn_import`] has no dedup of its own).
     pub fn add_watched_file_to_project(&mut self, source_path: std::path::PathBuf) {
-        if self.projects.is_empty() {
+        if self.open_projects.is_empty() {
             self.push_toast(
                 crate::i18n::Text::WatchFolderNeedsOpenProject
                     .tr(self.locale)

@@ -41,7 +41,7 @@ fn pump_import_queue_adds_the_asset_to_its_target_project_with_a_fresh_id() {
 
     app.pump_import_queue();
 
-    let project = app.projects.iter().find(|p| p.id == 1).unwrap();
+    let project = app.open_projects.iter().find(|p| p.id == 1).unwrap();
     assert_eq!(project.media_library.len(), 2);
     let imported = project
         .media_library
@@ -58,7 +58,7 @@ fn pump_import_queue_targets_the_project_by_id_not_the_active_index() {
         vec![test_project(1, Vec::new()), test_project(2, Vec::new())],
         Vec::new(),
     );
-    app.active_project = 1; // Simulates the user switching projects mid-import.
+    app.open_projects.activate(1); // Simulates the user switching projects mid-import.
     app.import_state
         .import_tx
         .send(ImportEvent::AssetReady {
@@ -71,7 +71,7 @@ fn pump_import_queue_targets_the_project_by_id_not_the_active_index() {
     app.pump_import_queue();
 
     assert_eq!(
-        app.projects
+        app.open_projects
             .iter()
             .find(|p| p.id == 1)
             .unwrap()

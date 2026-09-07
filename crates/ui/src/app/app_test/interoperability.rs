@@ -82,7 +82,7 @@ fn import_collab_bundle_toasts_on_failure_instead_of_panicking() {
 
     app.import_collab_bundle(missing_zip, dest_project_path);
 
-    assert!(app.projects.is_empty());
+    assert!(app.open_projects.is_empty());
     assert_eq!(app.toasts.len(), 1);
 }
 

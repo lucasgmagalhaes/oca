@@ -30,7 +30,7 @@ fn open_project_switches_active_project_and_selects_its_first_asset() {
 
     app.open_project(1);
 
-    assert_eq!(app.active_project, 1);
+    assert_eq!(app.open_projects.active_index(), Some(1));
     assert_eq!(app.selected_asset_id, Some(42));
     assert_eq!(app.screen, Screen::Editor);
 }
@@ -50,8 +50,8 @@ fn add_and_open_project_appends_and_opens_it() {
 
     app.add_and_open_project(test_project(99, vec![test_asset(7)]));
 
-    assert_eq!(app.projects.len(), 2);
-    assert_eq!(app.active_project, 1);
+    assert_eq!(app.open_projects.len(), 2);
+    assert_eq!(app.open_projects.active_index(), Some(1));
     assert_eq!(app.active_project().id, 99);
     assert_eq!(app.selected_asset_id, Some(7));
 }

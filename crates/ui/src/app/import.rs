@@ -177,8 +177,7 @@ impl App {
                 } => {
                     self.import_state.pending_imports =
                         self.import_state.pending_imports.saturating_sub(1);
-                    let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id)
-                    else {
+                    let Some(project) = self.open_projects.find_mut_by_id(project_id) else {
                         continue;
                     };
                     let next_id = project
@@ -230,8 +229,7 @@ impl App {
                     else {
                         continue;
                     };
-                    let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id)
-                    else {
+                    let Some(project) = self.open_projects.find_mut_by_id(project_id) else {
                         continue;
                     };
                     if let Some(asset) = project.media_library.iter_mut().find(|a| a.id == asset_id)

@@ -77,14 +77,20 @@ impl App {
         if confirmed {
             if let Some((_, new_name, new_summary)) = self.renaming_project.take() {
                 let name = new_name.trim().to_string();
-                if !name.is_empty() && idx < self.projects.len() {
-                    self.projects[idx].name = name;
-                    self.projects[idx].summary = new_summary.trim().to_string();
-                    if let Some(path) = self.projects[idx].file_path.clone() {
-                        if let Err(e) = avcore::save_project_to_file(&self.projects[idx], &path) {
-                            self.push_toast(format!("Failed to save project settings: {e}"));
-                        }
-                    }
+                let save_result = if !name.is_empty() {
+                    self.open_projects.get_mut(idx).and_then(|project| {
+                        project.name = name;
+                        project.summary = new_summary.trim().to_string();
+                        project
+                            .file_path
+                            .clone()
+                            .map(|path| avcore::save_project_to_file(project, &path))
+                    })
+                } else {
+                    None
+                };
+                if let Some(Err(error)) = save_result {
+                    self.push_toast(format!("Failed to save project settings: {error}"));
                 }
             }
         }
