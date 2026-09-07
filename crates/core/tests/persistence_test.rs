@@ -572,7 +572,7 @@ fn from_ocproj_bytes_rejects_a_decompression_bomb() {
     bytes.push(1); // FORMAT_VERSION
     let mut encoder = flate2::write::GzEncoder::new(&mut bytes, flate2::Compression::fast());
     let chunk = vec![0u8; 1024 * 1024];
-    for _ in 0..(257) {
+    for _ in 0..257 {
         encoder.write_all(&chunk).unwrap();
     }
     encoder.finish().unwrap();

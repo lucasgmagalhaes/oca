@@ -15,6 +15,8 @@
 
 //! Shared fixtures for application tests.
 
+use avcore::ExportJobStatus;
+
 use super::*;
 
 pub(super) fn test_project(id: u64, assets: Vec<MediaAsset>) -> Project {

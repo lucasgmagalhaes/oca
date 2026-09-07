@@ -34,6 +34,9 @@ use super::App;
 /// Defaults to accepted — matches this app's other batch-review UIs (e.g. the export queue's
 /// conflict list), where the common case is "yes to all, uncheck the exceptions."
 pub struct SilenceReviewGap {
+    /// Identifies the source clip for a future per-gap review action; retained in the staged
+    /// model even though the current modal only applies accepted gaps in a batch.
+    #[allow(dead_code)]
     pub clip_id: u64,
     pub gap: SilenceGap,
     pub accepted: bool,

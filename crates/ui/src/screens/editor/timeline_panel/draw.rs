@@ -163,12 +163,12 @@ pub(super) fn draw_filmstrip(
 /// to one asset is cheap even done once per cache-miss tile. Generic over the cached value type
 /// (production always instantiates it at `egui::TextureHandle`) purely so this stays a plain
 /// unit-testable function — constructing a real `TextureHandle` needs a live `egui::Context`.
-pub(super) fn nearest_cached_thumbnail<'a, V>(
-    thumbnail_textures: &'a HashMap<ThumbnailKey, V>,
+pub(super) fn nearest_cached_thumbnail<V>(
+    thumbnail_textures: &HashMap<ThumbnailKey, V>,
     project_id: u64,
     asset_id: u64,
     frame_index: i64,
-) -> Option<&'a V> {
+) -> Option<&V> {
     thumbnail_textures
         .iter()
         .filter(|((p, a, _), _)| *p == project_id && *a == asset_id)

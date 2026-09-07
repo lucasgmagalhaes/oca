@@ -23,7 +23,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Instant;
 
-use avcore::{AudioRole, ExportJob, ExportJobStatus, MediaAsset, Project};
+use avcore::{AudioRole, ExportJob, MediaAsset, Project};
 use eframe::egui;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
@@ -776,7 +776,7 @@ fn apply_bundled_model_defaults(prefs: &mut PrefsState) {
 /// Where [`App::spawn_generate_tts`] writes its synthesized WAV files before importing them —
 /// same platform-config-dir shape as [`models_dir`], a sibling `tts_output/` folder rather than
 /// a per-project location, since the text that produced a given clip has no other home either.
-pub(self) fn tts_output_dir() -> PathBuf {
+fn tts_output_dir() -> PathBuf {
     prefs_path()
         .parent()
         .map(|d| d.join("tts_output"))
@@ -786,7 +786,7 @@ pub(self) fn tts_output_dir() -> PathBuf {
 /// Where [`App::spawn_youtube_download`] tells `yt-dlp` to save downloaded files before
 /// importing them — same platform-config-dir shape as [`tts_output_dir`], a sibling
 /// `youtube_downloads/` folder.
-pub(self) fn youtube_downloads_dir() -> PathBuf {
+fn youtube_downloads_dir() -> PathBuf {
     prefs_path()
         .parent()
         .map(|d| d.join("youtube_downloads"))

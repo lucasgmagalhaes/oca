@@ -464,7 +464,7 @@ mod tests {
         let mut rgba = vec![200u8; (width * height * 4) as usize];
         apply_vignette_to_rgba(&mut rgba, width, height, 1.0);
         // The four center pixels of a 4x4 grid are the closest to dead-center.
-        let center_index = ((1 * width + 1) * 4) as usize;
+        let center_index = ((width + 1) * 4) as usize;
         assert!(
             rgba[center_index] > 150,
             "near-center pixel barely darkened"

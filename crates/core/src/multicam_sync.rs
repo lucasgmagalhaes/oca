@@ -133,7 +133,7 @@ mod tests {
             // Sign alternates by position *within* the burst, not absolute index -- keyed on
             // absolute index, an odd-length shift would flip the whole waveform's sign and
             // break correlation between an unshifted and shifted copy of the "same" burst.
-            signal[i] = if (i - burst_start) % 2 == 0 {
+            signal[i] = if (i - burst_start).is_multiple_of(2) {
                 1.0
             } else {
                 -1.0

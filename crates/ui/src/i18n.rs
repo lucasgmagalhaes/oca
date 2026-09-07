@@ -474,7 +474,6 @@ text_catalog! {
     WatchFolderOutputHint: pt_br = "Cópias limpas são salvas em \"processed\" dentro da pasta monitorada.", en = "Cleaned-up copies are saved to \"processed\" inside the watched folder.";
     WatchFolderEmpty: pt_br = "Nenhum arquivo detectado ainda.", en = "No files detected yet.";
     WatchFolderStatusStabilizing: pt_br = "Aguardando gravação terminar", en = "Waiting for the recording to finish";
-    WatchFolderStatusMeasuringBefore: pt_br = "Analisando original", en = "Analyzing original";
     WatchFolderStatusProcessing: pt_br = "Processando", en = "Processing";
     WatchFolderStatusDone: pt_br = "Concluído", en = "Done";
     WatchFolderStatusError: pt_br = "Erro", en = "Error";
@@ -578,7 +577,6 @@ text_catalog! {
     SnapToggle: pt_br = "Snap", en = "Snap";
     SnapToggleHint: pt_br = "Ativa/desativa o encaixe magnético na timeline (Alt inverte temporariamente)", en = "Toggles magnetic snapping in the timeline (Alt temporarily inverts it)";
     PreviewAudioLevelMeter: pt_br = "Nível de áudio (pico / RMS)", en = "Audio level (peak / RMS)";
-    PropStereoMeter: pt_br = "Medidor estéreo (L / R)", en = "Stereo meter (L / R)";
     TimelineIndexToggle: pt_br = "Marcadores", en = "Markers";
     TimelineIndexTitle: pt_br = "Índice da timeline", en = "Timeline Index";
     TimelineIndexSearchHint: pt_br = "Buscar marcadores...", en = "Search markers...";

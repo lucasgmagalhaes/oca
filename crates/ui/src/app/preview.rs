@@ -280,11 +280,12 @@ impl App {
                     // A frozen background clip's pipeline stays Paused regardless of rate (same
                     // as the single-clip path) — its own playhead advance is wall-clock-driven
                     // instead, uniformly across whatever overlays are compositing on top of it.
-                    self.preview_state.preview_frozen_since = clip
-                        .frozen
-                        .then(|| self.preview_state.preview_playing)
-                        .unwrap_or(false)
-                        .then_some((std::time::Instant::now(), playhead));
+                    self.preview_state.preview_frozen_since = if clip.frozen {
+                        self.preview_state.preview_playing
+                    } else {
+                        false
+                    }
+                    .then_some((std::time::Instant::now(), playhead));
                 }
                 if self.preview_state.preview_playing && !clip.frozen {
                     if let Err(e) = preview.play() {

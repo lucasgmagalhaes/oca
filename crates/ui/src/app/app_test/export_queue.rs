@@ -17,6 +17,8 @@
 
 use std::time::Duration;
 
+use avcore::ExportJobStatus;
+
 use super::support::*;
 use super::*;
 
