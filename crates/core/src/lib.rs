@@ -146,7 +146,7 @@ pub use render::{
     RenderOutcome, TextSegment,
 };
 pub use scene_detection::{detect_scene_cuts, SceneCut, DEFAULT_SCENE_CUT_THRESHOLD};
-pub use scopes::{luma_waveform_rgba, vectorscope_rgba};
+pub use scopes::{luma_waveform_rgba, render_scopes_rgba, vectorscope_rgba};
 pub use shape_render::{build_shape_filter_desc, point_in_polygon, ShapeRenderInput};
 pub use silence_detection::{
     clip_silence_gaps, detect_silence_gaps, SilenceGap, DEFAULT_MIN_SILENCE_SECS,

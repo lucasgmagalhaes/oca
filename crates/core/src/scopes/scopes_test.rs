@@ -98,3 +98,47 @@ fn vectorscope_is_empty_for_a_zero_sized_input_or_output() {
     let src = solid_rgba(4, 4, 128, 128, 128);
     assert!(vectorscope_rgba(&src, 4, 4, 0).is_empty());
 }
+
+/// A non-uniform frame (not just a solid color) so both scopes' output actually varies across
+/// cells — a solid-color input's own trivial output could match by coincidence even with a real
+/// bug in the combined pass's shared iteration.
+fn varied_rgba(width: u32, height: u32) -> Vec<u8> {
+    let mut buf = Vec::with_capacity((width * height * 4) as usize);
+    for y in 0..height {
+        for x in 0..width {
+            let r = ((x * 37 + y * 19) % 256) as u8;
+            let g = ((x * 11 + y * 53) % 256) as u8;
+            let b = ((x * 71 + y * 5) % 256) as u8;
+            buf.extend_from_slice(&[r, g, b, 255]);
+        }
+    }
+    buf
+}
+
+#[test]
+fn render_scopes_matches_calling_both_standalone_functions() {
+    let src = varied_rgba(37, 23); // deliberately not a power of two or square
+    let (combined_waveform, combined_vectorscope) = render_scopes_rgba(&src, 37, 23, 17, 11, 13);
+    let separate_waveform = luma_waveform_rgba(&src, 37, 23, 17, 11);
+    let separate_vectorscope = vectorscope_rgba(&src, 37, 23, 13);
+    assert_eq!(combined_waveform, separate_waveform);
+    assert_eq!(combined_vectorscope, separate_vectorscope);
+}
+
+#[test]
+fn render_scopes_is_empty_for_a_zero_sized_source() {
+    let (waveform, vectorscope) = render_scopes_rgba(&[], 0, 0, 4, 4, 5);
+    assert!(waveform.is_empty());
+    assert!(vectorscope.is_empty());
+}
+
+#[test]
+fn render_scopes_skips_only_the_zero_sized_output_side() {
+    let src = varied_rgba(4, 4);
+    let (waveform, vectorscope) = render_scopes_rgba(&src, 4, 4, 0, 4, 5);
+    assert!(waveform.is_empty(), "waveform output was zero-sized");
+    assert!(
+        !vectorscope.is_empty(),
+        "vectorscope output was requested and should still render"
+    );
+}

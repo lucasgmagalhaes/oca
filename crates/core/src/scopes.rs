@@ -129,6 +129,91 @@ pub fn vectorscope_rgba(src_rgba: &[u8], src_w: u32, src_h: u32, out_size: u32) 
     rgba
 }
 
+/// Renders both [`luma_waveform_rgba`] and [`vectorscope_rgba`] from the same `src_rgba` frame in
+/// a single pass over the source pixels, instead of the two independent full-frame passes calling
+/// them separately would do. `App::pump_preview_frame` always wants both together whenever
+/// `scopes_enabled` (see `perf/REPORT.md`'s scopes section for the measured savings) — every other
+/// aspect (normalization, orientation, output format) is identical to calling the two functions
+/// on their own; this is purely a shared-iteration optimization, not a behavior change. Returns
+/// `(waveform_rgba, vectorscope_rgba)`, each shaped exactly as its standalone function's own doc
+/// comment describes.
+pub fn render_scopes_rgba(
+    src_rgba: &[u8],
+    src_w: u32,
+    src_h: u32,
+    waveform_out_w: u32,
+    waveform_out_h: u32,
+    vectorscope_out_size: u32,
+) -> (Vec<u8>, Vec<u8>) {
+    if src_w == 0 || src_h == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    let waveform_ready = waveform_out_w != 0 && waveform_out_h != 0;
+    let vectorscope_ready = vectorscope_out_size != 0;
+
+    let mut waveform_counts = vec![0u32; (waveform_out_w * waveform_out_h) as usize];
+    let mut vectorscope_counts = vec![0u32; (vectorscope_out_size * vectorscope_out_size) as usize];
+
+    for y in 0..src_h {
+        for x in 0..src_w {
+            let i = ((y * src_w + x) * 4) as usize;
+            let (r, g, b) = (src_rgba[i], src_rgba[i + 1], src_rgba[i + 2]);
+            if waveform_ready {
+                let l = luma(r, g, b);
+                let col = (x * waveform_out_w / src_w).min(waveform_out_w - 1);
+                let row =
+                    (waveform_out_h - 1).saturating_sub((l as u32 * (waveform_out_h - 1)) / 255);
+                waveform_counts[(row * waveform_out_w + col) as usize] += 1;
+            }
+            if vectorscope_ready {
+                let (cb, cr) = chroma_cb_cr(r, g, b);
+                let gx = ((cb as u32) * (vectorscope_out_size - 1).max(1)) / 255;
+                let gy = (vectorscope_out_size - 1)
+                    .saturating_sub(((cr as u32) * (vectorscope_out_size - 1).max(1)) / 255);
+                let gx = gx.min(vectorscope_out_size - 1);
+                let gy = gy.min(vectorscope_out_size - 1);
+                vectorscope_counts[(gy * vectorscope_out_size + gx) as usize] += 1;
+            }
+        }
+    }
+
+    let waveform_rgba = if waveform_ready {
+        const GAIN: f64 = 6.0;
+        let column_total = src_h as f64;
+        let mut rgba = vec![0u8; (waveform_out_w * waveform_out_h * 4) as usize];
+        for (i, &count) in waveform_counts.iter().enumerate() {
+            let intensity = ((count as f64 / column_total) * GAIN * 255.0).clamp(0.0, 255.0) as u8;
+            let px = i * 4;
+            rgba[px] = intensity;
+            rgba[px + 1] = intensity;
+            rgba[px + 2] = intensity;
+            rgba[px + 3] = 255;
+        }
+        rgba
+    } else {
+        Vec::new()
+    };
+
+    let vectorscope_rgba = if vectorscope_ready {
+        const GAIN: f64 = 40.0;
+        let total_pixels = (src_w as u64 * src_h as u64) as f64;
+        let mut rgba = vec![0u8; (vectorscope_out_size * vectorscope_out_size * 4) as usize];
+        for (i, &count) in vectorscope_counts.iter().enumerate() {
+            let intensity = ((count as f64 / total_pixels) * GAIN * 255.0).clamp(0.0, 255.0) as u8;
+            let px = i * 4;
+            rgba[px] = intensity;
+            rgba[px + 1] = intensity;
+            rgba[px + 2] = intensity;
+            rgba[px + 3] = 255;
+        }
+        rgba
+    } else {
+        Vec::new()
+    };
+
+    (waveform_rgba, vectorscope_rgba)
+}
+
 #[cfg(test)]
 #[path = "scopes/scopes_test.rs"]
 mod tests;
