@@ -748,6 +748,28 @@ fn thumbnail_frame_keys_follow_source_fps_and_have_a_safe_fallback() {
 }
 
 #[test]
+fn thumbnail_fps_uses_a_finite_positive_source_fps_as_is() {
+    assert_eq!(thumbnail_fps(Some(24.0)), 24.0);
+}
+
+#[test]
+fn thumbnail_fps_falls_back_to_30_for_a_missing_source_fps() {
+    assert_eq!(thumbnail_fps(None), 30.0);
+}
+
+#[test]
+fn thumbnail_fps_falls_back_to_30_for_a_zero_or_negative_source_fps() {
+    assert_eq!(thumbnail_fps(Some(0.0)), 30.0);
+    assert_eq!(thumbnail_fps(Some(-5.0)), 30.0);
+}
+
+#[test]
+fn thumbnail_fps_falls_back_to_30_for_a_non_finite_source_fps() {
+    assert_eq!(thumbnail_fps(Some(f32::NAN)), 30.0);
+    assert_eq!(thumbnail_fps(Some(f32::INFINITY)), 30.0);
+}
+
+#[test]
 fn thumbnail_requests_cap_concurrent_extractions() {
     let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 

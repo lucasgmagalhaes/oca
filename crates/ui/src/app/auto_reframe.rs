@@ -202,3 +202,7 @@ pub(super) fn downscale_frame_rgba(
     }
     (new_width, new_height, out)
 }
+
+#[cfg(test)]
+#[path = "auto_reframe/auto_reframe_test.rs"]
+mod tests;

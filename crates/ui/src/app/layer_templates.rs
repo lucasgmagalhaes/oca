@@ -493,3 +493,7 @@ fn media_kind_matches(kind: avcore::MediaKind, track_kind: avcore::timeline::Tra
             | (avcore::MediaKind::Audio, avcore::timeline::TrackKind::Audio)
     )
 }
+
+#[cfg(test)]
+#[path = "layer_templates/layer_templates_test.rs"]
+mod tests;

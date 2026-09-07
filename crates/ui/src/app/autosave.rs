@@ -134,3 +134,7 @@ fn autosave_is_newer(autosave_path: &Path, project_path: &Path) -> bool {
     };
     as_time > proj_time
 }
+
+#[cfg(test)]
+#[path = "autosave/autosave_test.rs"]
+mod tests;
