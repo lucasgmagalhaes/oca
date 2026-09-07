@@ -101,6 +101,24 @@ fn bench_deflicker(c: &mut Criterion) {
     group.finish();
 }
 
+/// Isolates `Lut3D::sample`'s own per-call cost from `apply_lut_to_rgba`'s surrounding loop and
+/// byte<->float conversions — confirms (or refutes) the hypothesis in REPORT.md's "The bigger
+/// finding" that trilinear interpolation, not the loop shape, dominates the ~75-90ms full-frame
+/// cost (a Full HD frame calls this ~2.07 million times, once per pixel).
+fn bench_lut_sample(c: &mut Criterion) {
+    let lut = Lut3D::parse(&identity_cube(17)).unwrap();
+    c.bench_function("Lut3D::sample (single call)", |b| {
+        // Vary the input slightly across iterations (not a fixed point) so the optimizer can't
+        // hoist the whole computation out of the loop as a constant.
+        let mut i: u32 = 0;
+        b.iter(|| {
+            i = i.wrapping_add(1);
+            let t = (i % 1000) as f32 / 1000.0;
+            black_box(lut.sample(black_box(t), black_box(1.0 - t), black_box(0.5)))
+        })
+    });
+}
+
 fn bench_vignette(c: &mut Criterion) {
     let base = frame();
     c.bench_function("apply_vignette_to_rgba (1920x1080, unchanged)", |b| {
@@ -122,6 +140,6 @@ criterion_group! {
     config = Criterion::default()
         .measurement_time(Duration::from_secs(15))
         .sample_size(200);
-    targets = bench_lut, bench_glitch, bench_deflicker, bench_vignette
+    targets = bench_lut, bench_lut_sample, bench_glitch, bench_deflicker, bench_vignette
 }
 criterion_main!(benches);

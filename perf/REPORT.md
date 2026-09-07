@@ -3,6 +3,14 @@
 See `PLAN.md` for methodology. This is the results document: what was found, what was fixed, what
 was measured, and what's recommended but not attempted this pass.
 
+**2026-09-07 follow-up pass**: added an isolated `Lut3D::sample` benchmark (quantifies "the bigger
+finding" below with a real number instead of a guess) and corrected two items this report
+originally listed under "Recommended, not attempted" — timeline viewport culling turned out to
+already be implemented (landed via an unrelated concurrent change since this report's first
+version), and `preview.rs`'s per-track cloning turned out to not be a hot path at all once its
+actual call frequency was checked. Both corrections, and the reasoning behind them, are in that
+section below rather than silently edited away.
+
 ## Summary
 
 - Ran `cargo clippy --workspace --all-targets -- -W clippy::perf` across the whole workspace.
@@ -71,14 +79,25 @@ user with a LUT applied to a clip and live preview at Full HD is **already well 
 budget on CPU alone**, before compositing, decoding, or anything else `pump_preview_frame` does
 that same frame — matching `TIMELINE_PERFORMANCE.md`'s existing "known gap" style of finding
 (confirmed-and-quantified, not hypothetical). The ~9-13% improvement from this pass's fix is real
-but doesn't change that headline conclusion. **Recommendation** (not attempted this pass — a
-genuinely different, larger scope than a lint-driven fix): the LUT's own trilinear interpolation
-(`Lut3D::sample`, called once per pixel — over 2 million times for one Full HD frame) is the
-likely dominant cost; a real follow-up should benchmark `Lut3D::sample` in isolation and consider
-either a coarser preview-only LUT size (a 3D LUT applied to a downscaled preview frame is a
-common real-NLE compromise — Resolve/Premiere both scale live-preview processing to viewport
-resolution, not source resolution) or downsampling the *preview frame itself* before applying CPU
-effects, matching what a hardware-accelerated preview pipeline would do anyway.
+but doesn't change that headline conclusion.
+
+**Follow-up, same session: `Lut3D::sample` isolated and confirmed as the dominant cost, not
+assumed.** `perf/benches/preview_effects_bench.rs`'s `bench_lut_sample` calls `Lut3D::sample`
+alone (varying input per call so the optimizer can't hoist it into a constant): **38.1ns per
+call**, measured directly. A Full HD frame is 2,073,600 pixels → `2,073,600 * 38.1ns ≈ 79.0ms` —
+matching the measured whole-function cost (76-84ms across runs) almost exactly. This confirms,
+with a real number rather than a guess, that `Lut3D::sample`'s trilinear interpolation (8 array
+reads + 7 lerps per call) *is* essentially the entire cost of `apply_lut_to_rgba` — the
+surrounding loop, byte↔float conversions, and clamping are negligible by comparison. Two real
+follow-up directions, unattempted this pass since both are product/design decisions, not
+mechanical fixes:
+- A coarser preview-only LUT size — this LUT was parsed at 17³ (4,913 entries), a common real-world
+  size; each `sample()` call touches 8 of those entries regardless of size, so the entry count
+  itself isn't the lever — the *pixel count* is. This points toward the second option instead:
+- Apply the LUT (and the other three effects) to a **downscaled preview frame**, not the full
+  source resolution — the common real-NLE compromise (Resolve/Premiere both scale live-preview
+  processing to viewport resolution, not source resolution). Halving each dimension alone would
+  cut this cost to roughly a quarter (~20ms), likely enough to clear a 30fps budget on its own.
 
 ## Fixes applied to `crates/core`
 
@@ -132,33 +151,30 @@ is strictly more evidence than a typical sandboxed `core` change gets.
 
 ## Recommended, not attempted this pass (real, larger, needs a real dev machine)
 
-These are already-documented findings from this repository's own prior analysis
-(`TIMELINE_PERFORMANCE.md`, `spec/matrix/performance.md`) — repeated here only to connect them to
-this pass's own methodology, not re-discovered from scratch:
+Two items previously listed here turned out, on closer inspection during a later pass, to already
+be handled or lower priority than first stated — corrected below rather than left stale (same
+"confirm before assuming" standard the rest of this document holds itself to):
 
-1. **Timeline panel viewport culling** (`TIMELINE_PERFORMANCE.md`'s own "known gap," unchanged
-   status). `timeline_panel/mod.rs` draws every clip on every track every frame regardless of
-   scroll position — confirmed still true by inspection this pass (the per-track/per-clip loop has
-   no visible-range filter before issuing paint calls). This is the single largest *structural*
-   performance risk in the codebase for a project with many clips, but fixing it is a real
-   multi-function change to the timeline's rendering loop, not a mechanical lint-driven fix, and
-   needs a real large project + a real display to confirm the fix doesn't introduce scroll-position
-   bugs (off-by-one clipping at the visible boundary, culling a partially-visible clip entirely,
-   etc.) — exactly the kind of change this sandbox's own "no way to visually verify a GUI change"
-   limitation (documented throughout this repository's session history) makes too risky to attempt
-   blind.
-2. **`preview.rs`'s per-track cloning** (`current_preview_overlay_clips`/
-   `current_preview_audio_clips` clone a full `ClipInstance` + `MediaAsset` per matching track,
-   confirmed still present by inspection this pass) — cost scales with overlay/audio track count,
-   paid every frame during playback. A real fix (cloning only the specific fields actually read,
-   the same discipline `current_preview_clip_lut_and_vignette` already established for the
-   background clip) needs auditing every call site's actual field usage first — a correctness-
-   sensitive change better done with the ability to run the real preview pipeline against it, which
-   this sandbox doesn't have.
-3. **`Lut3D::sample`'s absolute per-pixel cost** — see "The bigger finding" above. Worth its own
-   dedicated benchmark (already easy to add to `perf/`, since `Lut3D` is already duplicated there)
-   and a real design decision (preview-resolution LUT vs. downsampled preview frame), not a
-   same-pass mechanical fix.
+1. ~~Timeline panel viewport culling~~ — **already implemented**, confirmed by reading the current
+   `timeline_panel/mod.rs`/`shape_overlays.rs`/`text_overlays.rs` source: a one-sided horizontal
+   cull skips a clip's paint/interaction/thumbnail cost once it's scrolled past the visible right
+   edge, in all three per-track loops (video, text, shape), landed via an unrelated concurrent
+   refactor sometime between this report's first version and this correction. See
+   `.claude/engineering/TIMELINE_PERFORMANCE.md`'s own updated section for the exact mechanism.
+   **Still open**: no *vertical* (track-row) culling for a project with many tracks — not
+   confirmed as a real cost, just unconfirmed either way (see that same doc).
+2. ~~`preview.rs`'s per-track cloning~~ — **confirmed not a hot path**, not merely "not confirmed
+   as a problem" as this report first said. `current_preview_overlay_clips`/
+   `current_preview_audio_clips` (`preview_selection.rs`) are only reached from `App::
+   ensure_preview_loaded`'s branch behind a cheap id-only fast path that returns early on the
+   common no-op case (nothing at the playhead changed this frame — true for every frame of
+   uninterrupted playback). The expensive clone only runs when the playhead actually crosses into
+   a different clip set, inherently rare relative to frame rate. Still worth the same
+   "clone only the field actually read" treatment eventually, just not urgent — downgraded from a
+   recommendation to a known low-priority cleanup.
+3. **`Lut3D::sample`'s absolute per-pixel cost** — see "The bigger finding" above. Now measured in
+   isolation, see the updated numbers there; the remaining open question (preview-resolution LUT
+   vs. downsampled preview frame) is still a real design decision, not a same-pass mechanical fix.
 
 ## How to reproduce
 
