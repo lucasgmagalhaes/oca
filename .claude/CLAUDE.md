@@ -135,9 +135,11 @@ A feature is not done until:
 - UI states are handled;
 - keyboard/mouse interaction is coherent;
 - undo/redo is considered where applicable (remember: full-sequence snapshot, not per-field);
-- performance impact is assessed, especially anything touching `timeline_panel/` (currently
-  **no viewport culling** — see `engineering/TIMELINE_PERFORMANCE.md` — so new per-clip work
-  added there runs on every clip, every frame, unconditionally);
+- performance impact is assessed, especially anything touching `timeline_panel/` — horizontal
+  viewport culling now skips off-screen clips (see `engineering/TIMELINE_PERFORMANCE.md`), but
+  new per-clip work added *before* that culling check, or work that runs for every clip
+  regardless of the cull (e.g. building data the culled clips still need), still pays full
+  per-clip cost every frame;
 - tests are added or updated where appropriate (`ui`'s unit tests live in
   `src/<module>/<module>_test.rs`, `core`'s integration tests in `crates/core/tests/`);
 - no obvious visual regressions remain.
