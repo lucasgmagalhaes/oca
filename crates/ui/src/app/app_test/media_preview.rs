@@ -111,6 +111,16 @@ fn toggle_asset_favorite_is_a_no_op_for_an_unknown_asset_id() {
 // always bails out before actually touching GStreamer here (see the `path.exists()` guard in
 // app.rs) — these exercise the no-pipeline branches of the preview API, not real playback.
 #[test]
+fn pump_preview_frame_ignores_a_fresh_session_without_a_project() {
+    let mut app = test_app(Vec::new(), Vec::new());
+    let ctx = egui::Context::default();
+
+    app.pump_preview_frame(&ctx);
+
+    assert!(app.projects.is_empty());
+}
+
+#[test]
 fn preview_available_is_false_without_a_live_pipeline() {
     let app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
 

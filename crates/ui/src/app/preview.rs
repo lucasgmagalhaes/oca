@@ -520,6 +520,12 @@ impl App {
     /// position, continuing playback across the cut. Called once per frame from
     /// [`eframe::App::ui`], before the screens draw.
     pub(super) fn pump_preview_frame(&mut self, ctx: &egui::Context) {
+        // Home intentionally supports a fresh session with no project. The frame loop still
+        // pumps background queues in that state, so preview work must not resolve an active
+        // timeline until a project exists.
+        if self.projects.is_empty() {
+            return;
+        }
         // Read before borrowing `self.preview_state.preview` below -- this is a method call, which needs an
         // unencumbered `&self` the borrow checker can't reconcile with an already-live
         // `&self.preview_state.preview` borrow, even though the two fields are disjoint.
