@@ -13,29 +13,16 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Waveform/vectorscope monitors for calibrated color grading — per `request.md`'s Fase 4 color
-//! tools and `spec/matrix/effects-and-color.md`'s "Known gaps" entry (LUTs/filters exist, no way
-//! to calibrate exposure/saturation precisely). Pure pixel-crunching against an already-decoded
-//! RGBA frame ([`crate::preview::VideoFrame::rgba`]) — no new avfilter/GStreamer element
-//! involved, so this works against exactly the same frame the preview already shows.
-//!
-//! **Simplification, not a hard wall**: a professional scope draws a green-phosphor trace with a
-//! calibrated graticule (IRE/percent gridlines, hue targets on the vectorscope). These render a
-//! grayscale intensity image instead — accurate for judging exposure spread (waveform) and
-//! saturation/hue spread (vectorscope) at a glance, just without the reference overlay. Good
-//! enough to spot a clipped highlight or an oversaturated color cast; not a substitute for a
-//! calibrated broadcast monitor.
+//! Mirrors `avcore::scopes` (`crates/core/src/scopes.rs`) — see this crate's own top-level doc
+//! comment for why this is a functional copy, not an import. `luma_waveform_rgba`/
+//! `vectorscope_rgba` are the two pre-existing standalone functions (each does its own full pass
+//! over the source frame); `render_scopes_rgba` is the new combined-pass function that computes
+//! both in one iteration over the source pixels.
 
-/// BT.709 luma weights (matches `ClipInstance`'s own color-adjustment stage's assumptions
-/// elsewhere in this crate) — `0..=255`.
 fn luma(r: u8, g: u8, b: u8) -> u8 {
     (0.2126 * r as f64 + 0.7152 * g as f64 + 0.0722 * b as f64).round() as u8
 }
 
-/// BT.601 Cb/Cr chroma components (`0..=255`, `128` = neutral gray) — the same matrix
-/// `ffmpeg`'s own `format=yuv420p` conversion uses, chosen for consistency with what export's
-/// avfilter pipeline actually sees, not because it's more "correct" than BT.709 for this
-/// purpose (a vectorscope only needs *a* consistent chroma space, not a specific one).
 fn chroma_cb_cr(r: u8, g: u8, b: u8) -> (u8, u8) {
     let (r, g, b) = (r as f64, g as f64, b as f64);
     let cb = (-0.168736 * r - 0.331264 * g + 0.5 * b + 128.0).clamp(0.0, 255.0);
@@ -43,18 +30,6 @@ fn chroma_cb_cr(r: u8, g: u8, b: u8) -> (u8, u8) {
     (cb.round() as u8, cr.round() as u8)
 }
 
-/// Renders a luma waveform monitor from `src_rgba` (`src_w x src_h`, packed RGBA) into an
-/// `out_w x out_h` grayscale-as-RGBA image: each source column contributes its pixels' luma
-/// values as brightness accumulated into that same output column, brightest row = the darkest
-/// luma (`0`) at the bottom, brightest luma (`255`) at the top — the standard waveform
-/// orientation (a flat white line means an evenly-exposed flat field; a spike pinned to the top
-/// or bottom means clipped highlights/shadows).
-///
-/// Each output cell's brightness is `count / src_h` (the maximum any single cell in a column
-/// could ever reach) times a fixed gain, clamped to `255` — normalized per-column by the
-/// column's own total sample count rather than a single global max, so one unusually
-/// concentrated column (e.g. a solid-color letterbox bar) doesn't wash out every other column's
-/// contrast.
 pub fn luma_waveform_rgba(
     src_rgba: &[u8],
     src_w: u32,
@@ -89,16 +64,6 @@ pub fn luma_waveform_rgba(
     rgba
 }
 
-/// Renders a Cb/Cr vectorscope from `src_rgba` (`src_w x src_h`, packed RGBA) into an
-/// `out_size x out_size` grayscale-as-RGBA scatter image: each pixel's chroma
-/// ([`chroma_cb_cr`]) plots as one point, `Cb` left-to-right, `Cr` bottom-to-top (increasing
-/// red-ness goes up, matching a conventional vectorscope's orientation), both centered on
-/// neutral gray at the image's center. A tight cluster near the center means low saturation; a
-/// trace pushed toward the edge in one direction means a color cast in that hue.
-///
-/// Same per-cell "count relative to this source's total pixel count" normalization
-/// [`luma_waveform_rgba`] uses, rather than a global max, for the same reason (one saturated
-/// blob shouldn't suppress the rest of the trace's visibility).
 pub fn vectorscope_rgba(src_rgba: &[u8], src_w: u32, src_h: u32, out_size: u32) -> Vec<u8> {
     if src_w == 0 || src_h == 0 || out_size == 0 {
         return Vec::new();
@@ -129,14 +94,6 @@ pub fn vectorscope_rgba(src_rgba: &[u8], src_w: u32, src_h: u32, out_size: u32) 
     rgba
 }
 
-/// Renders both [`luma_waveform_rgba`] and [`vectorscope_rgba`] from the same `src_rgba` frame in
-/// a single pass over the source pixels, instead of the two independent full-frame passes calling
-/// them separately would do. `App::pump_preview_frame` always wants both together whenever
-/// `scopes_enabled` (see `perf/REPORT.md`'s scopes section for the measured savings) — every other
-/// aspect (normalization, orientation, output format) is identical to calling the two functions
-/// on their own; this is purely a shared-iteration optimization, not a behavior change. Returns
-/// `(waveform_rgba, vectorscope_rgba)`, each shaped exactly as its standalone function's own doc
-/// comment describes.
 pub fn render_scopes_rgba(
     src_rgba: &[u8],
     src_w: u32,
@@ -215,5 +172,28 @@ pub fn render_scopes_rgba(
 }
 
 #[cfg(test)]
-#[path = "scopes/scopes_test.rs"]
-mod tests;
+mod tests {
+    use super::*;
+
+    fn varied_rgba(width: u32, height: u32) -> Vec<u8> {
+        let mut buf = Vec::with_capacity((width * height * 4) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                let r = ((x * 37 + y * 19) % 256) as u8;
+                let g = ((x * 11 + y * 53) % 256) as u8;
+                let b = ((x * 71 + y * 5) % 256) as u8;
+                buf.extend_from_slice(&[r, g, b, 255]);
+            }
+        }
+        buf
+    }
+
+    #[test]
+    fn render_scopes_matches_calling_both_standalone_functions() {
+        let src = varied_rgba(37, 23);
+        let (combined_waveform, combined_vectorscope) =
+            render_scopes_rgba(&src, 37, 23, 17, 11, 13);
+        assert_eq!(combined_waveform, luma_waveform_rgba(&src, 37, 23, 17, 11));
+        assert_eq!(combined_vectorscope, vectorscope_rgba(&src, 37, 23, 13));
+    }
+}

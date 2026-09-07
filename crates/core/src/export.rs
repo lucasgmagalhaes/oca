@@ -110,6 +110,48 @@ impl PlatformExportPreset {
 }
 
 #[cfg(test)]
+mod export_aspect_ratio_test {
+    use super::*;
+
+    #[test]
+    fn original_is_the_default() {
+        assert_eq!(ExportAspectRatio::default(), ExportAspectRatio::Original);
+    }
+
+    #[test]
+    fn all_lists_every_variant_exactly_once() {
+        assert_eq!(ExportAspectRatio::ALL.len(), 4);
+        let mut labels: Vec<&str> = ExportAspectRatio::ALL.iter().map(|r| r.label()).collect();
+        labels.sort_unstable();
+        labels.dedup();
+        assert_eq!(labels.len(), ExportAspectRatio::ALL.len());
+    }
+
+    #[test]
+    fn original_falls_back_to_the_given_dimensions() {
+        assert_eq!(
+            ExportAspectRatio::Original.dims_or((1280, 720)),
+            (1280, 720)
+        );
+    }
+
+    #[test]
+    fn fixed_presets_ignore_the_fallback_and_use_their_own_dimensions() {
+        assert_eq!(ExportAspectRatio::Landscape.dims_or((1, 1)), (1920, 1080));
+        assert_eq!(ExportAspectRatio::Portrait.dims_or((1, 1)), (1080, 1920));
+        assert_eq!(ExportAspectRatio::Square.dims_or((1, 1)), (1080, 1080));
+    }
+
+    #[test]
+    fn labels_match_the_expected_ratio_notation() {
+        assert_eq!(ExportAspectRatio::Original.label(), "Original");
+        assert_eq!(ExportAspectRatio::Landscape.label(), "16:9");
+        assert_eq!(ExportAspectRatio::Portrait.label(), "9:16");
+        assert_eq!(ExportAspectRatio::Square.label(), "1:1");
+    }
+}
+
+#[cfg(test)]
 mod platform_export_preset_test {
     use super::*;
 

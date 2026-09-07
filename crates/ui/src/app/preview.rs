@@ -590,12 +590,13 @@ impl App {
             self.preview_state.last_frame = Some(frame.clone());
 
             if self.preview_state.scopes_enabled {
-                let waveform_rgba = avcore::luma_waveform_rgba(
+                let (waveform_rgba, vectorscope_rgba) = avcore::render_scopes_rgba(
                     &frame.rgba,
                     frame.width,
                     frame.height,
                     SCOPE_WAVEFORM_SIZE.0,
                     SCOPE_WAVEFORM_SIZE.1,
+                    SCOPE_VECTORSCOPE_SIZE,
                 );
                 let waveform_image = egui::ColorImage::from_rgba_unmultiplied(
                     [
@@ -615,12 +616,6 @@ impl App {
                     }
                 }
 
-                let vectorscope_rgba = avcore::vectorscope_rgba(
-                    &frame.rgba,
-                    frame.width,
-                    frame.height,
-                    SCOPE_VECTORSCOPE_SIZE,
-                );
                 let vectorscope_image = egui::ColorImage::from_rgba_unmultiplied(
                     [
                         SCOPE_VECTORSCOPE_SIZE as usize,

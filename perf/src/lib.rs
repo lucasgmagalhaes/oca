@@ -35,6 +35,8 @@
 //! benchmarks in `benches/preview_effects_bench.rs` run both so the improvement is a measured
 //! number, not an assumption.
 
+pub mod scopes;
+
 /// A parsed 3D LUT — mirrors `avcore::preview_effects::Lut3D`.
 pub struct Lut3D {
     size: usize,
