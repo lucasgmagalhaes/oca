@@ -11,6 +11,20 @@ version), and `preview.rs`'s per-track cloning turned out to not be a hot path a
 actual call frequency was checked. Both corrections, and the reasoning behind them, are in that
 section below rather than silently edited away.
 
+**2026-09-07, second follow-up**: re-ran `cargo clippy --workspace --all-targets -- -W
+clippy::perf` to confirm nothing was missed. Two more real (if functionally inert)
+`unnecessary_cast` findings turned up in production code (not the test-file/`theme.rs`-style ones
+this report already scoped out) — `error_reporting.rs`'s event counter and `timeline/mod.rs`'s
+multicam angle-switch duration calc were both casting an already-correctly-typed value to itself.
+Fixed those, and — since two were already touched — finished the set by fixing the six `theme.rs`
+occurrences and one `draw.rs` occurrence this report previously filed under "out of scope" for
+being functionally inert; consistency won over re-litigating the same judgment call twice. This
+closes out `clippy::perf`'s findings across the entire workspace: every remaining warning that
+lint group produces is either in `#[cfg(test)]`/`tests/` code (real but not worth the diff noise
+in a performance pass, per `PLAN.md`'s own criteria) or a `clippy::style`-adjacent nit
+(`type_complexity`, `ptr_arg`, `too_many_arguments`, `enum_variant_names`) clippy files under the
+same flag but isn't actually about runtime cost.
+
 ## Summary
 
 - Ran `cargo clippy --workspace --all-targets -- -W clippy::perf` across the whole workspace.
@@ -140,10 +154,12 @@ is strictly more evidence than a typical sandboxed `core` change gets.
   test-only `burst_signal` helper) — these run once per test invocation, not per frame or per
   inference. Real but not worth the diff noise in the same pass as genuine hot-path fixes; a
   reasonable follow-up for a "clean up remaining clippy::perf noise" pass, not a performance one.
-- **`clippy::unnecessary_cast` (6 occurrences, mostly `theme.rs`'s `RADIUS_SM as u8` and similar)**
-  — a same-type cast costs nothing at runtime (the compiler already elides it); this is a
-  readability nit clippy happens to file under a lint name that sounds perf-related, not an actual
-  perf finding. Left alone — fixing it doesn't belong in a performance-analysis pass's scope.
+- **`clippy::unnecessary_cast`** — a same-type cast costs nothing at runtime (the compiler already
+  elides it); this is a readability nit clippy happens to file under a lint name that sounds
+  perf-related, not an actual perf finding, so it stayed out of scope for *this* pass's own
+  fix-for-measured-impact criteria. Fixed anyway in the second follow-up pass (see the top of this
+  document) once two production-code instances were touched for unrelated reasons — filed as a
+  separate `chore:` commit, not folded into the perf work it happened alongside.
 - **`clippy::ptr_arg`** (`&PathBuf` vs `&Path`, 2 occurrences) — `clippy::style`, not
   `clippy::perf`; a `&PathBuf` argument costs the same one word of stack space as `&Path` (both are
   thin pointers to the caller's existing allocation) — no allocation or copy either way. Out of
