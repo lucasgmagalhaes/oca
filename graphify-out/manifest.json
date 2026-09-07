@@ -2625,8 +2625,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel/layout.rs": {
-    "mtime": 1788732401.919644,
-    "ast_hash": "b2f48789a4b130dcddbf8ba0ed506f9c",
+    "mtime": 1788796069.2588005,
+    "ast_hash": "20258c175d2ab46135d40e2afe05e734",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/timeline_panel/track_requests.rs": {

@@ -135,8 +135,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test.rs": {
-    "mtime": 1788793085.493869,
-    "ast_hash": "57763cc379500af6aa13c9fac8c94aa1",
+    "mtime": 1788795724.940471,
+    "ast_hash": "efd4e8049a40bdb17080756bb6101430",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
@@ -1685,13 +1685,13 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/crash_review.rs": {
-    "mtime": 1788381346.7546883,
-    "ast_hash": "38f676e90f36af681c9230d165e487d3",
+    "mtime": 1788795699.61556,
+    "ast_hash": "90fb3f11f94a26cbee279341b1f760e9",
     "semantic_hash": ""
   },
   "crates/ui/src/app/crash_review/crash_review_test.rs": {
-    "mtime": 1788381346.7549646,
-    "ast_hash": "8d0739e6b3eff20941958f170dcdbe0f",
+    "mtime": 1788795699.6172721,
+    "ast_hash": "f71eaece783eb19ca5caee92edfecd8a",
     "semantic_hash": ""
   },
   "crates/ui/src/app/gameplay_events.rs": {
