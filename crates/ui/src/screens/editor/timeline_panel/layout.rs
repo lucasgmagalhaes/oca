@@ -19,7 +19,13 @@ pub(super) const MAX_PX_PER_SEC: f32 = 60.0;
 pub(super) const THUMBNAIL_ZOOM_DEBOUNCE: std::time::Duration =
     std::time::Duration::from_millis(150);
 
-pub(super) const TRACK_LABEL_WIDTH: f32 = 86.0;
+/// Width reserved for the track controls before every time-based canvas.
+///
+/// The controls (visibility, lock, collapse, name, and audio role) need more than the old
+/// 86-pixel allowance. When they overflowed into the canvas, the first part of a clip was hidden
+/// beneath the controls while the ruler still started at the smaller gutter, making their zero
+/// positions visibly disagree. This is the one shared gutter for ruler, tracks, and scrollbar.
+pub(super) const TRACK_LABEL_WIDTH: f32 = 184.0;
 pub(super) const RULER_HEIGHT: f32 = 28.0;
 pub(super) const TRACK_ROW_HEIGHT: f32 = 56.0;
 pub(super) const COLLAPSED_TRACK_ROW_HEIGHT: f32 = 22.0;
@@ -39,6 +45,25 @@ pub(super) struct TimelineCanvasLayout {
     pub(super) content_width: f32,
     pub(super) hscroll_source: egui::containers::scroll_area::ScrollSource,
     pub(super) hand_active: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_timeline_canvas_fills_the_visible_component_width() {
+        let layout = TimelineCanvasLayout::new(1_200.0, 60.0, 5.0, EditorTool::Select);
+
+        assert_eq!(layout.content_width, 1_200.0 - TRACK_LABEL_WIDTH);
+    }
+
+    #[test]
+    fn long_timeline_canvas_keeps_the_trailing_pan_space() {
+        let layout = TimelineCanvasLayout::new(500.0, 10.0, 100.0, EditorTool::Select);
+
+        assert_eq!(layout.content_width, 1_200.0);
+    }
 }
 
 impl TimelineCanvasLayout {
