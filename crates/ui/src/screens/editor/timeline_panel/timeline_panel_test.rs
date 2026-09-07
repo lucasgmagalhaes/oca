@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use super::draw::{
-    filmstrip_frame_index_for_tile, nearest_cached_thumbnail, thumbnail_requests_settled,
-    visible_tile_range,
+    color_filter_tint, filmstrip_frame_index_for_tile, marker_kind_color, nearest_cached_thumbnail,
+    shape_kind_glyph, thumbnail_requests_settled, visible_tile_range,
 };
 use super::snap::{snap_move_start, snap_to_nearest, waveform_snap_points_for_clip};
 
@@ -143,6 +143,57 @@ fn snap_move_start_prefers_whichever_edge_needs_the_smaller_adjustment() {
 #[test]
 fn snap_move_start_is_a_no_op_when_neither_edge_is_in_range() {
     assert_eq!(snap_move_start(5.0, 2.0, &[100.0], 10.0), 5.0);
+}
+
+#[test]
+fn marker_kind_color_gives_every_kind_a_distinct_color() {
+    let kinds = [
+        avcore::MarkerKind::Standard,
+        avcore::MarkerKind::ToDo,
+        avcore::MarkerKind::Chapter,
+        avcore::MarkerKind::Highlight,
+    ];
+    let mut colors: Vec<egui::Color32> = kinds.iter().map(|&k| marker_kind_color(k)).collect();
+    colors.sort_by_key(|c| c.to_array());
+    colors.dedup();
+    assert_eq!(colors.len(), kinds.len());
+}
+
+#[test]
+fn shape_kind_glyph_is_a_circle_for_an_ellipse() {
+    assert_eq!(shape_kind_glyph(&avcore::timeline::ShapeKind::Ellipse), "O");
+}
+
+#[test]
+fn shape_kind_glyph_picks_a_distinct_glyph_by_vertex_count() {
+    let triangle = avcore::timeline::ShapeKind::Polygon(vec![(0.0, 0.0), (0.5, 0.5), (1.0, 0.0)]);
+    let square =
+        avcore::timeline::ShapeKind::Polygon(vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]);
+    let pentagon = avcore::timeline::ShapeKind::Polygon(vec![
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.5, 1.5),
+        (0.0, 1.0),
+    ]);
+    assert_eq!(shape_kind_glyph(&triangle), "^");
+    assert_eq!(shape_kind_glyph(&square), "#");
+    assert_eq!(shape_kind_glyph(&pentagon), "P");
+}
+
+#[test]
+fn color_filter_tint_is_none_for_no_filter() {
+    assert_eq!(color_filter_tint(avcore::timeline::ColorFilter::None), None);
+}
+
+#[test]
+fn color_filter_tint_returns_a_distinct_translucent_color_per_filter() {
+    let bw = color_filter_tint(avcore::timeline::ColorFilter::BlackAndWhite).unwrap();
+    let sepia = color_filter_tint(avcore::timeline::ColorFilter::Sepia).unwrap();
+    assert_ne!(bw, sepia);
+    // Both must actually be translucent (not fully opaque), or they'd hide the clip beneath.
+    assert!(bw.a() < 255);
+    assert!(sepia.a() < 255);
 }
 
 fn test_asset_with_peaks(peaks: Vec<(f32, f32)>, duration_secs: f64) -> avcore::MediaAsset {

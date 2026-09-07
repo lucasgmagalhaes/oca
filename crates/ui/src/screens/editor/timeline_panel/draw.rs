@@ -390,7 +390,7 @@ pub(super) fn draw_transition_wedge(
 /// ruler tick. Distinct from `App::modals`'s `marker_kind_icon` (a text glyph for the Timeline
 /// Index panel's list rows, a different context) — this needs a flat color a filled triangle can
 /// use, not a glyph.
-fn marker_kind_color(kind: avcore::MarkerKind) -> egui::Color32 {
+pub(super) fn marker_kind_color(kind: avcore::MarkerKind) -> egui::Color32 {
     match kind {
         avcore::MarkerKind::Standard => theme::ACCENT_2,
         avcore::MarkerKind::ToDo => theme::ERROR,
