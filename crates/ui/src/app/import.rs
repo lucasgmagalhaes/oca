@@ -540,3 +540,7 @@ pub(super) fn import_one(
         duration_ms: started.elapsed().as_millis() as u64,
     });
 }
+
+#[cfg(test)]
+#[path = "import/import_test.rs"]
+mod tests;
