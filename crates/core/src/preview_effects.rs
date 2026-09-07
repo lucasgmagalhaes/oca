@@ -202,7 +202,7 @@ impl Lut3D {
 /// untouched) — what [`crate::timeline::ClipInstance::lut_path`] means for a live preview frame,
 /// via [`Lut3D::sample`]. No-op if `rgba`'s length isn't a multiple of 4.
 pub fn apply_lut_to_rgba(rgba: &mut [u8], lut: &Lut3D) {
-    for pixel in rgba.chunks_exact_mut(4) {
+    for pixel in rgba.as_chunks_mut::<4>().0 {
         let [r, g, b] = lut.sample(
             pixel[0] as f32 / 255.0,
             pixel[1] as f32 / 255.0,
@@ -270,7 +270,7 @@ pub fn apply_glitch_to_rgba(rgba: &mut [u8], intensity: f32, seed: u64) {
         return;
     }
     let span = (2 * strength + 1) as u64;
-    for (pixel_index, chunk) in rgba.chunks_exact_mut(4).enumerate() {
+    for (pixel_index, chunk) in rgba.as_chunks_mut::<4>().0.iter_mut().enumerate() {
         let mut state = seed ^ (pixel_index as u64).wrapping_mul(0x9E3779B97F4A7C15);
         for channel in chunk.iter_mut().take(3) {
             // xorshift64* — https://en.wikipedia.org/wiki/Xorshift#xorshift*, a fast,
@@ -317,13 +317,13 @@ impl DeflickerHistory {
 /// into a wildly amplified one the way `target/current` scaling would. No-op on an empty `rgba`
 /// or one whose length isn't a multiple of 4 (not a valid RGBA8 buffer).
 pub fn apply_deflicker_to_rgba(rgba: &mut [u8], history: &mut DeflickerHistory) {
-    if rgba.is_empty() || rgba.len() % 4 != 0 {
+    if rgba.is_empty() || !rgba.len().is_multiple_of(4) {
         return;
     }
 
     let pixel_count = rgba.len() / 4;
     let mut luma_sum = 0.0_f64;
-    for chunk in rgba.chunks_exact(4) {
+    for chunk in rgba.as_chunks::<4>().0 {
         luma_sum += 0.299 * chunk[0] as f64 + 0.587 * chunk[1] as f64 + 0.114 * chunk[2] as f64;
     }
     let current_mean = (luma_sum / pixel_count as f64) as f32;
@@ -338,7 +338,7 @@ pub fn apply_deflicker_to_rgba(rgba: &mut [u8], history: &mut DeflickerHistory) 
     if shift == 0 {
         return;
     }
-    for chunk in rgba.chunks_exact_mut(4) {
+    for chunk in rgba.as_chunks_mut::<4>().0 {
         for channel in chunk.iter_mut().take(3) {
             *channel = (*channel as i32 + shift).clamp(0, 255) as u8;
         }

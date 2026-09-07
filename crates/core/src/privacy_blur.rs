@@ -88,9 +88,9 @@ pub fn pad_matte_frames_to_canvas_duration(
 
     let black_frame = vec![0u8; frame_bytes];
     let mut out = Vec::with_capacity(frames_before + clip_matte_frames.len() + frames_after);
-    out.extend(std::iter::repeat(black_frame.clone()).take(frames_before));
+    out.extend(std::iter::repeat_n(black_frame.clone(), frames_before));
     out.extend_from_slice(clip_matte_frames);
-    out.extend(std::iter::repeat(black_frame).take(frames_after));
+    out.extend(std::iter::repeat_n(black_frame, frames_after));
     out
 }
 

@@ -92,7 +92,7 @@ pub const STATE_TRANSITIONS: &[&str] = &[
 /// the one user-ish string on a breadcrumb, so validation refuses anything not in
 /// [`STATE_TRANSITIONS`].
 fn is_known_state_transition(state: &str) -> bool {
-    STATE_TRANSITIONS.iter().any(|known| *known == state)
+    STATE_TRANSITIONS.contains(&state)
 }
 
 // ---------------------------------------------------------------------------

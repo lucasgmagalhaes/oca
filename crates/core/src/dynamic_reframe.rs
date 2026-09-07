@@ -224,12 +224,10 @@ pub fn smooth_subject_centers(
             let mut sum_x = 0.0f32;
             let mut sum_y = 0.0f32;
             let mut count = 0.0f32;
-            for c in &centers[start..end] {
-                if let Some((x, y)) = c {
-                    sum_x += x;
-                    sum_y += y;
-                    count += 1.0;
-                }
+            for (x, y) in centers[start..end].iter().flatten() {
+                sum_x += x;
+                sum_y += y;
+                count += 1.0;
             }
             if count == 0.0 {
                 *center
