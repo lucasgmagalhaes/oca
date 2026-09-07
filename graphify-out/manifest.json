@@ -140,8 +140,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/i18n.rs": {
-    "mtime": 1788791661.2441251,
-    "ast_hash": "b760a0d04139c3a6c3a26c429d7b1aa3",
+    "mtime": 1788794748.0239527,
+    "ast_hash": "c37b186b893beb88a13c581747e22b04",
     "semantic_hash": ""
   },
   "crates/ui/src/i18n/i18n_test.rs": {
@@ -510,8 +510,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/mod.rs": {
-    "mtime": 1788793192.0023544,
-    "ast_hash": "c77bf030144352523927005c5060e545",
+    "mtime": 1788794922.8485632,
+    "ast_hash": "c19a78b35de3ef159a0de9ca9881e838",
     "semantic_hash": ""
   },
   "crates/ui/src/app/modals.rs": {
@@ -525,8 +525,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/timeline_ops.rs": {
-    "mtime": 1788791661.0785391,
-    "ast_hash": "569aa26c53bf38b6c5d4acd6d7f69e5b",
+    "mtime": 1788794773.0842757,
+    "ast_hash": "cada9d6e67edb8223db1f7fb19d9c8b5",
     "semantic_hash": ""
   },
   "crates/ui/src/app/transcribe.rs": {
@@ -2310,8 +2310,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/media_library_panel.rs": {
-    "mtime": 1788730559.8964689,
-    "ast_hash": "d8c479b46d3fe8e157392e81aa5da4e4",
+    "mtime": 1788794748.024949,
+    "ast_hash": "896d3ca9fbea623fda20597cbd065431",
     "semantic_hash": ""
   },
   "crates/ui/src/screens/editor/toolbar.rs": {
@@ -2405,8 +2405,8 @@
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test/project_timeline.rs": {
-    "mtime": 1788793046.9737935,
-    "ast_hash": "534ee19bb25dc8c4dde3ddb6fa74225b",
+    "mtime": 1788794748.02638,
+    "ast_hash": "a9e3f639831b5ebbdcf7d7d63edec998",
     "semantic_hash": ""
   },
   "crates/ui/src/app/app_test/shorts_pack.rs": {
@@ -2752,6 +2752,11 @@
   "crates/ui/src/app/open_projects.rs": {
     "mtime": 1788793192.006981,
     "ast_hash": "b1f212e5522348733e171693bd582186",
+    "semantic_hash": ""
+  },
+  "test-media/samplelib-5s-1080p.mp4": {
+    "mtime": 1788794383.163828,
+    "ast_hash": "8cd0e9af15f4baaafe9dfe98ace8b886",
     "semantic_hash": ""
   }
 }
