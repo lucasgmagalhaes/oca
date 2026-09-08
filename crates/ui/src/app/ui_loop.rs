@@ -122,6 +122,9 @@ impl eframe::App for App {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         // Drop the control sender before the process exits so the worker releases its pipeline
         // instead of racing a torn-down UI/GL context.
+        if let Some(worker) = &self.preview_state.worker {
+            worker.shutdown();
+        }
         self.preview_state.worker = None;
         // Persist synchronously — see save_prefs_sync's doc comment on why the normal
         // background-thread save_prefs can't be trusted to finish before the process exits.

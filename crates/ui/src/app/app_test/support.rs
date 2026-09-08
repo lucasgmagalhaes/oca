@@ -78,7 +78,7 @@ pub(super) fn test_track(id: u64, kind: TrackKind, clips: Vec<ClipInstance>) -> 
     }
 }
 
-pub(super) fn test_clip(
+pub(in crate::app) fn test_clip(
     id: u64,
     start_secs: f64,
     source_in_secs: f64,

@@ -284,6 +284,7 @@ pub(crate) struct PreviewWorker {
     status: Arc<LatestMailbox<PreviewStatus>>,
     wake_tx: mpsc::SyncSender<()>,
     shutdown: Arc<AtomicBool>,
+    stopped: Arc<AtomicBool>,
 }
 
 impl PreviewWorker {
@@ -296,6 +297,7 @@ impl PreviewWorker {
         let frames = Arc::new(LatestMailbox::new());
         let status = Arc::new(LatestMailbox::new());
         let shutdown = Arc::new(AtomicBool::new(false));
+        let stopped = Arc::new(AtomicBool::new(false));
         let worker_opens = Arc::clone(&opens);
         let worker_playing = Arc::clone(&playing);
         let worker_seeks = Arc::clone(&seeks);
@@ -303,6 +305,7 @@ impl PreviewWorker {
         let worker_frames = Arc::clone(&frames);
         let worker_status = Arc::clone(&status);
         let worker_shutdown = Arc::clone(&shutdown);
+        let worker_stopped = Arc::clone(&stopped);
         std::thread::spawn(move || {
             worker_loop(
                 wake_rx,
@@ -315,6 +318,7 @@ impl PreviewWorker {
                     status: worker_status,
                 },
                 worker_shutdown,
+                worker_stopped,
             )
         });
         Self {
@@ -326,6 +330,7 @@ impl PreviewWorker {
             status,
             wake_tx,
             shutdown,
+            stopped,
         }
     }
 
@@ -360,6 +365,17 @@ impl PreviewWorker {
         self.status.take()
     }
 
+    /// Requests a cooperative pipeline release and wakes a parked worker immediately.
+    pub(crate) fn shutdown(&self) {
+        self.shutdown.store(true, Ordering::Release);
+        self.wake();
+    }
+
+    /// Whether the worker has released its pipeline after a shutdown request.
+    pub(crate) fn has_stopped(&self) -> bool {
+        self.stopped.load(Ordering::Acquire)
+    }
+
     fn wake(&self) {
         let _ = self.wake_tx.try_send(());
     }
@@ -367,8 +383,9 @@ impl PreviewWorker {
 
 impl Drop for PreviewWorker {
     fn drop(&mut self) {
-        self.shutdown.store(true, Ordering::Release);
-        self.wake();
+        if !self.has_stopped() {
+            self.shutdown();
+        }
     }
 }
 
@@ -386,7 +403,12 @@ struct WorkerMailboxes {
     status: Arc<LatestMailbox<PreviewStatus>>,
 }
 
-fn worker_loop(wake_rx: mpsc::Receiver<()>, mailboxes: WorkerMailboxes, shutdown: Arc<AtomicBool>) {
+fn worker_loop(
+    wake_rx: mpsc::Receiver<()>,
+    mailboxes: WorkerMailboxes,
+    shutdown: Arc<AtomicBool>,
+    stopped: Arc<AtomicBool>,
+) {
     let WorkerMailboxes {
         opens,
         playing,
@@ -538,13 +560,56 @@ fn worker_loop(wake_rx: mpsc::Receiver<()>, mailboxes: WorkerMailboxes, shutdown
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
+    stopped.store(true, Ordering::Release);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{generation_is_current, LatestMailbox, LiveUpdate, PendingLiveUpdates};
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, Instant};
+
+    use super::{
+        generation_is_current, LatestMailbox, LiveUpdate, PendingLiveUpdates, PreviewOpenRequest,
+        PreviewSeek, PreviewStatus, PreviewWorker,
+    };
 
     fn assert_send<T: Send>() {}
+
+    fn fixture(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../core/tests/fixtures")
+            .join(name)
+    }
+
+    fn open_fixture(worker: &PreviewWorker, generation: u64) {
+        open_fixture_at(worker, generation, 0.0);
+    }
+
+    fn open_fixture_at(worker: &PreviewWorker, generation: u64, playhead_secs: f64) {
+        worker.open(
+            generation,
+            PreviewOpenRequest::Single {
+                path: fixture("video.mp4"),
+                clip: crate::app::app_test::preview_worker_test_clip(1, 0.0, 0.0, 1.0),
+                playhead_secs,
+                hardware_decode: false,
+            },
+        );
+    }
+
+    fn wait_until<T>(description: &str, mut poll: impl FnMut() -> Option<T>) -> T {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            if let Some(value) = poll() {
+                return value;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for {description}"
+            );
+            std::thread::yield_now();
+        }
+    }
 
     #[test]
     fn preview_pipeline_can_be_owned_by_the_worker_thread() {
@@ -606,5 +671,132 @@ mod tests {
             updates.get(1),
             Some(LiveUpdate::Blur { clip_id: 7, sigma }) if (*sigma - 2.0).abs() < f64::EPSILON
         ));
+    }
+
+    #[test]
+    fn worker_opens_a_real_video_and_publishes_a_decoded_frame() {
+        let worker = PreviewWorker::spawn();
+        open_fixture(&worker, 1);
+
+        wait_until("the real fixture pipeline to open", || {
+            matches!(
+                worker.take_status(),
+                Some(PreviewStatus::Ready { generation: 1 })
+            )
+            .then_some(())
+        });
+        let frame = wait_until("a decoded frame from the real fixture", || {
+            worker.take_frame()
+        });
+
+        assert_eq!(frame.generation, 1);
+        assert!(frame.frame.width > 0);
+        assert!(frame.frame.height > 0);
+        assert!(!frame.frame.rgba.is_empty());
+        worker.shutdown();
+        wait_until("the worker to release its pipeline", || {
+            worker.has_stopped().then_some(())
+        });
+    }
+
+    #[test]
+    fn rapid_seeks_publish_only_the_latest_generation() {
+        let worker = PreviewWorker::spawn();
+        open_fixture(&worker, 1);
+        wait_until("the real fixture pipeline to open", || {
+            matches!(
+                worker.take_status(),
+                Some(PreviewStatus::Ready { generation: 1 })
+            )
+            .then_some(())
+        });
+        wait_until("the initial decoded frame", || worker.take_frame());
+
+        worker.seek(
+            2,
+            PreviewSeek::Single {
+                offset_secs: 0.2,
+                rate: 1.0,
+            },
+        );
+        worker.seek(
+            3,
+            PreviewSeek::Single {
+                offset_secs: 0.7,
+                rate: 1.0,
+            },
+        );
+
+        let frame = wait_until("the latest rapid seek frame", || {
+            worker.take_frame().filter(|frame| frame.generation == 3)
+        });
+        assert_eq!(frame.generation, 3);
+        worker.shutdown();
+        wait_until("the worker to release its pipeline", || {
+            worker.has_stopped().then_some(())
+        });
+    }
+
+    #[test]
+    fn replacing_the_preview_session_discards_frames_from_the_previous_clip() {
+        let worker = PreviewWorker::spawn();
+        open_fixture(&worker, 1);
+        wait_until("the first fixture pipeline to open", || {
+            matches!(
+                worker.take_status(),
+                Some(PreviewStatus::Ready { generation: 1 })
+            )
+            .then_some(())
+        });
+        wait_until("a frame from the first fixture session", || {
+            worker.take_frame()
+        });
+
+        open_fixture_at(&worker, 2, 0.5);
+        wait_until("the replacement fixture pipeline to open", || {
+            matches!(
+                worker.take_status(),
+                Some(PreviewStatus::Ready { generation: 2 })
+            )
+            .then_some(())
+        });
+        let frame = wait_until("a frame from the replacement session", || {
+            worker.take_frame().filter(|frame| frame.generation == 2)
+        });
+
+        assert_eq!(frame.generation, 2);
+        worker.shutdown();
+        wait_until("the worker to release its replacement pipeline", || {
+            worker.has_stopped().then_some(())
+        });
+    }
+
+    #[test]
+    fn worker_reports_open_failures_without_panicking_the_ui_thread() {
+        let worker = PreviewWorker::spawn();
+        worker.open(
+            9,
+            PreviewOpenRequest::Single {
+                path: fixture("missing-preview-source.mp4"),
+                clip: crate::app::app_test::preview_worker_test_clip(1, 0.0, 0.0, 1.0),
+                playhead_secs: 0.0,
+                hardware_decode: false,
+            },
+        );
+
+        let message = wait_until("a structured preview open failure", || {
+            match worker.take_status() {
+                Some(PreviewStatus::Failed {
+                    generation: 9,
+                    message,
+                }) => Some(message),
+                _ => None,
+            }
+        });
+        assert!(!message.is_empty());
+        worker.shutdown();
+        wait_until("the worker to stop after a failed open", || {
+            worker.has_stopped().then_some(())
+        });
     }
 }
