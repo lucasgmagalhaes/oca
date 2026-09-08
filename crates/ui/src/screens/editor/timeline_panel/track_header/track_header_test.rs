@@ -1,5 +1,29 @@
 use super::*;
 
+#[test]
+fn track_header_reserves_the_entire_shared_gutter() {
+    let ctx = egui::Context::default();
+    let mut reserved_width = 0.0;
+    let mut cursor_advance = 0.0;
+
+    let frame = ctx.run_ui(egui::RawInput::default(), |ui| {
+        ui.horizontal(|ui| {
+            let start = ui.cursor().left();
+            let gutter = reserve_track_header(ui, 184.0, 56.0);
+
+            reserved_width = gutter.width();
+            cursor_advance = ui.cursor().left() - start;
+        });
+    });
+    frame.drop_without_applying_deltas();
+
+    assert_eq!(reserved_width, 184.0);
+    assert!(
+        cursor_advance >= 184.0,
+        "the next timeline canvas must begin after the full reserved gutter"
+    );
+}
+
 const ROLES: [avcore::AudioRole; 4] = [
     avcore::AudioRole::Unspecified,
     avcore::AudioRole::GameAudio,
