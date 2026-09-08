@@ -17,9 +17,8 @@
 
 use avcore::timeline::{ShapeClip, TextClip};
 use avcore::{ClipInstance, MediaAsset, TrackKind};
-use tracing::warn;
 
-use super::App;
+use super::{App, LiveUpdate};
 
 impl App {
     /// Just the id [`App::current_preview_clip`] would resolve to, without cloning the
@@ -285,14 +284,12 @@ impl App {
         if ids != self.preview_state.preview_text_clip_ids {
             return;
         }
-        let timed_clips: Vec<(&TextClip, f64)> = clips
+        let timed_clips: Vec<(TextClip, f64)> = clips
             .iter()
-            .map(|clip| (clip, position_secs - clip.start_secs))
+            .map(|clip| (clip.clone(), position_secs - clip.start_secs))
             .collect();
-        if let Some(preview) = self.preview_state.preview.as_mut() {
-            if let Err(error) = preview.update_text_overlays(&timed_clips) {
-                warn!(%error, "failed to refresh preview word highlight");
-            }
+        if let Some(worker) = &self.preview_state.worker {
+            worker.live(LiveUpdate::Text { clips: timed_clips });
         }
     }
 

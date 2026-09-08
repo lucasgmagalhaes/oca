@@ -151,6 +151,26 @@ fn seek_preview_updates_the_timeline_playhead_without_a_live_pipeline() {
 }
 
 #[test]
+fn scrubbing_updates_the_timeline_playhead_and_starts_seek_coalescing() {
+    let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
+
+    app.scrub_preview_playhead(5.0);
+
+    assert_eq!(app.active_project().timeline().playhead_secs, 5.0);
+    assert!(app.preview_state.last_scrub_seek_at.is_some());
+}
+
+#[test]
+fn final_preview_seek_ends_timeline_scrubbing() {
+    let mut app = test_app(vec![test_project(1, vec![test_asset(1)])], Vec::new());
+    app.scrub_preview_playhead(4.0);
+
+    app.finish_preview_scrub(5.0);
+
+    assert!(app.preview_state.last_scrub_seek_at.is_none());
+}
+
+#[test]
 fn frozen_playhead_advances_by_elapsed_wall_clock_time() {
     use super::preview::frozen_playhead;
 

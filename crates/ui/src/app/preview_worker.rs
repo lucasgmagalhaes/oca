@@ -1,0 +1,610 @@
+// Copyright (C) 2026 by Lucas Gomes <lucasgsm88@gmail.com>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+//! Bounded latest-value coordination primitives for the asynchronous preview worker.
+//!
+//! GStreamer ownership moves behind this boundary in the next migration slice. Keeping the
+//! mailbox independent of the pipeline makes its no-backlog invariant testable without a media
+//! fixture and, critically, prevents a future worker from holding its mutex across a seek.
+
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::Duration;
+
+use avcore::preview::{Preview, VideoFrame};
+use avcore::timeline::{ClipInstance, ShapeClip, TextClip};
+use tracing::warn;
+
+/// A one-item mailbox where a newer value replaces work that has not started yet.
+///
+/// `replace` and `take` only move `T` while holding the mutex. Callers must release the guard
+/// before doing I/O, decoding, or any GStreamer operation.
+pub(crate) struct LatestMailbox<T> {
+    value: Mutex<Option<T>>,
+}
+
+impl<T> LatestMailbox<T> {
+    pub(crate) fn new() -> Self {
+        Self {
+            value: Mutex::new(None),
+        }
+    }
+
+    /// Replaces the pending value and returns the obsolete one, if there was one.
+    pub(crate) fn replace(&self, value: T) -> Option<T> {
+        self.value.lock().ok()?.replace(value)
+    }
+
+    /// Removes the newest pending value for processing.
+    pub(crate) fn take(&self) -> Option<T> {
+        self.value.lock().ok()?.take()
+    }
+}
+
+/// A seek expressed in the source-coordinate system the currently loaded pipeline expects.
+pub(crate) enum PreviewSeek {
+    Single { offset_secs: f64, rate: f64 },
+    Composited { offsets: Vec<f64>, rates: Vec<f64> },
+}
+
+/// A decoded frame paired with the UI intent that caused it.
+pub(crate) struct PreviewFrameReady {
+    pub(crate) generation: u64,
+    pub(crate) position_secs: Option<f64>,
+    pub(crate) audio_level: avcore::AudioLevel,
+    pub(crate) frame: VideoFrame,
+}
+
+pub(crate) enum PreviewStatus {
+    Ready { generation: u64 },
+    Failed { generation: u64, message: String },
+}
+
+/// Whether a worker result still belongs to the UI's latest preview intent.
+pub(crate) fn generation_is_current(expected: u64, received: u64) -> bool {
+    expected == received
+}
+
+pub(crate) enum LiveUpdate {
+    Balance {
+        clip_id: u64,
+        brightness: f32,
+        contrast: f32,
+        saturation: f32,
+    },
+    Blur {
+        clip_id: u64,
+        sigma: f64,
+    },
+    ChromaKey {
+        clip_id: u64,
+        color: [u8; 3],
+        tolerance: f32,
+    },
+    Crop {
+        clip_id: u64,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    Pixelize {
+        clip_id: u64,
+        intensity: f32,
+    },
+    Shake {
+        clip_id: u64,
+        intensity: f32,
+    },
+    Mask {
+        clip_id: u64,
+        shape: avcore::timeline::MaskShape,
+        corner_radius: f32,
+    },
+    Text {
+        clips: Vec<(TextClip, f64)>,
+    },
+    Shape {
+        clip: ShapeClip,
+    },
+}
+
+impl LiveUpdate {
+    fn replaces(&self, pending: &Self) -> bool {
+        match (self, pending) {
+            (Self::Balance { clip_id: left, .. }, Self::Balance { clip_id: right, .. })
+            | (Self::Blur { clip_id: left, .. }, Self::Blur { clip_id: right, .. })
+            | (Self::ChromaKey { clip_id: left, .. }, Self::ChromaKey { clip_id: right, .. })
+            | (Self::Crop { clip_id: left, .. }, Self::Crop { clip_id: right, .. })
+            | (Self::Pixelize { clip_id: left, .. }, Self::Pixelize { clip_id: right, .. })
+            | (Self::Shake { clip_id: left, .. }, Self::Shake { clip_id: right, .. })
+            | (Self::Mask { clip_id: left, .. }, Self::Mask { clip_id: right, .. }) => {
+                left == right
+            }
+            (Self::Text { .. }, Self::Text { .. }) => true,
+            (Self::Shape { clip: left }, Self::Shape { clip: right }) => left.id == right.id,
+            _ => false,
+        }
+    }
+}
+
+/// Coalesces each mutable preview property while retaining unrelated updates.
+///
+/// The fixed capacity protects the UI thread from a stalled pipeline. When it is full, the
+/// oldest live update is discarded; the durable project model remains the source of truth and a
+/// later preview rebuild re-applies that state.
+struct PendingLiveUpdates {
+    updates: Mutex<Vec<LiveUpdate>>,
+}
+
+impl PendingLiveUpdates {
+    const CAPACITY: usize = 64;
+
+    fn new() -> Self {
+        Self {
+            updates: Mutex::new(Vec::with_capacity(Self::CAPACITY)),
+        }
+    }
+
+    fn replace(&self, update: LiveUpdate) {
+        let Ok(mut updates) = self.updates.lock() else {
+            return;
+        };
+        if let Some(existing) = updates
+            .iter_mut()
+            .find(|existing| update.replaces(existing))
+        {
+            *existing = update;
+        } else {
+            if updates.len() == Self::CAPACITY {
+                updates.remove(0);
+            }
+            updates.push(update);
+        }
+    }
+
+    fn take_all(&self) -> Vec<LiveUpdate> {
+        let Ok(mut updates) = self.updates.lock() else {
+            return Vec::new();
+        };
+        std::mem::take(&mut *updates)
+    }
+}
+
+/// Owned inputs needed to build a GStreamer preview without borrowing UI/project state.
+pub(crate) enum PreviewOpenRequest {
+    Single {
+        path: PathBuf,
+        clip: ClipInstance,
+        playhead_secs: f64,
+        hardware_decode: bool,
+    },
+    Composited {
+        path: PathBuf,
+        clip: ClipInstance,
+        overlays: Vec<(PathBuf, ClipInstance)>,
+        audio: Vec<(PathBuf, ClipInstance)>,
+        text: Vec<TextClip>,
+        shapes: Vec<ShapeClip>,
+        playhead_secs: f64,
+        hardware_decode: bool,
+    },
+}
+
+impl PreviewOpenRequest {
+    fn open(self) -> Result<(Preview, PreviewSeek), avcore::preview::PreviewError> {
+        match self {
+            Self::Single {
+                path,
+                clip,
+                playhead_secs,
+                hardware_decode,
+            } => {
+                let offset_secs = clip_seek_offset(&clip, playhead_secs);
+                let rate = clip.speed_factor.max(0.01) as f64;
+                Preview::open_with_hardware_decode(&path, Some(&clip), hardware_decode)
+                    .map(|preview| (preview, PreviewSeek::Single { offset_secs, rate }))
+            }
+            Self::Composited {
+                path,
+                clip,
+                overlays,
+                audio,
+                text,
+                shapes,
+                playhead_secs,
+                hardware_decode,
+            } => {
+                let overlay_refs: Vec<_> = overlays
+                    .iter()
+                    .map(|(path, clip)| (path.as_path(), clip))
+                    .collect();
+                let audio_refs: Vec<_> = audio
+                    .iter()
+                    .map(|(path, clip)| (path.as_path(), clip))
+                    .collect();
+                let text_refs: Vec<_> = text
+                    .iter()
+                    .map(|clip| (clip, playhead_secs - clip.start_secs))
+                    .collect();
+                let shape_refs: Vec<_> = shapes.iter().collect();
+                let (offsets, rates) = std::iter::once(&clip)
+                    .chain(overlays.iter().map(|(_, clip)| clip))
+                    .chain(audio.iter().map(|(_, clip)| clip))
+                    .map(|clip| {
+                        (
+                            clip_seek_offset(clip, playhead_secs),
+                            clip.speed_factor.max(0.01) as f64,
+                        )
+                    })
+                    .unzip();
+                Preview::open_composited_with_hardware_decode(
+                    &path,
+                    Some(&clip),
+                    &overlay_refs,
+                    &audio_refs,
+                    &text_refs,
+                    &shape_refs,
+                    hardware_decode,
+                )
+                .map(|preview| (preview, PreviewSeek::Composited { offsets, rates }))
+            }
+        }
+    }
+}
+
+fn clip_seek_offset(clip: &ClipInstance, playhead_secs: f64) -> f64 {
+    if clip.frozen {
+        clip.source_in_secs
+    } else {
+        clip.source_in_secs + (playhead_secs - clip.start_secs) * clip.speed_factor.max(0.01) as f64
+    }
+}
+
+struct SeekRequest {
+    generation: u64,
+    seek: PreviewSeek,
+}
+
+/// Owns a dedicated thread that is the only caller of an active `Preview` pipeline.
+///
+/// Structural control is reliable; scrubs overwrite one pending request. The UI takes frames
+/// from another one-slot mailbox, so decode can never make UI memory grow with stale frames.
+pub(crate) struct PreviewWorker {
+    opens: Arc<LatestMailbox<OpenRequest>>,
+    playing: Arc<LatestMailbox<bool>>,
+    seeks: Arc<LatestMailbox<SeekRequest>>,
+    live_updates: Arc<PendingLiveUpdates>,
+    frames: Arc<LatestMailbox<PreviewFrameReady>>,
+    status: Arc<LatestMailbox<PreviewStatus>>,
+    wake_tx: mpsc::SyncSender<()>,
+    shutdown: Arc<AtomicBool>,
+}
+
+impl PreviewWorker {
+    pub(crate) fn spawn() -> Self {
+        let (wake_tx, wake_rx) = mpsc::sync_channel(1);
+        let opens = Arc::new(LatestMailbox::new());
+        let playing = Arc::new(LatestMailbox::new());
+        let seeks = Arc::new(LatestMailbox::new());
+        let live_updates = Arc::new(PendingLiveUpdates::new());
+        let frames = Arc::new(LatestMailbox::new());
+        let status = Arc::new(LatestMailbox::new());
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let worker_opens = Arc::clone(&opens);
+        let worker_playing = Arc::clone(&playing);
+        let worker_seeks = Arc::clone(&seeks);
+        let worker_live_updates = Arc::clone(&live_updates);
+        let worker_frames = Arc::clone(&frames);
+        let worker_status = Arc::clone(&status);
+        let worker_shutdown = Arc::clone(&shutdown);
+        std::thread::spawn(move || {
+            worker_loop(
+                wake_rx,
+                WorkerMailboxes {
+                    opens: worker_opens,
+                    playing: worker_playing,
+                    seeks: worker_seeks,
+                    live_updates: worker_live_updates,
+                    frames: worker_frames,
+                    status: worker_status,
+                },
+                worker_shutdown,
+            )
+        });
+        Self {
+            opens,
+            playing,
+            seeks,
+            live_updates,
+            frames,
+            status,
+            wake_tx,
+            shutdown,
+        }
+    }
+
+    pub(crate) fn open(&self, generation: u64, request: PreviewOpenRequest) {
+        self.opens.replace(OpenRequest {
+            generation,
+            request: Box::new(request),
+        });
+        self.wake();
+    }
+
+    pub(crate) fn seek(&self, generation: u64, seek: PreviewSeek) {
+        self.seeks.replace(SeekRequest { generation, seek });
+        self.wake();
+    }
+
+    pub(crate) fn set_playing(&self, playing: bool) {
+        self.playing.replace(playing);
+        self.wake();
+    }
+
+    pub(crate) fn live(&self, update: LiveUpdate) {
+        self.live_updates.replace(update);
+        self.wake();
+    }
+
+    pub(crate) fn take_frame(&self) -> Option<PreviewFrameReady> {
+        self.frames.take()
+    }
+
+    pub(crate) fn take_status(&self) -> Option<PreviewStatus> {
+        self.status.take()
+    }
+
+    fn wake(&self) {
+        let _ = self.wake_tx.try_send(());
+    }
+}
+
+impl Drop for PreviewWorker {
+    fn drop(&mut self) {
+        self.shutdown.store(true, Ordering::Release);
+        self.wake();
+    }
+}
+
+struct OpenRequest {
+    generation: u64,
+    request: Box<PreviewOpenRequest>,
+}
+
+struct WorkerMailboxes {
+    opens: Arc<LatestMailbox<OpenRequest>>,
+    playing: Arc<LatestMailbox<bool>>,
+    seeks: Arc<LatestMailbox<SeekRequest>>,
+    live_updates: Arc<PendingLiveUpdates>,
+    frames: Arc<LatestMailbox<PreviewFrameReady>>,
+    status: Arc<LatestMailbox<PreviewStatus>>,
+}
+
+fn worker_loop(wake_rx: mpsc::Receiver<()>, mailboxes: WorkerMailboxes, shutdown: Arc<AtomicBool>) {
+    let WorkerMailboxes {
+        opens,
+        playing,
+        seeks,
+        live_updates,
+        frames,
+        status,
+    } = mailboxes;
+    let mut preview = None;
+    let mut generation = 0;
+    loop {
+        if shutdown.load(Ordering::Acquire) {
+            break;
+        }
+        if let Some(OpenRequest {
+            generation: next,
+            request,
+        }) = opens.take()
+        {
+            generation = next;
+            preview = match request.open() {
+                Ok((preview, seek)) => {
+                    let result = match seek {
+                        PreviewSeek::Single { offset_secs, rate } => {
+                            preview.seek_with_rate(offset_secs, rate)
+                        }
+                        PreviewSeek::Composited { offsets, rates } => {
+                            preview.seek_composited(&offsets, &rates)
+                        }
+                    };
+                    if let Err(error) = result {
+                        warn!(%error, "failed to seek newly opened preview worker pipeline");
+                    }
+                    status.replace(PreviewStatus::Ready { generation });
+                    Some(preview)
+                }
+                Err(error) => {
+                    warn!(%error, "failed to open preview worker pipeline");
+                    status.replace(PreviewStatus::Failed {
+                        generation,
+                        message: error.to_string(),
+                    });
+                    None
+                }
+            };
+        }
+        if let Some(playing) = playing.take() {
+            if playing {
+                if let Some(preview) = &mut preview {
+                    if let Err(error) = preview.play() {
+                        warn!(%error, "failed to play preview worker pipeline");
+                    }
+                }
+            } else {
+                if let Some(preview) = &preview {
+                    if let Err(error) = preview.pause() {
+                        warn!(%error, "failed to pause preview worker pipeline");
+                    }
+                }
+            }
+        }
+        if let Some(preview) = &mut preview {
+            for update in live_updates.take_all() {
+                match update {
+                    LiveUpdate::Balance {
+                        clip_id,
+                        brightness,
+                        contrast,
+                        saturation,
+                    } => {
+                        preview.set_live_balance(clip_id, brightness, contrast, saturation);
+                    }
+                    LiveUpdate::Blur { clip_id, sigma } => {
+                        preview.set_live_blur(clip_id, sigma);
+                    }
+                    LiveUpdate::ChromaKey {
+                        clip_id,
+                        color,
+                        tolerance,
+                    } => {
+                        preview.set_live_chroma_key(clip_id, color, tolerance);
+                    }
+                    LiveUpdate::Crop {
+                        clip_id,
+                        x,
+                        y,
+                        width,
+                        height,
+                    } => {
+                        preview.set_live_crop(clip_id, x, y, width, height);
+                    }
+                    LiveUpdate::Pixelize { clip_id, intensity } => {
+                        preview.set_live_pixelize(clip_id, intensity);
+                    }
+                    LiveUpdate::Shake { clip_id, intensity } => {
+                        preview.set_live_shake(clip_id, intensity);
+                    }
+                    LiveUpdate::Mask {
+                        clip_id,
+                        shape,
+                        corner_radius,
+                    } => {
+                        let _ = preview.set_live_mask(clip_id, shape, corner_radius);
+                    }
+                    LiveUpdate::Text { clips } => {
+                        let refs: Vec<_> = clips.iter().map(|(clip, time)| (clip, *time)).collect();
+                        if let Err(error) = preview.update_text_overlays(&refs) {
+                            warn!(%error, "failed to refresh preview text overlays");
+                        }
+                    }
+                    LiveUpdate::Shape { clip } => {
+                        if let Err(error) = preview.refresh_shape_overlay(&clip) {
+                            warn!(%error, "failed to refresh preview shape overlay");
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(request) = seeks.take() {
+            if request.generation >= generation {
+                if let Some(preview) = &preview {
+                    let result = match request.seek {
+                        PreviewSeek::Single { offset_secs, rate } => {
+                            preview.seek_with_rate(offset_secs, rate)
+                        }
+                        PreviewSeek::Composited { offsets, rates } => {
+                            preview.seek_composited(&offsets, &rates)
+                        }
+                    };
+                    if let Err(error) = result {
+                        warn!(%error, "failed to seek preview worker pipeline");
+                    }
+                }
+                generation = request.generation;
+            }
+        }
+        if let Some(preview) = &preview {
+            if let Some(frame) = preview.current_frame() {
+                frames.replace(PreviewFrameReady {
+                    generation,
+                    position_secs: preview.position_secs(),
+                    audio_level: preview.current_audio_level(),
+                    frame,
+                });
+            }
+        }
+        match wake_rx.recv_timeout(Duration::from_millis(8)) {
+            Ok(()) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{generation_is_current, LatestMailbox, LiveUpdate, PendingLiveUpdates};
+
+    fn assert_send<T: Send>() {}
+
+    #[test]
+    fn preview_pipeline_can_be_owned_by_the_worker_thread() {
+        assert_send::<avcore::preview::Preview>();
+    }
+
+    #[test]
+    fn latest_mailbox_keeps_only_the_newest_pending_request() {
+        let mailbox = LatestMailbox::new();
+
+        assert_eq!(mailbox.replace(10_u64), None);
+        assert_eq!(mailbox.replace(11), Some(10));
+        assert_eq!(mailbox.replace(12), Some(11));
+        assert_eq!(mailbox.take(), Some(12));
+        assert_eq!(mailbox.take(), None);
+    }
+
+    #[test]
+    fn stale_worker_generation_is_rejected() {
+        assert!(generation_is_current(12, 12));
+        assert!(!generation_is_current(12, 11));
+        assert!(!generation_is_current(12, 13));
+    }
+
+    #[test]
+    fn live_updates_coalesce_per_property_without_losing_other_properties() {
+        let updates = PendingLiveUpdates::new();
+        updates.replace(LiveUpdate::Balance {
+            clip_id: 7,
+            brightness: 0.1,
+            contrast: 1.0,
+            saturation: 1.0,
+        });
+        updates.replace(LiveUpdate::Blur {
+            clip_id: 7,
+            sigma: 2.0,
+        });
+        updates.replace(LiveUpdate::Balance {
+            clip_id: 7,
+            brightness: 0.3,
+            contrast: 1.1,
+            saturation: 0.9,
+        });
+
+        let updates = updates.take_all();
+        assert_eq!(updates.len(), 2);
+        assert!(matches!(
+            updates.first(),
+            Some(LiveUpdate::Balance {
+                clip_id: 7,
+                brightness,
+                contrast,
+                saturation,
+            }) if (*brightness - 0.3).abs() < f32::EPSILON
+                && (*contrast - 1.1).abs() < f32::EPSILON
+                && (*saturation - 0.9).abs() < f32::EPSILON
+        ));
+        assert!(matches!(
+            updates.get(1),
+            Some(LiveUpdate::Blur { clip_id: 7, sigma }) if (*sigma - 2.0).abs() < f64::EPSILON
+        ));
+    }
+}

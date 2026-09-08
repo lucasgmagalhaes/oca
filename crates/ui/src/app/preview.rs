@@ -13,10 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use avcore::timeline::{ShapeClip, TextClip};
-use avcore::{ClipInstance, TrackKind};
+use avcore::TrackKind;
 use eframe::egui;
-use tracing::{debug, error, warn};
 
 use super::App;
 
@@ -42,11 +40,47 @@ pub(crate) fn frozen_playhead(
 }
 
 impl App {
+    /// Updates the timeline cursor immediately and seeks the preview during a ruler drag.
+    ///
+    /// GStreamer seeks can block long enough to make the cursor trail behind the pointer when
+    /// invoked for every drag frame. Seeks are coalesced to preview cadence, then the ruler
+    /// sends an exact final seek when the gesture ends.
+    pub(crate) fn scrub_preview_playhead(&mut self, position_secs: f64) {
+        self.active_project_mut_untracked()
+            .timeline_mut()
+            .playhead_secs = position_secs;
+
+        // Keep the ruler glued to the pointer on every event, but only hand the latest sample
+        // to GStreamer at preview cadence. GStreamer seeks are asynchronous, yet dispatching
+        // more than the display can show still wastes UI-frame time and made the ruler trail
+        // the mouse. A 30 Hz preview is visually live while limiting obsolete requests.
+        const SCRUB_SEEK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(33);
+        let now = std::time::Instant::now();
+        let should_seek = self
+            .preview_state
+            .last_scrub_seek_at
+            .is_none_or(|last_seek| now.duration_since(last_seek) >= SCRUB_SEEK_INTERVAL);
+        if should_seek {
+            self.preview_state.last_scrub_seek_at = Some(now);
+            self.seek_preview(position_secs);
+        }
+    }
+
+    /// Sends the final ruler position to the preview and resets drag-local seek coalescing.
+    pub(crate) fn finish_preview_scrub(&mut self, position_secs: f64) {
+        self.preview_state.last_scrub_seek_at = None;
+        self.seek_preview(position_secs);
+    }
+
     /// Drops the current pipeline/texture so the next Editor frame rebuilds overlay branches
     /// from their latest styling. Word-timing changes can replace a text branch's buffer live,
     /// but arbitrary text/shape property edits still use this conservative full rebuild.
     pub fn invalidate_preview_rendering(&mut self) {
-        self.preview_state.preview = None;
+        self.preview_state.worker = None;
+        self.preview_state.worker_ready_generation = None;
+        self.preview_state.worker_error = None;
+        self.preview_state.worker_audio_level = avcore::AudioLevel::default();
+        self.preview_state.worker_generation = self.preview_state.worker_generation.wrapping_add(1);
         self.preview_state.preview_texture = None;
         self.preview_state.last_frame = None;
         self.preview_state.waveform_texture = None;
@@ -80,7 +114,7 @@ impl App {
                 .preview_overlay_clip_ids
                 .contains(&clip_id)
             || self.preview_state.preview_audio_clip_ids.contains(&clip_id);
-        if !clip_is_loaded || self.preview_state.preview.is_none() {
+        if !clip_is_loaded || self.preview_state.worker.is_none() {
             return;
         }
         let playhead_secs = self.active_project().timeline().playhead_secs;
@@ -91,9 +125,9 @@ impl App {
     /// ([`App::current_preview_clip`]) differs from the one last opened for
     /// (`preview_clip_id`) — called once per frame from the Editor's preview panel, right
     /// before it reads any preview state, so the first paint after the playhead moves onto a
-    /// different clip is what actually triggers `Preview::open`. Prefers the editing proxy if
+    /// different clip is what actually asks the worker to open a pipeline. Prefers the editing proxy if
     /// one exists (lighter to decode), otherwise the original source file. Leaves `preview` as
-    /// `None` without an error dialog if `Preview::open` fails (e.g. a source file that's been
+    /// unavailable without an error dialog if opening fails (e.g. a source file that's been
     /// moved or deleted since import) — the Editor screen shows a muted "preview unavailable"
     /// label instead, and won't retry until the playhead moves onto a different clip. Seeks
     /// into the newly opened clip at the playhead's own offset, and resumes playback
@@ -143,7 +177,6 @@ impl App {
         let text_ids: Vec<u64> = text_clips.iter().map(|c| c.id).collect();
         let shape_ids: Vec<u64> = shape_clips.iter().map(|c| c.id).collect();
         let current_clip_id = current.as_ref().map(|(c, _)| c.id);
-        self.preview_state.preview = None;
         self.preview_state.preview_texture = None;
         self.preview_state.last_frame = None;
         self.preview_state.waveform_texture = None;
@@ -202,99 +235,47 @@ impl App {
             && overlay_paths.iter().all(Option::is_some)
             && audio_paths.iter().all(Option::is_some);
 
-        let opened = if composited {
-            let overlay_refs: Vec<(&std::path::Path, &ClipInstance)> = overlay_paths
-                .iter()
-                .zip(&overlays)
-                .map(|(p, (c, _))| (p.as_deref().expect("checked above"), c))
-                .collect();
-            let audio_refs: Vec<(&std::path::Path, &ClipInstance)> = audio_paths
-                .iter()
-                .zip(&audio_clips)
-                .map(|(path, (clip, _))| (path.as_deref().expect("checked above"), clip))
-                .collect();
-            // The elapsed time since each text clip's own start — what
-            // `render_text_clip_rgba` resolves its current highlighted word against.
-            let text_refs: Vec<(&TextClip, f64)> = text_clips
-                .iter()
-                .map(|c| (c, playhead - c.start_secs))
-                .collect();
-            let shape_refs: Vec<&ShapeClip> = shape_clips.iter().collect();
-            avcore::preview::Preview::open_composited_with_hardware_decode(
-                &path,
-                Some(&clip),
-                &overlay_refs,
-                &audio_refs,
-                &text_refs,
-                &shape_refs,
-                self.prefs.preview_hardware_decode,
-            )
-        } else {
-            avcore::preview::Preview::open_with_hardware_decode(
-                &path,
-                Some(&clip),
-                self.prefs.preview_hardware_decode,
-            )
-        };
-
-        match opened {
-            Ok(preview) => {
-                debug!(
-                    path = %path.display(),
-                    clip_id = clip.id,
-                    overlay_count = overlays.len(),
-                    hardware_decode = self.prefs.preview_hardware_decode,
-                    "preview pipeline opened"
-                );
-                if !composited {
-                    if clip.frozen {
-                        // Always show the held anchor frame (the frame at source_in_secs),
-                        // never whatever offset the playhead happens to be at within this clip
-                        // — matches export holding that same frame for the block's whole
-                        // trimmed duration.
-                        if let Err(e) = preview.seek(clip.source_in_secs) {
-                            warn!(error = %e, "failed to seek newly opened frozen preview");
-                        }
-                        self.preview_state.preview_frozen_since = self
-                            .preview_state
-                            .preview_playing
-                            .then_some((std::time::Instant::now(), playhead));
-                    } else {
-                        let speed = clip.speed_factor.max(0.01) as f64;
-                        let offset = Self::clip_seek_offset(&clip, playhead);
-                        if let Err(e) = preview.seek_with_rate(offset, speed) {
-                            warn!(error = %e, "failed to seek newly opened preview");
-                        }
-                        self.preview_state.preview_frozen_since = None;
-                    }
-                } else {
-                    let (offsets, rates) = Self::preview_seek_parameters(
-                        std::iter::once(&clip)
-                            .chain(overlays.iter().map(|(clip, _)| clip))
-                            .chain(audio_clips.iter().map(|(clip, _)| clip)),
-                        playhead,
-                    );
-                    if let Err(e) = preview.seek_composited(&offsets, &rates) {
-                        warn!(error = %e, "failed to seek newly opened composited preview");
-                    }
-                    // A frozen background clip's pipeline stays Paused regardless of rate (same
-                    // as the single-clip path) — its own playhead advance is wall-clock-driven
-                    // instead, uniformly across whatever overlays are compositing on top of it.
-                    self.preview_state.preview_frozen_since = if clip.frozen {
-                        self.preview_state.preview_playing
-                    } else {
-                        false
-                    }
-                    .then_some((std::time::Instant::now(), playhead));
-                }
-                if self.preview_state.preview_playing && !clip.frozen {
-                    if let Err(e) = preview.play() {
-                        warn!(error = %e, "failed to resume preview playback across a cut");
-                    }
-                }
-                self.preview_state.preview = Some(preview);
+        let request = if composited {
+            crate::app::PreviewOpenRequest::Composited {
+                path,
+                clip: clip.clone(),
+                overlays: overlay_paths
+                    .into_iter()
+                    .zip(overlays)
+                    .map(|(path, (clip, _))| (path.expect("checked above"), clip))
+                    .collect(),
+                audio: audio_paths
+                    .into_iter()
+                    .zip(audio_clips)
+                    .map(|(path, (clip, _))| (path.expect("checked above"), clip))
+                    .collect(),
+                text: text_clips,
+                shapes: shape_clips,
+                playhead_secs: playhead,
+                hardware_decode: self.prefs.preview_hardware_decode,
             }
-            Err(e) => error!(path = %path.display(), error = %e, "failed to open preview pipeline"),
+        } else {
+            crate::app::PreviewOpenRequest::Single {
+                path,
+                clip: clip.clone(),
+                playhead_secs: playhead,
+                hardware_decode: self.prefs.preview_hardware_decode,
+            }
+        };
+        let generation = self.preview_state.worker_generation.wrapping_add(1);
+        self.preview_state.worker_generation = generation;
+        self.preview_state.worker_ready_generation = None;
+        self.preview_state.worker_error = None;
+        let worker = self
+            .preview_state
+            .worker
+            .get_or_insert_with(crate::app::PreviewWorker::spawn);
+        worker.open(generation, request);
+        self.preview_state.preview_frozen_since = (clip.frozen
+            && self.preview_state.preview_playing)
+            .then_some((std::time::Instant::now(), playhead));
+        if self.preview_state.preview_playing && !clip.frozen {
+            worker.set_playing(true);
         }
     }
 
@@ -304,28 +285,19 @@ impl App {
     /// forward on its own since there's no advancing pipeline position to read for a held
     /// frame.
     pub fn toggle_preview_playback(&mut self) {
-        let Some(preview) = &self.preview_state.preview else {
+        let Some(worker) = &self.preview_state.worker else {
             return;
         };
         let frozen = self.current_preview_video_clip().is_some_and(|c| c.frozen);
         let now_playing = !self.preview_state.preview_playing;
-        let result = if frozen {
-            Ok(())
-        } else if now_playing {
-            preview.play()
-        } else {
-            preview.pause()
-        };
-        match result {
-            Ok(()) => {
-                self.preview_state.preview_playing = now_playing;
-                self.preview_state.preview_frozen_since = (frozen && now_playing).then_some((
-                    std::time::Instant::now(),
-                    self.active_project().timeline().playhead_secs,
-                ));
-            }
-            Err(e) => warn!(error = %e, "failed to toggle preview playback"),
+        if !frozen {
+            worker.set_playing(now_playing);
         }
+        self.preview_state.preview_playing = now_playing;
+        self.preview_state.preview_frozen_since = (frozen && now_playing).then_some((
+            std::time::Instant::now(),
+            self.active_project().timeline().playhead_secs,
+        ));
     }
 
     /// Seeks to `position_secs` (timeline-relative). Takes the fast path — seeking the
@@ -407,57 +379,49 @@ impl App {
         let branches_still_match =
             overlays_still_match && audio_still_match && text_still_match && shape_still_match;
 
-        match (
-            &self.preview_state.preview,
-            same_clip.filter(|_| branches_still_match),
+        // The UI owns the timeline position, but the worker exclusively owns and seeks the
+        // GStreamer pipeline. A new scrub request overwrites any one that has not started.
+        if let (Some(worker), Some(clip)) = (
+            self.preview_state.worker.as_ref(),
+            same_clip.as_ref().filter(|_| branches_still_match),
         ) {
-            (Some(preview), Some(clip)) if !is_composited => {
-                let speed = clip.speed_factor.max(0.01) as f64;
-                let offset = Self::clip_seek_offset(&clip, position_secs);
-                if let Err(e) = preview.seek_with_rate(offset, speed) {
-                    warn!(error = %e, "failed to seek preview");
-                }
-                // See pump_preview_frame's own comment -- a scrub-driven playhead move is not
-                // an edit worth resetting the autosave debounce timer over, and a drag calls
-                // this every frame too.
-                self.active_project_mut_untracked()
-                    .timeline_mut()
-                    .playhead_secs = position_secs;
-            }
-            (Some(preview), Some(clip)) => {
+            let seek = if is_composited {
                 let timeline = self.active_project().timeline();
-                let overlay_clips: Vec<&ClipInstance> = timeline
+                let overlays = timeline
                     .tracks
                     .iter()
-                    .filter(|t| t.kind == TrackKind::Video && t.visible)
+                    .filter(|track| track.visible && track.kind == TrackKind::Video)
                     .skip(1)
-                    .filter_map(|t| t.clip_at(position_secs))
-                    .collect();
-                let audio_clips: Vec<&ClipInstance> = timeline
+                    .filter_map(|track| track.clip_at(position_secs));
+                let audio = timeline
                     .tracks
                     .iter()
-                    .filter(|track| track.kind == TrackKind::Audio && track.visible)
-                    .filter_map(|track| track.clip_at(position_secs))
-                    .collect();
+                    .filter(|track| track.visible && track.kind == TrackKind::Audio)
+                    .filter_map(|track| track.clip_at(position_secs));
                 let (offsets, rates) = Self::preview_seek_parameters(
-                    std::iter::once(&clip)
-                        .chain(overlay_clips.iter().copied())
-                        .chain(audio_clips.iter().copied()),
+                    std::iter::once(clip).chain(overlays).chain(audio),
                     position_secs,
                 );
-                if let Err(e) = preview.seek_composited(&offsets, &rates) {
-                    warn!(error = %e, "failed to seek composited preview");
+                crate::app::PreviewSeek::Composited { offsets, rates }
+            } else {
+                crate::app::PreviewSeek::Single {
+                    offset_secs: Self::clip_seek_offset(clip, position_secs),
+                    rate: clip.speed_factor.max(0.01) as f64,
                 }
-                self.active_project_mut_untracked()
-                    .timeline_mut()
-                    .playhead_secs = position_secs;
-            }
-            _ => {
-                self.active_project_mut_untracked()
-                    .timeline_mut()
-                    .playhead_secs = position_secs;
-            }
+            };
+            let generation = self.preview_state.worker_generation.wrapping_add(1);
+            self.preview_state.worker_generation = generation;
+            worker.seek(generation, seek);
+            self.active_project_mut_untracked()
+                .timeline_mut()
+                .playhead_secs = position_secs;
+            self.refresh_preview_text_highlights(position_secs);
+            return;
         }
+
+        self.active_project_mut_untracked()
+            .timeline_mut()
+            .playhead_secs = position_secs;
         self.refresh_preview_text_highlights(position_secs);
     }
 
@@ -488,7 +452,7 @@ impl App {
     /// any clip covers the playhead, before [`App::ensure_preview_loaded`] has run for it,
     /// and when it couldn't open one.
     pub fn preview_available(&self) -> bool {
-        self.preview_state.preview.is_some()
+        self.preview_state.worker_ready_generation == Some(self.preview_state.worker_generation)
     }
 
     /// Whether a clip currently covers the timeline playhead, whether or not its preview
@@ -500,15 +464,11 @@ impl App {
 
     /// The live playback audio level (peak/RMS) for the Editor preview panel's meter widget —
     /// `spec/ROADMAP.md` P4 item 30. Silent default (`AudioLevel::default()`) when no preview
-    /// pipeline is open at all, same as [`avcore::preview::Preview::current_audio_level`]
+    /// pipeline is open at all, same as the worker reports when the pipeline has
     /// already reports when the pipeline is open but nothing has decoded yet (e.g. before the
     /// first play) or the clip has no audio.
     pub fn current_audio_level(&self) -> avcore::AudioLevel {
-        self.preview_state
-            .preview
-            .as_ref()
-            .map(|preview| preview.current_audio_level())
-            .unwrap_or_default()
+        self.preview_state.worker_audio_level
     }
 
     /// Pulls the latest decoded video frame (if any) into `preview_texture`, and — while
@@ -526,9 +486,8 @@ impl App {
         if self.open_projects.is_empty() {
             return;
         }
-        // Read before borrowing `self.preview_state.preview` below -- this is a method call, which needs an
-        // unencumbered `&self` the borrow checker can't reconcile with an already-live
-        // `&self.preview_state.preview` borrow, even though the two fields are disjoint.
+        // Resolve all model-owned effect settings before taking a frame from the worker so the
+        // decoded image can be processed and uploaded without a second project lookup.
         let (lut_path, vignette_intensity, glitch_intensity, deflicker_enabled, clip_id) =
             self.current_preview_clip_lut_and_vignette();
         if self.preview_state.preview_deflicker_history.0 != clip_id {
@@ -536,11 +495,41 @@ impl App {
                 (clip_id, avcore::DeflickerHistory::new());
         }
 
-        let Some(preview) = &self.preview_state.preview else {
+        let Some(worker) = &self.preview_state.worker else {
             return;
         };
+        while let Some(status) = worker.take_status() {
+            match status {
+                crate::app::preview_worker::PreviewStatus::Ready { generation }
+                    if generation == self.preview_state.worker_generation =>
+                {
+                    self.preview_state.worker_ready_generation = Some(generation);
+                }
+                crate::app::preview_worker::PreviewStatus::Failed {
+                    generation,
+                    message,
+                } if generation == self.preview_state.worker_generation => {
+                    self.preview_state.worker_ready_generation = None;
+                    self.preview_state.worker_error = Some(message);
+                }
+                _ => {}
+            }
+        }
+        let Some(ready) = worker.take_frame() else {
+            return;
+        };
+        if !crate::app::preview_worker::generation_is_current(
+            self.preview_state.worker_generation,
+            ready.generation,
+        ) {
+            return;
+        }
+        self.preview_state.worker_ready_generation = Some(ready.generation);
+        let frame_position_secs = ready.position_secs;
+        self.preview_state.worker_audio_level = ready.audio_level;
+        let mut frame = ready.frame;
 
-        if let Some(mut frame) = preview.current_frame() {
+        {
             // P4 item 21 (`spec/ROADMAP.md`) -- CPU-side preview approximation for the two
             // effects with no matching GStreamer element on any dev machine checked (see
             // `avcore::preview_effects`'s own doc comment for why only these two, and why this
@@ -693,7 +682,7 @@ impl App {
             let elapsed = started_at.elapsed().as_secs_f64();
             frozen_playhead(playhead_at_start, elapsed, start_secs, duration_secs)
         } else {
-            let Some(position) = preview.position_secs() else {
+            let Some(position) = frame_position_secs else {
                 return;
             };
             if position >= source_out_secs {

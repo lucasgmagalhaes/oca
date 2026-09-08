@@ -43,36 +43,43 @@ pub(crate) struct TranscriptPanelState {
 /// documented on the field itself as before.
 #[derive(Default)]
 pub(crate) struct PreviewState {
-    /// The GStreamer pipeline for the clip currently covering the active sequence's timeline
-    /// playhead, if it could be opened (`None` before any project has a clip at the playhead,
-    /// before it's been lazily opened, and when `Preview::open` failed, e.g. a source file
-    /// that's since been moved or deleted — see [`App::ensure_preview_loaded`]).
-    pub(crate) preview: Option<avcore::preview::Preview>,
+    /// Exclusive owner of the GStreamer preview pipeline. UI state only receives its RGBA frames.
+    pub(crate) worker: Option<super::PreviewWorker>,
+    /// Latest UI preview intent; frames from older generations are discarded before upload.
+    pub(crate) worker_generation: u64,
+    pub(crate) worker_ready_generation: Option<u64>,
+    /// Most recent open failure for the current generation, retained for an actionable UI state.
+    pub(crate) worker_error: Option<String>,
+    /// Audio meter sampled by the worker alongside the latest decoded frame.
+    pub(crate) worker_audio_level: avcore::AudioLevel,
+    /// Time of the last preview seek issued while dragging the timeline ruler. Scrub seeks are
+    /// coalesced to preview cadence so stale mouse samples do not monopolize the UI thread.
+    pub(crate) last_scrub_seek_at: Option<std::time::Instant>,
     /// The clip id [`App::ensure_preview_loaded`] last attempted to open a pipeline for,
     /// whether or not it succeeded — lets it tell "already tried and failed for this exact
     /// clip, don't retry every frame" apart from "the playhead moved onto a different clip, try
     /// again".
     pub(crate) preview_clip_id: Option<u64>,
     /// Clip ids of the overlay-track branches [`App::ensure_preview_loaded`] last opened a
-    /// composited pipeline for, in the same order [`avcore::preview::Preview::open_composited`]
+    /// composited pipeline for, in the same order the preview worker opens them
     /// was given them (and the same order [`App::seek_preview`]/[`App::pump_preview_frame`]
     /// must pass offsets to [`avcore::preview::Preview::seek_composited`] in). Empty when the
-    /// playhead's background clip has no overlay-track clips over it — `preview` is then a
-    /// plain [`avcore::preview::Preview::open`] single-clip pipeline instead, same as before
+    /// playhead's background clip has no overlay-track clips over it — the worker is then a
+    /// plain single-clip pipeline instead, same as before
     /// composited preview existed.
     pub(crate) preview_overlay_clip_ids: Vec<u64>,
     /// Audio-only timeline clips currently opened as independent `audiomixer` branches.
     pub(crate) preview_audio_clip_ids: Vec<u64>,
     /// Ids of the [`TrackKind::Text`] clips covering the playhead the last time
     /// [`App::ensure_preview_loaded`] opened a pipeline, in the same order passed as
-    /// [`avcore::preview::Preview::open_composited`]'s `text_overlays` — same reopen-detection
+    /// the preview worker's composited `text_overlays` — same reopen-detection
     /// role `preview_overlay_clip_ids` has for video overlay branches. Text clips have no
     /// source to seek, but this ordering also guards live word-highlight buffer replacements;
     /// a different id set is left for the next full pipeline rebuild.
     pub(crate) preview_text_clip_ids: Vec<u64>,
     /// Same role as `preview_text_clip_ids`, for [`TrackKind::Shape`] clips.
     pub(crate) preview_shape_clip_ids: Vec<u64>,
-    /// Uploaded from the latest [`avcore::preview::Preview::current_frame`] each frame the
+    /// Uploaded from the latest frame published by the preview worker each frame the
     /// Editor screen is shown; `None` until the first frame decodes. Reset whenever
     /// [`App::ensure_preview_loaded`] reopens the pipeline for a different clip so a stale
     /// frame from the previous one never lingers.
@@ -118,7 +125,7 @@ pub(crate) struct PreviewState {
     /// clip — set whenever playback begins while the clip covering the playhead has
     /// `ClipInstance::frozen` set. A frozen clip's pipeline is kept `Paused` at
     /// `source_in_secs` (so it always shows the held anchor frame) rather than actually
-    /// playing, so [`App::pump_preview_frame`] has no `Preview::position_secs` to derive
+    /// playing, so [`App::pump_preview_frame`] has no pipeline position to derive
     /// the advancing playhead from the way it does for a normal clip — this stands in for it.
     /// `None` when nothing is playing or the current clip isn't frozen.
     pub(crate) preview_frozen_since: Option<(std::time::Instant, f64)>,

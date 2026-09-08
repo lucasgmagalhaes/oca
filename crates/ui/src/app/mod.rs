@@ -62,6 +62,7 @@ mod preview_live_updates;
 mod preview_overlays;
 mod preview_selection;
 mod preview_snapshot;
+mod preview_worker;
 mod privacy_blur;
 mod project_ops;
 mod project_timeline_modals;
@@ -98,6 +99,7 @@ pub(crate) use operation_state::{
     TranscribeState, TranscriptPanelState, TtsState, VoiceCleanupPreviewState, WatchFolderState,
     YoutubeDownloadState,
 };
+pub(crate) use preview_worker::{LiveUpdate, PreviewOpenRequest, PreviewSeek, PreviewWorker};
 pub use state::{
     BindableAction, EditorTool, KeyCombo, LayoutScope, MediaLibraryFilter, MediaViewMode,
     PrefsState, PreviewZoom, PropertiesTab, Screen,
