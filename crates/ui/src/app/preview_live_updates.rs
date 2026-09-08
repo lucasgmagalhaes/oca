@@ -7,7 +7,7 @@
 
 //! Live property updates for an already-open preview pipeline.
 
-use super::{App, LiveUpdate};
+use super::{App, LiveUpdateKey};
 
 impl App {
     fn preview_includes_video_clip(&self, clip_id: u64) -> bool {
@@ -30,12 +30,12 @@ impl App {
             return;
         }
         if let Some(worker) = &self.preview_state.worker {
-            worker.live(LiveUpdate::Balance {
-                clip_id,
-                brightness,
-                contrast,
-                saturation: effective_saturation,
-            });
+            worker.live(
+                LiveUpdateKey::for_clip("balance", clip_id),
+                move |preview| {
+                    preview.set_live_balance(clip_id, brightness, contrast, effective_saturation);
+                },
+            );
         }
     }
 
@@ -45,9 +45,8 @@ impl App {
             return;
         }
         if let Some(worker) = &self.preview_state.worker {
-            worker.live(LiveUpdate::Blur {
-                clip_id,
-                sigma: net_sigma,
+            worker.live(LiveUpdateKey::for_clip("blur", clip_id), move |preview| {
+                preview.set_live_blur(clip_id, net_sigma);
             });
         }
     }
@@ -63,11 +62,12 @@ impl App {
             return;
         }
         if let Some(worker) = &self.preview_state.worker {
-            worker.live(LiveUpdate::ChromaKey {
-                clip_id,
-                color,
-                tolerance,
-            });
+            worker.live(
+                LiveUpdateKey::for_clip("chroma-key", clip_id),
+                move |preview| {
+                    preview.set_live_chroma_key(clip_id, color, tolerance);
+                },
+            );
         }
     }
 
@@ -84,12 +84,8 @@ impl App {
             return;
         }
         if let Some(worker) = &self.preview_state.worker {
-            worker.live(LiveUpdate::Crop {
-                clip_id,
-                x: crop_x,
-                y: crop_y,
-                width: crop_w,
-                height: crop_h,
+            worker.live(LiveUpdateKey::for_clip("crop", clip_id), move |preview| {
+                preview.set_live_crop(clip_id, crop_x, crop_y, crop_w, crop_h);
             });
         }
     }
@@ -100,10 +96,12 @@ impl App {
             return;
         }
         if let Some(worker) = &self.preview_state.worker {
-            worker.live(LiveUpdate::Pixelize {
-                clip_id,
-                intensity: pixelize_intensity,
-            });
+            worker.live(
+                LiveUpdateKey::for_clip("pixelize", clip_id),
+                move |preview| {
+                    preview.set_live_pixelize(clip_id, pixelize_intensity);
+                },
+            );
         }
     }
 
@@ -113,9 +111,8 @@ impl App {
             return;
         }
         if let Some(worker) = &self.preview_state.worker {
-            worker.live(LiveUpdate::Shake {
-                clip_id,
-                intensity: shake_intensity,
+            worker.live(LiveUpdateKey::for_clip("shake", clip_id), move |preview| {
+                preview.set_live_shake(clip_id, shake_intensity);
             });
         }
     }
@@ -135,10 +132,8 @@ impl App {
             return;
         }
         if let Some(worker) = &self.preview_state.worker {
-            worker.live(LiveUpdate::Mask {
-                clip_id,
-                shape: mask_shape,
-                corner_radius: mask_corner_radius,
+            worker.live(LiveUpdateKey::for_clip("mask", clip_id), move |preview| {
+                let _ = preview.set_live_mask(clip_id, mask_shape, mask_corner_radius);
             });
         }
     }

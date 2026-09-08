@@ -70,79 +70,78 @@ pub(crate) fn generation_is_current(expected: u64, received: u64) -> bool {
     expected == received
 }
 
-pub(crate) enum LiveUpdate {
-    Balance {
-        clip_id: u64,
-        brightness: f32,
-        contrast: f32,
-        saturation: f32,
-    },
-    Blur {
-        clip_id: u64,
-        sigma: f64,
-    },
-    ChromaKey {
-        clip_id: u64,
-        color: [u8; 3],
-        tolerance: f32,
-    },
-    Crop {
-        clip_id: u64,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-    },
-    Pixelize {
-        clip_id: u64,
-        intensity: f32,
-    },
-    Shake {
-        clip_id: u64,
-        intensity: f32,
-    },
-    Mask {
-        clip_id: u64,
-        shape: avcore::timeline::MaskShape,
-        corner_radius: f32,
-    },
-    Text {
-        clips: Vec<(TextClip, f64)>,
-    },
-    Shape {
-        clip: ShapeClip,
-    },
+/// Stable identity for a replaceable live command.
+///
+/// Commands with the same key replace one another before the worker has run them. The namespace
+/// is a static internal identifier, never user-provided data.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct LiveUpdateKey {
+    namespace: &'static str,
+    clip_id: Option<u64>,
 }
 
-impl LiveUpdate {
-    fn replaces(&self, pending: &Self) -> bool {
-        match (self, pending) {
-            (Self::Balance { clip_id: left, .. }, Self::Balance { clip_id: right, .. })
-            | (Self::Blur { clip_id: left, .. }, Self::Blur { clip_id: right, .. })
-            | (Self::ChromaKey { clip_id: left, .. }, Self::ChromaKey { clip_id: right, .. })
-            | (Self::Crop { clip_id: left, .. }, Self::Crop { clip_id: right, .. })
-            | (Self::Pixelize { clip_id: left, .. }, Self::Pixelize { clip_id: right, .. })
-            | (Self::Shake { clip_id: left, .. }, Self::Shake { clip_id: right, .. })
-            | (Self::Mask { clip_id: left, .. }, Self::Mask { clip_id: right, .. }) => {
-                left == right
-            }
-            (Self::Text { .. }, Self::Text { .. }) => true,
-            (Self::Shape { clip: left }, Self::Shape { clip: right }) => left.id == right.id,
-            _ => false,
+impl LiveUpdateKey {
+    pub(crate) const fn for_clip(namespace: &'static str, clip_id: u64) -> Self {
+        Self {
+            namespace,
+            clip_id: Some(clip_id),
+        }
+    }
+
+    pub(crate) const fn global(namespace: &'static str) -> Self {
+        Self {
+            namespace,
+            clip_id: None,
         }
     }
 }
 
-/// Coalesces each mutable preview property while retaining unrelated updates.
-///
-/// The fixed capacity protects the UI thread from a stalled pipeline. When it is full, the
-/// oldest live update is discarded; the durable project model remains the source of truth and a
-/// later preview rebuild re-applies that state.
-struct PendingLiveUpdates {
-    updates: Mutex<Vec<LiveUpdate>>,
+trait Coalescible {
+    type Key: Eq;
+
+    fn coalescing_key(&self) -> Self::Key;
 }
 
-impl PendingLiveUpdates {
+trait PreviewCommand: Send {
+    fn key(&self) -> LiveUpdateKey;
+    fn apply(self: Box<Self>, preview: &mut Preview);
+}
+
+struct ClosurePreviewCommand<F> {
+    key: LiveUpdateKey,
+    apply: F,
+}
+
+impl<F> PreviewCommand for ClosurePreviewCommand<F>
+where
+    F: FnOnce(&mut Preview) + Send + 'static,
+{
+    fn key(&self) -> LiveUpdateKey {
+        self.key.clone()
+    }
+
+    fn apply(self: Box<Self>, preview: &mut Preview) {
+        (self.apply)(preview);
+    }
+}
+
+impl Coalescible for Box<dyn PreviewCommand> {
+    type Key = LiveUpdateKey;
+
+    fn coalescing_key(&self) -> Self::Key {
+        self.key()
+    }
+}
+
+/// Coalesces replaceable values while retaining unrelated keys.
+///
+/// The fixed capacity protects the UI thread from a stalled consumer. When it is full, the
+/// oldest item is discarded; callers retain durable state outside this ephemeral mailbox.
+struct PendingUpdates<T: Coalescible> {
+    updates: Mutex<Vec<T>>,
+}
+
+impl<T: Coalescible> PendingUpdates<T> {
     const CAPACITY: usize = 64;
 
     fn new() -> Self {
@@ -151,13 +150,13 @@ impl PendingLiveUpdates {
         }
     }
 
-    fn replace(&self, update: LiveUpdate) {
+    fn replace(&self, update: T) {
         let Ok(mut updates) = self.updates.lock() else {
             return;
         };
         if let Some(existing) = updates
             .iter_mut()
-            .find(|existing| update.replaces(existing))
+            .find(|existing| update.coalescing_key() == existing.coalescing_key())
         {
             *existing = update;
         } else {
@@ -168,7 +167,7 @@ impl PendingLiveUpdates {
         }
     }
 
-    fn take_all(&self) -> Vec<LiveUpdate> {
+    fn take_all(&self) -> Vec<T> {
         let Ok(mut updates) = self.updates.lock() else {
             return Vec::new();
         };
@@ -279,7 +278,7 @@ pub(crate) struct PreviewWorker {
     opens: Arc<LatestMailbox<OpenRequest>>,
     playing: Arc<LatestMailbox<bool>>,
     seeks: Arc<LatestMailbox<SeekRequest>>,
-    live_updates: Arc<PendingLiveUpdates>,
+    live_updates: Arc<PendingUpdates<Box<dyn PreviewCommand>>>,
     frames: Arc<LatestMailbox<PreviewFrameReady>>,
     status: Arc<LatestMailbox<PreviewStatus>>,
     wake_tx: mpsc::SyncSender<()>,
@@ -293,7 +292,7 @@ impl PreviewWorker {
         let opens = Arc::new(LatestMailbox::new());
         let playing = Arc::new(LatestMailbox::new());
         let seeks = Arc::new(LatestMailbox::new());
-        let live_updates = Arc::new(PendingLiveUpdates::new());
+        let live_updates = Arc::new(PendingUpdates::new());
         let frames = Arc::new(LatestMailbox::new());
         let status = Arc::new(LatestMailbox::new());
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -352,8 +351,12 @@ impl PreviewWorker {
         self.wake();
     }
 
-    pub(crate) fn live(&self, update: LiveUpdate) {
-        self.live_updates.replace(update);
+    pub(crate) fn live<F>(&self, key: LiveUpdateKey, apply: F)
+    where
+        F: FnOnce(&mut Preview) + Send + 'static,
+    {
+        self.live_updates
+            .replace(Box::new(ClosurePreviewCommand { key, apply }));
         self.wake();
     }
 
@@ -398,7 +401,7 @@ struct WorkerMailboxes {
     opens: Arc<LatestMailbox<OpenRequest>>,
     playing: Arc<LatestMailbox<bool>>,
     seeks: Arc<LatestMailbox<SeekRequest>>,
-    live_updates: Arc<PendingLiveUpdates>,
+    live_updates: Arc<PendingUpdates<Box<dyn PreviewCommand>>>,
     frames: Arc<LatestMailbox<PreviewFrameReady>>,
     status: Arc<LatestMailbox<PreviewStatus>>,
 }
@@ -472,59 +475,7 @@ fn worker_loop(
         }
         if let Some(preview) = &mut preview {
             for update in live_updates.take_all() {
-                match update {
-                    LiveUpdate::Balance {
-                        clip_id,
-                        brightness,
-                        contrast,
-                        saturation,
-                    } => {
-                        preview.set_live_balance(clip_id, brightness, contrast, saturation);
-                    }
-                    LiveUpdate::Blur { clip_id, sigma } => {
-                        preview.set_live_blur(clip_id, sigma);
-                    }
-                    LiveUpdate::ChromaKey {
-                        clip_id,
-                        color,
-                        tolerance,
-                    } => {
-                        preview.set_live_chroma_key(clip_id, color, tolerance);
-                    }
-                    LiveUpdate::Crop {
-                        clip_id,
-                        x,
-                        y,
-                        width,
-                        height,
-                    } => {
-                        preview.set_live_crop(clip_id, x, y, width, height);
-                    }
-                    LiveUpdate::Pixelize { clip_id, intensity } => {
-                        preview.set_live_pixelize(clip_id, intensity);
-                    }
-                    LiveUpdate::Shake { clip_id, intensity } => {
-                        preview.set_live_shake(clip_id, intensity);
-                    }
-                    LiveUpdate::Mask {
-                        clip_id,
-                        shape,
-                        corner_radius,
-                    } => {
-                        let _ = preview.set_live_mask(clip_id, shape, corner_radius);
-                    }
-                    LiveUpdate::Text { clips } => {
-                        let refs: Vec<_> = clips.iter().map(|(clip, time)| (clip, *time)).collect();
-                        if let Err(error) = preview.update_text_overlays(&refs) {
-                            warn!(%error, "failed to refresh preview text overlays");
-                        }
-                    }
-                    LiveUpdate::Shape { clip } => {
-                        if let Err(error) = preview.refresh_shape_overlay(&clip) {
-                            warn!(%error, "failed to refresh preview shape overlay");
-                        }
-                    }
-                }
+                update.apply(preview);
             }
         }
         if let Some(request) = seeks.take() {
@@ -569,9 +520,22 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{
-        generation_is_current, LatestMailbox, LiveUpdate, PendingLiveUpdates, PreviewOpenRequest,
+        generation_is_current, Coalescible, LatestMailbox, PendingUpdates, PreviewOpenRequest,
         PreviewSeek, PreviewStatus, PreviewWorker,
     };
+
+    struct TestUpdate {
+        key: u64,
+        value: f64,
+    }
+
+    impl Coalescible for TestUpdate {
+        type Key = u64;
+
+        fn coalescing_key(&self) -> Self::Key {
+            self.key
+        }
+    }
 
     fn assert_send<T: Send>() {}
 
@@ -635,42 +599,18 @@ mod tests {
     }
 
     #[test]
-    fn live_updates_coalesce_per_property_without_losing_other_properties() {
-        let updates = PendingLiveUpdates::new();
-        updates.replace(LiveUpdate::Balance {
-            clip_id: 7,
-            brightness: 0.1,
-            contrast: 1.0,
-            saturation: 1.0,
-        });
-        updates.replace(LiveUpdate::Blur {
-            clip_id: 7,
-            sigma: 2.0,
-        });
-        updates.replace(LiveUpdate::Balance {
-            clip_id: 7,
-            brightness: 0.3,
-            contrast: 1.1,
-            saturation: 0.9,
-        });
+    fn pending_updates_coalesces_any_value_by_its_key() {
+        let updates = PendingUpdates::new();
+        updates.replace(TestUpdate { key: 1, value: 0.1 });
+        updates.replace(TestUpdate { key: 2, value: 2.0 });
+        updates.replace(TestUpdate { key: 1, value: 0.3 });
 
         let updates = updates.take_all();
         assert_eq!(updates.len(), 2);
-        assert!(matches!(
-            updates.first(),
-            Some(LiveUpdate::Balance {
-                clip_id: 7,
-                brightness,
-                contrast,
-                saturation,
-            }) if (*brightness - 0.3).abs() < f32::EPSILON
-                && (*contrast - 1.1).abs() < f32::EPSILON
-                && (*saturation - 0.9).abs() < f32::EPSILON
-        ));
-        assert!(matches!(
-            updates.get(1),
-            Some(LiveUpdate::Blur { clip_id: 7, sigma }) if (*sigma - 2.0).abs() < f64::EPSILON
-        ));
+        assert_eq!(updates[0].key, 1);
+        assert!((updates[0].value - 0.3).abs() < f64::EPSILON);
+        assert_eq!(updates[1].key, 2);
+        assert!((updates[1].value - 2.0).abs() < f64::EPSILON);
     }
 
     #[test]

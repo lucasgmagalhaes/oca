@@ -99,7 +99,7 @@ pub(crate) use operation_state::{
     TranscribeState, TranscriptPanelState, TtsState, VoiceCleanupPreviewState, WatchFolderState,
     YoutubeDownloadState,
 };
-pub(crate) use preview_worker::{LiveUpdate, PreviewOpenRequest, PreviewSeek, PreviewWorker};
+pub(crate) use preview_worker::{LiveUpdateKey, PreviewOpenRequest, PreviewSeek, PreviewWorker};
 pub use state::{
     BindableAction, EditorTool, KeyCombo, LayoutScope, MediaLibraryFilter, MediaViewMode,
     PrefsState, PreviewZoom, PropertiesTab, Screen,

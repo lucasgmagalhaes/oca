@@ -7,8 +7,9 @@
 
 //! Live text and shape overlay refreshes for an open composited preview.
 
-use super::{App, LiveUpdate};
+use super::{App, LiveUpdateKey};
 use avcore::TrackKind;
+use tracing::warn;
 
 impl App {
     /// Refreshes a loaded text branch after a content-only edit without reopening the pipeline.
@@ -31,8 +32,11 @@ impl App {
         };
         let local_time = playhead - clip.start_secs;
         if let Some(worker) = &self.preview_state.worker {
-            worker.live(LiveUpdate::Text {
-                clips: vec![(clip, local_time)],
+            worker.live(LiveUpdateKey::global("text"), move |preview| {
+                let refs = [(&clip, local_time)];
+                if let Err(error) = preview.update_text_overlays(&refs) {
+                    warn!(%error, "failed to refresh preview text overlays");
+                }
             });
         }
     }
@@ -55,7 +59,11 @@ impl App {
             return;
         };
         if let Some(worker) = &self.preview_state.worker {
-            worker.live(LiveUpdate::Shape { clip });
+            worker.live(LiveUpdateKey::for_clip("shape", clip.id), move |preview| {
+                if let Err(error) = preview.refresh_shape_overlay(&clip) {
+                    warn!(%error, "failed to refresh preview shape overlay");
+                }
+            });
         }
     }
 }

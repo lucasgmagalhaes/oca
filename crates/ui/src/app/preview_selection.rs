@@ -18,7 +18,8 @@
 use avcore::timeline::{ShapeClip, TextClip};
 use avcore::{ClipInstance, MediaAsset, TrackKind};
 
-use super::{App, LiveUpdate};
+use super::{App, LiveUpdateKey};
+use tracing::warn;
 
 impl App {
     /// Just the id [`App::current_preview_clip`] would resolve to, without cloning the
@@ -289,7 +290,15 @@ impl App {
             .map(|clip| (clip.clone(), position_secs - clip.start_secs))
             .collect();
         if let Some(worker) = &self.preview_state.worker {
-            worker.live(LiveUpdate::Text { clips: timed_clips });
+            worker.live(LiveUpdateKey::global("text"), move |preview| {
+                let refs: Vec<_> = timed_clips
+                    .iter()
+                    .map(|(clip, time)| (clip, *time))
+                    .collect();
+                if let Err(error) = preview.update_text_overlays(&refs) {
+                    warn!(%error, "failed to refresh preview text overlays");
+                }
+            });
         }
     }
 
