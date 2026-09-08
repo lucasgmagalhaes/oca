@@ -38,8 +38,8 @@ use crate::i18n::Text;
 use crate::theme;
 pub(super) use layout::CLIP_COLOR_LABEL_PALETTE;
 use layout::{
-    TimelineCanvasLayout, COLLAPSED_TRACK_ROW_HEIGHT, MAX_PX_PER_SEC, MIN_PX_PER_SEC, RULER_HEIGHT,
-    THUMBNAIL_ZOOM_DEBOUNCE, TRACK_LABEL_WIDTH, TRACK_ROW_HEIGHT,
+    track_area_height, TimelineCanvasLayout, COLLAPSED_TRACK_ROW_HEIGHT, MAX_PX_PER_SEC,
+    MIN_PX_PER_SEC, RULER_HEIGHT, THUMBNAIL_ZOOM_DEBOUNCE, TRACK_LABEL_WIDTH, TRACK_ROW_HEIGHT,
 };
 
 use asset_drop::apply_pending_asset_drop;
@@ -166,8 +166,21 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         let mut thumbnail_requests: Vec<(u64, u64, i64)> = Vec::new();
         let mut thumbnail_touches: Vec<(u64, u64, i64)> = Vec::new();
         let project_id = app.active_project().id;
+        // Keep the horizontal scrollbar at the bottom of the timeline panel even when there
+        // are only one or two tracks. The vertical track area fills the remaining height; the
+        // footer owns the scrollbar rather than following the last rendered row.
+        const HORIZONTAL_SCROLL_CONTENT_HEIGHT: f32 = 2.0;
+        let bottom_scroll_height =
+            HORIZONTAL_SCROLL_CONTENT_HEIGHT + ui.spacing().scroll.allocated_width();
+        let tracks_scroll_height = track_area_height(
+            ui.available_height(),
+            bottom_scroll_height,
+            ui.spacing().item_spacing.y,
+        );
         egui::ScrollArea::vertical()
             .id_salt("timeline_tracks_scroll")
+            .max_height(tracks_scroll_height)
+            .auto_shrink([false, false])
             // The ruler is outside this vertical scroll area. Its default content padding would
             // otherwise shift every track canvas independently of the ruler's canvas.
             .content_margin(egui::Margin::ZERO)
@@ -813,10 +826,19 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                     );
                 }
             });
-        // The persistent horizontal pan scrollbar, pinned to the bottom of the whole timeline
-        // component (below every track row) — matches where a scrollbar naturally reads,
-        // confirmed via a real report that it belonged here, not up on the ruler.
-        ui.horizontal(|ui| {
+        // The persistent horizontal pan scrollbar is allocated as a fixed footer after the
+        // full-height track area, so it remains at the bottom of the timeline instead of
+        // immediately below a short list of clips.
+        let (bottom_scroll_rect, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), bottom_scroll_height),
+            egui::Sense::hover(),
+        );
+        let mut bottom_scroll_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(bottom_scroll_rect)
+                .layout(egui::Layout::left_to_right(egui::Align::Min)),
+        );
+        bottom_scroll_ui.horizontal(|ui| {
             ui.allocate_exact_size(egui::vec2(TRACK_LABEL_WIDTH, 2.0), egui::Sense::hover());
             let bottom_scroll = egui::ScrollArea::horizontal()
                 .id_salt("timeline_bottom_hscroll")
@@ -827,7 +849,10 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 .horizontal_scroll_offset(app.timeline_pan_px)
                 .show(ui, |ui| {
                     ui.allocate_exact_size(
-                        egui::vec2(canvas_layout.content_width, 2.0),
+                        egui::vec2(
+                            canvas_layout.content_width,
+                            HORIZONTAL_SCROLL_CONTENT_HEIGHT,
+                        ),
                         egui::Sense::hover(),
                     );
                 });

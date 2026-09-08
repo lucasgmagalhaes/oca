@@ -30,6 +30,15 @@ pub(super) const RULER_HEIGHT: f32 = 28.0;
 pub(super) const TRACK_ROW_HEIGHT: f32 = 56.0;
 pub(super) const COLLAPSED_TRACK_ROW_HEIGHT: f32 = 22.0;
 
+/// Height available to the vertically scrolling tracks after reserving the fixed scrollbar footer.
+pub(super) fn track_area_height(
+    available_height: f32,
+    footer_height: f32,
+    item_spacing: f32,
+) -> f32 {
+    (available_height - footer_height - item_spacing).max(0.0)
+}
+
 /// Fixed color-label swatches offered by the clip and track context menus.
 pub(crate) const CLIP_COLOR_LABEL_PALETTE: &[[u8; 3]] = &[
     [229, 83, 83],
@@ -63,6 +72,16 @@ mod tests {
         let layout = TimelineCanvasLayout::new(500.0, 10.0, 100.0, EditorTool::Select);
 
         assert_eq!(layout.content_width, 1_200.0);
+    }
+
+    #[test]
+    fn track_area_keeps_space_for_the_bottom_scrollbar_footer() {
+        assert_eq!(track_area_height(300.0, 12.0, 4.0), 284.0);
+    }
+
+    #[test]
+    fn track_area_height_never_becomes_negative_in_a_short_panel() {
+        assert_eq!(track_area_height(8.0, 12.0, 4.0), 0.0);
     }
 }
 
