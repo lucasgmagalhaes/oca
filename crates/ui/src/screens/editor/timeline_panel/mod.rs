@@ -804,13 +804,6 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                                         drag_started: &mut drag_started_this_frame,
                                     },
                                 );
-                                draw_playhead(
-                                    ui,
-                                    track_rect,
-                                    app.active_project().timeline().playhead_secs,
-                                    px_per_sec,
-                                    1.0,
-                                );
                             });
                         if (track_scroll.state.offset.x - app.timeline_pan_px).abs() > 0.01 {
                             new_pan_px = Some(track_scroll.state.offset.x);
@@ -860,6 +853,22 @@ pub(super) fn timeline_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
                 new_pan_px = Some(bottom_scroll.state.offset.x);
             }
         });
+        // One continuous playhead joins the ruler, track rows, row gaps, and scrollbar footer.
+        // Drawing a separate segment per track left visible breaks at every `add_space` and at
+        // the empty part of a short timeline, making the current position look disconnected.
+        if let Some((_, _, first_track_rect)) = track_requests.rows.first() {
+            let playhead_span = egui::Rect::from_min_max(
+                egui::pos2(first_track_rect.left(), ruler_top),
+                egui::pos2(bottom_scroll_rect.right(), bottom_scroll_rect.bottom()),
+            );
+            draw_playhead(
+                ui,
+                playhead_span,
+                app.active_project().timeline().playhead_secs,
+                px_per_sec,
+                1.0,
+            );
+        }
         if let Some(px) = new_pan_px {
             app.timeline_pan_px = px;
         }

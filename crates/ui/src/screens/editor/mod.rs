@@ -127,11 +127,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui.horizontal(|ui| {
                 ui.set_height(body_height);
 
-                // `allocate_ui` reserves the exact rect up front, so children (ScrollArea, Frame)
-                // see a properly bounded `max_rect` instead of the horizontal layout's full
-                // remaining width — a bare `ui.set_width()` inside the panel only affects how much
-                // space is reported *back* to this layout afterwards, not what the panel can paint.
-                ui.allocate_ui(egui::vec2(app.lib_panel_width, body_height), |ui| {
+                // Each panel must consume its whole budget even when its current contents are
+                // narrow. `allocate_ui` advances a horizontal parent only by the space its child
+                // used, which shifts later columns rightward and can clip them past the viewport.
+                allocate_fixed_ui(ui, egui::vec2(app.lib_panel_width, body_height), |ui| {
                     media_library_panel(app, ui, app.lib_panel_width, body_height);
                 });
                 resizable_divider(
@@ -142,7 +141,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     max_col,
                     1.0,
                 );
-                ui.allocate_ui(egui::vec2(preview_w, body_height), |ui| {
+                allocate_fixed_ui(ui, egui::vec2(preview_w, body_height), |ui| {
                     preview_panel(app, ui, body_height);
                 });
                 resizable_divider(
@@ -153,12 +152,16 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     max_col,
                     -1.0,
                 );
-                ui.allocate_ui(egui::vec2(app.props_panel_width, body_height), |ui| {
+                allocate_fixed_ui(ui, egui::vec2(app.props_panel_width, body_height), |ui| {
                     properties_panel::properties_panel(app, ui, app.props_panel_width, body_height);
                 });
-                ui.allocate_ui(egui::vec2(AUDIO_METER_COLUMN_WIDTH, body_height), |ui| {
-                    audio_meter_column(app, ui, body_height);
-                });
+                allocate_fixed_ui(
+                    ui,
+                    egui::vec2(AUDIO_METER_COLUMN_WIDTH, body_height),
+                    |ui| {
+                        audio_meter_column(app, ui, body_height);
+                    },
+                );
             });
 
             ui.add_space(4.0);
@@ -188,6 +191,33 @@ const AUDIO_METER_COLUMN_WIDTH: f32 = 70.0;
 /// floor (plus `AUDIO_METER_COLUMN_WIDTH` plus the divider/spacing gaps) no longer fits.
 const MIN_PREVIEW_W: f32 = 200.0;
 
+/// Allocates a panel's exact footprint in a horizontal editor row without allowing its child
+/// contents to shrink the space consumed by later columns.
+fn allocate_fixed_ui<R>(
+    ui: &mut egui::Ui,
+    size: egui::Vec2,
+    contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    contents(&mut child)
+}
+
+/// Space the preview canvas may use after reserving its scrubber, transport bar, and scopes.
+fn preview_frame_height(available_height: f32, scopes_enabled: bool) -> f32 {
+    const SCRUBBER_HEIGHT: f32 = 20.0;
+    const TRANSPORT_HEIGHT: f32 = 30.0;
+    const SCOPES_HEIGHT: f32 = 108.0;
+
+    let scopes_height = if scopes_enabled { SCOPES_HEIGHT } else { 0.0 };
+    (available_height - SCRUBBER_HEIGHT - theme::SPACE_XS - TRANSPORT_HEIGHT - scopes_height)
+        .max(0.0)
+}
+
 /// The persistent stereo dB meter at the editor body's far right edge — unlike the properties
 /// panel next to it, this is *not* gated on a clip being selected or which Inspector/Effects/
 /// Audio tab is active, matching the OCA mockup's own always-visible meter. Reads the same
@@ -210,35 +240,40 @@ fn preview_panel(app: &mut App, ui: &mut egui::Ui, height: f32) {
         preview_header(app, ui, locale);
         ui.add_space(theme::SPACE_SM);
         let preview_texture_size = app.preview_state.preview_texture.as_ref().map(|t| t.size());
-        let frame_response = egui::Frame::new()
-            .fill(egui::Color32::BLACK)
-            .show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
-                ui.set_min_height(height - 40.0);
-                match &app.preview_state.preview_texture {
-                    Some(_) => layer_transform_preview(app, ui),
-                    None if app.preview_clip_present() && !app.preview_available() => {
-                        ui.centered_and_justified(|ui| {
-                            ui.label(
-                                RichText::new(Text::PreviewUnavailable.tr(locale))
-                                    .size(13.0)
-                                    .color(theme::TEXT_DISABLED),
-                            );
-                        });
-                    }
-                    None => {
-                        ui.centered_and_justified(|ui| {
-                            ui.label(
-                                RichText::new(icons::PLAY_STR)
-                                    .family(icons::family())
-                                    .size(48.0)
-                                    .color(theme::TEXT_MUTED),
-                            );
-                        });
-                    }
-                };
-            })
-            .response;
+        let frame_height =
+            preview_frame_height(ui.available_height(), app.preview_state.scopes_enabled);
+        let frame_width = ui.available_width();
+        let frame_response = allocate_fixed_ui(ui, egui::vec2(frame_width, frame_height), |ui| {
+            egui::Frame::new()
+                .fill(egui::Color32::BLACK)
+                .show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    ui.set_min_height(frame_height);
+                    match &app.preview_state.preview_texture {
+                        Some(_) => layer_transform_preview(app, ui),
+                        None if app.preview_clip_present() && !app.preview_available() => {
+                            ui.centered_and_justified(|ui| {
+                                ui.label(
+                                    RichText::new(Text::PreviewUnavailable.tr(locale))
+                                        .size(13.0)
+                                        .color(theme::TEXT_DISABLED),
+                                );
+                            });
+                        }
+                        None => {
+                            ui.centered_and_justified(|ui| {
+                                ui.label(
+                                    RichText::new(icons::PLAY_STR)
+                                        .family(icons::family())
+                                        .size(48.0)
+                                        .color(theme::TEXT_MUTED),
+                                );
+                            });
+                        }
+                    };
+                })
+                .response
+        });
         draw_preview_hud(app, ui.painter(), frame_response.rect, preview_texture_size);
         let timeline_duration = app.active_project().timeline().duration_secs();
         preview_scrubber(app, ui, timeline_duration);

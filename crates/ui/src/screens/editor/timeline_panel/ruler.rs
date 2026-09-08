@@ -67,19 +67,23 @@ pub(super) fn timeline_ruler(
                 ruler_top = rect.top();
                 ui.painter().rect_filled(rect, 0, theme::SURFACE_2);
                 draw_ruler_ticks(ui.painter(), rect, layout.px_per_sec);
-                if let Some(pos) = response.interact_pointer_pos() {
+                if let Some(pos) = response
+                    .interact_pointer_pos()
+                    .filter(|_| response.dragged() || response.drag_stopped() || response.clicked())
+                {
                     let secs = ((pos.x - rect.left()) / layout.px_per_sec).max(0.0) as f64;
                     let secs = if layout.snap_enabled {
                         snap_to_nearest(secs, &layout.snap_targets.all(), layout.px_per_sec)
                     } else {
                         secs
                     };
-                    // The preview pipeline may still be reporting its terminal source position
-                    // after playback ends. Updating only the model here lets that stale position
-                    // overwrite this click on the next frame. Route every ruler seek through the
-                    // preview-aware path, which both updates the timeline and seeks/reopens the
-                    // pipeline at the requested timeline position.
-                    app.seek_preview(secs);
+                    if response.dragged() {
+                        app.scrub_preview_playhead(secs);
+                    } else {
+                        // A click or drag release needs the preview-aware seek so the decoded
+                        // frame catches up once, without blocking each visual drag update.
+                        app.finish_preview_scrub(secs);
+                    }
                 }
                 let markers = app.active_project().timeline().markers.clone();
                 if let Some(seek_secs) = draw_marker_ticks(ui, rect, &markers, layout.px_per_sec) {

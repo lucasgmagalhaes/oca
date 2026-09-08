@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use super::preview_canvas_size;
+use super::{allocate_fixed_ui, preview_canvas_size, preview_frame_height};
 use crate::app::PreviewZoom;
 use eframe::egui;
 
@@ -24,6 +24,36 @@ fn assert_close(actual: egui::Vec2, expected: egui::Vec2) {
         (actual.x - expected.x).abs() < EPS && (actual.y - expected.y).abs() < EPS,
         "expected {expected:?}, got {actual:?}"
     );
+}
+
+#[test]
+fn fixed_editor_column_consumes_its_full_horizontal_budget() {
+    let ctx = egui::Context::default();
+    let mut cursor_advance = 0.0;
+
+    let frame = ctx.run_ui(egui::RawInput::default(), |ui| {
+        ui.horizontal(|ui| {
+            let start = ui.cursor().left();
+            allocate_fixed_ui(ui, egui::vec2(240.0, 80.0), |_| {});
+            cursor_advance = ui.cursor().left() - start;
+        });
+    });
+    frame.drop_without_applying_deltas();
+
+    assert!(
+        cursor_advance >= 240.0,
+        "later editor columns must start after the full preceding column width"
+    );
+}
+
+#[test]
+fn preview_canvas_reserves_space_for_scrubber_and_transport() {
+    assert_eq!(preview_frame_height(200.0, false), 146.0);
+}
+
+#[test]
+fn preview_canvas_reserves_space_for_enabled_scopes() {
+    assert_eq!(preview_frame_height(200.0, true), 38.0);
 }
 
 #[test]
