@@ -1,0 +1,9 @@
+# Run artifacts - regenerate with `python -m sprite_extractor`.
+# NOTE: "output/" is intentionally NOT globbed here - it collides with the
+# `output/` source package (naming.py, exporter.py, metadata.py). A run's
+# `--output` target should be pointed outside this tree (or listed
+# explicitly below if it must live under it).
+/debug/
+*.pyc
+__pycache__/
+.pytest_cache/

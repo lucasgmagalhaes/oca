@@ -1,0 +1,9 @@
+Pillow>=10.0
+opencv-python-headless>=4.8
+numpy>=1.24
+PyYAML>=6.0
+pytest>=7.4
+
+# Optional OCR assist - never required, detection degrades gracefully
+# without it (see config.py's `ocr.enabled` and README "Known limitations").
+# pytesseract>=0.3.10

@@ -1,0 +1,209 @@
+# Default/example config for tools/sprite_extractor, tuned against
+# samples/character_sheet_reference.png (1536x1024).
+#
+# Every detection threshold below is either a concrete number or the string
+# "auto" (resolved relative to image/region size at run time - see
+# config.py's `resolve_auto`). Nothing here is a coordinate: panel/grid/cell
+# positions are always auto-detected from pixels. The `detection.*` section
+# below is the one place that hardcodes *knowledge about this sheet*
+# (panel order, category names, and true manual overrides for panels that
+# structural heuristics alone can't classify reliably) - see the README's
+# "Known limitations" for why each override exists.
+
+background:
+  color: auto          # auto = sample the 4 image edges for the dominant page bg color
+  tolerance: 20         # L1 RGB distance used for the cheap structural foreground mask
+  flood_fill_tolerance: 18   # per-channel flood-fill tolerance for the real transparency pass
+
+panels:
+  canny_low: 15
+  canny_high: 45
+  dilate_kernel: 3
+  min_area_fraction: 0.004   # panels/sub-panels smaller than this fraction of the image are ignored
+  max_area_fraction: 0.5
+  min_width: 50
+  min_height: 50
+  merge_iou: 0.3             # dedup near-duplicate contours (rounded-rect borders draw as 2 edges)
+  merge_contain_ratio: 0.85
+  row_overlap_ratio: 0.4     # vertical-overlap ratio used to cluster panels into reading-order rows
+
+header:
+  # Densities below are normalized against the row's own 85th-percentile
+  # value (see detection/grids.py::_normalized_density), NOT a raw fraction
+  # of region width - this keeps one relative threshold working whether a
+  # region is 200px or 2000px wide, or has thick vs. thin borders.
+  valley_density_threshold: 0.35
+  min_gap_px: auto
+  min_gap_fraction_of_height: 0.01
+  max_header_fraction_of_height: 0.45   # title+subtitle never exceeds this fraction of panel/sub-panel height
+  density_percentile: 85
+
+grid:
+  valley_density_threshold: 0.35
+  min_gap_px: auto
+  min_gap_fraction: 0.006
+  min_band_px: auto
+  min_band_fraction: 0.025
+  regularity_tolerance: 0.5   # relative spread allowed among column-band widths before rejecting "grid"
+  density_percentile: 85
+
+subsplit:
+  enabled: true
+  dilate_kernel: 3
+  min_gap_fraction_of_cell: 0.06     # gap (relative to cell width) required to split a cell into N sprites
+  min_cluster_fraction_of_cell: 0.1  # a cluster smaller than this fraction of the cell is noise, not a sprite
+
+text_filter:
+  max_glyph_height_fraction: 0.11
+  min_components_for_text: 4
+  row_alignment_tolerance_px: 6
+  max_component_aspect_for_text: 6.0
+  min_row_fill_ratio: 0.35
+
+sprite:
+  padding: 4
+  min_area: auto
+  min_area_fraction_of_cell: 0.01   # contextual, NOT a flat pixel-count threshold - see processing/filtering.py
+  alpha_threshold: 10
+
+ocr:
+  enabled: false   # optional assist only; unused unless pytesseract is installed AND this is true
+
+padding: 4
+
+layer_order:
+  - body
+  - hair_back
+  - eyes
+  - eyebrows
+  - mouth
+  - clothes
+  - shoes
+  - hair_front
+  - accessories
+  - effects
+
+detection:
+  # panel_index is the panel's 0-based position in reading-order (row-major,
+  # top-to-bottom then left-to-right) as produced by detection/panels.py for
+  # THIS sheet's layout. title_contains works too when `ocr.enabled: true`
+  # and pytesseract is installed, and takes priority when both are given -
+  # keep panel_index as the reliable fallback since OCR is optional.
+  panel_overrides:
+    - panel_index: 0
+      title_contains: "PERSONAGEM BASE"
+      type: special   # left = single nude idle sprite; right = text info-card (auto-excluded as text)
+      category: base/reference
+      single_name: idle
+
+    - panel_index: 1
+      title_contains: "CORPO BASE"
+      # The 4 per-direction bordered sub-panels are visually clear but their
+      # contours are close enough together that sub-panel-box detection can
+      # bridge one into a neighbor (see README "Known limitations"). The
+      # full fine-grained cell grid (4 frame-rows x 8 sprite-columns - 2
+      # sprites per direction) detects cleanly instead, so treat this panel
+      # as one plain grid and only use column_group_names to fold every 2
+      # columns into a named direction folder.
+      type: grid
+      category: base
+      rows: 4
+      columns: 8
+      column_group_names: [front, back, left, right]
+      # The row labels ("Frame 1 (Idle)" .. "Frame 4 (Idle)") sit inside
+      # this panel's body, to the left of the actual sprite grid, with no
+      # border of their own for auto-detection to key off - so the fine
+      # column grid's leftmost band can otherwise swallow a sliver of label
+      # text into the first "front" column. Measured against this sheet's
+      # layout. See README "Known limitations".
+      body_inset_left: 67
+
+    - panel_index: 2
+      title_contains: "VARIA"
+      type: grid
+      category: skin
+      rows: 3
+      columns: 5
+
+    - panel_index: 3
+      title_contains: "OLHOS"
+      type: grid
+      category: eyes
+      rows: 4
+      columns: 4
+
+    - panel_index: 4
+      title_contains: "SOBRANCELHAS"
+      type: grid
+      category: eyebrows
+      rows: 4
+      columns: 3
+
+    - panel_index: 5
+      title_contains: "BOCAS"
+      type: grid
+      category: mouths
+      rows: 4
+      columns: 6
+
+    - panel_index: 6
+      title_contains: "CABELO (TRASEIRO)"
+      type: grid
+      category: hair_back
+      rows: 3
+      columns: 4
+
+    - panel_index: 7
+      title_contains: "CABELO (FRONTAL)"
+      type: grid
+      category: hair_front
+      rows: 3
+      columns: 4
+
+    - panel_index: 8
+      title_contains: "ROUPAS"
+      type: grid_of_subpanels   # 3 bordered sub-panels side by side: TORSO / BRAÇOS / PERNAS
+      category: clothes
+      subpanel_names: [torso, arms, legs]
+      cell_multi_sprite: false
+      # Each sub-header ("TORSO"/"BRAÇOS"/"PERNAS") sits flush against its
+      # own grid with no whitespace row for strip_header's valley search to
+      # key off, unlike every top-level panel title. Fixed fallback height
+      # measured against this sheet's layout. See README "Known limitations".
+      subpanel_header_px: 20
+
+    - panel_index: 9
+      title_contains: "SAPATOS"
+      type: grid
+      category: shoes
+      rows: 5
+      columns: 4
+
+    - panel_index: 10
+      title_contains: "ACESSÓRIOS"
+      type: grid
+      category: accessories
+      # Icon silhouettes vary a lot in shape/size (caps, glasses, ears,
+      # halos...) and produce enough internal edge noise to over-segment
+      # the auto column/row count - the grid itself is uniform (6x5), so
+      # pin it explicitly. See README "Known limitations".
+      rows: 5
+      columns: 6
+
+    - panel_index: 11
+      title_contains: "EFEITOS"
+      type: grid
+      category: effects
+      rows: 4
+      columns: 5
+
+  exclude_panels:
+    # Legend + one fully-composed example render, not raw layer assets.
+    # Structurally near-identical to panel 0 (text block + sprite), so this
+    # is a genuine manual override, not something the structural heuristics
+    # could safely tell apart on their own - see README "Known limitations".
+    - panel_index: 12
+      title_contains: "EXEMPLO DE COMPOSI"
+      reason: "legend + composed example render, not raw layer assets"
+
+manual_regions: []
