@@ -1,0 +1,6 @@
+# Run artifacts - regenerate with `python -m sprite_extractor`
+output/
+debug/
+*.pyc
+__pycache__/
+.pytest_cache/
